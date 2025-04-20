@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Tray, Menu, MenuItem, MenuItemConstructorOptions, globalShortcut, nativeImage, screen, ipcMain, dialog, nativeTheme } from 'electron';
 import path from 'node:path';
+import process from 'node:process';
 import started from 'electron-squirrel-startup';
 import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
@@ -72,6 +73,7 @@ let hotkeyDialogOpen = false;
 let captureWindow: BrowserWindow | null = null;
 let contextMenuWindow: BrowserWindow | null = null;
 let contextMenuOpen = false;
+let isQuitting = false;
 
 // Global variable to store the current recording state
 let isRecording = false;
@@ -120,10 +122,18 @@ const createWindow = () => {
   // Also set the icon explicitly after creation (optional but good practice)
   mainWindow.setIcon(iconPath);
 
-  // Handle window close event - ALWAYS quit the app
+  // Handle window close event - Remove recursive quit
+  // Option 1: Use 'close' but only log/nullify
+  /*
   mainWindow.on('close', () => {
-    console.log('Main window close event triggered, quitting application');
-    app.quit(); 
+    console.log('Main window close event triggered (but not quitting here)');
+    mainWindow = null; 
+  });
+  */
+  // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
+  mainWindow.on('closed', () => {
+    console.log('Main window has been closed.');
+    mainWindow = null; // Ensure reference is cleared
   });
 
   // Position window at the bottom center of the screen
@@ -405,8 +415,14 @@ const createHotkeyCaptureWindow = () => {
   
   // Handle close
   captureWindow.on('closed', () => {
+    console.log('Hotkey capture window closed.');
     captureWindow = null;
-    createHotkeyCaptureWindow(); // Recreate for next use
+    if (!isQuitting) {
+      console.log('Recreating hotkey capture window.');
+      createHotkeyCaptureWindow(); // Recreate for next use
+    } else {
+      console.log('Not recreating hotkey capture window because app is quitting.');
+    }
   });
 };
 
@@ -630,8 +646,14 @@ const createContextMenuWindow = () => {
   
   // Handle close
   contextMenuWindow.on('closed', () => {
+    console.log('Context menu window closed.');
     contextMenuWindow = null;
-    createContextMenuWindow(); // Recreate for next use
+    if (!isQuitting) {
+      console.log('Recreating context menu window.');
+      createContextMenuWindow(); // Recreate for next use
+    } else {
+      console.log('Not recreating context menu window because app is quitting.');
+    }
   });
 };
 
@@ -769,16 +791,12 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
 
 // Clean up temporary files when the app quits
 app.on('quit', () => {
+  console.log('[App Event] quit: Handler running.');
   try {
-    // Close the log stream properly - Moved to will-quit
-    // if (logStream) {
-    //   logStream.end();
-    // }
-    
-    // Clean up temp files
     cleanupTempFiles();
+    console.log('[App Event] quit: Temp files cleaned.');
   } catch (error) {
-    console.error('Error during cleanup:', error);
+    console.error('[App Event] quit: Error cleaning temp files:', error);
   }
 });
 
@@ -940,40 +958,36 @@ app.on('activate', () => {
   }
 });
 
+app.on('before-quit', () => {
+  console.log('[App Event] before-quit: Setting isQuitting flag to true.');
+  isQuitting = true;
+  // Note: We keep essential cleanup in will-quit as it runs AFTER windows close attempt
+});
+
 app.on('will-quit', () => {
+  // This should finally run now!
+  console.log('[App Event] will-quit: Handler running...');
   try {
-    // Unregister all shortcuts when the app is about to quit
+    // 6. Perform cleanup (shortcuts, log stream, etc.)
+    console.log('[App Event] will-quit: Unregistering shortcuts...');
     globalShortcut.unregisterAll();
-    
-    // Clean up any remaining windows
-    if (captureWindow) {
-      captureWindow.destroy();
-      captureWindow = null;
-    }
-    
-    if (contextMenuWindow) {
-      contextMenuWindow.destroy();
-      contextMenuWindow = null;
-    }
-    
-    // Clean up tray icon
-    if (tray) {
+    console.log('[App Event] will-quit: Shortcuts unregistered.');
+
+    // No need to destroy windows here anymore, quit process handles it
+    // Tray also seems to be handled automatically when app quits if not destroyed earlier
+
+    if (logStream) {
       try {
-        console.log('[IPC Main] Destroying tray icon...');
-        tray.destroy();
-        tray = null; // Nullify the reference
-        console.log('[IPC Main] Tray icon destroyed.');
+        console.log('[App Event] will-quit: Closing log stream...');
+        logStream.end();
+        console.log('[App Event] will-quit: Log stream closed.');
       } catch (error) {
-        console.error('[IPC Main] Error destroying tray icon:', error);
+        console.error('[App Event] will-quit: Error closing log stream:', error);
       }
     }
-    
-    // Close the log stream properly
-    if (logStream) {
-      logStream.end();
-    }
+    console.log('[App Event] will-quit: Cleanup finished.');
   } catch (error) {
-    console.error('Error during will-quit cleanup:', error);
+    console.error('[App Event] will-quit: Error during cleanup:', error);
   }
 });
 
@@ -1003,30 +1017,8 @@ ipcMain.on('menu-hotkey', () => {
 
 ipcMain.on('menu-exit', () => {
   console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu();
-  
-  // Destroy context menu window immediately
-  if (contextMenuWindow) {
-    try {
-      contextMenuWindow.destroy();
-    } catch (error) {
-      console.error('Error destroying context menu window:', error);
-    }
-    contextMenuWindow = null;
-  }
-  
-  // Destroy tray icon immediately
-  if (tray) {
-    try {
-      tray.destroy();
-    } catch (error) {
-      console.error('Error destroying tray icon:', error);
-    }
-    tray = null;
-  }
-  
-  console.log('[IPC Main] Calling app.quit() for graceful shutdown');
-  // Quit the application
+  hideContextMenu(); // Hide the menu visually first
+  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
   app.quit();
 });
 // === END IPC Handlers ===
