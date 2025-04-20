@@ -20,13 +20,27 @@ const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
 
+// 1. Define the restore function
+function restoreConsole() {
+  console.log = originalConsoleLog;
+  console.error = originalConsoleError;
+  console.warn = originalConsoleWarn;
+}
+
 console.log = function(...args) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] [LOG] ${args.map(arg => 
     typeof arg === 'object' ? JSON.stringify(arg) : arg
   ).join(' ')}`;
   
-  logStream.write(message + '\n');
+  // Check if stream is destroyed before writing
+  if (logStream && !logStream.destroyed) { 
+    try {
+      logStream.write(message + '\n');
+    } catch (err) {
+      originalConsoleError('Error writing to log stream:', err);
+    }
+  }
   originalConsoleLog.apply(console, args);
 };
 
@@ -36,7 +50,15 @@ console.error = function(...args) {
     typeof arg === 'object' ? JSON.stringify(arg) : arg
   ).join(' ')}`;
   
-  logStream.write(message + '\n');
+  // Check if stream is destroyed before writing
+  if (logStream && !logStream.destroyed) {
+    try {
+      logStream.write(message + '\n');
+    } catch (err) {
+      // If error writing error, just use original console
+      originalConsoleError('Error writing error to log stream:', err);
+    }
+  }
   originalConsoleError.apply(console, args);
 };
 
@@ -46,7 +68,14 @@ console.warn = function(...args) {
     typeof arg === 'object' ? JSON.stringify(arg) : arg
   ).join(' ')}`;
   
-  logStream.write(message + '\n');
+  // Check if stream is destroyed before writing
+  if (logStream && !logStream.destroyed) {
+    try {
+      logStream.write(message + '\n');
+    } catch (err) {
+      originalConsoleError('Error writing warning to log stream:', err);
+    }
+  }
   originalConsoleWarn.apply(console, args);
 };
 
@@ -968,26 +997,37 @@ app.on('will-quit', () => {
   // This should finally run now!
   console.log('[App Event] will-quit: Handler running...');
   try {
-    // 6. Perform cleanup (shortcuts, log stream, etc.)
+    // Perform cleanup (shortcuts, etc.)
     console.log('[App Event] will-quit: Unregistering shortcuts...');
     globalShortcut.unregisterAll();
     console.log('[App Event] will-quit: Shortcuts unregistered.');
 
-    // No need to destroy windows here anymore, quit process handles it
-    // Tray also seems to be handled automatically when app quits if not destroyed earlier
+    // *** Final log before closing stream ***
+    console.log('[App Event] will-quit: Preparing to close log stream...');
 
+    // 2. Restore original console functions BEFORE ending the stream
+    restoreConsole();
+
+    // 3. End the stream
     if (logStream) {
       try {
-        console.log('[App Event] will-quit: Closing log stream...');
+        // No more console logs here!
         logStream.end();
-        console.log('[App Event] will-quit: Log stream closed.');
       } catch (error) {
-        console.error('[App Event] will-quit: Error closing log stream:', error);
+        // Use original console if error happens during stream end
+        originalConsoleError('[App Event] will-quit: Error closing log stream:', error);
       }
     }
-    console.log('[App Event] will-quit: Cleanup finished.');
+    // *** NO MORE LOGGING HERE ***
   } catch (error) {
-    console.error('[App Event] will-quit: Error during cleanup:', error);
+    // Use original console for errors during cleanup
+    originalConsoleError('[App Event] will-quit: Error during cleanup:', error);
+    // Ensure console is restored even if error occurred before restoreConsole() call
+    restoreConsole(); 
+    // Attempt to end stream again if it exists and error happened before ending
+    if (logStream && !logStream.writableEnded) { 
+      try { logStream.end(); } catch (e) { /* Ignore secondary error */ }
+    }
   }
 });
 
