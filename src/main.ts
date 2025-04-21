@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, MenuItem, MenuItemConstructorOptions, globalShortcut, nativeImage, screen, ipcMain, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, Tray, Menu, MenuItem, MenuItemConstructorOptions, globalShortcut, nativeImage, screen, ipcMain, dialog, nativeTheme, Notification } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
@@ -102,6 +102,8 @@ let hotkeyDialogOpen = false;
 let captureWindow: BrowserWindow | null = null;
 let contextMenuWindow: BrowserWindow | null = null;
 let contextMenuOpen = false;
+let notificationWindow: BrowserWindow | null = null;
+let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 
 // Global variable to store the current recording state
@@ -546,6 +548,73 @@ const createTray = () => {
   }
 };
 
+// Create the notification window (similar to context menu)
+const createNotificationWindow = () => {
+  if (notificationWindow) return;
+
+  notificationWindow = new BrowserWindow({
+    width: 180, // Adjust size as needed
+    height: 40, // Adjust size as needed
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    minimizable: false,
+    maximizable: false,
+    focusable: false, // Prevent it from taking focus
+    webPreferences: {
+      preload: path.join(__dirname, 'notification-preload.js'), // New preload
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    backgroundColor: '#00000000',
+    hasShadow: true 
+  });
+
+  // Basic HTML structure with a placeholder for the message
+  const notificationHtml = `
+    <html>
+    <head>
+      <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; background-color: transparent; }
+        body {
+          display: flex; align-items: center; justify-content: center; 
+          height: 100%;
+          background-color: rgba(44, 44, 44, 0.95); /* Dark background */
+          border: 1px solid rgba(80, 80, 80, 0.8);
+          border-radius: 8px; 
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+          color: #e0e0e0; /* Light grey text */
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          font-size: 13px;
+          padding: 0 10px;
+          box-sizing: border-box;
+          user-select: none;
+        }
+        #message { text-align: center; white-space: nowrap; }
+      </style>
+    </head>
+    <body>
+      <div id="message"></div>
+    </body>
+    </html>
+  `;
+
+  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`);
+
+  notificationWindow.on('closed', () => {
+    console.log('Notification window closed.');
+    notificationWindow = null;
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+        notificationTimeout = null;
+    }
+    // No need to recreate automatically like context menu
+  });
+};
+
 // Create the custom context menu window
 const createContextMenuWindow = () => {
   if (contextMenuWindow) return;
@@ -748,8 +817,8 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
   let originalClipboardText: string | undefined = undefined;
   try {
     console.log('=== TEXT INSERTION PROCESS START ===');
-    console.log('Attempting to insert text at cursor:', text);
-    
+    console.log('Received text:', text);
+
     // Read and store the current clipboard content (text only)
     const { clipboard } = require('electron');
     originalClipboardText = clipboard.readText();
@@ -757,18 +826,25 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
 
     // Copy the transcription text to clipboard
     const trimmedText = text.trimStart(); // Trim leading whitespace
-    clipboard.writeText(trimmedText); // Use trimmed text
+    clipboard.writeText(trimmedText);
     console.log('Transcription text copied to clipboard');
-    
-    // Simulate paste keystroke using the active window
+
+    // Check if an Electron window is focused
     const activeWindow = BrowserWindow.getFocusedWindow();
-    let pasteSuccess = false;
-    let pasteError: string | null = null;
-    
-    if (!activeWindow) {
-      console.log('No Electron window is focused, sending paste command to OS');
-      
-      // Platform-specific paste simulation
+    let operationSuccess = false;
+    let operationError: string | null = null;
+    let wasElectronWindowFocused = !!activeWindow; // Track if an electron window was initially focused
+
+    if (wasElectronWindowFocused) {
+      // Electron window is focused: Skip paste attempt
+      console.log('Electron window is focused. Skipping OS paste attempt.');
+      operationSuccess = true; // Considered success as text is on clipboard
+      showNotificationPopup('Copied to clipboard');
+      // Do NOT restore original clipboard
+
+    } else {
+      // No Electron window focused: Attempt OS-level paste
+      console.log('No Electron window is focused, attempting OS-level paste.');
       try {
         const { execSync } = require('child_process');
         if (process.platform === 'win32') {
@@ -783,49 +859,42 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
         } else {
           throw new Error('Unsupported platform for OS-level paste');
         }
-        console.log('Paste command executed successfully via OS');
-        pasteSuccess = true;
+        console.log('OS paste command executed successfully.');
+        operationSuccess = true;
       } catch (err) {
-        console.error('Failed to execute paste command:', err);
-        pasteError = 'Unable to paste text. Please make sure a text field is focused.';
-        pasteSuccess = false;
+        console.error('Failed to execute OS paste command:', err);
+        operationError = 'Unable to paste text. Please make sure a text field is focused.';
+        operationSuccess = false;
       }
-    } else {
-      // If an Electron window is focused, use webContents.paste()
-      console.log('Electron window is focused, using webContents.paste()');
-      activeWindow.webContents.paste();
-      console.log('Paste command executed via webContents');
-      pasteSuccess = true; // Assume success for webContents.paste
-    }
-    
-    // Restore the original clipboard content ONLY if paste was successful
-    if (pasteSuccess) {
-      clipboard.writeText(originalClipboardText);
-      console.log('Original clipboard text restored.');
-    } else {
-      console.log('Paste failed. Transcription text remains in clipboard.');
+
+      // Restore the original clipboard content ONLY if OS paste was successful
+      if (operationSuccess) {
+        clipboard.writeText(originalClipboardText);
+        console.log('Original clipboard text restored after successful OS paste.');
+      } else {
+        console.log('OS paste failed. Transcription text remains in clipboard.');
+        showNotificationPopup('Copied to clipboard');
+      }
     }
 
-    if (pasteSuccess) {
-      console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
-      return { success: true };
-    } else {
-      console.log('=== TEXT INSERTION PROCESS FAILED ===');
-      return { success: false, error: pasteError };
+    // If OS paste failed, we still return failure to the renderer
+    if (!operationSuccess && !wasElectronWindowFocused) {
+        console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
+        return { success: false, error: operationError }; 
     }
     
+    // Return final status (success means either paste worked or text is on clipboard because electron window was focused)
+    console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
+    return { success: true }; // Return success even if only copied
+
   } catch (error) {
-    console.error('=== TEXT INSERTION PROCESS FAILED ===');
-    console.error('Failed to insert text at cursor:', error);
-    // Restore clipboard even if there was an error before paste attempt (e.g., clipboard access)
-    if (typeof originalClipboardText !== 'undefined') {
-      const { clipboard } = require('electron');
-      clipboard.writeText(originalClipboardText);
-      console.log('Original clipboard text restored after error.');
-    }
-    return { 
-      success: false, 
-      error: 'Unable to insert text at cursor. Please make sure a text field is focused.'
+    console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
+    console.error('Error during text insertion:', error);
+    showNotificationPopup('Copied to clipboard (error)');
+    console.log('Transcription text remains in clipboard due to error.');
+    return {
+      success: false,
+      error: 'An error occurred during text insertion. Text copied to clipboard.'
     };
   }
 });
@@ -966,6 +1035,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   createContextMenuWindow();
+  createNotificationWindow();
 
   // Set up IPC handler for showing the custom context menu (from pill click)
   ipcMain.on('show-context-menu', (event) => {
@@ -1074,6 +1144,52 @@ ipcMain.on('menu-exit', () => {
   app.quit();
 });
 // === END IPC Handlers ===
+
+// Show the notification popup
+const showNotificationPopup = (message: string, durationMs = 3000) => {
+  if (!mainWindow) return; // Need main window for positioning
+  
+  // Ensure the notification window exists
+  if (!notificationWindow) {
+    console.log('Notification window not found, creating...');
+    createNotificationWindow();
+    if (!notificationWindow) { // Check again in case creation failed
+      console.error('Failed to create notification window.');
+      return;
+    }
+  }
+
+  // Clear any existing hide timeout
+  if (notificationTimeout) {
+    clearTimeout(notificationTimeout);
+    notificationTimeout = null;
+  }
+
+  // Position above the pill window
+  const pillBounds = mainWindow.getBounds();
+  const notificationSize = notificationWindow.getSize();
+  const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
+  const posY = pillBounds.y - notificationSize[1] - 5; // 5px gap above pill
+
+  console.log(`Positioning notification at x=${posX}, y=${posY}`);
+  notificationWindow.setPosition(posX, posY);
+
+  // Send the message content to the notification window's renderer
+  console.log(`Sending message to notification window: ${message}`);
+  notificationWindow.webContents.send('set-notification-message', message);
+
+  // Show the window without activating/focusing it
+  notificationWindow.showInactive(); 
+
+  // Set timeout to hide the window
+  notificationTimeout = setTimeout(() => {
+    if (notificationWindow && !notificationWindow.isDestroyed()) {
+        console.log('Hiding notification window after timeout.');
+        notificationWindow.hide();
+    }
+    notificationTimeout = null;
+  }, durationMs);
+};
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.

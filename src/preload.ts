@@ -36,5 +36,16 @@ contextBridge.exposeInMainWorld('electron', {
   // Method to view the log file
   viewLogFile: () => {
     return ipcRenderer.invoke('view-log-file');
+  },
+  // Add notification listener
+  onNotification: (callback: (message: string) => void) => {
+    // Remove any existing listeners to prevent duplicates
+    ipcRenderer.removeAllListeners('show-notification');
+    // Add the new listener
+    ipcRenderer.on('show-notification', (_, message) => callback(message));
+    // Return cleanup function
+    return () => {
+      ipcRenderer.removeAllListeners('show-notification');
+    };
   }
 });
