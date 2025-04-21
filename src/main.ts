@@ -563,17 +563,17 @@ const createNotificationWindow = () => {
     show: false,
     minimizable: false,
     maximizable: false,
-    focusable: false, // Prevent it from taking focus
+    focusable: true, // <-- Reverted to true temporarily
     webPreferences: {
       preload: path.join(__dirname, 'notification-preload.js'), // New preload
       contextIsolation: true,
       nodeIntegration: false,
     },
     backgroundColor: '#00000000',
-    hasShadow: true 
+    hasShadow: false
   });
 
-  // Basic HTML structure with a placeholder for the message
+  // Basic HTML structure with updated styles
   const notificationHtml = `
     <html>
     <head>
@@ -582,16 +582,21 @@ const createNotificationWindow = () => {
         body {
           display: flex; align-items: center; justify-content: center; 
           height: 100%;
-          background-color: rgba(44, 44, 44, 0.95); /* Dark background */
+          background-color: rgba(44, 44, 44, 0.95);
           border: 1px solid rgba(80, 80, 80, 0.8);
-          border-radius: 8px; 
+          border-radius: 12px; 
           box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-          color: #e0e0e0; /* Light grey text */
+          color: #ffffff;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
           font-size: 13px;
           padding: 0 10px;
           box-sizing: border-box;
           user-select: none;
+          opacity: 0;
+          transition: opacity 0.3s ease-in-out;
+        }
+        body.visible {
+          opacity: 1;
         }
         #message { text-align: center; white-space: nowrap; }
       </style>
@@ -611,7 +616,6 @@ const createNotificationWindow = () => {
         clearTimeout(notificationTimeout);
         notificationTimeout = null;
     }
-    // No need to recreate automatically like context menu
   });
 };
 
@@ -839,7 +843,7 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
       // Electron window is focused: Skip paste attempt
       console.log('Electron window is focused. Skipping OS paste attempt.');
       operationSuccess = true; // Considered success as text is on clipboard
-      showNotificationPopup('Copied to clipboard');
+      showNotificationPopup('Output copied to clipboard');
       // Do NOT restore original clipboard
 
     } else {
@@ -873,7 +877,7 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
         console.log('Original clipboard text restored after successful OS paste.');
       } else {
         console.log('OS paste failed. Transcription text remains in clipboard.');
-        showNotificationPopup('Copied to clipboard');
+        showNotificationPopup('Output copied to clipboard');
       }
     }
 
@@ -890,7 +894,7 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
   } catch (error) {
     console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
     console.error('Error during text insertion:', error);
-    showNotificationPopup('Copied to clipboard (error)');
+    showNotificationPopup('Output copied to clipboard (error)');
     console.log('Transcription text remains in clipboard due to error.');
     return {
       success: false,
@@ -1146,7 +1150,7 @@ ipcMain.on('menu-exit', () => {
 // === END IPC Handlers ===
 
 // Show the notification popup
-const showNotificationPopup = (message: string, durationMs = 3000) => {
+const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return; // Need main window for positioning
   
   // Ensure the notification window exists
@@ -1178,14 +1182,19 @@ const showNotificationPopup = (message: string, durationMs = 3000) => {
   console.log(`Sending message to notification window: ${message}`);
   notificationWindow.webContents.send('set-notification-message', message);
 
-  // Show the window without activating/focusing it
+  // Add the visible class *before* showing
+  notificationWindow.webContents.executeJavaScript('document.body.classList.add("visible")', true);
+  
+  // Show the window without activating/focusing it (though it's now focusable)
   notificationWindow.showInactive(); 
 
-  // Set timeout to hide the window
+  // Set timeout to remove the visible class and hide the window
   notificationTimeout = setTimeout(() => {
     if (notificationWindow && !notificationWindow.isDestroyed()) {
-        console.log('Hiding notification window after timeout.');
-        notificationWindow.hide();
+      console.log('Hiding notification window after timeout (removing visible class).');
+      notificationWindow.webContents.executeJavaScript('document.body.classList.remove("visible")', true);
+      // Hide immediately after starting the fade-out
+      notificationWindow.hide(); 
     }
     notificationTimeout = null;
   }, durationMs);
