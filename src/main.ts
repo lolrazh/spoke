@@ -632,7 +632,7 @@ const createContextMenuWindow = () => {
     <body>
       <div class="container">
         <div class="menu-items">
-          <button id="accountBtn" class="menu-item">Account</button>
+          <button id="homeBtn" class="menu-item">Home</button>
           <button id="hotkeyBtn" class="menu-item">Change Hotkey</button>
           <div class="separator"></div>
           <button id="exitBtn" class="menu-item">Exit</button>
@@ -646,8 +646,8 @@ const createContextMenuWindow = () => {
         // Ensure the API is available before adding listeners
         if (window.contextMenuAPI) {
           // Set up button click handlers using the exposed API
-          document.getElementById('accountBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-account');
+          document.getElementById('homeBtn').addEventListener('click', () => {
+            window.contextMenuAPI.send('menu-home');
           });
           
           document.getElementById('hotkeyBtn').addEventListener('click', () => {
@@ -1047,8 +1047,13 @@ ipcMain.on('cancel-hotkey', () => {
 // === END IPC Handlers ===
 
 // === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-account', () => {
-  console.log('Account clicked');
+ipcMain.on('menu-home', () => {
+  console.log('Home clicked');
+  if (homeWindow) {
+    homeWindow.focus();
+  } else {
+    createHomeWindow();
+  }
   hideContextMenu();
 });
 
@@ -1096,7 +1101,7 @@ const createHomeWindow = () => {
   homeWindow.loadFile(path.join(__dirname, '../../public/home.html'));
 
   // Optional: Remove menu bar
-  // homeWindow.setMenuBarVisibility(false);
+  homeWindow.setMenuBarVisibility(false);
 
   homeWindow.once('ready-to-show', () => {
     homeWindow?.show();
