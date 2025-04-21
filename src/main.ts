@@ -136,6 +136,7 @@ const createWindow = () => {
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -150,6 +151,12 @@ const createWindow = () => {
 
   // Also set the icon explicitly after creation (optional but good practice)
   mainWindow.setIcon(iconPath);
+
+  // Show window inactive only when it's ready to prevent focus stealing
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.showInactive();
+    console.log('Main window shown inactive.');
+  });
 
   // Handle window close event - Remove recursive quit
   // Option 1: Use 'close' but only log/nullify
@@ -791,9 +798,13 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
       pasteSuccess = true; // Assume success for webContents.paste
     }
     
-    // Restore the original clipboard content AFTER attempting paste
-    clipboard.writeText(originalClipboardText);
-    console.log('Original clipboard text restored.');
+    // Restore the original clipboard content ONLY if paste was successful
+    if (pasteSuccess) {
+      clipboard.writeText(originalClipboardText);
+      console.log('Original clipboard text restored.');
+    } else {
+      console.log('Paste failed. Transcription text remains in clipboard.');
+    }
 
     if (pasteSuccess) {
       console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
