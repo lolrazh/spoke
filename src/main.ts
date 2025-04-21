@@ -1048,10 +1048,13 @@ ipcMain.on('cancel-hotkey', () => {
 
 // === IPC Handlers for Context Menu (Registered ONCE) ===
 ipcMain.on('menu-home', () => {
-  console.log('Home clicked');
+  console.log('[IPC Main] \'menu-home\' received.');
+  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
   if (homeWindow) {
+    console.log('[IPC Main] Home window exists, focusing...');
     homeWindow.focus();
   } else {
+    console.log('[IPC Main] Home window is null, creating new window...');
     createHomeWindow();
   }
   hideContextMenu();
@@ -1108,7 +1111,8 @@ const createHomeWindow = () => {
   });
 
   homeWindow.on('closed', () => {
-    console.log('Home window closed.');
+    console.log('[Home Window Event] \'closed\' event triggered.');
     homeWindow = null;
+    console.log('[Home Window Event] homeWindow variable set to null.');
   });
 };

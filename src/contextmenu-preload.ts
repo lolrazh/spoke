@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 // Define the channels that the context menu is allowed to send messages on
-const validChannels = ['menu-account', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
+const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
 type ValidChannel = typeof validChannels[number];
 
 // Expose a safe API to the context menu's renderer process
