@@ -211,15 +211,16 @@ const registerGlobalShortcut = () => {
     console.log(`Registered global shortcut: ${currentHotkey}`);
   } catch (error) {
     console.error(`Failed to register shortcut ${currentHotkey}:`, error);
-    // Fallback to default if registration fails
-    if (currentHotkey !== 'Alt+Shift+D') {
-      currentHotkey = 'Alt+Shift+D';
-      globalShortcut.register(currentHotkey, () => {
-        if (mainWindow) {
-          mainWindow.webContents.send('toggle-dictation');
-        }
-      });
-    }
+    // Show an error dialog to the user
+    dialog.showErrorBox(
+      'Hotkey Registration Failed',
+      `Could not register the hotkey "${currentHotkey}". ` +
+      `This might be due to missing permissions or the hotkey being used by another application. ` +
+      `Please try changing the hotkey in the settings or ensure the application has the necessary permissions.`
+    );
+    // Set currentHotkey to empty string or null to indicate no active hotkey
+    currentHotkey = ''; 
+    // No fallback registration attempt - let the user fix it.
   }
 };
 

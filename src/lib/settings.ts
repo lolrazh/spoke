@@ -10,7 +10,7 @@ interface AppSettings {
 
 // Default settings
 const DEFAULT_SETTINGS: AppSettings = {
-  hotkey: 'Alt+Shift+D',
+  hotkey: 'Ctrl+H',
   hideTimeout: 3600000 // 1 hour in milliseconds
 };
 
