@@ -103,6 +103,7 @@ let captureWindow: BrowserWindow | null = null;
 let contextMenuWindow: BrowserWindow | null = null;
 let contextMenuOpen = false;
 let isQuitting = false;
+let homeWindow: BrowserWindow | null = null;
 
 // Global variable to store the current recording state
 let isRecording = false;
@@ -954,6 +955,7 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   createContextMenuWindow();
+  createHomeWindow();
 
   // Set up IPC handler for showing the custom context menu (from pill click)
   ipcMain.on('show-context-menu', (event) => {
@@ -1065,3 +1067,43 @@ ipcMain.on('menu-exit', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Add the new function for the Home window
+const createHomeWindow = () => {
+  if (homeWindow) {
+    homeWindow.focus();
+    return;
+  }
+
+  homeWindow = new BrowserWindow({
+    width: 740,
+    height: 500,
+    show: false, // Don't show immediately, wait for ready-to-show
+    title: 'Sonic Flow Home',
+    webPreferences: {
+      // Consider creating a dedicated preload script for the home window later
+      // preload: path.join(__dirname, 'home-preload.js'), 
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+      enableWebSQL: false,
+    },
+    icon: iconPath, // Reuse the same icon
+  });
+
+  // Load the home.html file
+  // TODO: Handle dev server URL if needed for React HMR
+  homeWindow.loadFile(path.join(__dirname, '../../public/home.html'));
+
+  // Optional: Remove menu bar
+  // homeWindow.setMenuBarVisibility(false);
+
+  homeWindow.once('ready-to-show', () => {
+    homeWindow?.show();
+  });
+
+  homeWindow.on('closed', () => {
+    console.log('Home window closed.');
+    homeWindow = null;
+  });
+};
