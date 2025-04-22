@@ -54,12 +54,13 @@
         color: var(--text-color);
         margin: 0;
         font-size: 1.6em;
+        font-weight: 400; /* Reduced from default */
       }
 
       .header-icon {
         width: 24px;
         height: 24px;
-        fill: var(--secondary-color);
+        object-fit: contain;
       }
 
       .main-content {
@@ -76,6 +77,8 @@
         display: flex;
         flex-direction: column;
         gap: 5px;
+        border-right: 1px solid var(--border-color); /* Added partition */
+        padding-right: 25px; /* Add padding so content isn't flush with border */
       }
 
       .sidebar-link {
@@ -85,6 +88,7 @@
         color: var(--text-muted-color);
         text-decoration: none;
         font-size: 0.95em;
+        font-weight: 300; /* Lighter weight */
         transition: background-color 0.2s, color 0.2s;
       }
 
@@ -96,33 +100,50 @@
       .sidebar-link.active {
         background-color: var(--active-bg-color);
         color: var(--text-color);
-        font-weight: 500;
+        font-weight: 400; /* Reduced from 500 */
       }
 
       .content-pane {
         flex-grow: 1;
-        background-color: var(--primary-color); /* Same as body or slightly different */
-        /* border: 1px solid var(--border-color); */ /* Optional border */
+        background-color: var(--primary-color);
         border-radius: 8px;
         padding: 20px;
-        overflow-y: auto; /* Allow content scrolling */
+        overflow-y: auto;
       }
 
-      .content-pane h2 {
-          margin-top: 0;
-          margin-bottom: 15px;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 10px;
-          font-size: 1.3em;
+      .content-section {
+        padding: 20px 0;
+      }
+
+      .content-section p:first-child {
+        margin-top: 0;
+      }
+
+      .content-section p {
+        font-weight: 300; /* Lighter weight for content */
       }
 
       .footer {
         text-align: center;
         font-size: 0.85em;
-        padding-top: 15px;
+        padding-top: 10px; /* Reduced from 15px */
         border-top: 1px solid var(--border-color);
-        flex-shrink: 0; /* Prevent footer shrinking */
-        margin-top: auto; /* Push footer down if content is short */
+        flex-shrink: 0;
+        margin-top: auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 10px;
+      }
+
+      .footer-version {
+        font-size: 0.85em;
+        color: var(--text-muted-color);
+        font-weight: 300;
       }
 
       .footer a {
@@ -145,8 +166,8 @@
       <div class="container">
         <div class="header">
           <h1>
-            <!-- Placeholder SVG Icon -->
-            <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" fill="currentColor"/></svg>
+            <!-- Use img tag for the icon -->
+            <img src="assets/icon.ico" alt="Sonic Flow Icon" class="header-icon" />
             Sonic Flow
           </h1>
         </div>
@@ -162,34 +183,35 @@
           <main class="content-pane">
             <!-- Usage Content Area -->
             <div id="content-usage" class="content-section">
-              <h2>Usage</h2>
-              <p>This is where the usage details will be displayed.</p>
-              <p>Graphs, stats, etc.</p>
+              <p>Welcome to your usage dashboard.</p>
+              <p>Here you can monitor your activity and performance metrics.</p>
             </div>
 
             <!-- Plan Content Area (Hidden by default) -->
             <div id="content-plan" class="content-section" style="display: none;">
-              <h2>Plan & Billing</h2>
-              <p>Manage your subscription details here.</p>
+              <p>Review and manage your subscription plan.</p>
+              <p>Update billing information and view payment history.</p>
             </div>
 
             <!-- Settings Content Area (Hidden by default) -->
             <div id="content-settings" class="content-section" style="display: none;">
-              <h2>Settings</h2>
-              <p>Adjust application preferences.</p>
-              <p>Hotkey, theme, mic, etc.</p>
+              <p>Customize your Sonic Flow experience.</p>
+              <p>Configure hotkeys, theme preferences, and microphone settings.</p>
             </div>
 
             <!-- Account Content Area (Hidden by default) -->
             <div id="content-account" class="content-section" style="display: none;">
-              <h2>Account</h2>
-              <p>View your account information.</p>
+              <p>Manage your account preferences and personal information.</p>
+              <p>Update profile settings and security options.</p>
             </div>
           </main>
         </div>
 
         <div class="footer">
-          <a href="#" id="support-link">Support</a> | <a href="#" id="about-link">About</a>
+          <span class="footer-version">v0.6.9</span>
+          <div class="footer-links">
+            <a href="#" id="support-link">Support</a> | <a href="#" id="about-link">About</a>
+          </div>
         </div>
       </div>
     </div>

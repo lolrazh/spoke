@@ -1,8 +1,8 @@
 {
   "name": "sonic-flow",
   "productName": "sonic-flow",
-  "version": "1.0.0",
-  "description": "Lightweight AI dictation app",
+  "version": "0.6.9",
+  "description": "A Lightweight AI Dictation App",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
@@ -17,7 +17,7 @@
     "name": "Sandheep Rajkumar",
     "email": "rajkumar.sandheep@gmail.com"
   },
-  "license": "MIT",
+  "license": "Proprietary",
   "devDependencies": {
     "@electron-forge/cli": "^7.7.0",
     "@electron-forge/maker-deb": "^7.7.0",
