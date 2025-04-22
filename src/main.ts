@@ -565,15 +565,18 @@ const createNotificationWindow = () => {
     maximizable: false,
     focusable: true, // <-- Reverted to true temporarily
     webPreferences: {
-      preload: path.join(__dirname, 'notification-preload.js'), // New preload
+      // preload: path.join(__dirname, '../preload/notification-preload.js'), // Adjusted path for build - NO LONGER NEEDED?
       contextIsolation: true,
       nodeIntegration: false,
+      // We might not even need a preload script anymore if it only received messages
+      preload: undefined, // Explicitly remove preload for now
     },
     backgroundColor: '#00000000',
     hasShadow: false
   });
 
-  // Basic HTML structure with updated styles
+  // Basic HTML structure with updated styles - MOVE THIS TO showNotificationPopup
+  /*
   const notificationHtml = `
     <html>
     <head>
@@ -606,8 +609,13 @@ const createNotificationWindow = () => {
     </body>
     </html>
   `;
+  */
 
-  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`);
+  // notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`); // DON'T load URL here
+
+  // --- DEBUG: Open DevTools for the notification window ---
+  // notificationWindow.webContents.openDevTools({ mode: 'detach' }); 
+  // --------------------------------------------------------
 
   notificationWindow.on('closed', () => {
     console.log('Notification window closed.');
@@ -634,7 +642,7 @@ const createContextMenuWindow = () => {
     maximizable: false,
     webPreferences: {
       // Use the new preload script
-      preload: path.join(__dirname, 'contextmenu-preload.js'), 
+      preload: path.join(__dirname, 'contextmenu-preload.js'), // Correct path for build output
       contextIsolation: true, // Enable context isolation (required for contextBridge)
       nodeIntegration: false, // Keep nodeIntegration disabled for security
     },
@@ -1167,6 +1175,9 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
       console.error('Failed to create notification window.');
       return;
     }
+    // --- DEBUG: Open DevTools here AFTER creation if needed ---
+    // notificationWindow.webContents.openDevTools({ mode: 'detach' }); 
+    // --------------------------------------------------------
   }
 
   // Clear any existing hide timeout
@@ -1184,15 +1195,52 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
   console.log(`Positioning notification at x=${posX}, y=${posY}`);
   notificationWindow.setPosition(posX, posY);
 
-  // Send the message content to the notification window's renderer
-  console.log(`Sending message to notification window: ${message}`);
-  notificationWindow.webContents.send('set-notification-message', message);
+  // --- Generate HTML dynamically with the message --- 
+  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;"); // Basic sanitization
+  const dynamicNotificationHtml = `
+    <html>
+    <head>
+      <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; background-color: transparent; }
+        body {
+          display: flex; align-items: center; justify-content: center; 
+          height: 100%;
+          background-color: rgba(44, 44, 44, 0.95);
+          border: 1px solid rgba(80, 80, 80, 0.8);
+          border-radius: 12px; 
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+          color: #ffffff;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          font-size: 13px;
+          padding: 0 10px;
+          box-sizing: border-box;
+          user-select: none;
+          opacity: 0;
+          transition: opacity 0.3s ease-in-out;
+        }
+        body.visible {
+          opacity: 1;
+        }
+        #message { text-align: center; white-space: nowrap; }
+      </style>
+    </head>
+    <body>
+      <div id="message">${safeMessage}</div> 
+    </body>
+    </html>
+  `;
+  // Load the dynamic HTML
+  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
+  console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
+  // -----------------------------------------------------
 
-  // Add the visible class *before* showing
-  notificationWindow.webContents.executeJavaScript('document.body.classList.add("visible")', true);
-  
-  // Show the window without activating/focusing it (though it's now focusable)
-  notificationWindow.showInactive(); 
+  // Add the visible class *after* content is loaded (using 'did-finish-load')
+  notificationWindow.webContents.once('did-finish-load', () => {
+    console.log('Notification window finished loading dynamic HTML. Adding visible class.');
+    notificationWindow.webContents.executeJavaScript('document.body.classList.add("visible")', true);
+    // Show the window without activating/focusing it (though it's now focusable)
+    notificationWindow.showInactive(); 
+  });
 
   // Set timeout to remove the visible class and hide the window
   notificationTimeout = setTimeout(() => {
