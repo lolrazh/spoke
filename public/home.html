@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sonic Flow Home</title>
+    <!-- Import Lexend Deca font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend+Deca&display=swap" rel="stylesheet">
+
+    <style>
+      :root {
+        --primary-color: #0E0D0C;
+        --secondary-color: #FF843E;
+        --text-color: #FAFAFA;
+        --text-muted-color: #A1A1AA; /* Example muted color */
+        --border-color: rgba(255, 132, 62, 0.2); /* Secondary color, muted */
+        --hover-bg-color: rgba(255, 132, 62, 0.1);
+        --active-bg-color: rgba(255, 132, 62, 0.15);
+        --sidebar-width: 180px;
+      }
+
+      body {
+        font-family: 'Lexend Deca', sans-serif;
+        margin: 0;
+        background-color: var(--primary-color);
+        color: var(--text-color);
+        box-sizing: border-box;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        padding: 25px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        flex-shrink: 0; /* Prevent header from shrinking */
+      }
+
+      .header h1 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-color);
+        margin: 0;
+        font-size: 1.6em;
+      }
+
+      .header-icon {
+        width: 24px;
+        height: 24px;
+        fill: var(--secondary-color);
+      }
+
+      .main-content {
+        flex-grow: 1; /* Takes available vertical space */
+        display: flex;
+        gap: 25px;
+        overflow: hidden; /* Prevent container scroll */
+        margin-bottom: 20px;
+      }
+
+      .sidebar {
+        width: var(--sidebar-width);
+        flex-shrink: 0; /* Prevent sidebar shrinking */
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .sidebar-link {
+        display: block;
+        padding: 8px 12px;
+        border-radius: 6px;
+        color: var(--text-muted-color);
+        text-decoration: none;
+        font-size: 0.95em;
+        transition: background-color 0.2s, color 0.2s;
+      }
+
+      .sidebar-link:hover {
+        background-color: var(--hover-bg-color);
+        color: var(--text-color);
+      }
+
+      .sidebar-link.active {
+        background-color: var(--active-bg-color);
+        color: var(--text-color);
+        font-weight: 500;
+      }
+
+      .content-pane {
+        flex-grow: 1;
+        background-color: var(--primary-color); /* Same as body or slightly different */
+        /* border: 1px solid var(--border-color); */ /* Optional border */
+        border-radius: 8px;
+        padding: 20px;
+        overflow-y: auto; /* Allow content scrolling */
+      }
+
+      .content-pane h2 {
+          margin-top: 0;
+          margin-bottom: 15px;
+          border-bottom: 1px solid var(--border-color);
+          padding-bottom: 10px;
+          font-size: 1.3em;
+      }
+
+      .footer {
+        text-align: center;
+        font-size: 0.85em;
+        padding-top: 15px;
+        border-top: 1px solid var(--border-color);
+        flex-shrink: 0; /* Prevent footer shrinking */
+        margin-top: auto; /* Push footer down if content is short */
+      }
+
+      .footer a {
+        color: var(--text-muted-color);
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+      .footer a:hover {
+        color: var(--text-color);
+        text-decoration: underline;
+      }
+
+      #root {
+        display: contents;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="container">
+        <div class="header">
+          <h1>
+            <!-- Placeholder SVG Icon -->
+            <svg class="header-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" fill="currentColor"/></svg>
+            Sonic Flow
+          </h1>
+        </div>
+
+        <div class="main-content">
+          <nav class="sidebar">
+            <a href="#usage" class="sidebar-link active">Usage</a>
+            <a href="#plan" class="sidebar-link">Plan & Billing</a>
+            <a href="#settings" class="sidebar-link">Settings</a>
+            <a href="#account" class="sidebar-link">Account</a>
+          </nav>
+
+          <main class="content-pane">
+            <!-- Usage Content Area -->
+            <div id="content-usage" class="content-section">
+              <h2>Usage</h2>
+              <p>This is where the usage details will be displayed.</p>
+              <p>Graphs, stats, etc.</p>
+            </div>
+
+            <!-- Plan Content Area (Hidden by default) -->
+            <div id="content-plan" class="content-section" style="display: none;">
+              <h2>Plan & Billing</h2>
+              <p>Manage your subscription details here.</p>
+            </div>
+
+            <!-- Settings Content Area (Hidden by default) -->
+            <div id="content-settings" class="content-section" style="display: none;">
+              <h2>Settings</h2>
+              <p>Adjust application preferences.</p>
+              <p>Hotkey, theme, mic, etc.</p>
+            </div>
+
+            <!-- Account Content Area (Hidden by default) -->
+            <div id="content-account" class="content-section" style="display: none;">
+              <h2>Account</h2>
+              <p>View your account information.</p>
+            </div>
+          </main>
+        </div>
+
+        <div class="footer">
+          <a href="#" id="support-link">Support</a> | <a href="#" id="about-link">About</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- React mount script will go here -->
+    <!-- <script type="module" src="/src/homeRenderer.tsx"></script> -->
+
+    <script>
+      // Basic client-side navigation for placeholder HTML
+      const sidebar = document.querySelector('.sidebar');
+      const contentSections = document.querySelectorAll('.content-section');
+      const sidebarLinks = document.querySelectorAll('.sidebar-link');
+
+      sidebar.addEventListener('click', (event) => {
+        if (event.target.tagName === 'A' && event.target.classList.contains('sidebar-link')) {
+          event.preventDefault(); // Prevent default anchor behavior
+
+          const targetId = event.target.getAttribute('href').substring(1); // Get 'usage', 'plan', etc.
+          const targetContentId = `content-${targetId}`;
+
+          // Update active link
+          sidebarLinks.forEach(link => link.classList.remove('active'));
+          event.target.classList.add('active');
+
+          // Show/hide content sections
+          contentSections.forEach(section => {
+            if (section.id === targetContentId) {
+              section.style.display = 'block';
+            } else {
+              section.style.display = 'none';
+            }
+          });
+        }
+      });
+    </script>
+  </body>
+</html> 
