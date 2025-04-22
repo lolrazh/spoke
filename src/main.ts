@@ -553,8 +553,8 @@ const createNotificationWindow = () => {
   if (notificationWindow) return;
 
   notificationWindow = new BrowserWindow({
-    width: 180, // Adjust size as needed
-    height: 40, // Adjust size as needed
+    width: 180,
+    height: 40,
     frame: false,
     transparent: true,
     resizable: false,
@@ -563,59 +563,15 @@ const createNotificationWindow = () => {
     show: false,
     minimizable: false,
     maximizable: false,
-    focusable: true, // <-- Reverted to true temporarily
+    focusable: false, // Changed back to false since we don't need interaction
     webPreferences: {
-      // preload: path.join(__dirname, '../preload/notification-preload.js'), // Adjusted path for build - NO LONGER NEEDED?
       contextIsolation: true,
       nodeIntegration: false,
-      // We might not even need a preload script anymore if it only received messages
-      preload: undefined, // Explicitly remove preload for now
+      preload: undefined,
     },
     backgroundColor: '#00000000',
     hasShadow: false
   });
-
-  // Basic HTML structure with updated styles - MOVE THIS TO showNotificationPopup
-  /*
-  const notificationHtml = `
-    <html>
-    <head>
-      <style>
-        html, body { margin: 0; padding: 0; overflow: hidden; background-color: transparent; }
-        body {
-          display: flex; align-items: center; justify-content: center; 
-          height: 100%;
-          background-color: rgba(44, 44, 44, 0.95);
-          border: 1px solid rgba(80, 80, 80, 0.8);
-          border-radius: 12px; 
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          font-size: 13px;
-          padding: 0 10px;
-          box-sizing: border-box;
-          user-select: none;
-          opacity: 0;
-          transition: opacity 0.3s ease-in-out;
-        }
-        body.visible {
-          opacity: 1;
-        }
-        #message { text-align: center; white-space: nowrap; }
-      </style>
-    </head>
-    <body>
-      <div id="message"></div>
-    </body>
-    </html>
-  `;
-  */
-
-  // notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(notificationHtml)}`); // DON'T load URL here
-
-  // --- DEBUG: Open DevTools for the notification window ---
-  // notificationWindow.webContents.openDevTools({ mode: 'detach' }); 
-  // --------------------------------------------------------
 
   notificationWindow.on('closed', () => {
     console.log('Notification window closed.');
@@ -1165,90 +1121,100 @@ ipcMain.on('menu-exit', () => {
 
 // Show the notification popup
 const showNotificationPopup = (message: string, durationMs = 2000) => {
-  if (!mainWindow) return; // Need main window for positioning
+  if (!mainWindow) return;
   
-  // Ensure the notification window exists
   if (!notificationWindow) {
     console.log('Notification window not found, creating...');
     createNotificationWindow();
-    if (!notificationWindow) { // Check again in case creation failed
+    if (!notificationWindow) {
       console.error('Failed to create notification window.');
       return;
     }
-    // --- DEBUG: Open DevTools here AFTER creation if needed ---
-    // notificationWindow.webContents.openDevTools({ mode: 'detach' }); 
-    // --------------------------------------------------------
   }
 
-  // Clear any existing hide timeout
   if (notificationTimeout) {
     clearTimeout(notificationTimeout);
     notificationTimeout = null;
   }
 
-  // Position above the pill window
   const pillBounds = mainWindow.getBounds();
   const notificationSize = notificationWindow.getSize();
   const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  const posY = pillBounds.y - notificationSize[1] - 5; // 5px gap above pill
+  const posY = pillBounds.y - notificationSize[1] - 5;
 
   console.log(`Positioning notification at x=${posX}, y=${posY}`);
   notificationWindow.setPosition(posX, posY);
 
-  // --- Generate HTML dynamically with the message --- 
-  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;"); // Basic sanitization
+  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const dynamicNotificationHtml = `
     <html>
     <head>
       <style>
-        html, body { margin: 0; padding: 0; overflow: hidden; background-color: transparent; }
+        html, body {
+          margin: 0;
+          padding: 0;
+          background-color: transparent;
+          overflow: hidden;
+        }
+        
         body {
-          display: flex; align-items: center; justify-content: center; 
-          height: 100%;
-          background-color: rgba(44, 44, 44, 0.95);
-          border: 1px solid rgba(80, 80, 80, 0.8);
-          border-radius: 12px; 
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+          margin: 0;
+          padding: 0;
           color: #ffffff;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          font-size: 13px;
-          padding: 0 10px;
-          box-sizing: border-box;
+          overflow: hidden;
           user-select: none;
+        }
+        
+        .container {
+          background-color: rgba(44, 44, 44, 0.95);
+          border: 1px solid rgba(80, 80, 80, 0.8);
+          border-radius: 12px;
+          padding: 4px;
+          overflow: hidden;
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
           opacity: 0;
           transition: opacity 0.3s ease-in-out;
         }
-        body.visible {
+        
+        .container.visible {
           opacity: 1;
         }
-        #message { text-align: center; white-space: nowrap; }
+        
+        .message {
+          font-size: 13px;
+          padding: 6px 10px;
+          text-align: center;
+          white-space: nowrap;
+        }
       </style>
     </head>
     <body>
-      <div id="message">${safeMessage}</div> 
+      <div class="container">
+        <div class="message">${safeMessage}</div>
+      </div>
     </body>
     </html>
   `;
-  // Load the dynamic HTML
+
   notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
   console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
-  // -----------------------------------------------------
 
-  // Add the visible class *after* content is loaded (using 'did-finish-load')
   notificationWindow.webContents.once('did-finish-load', () => {
     console.log('Notification window finished loading dynamic HTML. Adding visible class.');
-    notificationWindow.webContents.executeJavaScript('document.body.classList.add("visible")', true);
-    // Show the window without activating/focusing it (though it's now focusable)
-    notificationWindow.showInactive(); 
+    notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.add("visible")', true);
+    notificationWindow.showInactive();
   });
 
-  // Set timeout to remove the visible class and hide the window
   notificationTimeout = setTimeout(() => {
     if (notificationWindow && !notificationWindow.isDestroyed()) {
       console.log('Hiding notification window after timeout (removing visible class).');
-      notificationWindow.webContents.executeJavaScript('document.body.classList.remove("visible")', true);
-      // Hide immediately after starting the fade-out
-      notificationWindow.hide(); 
+      notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.remove("visible")', true);
+      setTimeout(() => {
+        if (notificationWindow && !notificationWindow.isDestroyed()) {
+          notificationWindow.hide();
+        }
+      }, 300); // Wait for fade out animation
     }
     notificationTimeout = null;
   }, durationMs);
