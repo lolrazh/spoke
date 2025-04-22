@@ -734,39 +734,49 @@ const createContextMenuWindow = () => {
 // Show the custom context menu
 // Accepts anchorX, anchorY coordinates for positioning the bottom-right corner
 const showContextMenu = (anchorX?: number, anchorY?: number) => {
+  // Check if context menu is already open or doesn't exist
   if (contextMenuOpen || !contextMenuWindow) return;
-  // If anchor coordinates are not provided, we can't position correctly.
-  // Log an error or decide on a default position (e.g., screen center?).
-  if (anchorX === undefined || anchorY === undefined) {
-    console.error('[showContextMenu] Called without anchor coordinates. Cannot position menu.');
-    // Optionally, implement a fallback position here if needed
-    // For now, just return to prevent errors
+  
+  contextMenuOpen = true;
+  const menuSize = contextMenuWindow.getSize();
+  const menuWidth = menuSize[0];
+  const menuHeight = menuSize[1];
+  
+  let positionX: number;
+  let positionY: number;
+  
+  // If anchor coordinates are provided (e.g., from tray click), position relative to them
+  if (anchorX !== undefined && anchorY !== undefined) {
+    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
+    // Calculate top-left position to align the menu's bottom-right corner with the anchor point
+    positionX = anchorX - menuWidth;
+    positionY = anchorY - menuHeight;
+    
+    // Optional Fine-Tuning (keep for tray)
+    const fineTuneX = 0; 
+    const fineTuneY = 0; 
+    positionX += fineTuneX;
+    positionY += fineTuneY;
+    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
+  } 
+  // If anchor coordinates are NOT provided (e.g., from pill click), position above the pill
+  else if (mainWindow) { // Ensure mainWindow exists for pill bounds
+    console.log('[showContextMenu] Positioning relative to pill');
+    const pillBounds = mainWindow.getBounds();
+    // Center the menu horizontally above the pill
+    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (menuWidth / 2));
+    // Position vertically above the pill with a small gap
+    positionY = pillBounds.y - menuHeight - 2; // Reduced gap to 2px
+    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
+  } 
+  // Fallback if no anchor and no mainWindow (shouldn't happen for pill click)
+  else {
+    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
+    contextMenuOpen = false; // Reset flag
     return; 
   }
   
-  contextMenuOpen = true;
-  
-  const menuSize = contextMenuWindow.getSize();
-  console.log(`[showContextMenu] Menu size obtained: width=${menuSize[0]}, height=${menuSize[1]}`);
-  const menuWidth = menuSize[0];
-  const menuHeight = menuSize[1];
-
-  // --- Restore Bottom-Right Alignment Logic --- 
-  // Calculate top-left position to align the menu's bottom-right corner 
-  // with the anchor point (cursor or tray corner).
-  let positionX = anchorX - menuWidth;
-  let positionY = anchorY - menuHeight;
-
-  // --- Optional Fine-Tuning --- 
-  // Adjust slightly if visual alignment isn't perfect due to borders, shadows, etc.
-  const fineTuneX = 0; // Adjust this value (e.g., +2 or -3) if needed
-  const fineTuneY = 0; // Adjust this value (e.g., +2 or -3) if needed
-  positionX += fineTuneX;
-  positionY += fineTuneY;
-
-  console.log(`[showContextMenu] Positioning menu top-left at: x=${positionX}, y=${positionY} (to align bottom-right with anchor x=${anchorX}, y=${anchorY}, fineTuneX=${fineTuneX}, fineTuneY=${fineTuneY})`);
-
-  // Set the calculated top-left position
+  // Set the calculated position
   contextMenuWindow.setPosition(positionX, positionY);
   
   // Show the window
@@ -1008,12 +1018,8 @@ app.whenReady().then(() => {
   // Set up IPC handler for showing the custom context menu (from pill click)
   ipcMain.on('show-context-menu', (event) => {
     console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    // Get cursor position directly from the screen module
-    const { x: anchorX, y: anchorY } = screen.getCursorScreenPoint();
-    console.log(`[IPC Main] Cursor position from screen: x=${anchorX}, y=${anchorY}`);
-        
-    // Call showContextMenu with screen coordinates
-    showContextMenu(anchorX, anchorY); 
+    // Call showContextMenu WITHOUT coordinates to trigger pill positioning logic
+    showContextMenu(); 
   });
 
   // Set up IPC handler for showing notifications requested by the renderer
@@ -1140,7 +1146,7 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
   const pillBounds = mainWindow.getBounds();
   const notificationSize = notificationWindow.getSize();
   const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  const posY = pillBounds.y - notificationSize[1] - 5;
+  const posY = pillBounds.y - notificationSize[1] - 2; // Reduced gap significantly to 2px
 
   console.log(`Positioning notification at x=${posX}, y=${posY}`);
   notificationWindow.setPosition(posX, posY);
