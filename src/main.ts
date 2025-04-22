@@ -763,10 +763,21 @@ const showContextMenu = (anchorX?: number, anchorY?: number) => {
   else if (mainWindow) { // Ensure mainWindow exists for pill bounds
     console.log('[showContextMenu] Positioning relative to pill');
     const pillBounds = mainWindow.getBounds();
+    // Get size again just before calculation
+    const currentMenuSize = contextMenuWindow.getSize(); 
+    const currentMenuHeight = currentMenuSize[1];
+    const currentMenuWidth = currentMenuSize[0];
+
     // Center the menu horizontally above the pill
-    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (menuWidth / 2));
-    // Position vertically above the pill with a small gap
-    positionY = pillBounds.y - menuHeight - 2; // Reduced gap to 2px
+    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
+    // Align bottom with pill top (gap=0), then add offset to move down
+    let calculatedPosY = pillBounds.y - currentMenuHeight;
+    const downwardOffset = 40; // Move down by 40px
+    positionY = calculatedPosY + downwardOffset; 
+    
+    // Log the values used for calculation
+    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${downwardOffset}, calculated posY=${positionY}`);
+
     console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
   } 
   // Fallback if no anchor and no mainWindow (shouldn't happen for pill click)
@@ -1145,10 +1156,13 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
 
   const pillBounds = mainWindow.getBounds();
   const notificationSize = notificationWindow.getSize();
+  const notificationHeight = notificationSize[1];
   const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  const posY = pillBounds.y - notificationSize[1] - 2; // Reduced gap significantly to 2px
+  // Revert to gap-based logic, but use a negative gap to position slightly below pill top
+  const gap = -5; // Negative gap moves it down
+  const posY = pillBounds.y - notificationHeight - gap; 
 
-  console.log(`Positioning notification at x=${posX}, y=${posY}`);
+  console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
   notificationWindow.setPosition(posX, posY);
 
   const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
