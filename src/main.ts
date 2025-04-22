@@ -1051,6 +1051,12 @@ app.whenReady().then(() => {
     // Call showContextMenu with screen coordinates
     showContextMenu(anchorX, anchorY); 
   });
+
+  // Set up IPC handler for showing notifications requested by the renderer
+  ipcMain.on('show-notification', (event, message: string) => {
+    console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
+    showNotificationPopup(message);
+  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

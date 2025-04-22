@@ -7,6 +7,6 @@ interface Window {
     startRecording: () => Promise<{ success: boolean; error?: string }>;
     stopRecording: () => Promise<{ success: boolean; error?: string }>;
     transcribeAudio: (audioData: Uint8Array) => Promise<{ success: boolean; text?: string; error?: string }>;
-    onNotification: (callback: (message: string) => void) => (() => void);
+    sendNotification: (message: string) => void;
   };
 } 

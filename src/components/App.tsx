@@ -13,7 +13,6 @@ interface Notification {
 const App: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [notification, setNotification] = useState<Notification | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   // Handle toggle dictation from shortcut
@@ -30,7 +29,12 @@ const App: React.FC = () => {
       } else if (!isProcessing) {
         handleStartDictation();
       } else {
-        showNotification('Still processing previous dictation', 'error');
+        console.log('Still processing previous dictation');
+        if (window.electron) {
+          window.electron.sendNotification('Still processing previous dictation');
+        } else {
+          console.log('Still processing previous dictation');
+        }
       }
     };
 
@@ -42,26 +46,6 @@ const App: React.FC = () => {
     return cleanup;
   }, [isListening, isProcessing]);
 
-  // Register for notifications from main process
-  useEffect(() => {
-    if (!window.electron) return;
-
-    const cleanup = window.electron.onNotification((message) => {
-      console.log('[App.tsx] Received notification IPC message:', message);
-      showNotification(message, 'success');
-    });
-
-    return cleanup;
-  }, []);
-
-  // Clear notification after a delay
-  useEffect(() => {
-    if (!notification) return;
-    
-    const timer = setTimeout(() => setNotification(null), 3000);
-    return () => clearTimeout(timer);
-  }, [notification]);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -69,11 +53,6 @@ const App: React.FC = () => {
       cleanupRecording();
     };
   }, []);
-
-  // Helper function to show notifications
-  const showNotification = (message: string, type: 'error' | 'success') => {
-    setNotification({ message, type });
-  };
 
   // Helper function to clean up recording resources
   const cleanupRecording = () => {
@@ -110,7 +89,6 @@ const App: React.FC = () => {
       
       // Update UI state
       setIsListening(true);
-      setNotification(null);
       
       // Start recording
       console.log('Starting new recording...');
@@ -124,7 +102,12 @@ const App: React.FC = () => {
       console.log('=== DICTATION START COMPLETE ===');
     } catch (error) {
       console.error('=== DICTATION START FAILED ===', error);
-      showNotification('Could not access microphone. Please check permissions.', 'error');
+      const errorMsg = 'Could not access microphone. Check permissions.';
+      if (window.electron) {
+        window.electron.sendNotification(errorMsg);
+      } else {
+        console.log(errorMsg);
+      }
       setIsListening(false);
       cleanupRecording();
     }
@@ -181,7 +164,12 @@ const App: React.FC = () => {
         const insertResult = await window.electron.insertTextAtCursor(transcriptionResult.text || '');
         
         if (!insertResult.success && insertResult.error) {
-          showNotification(insertResult.error, 'error');
+          console.log(insertResult.error);
+          if (window.electron) {
+            window.electron.sendNotification(insertResult.error);
+          } else {
+            console.log(insertResult.error);
+          }
         }
       } else {
         throw new Error('Electron API not available');
@@ -190,7 +178,12 @@ const App: React.FC = () => {
       console.log('=== DICTATION PROCESS COMPLETE ===');
     } catch (error) {
       console.error('=== DICTATION PROCESS FAILED ===', error);
-      showNotification('An error occurred while processing your dictation.', 'error');
+      const errorMsg = 'Error processing dictation.';
+      if (window.electron) {
+        window.electron.sendNotification(errorMsg);
+      } else {
+        console.log(errorMsg);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -204,20 +197,6 @@ const App: React.FC = () => {
         onStartDictation={handleStartDictation}
         onStopDictation={handleStopDictation}
       />
-      
-      {/* Notification Toast */}
-      {notification && (
-        <div className={`
-          notification-toast 
-          absolute bottom-[45px] left-1/2 transform -translate-x-1/2 
-          px-4 py-2 rounded-md shadow-lg z-50 text-sm
-          ${notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}
-          transition-opacity duration-300 ease-in-out
-          backdrop-blur-sm bg-opacity-90
-        `}>
-          {notification.message}
-        </div>
-      )}
     </div>
   );
 };
