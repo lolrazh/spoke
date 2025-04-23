@@ -45,6 +45,7 @@
     "vite": "^6.2.1"
   },
   "dependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
