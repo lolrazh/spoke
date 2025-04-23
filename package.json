@@ -45,13 +45,13 @@
     "vite": "^6.2.1"
   },
   "dependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.35.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-squirrel-startup": "^1.0.1",
     "form-data": "^4.0.2",
+    "framer-motion": "^12.7.4",
     "groq-sdk": "^0.16.0",
     "lucide-react": "^0.503.0",
     "react": "^18.2.0",
