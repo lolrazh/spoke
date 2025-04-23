@@ -1259,9 +1259,13 @@ const createHomeWindow = () => {
     icon: iconPath, // Reuse the same icon
   });
 
-  // Load the home.html file
-  // TODO: Handle dev server URL if needed for React HMR
-  homeWindow.loadFile(path.join(__dirname, '../../public/home.html'));
+  // Load the React-based home route (dev vs. production)
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
+  } else {
+    const indexHtml = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    homeWindow.loadURL(`file://${indexHtml}#/home`);
+  }
 
   // Optional: Remove menu bar
   homeWindow.setMenuBarVisibility(false);

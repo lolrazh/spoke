@@ -1,6 +1,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './components/App';
+import HomePage from './components/HomePage';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import './index.css';
 
 // Create root element
@@ -12,10 +14,24 @@ if (!rootElement) {
   document.body.appendChild(root);
   
   const reactRoot = createRoot(root);
-  reactRoot.render(<App />);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
 } else {
   const reactRoot = createRoot(rootElement);
-  reactRoot.render(<App />);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
 }
 
 console.log('🎤 Sonic Flow is running'); 
