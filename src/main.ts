@@ -1243,8 +1243,9 @@ const createHomeWindow = () => {
     return;
   }
 
-  const newWidth = 1100;
-  const newHeight = 700;
+  // Reduce width by 10%, height by 20% from 1100x700
+  const newWidth = 920; 
+  const newHeight = 470;
 
   homeWindow = new BrowserWindow({
     width: newWidth,
