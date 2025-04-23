@@ -15,6 +15,12 @@ This file stores project-specific knowledge, conventions, and user preferences l
 - Wants to display "Time Saved" and efficiency metrics rather than raw activity
 - Simplified navigation with no top header bar
 - Pro Plan card should be displayed as a vertical column on the right side of usage stats
+- Compact UI with reduced component sizes
+- No notification settings in Settings page
+- No two-factor authentication option in Account page
+- Larger overall window size (140% of normal)
+- Reduced spacing between components
+- Two stat cards instead of three at the top of dashboard
 
 ## Technical Decisions
 
@@ -34,3 +40,4 @@ This file stores project-specific knowledge, conventions, and user preferences l
 - App logo and name placed in sidebar
 - Line chart shows efficiency metrics comparing typing vs dictation speed
 - Side-by-side layout for main content and plan information
+- Matching height between plan card and graph chart
