@@ -1243,9 +1243,14 @@ const createHomeWindow = () => {
     return;
   }
 
+  const newWidth = 1100;
+  const newHeight = 700;
+
   homeWindow = new BrowserWindow({
-    width: 740,
-    height: 500,
+    width: newWidth,
+    height: newHeight,
+    minWidth: newWidth,  // Set minimum width
+    minHeight: newHeight, // Set minimum height
     show: false, // Don't show immediately, wait for ready-to-show
     title: 'Sonic Flow Home',
     webPreferences: {
