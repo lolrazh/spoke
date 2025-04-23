@@ -62,7 +62,7 @@ const Pill: React.FC<PillProps> = ({
   };
 
   // Handle context menu
-  const handleContextMenu = (e: React.MouseEvent) => {
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault(); // Prevent default browser context menu
     console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
     // Check if the electron API exists and has the showPillContextMenu method

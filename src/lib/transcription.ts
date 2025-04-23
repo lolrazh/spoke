@@ -14,15 +14,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 console.log(`GROQ_API_KEY is ${GROQ_API_KEY ? 'set' : 'not set'}`);
 
 // Initialize Groq client with API key
-let groq: any = null;
-if (GROQ_API_KEY) {
-  groq = new Groq({
-    apiKey: GROQ_API_KEY,
-  });
-  console.log('Groq client initialized successfully');
-} else {
-  console.error('Failed to initialize Groq client: API key not set');
-}
+let groq: Groq | null = null;
 
 // Temporary directory for storing audio files
 const TEMP_DIR = path.join(app.getPath('temp'), 'sonic-flow');

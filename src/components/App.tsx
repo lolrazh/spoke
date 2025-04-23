@@ -2,11 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import Pill from './Pill';
 import { startRecording, stopRecording } from '../lib/audio';
 
-interface Notification {
-  message: string;
-  type: 'error' | 'success';
-}
-
 // Placeholder transcription text (would be replaced with actual API call result)
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
 

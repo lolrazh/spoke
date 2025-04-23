@@ -1,12 +1,10 @@
-import { app, BrowserWindow, Tray, Menu, MenuItem, MenuItemConstructorOptions, globalShortcut, nativeImage, screen, ipcMain, dialog, nativeTheme, Notification } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
 import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
-
-// Suppress deprecation warnings
-process.noDeprecation = true;
+import { execSync } from 'child_process';
 
 // Set up logging to file
 const LOG_FILE = path.join(app.getPath('userData'), 'sonic-flow.log');
@@ -97,7 +95,7 @@ if (started) {
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let currentHotkey: string = '';
+let currentHotkey = '';
 let hotkeyDialogOpen = false;
 let captureWindow: BrowserWindow | null = null;
 let contextMenuWindow: BrowserWindow | null = null;
@@ -111,23 +109,8 @@ let homeWindow: BrowserWindow | null = null;
 let isRecording = false;
 let recordingData: Buffer | null = null;
 
-// Common hotkey combinations to offer as options
-const HOTKEY_OPTIONS = [
-  'Alt+Shift+D',
-  'Alt+Shift+S',
-  'Ctrl+Shift+D',
-  'Ctrl+Alt+D',
-  'Alt+D',
-  'Ctrl+D'
-];
-
 // Determine the path to the icon file (works in both packaged and dev environments)
 const iconPath = path.join(__dirname, 'assets', 'icon.ico');
-
-// Optional: Remove the fs.existsSync check as it won't work reliably with asar
-// if (!fs.existsSync(iconPath)) { // This check might fail with asar
-//   console.error(`!!! Icon file not found at expected path: ${iconPath} !!!`);
-// }
 
 const createWindow = () => {
   // Create the browser window.
@@ -525,7 +508,7 @@ const createTray = () => {
     tray.setToolTip('Sonic Flow');
 
     // Listen for right-click events on the tray icon
-    tray.on('right-click', (event, bounds) => {
+    tray.on('right-click', (event: Electron.Event, bounds: Electron.Rectangle) => {
       console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
       // Use the bottom-right corner of the bounds as the anchor
       const anchorX = bounds.x + bounds.width;
@@ -772,7 +755,7 @@ const showContextMenu = (anchorX?: number, anchorY?: number) => {
     // Center the menu horizontally above the pill
     positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
     // Align bottom with pill top (gap=0), then add offset to move down
-    let calculatedPosY = pillBounds.y - currentMenuHeight;
+    const calculatedPosY = pillBounds.y - currentMenuHeight;
     const downwardOffset = 40; // Move down by 40px
     positionY = calculatedPosY + downwardOffset; 
     
@@ -803,14 +786,14 @@ const hideContextMenu = () => {
 };
 
 // Add a handler for insert-text-at-cursor
-ipcMain.handle('insert-text-at-cursor', async (_, text) => {
+ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
   let originalClipboardText: string | undefined = undefined;
   try {
     console.log('=== TEXT INSERTION PROCESS START ===');
     console.log('Received text:', text);
 
     // Read and store the current clipboard content (text only)
-    const { clipboard } = require('electron');
+    // const { clipboard } = require('electron'); // Removed require
     originalClipboardText = clipboard.readText();
     console.log('Original clipboard text stored.');
 
@@ -823,7 +806,7 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
     const activeWindow = BrowserWindow.getFocusedWindow();
     let operationSuccess = false;
     let operationError: string | null = null;
-    let wasElectronWindowFocused = !!activeWindow; // Track if an electron window was initially focused
+    const wasElectronWindowFocused = !!activeWindow; // Track if an electron window was initially focused
 
     if (wasElectronWindowFocused) {
       // Electron window is focused: Skip paste attempt
@@ -836,7 +819,7 @@ ipcMain.handle('insert-text-at-cursor', async (_, text) => {
       // No Electron window focused: Attempt OS-level paste
       console.log('No Electron window is focused, attempting OS-level paste.');
       try {
-        const { execSync } = require('child_process');
+        // const { execSync } = require('child_process'); // Removed require
         if (process.platform === 'win32') {
           console.log('Executing paste command via PowerShell');
           execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
@@ -901,7 +884,7 @@ app.on('quit', () => {
 });
 
 // Add IPC handlers for audio recording and transcription
-ipcMain.handle('start-recording', async () => {
+ipcMain.handle('start-recording', async (_event: Electron.IpcMainInvokeEvent) => {
   console.log('Main process: Recording started');
   
   // Reset state
@@ -914,7 +897,7 @@ ipcMain.handle('start-recording', async () => {
   return { success: true };
 });
 
-ipcMain.handle('stop-recording', async () => {
+ipcMain.handle('stop-recording', async (_event: Electron.IpcMainInvokeEvent) => {
   console.log('Main process: Recording stopped');
   
   // Check if recording was active
@@ -934,7 +917,7 @@ ipcMain.handle('stop-recording', async () => {
   return { success: true };
 });
 
-ipcMain.handle('transcribe-audio', async (_, audioData) => {
+ipcMain.handle('transcribe-audio', async (_event: Electron.IpcMainInvokeEvent, audioData: Buffer | Uint8Array) => {
   try {
     console.log('=== TRANSCRIPTION PROCESS START ===');
     console.log('Received audio data for transcription, length:', audioData?.length || 0, 'bytes');
@@ -994,14 +977,14 @@ ipcMain.handle('transcribe-audio', async (_, audioData) => {
 });
 
 // Add a handler to view the log file
-ipcMain.handle('view-log-file', async () => {
+ipcMain.handle('view-log-file', async (_event: Electron.IpcMainInvokeEvent) => {
   try {
     console.log('Attempting to open log file');
     
     // Check if the log file exists
     if (fs.existsSync(LOG_FILE)) {
       // Open the log file in the default text editor
-      const { shell } = require('electron');
+      // const { shell } = require('electron'); // Removed require
       await shell.openPath(LOG_FILE);
       console.log('Log file opened successfully');
       return { success: true };
@@ -1029,14 +1012,14 @@ app.whenReady().then(() => {
   createNotificationWindow();
 
   // Set up IPC handler for showing the custom context menu (from pill click)
-  ipcMain.on('show-context-menu', (event) => {
+  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
     console.log(`[IPC Main] Received show-context-menu event from pill.`);
     // Call showContextMenu WITHOUT coordinates to trigger pill positioning logic
     showContextMenu(); 
   });
 
   // Set up IPC handler for showing notifications requested by the renderer
-  ipcMain.on('show-notification', (event, message: string) => {
+  ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
     showNotificationPopup(message);
   });
@@ -1107,20 +1090,20 @@ app.on('will-quit', () => {
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===
-ipcMain.on('save-hotkey', (_, hotkey: string) => {
+ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => {
   if (isValidHotkeyFormat(hotkey)) {
     handleHotkeyChange(hotkey);
   }
   hideHotkeyCaptureWindow();
 });
 
-ipcMain.on('cancel-hotkey', () => {
+ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => {
   hideHotkeyCaptureWindow();
 });
 // === END IPC Handlers ===
 
 // === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-home', () => {
+ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
   console.log('[IPC Main] \'menu-home\' received.');
   console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
   if (homeWindow) {
@@ -1133,12 +1116,12 @@ ipcMain.on('menu-home', () => {
   hideContextMenu();
 });
 
-ipcMain.on('menu-hotkey', () => {
+ipcMain.on('menu-hotkey', (_event: Electron.IpcMainEvent) => {
   hideContextMenu();
   showHotkeyCaptureWindow();
 });
 
-ipcMain.on('menu-exit', () => {
+ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
   console.log('[IPC Main] Received menu-exit event');
   hideContextMenu(); // Hide the menu visually first
   console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
