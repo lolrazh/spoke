@@ -1,5 +1,36 @@
 ---
-description:
-globs:
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
+# Project Memory
+
+This file stores project-specific knowledge, conventions, and user preferences learned by the AI assistant.
+
+## User Preferences
+
+- User prefers clean, modern dashboard design with micro-interactions
+- Black as primary color and orange as secondary color
+- Prefers a combined Home page rather than separate Usage and Plan pages
+- Wants to display "Time Saved" and efficiency metrics rather than raw activity
+- Simplified navigation with no top header bar
+- Pro Plan card should be displayed as a vertical column on the right side of usage stats
+
+## Technical Decisions
+
+- Using framer-motion for animations and micro-interactions
+- Using Tailwind CSS for styling
+- Color scheme based on sonic-dark (black) and sonic-orange themes
+- Using SVG for line charts with gradient fill underneath
+- Larger overall dashboard size for better visibility
+
+## Project Conventions
+
+- Dashboard components use rounded-xl corners for cards
+- Interactive elements have hover/tap animations
+- Color tokens: sonic-darker, sonic-dark, sonic-gray, sonic-orange, sonic-light-orange
+- Card-based layout with consistent padding/spacing
+- Icons use stroke-based design (width: 20px)
+- App logo and name placed in sidebar
+- Line chart shows efficiency metrics comparing typing vs dictation speed
+- Side-by-side layout for main content and plan information
