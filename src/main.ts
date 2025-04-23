@@ -508,7 +508,7 @@ const createTray = () => {
     tray.setToolTip('Sonic Flow');
 
     // Listen for right-click events on the tray icon
-    tray.on('right-click', (event: Electron.Event, bounds: Electron.Rectangle) => {
+    tray.on('right-click', (event, bounds) => {
       console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
       // Use the bottom-right corner of the bounds as the anchor
       const anchorX = bounds.x + bounds.width;
