@@ -9,7 +9,7 @@ const LANGUAGE = 'english'; // Model is English-only now
 // Define the path relative to the server root where models are stored
 env.localModelPath = '/models/'; // Path within the built app (points to public/models)
 env.allowRemoteModels = false; // Disable downloading from Hugging Face
-// env.allowLocalModels = true; // Defaults to true, so no need to set explicitly
+env.allowLocalModels = true; // Explicitly allow local models (required by v3 when remote is false)
 
 // Global variable to hold the pipeline instance
 let transcriber = null;
