@@ -2,12 +2,14 @@
 import { pipeline, env } from '@xenova/transformers';
 
 // Configuration
-const MODEL_NAME = 'onnx-community/whisper-base'; // Use the tiny model as requested
+// const MODEL_NAME = 'Xenova/whisper-tiny'; // Old model
+const MODEL_NAME = 'Xenova/whisper-tiny.en'; // Use tiny English-only (pre-quantized) for speed
 const TASK = 'automatic-speech-recognition';
-const LANGUAGE = 'english'; // Assuming English for now
+const LANGUAGE = 'english'; // Model is English-only now
 
 // Disable local models if not needed, set WebGPU as preferred device
-env.allowLocalModels = false;
+// env.allowLocalModels = false; // WRONG: Forces re-download every time
+env.allowLocalModels = true; // CORRECT: Allow caching in IndexedDB
 // env.backends.onnx.device = 'webgpu'; // Let transformers.js handle device selection automatically first
 
 // Global variable to hold the pipeline instance
@@ -24,7 +26,7 @@ self.addEventListener('message', async (event) => {
             
             // Load the pipeline
             transcriber = await pipeline(TASK, MODEL_NAME, {
-                quantized: true, // Use quantized model for efficiency
+                quantized: true, // CORRECT: Use pre-quantized weights in whisper-tiny.en
                 progress_callback: (progress) => {
                     // Post loading progress
                     self.postMessage({ status: 'loading-progress', progress });
