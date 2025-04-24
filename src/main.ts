@@ -83,10 +83,10 @@ console.log('Loading environment variables...');
 loadEnv();
 
 // Log the API key status (not the actual key)
-console.log(`GROQ_API_KEY status in main.ts: ${process.env.GROQ_API_KEY ? 'set' : 'not set'}`);
+// console.log(`GROQ_API_KEY status in main.ts: ${process.env.GROQ_API_KEY ? 'set' : 'not set'}`); // Keep env loading, but remove specific Groq key log
 
 // Import the transcription service after loading environment variables
-import { transcribeAudio, cleanupTempFiles } from './lib/transcription';
+// import { transcribeAudio, cleanupTempFiles } from './lib/transcription'; // REMOVE THIS IMPORT
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -105,9 +105,9 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
-// Global variable to store the current recording state
-let isRecording = false;
-let recordingData: Buffer | null = null;
+// Global variable to store the current recording state - REMOVE THESE
+// let isRecording = false;
+// let recordingData: Buffer | null = null;
 
 // Determine the path to the icon file (works in both packaged and dev environments)
 const iconPath = path.join(__dirname, 'assets', 'icon.ico');
@@ -872,109 +872,16 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
   }
 });
 
-// Clean up temporary files when the app quits
-app.on('quit', () => {
-  console.log('[App Event] quit: Handler running.');
-  try {
-    cleanupTempFiles();
-    console.log('[App Event] quit: Temp files cleaned.');
-  } catch (error) {
-    console.error('[App Event] quit: Error cleaning temp files:', error);
-  }
-});
-
-// Add IPC handlers for audio recording and transcription
-ipcMain.handle('start-recording', async (_event: Electron.IpcMainInvokeEvent) => {
-  console.log('Main process: Recording started');
-  
-  // Reset state
-  if (isRecording) {
-    console.log('Warning: Recording was already active, resetting state');
-  }
-  
-  isRecording = true;
-  recordingData = null;
-  return { success: true };
-});
-
-ipcMain.handle('stop-recording', async (_event: Electron.IpcMainInvokeEvent) => {
-  console.log('Main process: Recording stopped');
-  
-  // Check if recording was active
-  if (!isRecording) {
-    console.log('Warning: Recording was not active, but stop was requested');
-  }
-  
-  // Reset state
-  isRecording = false;
-  
-  // Clear any stored recording data to prevent memory leaks
-  if (recordingData) {
-    console.log('Main process: Clearing stored recording data');
-    recordingData = null;
-  }
-  
-  return { success: true };
-});
-
-ipcMain.handle('transcribe-audio', async (_event: Electron.IpcMainInvokeEvent, audioData: Buffer | Uint8Array) => {
-  try {
-    console.log('=== TRANSCRIPTION PROCESS START ===');
-    console.log('Received audio data for transcription, length:', audioData?.length || 0, 'bytes');
-    
-    // Validate audio data
-    if (!audioData || audioData.length === 0) {
-      console.error('Received empty audio data');
-      return { success: false, error: 'Empty audio data received' };
-    }
-    
-    // Ensure audioData is a Buffer
-    let audioBuffer;
-    if (Buffer.isBuffer(audioData)) {
-      console.log('Audio data is already a Buffer');
-      audioBuffer = audioData;
-    } else if (audioData instanceof Uint8Array || Array.isArray(audioData)) {
-      console.log('Converting audio data from Uint8Array/Array to Buffer');
-      audioBuffer = Buffer.from(audioData);
-      console.log('Converted to Buffer, new size:', audioBuffer.length, 'bytes');
-    } else {
-      console.error('Received invalid audio data type');
-      return { success: false, error: 'Invalid audio data format' };
-    }
-    
-    // Store the audio data
-    recordingData = audioBuffer;
-    
-    console.log('Sending audio to Groq API for transcription...');
-    
-    // Transcribe the audio
-    let text;
-    try {
-      text = await transcribeAudio(audioBuffer);
-      console.log('Transcription successful, result:', text);
-    } catch (transcriptionError) {
-      console.error('Transcription API error:', transcriptionError);
-      return { success: false, error: `Transcription API error: ${transcriptionError.message}` };
-    }
-    
-    if (!text || text.trim() === '') {
-      console.error('Transcription returned empty text');
-      return { success: false, error: 'Transcription returned empty text' };
-    }
-    
-    console.log('Transcription result:', text);
-    console.log('=== TRANSCRIPTION PROCESS COMPLETE ===');
-    
-    // Clear recording data after successful transcription
-    recordingData = null;
-    
-    return { success: true, text };
-  } catch (error) {
-    console.error('=== TRANSCRIPTION PROCESS FAILED ===');
-    console.error('Error transcribing audio:', error);
-    return { success: false, error: error.message || 'Unknown error' };
-  }
-});
+// Clean up temporary files when the app quits - REMOVE THIS HANDLER (unless TEMP_DIR is used elsewhere)
+// app.on('quit', () => {
+//   console.log('[App Event] quit: Handler running.');
+//   try {
+//     cleanupTempFiles();
+//     console.log('[App Event] quit: Temp files cleaned.');
+//   } catch (error) {
+//     console.error('[App Event] quit: Error cleaning temp files:', error);
+//   }
+// });
 
 // Add a handler to view the log file
 ipcMain.handle('view-log-file', async (_event: Electron.IpcMainInvokeEvent) => {

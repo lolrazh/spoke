@@ -23,16 +23,6 @@ contextBridge.exposeInMainWorld('electron', {
   insertTextAtCursor: (text: string) => {
     return ipcRenderer.invoke('insert-text-at-cursor', text);
   },
-  // New methods for audio recording and transcription
-  startRecording: () => {
-    return ipcRenderer.invoke('start-recording');
-  },
-  stopRecording: () => {
-    return ipcRenderer.invoke('stop-recording');
-  },
-  transcribeAudio: (audioBuffer: Uint8Array) => {
-    return ipcRenderer.invoke('transcribe-audio', audioBuffer);
-  },
   // Method to view the log file
   viewLogFile: () => {
     return ipcRenderer.invoke('view-log-file');
