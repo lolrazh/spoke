@@ -2,16 +2,20 @@
  * TypeScript declarations for the Electron API exposed to the renderer process
  */
 
-interface ElectronAPI {
-  toggleDictation: (callback: () => void) => void;
-  showContextMenu: () => void;
-  insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
-  startRecording: () => Promise<{ success: boolean }>;
-  stopRecording: () => Promise<{ success: boolean }>;
-  transcribeAudio: (audioBuffer: Buffer) => Promise<{ success: boolean; text?: string; error?: string }>;
-  logProgress: (progressData: any) => void;
+declare global {
+  interface Window {
+    electron: {
+      toggleDictation: (callback: () => void) => () => void;
+      showPillContextMenu: () => void;
+      insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
+      viewLogFile: () => Promise<void>;
+      sendNotification: (message: string) => void;
+      logProgress: (progressData: any) => void;
+    };
+    contextMenuAPI?: {
+      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
+    };
+  }
 }
 
-interface Window {
-  electron: ElectronAPI;
-} 
+export {}; 
