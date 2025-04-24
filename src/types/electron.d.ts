@@ -9,6 +9,7 @@ interface ElectronAPI {
   startRecording: () => Promise<{ success: boolean }>;
   stopRecording: () => Promise<{ success: boolean }>;
   transcribeAudio: (audioBuffer: Buffer) => Promise<{ success: boolean; text?: string; error?: string }>;
+  logProgress: (progressData: any) => void;
 }
 
 interface Window {

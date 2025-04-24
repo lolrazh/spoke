@@ -118,7 +118,12 @@ export const useWhisperRecognition = () => {
     // Add message listener
     worker.onmessage = (event) => {
       const { status, progress, text, error: workerError } = event.data;
-      // console.log('Worker message:', event.data); // Debugging
+      console.log('[useWhisperRecognition] Worker message received:', event.data);
+
+      // Relay progress to main process for terminal logging
+      if (status === 'loading-progress' && progress && (window.electron as any)?.logProgress) {
+        (window.electron as any).logProgress(progress);
+      }
 
       switch (status) {
         case 'loading-model':

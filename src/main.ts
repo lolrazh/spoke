@@ -932,6 +932,30 @@ app.whenReady().then(() => {
   });
 });
 
+// IPC Handler for logging progress from renderer worker
+ipcMain.on('log-progress', (_event: Electron.IpcMainEvent, progressData: any) => {
+  // Basic logging, adjust formatting as needed
+  if (progressData && typeof progressData === 'object') {
+    const status = progressData.status || 'Unknown Status';
+    const file = progressData.file || '...';
+    const loaded = (progressData.loaded || 0).toFixed(2);
+    const total = (progressData.total || 0).toFixed(2);
+    const percentage = progressData.progress ? progressData.progress.toFixed(1) : 'N/A';
+    
+    // Log specifically model download/loading progress
+    if (status === 'progress') {
+       console.log(`[Model Download] ${file}: ${percentage}% (${loaded}/${total} MB)`);
+    } else if (status === 'ready') {
+        // Maybe log when specific files are done if needed? 
+        // console.log(`[Model File Ready] ${file}`); 
+    } else if (status === 'loaded'){
+        // Log when all files seem loaded (before compilation)
+        console.log(`[Model Loaded] All files downloaded.`);
+    }
+    // Add more conditions based on observed progressData structure if needed
+  }
+});
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.

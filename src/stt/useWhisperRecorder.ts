@@ -25,8 +25,8 @@ export function useWhisperRecorder(): UseSimpleWhisperRecorderReturn {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           // Basic audio constraints are usually sufficient
-          echoCancellation: true,
-          noiseSuppression: true,
+            echoCancellation: true,
+            noiseSuppression: true,
           autoGainControl: true
         } 
       });
@@ -40,7 +40,7 @@ export function useWhisperRecorder(): UseSimpleWhisperRecorderReturn {
       streamRef.current = null;
       return null;
     }
-  }, []);
+  }, []); 
 
   // Function to start recording
   const startRecording = useCallback(async () => {
@@ -53,7 +53,7 @@ export function useWhisperRecorder(): UseSimpleWhisperRecorderReturn {
     const stream = await setupStream();
     if (!stream) {
       // Error state already set by setupStream
-      return; 
+        return; 
     }
 
     // Clear previous chunks
@@ -141,7 +141,7 @@ export function useWhisperRecorder(): UseSimpleWhisperRecorderReturn {
       // Check state before stopping to avoid errors if already stopped
       if (recorderRef.current.state !== 'inactive') {
         console.log('Sending stop() command to MediaRecorder.');
-        recorderRef.current.stop();
+        recorderRef.current.stop(); 
       } else {
         console.log('MediaRecorder already inactive, resolving manually.');
         // If already inactive, manually trigger the cleanup/resolve logic

@@ -2,7 +2,7 @@
 import { pipeline, env } from '@xenova/transformers';
 
 // Configuration
-const MODEL_NAME = 'Xenova/whisper-tiny'; // Use the tiny model as requested
+const MODEL_NAME = 'onnx-community/whisper-base'; // Use the tiny model as requested
 const TASK = 'automatic-speech-recognition';
 const LANGUAGE = 'english'; // Assuming English for now
 
