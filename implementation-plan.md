@@ -1,220 +1,100 @@
-Below is a **single, end-to-end implementation plan** for replacing Sonic Flow’s Groq-API pipeline with an **on-device Whisper (WebGPU / WASM-SIMD) pipeline**.  
-It is split into two views:
 
-* **A. Product-level narrative** – language you can present to the CEO & GTM folks.  
-* **B. Engineering playbook** – drop-in steps, code snippets, timelines, and risk notes.
+# Implementation Plan: Local Whisper Transcription Migration
 
-Feel free to forward the whole thing to the team; nothing here depends on proprietary IP.
+**Goal:** Replace the cloud-based Groq API transcription with a fully local Whisper model (`whisper-tiny`) running in the renderer process using Transformers.js, Web Workers, and WebGPU.
 
----
-
-## A • Why this pivot matters (exec summary)
-
-| Dimension | Groq (today) | Local Whisper (pivot) |
-|-----------|--------------|-----------------------|
-| **Latency** | 300-900 ms (network-bound) | 60-250 ms (GPU) or 400-500 ms (CPU) |
-| **Privacy / compliance** | Audio leaves device → SOC 2 scope, DPA, etc. | Audio never leaves device → ✅ privacy, ✅ air-gapped orgs |
-| **Unit cost** | $0.02–$0.06 / min (Groq large) | $0 (fixed download) |
-| **Pricing story** | Subscription only | *One-time license* for local model |
-| **Resilience** | Internet, Groq uptime | Works on airplanes, in basements, after we pivot again |
-| **Strategic moat** | We rent a model | We **own** the offline UX that no web tool can match |
-
-**Positioning headline**  
-> *“Sonic Flow – the only dictation pill that works offline, online, everywhere.”*
+**Core Principle:** Shift transcription logic from the Electron main process to the renderer process, leveraging Web Workers for non-blocking inference.
 
 ---
 
-## B • Engineering playbook
+## Phase 1: Setup & Worker Implementation
 
-> Target release: **3 sprints / 6 weeks** (1 sprint spike → 2 sprints feature → hardening).
+1.  **Install Dependencies:**
+    *   Ensure `@xenova/transformers` is installed: `npm install @xenova/transformers` (or yarn equivalent).
+2.  **Configure Web Worker (`src/stt/whisper-worker.js`):**
+    *   Import `pipeline` from `@xenova/transformers`.
+    *   Implement message listener (`self.onmessage`) to handle commands from the main renderer thread.
+    *   **Model Initialization:**
+        *   Add logic to load the `Xenova/whisper-tiny` model upon receiving an `init` message.
+        *   Use the `pipeline('automatic-speech-recognition', ...)` function.
+        *   Specify `model: 'Xenova/whisper-tiny'`.
+        *   Enable `quantized: true` (usually default/recommended for Transformers.js).
+        *   Pass `device: 'webgpu'` if WebGPU is available/desired, otherwise let Transformers.js handle fallback (WASM).
+        *   Implement progress callback (`progress_callback`) during model loading and post `loading-progress` messages back to the main thread.
+        *   Store the initialized pipeline instance in a variable accessible within the worker scope.
+        *   Post `init-complete` message on success or `init-error` on failure.
+    *   **Transcription Logic:**
+        *   Add logic to handle a `transcribe` message containing audio data (e.g., as an `ArrayBuffer` or `Float32Array`).
+        *   Ensure the audio data is in the format expected by the Whisper pipeline (usually Float32Array, potentially requiring conversion/resampling if `useWhisperRecorder` provides something else). *Self-correction: Check `useWhisperRecognition` and `useWhisperRecorder` interaction*.
+        *   Call the loaded pipeline instance with the audio data.
+        *   Specify `language: 'english'` and `task: 'transcribe'`.
+        *   Post `transcription-result` message with the transcribed text on success.
+        *   Post `transcription-error` message on failure.
 
-### 0. Prep: pick the model & format
+## Phase 2: Renderer Hook Integration
 
-| Model | Size | VRAM @ fp32/q4 | Word error rate | Ship? |
-|-------|------|---------------|-----------------|-------|
-| `onnx-community/whisper-tiny-en-q4` | 29 MB | 45 MB | 12-14 % | **Bundled** (default) |
-| `onnx-community/whisper-base-en-fp32` | 147 MB | 210 MB | 9-10 % | Optional download |
-| Future: `distil-whisper-medium-q4` | 270 MB | 370 MB | 7-8 % | “Pro Accuracy” add-on |
+1.  **Review/Refine Recognition Hook (`src/stt/useWhisperRecognition.ts`):**
+    *   Ensure it correctly creates and manages the `whisper-worker.js` instance.
+    *   Implement logic to send the `init` message to the worker upon hook initialization or a specific trigger.
+    *   Handle `loading-progress`, `init-complete`, `init-error`, `transcription-result`, and `transcription-error` messages from the worker.
+    *   Maintain internal state reflecting the worker/model status (e.g., `isModelLoading`, `loadingProgress`, `isReady`, `isTranscribing`, `error`).
+    *   Expose a function (e.g., `transcribeAudio(audioData)`) that sends the `transcribe` message to the worker.
+    *   Expose the transcription result (`transcriptionText`) and relevant state variables.
+2.  **Review/Refine Recorder Hook (`src/stt/useWhisperRecorder.ts`):**
+    *   Verify it handles microphone permissions, start/stop recording.
+    *   Confirm the format of the audio data it provides upon stopping (e.g., `Blob`, `ArrayBuffer`, `Float32Array`). Ensure this format is compatible with what the `whisper-worker.js` expects or add conversion logic in `useWhisperRecognition` or `App.tsx` before passing it to the worker.
+    *   Expose state like `isRecording`.
+3.  **Integrate Hooks into `src/components/App.tsx`:**
+    *   Remove imports related to `src/lib/audio.ts`.
+    *   Remove state `mediaRecorderRef`.
+    *   Instantiate the hooks: `const recorder = useWhisperRecorder();` and `const recognizer = useWhisperRecognition();`.
+    *   **State Mapping:**
+        *   Replace `isListening` state management with `recorder.isRecording`.
+        *   Replace `isProcessing` state management with a combination of `recognizer.isModelLoading` and `recognizer.isTranscribing`. Consider a new state `isLoadingModel` if distinct UI is needed.
+    *   **Event Handling:**
+        *   Modify `handleStartDictation`:
+            *   Call `recorder.startRecording()`.
+            *   Remove IPC call `window.electron.startRecording()`.
+        *   Modify `handleStopDictation`:
+            *   Call `recorder.stopRecording()` to get the audio data.
+            *   Remove IPC call `window.electron.stopRecording()`.
+            *   If audio data is valid, call `recognizer.transcribeAudio(audioData)`.
+    *   **Result Handling:**
+        *   Use `useEffect` to watch for changes in `recognizer.transcriptionText`.
+        *   When new text arrives, call `window.electron.insertTextAtCursor(recognizer.transcriptionText)`.
+        *   Handle errors exposed by `recorder.error` and `recognizer.error` (e.g., using `window.electron.sendNotification`).
+    *   **Cleanup:** Ensure hook cleanup functions are called on unmount.
 
-All are ONNX; no license blockers.
+## Phase 3: UI and Main Process Adjustments
 
----
+1.  **Update UI (`src/components/Pill.tsx`):**
+    *   Adjust props passed from `App.tsx` based on the new state management (e.g., pass `isLoadingModel` if added).
+    *   Modify conditional rendering to account for `isLoadingModel` state if necessary (e.g., show a different spinner/indicator).
+2.  **Clean Main Process (`src/main.ts`):**
+    *   Remove the `transcribe-audio` IPC handler (`ipcMain.handle('transcribe-audio', ...)`).
+    *   Remove the `start-recording` IPC handler (`ipcMain.handle('start-recording', ...)`).
+    *   Remove the `stop-recording` IPC handler (`ipcMain.handle('stop-recording', ...)`).
+    *   Remove the import of `{ transcribeAudio, cleanupTempFiles }` from `./lib/transcription`.
+    *   Remove the `recordingData` global variable.
+    *   Remove `cleanupTempFiles` call in `app.on('quit')` if it's no longer needed (local STT doesn't use temp files).
+3.  **Clean Preload Script (`src/preload.ts`):**
+    *   Remove `startRecording`, `stopRecording`, and `transcribeAudio` from the `contextBridge.exposeInMainWorld('electron', ...)` object.
 
-### 1. Folder structure delta
+## Phase 4: Cleanup and Testing
 
-```
-/models/                      ◂— new (extraResources)
-/renderer/stt/
-/renderer/stt/useDictation.ts
-/renderer/stt/useWhisperWorker.ts
-/renderer/stt/whisper-worker.js
-/preload/dictationBridge.ts
-```
-
----
-
-### 2. Renderer → new React hook
-
-```tsx
-// renderer/stt/useDictation.ts
-import { useWhisperRecorder }  from './useWhisperRecorder'   // 95 % identical to OS1
-import { useEffect, useState } from 'react'
-
-export function useDictation(opts: {
-  onPartial(text: string): void
-  onFinal(text: string, audio: Float32Array): void
-  onError(err: string): void
-}) {
-  const { startRecording, stopRecording,
-          isRecording, transcriptionReady, error } =
-        useWhisperRecorder({
-          onTranscriptionUpdate: opts.onPartial,
-          onSilenceDetected:  opts.onFinal,
-          onTranscriptionComplete: opts.onFinal
-        });
-
-  useEffect(() => { if (error) opts.onError(error) }, [error])
-
-  return { start: startRecording, stop: stopRecording, isRecording, ready: transcriptionReady }
-}
-```
-
-*Hook lives entirely in the renderer – **no Node APIs** used.*
-
----
-
-### 3. Web-worker (unchanged from OS 1)
-
-* `whisper-worker.js` loads the ONNX model with **@huggingface/transformers.js**.  
-* It auto-selects **WebGPU** (fast) or **WASM-SIMD** (CPU fallback).  
-* The worker returns `{status:'complete', output:[text]}` exactly like Groq IPC did.
-
----
-
-### 4. Preload bridge
-
-```ts
-// preload/dictationBridge.ts
-import { contextBridge } from 'electron'
-
-contextBridge.exposeInMainWorld('dictation', {
-  supportsLocal: !!navigator.gpu,
-  start: () => window.dispatchEvent(new Event('__dictation_start')),
-  stop : () => window.dispatchEvent(new Event('__dictation_stop'))
-})
-```
-
-In the renderer:
-
-```ts
-window.addEventListener('__dictation_start', () => dictation.start())
-window.addEventListener('__dictation_stop',  () => dictation.stop())
-```
-
-*The React pill UI toggles recording exactly the same way as before (hotkey → preload → renderer).*
-
----
-
-### 5. Main-process changes
-
-* **Remove** `ipcMain.handle('transcribe-audio', …)` path from `main.ts`.  
-* **Keep** the function around but wrap it:
-
-```ts
-if (!navigator.gpu) {
-  // fallback to Groq
-}
-```
-
-*No audio temp-file write needed for local path.*
+1.  **Delete Obsolete Files:**
+    *   Delete `src/lib/audio.ts`.
+    *   Delete `src/lib/transcription.ts`.
+    *   Delete the `sonic-flow` temporary directory creation logic and potentially the directory itself if no longer used (`TEMP_DIR` in `main.ts` or `transcription.ts`).
+2.  **Testing:**
+    *   **First Launch:** Verify model download progress indicator (if implemented) and successful initialization. Check console for WebGPU/WASM usage.
+    *   **Basic Transcription:** Start recording, speak, stop recording. Verify text insertion.
+    *   **Hotkey Control:** Test starting and stopping dictation using the global hotkey.
+    *   **Error Handling:**
+        *   Deny microphone permission and try to record. Verify error notification.
+        *   Simulate a worker error (if possible) or test edge cases (e.g., stopping immediately after starting).
+    *   **Resource Usage:** Monitor CPU/GPU/Memory usage during model load and transcription (basic check).
+    *   **Repeated Use:** Test multiple back-to-back transcriptions.
 
 ---
-
-### 6. Electron flags
-
-```ts
-app.commandLine.appendSwitch('enable-unsafe-webgpu');
-app.commandLine.appendSwitch('disable-webgpu-sandbox');  // Electron 35 quirk
-if (process.platform === 'darwin')
-  app.commandLine.appendSwitch('enable-features', 'MetalApi,WebGPUDeveloperFeatures');
-```
-
----
-
-### 7. Packaging tweaks (forge.config.ts)
-
-```ts
-makers: [ /* existing */ ],
-plugins: [ /* existing */ ],
-extraResources: [
-  { from: 'models/whisper-tiny-en-q4', to: 'models', filter: ['**/*.onnx'] }
-]
-```
-
-In the worker load with:
-
-```js
-const modelPath = path.join(process.resourcesPath, 'models', 'whisper-tiny-en-q4');
-UltravoxModel.from_pretrained(modelPath, …)
-```
-
----
-
-### 8. UX adjustments
-
-* **Settings → “Speech engine”**  
-  * Local (tiny – default)  
-  * Local (download base – button)  
-* **Banner** if WebGPU unavailable:  
-  “We’re running the slower CPU engine; accuracy unchanged, dictation may lag.”  
-* **First-launch download** progress bar when upgrading to base model (reuse your existing update bar).
-
----
-
-### 9. QA / regression matrix
-
-| Scenario | Expectation |
-|----------|-------------|
-| Win 11 + RTX | ≤ 100 ms lag, GPU in task manager spikes |
-| Win 10 + Intel UHD 620 | ≤ 300 ms lag, CPU 50 % |
-| WebGPU blacklisted | Fallback to CPU, banner shown |
-| Airplane mode | Dictation works, Cloud mode disabled |
-| Old Sandy-Bridge | `navigator.gpu` false → UI forces Cloud |
-
-Automated tests can simulate `navigator.gpu = undefined`.
-
----
-
-### 10. Timeline
-
-| Week | Deliverable |
-|------|-------------|
-| 1 | Spike: clone OS 1 STT, demo worker compiling on WebGPU & CPU on dev machine. |
-| 2 | Preload bridge, React hook, pill UI integrated; silent fallback to Cloud. |
-| 3 | Settings panel, progress bar for model download, feature flags. |
-| 4 | Windows installer incl. ONNX; latency bench on 4 HW profiles; fix crashes. |
-| 5 | macOS & Linux builds, docs, enterprise privacy one-pager. |
-| 6 | Hardening: fuses, memory leak audit, telemetry counters, marketing site update. |
-
----
-
-### 11. Risks & mitigations
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| GPU blacklist / drivers | Users think app is frozen | CPU fallback + toast |
-| Bundle bloat (30 MB) | Download friction | Keep installer < 60 MB; allow “download later” |
-| WASM path too slow on very old CPUs | Bad UX | Block install < 2015 CPUs or force Cloud |
-| Transformer.js version drift | Build fails | Lock to `^3.5.0`, add e2e smoke test in CI |
-
----
-
-## One-pager pitch (steal this slide)
-
-> **Sonic Flow 2.0 – Offline Dictation**
->
-> * Runs on the user’s GPU or CPU – zero audio leaves the machine.  
-> * 3× faster average latency, 0¢ unit cost.  
-> * New price plan: **$39 one-time “Local”**
-> * Ships in six weeks with no server rewrite, re-using 80 % of current code.  
-> * Gives us a differentiated privacy story no browser extension can match.
+This plan provides a step-by-step guide. We will proceed through these phases, focusing on one part at a time.
