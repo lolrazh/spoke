@@ -8,8 +8,8 @@ const TASK = 'automatic-speech-recognition';
 const LANGUAGE = 'english'; // Model is English-only now
 
 // Disable local models if not needed, set WebGPU as preferred device
-// env.allowLocalModels = false; // WRONG: Forces re-download every time
-env.allowLocalModels = true; // CORRECT: Allow caching in IndexedDB
+// env.allowLocalModels = true; // CORRECT: Allow caching in IndexedDB -- BUT WRONG for dev without local files
+env.allowLocalModels = false; // TEMP FIX for Dev: Force fetch from Hugging Face, skip local check
 // env.backends.onnx.device = 'webgpu'; // Let transformers.js handle device selection automatically first
 
 // Global variable to hold the pipeline instance
