@@ -7,10 +7,11 @@ const MODEL_NAME = 'Xenova/whisper-tiny.en'; // Use tiny English-only (pre-quant
 const TASK = 'automatic-speech-recognition';
 const LANGUAGE = 'english'; // Model is English-only now
 
-// Disable local models if not needed, set WebGPU as preferred device
-// env.allowLocalModels = true; // CORRECT: Allow caching in IndexedDB -- BUT WRONG for dev without local files
-env.allowLocalModels = false; // TEMP FIX for Dev: Force fetch from Hugging Face, skip local check
-// env.backends.onnx.device = 'webgpu'; // Let transformers.js handle device selection automatically first
+// --- Configure for local model loading ---
+// Define the path relative to the server root where models are stored
+env.localModelPath = '/models/'; // Path within the built app (points to public/models)
+env.allowRemoteModels = false; // Disable downloading from Hugging Face
+// env.allowLocalModels = true; // Defaults to true, so no need to set explicitly
 
 // Global variable to hold the pipeline instance
 let transcriber = null;

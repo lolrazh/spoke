@@ -940,13 +940,18 @@ ipcMain.on('log-progress', (_event: Electron.IpcMainEvent, progressData: any) =>
   if (progressData && typeof progressData === 'object') {
     const status = progressData.status || 'Unknown Status';
     const file = progressData.file || '...';
-    const loaded = (progressData.loaded || 0).toFixed(2);
-    const total = (progressData.total || 0).toFixed(2);
-    const percentage = progressData.progress ? progressData.progress.toFixed(1) : 'N/A';
+    // const loaded = (progressData.loaded || 0).toFixed(2); // Reverted by user
+    // const total = (progressData.total || 0).toFixed(2);
+    // const percentage = progressData.progress ? progressData.progress.toFixed(1) : 'N/A';
     
     // Log specifically model download/loading progress
-    if (status === 'progress') {
-       console.log(`[Model Download] ${file}: ${percentage}% (${loaded}/${total} MB)`);
+    // if (status === 'progress') { // Reverted by user
+    //    console.log(`[Model Download] ${file}: ${percentage}% (${loaded}/${total} MB)`);
+    // }
+    if (status === 'progress' && progressData.total > 0) { // Use correct calculation
+       // Calculate percentage accurately
+       const percentage = ((progressData.loaded / progressData.total) * 100).toFixed(1);
+       console.log(`[Model Load] ${file}: ${percentage}%`); // Changed log prefix
     } else if (status === 'ready') {
         // Maybe log when specific files are done if needed? 
         // console.log(`[Model File Ready] ${file}`); 

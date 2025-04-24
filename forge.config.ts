@@ -9,9 +9,13 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      // unpackDir: 'models' // Keep large ONNX files outside app.asar if needed later
+    },
     // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon' 
+    icon: 'public/assets/icon', 
+    // Add the models folder as an extra resource
+    extraResource: ['public/models'],
   },
   rebuildConfig: {},
   makers: [
