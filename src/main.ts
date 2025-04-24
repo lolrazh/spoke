@@ -77,15 +77,15 @@ console.warn = function(...args) {
   originalConsoleWarn.apply(console, args);
 };
 
-// Load environment variables first
-import { loadEnv } from './lib/env';
-console.log('Loading environment variables...');
-loadEnv();
+// Load environment variables first - REMOVE THESE LINES
+// import { loadEnv } from './lib/env';
+// console.log('Loading environment variables...');
+// loadEnv();
 
 // Log the API key status (not the actual key)
 // console.log(`GROQ_API_KEY status in main.ts: ${process.env.GROQ_API_KEY ? 'set' : 'not set'}`); // Keep env loading, but remove specific Groq key log
 
-// Import the transcription service after loading environment variables
+// Import the transcription service after loading environment variables - ALREADY REMOVED
 // import { transcribeAudio, cleanupTempFiles } from './lib/transcription'; // REMOVE THIS IMPORT
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
