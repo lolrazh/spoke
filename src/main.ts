@@ -142,6 +142,8 @@ const createWindow = () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.showInactive();
     console.log('Main window shown inactive.');
+    // Automatically open DevTools for debugging
+    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
   });
 
   // Handle window close event - Remove recursive quit

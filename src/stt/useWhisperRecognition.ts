@@ -180,9 +180,7 @@ export const useWhisperRecognition = () => {
 
   // Initialize worker on mount
   useEffect(() => {
-    if (modelState === 'idle') {
-      initializeWorker();
-    }
+    initializeWorker(); // Initialize once on mount
 
     // Cleanup worker on unmount
     return () => {
@@ -192,7 +190,7 @@ export const useWhisperRecognition = () => {
         workerRef.current = null;
       }
     };
-  }, [initializeWorker, modelState]);
+  }, [initializeWorker]);
 
   // Function to send audio to the worker for transcription
   const transcribeAudio = useCallback(async (audioBlob: Blob) => {

@@ -24,6 +24,7 @@ self.addEventListener('message', async (event) => {
         try {
             self.postMessage({ status: 'loading-model' });
             
+            console.time('pipeline-instantiate'); // START TIMER
             // Load the pipeline
             transcriber = await pipeline(TASK, MODEL_NAME, {
                 quantized: true, // CORRECT: Use pre-quantized weights in whisper-tiny.en
@@ -32,8 +33,9 @@ self.addEventListener('message', async (event) => {
                     self.postMessage({ status: 'loading-progress', progress });
                 },
                 // Explicitly request webgpu, transformers.js will fallback if unavailable
-                device: 'webgpu', 
+                // device: 'webgpu', // Let transformers.js auto-select backend
             });
+            console.timeEnd('pipeline-instantiate'); // END TIMER
 
             self.postMessage({ status: 'init-complete' });
         } catch (error) {
