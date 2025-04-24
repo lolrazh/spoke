@@ -3,7 +3,7 @@ import { pipeline, env } from '@xenova/transformers';
 
 // Configuration
 // const MODEL_NAME = 'Xenova/whisper-tiny'; // Old model
-const MODEL_NAME = 'Xenova/whisper-tiny.en'; // Use tiny English-only (pre-quantized) for speed
+const MODEL_NAME = 'onnx-community/whisper-base'; // Use tiny English-only (pre-quantized) for speed
 const TASK = 'automatic-speech-recognition';
 const LANGUAGE = 'english'; // Model is English-only now
 
