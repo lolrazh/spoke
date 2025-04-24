@@ -1,3 +1,5 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+
 // speech recognition
 export const WHISPER_SAMPLING_RATE = 16_000;
 export const MAX_AUDIO_LENGTH = 30; // Max audio length in seconds for Whisper processing
@@ -88,5 +90,150 @@ export const convertBlobToAudio = async (blob: Blob): Promise<Float32Array | nul
     //console.error("Error converting blob to audio:", err);
     return null;
   }
+};
+
+// --- New React Hook --- 
+export const useWhisperRecognition = () => {
+  const workerRef = useRef<Worker | null>(null);
+
+  const [modelState, setModelState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [transcriptionState, setTranscriptionState] = useState<'idle' | 'transcribing' | 'error'>('idle');
+  const [transcriptionText, setTranscriptionText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Function to initialize the worker and model
+  const initializeWorker = useCallback(() => {
+    if (workerRef.current) {
+      console.log('Worker already exists.');
+      return;
+    }
+    
+    console.log('Initializing Whisper worker...');
+    // Create the worker
+    const worker = new Worker(new URL('./whisper-worker.js', import.meta.url), {
+        type: 'module'
+    });
+    
+    // Add message listener
+    worker.onmessage = (event) => {
+      const { status, progress, text, error: workerError } = event.data;
+      // console.log('Worker message:', event.data); // Debugging
+
+      switch (status) {
+        case 'loading-model':
+          setModelState('loading');
+          setError(null);
+          setLoadingProgress(0);
+          break;
+        case 'loading-progress':
+          setModelState('loading');
+          setLoadingProgress(progress?.progress || 0);
+          break;
+        case 'init-complete':
+          setModelState('ready');
+          setError(null);
+          setLoadingProgress(100);
+          console.log('Whisper model ready.');
+          break;
+        case 'init-error':
+          setModelState('error');
+          setError(`Model Initialization Error: ${workerError}`);
+          console.error('Model Initialization Error:', workerError);
+          break;
+        case 'transcribing':
+          setTranscriptionState('transcribing');
+          setError(null);
+          setTranscriptionText(''); // Clear previous result
+          break;
+        case 'transcription-result':
+          setTranscriptionState('idle');
+          setTranscriptionText(text);
+          setError(null);
+          break;
+        case 'transcription-error':
+          setTranscriptionState('error');
+          setError(`Transcription Error: ${workerError}`);
+          console.error('Transcription Error:', workerError);
+          break;
+        default:
+          console.warn('Unknown worker message status:', status);
+      }
+    };
+
+    worker.onerror = (err) => {
+        console.error("Worker error:", err);
+        setModelState('error');
+        setError(`Worker Error: ${err.message}`);
+    }
+
+    workerRef.current = worker;
+
+    // Send init message to load model
+    worker.postMessage({ type: 'init' });
+  }, []);
+
+  // Initialize worker on mount
+  useEffect(() => {
+    if (modelState === 'idle') {
+      initializeWorker();
+    }
+
+    // Cleanup worker on unmount
+    return () => {
+      if (workerRef.current) {
+        console.log('Terminating Whisper worker...');
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, [initializeWorker, modelState]);
+
+  // Function to send audio to the worker for transcription
+  const transcribeAudio = useCallback(async (audioBlob: Blob) => {
+    if (modelState !== 'ready') {
+        setError('Model not ready for transcription.');
+        console.warn('Model not ready, cannot transcribe.');
+        return;
+    }
+    if (transcriptionState === 'transcribing') {
+        setError('Already transcribing.');
+        console.warn('Already transcribing, skipping new request.');
+        return;
+    }
+
+    setTranscriptionState('transcribing'); // Set state immediately
+    setError(null);
+    setTranscriptionText('');
+
+    // Convert and resample audio
+    const audioFloat32Array = await convertBlobToAudio(audioBlob);
+
+    if (audioFloat32Array && workerRef.current) {
+      // Send audio data to worker
+      // Transferable object for performance
+      workerRef.current.postMessage({ type: 'transcribe', audio: audioFloat32Array }, [audioFloat32Array.buffer]);
+    } else if (!audioFloat32Array) {
+        console.error('Failed to convert audio blob to Float32Array.');
+        setError('Failed to process audio data.');
+        setTranscriptionState('error');
+    } else {
+        // This case should ideally not happen if modelState is checked
+        console.error('Worker not available for transcription.');
+        setError('Worker not available.');
+        setTranscriptionState('error');
+    }
+
+  }, [modelState, transcriptionState]); // Dependencies
+
+  return {
+    isModelLoading: modelState === 'loading',
+    isReady: modelState === 'ready',
+    isTranscribing: transcriptionState === 'transcribing',
+    loadingProgress,
+    transcriptionText,
+    error,
+    transcribeAudio, // Function to trigger transcription
+  };
 };
 

@@ -1,194 +1,144 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Pill from './Pill';
-import { startRecording, stopRecording } from '../lib/audio';
+// Remove old audio import
+// import { startRecording, stopRecording } from '../lib/audio';
+
+// Import the new hooks
+import { useWhisperRecorder } from '../stt/useWhisperRecorder';
+import { useWhisperRecognition } from '../stt/useWhisperRecognition';
 
 // Placeholder transcription text (would be replaced with actual API call result)
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
 
 const App: React.FC = () => {
-  const [isListening, setIsListening] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // State from hooks
+  const recorder = useWhisperRecorder();
+  const recognizer = useWhisperRecognition();
+
+  // Derived state for the Pill component
+  const isLoading = recognizer.isModelLoading || recognizer.isTranscribing;
+  const isReady = recognizer.isReady;
+  const isListening = recorder.isRecording;
 
   // Handle toggle dictation from shortcut
   useEffect(() => {
     if (!window.electron) return;
 
     const handleToggleDictation = () => {
-      console.log('Toggle dictation shortcut pressed, current state:', 
-        isListening ? 'listening' : 'not listening',
-        isProcessing ? 'processing' : 'not processing');
+      console.log('Toggle dictation shortcut pressed. States:', {
+        isListening: recorder.isRecording, 
+        isLoadingModel: recognizer.isModelLoading,
+        isTranscribing: recognizer.isTranscribing,
+        isReady: recognizer.isReady
+      });
       
-      if (isListening) {
+      if (recorder.isRecording) {
+        // Currently recording, so stop
         handleStopDictation();
-      } else if (!isProcessing) {
+      } else if (recognizer.isReady && !recognizer.isModelLoading && !recognizer.isTranscribing) {
+        // Ready and not busy, so start
         handleStartDictation();
+      } else if (recognizer.isModelLoading) {
+        console.log('Model is still loading.');
+        window.electron?.sendNotification('Model is loading...');
+      } else if (recognizer.isTranscribing) {
+        console.log('Still processing previous dictation.');
+        window.electron?.sendNotification('Still processing...');
       } else {
-        console.log('Still processing previous dictation');
-        if (window.electron) {
-          window.electron.sendNotification('Still processing previous dictation');
-        } else {
-          console.log('Still processing previous dictation');
+        console.warn('Cannot start dictation in current state.');
+        // Optionally notify user if model init failed previously
+        if (!recognizer.isReady) {
+           window.electron?.sendNotification('Transcription model not ready.');
         }
       }
     };
 
-    // Register for hotkey events and store the cleanup function
+    // Register for hotkey events
     const cleanup = window.electron.toggleDictation(handleToggleDictation);
 
-    // Return the cleanup function to remove the event listener when the component unmounts
-    // or when the dependencies change
+    // Cleanup listener on unmount or dependency change
     return cleanup;
-  }, [isListening, isProcessing]);
+  }, [recorder.isRecording, recognizer.isReady, recognizer.isModelLoading, recognizer.isTranscribing]); // Dependencies reflect states checked
 
-  // Clean up on unmount
+  // Handle transcription results
   useEffect(() => {
-    return () => {
-      console.log('App component unmounting, cleaning up resources');
-      cleanupRecording();
-    };
-  }, []);
-
-  // Helper function to clean up recording resources
-  const cleanupRecording = () => {
-    if (!mediaRecorderRef.current) return;
-    
-    console.log('Cleaning up MediaRecorder');
-    
-    try {
-      // Stop the recorder if it's still recording
-      if (mediaRecorderRef.current.state === 'recording' || mediaRecorderRef.current.state === 'paused') {
-        mediaRecorderRef.current.stop();
+    if (recognizer.transcriptionText && window.electron) {
+      const textToInsert = recognizer.transcriptionText.trim();
+      console.log(`Received transcription result: "${textToInsert}"`);
+      if (textToInsert) { // Only insert if not empty after trimming
+          console.log('Inserting transcribed text at cursor...');
+          window.electron.insertTextAtCursor(textToInsert)
+            .then(insertResult => {
+              if (!insertResult.success && insertResult.error) {
+                console.error('Insertion Error:', insertResult.error);
+                window.electron?.sendNotification(insertResult.error);
+              }
+            })
+            .catch(err => {
+                console.error('Error during insertTextAtCursor IPC:', err);
+                window.electron?.sendNotification('Failed to insert text.');
+            });
+      } else {
+          console.log('Transcription result was empty after trimming, not inserting.');
       }
-      
-      // Stop all tracks
-      mediaRecorderRef.current.stream.getTracks().forEach(track => {
-        if (track.readyState === 'live') {
-          track.stop();
-        }
-      });
-    } catch (e) {
-      console.error('Error cleaning up MediaRecorder:', e);
     }
-    
-    // Clear the reference
-    mediaRecorderRef.current = null;
-  };
+  }, [recognizer.transcriptionText]); // Watch for new transcription text
 
-  const handleStartDictation = async () => {
+  // Handle errors from hooks
+  useEffect(() => {
+    const combinedError = recorder.error || recognizer.error;
+    if (combinedError && window.electron) {
+      console.error('Hook Error:', combinedError);
+      window.electron.sendNotification(combinedError); // Show error to user
+    }
+  }, [recorder.error, recognizer.error]);
+
+  // --- Event Handlers using Hooks ---
+
+  const handleStartDictation = useCallback(async () => {
+    if (!recognizer.isReady) {
+        console.warn('Recognition model not ready, cannot start recording.');
+        window.electron?.sendNotification('Model not ready yet.');
+        return;
+    }
+    console.log('=== DICTATION START PROCESS ===');
     try {
-      console.log('=== DICTATION START PROCESS ===');
-      
-      // First, ensure any previous recording is cleaned up
-      cleanupRecording();
-      
-      // Update UI state
-      setIsListening(true);
-      
-      // Start recording
-      console.log('Starting new recording...');
-      mediaRecorderRef.current = await startRecording();
-      
-      // Notify main process
-      if (window.electron) {
-        await window.electron.startRecording();
-      }
-      
+      await recorder.startRecording();
+      // No need for main process IPC startRecording anymore
       console.log('=== DICTATION START COMPLETE ===');
     } catch (error) {
+      // Error state is handled by the hook's useEffect
       console.error('=== DICTATION START FAILED ===', error);
-      const errorMsg = 'Could not access microphone. Check permissions.';
-      if (window.electron) {
-        window.electron.sendNotification(errorMsg);
-      } else {
-        console.log(errorMsg);
-      }
-      setIsListening(false);
-      cleanupRecording();
     }
-  };
+  }, [recorder.startRecording, recognizer.isReady]); // Add recognizer.isReady
 
-  const handleStopDictation = async () => {
-    if (!mediaRecorderRef.current) {
-      console.error('No active recording found');
-      setIsListening(false);
-      return;
-    }
-    
+  const handleStopDictation = useCallback(async () => {
     console.log('=== DICTATION STOP PROCESS ===');
-    
-    // Update UI state
-    setIsListening(false);
-    setIsProcessing(true);
-    
     try {
-      // Stop recording and get audio data
-      console.log('Stopping recording...');
-      const audioBlob = await stopRecording(mediaRecorderRef.current);
-      
-      // Clear the reference immediately
-      mediaRecorderRef.current = null;
-      
-      // Notify main process
-      if (window.electron) {
-        await window.electron.stopRecording();
-      }
-      
-      // Skip transcription if blob is empty
-      if (audioBlob.size === 0) {
-        console.log('Audio blob is empty, skipping transcription');
-        setIsProcessing(false);
-        return;
-      }
-      
-      // Convert audio for transcription
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      
-      // Transcribe audio
-      if (window.electron) {
-        console.log('Sending audio for transcription...');
-        const transcriptionResult = await window.electron.transcribeAudio(uint8Array);
-        
-        if (!transcriptionResult.success) {
-          throw new Error(transcriptionResult.error || 'Transcription failed');
-        }
-        
-        // Insert text at cursor
-        console.log('Inserting transcribed text at cursor');
-        const insertResult = await window.electron.insertTextAtCursor(transcriptionResult.text || '');
-        
-        if (!insertResult.success && insertResult.error) {
-          console.log(insertResult.error);
-          if (window.electron) {
-            window.electron.sendNotification(insertResult.error);
-          } else {
-            console.log(insertResult.error);
-          }
-        }
+      const audioBlob = await recorder.stopRecording();
+      // No need for main process IPC stopRecording anymore
+
+      if (audioBlob) {
+        console.log('Audio blob received, sending for transcription...');
+        // Pass the blob to the recognition hook
+        recognizer.transcribeAudio(audioBlob);
       } else {
-        throw new Error('Electron API not available');
+        console.log('Audio blob was null or empty, skipping transcription.');
+        // Optionally notify user? Or just do nothing.
       }
-      
-      console.log('=== DICTATION PROCESS COMPLETE ===');
+      console.log('=== DICTATION STOP/PROCESS TRIGGERED ===');
     } catch (error) {
-      console.error('=== DICTATION PROCESS FAILED ===', error);
-      const errorMsg = 'Error processing dictation.';
-      if (window.electron) {
-        window.electron.sendNotification(errorMsg);
-      } else {
-        console.log(errorMsg);
-      }
-    } finally {
-      setIsProcessing(false);
+      // Error state is handled by the hook's useEffect
+      console.error('=== DICTATION STOP FAILED ===', error);
     }
-  };
+  }, [recorder.stopRecording, recognizer.transcribeAudio]); // Add recognizer.transcribeAudio
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill 
-        isListening={isListening}
-        isProcessing={isProcessing}
+        // Pass relevant states to the Pill
+        isListening={isListening} 
+        isProcessing={isLoading} // Combined loading state
         onStartDictation={handleStartDictation}
         onStopDictation={handleStopDictation}
       />
