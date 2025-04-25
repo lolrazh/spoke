@@ -1,100 +1,241 @@
-
-# Implementation Plan: Local Whisper Transcription Migration
-
-**Goal:** Replace the cloud-based Groq API transcription with a fully local Whisper model (`whisper-tiny`) running in the renderer process using Transformers.js, Web Workers, and WebGPU.
-
-**Core Principle:** Shift transcription logic from the Electron main process to the renderer process, leveraging Web Workers for non-blocking inference.
+Below is a **ground-up, cut-the-fat migration plan** that keeps the Electron/React UI you like, but **replaces every line of your speech-to-text “back-end” with the tidy two-file WebGPU Whisper demo** you pasted.  
+Read it start-to-finish once, then work through the phases in order – don’t interleave steps.
 
 ---
 
-## Phase 1: Setup & Worker Implementation
+## PHASE 0 – Mental model & goals (read, don’t code)
 
-1.  **Install Dependencies:**
-    *   Ensure `@xenova/transformers` is installed: `npm install @xenova/transformers` (or yarn equivalent).
-2.  **Configure Web Worker (`src/stt/whisper-worker.js`):**
-    *   Import `pipeline` from `@xenova/transformers`.
-    *   Implement message listener (`self.onmessage`) to handle commands from the main renderer thread.
-    *   **Model Initialization:**
-        *   Add logic to load the `Xenova/whisper-tiny` model upon receiving an `init` message.
-        *   Use the `pipeline('automatic-speech-recognition', ...)` function.
-        *   Specify `model: 'Xenova/whisper-tiny'`.
-        *   Enable `quantized: true` (usually default/recommended for Transformers.js).
-        *   Pass `device: 'webgpu'` if WebGPU is available/desired, otherwise let Transformers.js handle fallback (WASM).
-        *   Implement progress callback (`progress_callback`) during model loading and post `loading-progress` messages back to the main thread.
-        *   Store the initialized pipeline instance in a variable accessible within the worker scope.
-        *   Post `init-complete` message on success or `init-error` on failure.
-    *   **Transcription Logic:**
-        *   Add logic to handle a `transcribe` message containing audio data (e.g., as an `ArrayBuffer` or `Float32Array`).
-        *   Ensure the audio data is in the format expected by the Whisper pipeline (usually Float32Array, potentially requiring conversion/resampling if `useWhisperRecorder` provides something else). *Self-correction: Check `useWhisperRecognition` and `useWhisperRecorder` interaction*.
-        *   Call the loaded pipeline instance with the audio data.
-        *   Specify `language: 'english'` and `task: 'transcribe'`.
-        *   Post `transcription-result` message with the transcribed text on success.
-        *   Post `transcription-error` message on failure.
-
-## Phase 2: Renderer Hook Integration
-
-1.  **Review/Refine Recognition Hook (`src/stt/useWhisperRecognition.ts`):**
-    *   Ensure it correctly creates and manages the `whisper-worker.js` instance.
-    *   Implement logic to send the `init` message to the worker upon hook initialization or a specific trigger.
-    *   Handle `loading-progress`, `init-complete`, `init-error`, `transcription-result`, and `transcription-error` messages from the worker.
-    *   Maintain internal state reflecting the worker/model status (e.g., `isModelLoading`, `loadingProgress`, `isReady`, `isTranscribing`, `error`).
-    *   Expose a function (e.g., `transcribeAudio(audioData)`) that sends the `transcribe` message to the worker.
-    *   Expose the transcription result (`transcriptionText`) and relevant state variables.
-2.  **Review/Refine Recorder Hook (`src/stt/useWhisperRecorder.ts`):**
-    *   Verify it handles microphone permissions, start/stop recording.
-    *   Confirm the format of the audio data it provides upon stopping (e.g., `Blob`, `ArrayBuffer`, `Float32Array`). Ensure this format is compatible with what the `whisper-worker.js` expects or add conversion logic in `useWhisperRecognition` or `App.tsx` before passing it to the worker.
-    *   Expose state like `isRecording`.
-3.  **Integrate Hooks into `src/components/App.tsx`:**
-    *   Remove imports related to `src/lib/audio.ts`.
-    *   Remove state `mediaRecorderRef`.
-    *   Instantiate the hooks: `const recorder = useWhisperRecorder();` and `const recognizer = useWhisperRecognition();`.
-    *   **State Mapping:**
-        *   Replace `isListening` state management with `recorder.isRecording`.
-        *   Replace `isProcessing` state management with a combination of `recognizer.isModelLoading` and `recognizer.isTranscribing`. Consider a new state `isLoadingModel` if distinct UI is needed.
-    *   **Event Handling:**
-        *   Modify `handleStartDictation`:
-            *   Call `recorder.startRecording()`.
-            *   Remove IPC call `window.electron.startRecording()`.
-        *   Modify `handleStopDictation`:
-            *   Call `recorder.stopRecording()` to get the audio data.
-            *   Remove IPC call `window.electron.stopRecording()`.
-            *   If audio data is valid, call `recognizer.transcribeAudio(audioData)`.
-    *   **Result Handling:**
-        *   Use `useEffect` to watch for changes in `recognizer.transcriptionText`.
-        *   When new text arrives, call `window.electron.insertTextAtCursor(recognizer.transcriptionText)`.
-        *   Handle errors exposed by `recorder.error` and `recognizer.error` (e.g., using `window.electron.sendNotification`).
-    *   **Cleanup:** Ensure hook cleanup functions are called on unmount.
-
-## Phase 3: UI and Main Process Adjustments
-
-1.  **Update UI (`src/components/Pill.tsx`):**
-    *   Adjust props passed from `App.tsx` based on the new state management (e.g., pass `isLoadingModel` if added).
-    *   Modify conditional rendering to account for `isLoadingModel` state if necessary (e.g., show a different spinner/indicator).
-2.  **Clean Main Process (`src/main.ts`):**
-    *   Remove the `transcribe-audio` IPC handler (`ipcMain.handle('transcribe-audio', ...)`).
-    *   Remove the `start-recording` IPC handler (`ipcMain.handle('start-recording', ...)`).
-    *   Remove the `stop-recording` IPC handler (`ipcMain.handle('stop-recording', ...)`).
-    *   Remove the import of `{ transcribeAudio, cleanupTempFiles }` from `./lib/transcription`.
-    *   Remove the `recordingData` global variable.
-    *   Remove `cleanupTempFiles` call in `app.on('quit')` if it's no longer needed (local STT doesn't use temp files).
-3.  **Clean Preload Script (`src/preload.ts`):**
-    *   Remove `startRecording`, `stopRecording`, and `transcribeAudio` from the `contextBridge.exposeInMainWorld('electron', ...)` object.
-
-## Phase 4: Cleanup and Testing
-
-1.  **Delete Obsolete Files:**
-    *   Delete `src/lib/audio.ts`.
-    *   Delete `src/lib/transcription.ts`.
-    *   Delete the `sonic-flow` temporary directory creation logic and potentially the directory itself if no longer used (`TEMP_DIR` in `main.ts` or `transcription.ts`).
-2.  **Testing:**
-    *   **First Launch:** Verify model download progress indicator (if implemented) and successful initialization. Check console for WebGPU/WASM usage.
-    *   **Basic Transcription:** Start recording, speak, stop recording. Verify text insertion.
-    *   **Hotkey Control:** Test starting and stopping dictation using the global hotkey.
-    *   **Error Handling:**
-        *   Deny microphone permission and try to record. Verify error notification.
-        *   Simulate a worker error (if possible) or test edge cases (e.g., stopping immediately after starting).
-    *   **Resource Usage:** Monitor CPU/GPU/Memory usage during model load and transcription (basic check).
-    *   **Repeated Use:** Test multiple back-to-back transcriptions.
+| What to keep | What to trash | What to add |
+|--------------|--------------|-------------|
+| • All UI/UX files (Pill, HomePage, router, Tailwind theme, Tray/context-menu logic, hot-key capture window, clipboard insertion routine).<br>• `main.ts` responsibilities that are **not** STT-related (global shortcut, tray menu, window management, log file, insert-at-cursor). | • Every file in **`src/stt`**.<br>• All code in `main.ts` and `preload.ts` that tries to talk to those `src/stt` hooks or log model-loading progress.<br>• `public/models` and packager rules that copy it – we’ll download models on first run just like the demo.<br>• All Groq remnants already commented out. | • A single **worker** (`src/whisper-worker.ts`) – TS port of the demo’s `worker.js`.<br>• A single **recorder/worker orchestration hook** (`useTranscription.ts`) distilled from the demo’s `App.jsx`.<br>• A leaner `App.tsx` that wires Pill ↔ hook ↔ clipboard.<br>• CSP & Vite tweaks so the worker bundles and HF downloads are allowed. |
 
 ---
-This plan provides a step-by-step guide. We will proceed through these phases, focusing on one part at a time.
+
+## PHASE 1 – Delete with prejudice
+
+1. **Nuke the old STT directory**  
+   ```bash
+   rm -rf src/stt
+   ```
+2. **Purge imports**  
+   * Open every file that imported from `src/stt` (only `App.tsx`). Remove those imports and all state that referenced them. We’ll rebuild in Phase 4.
+3. **Strip model-progress plumbing in `main.ts` & `preload.ts`**  
+   * Delete the whole `ipcMain.on('log-progress' …)` handler in `main.ts`.  
+   * Delete the `logProgress` API exposed in `preload.ts` and its typedef in `src/types/electron.d.ts`.
+4. **Remove packager resources no longer needed**  
+   * In `forge.config.ts` delete  
+     ```ts
+     asar: { unpackDir: 'public/models' },
+     extraResource: ['public/models'],
+     ```  
+   * Also delete the `public/models` folder itself.
+
+> **Checkpoint:** `npm run make` still packages and the app launches (it won’t dictate yet). If it fails you deleted too much – fix before continuing.
+
+---
+
+## PHASE 2 – Add the new worker
+
+1. **Create `src/whisper-worker.ts`** (TypeScript twin of the demo’s `worker.js`).  
+   * Change `import … from '@huggingface/transformers'` exactly as in the demo.  
+   * Keep `onnx-community/whisper-base` and WebGPU device selection.  
+   * Replace all `self.postMessage({ … })` status strings with the *same* values the demo uses (`loading`, `initiate`, `progress`, `done`, `ready`, `start`, `update`, `complete`). We’ll reuse them verbatim in the hook.
+2. **Tell Vite to treat it as a dedicated worker**  
+   * In **`vite.config.ts`** add  
+     ```ts
+     worker: { formats: ['es'] },
+     ```
+     so Rollup keeps it ES-module style (Electron 35 can load it).
+
+---
+
+## PHASE 3 – Make room for the new hook
+
+1. **Add `src/hooks/useTranscription.ts`** (or keep it next to the worker – your call). Minimal shape:
+
+   ```ts
+   import { useRef, useState, useEffect, useCallback } from 'react';
+
+   const WHISPER_SR = 16_000;
+   const MAX_SAMPLES = WHISPER_SR * 30;
+
+   export function useTranscription() {
+     const workerRef = useRef<Worker>();
+     const recorderRef = useRef<MediaRecorder>();
+     const audioCtxRef = useRef<AudioContext>();
+     const [stream, setStream] = useState<MediaStream>();
+     const [recording, setRecording] = useState(false);
+     const [processing, setProcessing] = useState(false);
+     const [ready, setReady] = useState(false);
+     const [text, setText] = useState('');
+     const [error, setError] = useState<string | null>(null);
+
+     /* 1️⃣ Boot worker once */
+     useEffect(() => {
+       if (workerRef.current) return;
+       workerRef.current = new Worker(
+         new URL('../whisper-worker.ts', import.meta.url),
+         { type: 'module' }
+       );
+
+       workerRef.current.onmessage = (e) => { /* copy demo switch-case, set React state */ };
+     }, []);
+
+     /* 2️⃣ Ask for mic & build MediaRecorder once */
+     useEffect(() => {
+       (async () => {
+         if (stream) return;
+         try {
+           const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+           setStream(s);
+           recorderRef.current = new MediaRecorder(s);
+           audioCtxRef.current = new AudioContext({ sampleRate: WHISPER_SR });
+           // wire ondataavailable exactly like the demo
+         } catch (err) {
+           setError('mic permission denied');
+         }
+       })();
+     }, [stream]);
+
+     /* 3️⃣ Pump chunks to worker whenever we’re recording & not already processing */
+     /* replicate the demo’s effect with chunks[] but hide chunks inside useRef to cut garbage */
+
+     /* 4️⃣ public API */
+     const start = useCallback(() => {
+       if (!ready || recording) return;
+       recorderRef.current?.start();
+     }, [ready, recording]);
+
+     const stop = useCallback(() => {
+       recorderRef.current?.stop();
+     }, []);
+
+     return { recording, processing, ready, text, error, start, stop };
+   }
+   ```
+
+   > No need for separate Recorder & Recognition hooks – the demo proves a single hook is simpler.
+
+---
+
+## PHASE 4 – Refactor `App.tsx`
+
+1. **Replace all old hook imports** with:
+
+   ```ts
+   import { useTranscription } from '../hooks/useTranscription';
+   ```
+2. **State mapping**  
+
+   | Old state | New |
+   |-----------|-----|
+   | `recorder.isRecording` | `trans.recording` |
+   | `recognizer.isModelLoading` | `!trans.ready` *(invert)* |
+   | `recognizer.isTranscribing` | `trans.processing` |
+   | `recognizer.transcriptionText` | `trans.text` |
+   | `recorder.error` / `recognizer.error` | `trans.error` |
+
+3. **Hot-key callbacks** stay the same: if `trans.recording` → `trans.stop()`, else `trans.start()`.
+4. **Clipboard insertion** – identical; keep `window.electron.insertTextAtCursor`.
+5. **Kill all logic that forwarded progress to `ipcMain` – it no longer exists.**
+
+---
+
+## PHASE 5 – Dependencies & build tweaks
+
+1. **Package.json**
+
+   *Remove*
+   ```json
+   "@xenova/transformers": "...",
+   ```
+   *Add*
+   ```json
+   "@huggingface/transformers": "^3.5.0",
+   "onnxruntime-web": "^1.19.0"
+   ```
+   (Transformers will pull the right ORT sub-dependency automatically but pinning is safer).
+
+2. **TypeScript shims**
+
+   Add to `src/types/worker.d.ts`:
+
+   ```ts
+   declare module '*?worker' {
+     const mod: new () => Worker;
+     export default mod;
+   }
+   ```
+
+3. **Content-Security-Policy**
+
+   In `index.html` extend `connect-src` to include the HF model repo:
+
+   ```html
+   connect-src 'self' https://huggingface.co https://cdn.jsdelivr.net blob:;
+   ```
+
+   (Already present – good; just ensure no extra quotes).
+
+---
+
+## PHASE 6 – Clean `main.ts`
+
+*Delete* everything marked below:
+
+```ts
+// ⛔ DELETE
+ipcMain.on('log-progress', ...);
+
+// also remove the import of execSync used only for log-progress
+```
+
+Nothing else in `main.ts` touches the STT pipeline now.
+
+---
+
+## PHASE 7 – Dev-build & test
+
+1. `npm i`
+2. `npm run start`  
+   * Watch terminal: first load will download ~200 MB – allow time.  
+   * Whisper model compiles, `ready` becomes true.
+3. Press your global hot-key  
+   * Pill shows recording animation → processing dots → output inserts at cursor / copies to clipboard.
+4. Toggle dark/light theme, HomePage, tray menu – ensure nothing broke.
+
+---
+
+## PHASE 8 – Packaging sanity
+
+1. `npm run make` → install the `.exe` / `.dmg`; check first-run downloads still succeed (no `public/models` packed).
+2. Sign & notarise when you’re ready – nothing STT-specific affects codesign.
+
+---
+
+### What we **deleted** (summary checklist)
+
+- `src/stt/**`
+- `Implementation-plan.md` (superseded)
+- STT IPC & progress logging in `main.ts`, `preload.ts`, typedefs.
+- Packager ASAR `unpackDir` + `extraResource` entries.
+- `public/models`
+
+### What we **added**
+
+```
+src/whisper-worker.ts
+src/hooks/useTranscription.ts
+vite.config.ts  →  worker.formats = ['es']
+index.html CSP tweak
+package.json deps: @huggingface/transformers, onnxruntime-web
+src/types/worker.d.ts
+```
+
+---
+
+## Final advice
+
+*   Don’t optimise prematurely – let the official JS cache store the model (~`AppData/…/Cache`) and focus on UX polish.
+*   If you later need full offline installers, re-add `public/models` and set `env.localModelPath`, but that’s a one-liner when/if required.
+*   Keep all STT logic on the renderer thread. The main process now has zero ML baggage, making future maintenance (auto-updates, code-signing, Apple notarisation) **much** easier.
