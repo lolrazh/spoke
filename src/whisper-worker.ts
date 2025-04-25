@@ -11,7 +11,7 @@ import {
 // --- Type Definitions (Basic) ---
 type ProgressCallback = (progress: Progress | null) => void;
 
-const MODEL_NAME = 'onnx-community/whisper-base'; // Keep base model
+const MODEL_NAME = 'onnx-community/whisper-tiny'; // Keep base model
 const MAX_NEW_TOKENS = 64;
 
 // --- Helper to check WebGPU --- 
