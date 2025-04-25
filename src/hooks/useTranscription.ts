@@ -33,6 +33,14 @@ export function useTranscription(): UseTranscriptionReturn {
   // const [loadingMessage, setLoadingMessage] = useState('');
   // const [progressItems, setProgressItems] = useState([]);
 
+  // Refs to track the latest state for the stale closure in onstop
+  const readyRef = useRef(ready);
+  const processingRef = useRef(processing);
+
+  // Update refs whenever state changes
+  useEffect(() => { readyRef.current = ready; }, [ready]);
+  useEffect(() => { processingRef.current = processing; }, [processing]);
+
   // --- 1️⃣ Boot worker once --- 
   useEffect(() => {
     if (workerRef.current) return;
@@ -75,7 +83,7 @@ export function useTranscription(): UseTranscriptionReturn {
               break;
           case 'start':
               setProcessing(true);
-              setText(''); // Clear previous text
+              setText('');
               break;
           case 'update':
               // Handle partial updates if needed (e.g., tokens per second)
@@ -160,13 +168,13 @@ export function useTranscription(): UseTranscriptionReturn {
                 console.warn('[useTranscription] No audio data recorded.');
                 return;
             }
-            if (!ready || processing) {
-                console.warn('[useTranscription] Worker not ready or already processing, skipping transcription.');
+            if (!readyRef.current || processingRef.current) {
+                console.warn(`[useTranscription] Worker not ready (ready=${readyRef.current}) or already processing (processing=${processingRef.current}), skipping transcription.`);
                 return;
             }
 
             try {
-                setProcessing(true); // Indicate processing started
+                // setProcessing(true); // *** REMOVE THIS LINE ***
                 
                 // Combine chunks into a single Blob
                 const audioBlob = new Blob(audioChunksRef.current, {
@@ -199,7 +207,7 @@ export function useTranscription(): UseTranscriptionReturn {
                     type: 'generate', 
                     data: { audio: audio, language: 'en' } // Pass language (can be made dynamic)
                 });
-                // Note: setProcessing(false) will be handled by worker 'complete' or 'error' message
+                // Note: setProcessing will now be handled by worker 'start' message
 
             } catch(err) {
                 console.error("[useTranscription] Error processing audio on stop:", err);
