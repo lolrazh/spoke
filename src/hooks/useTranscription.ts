@@ -231,7 +231,7 @@ export function useTranscription(): UseTranscriptionReturn {
       audioCtxRef.current = null;
       setStream(null);
     };
-  }, [stream]); // Re-run only if the stream state changes (which it shouldn't after init)
+  }, []); // <-- Make dependency array empty to run only once on mount
 
 
   // --- 4️⃣ Public API --- 
