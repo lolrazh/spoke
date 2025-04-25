@@ -5,7 +5,7 @@ import {
     env,
     // @ts-ignore Progress type might be nested or different now
     Progress,
-    // Tensor, // Might need Tensor if creating dummy input_features manually
+    Tensor, // Import Tensor
 } from '@huggingface/transformers';
 
 // --- Type Definitions (Basic) ---
@@ -175,27 +175,22 @@ async function load(): Promise<void> {
         }
     };
 
-    const [, , model] = await AutomaticSpeechRecognitionPipeline.getInstance(progressCallback);
-
-    self.postMessage({
-        status: 'loading',
-        data: 'Compiling shaders and warming up model...'
-    });
-
-    // Run model with dummy input to compile shaders
+    // Get model instance (this loads tokenizer, processor, and model weights)
+    // This instantiation might be enough warm-up
     try {
-        // Keep using input_features for dummy, ignore TS error for now
-        // @ts-ignore
-        const dummyInputFeatures = null; // Placeholder
-        await model.generate({
-            // @ts-ignore Property 'input_features' does not exist...
-            input_features: dummyInputFeatures, 
-            max_new_tokens: 1,
-        });
-    } catch(genError) {
-        console.warn("Dummy generation failed (might be expected on some backends):", genError);
+        console.log('[Whisper] Loading model components...');
+        await AutomaticSpeechRecognitionPipeline.getInstance(progressCallback);
+        console.log('[Whisper] Model components loaded.');
+        
+        // No explicit warm-up/dummy generation needed - remove that block
+
+        self.postMessage({ status: 'ready' });
+        console.log('[Whisper] Worker is ready.');
+
+    } catch (loadError) {
+        console.error('[Whisper] Failed to load model components:', loadError);
+        self.postMessage({ status: 'error', error: 'Failed to load model' });
     }
-    self.postMessage({ status: 'ready' });
 }
 
 // Listen for messages from the main thread
