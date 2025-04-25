@@ -1,11 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Pill from './Pill';
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
-
-// Import the new hooks
-// import { useWhisperRecorder } from '../stt/useWhisperRecorder';
-// import { useWhisperRecognition } from '../stt/useWhisperRecognition';
 
 // Placeholder transcription text (would be replaced with actual API call result)
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";

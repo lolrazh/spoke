@@ -6,87 +6,9 @@ import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 
-// Set up logging to file
-const LOG_FILE = path.join(app.getPath('userData'), 'sonic-flow.log');
-console.log(`Logging to file: ${LOG_FILE}`);
-
-// Create a write stream for the log file
-const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-
-// Override console.log, console.error, etc. to also write to the log file
-const originalConsoleLog = console.log;
-const originalConsoleError = console.error;
-const originalConsoleWarn = console.warn;
-
-// 1. Define the restore function
-function restoreConsole() {
-  console.log = originalConsoleLog;
-  console.error = originalConsoleError;
-  console.warn = originalConsoleWarn;
-}
-
-console.log = function(...args) {
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] [LOG] ${args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg) : arg
-  ).join(' ')}`;
-  
-  // Check if stream is destroyed before writing
-  if (logStream && !logStream.destroyed) { 
-    try {
-      logStream.write(message + '\n');
-    } catch (err) {
-      originalConsoleError('Error writing to log stream:', err);
-    }
-  }
-  originalConsoleLog.apply(console, args);
-};
-
-console.error = function(...args) {
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] [ERROR] ${args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg) : arg
-  ).join(' ')}`;
-  
-  // Check if stream is destroyed before writing
-  if (logStream && !logStream.destroyed) {
-    try {
-      logStream.write(message + '\n');
-    } catch (err) {
-      // If error writing error, just use original console
-      originalConsoleError('Error writing error to log stream:', err);
-    }
-  }
-  originalConsoleError.apply(console, args);
-};
-
-console.warn = function(...args) {
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] [WARN] ${args.map(arg => 
-    typeof arg === 'object' ? JSON.stringify(arg) : arg
-  ).join(' ')}`;
-  
-  // Check if stream is destroyed before writing
-  if (logStream && !logStream.destroyed) {
-    try {
-      logStream.write(message + '\n');
-    } catch (err) {
-      originalConsoleError('Error writing warning to log stream:', err);
-    }
-  }
-  originalConsoleWarn.apply(console, args);
-};
-
-// Load environment variables first - REMOVE THESE LINES
-// import { loadEnv } from './lib/env';
-// console.log('Loading environment variables...');
-// loadEnv();
-
-// Log the API key status (not the actual key)
-// console.log(`GROQ_API_KEY status in main.ts: ${process.env.GROQ_API_KEY ? 'set' : 'not set'}`); // Keep env loading, but remove specific Groq key log
-
-// Import the transcription service after loading environment variables - ALREADY REMOVED
-// import { transcribeAudio, cleanupTempFiles } from './lib/transcription'; // REMOVE THIS IMPORT
+// Add command line switches for WebGPU - KEEP THESE
+app.commandLine.appendSwitch('enable-unsafe-webgpu');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -104,10 +26,6 @@ let notificationWindow: BrowserWindow | null = null;
 let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
-
-// Global variable to store the current recording state - REMOVE THESE
-// let isRecording = false;
-// let recordingData: Buffer | null = null;
 
 // Determine the path to the icon file (works in both packaged and dev environments)
 const iconPath = path.join(__dirname, 'assets', 'icon.ico');
@@ -146,14 +64,6 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools({ mode: 'detach' }); 
   });
 
-  // Handle window close event - Remove recursive quit
-  // Option 1: Use 'close' but only log/nullify
-  /*
-  mainWindow.on('close', () => {
-    console.log('Main window close event triggered (but not quitting here)');
-    mainWindow = null; 
-  });
-  */
   // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
   mainWindow.on('closed', () => {
     console.log('Main window has been closed.');
@@ -874,39 +784,6 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
   }
 });
 
-// Clean up temporary files when the app quits - REMOVE THIS HANDLER (unless TEMP_DIR is used elsewhere)
-// app.on('quit', () => {
-//   console.log('[App Event] quit: Handler running.');
-//   try {
-//     cleanupTempFiles();
-//     console.log('[App Event] quit: Temp files cleaned.');
-//   } catch (error) {
-//     console.error('[App Event] quit: Error cleaning temp files:', error);
-//   }
-// });
-
-// Add a handler to view the log file
-ipcMain.handle('view-log-file', async (_event: Electron.IpcMainInvokeEvent) => {
-  try {
-    console.log('Attempting to open log file');
-    
-    // Check if the log file exists
-    if (fs.existsSync(LOG_FILE)) {
-      // Open the log file in the default text editor
-      // const { shell } = require('electron'); // Removed require
-      await shell.openPath(LOG_FILE);
-      console.log('Log file opened successfully');
-      return { success: true };
-    } else {
-      console.error('Log file does not exist');
-      return { success: false, error: 'Log file does not exist' };
-    }
-  } catch (error) {
-    console.error('Failed to open log file:', error);
-    return { success: false, error: error.message || 'Unknown error' };
-  }
-});
-
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
@@ -932,35 +809,6 @@ app.whenReady().then(() => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
     showNotificationPopup(message);
   });
-});
-
-// IPC Handler for logging progress from renderer worker
-ipcMain.on('log-progress', (_event: Electron.IpcMainEvent, progressData: any) => {
-  // Basic logging, adjust formatting as needed
-  if (progressData && typeof progressData === 'object') {
-    const status = progressData.status || 'Unknown Status';
-    const file = progressData.file || '...';
-    // const loaded = (progressData.loaded || 0).toFixed(2); // Reverted by user
-    // const total = (progressData.total || 0).toFixed(2);
-    // const percentage = progressData.progress ? progressData.progress.toFixed(1) : 'N/A';
-    
-    // Log specifically model download/loading progress
-    // if (status === 'progress') { // Reverted by user
-    //    console.log(`[Model Download] ${file}: ${percentage}% (${loaded}/${total} MB)`);
-    // }
-    if (status === 'progress' && progressData.total > 0) { // Use correct calculation
-       // Calculate percentage accurately
-       const percentage = ((progressData.loaded / progressData.total) * 100).toFixed(1);
-       console.log(`[Model Load] ${file}: ${percentage}%`); // Changed log prefix
-    } else if (status === 'ready') {
-        // Maybe log when specific files are done if needed? 
-        // console.log(`[Model File Ready] ${file}`); 
-    } else if (status === 'loaded'){
-        // Log when all files seem loaded (before compilation)
-        console.log(`[Model Loaded] All files downloaded.`);
-    }
-    // Add more conditions based on observed progressData structure if needed
-  }
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -997,33 +845,14 @@ app.on('will-quit', () => {
     console.log('[App Event] will-quit: Unregistering shortcuts...');
     globalShortcut.unregisterAll();
     console.log('[App Event] will-quit: Shortcuts unregistered.');
-
-    // *** Final log before closing stream ***
-    console.log('[App Event] will-quit: Preparing to close log stream...');
-
-    // 2. Restore original console functions BEFORE ending the stream
-    restoreConsole();
-
-    // 3. End the stream
-    if (logStream) {
-      try {
-        // No more console logs here!
-        logStream.end();
-      } catch (error) {
-        // Use original console if error happens during stream end
-        originalConsoleError('[App Event] will-quit: Error closing log stream:', error);
-      }
-    }
-    // *** NO MORE LOGGING HERE ***
+    
   } catch (error) {
     // Use original console for errors during cleanup
-    originalConsoleError('[App Event] will-quit: Error during cleanup:', error);
+    console.error('[App Event] will-quit: Error during cleanup:', error);
     // Ensure console is restored even if error occurred before restoreConsole() call
-    restoreConsole(); 
+    // restoreConsole(); 
     // Attempt to end stream again if it exists and error happened before ending
-    if (logStream && !logStream.writableEnded) { 
-      try { logStream.end(); } catch (e) { /* Ignore secondary error */ }
-    }
+    // if (logStream && !logStream.writableEnded) { ... }
   }
 });
 

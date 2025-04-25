@@ -10,7 +10,6 @@ declare global {
       insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
       viewLogFile: () => Promise<void>;
       sendNotification: (message: string) => void;
-      logProgress: (progressData: any) => void;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;

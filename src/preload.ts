@@ -30,9 +30,5 @@ contextBridge.exposeInMainWorld('electron', {
   // Add a method for the renderer to request a notification
   sendNotification: (message: string) => {
     ipcRenderer.send('show-notification', message);
-  },
-  // Method to send progress logs to the main process
-  logProgress: (progressData: any) => {
-    ipcRenderer.send('log-progress', progressData);
   }
 });
