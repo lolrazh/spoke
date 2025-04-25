@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Pill from './Pill';
+// Import the new consolidated hook
+import { useTranscription } from '../hooks/useTranscription'; // Adjust path if needed
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
@@ -7,54 +9,85 @@ import Pill from './Pill';
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
 
 const App: React.FC = () => {
-  // Placeholder state for Pill props - will be replaced by new hook
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false); // Example state
+  // Instantiate the new hook
+  const trans = useTranscription();
 
-  // Example handlers - will be replaced
-  const handleStartDictation = useCallback(() => {
-    console.log("Start dictation (placeholder)");
-    setIsListening(true);
-    setIsLoading(false); // Example
-  }, []);
+  // --- REMOVE TEMPORARY State --- 
+  // const [isListening, setIsListening] = useState(false); 
+  // const [isLoading, setIsLoading] = useState(false); 
 
-  const handleStopDictation = useCallback(() => {
-    console.log("Stop dictation (placeholder)");
-    setIsListening(false);
-    setIsLoading(true); // Example: show processing after stop
-    setTimeout(() => setIsLoading(false), 1500); 
-  }, []);
+  // --- Map hook state to Pill props --- 
+  const isListening = trans.recording; 
+  // Show processing during model load AND transcription
+  const isProcessing = !trans.ready || trans.processing; 
 
-  // Handle toggle dictation from shortcut
+  // --- Connect Hotkey logic to the new hook --- 
   useEffect(() => {
     if (!window.electron) return;
 
     const handleToggleDictation = () => {
-      console.log('Toggle dictation shortcut pressed (using placeholder state)');
-      if (isListening) {
-        handleStopDictation();
-      } else if (!isLoading) { // Prevent starting while "processing"
-        handleStartDictation();
+      console.log('Toggle hotkey. State:', { 
+          recording: trans.recording, 
+          processing: trans.processing, 
+          ready: trans.ready 
+      });
+      if (trans.recording) {
+        trans.stop(); // Call hook's stop function
+      } else if (trans.ready && !trans.processing) { // Only start if ready and not busy
+        trans.start(); // Call hook's start function
       } else {
-        console.log('Still processing (placeholder)');
-        window.electron?.sendNotification('Still processing...');
+          console.warn('Cannot toggle dictation: Not ready or currently processing.');
+          // Optionally notify user
+          if (!trans.ready) window.electron?.sendNotification('Engine loading...');
+          if (trans.processing) window.electron?.sendNotification('Processing audio...');
       }
     };
 
     const cleanup = window.electron.toggleDictation(handleToggleDictation);
     return cleanup;
-  }, [isListening, isLoading, handleStartDictation, handleStopDictation]); 
+    // Dependencies are now from the hook
+  }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
 
-  // TODO: Add useEffect for handling transcription results from the new hook
-  // TODO: Add useEffect for handling errors from the new hook
+  // --- Handle Transcription Results --- 
+  useEffect(() => {
+    if (trans.text && window.electron) {
+      const textToInsert = trans.text; // Already trimmed in the hook potentially
+      console.log(`[App] Received transcription: "${textToInsert}"`);
+      if (textToInsert) { 
+          console.log('[App] Inserting text...');
+          window.electron.insertTextAtCursor(textToInsert)
+            .then(insertResult => {
+              if (!insertResult.success && insertResult.error) {
+                console.error('[App] Insertion Error:', insertResult.error);
+                window.electron?.sendNotification(insertResult.error);
+              }
+            })
+            .catch(err => {
+                console.error('[App] Error during insertTextAtCursor IPC:', err);
+                window.electron?.sendNotification('Failed to insert text.');
+            });
+      } else {
+          console.log('[App] Transcription result was empty, not inserting.');
+      }
+    }
+  }, [trans.text]); // Watch for changes in the hook's text output
+
+  // --- Handle Errors from Hook --- 
+  useEffect(() => {
+    if (trans.error && window.electron) {
+      console.error('[App] Transcription Hook Error:', trans.error);
+      window.electron.sendNotification(trans.error); 
+    }
+  }, [trans.error]); // Watch for changes in the hook's error state
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill 
         isListening={isListening}
-        isProcessing={isLoading} 
-        onStartDictation={handleStartDictation}
-        onStopDictation={handleStopDictation}
+        isProcessing={isProcessing} 
+        // Connect Pill clicks directly to hook functions
+        onStartDictation={trans.start}
+        onStopDictation={trans.stop}
       />
     </div>
   );
