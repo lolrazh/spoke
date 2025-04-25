@@ -1,0 +1,222 @@
+import {
+    AutoTokenizer,
+    AutoProcessor,
+    WhisperForConditionalGeneration,
+    env,
+    // @ts-ignore Progress type might be nested or different now
+    Progress,
+    // Tensor, // Might need Tensor if creating dummy input_features manually
+} from '@huggingface/transformers';
+
+// --- Type Definitions (Basic) ---
+type ProgressCallback = (progress: Progress | null) => void;
+
+const MODEL_NAME = 'onnx-community/whisper-base'; // Keep base model
+const MAX_NEW_TOKENS = 64;
+
+// --- Helper to check WebGPU --- 
+const webgpuAvailable = async (): Promise<boolean> => {
+    // @ts-ignore navigator.gpu might not be in default TS lib
+    if (!navigator.gpu) return false;
+    try {
+        // @ts-ignore
+        const adapter = await navigator.gpu.requestAdapter();
+        return adapter !== null;
+    } catch (e) {
+        console.warn('Error requesting WebGPU adapter:', e);
+        return false;
+    }
+};
+
+/**
+ * This class uses the Singleton pattern to ensure that only one instance of the model is loaded.
+ */
+class AutomaticSpeechRecognitionPipeline {
+    static model_id: string = MODEL_NAME;
+    static tokenizer: AutoTokenizer | null = null;
+    static processor: AutoProcessor | null = null;
+    static model: WhisperForConditionalGeneration | null = null;
+
+    static async getInstance(progress_callback: ProgressCallback | null = null): Promise<[AutoTokenizer, AutoProcessor, WhisperForConditionalGeneration]> {
+
+        // Ensure components are initialized, awaiting promises
+        this.tokenizer = this.tokenizer ?? await AutoTokenizer.from_pretrained(this.model_id, {
+            progress_callback,
+        });
+        this.processor = this.processor ?? await AutoProcessor.from_pretrained(this.model_id, {
+            progress_callback,
+        });
+
+        if (!this.model) {
+            // Ensure backends object exists, including onnx
+            env.backends = env.backends ?? { onnx: {} }; 
+            // @ts-ignore
+            env.backends.onnx = env.backends.onnx ?? {}; 
+            // @ts-ignore
+            env.backends.wasm = env.backends.wasm ?? {}; 
+            // @ts-ignore
+            env.backends.webgpu = env.backends.webgpu ?? {};
+
+            // choose backend once
+            if (await webgpuAvailable()) {
+                // Use direct assignment if backend is not on top-level env
+                // env.backend = 'webgpu'; 
+                // env.computeType = 'fp16';
+                // Assign properties to the specific backend object
+                // @ts-ignore
+                env.backends.webgpu.backend = 'webgpu'; // Set backend preference within specific object if needed
+                // @ts-ignore
+                env.backends.webgpu.computeType = 'fp16';
+                // @ts-ignore
+                env.backends.webgpu.powerPreference = 'high-performance'; 
+                console.log('[Whisper] Singleton trying WebGPU backend');
+            } else {
+                // env.backend = 'wasm';
+                // env.computeType = 'int8';
+                 // @ts-ignore
+                env.backends.wasm.backend = 'wasm';
+                 // @ts-ignore
+                env.backends.wasm.simd = true;
+                 // @ts-ignore
+                env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4;
+                // @ts-ignore
+                env.backends.wasm.computeType = 'int8';
+                console.log('[Whisper] Singleton using WASM backend');
+            }
+            
+            console.time('model-instantiate');
+            // Cast the result if necessary, assuming from_pretrained returns the correct type
+            this.model = await WhisperForConditionalGeneration.from_pretrained(
+                this.model_id,
+                {
+                    dtype: { encoder_model: 'fp16', decoder_model_merged: 'q4' }, 
+                    progress_callback,
+                },
+            ) as WhisperForConditionalGeneration; // Add type assertion
+            console.timeEnd('model-instantiate');
+        }
+        
+        // Since we await above, all components should be non-null here
+        // Add a runtime check just in case, although TypeScript won't know
+        if (!this.tokenizer || !this.processor || !this.model) {
+            throw new Error("Failed to initialize all pipeline components.");
+        }
+
+        // Return the initialized components
+        return [this.tokenizer, this.processor, this.model];
+    }
+}
+
+let processing: boolean = false;
+
+interface GenerateParams {
+    audio: Float32Array;
+    language: string;
+}
+
+async function generate({ audio, language }: GenerateParams): Promise<void> {
+    if (processing) return;
+    processing = true;
+
+    // Tell the main thread we are starting
+    self.postMessage({ status: 'start' });
+
+    // Retrieve the text-generation pipeline.
+    const [tokenizer, processor, model] = await AutomaticSpeechRecognitionPipeline.getInstance();
+
+    let startTime: number | undefined;
+    let numTokens: number = 0;
+    const callback_function = (output: any): void => {
+        startTime = startTime ?? performance.now();
+
+        let tps: number | undefined;
+        if (numTokens++ > 0 && startTime) {
+            tps = numTokens / (performance.now() - startTime) * 1000;
+        }
+        self.postMessage({
+            status: 'update',
+            output, tps, numTokens,
+        });
+    }
+
+    // Use the processor instance correctly (assuming feature_extractor)
+    // @ts-ignore Assuming feature_extractor exists and takes audio
+    const inputs = await processor.feature_extractor(audio);
+
+    const outputs = await model.generate({
+        // Revert to spreading the inputs object
+        ...inputs, 
+        // input_features: inputs, // Keep commented out
+        max_new_tokens: MAX_NEW_TOKENS,
+        language,
+    });
+
+    // Use the tokenizer instance for batch_decode
+    // @ts-ignore Assuming outputs format is compatible
+    const outputText = tokenizer.batch_decode(outputs, { skip_special_tokens: true });
+
+    // Send the output back to the main thread
+    self.postMessage({
+        status: 'complete',
+        output: Array.isArray(outputText) ? outputText.join(' ') : String(outputText),
+    });
+    processing = false;
+}
+
+async function load(): Promise<void> {
+    self.postMessage({
+        status: 'loading',
+        data: 'Loading model...'
+    });
+
+    const progressCallback: ProgressCallback = (x: Progress | null) => {
+        if (x) {
+            self.postMessage(x);
+        }
+    };
+
+    const [, , model] = await AutomaticSpeechRecognitionPipeline.getInstance(progressCallback);
+
+    self.postMessage({
+        status: 'loading',
+        data: 'Compiling shaders and warming up model...'
+    });
+
+    // Run model with dummy input to compile shaders
+    try {
+        // Keep using input_features for dummy, ignore TS error for now
+        // @ts-ignore
+        const dummyInputFeatures = null; // Placeholder
+        await model.generate({
+            // @ts-ignore Property 'input_features' does not exist...
+            input_features: dummyInputFeatures, 
+            max_new_tokens: 1,
+        });
+    } catch(genError) {
+        console.warn("Dummy generation failed (might be expected on some backends):", genError);
+    }
+    self.postMessage({ status: 'ready' });
+}
+
+// Listen for messages from the main thread
+self.addEventListener('message', async (e: MessageEvent) => {
+    // Use clearer names and add basic type check
+    const messageData = e.data as { type: string; data?: any }; 
+    const type = messageData.type;
+    const data = messageData.data;
+
+    switch (type) {
+        case 'load':
+            await load();
+            break;
+
+        case 'generate':
+            if (data && typeof data.audio !== 'undefined' && typeof data.language === 'string') {
+                 await generate(data as GenerateParams);
+            } else {
+                console.error("Invalid data format for 'generate' message:", data);
+                self.postMessage({ status: 'transcription-error', error: 'Invalid data format' });
+            }
+            break;
+    }
+});
