@@ -54,7 +54,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
     const onMessageReceived = (e: MessageEvent) => {
       console.log('[useTranscription] Worker message:', e.data); // Debug
-      const { status, data, output, error: workerError, processingTime } = e.data;
+      const { status, data, output, error: workerError, timings } = e.data;
 
       // TODO: Replicate the switch-case logic from example App.jsx 
       //       to update state variables (ready, processing, text, error, progress etc.)
@@ -98,8 +98,16 @@ export function useTranscription(): UseTranscriptionReturn {
               }
               setText(transcript);
               console.timeEnd('e2e-transcription');
-              if (processingTime) {
-                  console.log(`[useTranscription] Worker processing time: ${processingTime.toFixed(2)} ms`);
+              
+              // Log granular timings if available
+              if (timings) { 
+                  console.log(`[useTranscription] Worker Timings: 
+    Total: ${timings.total?.toFixed(2)} ms
+    Feature Extraction: ${timings.featureExtraction?.toFixed(2)} ms
+    Model Generation: ${timings.modelGeneration?.toFixed(2)} ms
+    Decoding: ${timings.decoding?.toFixed(2)} ms`);
+              } else if (e.data.processingTime) { // Fallback just in case
+                   console.log(`[useTranscription] Worker processing time: ${e.data.processingTime.toFixed(2)} ms`);
               }
               break;
           case 'error': // From custom error handling

@@ -118,41 +118,61 @@ async function generate({ audio, language }: GenerateParams): Promise<void> {
     if (processing) return;
     processing = true;
 
-    // Tell the main thread we are starting
     self.postMessage({ status: 'start' });
-
-    // Retrieve the text-generation pipeline.
     const [tokenizer, processor, model] = await AutomaticSpeechRecognitionPipeline.getInstance();
 
-    // Use the processor instance correctly (assuming feature_extractor)
-    // @ts-ignore Assuming feature_extractor exists and takes audio
-    const inputs = await processor.feature_extractor(audio);
+    // --- Granular Timings --- 
+    let featureExtractionTime = 0;
+    let modelGenerationTime = 0;
+    let decodingTime = 0;
+    const totalStartTime = performance.now(); // Overall worker processing start
 
-    // --- This is the correct place for timing the generation --- 
-    const startTime = performance.now();
+    try {
+        // 1. Feature Extraction
+        const feStartTime = performance.now();
+        // @ts-ignore
+        const inputs = await processor.feature_extractor(audio);
+        featureExtractionTime = performance.now() - feStartTime;
 
-    const outputs = await model.generate({
-        // Revert to spreading the inputs object
-        ...inputs, 
-        max_new_tokens: MAX_NEW_TOKENS,
-        language,
-    });
+        // 2. Model Generation
+        const genStartTime = performance.now();
+        const outputs = await model.generate({
+            ...inputs, 
+            max_new_tokens: MAX_NEW_TOKENS,
+            language,
+        });
+        modelGenerationTime = performance.now() - genStartTime;
 
-    const endTime = performance.now();
-    const processingTime = endTime - startTime;
-    // --- End timing --- 
+        // 3. Decoding
+        const decodeStartTime = performance.now();
+        // @ts-ignore 
+        const outputText = tokenizer.batch_decode(outputs, { skip_special_tokens: true });
+        decodingTime = performance.now() - decodeStartTime;
 
-    // Use the tokenizer instance for batch_decode
-    // @ts-ignore Assuming outputs format is compatible
-    const outputText = tokenizer.batch_decode(outputs, { skip_special_tokens: true });
+        const totalEndTime = performance.now(); // Overall worker processing end
+        const totalProcessingTime = totalEndTime - totalStartTime;
 
-    // Send the output back to the main thread
-    self.postMessage({
-        status: 'complete',
-        output: Array.isArray(outputText) ? outputText.join(' ') : String(outputText),
-        processingTime: processingTime,
-    });
-    processing = false;
+        // Send the output back to the main thread
+        self.postMessage({
+            status: 'complete',
+            output: Array.isArray(outputText) ? outputText.join(' ') : String(outputText),
+            timings: { // Send all timings back
+                total: totalProcessingTime,
+                featureExtraction: featureExtractionTime,
+                modelGeneration: modelGenerationTime,
+                decoding: decodingTime,
+            }
+        });
+
+    } catch (error) {
+        console.error("[Whisper] Error during generation:", error);
+        self.postMessage({ 
+            status: 'error', 
+            error: error instanceof Error ? error.message : String(error)
+        });
+    } finally {
+        processing = false;
+    }
 }
 
 async function load(): Promise<void> {
