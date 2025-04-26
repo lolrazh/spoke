@@ -64,23 +64,6 @@ This document tracks performance measurements for different implementations of t
 
 ---
 
-## Implementation: [Future Optimization Name]
-
-*   **Changes Made:** (Briefly describe changes, e.g., "Switched to tiny.en", "Added VAD")
-
-### Metrics
-
-*   **E2E Latency:** ...
-*   **Worker Processing Time (Total):** ...
-*   **Worker Granular Timings (Average):**
-    *   Feature Extraction: `... ms`
-    *   Model Generation: `... ms`
-    *   Decoding: `... ms`
-*   **GPU Observation:** ...
-*   **Main Thread Impact:** ...
-
----
-
 ## Implementation: Baseline + forceCompute=true (Discarded)
 
 *   **Changes Made:**
@@ -107,3 +90,95 @@ This document tracks performance measurements for different implementations of t
 *   **Accuracy Observation:**
     *   No noticeable change from baseline.
 *   **Result:** This change slightly increased latency, so it was reverted.
+
+---
+
+## Implementation: WASM Default Backend
+
+*   **Changes Made:**
+    *   Modified `getInstance` in `whisper-worker.ts` to bypass `webgpuAvailable()` check and always use WASM backend.
+    *   (Kept baseline model `onnx-community/whisper-tiny` and baseline `dtype`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `9013.60 ms`
+    *   Run 2: `9851.49 ms`
+    *   Average: `~9433 ms` (+2.2% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `8988.00 ms`
+    *   Run 2: `9827.60 ms`
+    *   Average: `~9408 ms` (+2.3% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~553 ms` (+46% vs Baseline)
+    *   Model Generation: `~8853 ms` (-0.5% vs Baseline)
+    *   Decoding: `~1.3 ms` (-19% vs Baseline)
+*   **GPU Observation:**
+    *   N/A (WASM backend used)
+*   **Main Thread Impact:**
+    *   (Add observations if different from baseline)
+*   **Accuracy Observation:**
+    *   Run 2 had a minor hallucination ("Sonic Club" instead of "Sonic Flow"). May be random chance, needs more runs to confirm if related to backend.
+*   **Result:** WASM default was slightly slower overall due to significantly slower Feature Extraction, despite faster Generation/Decoding. Reverted this change.
+
+---
+
+## Implementation: q8/q8 Quantization on WASM
+
+*   **Changes Made:**
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }`.
+    *   (Kept baseline model `onnx-community/whisper-tiny`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `6218.35 ms`
+    *   Run 2: `6025.94 ms`
+    *   Average: `~6122 ms` (-33.7% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `6197.60 ms`
+    *   Run 2: `6004.30 ms`
+    *   Average: `~6101 ms` (-33.8% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~514 ms` (+16.5% vs Baseline)
+    *   Model Generation: `~5585 ms` (-36.3% vs Baseline)
+    *   Decoding: `~1.4 ms` (-12.5% vs Baseline)
+*   **GPU Observation:**
+    *   (Add observations)
+*   **Main Thread Impact:**
+    *   (Add observations)
+*   **Accuracy Observation:**
+    *   Accuracy seemed good, comparable to baseline.
+*   **Result:** Significant performance improvement. Fastest configuration tested so far.
+
+---
+
+## Implementation: q8/q4 Quantization
+
+*   **Changes Made:**
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q4' }`.
+    *   (Kept baseline model `onnx-community/whisper-tiny`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `7468.11 ms`
+    *   Run 2: `7282.07 ms`
+    *   Average: `~7375 ms` (-20.2% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `7438.80 ms`
+    *   Run 2: `7252.90 ms`
+    *   Average: `~7346 ms` (-20.2% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~631 ms` (+43.1% vs Baseline)
+    *   Model Generation: `~6713 ms` (-23.4% vs Baseline)
+    *   Decoding: `~1.7 ms` (+6.3% vs Baseline)
+*   **GPU Observation:**
+    *   (Add observations)
+*   **Main Thread Impact:**
+    *   (Add observations)
+*   **Accuracy Observation:**
+    *   Accuracy seemed good, comparable to baseline.
+*   **Result:** Faster than baseline, but slower than q8/q8. The q4 decoder didn't provide the expected speedup over q8 decoder.
+
+---
