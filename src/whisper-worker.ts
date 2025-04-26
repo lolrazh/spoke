@@ -66,7 +66,7 @@ class AutomaticSpeechRecognitionPipeline {
                 // @ts-ignore
                 env.backends.webgpu.backend = 'webgpu'; // Set backend preference within specific object if needed
                 // @ts-ignore
-                env.backends.webgpu.computeType = 'fp16';
+                env.backends.webgpu.computeType = 'int8';
                 // @ts-ignore
                 env.backends.webgpu.powerPreference = 'high-performance'; 
                 console.log('[Whisper] Singleton trying WebGPU backend');
@@ -89,7 +89,7 @@ class AutomaticSpeechRecognitionPipeline {
             this.model = await WhisperForConditionalGeneration.from_pretrained(
                 this.model_id,
                 {
-                    dtype: { encoder_model: 'fp16', decoder_model_merged: 'q4' }, 
+                    dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }, 
                     progress_callback,
                 },
             ) as WhisperForConditionalGeneration; // Add type assertion

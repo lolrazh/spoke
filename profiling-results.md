@@ -182,3 +182,101 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Faster than baseline, but slower than q8/q8. The q4 decoder didn't provide the expected speedup over q8 decoder.
 
 ---
+
+## Implementation: q8/q8 Quantization + computeType=q8 w/ WebGPU
+
+*Run Date: (Please fill in)*
+
+*   **Changes Made:**
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }`.
+    *   Set `env.backends.webgpu.computeType = 'q8'`.
+    *   Ensured WebGPU backend was preferred (default logic).
+    *   (Kept baseline model `onnx-community/whisper-tiny`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `6586.57 ms`
+    *   Run 2: `5932.54 ms`
+    *   Average: `~6260 ms` (-32.2% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `6561.60 ms`
+    *   Run 2: `5913.50 ms`
+    *   Average: `~6238 ms` (-32.3% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~422 ms` (-4.4% vs Baseline)
+    *   Model Generation: `~5814 ms` (-33.7% vs Baseline)
+    *   Decoding: `~2.0 ms` (+25% vs Baseline)
+*   **GPU Observation:**
+    *   (Add observations - expect faster overall GPU time dominated by Gen)
+*   **Main Thread Impact:**
+    *   (Add observations - likely similar to baseline)
+*   **Accuracy Observation:**
+    *   Accuracy seemed good, comparable to baseline.
+*   **Result:** Fastest configuration tested (~32% faster than baseline). `q8` compute on WebGPU provides significant speedup for the q8 model.
+
+---
+
+## Implementation: q4/q4 Quantization + computeType=q8 w/ WebGPU
+
+*   **Changes Made:**
+    *   Set `dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' }`.
+    *   Set `env.backends.webgpu.computeType = 'q8'`.
+    *   Ensured WebGPU backend was preferred (default logic).
+    *   (Kept baseline model `onnx-community/whisper-tiny`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `9748.29 ms`
+    *   Run 2: `8979.39 ms`
+    *   Average: `~9364 ms` (+1.3% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `9719.00 ms`
+    *   Run 2: `8960.40 ms`
+    *   Average: `~9340 ms` (+1.4% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~406 ms` (-7.9% vs Baseline)
+    *   Model Generation: `~8932 ms` (+1.9% vs Baseline)
+    *   Decoding: `~1.5 ms` (-6.25% vs Baseline)
+*   **GPU Observation:**
+    *   (Add observations - expect slower than baseline)
+*   **Main Thread Impact:**
+    *   (Add observations - likely similar to baseline)
+*   **Accuracy Observation:**
+    *   Accuracy seemed good, comparable to baseline.
+*   **Result:** Slower than baseline. `int8` compute mode does not seem to benefit `q4` models on WebGPU, might even add overhead.
+
+---
+
+## Implementation: q8/q8 Quantization + computeType=int8 w/ WebGPU
+
+*   **Changes Made:**
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }`.
+    *   Set `env.backends.webgpu.computeType = 'int8'`.
+    *   Ensured WebGPU backend was preferred (default logic).
+    *   (Kept baseline model `onnx-community/whisper-tiny`)
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `6022.11 ms`
+    *   Run 2: `6067.66 ms`
+    *   Average: `~6045 ms` (-34.6% vs Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `6003.60 ms`
+    *   Run 2: `6048.70 ms`
+    *   Average: `~6026 ms` (-34.6% vs Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   Feature Extraction: `~357 ms` (-19.0% vs Baseline)
+    *   Model Generation: `~5668 ms` (-35.4% vs Baseline)
+    *   Decoding: `~1.25 ms` (-21.9% vs Baseline)
+*   **GPU Observation:**
+    *   (Add observations - should be fastest GPU time)
+*   **Main Thread Impact:**
+    *   (Add observations)
+*   **Accuracy Observation:**
+    *   Accuracy good ("...with Sonic Flow.").
+*   **Result:** Verified fastest configuration. `int8` compute type yields slightly better performance than `q8` compute type for `q8/q8` models on WebGPU.
+
+---
