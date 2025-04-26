@@ -4,7 +4,7 @@ Goal: Achieve near real-time transcription with low latency and efficient resour
 
 ## Core Architectural Changes (Streaming Pipeline)
 
-*   [ ] **Profiling:** Establish baseline performance metrics for the *current* implementation (End-to-end latency, GPU/CPU time per transcription).
+*   [x] **Profiling:** Establish baseline performance metrics for the *current* implementation (End-to-end latency, GPU/CPU time per transcription).
 *   [ ] **Replace `MediaRecorder` with `AudioWorklet`:**
     *   [ ] Create `audioworklet-processor.js` (or similar) to capture raw `Float32Array` PCM data.
     *   [ ] Update `useTranscription` to initialize and use the `AudioWorkletNode`.

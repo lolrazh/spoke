@@ -124,32 +124,23 @@ async function generate({ audio, language }: GenerateParams): Promise<void> {
     // Retrieve the text-generation pipeline.
     const [tokenizer, processor, model] = await AutomaticSpeechRecognitionPipeline.getInstance();
 
-    let startTime: number | undefined;
-    let numTokens: number = 0;
-    const callback_function = (output: any): void => {
-        startTime = startTime ?? performance.now();
-
-        let tps: number | undefined;
-        if (numTokens++ > 0 && startTime) {
-            tps = numTokens / (performance.now() - startTime) * 1000;
-        }
-        self.postMessage({
-            status: 'update',
-            output, tps, numTokens,
-        });
-    }
-
     // Use the processor instance correctly (assuming feature_extractor)
     // @ts-ignore Assuming feature_extractor exists and takes audio
     const inputs = await processor.feature_extractor(audio);
 
+    // --- This is the correct place for timing the generation --- 
+    const startTime = performance.now();
+
     const outputs = await model.generate({
         // Revert to spreading the inputs object
         ...inputs, 
-        // input_features: inputs, // Keep commented out
         max_new_tokens: MAX_NEW_TOKENS,
         language,
     });
+
+    const endTime = performance.now();
+    const processingTime = endTime - startTime;
+    // --- End timing --- 
 
     // Use the tokenizer instance for batch_decode
     // @ts-ignore Assuming outputs format is compatible
@@ -159,6 +150,7 @@ async function generate({ audio, language }: GenerateParams): Promise<void> {
     self.postMessage({
         status: 'complete',
         output: Array.isArray(outputText) ? outputText.join(' ') : String(outputText),
+        processingTime: processingTime,
     });
     processing = false;
 }

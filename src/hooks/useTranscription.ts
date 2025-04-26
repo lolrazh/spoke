@@ -54,7 +54,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
     const onMessageReceived = (e: MessageEvent) => {
       console.log('[useTranscription] Worker message:', e.data); // Debug
-      const { status, data, output, error: workerError } = e.data;
+      const { status, data, output, error: workerError, processingTime } = e.data;
 
       // TODO: Replicate the switch-case logic from example App.jsx 
       //       to update state variables (ready, processing, text, error, progress etc.)
@@ -90,11 +90,16 @@ export function useTranscription(): UseTranscriptionReturn {
               break;
           case 'complete':
               setProcessing(false);
+              let transcript = '';
               if (output && Array.isArray(output)) {
-                  // Handle potential array output from worker
-                  setText(output.join(' ').trim());
+                  transcript = output.join(' ').trim();
               } else if (typeof output === 'string') {
-                  setText(output.trim());
+                  transcript = output.trim();
+              }
+              setText(transcript);
+              console.timeEnd('e2e-transcription');
+              if (processingTime) {
+                  console.log(`[useTranscription] Worker processing time: ${processingTime.toFixed(2)} ms`);
               }
               break;
           case 'error': // From custom error handling
@@ -102,6 +107,7 @@ export function useTranscription(): UseTranscriptionReturn {
               setError(String(workerError || data || 'Worker error'));
               setProcessing(false);
               setReady(false); // Model is not ready if init failed
+              console.timeEnd('e2e-transcription');
               break;
           default:
               console.warn('[useTranscription] Unknown worker status:', status);
@@ -173,6 +179,7 @@ export function useTranscription(): UseTranscriptionReturn {
                 return;
             }
 
+            console.time('e2e-transcription');
             try {
                 // setProcessing(true); // *** REMOVE THIS LINE ***
                 
@@ -213,6 +220,7 @@ export function useTranscription(): UseTranscriptionReturn {
                 console.error("[useTranscription] Error processing audio on stop:", err);
                 setError("Failed to process recorded audio.");
                 setProcessing(false);
+                console.timeEnd('e2e-transcription');
             }
         };
         
