@@ -311,3 +311,64 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Significantly faster (~88%) than Whisper-tiny baseline with good accuracy using Moonshine-base fp32/q4 on WebGPU. Warm-up adds initial delay but subsequent transcriptions are very fast.
 
 ---
+
+## Implementation: Moonshine Base (fp32/q8 Quantization) w/ WASM
+
+*Run Date: (Assumed recent, please fill in)*
+
+*   **Changes Made:**
+    *   Model: `onnx-community/moonshine-base-ONNX`.
+    *   Set `dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' }` (via WASM config).
+    *   Forced WASM backend in `moonshine-worker.ts`.
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `1730.39 ms`
+    *   Run 2: `1685.46 ms`
+    *   Average: `~1708 ms` (-81.5% vs Whisper-tiny Baseline, +53% vs Moonshine WebGPU)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `1714.40 ms`
+    *   Run 2: `1671.20 ms`
+    *   Average: `~1693 ms` (-81.6% vs Whisper-tiny Baseline, +55% vs Moonshine WebGPU)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction does not expose sub-step timings)
+*   **GPU Observation:**
+    *   N/A (WASM backend used)
+*   **Main Thread Impact:**
+    *   (Add observations)
+*   **Accuracy Observation:**
+    *   Accuracy good ("This is a transcription test with Sonic Flow.", "This is a transcription test with SonicFlow.").
+*   **Result:** Still significantly faster (~81%) than Whisper-tiny baseline, but noticeably slower (~54%) than Moonshine on WebGPU. Accuracy remains good.
+
+---
+
+## Implementation: Moonshine Base (q8/q8 Quantization) w/ WASM
+
+*   **Changes Made:**
+    *   Model: `onnx-community/moonshine-base-ONNX`.
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }` (via WASM config).
+    *   Forced WASM backend in `moonshine-worker.ts`.
+
+### Metrics
+
+*   **Warm-up Time (First Run Only):** `~386 ms`
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `1399.06 ms`
+    *   Run 2: `1362.52 ms`
+    *   Average: `~1381 ms` (-85.0% vs Whisper-tiny Baseline, +23.7% vs Moonshine WebGPU, -19.1% vs Moonshine WASM fp32/q8)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `1380.80 ms`
+    *   Run 2: `1346.00 ms`
+    *   Average: `~1363 ms` (-85.2% vs Whisper-tiny Baseline, +24.6% vs Moonshine WebGPU, -19.5% vs Moonshine WASM fp32/q8)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction does not expose sub-step timings)
+*   **GPU Observation:**
+    *   N/A (WASM backend used)
+*   **Main Thread Impact:**
+    *   (Add observations)
+*   **Accuracy Observation:**
+    *   Accuracy good ("This is a transcription test for SonicFlow.").
+*   **Result:** Fastest WASM configuration (~85% faster than Whisper baseline). q8 quantization significantly improves WASM speed compared to fp32 encoder. Still slower than WebGPU but a good fallback.
+
+---
