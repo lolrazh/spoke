@@ -14,11 +14,11 @@ type DtypeConfig = Record<string, "fp32" | "fp16" | "q8" | "q4" | "int8">; // Ad
 // Define dtype configurations based on device with explicit typing
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   webgpu: {
-    encoder_model: "q8", // Example values, adjust if needed based on testing/performance
-    decoder_model_merged: "q8",
+    encoder_model: "fp32", // Example values, adjust if needed based on testing/performance
+    decoder_model_merged: "q4",
   },
   wasm: {
-    encoder_model: "q8",
+    encoder_model: "fp32",
     decoder_model_merged: "q8", // WASM might benefit from q8
   },
 };
