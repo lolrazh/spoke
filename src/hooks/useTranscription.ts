@@ -48,7 +48,7 @@ export function useTranscription(): UseTranscriptionReturn {
     console.log('[useTranscription] Initializing worker...');
     workerRef.current = new Worker(
       // Assuming worker is in the same dir or adjust path
-      new URL('../whisper-worker.ts', import.meta.url),
+      new URL('../moonshine-worker.ts', import.meta.url),
       { type: 'module' }
     );
 
@@ -220,7 +220,7 @@ export function useTranscription(): UseTranscriptionReturn {
                 // Send processed audio to worker
                 workerRef.current?.postMessage({ 
                     type: 'generate', 
-                    data: { audio: audio, language: 'en' } // Pass language (can be made dynamic)
+                    data: { audio: audio } // 🔄 Removed language field
                 });
                 // Note: setProcessing will now be handled by worker 'start' message
 
