@@ -63,7 +63,26 @@ asr = await pipeline(
   }
 );
 
-self.postMessage({ status: "ready" });
+// --- Warm-up Call --- 
+try {
+    if (asr) {
+      console.log("[Moonshine] Performing warm-up call...");
+      const warmupStartTime = performance.now();
+      // Perform a dummy transcription on 1 second of silence
+      await asr(new Float32Array(16_000)); 
+      const warmupEndTime = performance.now();
+      console.log(`[Moonshine] Warm-up call completed in ${(warmupEndTime - warmupStartTime).toFixed(2)} ms`);
+      // Send ready message ONLY if warm-up succeeds
+      self.postMessage({ status: "ready" });
+    } else {
+      throw new Error("ASR pipeline object is null after initialization.");
+    }
+} catch (warmupError) {
+    console.error("[Moonshine] Warm-up call failed:", warmupError);
+    // Send an error status back to the main thread
+    self.postMessage({ status: "error", error: "Worker warm-up failed." });
+    // Do not proceed further if warm-up fails
+}
 
 self.addEventListener("message", async (e) => {
   const { type, data } = e.data ?? {};

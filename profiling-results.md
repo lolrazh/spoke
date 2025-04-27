@@ -280,3 +280,34 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Verified fastest configuration. `int8` compute type yields slightly better performance than `q8` compute type for `q8/q8` models on WebGPU.
 
 ---
+
+## Implementation: Moonshine Base (fp32/q4 Quantization) w/ WebGPU
+
+*   **Changes Made:**
+    *   Switched worker to `moonshine-worker.ts` using `pipeline()`.
+    *   Model: `onnx-community/moonshine-base-ONNX`.
+    *   Set `dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }`.
+    *   Ensured WebGPU backend was preferred (default logic).
+
+### Metrics
+
+*   **Warm-up Time (First Run Only):** `~7354 ms`
+*   **End-to-End (E2E) Latency:**
+    *   Run 1: `1218.26 ms`
+    *   Run 2: `1014.27 ms`
+    *   Average: `~1116 ms` (-87.9% vs Whisper-tiny Baseline)
+*   **Worker Processing Time (Total):**
+    *   Run 1: `1195.40 ms`
+    *   Run 2: `993.10 ms`
+    *   Average: `~1094 ms` (-88.1% vs Whisper-tiny Baseline)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction does not expose sub-step timings)
+*   **GPU Observation:**
+    *   (Add observations - expect faster GPU time than Whisper-tiny)
+*   **Main Thread Impact:**
+    *   (Add observations - likely similar to baseline)
+*   **Accuracy Observation:**
+    *   Accuracy good ("Hi, this is a transcription test with Sonic Flow.", "This is a transcription test for Sonic Flow.").
+*   **Result:** Significantly faster (~88%) than Whisper-tiny baseline with good accuracy using Moonshine-base fp32/q4 on WebGPU. Warm-up adds initial delay but subsequent transcriptions are very fast.
+
+---
