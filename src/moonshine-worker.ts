@@ -9,7 +9,7 @@ import {
 const MODEL_ID = "onnx-community/moonshine-base-ONNX";   // English-only                          // a bit roomier
 
 // Define type for Dtype configuration
-type DtypeConfig = Record<string, "fp32" | "fp16" | "q8" | "q4" | "int8">; // Adjust allowed types if needed
+type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8">; // Adjust allowed types if needed
 
 // Define dtype configurations based on device with explicit typing
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {

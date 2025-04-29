@@ -21,15 +21,15 @@ Goal: Achieve near real-time transcription with low latency and efficient resour
 
 ## Model & Runtime Optimizations
 
-*   [ ] **Use `whisper-tiny.en` model:** Switch from multilingual `tiny` for potential speed/accuracy gains on English.
-*   [ ] **Apply Aggressive Quantization:**
-    *   [ ] Test `dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' }`.
-    *   [ ] Test `env.backends.webgpu.computeType: 'int8'`.
-    *   [ ] Profile and evaluate accuracy trade-offs.
-*   [ ] **Tune WebGPU Knobs:**
-    *   [ ] Set `env.backends.webgpu.powerPreference = 'high-performance'`.
-    *   [ ] Experiment with `env.backends.webgpu.forceCompute = true`.
-    *   [ ] Experiment with `env.backends.webgpu.maxConcurrency` (needs testing on target hardware).
+*   [-] **Use `whisper-tiny.en` model:** Switch from multilingual `tiny` for potential speed/accuracy gains on English.
+*   [-] **Apply Aggressive Quantization:**
+    *   [-] Test `dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' }`.
+    *   [-] Test `env.backends.webgpu.computeType: 'int8'`.
+    *   [-] Profile and evaluate accuracy trade-offs.
+*   [-] **Tune WebGPU Knobs:**
+    *   [-] Set `env.backends.webgpu.powerPreference = 'high-performance'`.
+    *   [-] Experiment with `env.backends.webgpu.forceCompute = true`.
+    *   [-] Experiment with `env.backends.webgpu.maxConcurrency` (needs testing on target hardware).
 *   [ ] **(Advanced) Worker Audio Context Caching:** Implement logic in the worker to reuse parts of previous audio computations (simulating KV cache reuse).
 
 ## UX Enhancements for Perceived Speed
