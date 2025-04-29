@@ -47,10 +47,10 @@ const createWindow = () => {
       sandbox: false,
       enableWebSQL: false,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.js'),
       additionalArguments: ['--enable-features=SharedArrayBuffer'],
     },
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: iconPath,
   });
 
   // Also set the icon explicitly after creation (optional but good practice)

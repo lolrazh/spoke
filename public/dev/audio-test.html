@@ -1,0 +1,224 @@
+<!-- public/dev/audio-test.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Add COOP/COEP headers for SAB if testing outside Electron -->
+    <!-- <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" /> -->
+    <!-- <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" /> -->
+    <title>AudioWorklet RingBuffer Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button { font-size: 1.1em; padding: 10px; margin-right: 10px; }
+        #log { margin-top: 20px; font-family: monospace; white-space: pre; height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>AudioWorklet RingBuffer Test</h1>
+    <p>Tests writing 48kHz audio from AudioWorklet to SAB RingBuffer and reading it back.</p>
+    <button id="startButton">Start Capture</button>
+    <button id="stopButton" disabled>Stop Capture</button>
+    <div id="log">Log messages will appear here...</div>
+
+    <script type="module">
+        // --- Configuration ---
+        const TARGET_SAMPLE_RATE = 48000;
+        const WORKLET_URL = '/audioworklet-processor.js'; // Path relative to public root
+        const READ_INTERVAL_MS = 1000; // How often to read from the buffer
+
+        // --- Elements ---
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const logDiv = document.getElementById('log');
+
+        // --- State ---
+        let audioContext = null;
+        let microphoneSource = null;
+        let workletNode = null;
+        let ringBuffer = null; // RingBuffer instance for the main thread
+        let sharedBuffer = null; // The SharedArrayBuffer
+        let readIntervalId = null;
+        let isCapturing = false;
+
+        // --- Logging ---
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            if (type === 'error') entry.classList.add('error');
+            if (type === 'success') entry.classList.add('success');
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight; // Auto-scroll
+            console[type === 'error' ? 'error' : 'log'](message);
+        }
+
+        // --- Core Logic ---
+        async function startCapture() {
+            if (isCapturing) return;
+            log('Starting capture...');
+
+            try {
+                // 1. Check for SharedArrayBuffer support
+                if (typeof SharedArrayBuffer === 'undefined') {
+                    throw new Error('SharedArrayBuffer is not supported in this environment. Ensure COOP/COEP headers are set.');
+                }
+
+                // 2. Create AudioContext (if needed) at the target rate
+                if (!audioContext || audioContext.state === 'closed') {
+                    audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+                    log(`AudioContext created/resumed. State: ${audioContext.state}, Sample Rate: ${audioContext.sampleRate} Hz`);
+                    if (audioContext.sampleRate !== TARGET_SAMPLE_RATE) {
+                         log(`Warning: AudioContext running at ${audioContext.sampleRate}Hz, not ${TARGET_SAMPLE_RATE}Hz.`, 'error');
+                    }
+                }
+                 // Ensure context is running (it might start suspended)
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                    log(`AudioContext resumed. State: ${audioContext.state}`);
+                }
+
+
+                // 3. Import RingBuffer dynamically
+                // Ensure the path matches how Vite serves/builds it.
+                // Might need adjustment based on tsconfig paths or build output.
+                 const { RingBuffer, Constants } = await import('/src/audio/ring-buffer.js'); // Path from server root
+
+                // 4. Create SharedArrayBuffer & RingBuffer instance for this thread
+                sharedBuffer = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES);
+                ringBuffer = new RingBuffer(sharedBuffer); // Wrap the SAB
+                log(`SharedArrayBuffer created (${sharedBuffer.byteLength} bytes). RingBuffer instance ready.`);
+
+
+                // 5. Add the AudioWorklet module
+                log(`Loading AudioWorklet module from ${WORKLET_URL}...`);
+                try {
+                    await audioContext.audioWorklet.addModule(WORKLET_URL);
+                    log('AudioWorklet module added successfully.', 'success');
+                } catch (e) {
+                     throw new Error(`Failed to load AudioWorklet module: ${e.message}. Check path and COOP/COEP headers.`);
+                }
+
+
+                // 6. Create the AudioWorkletNode, passing the SAB
+                workletNode = new AudioWorkletNode(audioContext, 'capture-processor', {
+                    processorOptions: { sab: sharedBuffer } // Pass the SAB
+                });
+                log('AudioWorkletNode created and SAB passed.');
+
+                 workletNode.port.onmessage = (event) => {
+                    log(`Message from Worklet: ${JSON.stringify(event.data)}`);
+                };
+                 workletNode.onprocessorerror = (event) => {
+                    log(`AudioWorkletProcessor Error: ${event}`, 'error');
+                };
+
+
+                // 7. Get microphone stream and connect it
+                log('Requesting microphone access...');
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: TARGET_SAMPLE_RATE, // Request desired rate
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+                log('Microphone access granted.', 'success');
+
+                microphoneSource = audioContext.createMediaStreamSource(stream);
+                log('MediaStreamSource created.');
+
+                microphoneSource.connect(workletNode);
+                // We don't connect the worklet output anywhere, just capture input.
+                // workletNode.connect(audioContext.destination); // Optional: Connect to output to hear raw mic
+                log('MicrophoneSource -> AudioWorkletNode connected.');
+
+                // 8. Start reading from the RingBuffer periodically
+                readIntervalId = setInterval(readFromBuffer, READ_INTERVAL_MS);
+                log(`Started reading from RingBuffer every ${READ_INTERVAL_MS} ms.`);
+
+                isCapturing = true;
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                log('Capture started successfully!', 'success');
+
+            } catch (error) {
+                log(`Error starting capture: ${error.message}`, 'error');
+                console.error(error);
+                stopCapture(); // Clean up on error
+            }
+        }
+
+        function stopCapture() {
+            if (!isCapturing) return;
+            log('Stopping capture...');
+
+            if (readIntervalId) {
+                clearInterval(readIntervalId);
+                readIntervalId = null;
+                log('Stopped reading from RingBuffer.');
+            }
+
+            // Disconnect nodes
+            if (microphoneSource) {
+                microphoneSource.disconnect();
+                microphoneSource.mediaStream?.getTracks().forEach(track => track.stop()); // Stop mic stream
+                microphoneSource = null;
+                log('Microphone source disconnected and stream stopped.');
+            }
+             if (workletNode) {
+                 workletNode.disconnect(); // Disconnect worklet if it was connected to destination
+                 // workletNode.port.postMessage({ command: 'stop' }); // Optional: Send stop message
+                 workletNode = null;
+                 log('WorkletNode disconnected.');
+             }
+
+
+            // Don't close context here, allow restarting capture
+            // if (audioContext && audioContext.state !== 'closed') {
+            //     // Closing context prevents easy restart
+            //      audioContext.close().then(() => log('AudioContext closed.'));
+            //      audioContext = null;
+            // }
+
+             if (ringBuffer) {
+                 ringBuffer.reset(); // Reset pointers for next time
+                 log('RingBuffer reset.');
+             }
+             // Keep ringBuffer and sharedBuffer instances for potential restart
+
+
+            isCapturing = false;
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            log('Capture stopped.');
+        }
+
+        function readFromBuffer() {
+            if (!ringBuffer || !isCapturing) return;
+
+            const available = ringBuffer.availableRead();
+            if (available > 0) {
+                const bufferToRead = new Float32Array(available);
+                ringBuffer.read(bufferToRead); // Read into the buffer
+                log(`Read ${bufferToRead.length} samples @${TARGET_SAMPLE_RATE}Hz from RingBuffer.`);
+                // Optional: Do something with the data, like visualize or downsample+log
+                // For now, just log the count.
+            } else {
+                // log('No new samples available to read.');
+            }
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startCapture);
+        stopButton.addEventListener('click', stopCapture);
+
+        log('Test page loaded. Ready to start capture.');
+        log(`Expected Worklet Path: ${WORKLET_URL}`);
+        log(`Expected RingBuffer Path: /src/audio/ring-buffer.js`); // Log expected path
+
+    </script>
+</body>
+</html> 
