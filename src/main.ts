@@ -5,6 +5,7 @@ import started from 'electron-squirrel-startup';
 import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
+import { session } from 'electron';
 
 // Add command line switches for WebGPU - KEEP THESE
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -42,15 +43,14 @@ const createWindow = () => {
     alwaysOnTop: true,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
-      // Disable features that cause warnings
-      spellcheck: false,
+      sandbox: false,
       enableWebSQL: false,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.mjs'),
+      additionalArguments: ['--enable-features=SharedArrayBuffer'],
     },
-    // Set the window icon
-    icon: iconPath,
+    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
   });
 
   // Also set the icon explicitly after creation (optional but good practice)
@@ -94,6 +94,14 @@ const createWindow = () => {
 
   // Pre-create the hotkey capture window for better performance
   createHotkeyCaptureWindow();
+
+  // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    // In a real app, you might want to be more specific about which permissions
+    // and origins you grant, but for local development/SAB, granting broadly is common.
+    console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
+    callback(true);
+  });
 };
 
 // Register the global shortcut based on settings
