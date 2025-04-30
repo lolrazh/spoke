@@ -70,6 +70,30 @@ asr = await pipeline(
   }
 ) as any;
 
+// --- Add ComputeType Check ---
+try {
+  // Check the actual compute type being used AFTER pipeline initialization
+  // Access through env seems correct based on documentation/usage
+  // @ts-ignore - Accessing internal property, might change
+  const currentComputeType = env.backends.webgpu?.computeType;
+
+  if (useGpu && currentComputeType) {
+    console.log(`[Moonshine] Actual WebGPU computeType used: ${currentComputeType}`);
+    // You could add more specific checks here if you were trying to force a certain type:
+    // const requestedComputeType = 'int8'; // Example if you set this via env
+    // if (currentComputeType !== requestedComputeType) {
+    //    console.warn(`[Moonshine] Requested computeType ${requestedComputeType}, but using ${currentComputeType}`);
+    // }
+  } else if (!useGpu) {
+     console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
+  } else if (useGpu && !currentComputeType) {
+     console.warn("[Moonshine] Using WebGPU, but could not read actual computeType from env.backends.webgpu");
+  }
+} catch (checkError) {
+    console.warn("[Moonshine] Could not verify actual WebGPU computeType:", checkError);
+}
+// --- End ComputeType Check ---
+
 // --- Warm-up Call --- 
 try {
     if (asr) {
