@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 
 // Constants (can be moved or adjusted)
-const WHISPER_SAMPLING_RATE = 16_000;
-const MAX_AUDIO_LENGTH_SECONDS = 30; 
-const MAX_SAMPLES = WHISPER_SAMPLING_RATE * MAX_AUDIO_LENGTH_SECONDS;
+const TARGET_AUDIO_CONTEXT_RATE = 48000; // Use 48kHz for AudioContext
+const WHISPER_SAMPLING_RATE = 16_000; // Keep for potential reference, but worker handles resampling
+const MAX_AUDIO_LENGTH_SECONDS = 30;
+// MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -18,22 +19,25 @@ export interface UseTranscriptionReturn {
 
 export function useTranscription(): UseTranscriptionReturn {
   const workerRef = useRef<Worker | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  // --- Removed MediaRecorder refs ---
+  // const recorderRef = useRef<MediaRecorder | null>(null);
+  // const audioChunksRef = useRef<Blob[]>([]);
+  // --- Added AudioWorklet refs ---
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]); // Store chunks in a ref
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const sabRef = useRef<SharedArrayBuffer | null>(null); // To hold the SharedArrayBuffer
+  const streamRef = useRef<MediaStream | null>(null); // Keep track of the mic stream
 
-  // --- State Variables (Mirrors example App.jsx state) ---
-  const [stream, setStream] = useState<MediaStream | null>(null);
+  // --- State Variables ---
+  // const [stream, setStream] = useState<MediaStream | null>(null); // Use ref instead
   const [recording, setRecording] = useState(false);
-  const [processing, setProcessing] = useState(false); // Corresponds to example's isProcessing
-  const [ready, setReady] = useState(false); // Corresponds to example's status === 'ready'
+  const [processing, setProcessing] = useState(false);
+  const [ready, setReady] = useState(false);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // TODO: Add state for loading messages/progress if needed for UI
-  // const [loadingMessage, setLoadingMessage] = useState('');
-  // const [progressItems, setProgressItems] = useState([]);
 
-  // Refs to track the latest state for the stale closure in onstop
+  // Refs to track the latest state for potential callbacks (less critical now)
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
 
@@ -137,152 +141,288 @@ export function useTranscription(): UseTranscriptionReturn {
     };
   }, []);
 
-  // --- 2️⃣ Ask for mic & build MediaRecorder once --- 
+  // --- 2️⃣ Ask for mic & create AudioContext once --- 
   useEffect(() => {
-    // Use an async IIFE to handle async operations in useEffect
+    // This effect now ONLY requests mic permission and prepares AudioContext
     (async () => {
-      if (stream || recorderRef.current) return; // Already initialized
+      // Only run if context doesn't exist yet
+      if (audioCtxRef.current) return;
 
-      console.log('[useTranscription] Requesting microphone access...');
+      console.log('[useTranscription] Requesting microphone access and preparing AudioContext...');
       try {
-        const streamInstance = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setStream(streamInstance); // Save stream for potential visualizer
+        // Get mic permission (stream is stored in ref)
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('[useTranscription] Microphone access granted.');
 
-        // Create AudioContext AFTER getting stream
-        // Use desired sample rate for processing, not necessarily for recording device
-        audioCtxRef.current = new AudioContext({ sampleRate: WHISPER_SAMPLING_RATE });
-
-        // Create MediaRecorder
-        const recorder = new MediaRecorder(streamInstance);
-        recorderRef.current = recorder;
-
-        // Event Handlers (Similar to example App.jsx)
-        recorder.onstart = () => {
-            console.log('[useTranscription] Recording started.');
-            audioChunksRef.current = []; // Clear previous chunks
-            setRecording(true);
-            setError(null);
-        };
-
-        recorder.ondataavailable = (event: BlobEvent) => {
-            if (event.data.size > 0) {
-                audioChunksRef.current.push(event.data);
-                console.log(`[useTranscription] Chunk received: ${event.data.size} bytes`);
-            } else {
-                console.warn('[useTranscription] Empty chunk received.');
-            }
-            // Note: Unlike example, we process on STOP, not every chunk
-        };
-
-        recorder.onstop = async () => {
-            console.log('[useTranscription] Recording stopped.');
-            setRecording(false);
-            
-            if (audioChunksRef.current.length === 0) {
-                console.warn('[useTranscription] No audio data recorded.');
-                return;
-            }
-            if (!readyRef.current || processingRef.current) {
-                console.warn(`[useTranscription] Worker not ready (ready=${readyRef.current}) or already processing (processing=${processingRef.current}), skipping transcription.`);
-                return;
-            }
-
-            console.time('e2e-transcription');
-            try {
-                // setProcessing(true); // *** REMOVE THIS LINE ***
-                
-                // Combine chunks into a single Blob
-                const audioBlob = new Blob(audioChunksRef.current, {
-                    type: recorderRef.current?.mimeType || 'audio/webm', // Use recorded mime type
-                });
-                audioChunksRef.current = []; // Clear chunks immediately
-
-                console.log(`[useTranscription] Processing Blob: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
-
-                // --- Replicate audio processing from example App.jsx --- 
-                const arrayBuffer = await audioBlob.arrayBuffer();
-
-                if (!audioCtxRef.current) {
-                     throw new Error("AudioContext not available");
-                }
-
-                const decoded = await audioCtxRef.current.decodeAudioData(arrayBuffer);
-                let audio = decoded.getChannelData(0); // Get mono channel
-                
-                // Trim audio if longer than max duration (from example)
-                if (audio.length > MAX_SAMPLES) { 
-                    console.log(`[useTranscription] Trimming audio from ${audio.length} to ${MAX_SAMPLES} samples.`);
-                    audio = audio.slice(-MAX_SAMPLES);
-                }
-                // --- End audio processing --- 
-
-                console.log(`[useTranscription] Sending ${audio.length} samples to worker...`);
-                // Send processed audio to worker
-                workerRef.current?.postMessage({ 
-                    type: 'generate', 
-                    data: { audio: audio } // 🔄 Removed language field
-                });
-                // Note: setProcessing will now be handled by worker 'start' message
-
-            } catch(err) {
-                console.error("[useTranscription] Error processing audio on stop:", err);
-                setError("Failed to process recorded audio.");
-                setProcessing(false);
-                console.timeEnd('e2e-transcription');
-            }
-        };
-        
-        recorder.onerror = (event) => {
-            console.error("[useTranscription] MediaRecorder error:", event);
-            setError("An error occurred during recording.");
-            setRecording(false);
-        };
+        // Create AudioContext at the correct sample rate
+        audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
+        console.log(`[useTranscription] AudioContext created (Rate: ${audioCtxRef.current.sampleRate}Hz).`);
 
       } catch (err) {
-        console.error("[useTranscription] Microphone access error:", err);
-        setError('Microphone permissions denied or unavailable.');
-        setStream(null);
+        console.error("[useTranscription] Microphone access or AudioContext creation error:", err);
+        setError('Microphone permissions denied or AudioContext failed.');
+        streamRef.current = null; // Ensure stream ref is null on error
+        // Don't set audioCtxRef to null here, error state handles it
       }
-    })(); // Immediately invoke the async function
+    })();
 
-    // Cleanup function for the useEffect
+    // Cleanup function for THIS useEffect
     return () => {
-      console.log('[useTranscription] Cleaning up media stream and recorder.');
-      recorderRef.current?.stop(); // Stop recorder if active
-      stream?.getTracks().forEach(track => track.stop()); // Stop stream tracks
-      audioCtxRef.current?.close().catch(console.error); // Close AudioContext
-      recorderRef.current = null;
+      console.log('[useTranscription] Cleaning up stream and AudioContext...');
+      // Stop stream tracks if they exist
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      // Close AudioContext if it exists
+      audioCtxRef.current?.close().catch(console.error);
+
+      // Clear refs on cleanup
+      streamRef.current = null;
       audioCtxRef.current = null;
-      setStream(null);
+      // Also clear worklet/source refs if they exist (though they are managed by start/stop now)
+      workletNodeRef.current = null;
+      microphoneSourceRef.current = null;
+      sabRef.current = null; // Clear SAB ref on unmount
     };
-  }, []); // <-- Make dependency array empty to run only once on mount
+  }, []); // Empty dependency array ensures this runs only once on mount
 
+  // --- 3️⃣ Worker Message Handler --- (Existing useEffect, but update message cases) 
+  useEffect(() => {
+    if (!workerRef.current) return;
 
-  // --- 4️⃣ Public API --- 
-  const start = useCallback(() => {
-    if (!recorderRef.current || !ready) {
-      console.warn('[useTranscription] Cannot start: Recorder not ready or worker not ready.');
-      setError(ready ? 'Recorder not initialized.' : 'Transcription engine not ready.');
+    const onMessageReceived = (e: MessageEvent) => {
+      console.log('[useTranscription] Worker message:', e.data); // Debug
+      // Assuming status is always present
+      const status = e.data?.status;
+      const output = e.data?.output;
+      const workerError = e.data?.error;
+      const timings = e.data?.timings;
+
+      switch (status) {
+        case 'loading':
+          setReady(false);
+          setProcessing(true); // Indicate loading activity
+          setError(null);
+          break;
+        // case 'initiate': // Not used currently
+        // case 'progress': // Not used currently
+        // case 'done': // Not used currently
+        //   break;
+        case 'ready': // Worker is initialized and warmed up
+          setReady(true);
+          setProcessing(false);
+          setError(null);
+          console.log('[useTranscription] Worker ready.');
+          break;
+        // --- NEW/UPDATED STATUSES ---
+        case 'worker_initialized': // Optional: Confirmation worker got SAB
+           console.log('[useTranscription] Worker confirmed RingBuffer init.');
+           break;
+        case 'streaming_started': // Worker confirms it started the pull loop
+            console.log('[useTranscription] Worker confirmed streaming started.');
+            // Might not need state change here, recording state is set in start()
+            break;
+        case 'processing_start': // Worker is starting the ASR pipeline
+            console.log('[useTranscription] Worker started ASR processing.');
+            setProcessing(true);
+            setText(''); // Clear previous text
+            console.time('e2e-transcription'); // Start timer here
+            break;
+        // --- END NEW/UPDATED ---
+        // case 'update': // Not used currently
+        //   break;
+        case 'complete': // Transcription finished
+          setProcessing(false);
+          let transcript = '';
+          if (typeof output === 'string') {
+            transcript = output.trim();
+          }
+          setText(transcript);
+          console.timeEnd('e2e-transcription'); // Stop timer here
+          if (timings) {
+            console.log(`[useTranscription] Worker Timings: Total: ${timings.total?.toFixed(2)} ms`);
+          } else {
+             console.warn("[useTranscription] No timing info received from worker.");
+          }
+          break;
+        case 'error': // Generic worker error or ASR error
+        case 'init-error': // Worker initialization failed
+          setError(String(workerError || 'Worker error'));
+          setProcessing(false);
+          setReady(false); // Ensure ready is false on error
+          console.timeEnd('e2e-transcription'); // Ensure timer stops on error
+          break;
+        default:
+          console.warn('[useTranscription] Unknown worker status:', status);
+          break;
+      }
+    };
+
+    workerRef.current.addEventListener('message', onMessageReceived);
+
+    // Send initial load message (removed, worker loads automatically)
+    // workerRef.current.postMessage({ type: 'load' });
+
+    // Cleanup
+    return () => {
+      console.log('[useTranscription] Removing worker message listener.');
+      workerRef.current?.removeEventListener('message', onMessageReceived);
+      // Worker termination is handled in the first useEffect
+    };
+  }, []); // Run only once
+
+  // --- 4️⃣ Public API ---
+  const start = useCallback(async () => {
+    console.log('[useTranscription] start() called.');
+    if (recording) {
+      console.warn('[useTranscription] Already recording.');
       return;
     }
-    if (recording) {
-        console.warn('[useTranscription] Already recording.');
+    if (!ready) {
+      console.warn('[useTranscription] Worker not ready, cannot start.');
+      setError('Transcription engine not ready.');
+      return;
+    }
+    if (!audioCtxRef.current || !streamRef.current) {
+        console.error('[useTranscription] AudioContext or MediaStream not available.');
+        setError('Audio resources not initialized. Check microphone permissions.');
         return;
     }
-    // Start recording
-    recorderRef.current.start(); // onstart handler sets recording state
-  }, [ready, recording]);
+    // Ensure AudioContext is running (might be suspended after inactivity)
+    if (audioCtxRef.current.state === 'suspended') {
+      console.log('[useTranscription] Resuming AudioContext...');
+      await audioCtxRef.current.resume();
+    }
+
+    setError(null); // Clear previous errors
+    setText(''); // Clear previous text
+
+    try {
+      console.log('[useTranscription] Setting up AudioWorklet...');
+      // 1. Create SharedArrayBuffer
+      // Dynamically import RingBuffer constants to get size
+      const { Constants } = await import('../audio/ring-buffer.js');
+      sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES);
+      console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
+
+      // 2. Add AudioWorklet module (ensure path is correct relative to build output)
+      // Vite should place this in the root of the output dir based on our config
+      const workletURL = '/audioworklet-processor.js';
+      try {
+          await audioCtxRef.current.audioWorklet.addModule(workletURL);
+          console.log('[useTranscription] AudioWorklet module added.');
+      } catch (err) {
+          console.error(`[useTranscription] Failed to add AudioWorklet module from ${workletURL}:`, err);
+          throw new Error(`Failed to load audio processor. ${err.message}`);
+      }
+
+      // 3. Create AudioWorkletNode, passing the SAB
+      workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
+        processorOptions: { sab: sabRef.current }
+      });
+      console.log('[useTranscription] AudioWorkletNode created.');
+
+       // Handle potential errors from the processor itself
+      workletNodeRef.current.onprocessorerror = (event) => {
+        console.error('[useTranscription] AudioWorkletProcessor error:', event);
+        setError('Audio processor error occurred.');
+        // Attempt cleanup if recording was active
+        if (recording) {
+            stop();
+        }
+      };
+
+      // 4. Create MediaStreamSource if it doesn't exist
+      if (!microphoneSourceRef.current) {
+          microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
+          console.log('[useTranscription] MediaStreamSource created.');
+      }
+
+      // 5. Connect the nodes: Mic -> Worklet
+      microphoneSourceRef.current.connect(workletNodeRef.current);
+      console.log('[useTranscription] Nodes connected: Mic -> Worklet.');
+      // Do NOT connect worklet to destination unless you want to hear raw mic input
+
+      // 6. Initialize worker with SAB (transferring ownership)
+      if (workerRef.current && sabRef.current) {
+        console.log('[useTranscription] Sending SAB to worker...');
+        workerRef.current.postMessage({ type: 'init', data: { sab: sabRef.current } }, [sabRef.current]);
+      } else {
+         throw new Error('Worker or SharedArrayBuffer not available for initialization.');
+      }
+
+      // 7. Tell worker to start pulling audio
+      if (workerRef.current) {
+          console.log('[useTranscription] Sending startStream command to worker...');
+          workerRef.current.postMessage({ type: 'startStream' });
+      }
+
+      // 8. Update state
+      setRecording(true);
+      console.log('[useTranscription] Recording started successfully.');
+
+    } catch (err) {
+        console.error('[useTranscription] Error during start():', err);
+        setError(`Failed to start recording: ${err.message}`);
+        // Cleanup partially created resources
+        workletNodeRef.current?.disconnect();
+        workletNodeRef.current = null;
+        // microphoneSourceRef is likely okay, managed by useEffect cleanup
+        sabRef.current = null; // Ensure SAB ref is cleared
+        setRecording(false);
+    }
+
+  }, [ready, recording]); // Dependencies: ready state, recording state
 
   const stop = useCallback(() => {
-    if (!recorderRef.current || !recording) {
-      console.warn('[useTranscription] Cannot stop: Not recording or recorder not ready.');
+    console.log('[useTranscription] stop() called.');
+    if (!recording) {
+      console.warn('[useTranscription] Not recording.');
       return;
     }
-     // Stop recording
-    recorderRef.current.stop(); // onstop handler sets state and processes audio
-  }, [recording]);
+    if (!workletNodeRef.current || !microphoneSourceRef.current) {
+      console.error('[useTranscription] Audio nodes not available for stopping.');
+      // Attempt to reset state anyway
+      setRecording(false);
+      return;
+    }
 
-  // Return the state and control functions
+    try {
+      // 1. Disconnect nodes
+      microphoneSourceRef.current.disconnect(workletNodeRef.current);
+      console.log('[useTranscription] Nodes disconnected.');
+      // No need to disconnect workletNode if it wasn't connected to destination
+
+      // 2. Tell worker to flush and process
+      if (workerRef.current) {
+          console.log('[useTranscription] Sending flush command to worker...');
+          workerRef.current.postMessage({ type: 'flush' });
+          // Worker 'processing_start' message will set processing state
+      } else {
+          console.error('[useTranscription] Worker not available to send flush command.');
+          setError('Worker connection lost before stopping.');
+      }
+
+      // 3. Update state
+      setRecording(false);
+      console.log('[useTranscription] Recording stopped.');
+
+      // 4. Clean up WorkletNode (optional but good practice)
+      // Note: We don't stop the MediaStream track here, 
+      // the useEffect cleanup handles that when the component unmounts.
+      // Re-creating the source/worklet node on next start is intended.
+      workletNodeRef.current = null;
+      sabRef.current = null; // SAB was transferred or will be garbage collected
+
+    } catch (err) {
+        console.error('[useTranscription] Error during stop():', err);
+        setError(`Failed to stop recording cleanly: ${err.message}`);
+        setRecording(false);
+        // Ensure nodes are nullified even on error
+        workletNodeRef.current = null;
+        sabRef.current = null;
+    }
+  }, [recording]); // Dependency: recording state
+
+  // Return the public interface
   return {
     recording,
     processing,
