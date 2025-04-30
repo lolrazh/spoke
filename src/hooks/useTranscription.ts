@@ -51,91 +51,13 @@ export function useTranscription(): UseTranscriptionReturn {
 
     console.log('[useTranscription] Initializing worker...');
     workerRef.current = new Worker(
-      // Assuming worker is in the same dir or adjust path
       new URL('../moonshine-worker.ts', import.meta.url),
       { type: 'module' }
     );
 
-    const onMessageReceived = (e: MessageEvent) => {
-      console.log('[useTranscription] Worker message:', e.data); // Debug
-      const { status, data, output, error: workerError, timings } = e.data;
-
-      // TODO: Replicate the switch-case logic from example App.jsx 
-      //       to update state variables (ready, processing, text, error, progress etc.)
-      switch (status) {
-          case 'loading':
-              setReady(false);
-              setProcessing(true); // Indicate loading activity
-              // setLoadingMessage(data);
-              break;
-          case 'initiate':
-              // Handle progress items if needed
-              break;
-          case 'progress':
-              // Handle progress items if needed
-              break;
-          case 'done':
-              // Handle progress items if needed
-              break;
-          case 'ready':
-              setReady(true);
-              setProcessing(false);
-              setError(null);
-              console.log('[useTranscription] Worker ready.');
-              // Maybe trigger first recording automatically like example?
-              // start(); // Or handle this via external call
-              break;
-          case 'start':
-              setProcessing(true);
-              setText('');
-              break;
-          case 'update':
-              // Handle partial updates if needed (e.g., tokens per second)
-              break;
-          case 'complete':
-              setProcessing(false);
-              let transcript = '';
-              if (output && Array.isArray(output)) {
-                  transcript = output.join(' ').trim();
-              } else if (typeof output === 'string') {
-                  transcript = output.trim();
-              }
-              setText(transcript);
-              console.timeEnd('e2e-transcription');
-              
-              // Log granular timings if available
-              if (timings) { 
-                  console.log(`[useTranscription] Worker Timings: 
-    Total: ${timings.total?.toFixed(2)} ms
-    Feature Extraction: ${timings.featureExtraction?.toFixed(2)} ms
-    Model Generation: ${timings.modelGeneration?.toFixed(2)} ms
-    Decoding: ${timings.decoding?.toFixed(2)} ms`);
-              } else if (e.data.processingTime) { // Fallback just in case
-                   console.log(`[useTranscription] Worker processing time: ${e.data.processingTime.toFixed(2)} ms`);
-              }
-              break;
-          case 'error': // From custom error handling
-          case 'init-error': // From worker
-              setError(String(workerError || data || 'Worker error'));
-              setProcessing(false);
-              setReady(false); // Model is not ready if init failed
-              console.timeEnd('e2e-transcription');
-              break;
-          default:
-              console.warn('[useTranscription] Unknown worker status:', status);
-              break;
-      }
-    };
-    
-    workerRef.current.addEventListener('message', onMessageReceived);
-
-    // Send initial load message
-    workerRef.current.postMessage({ type: 'load' });
-
     // Cleanup
     return () => {
       console.log('[useTranscription] Terminating worker.');
-      workerRef.current?.removeEventListener('message', onMessageReceived);
       workerRef.current?.terminate();
       workerRef.current = null;
     };
@@ -363,10 +285,10 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Nodes connected: Mic -> Worklet.');
       // Do NOT connect worklet to destination unless you want to hear raw mic input
 
-      // 6. Initialize worker with SAB (transferring ownership)
+      // 6. Initialize worker with SAB (no transfer list—SharedArrayBuffer is cloneable)
       if (workerRef.current && sabRef.current) {
-        console.log('[useTranscription] Sending SAB to worker...');
-        workerRef.current.postMessage({ type: 'init', data: { sab: sabRef.current } }, [sabRef.current]);
+        console.log('[useTranscription] Sending SAB reference to worker...');
+        workerRef.current.postMessage({ type: 'init', data: { sab: sabRef.current } });
       } else {
          throw new Error('Worker or SharedArrayBuffer not available for initialization.');
       }

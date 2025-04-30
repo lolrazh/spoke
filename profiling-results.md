@@ -372,3 +372,35 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Fastest WASM configuration (~85% faster than Whisper baseline). q8 quantization significantly improves WASM speed compared to fp32 encoder. Still slower than WebGPU but a good fallback.
 
 ---
+
+## Implementation: AudioWorklet + RingBuffer (Moonshine Base)
+
+*   **Changes Made:**
+    *   Replaced `MediaRecorder` with `AudioWorklet`, `RingBuffer`, and `SharedArrayBuffer`.
+    *   Worker now pulls 48kHz audio from RingBuffer, downsamples to 16kHz, and concatenates before final ASR call.
+    *   Using `Moonshine Base (fp32/q4 Quantization) w/ WebGPU` settings from previous best.
+
+### Metrics
+
+*   **Warm-up Time (First Run Only):** `~7700 ms` (Similar to previous Moonshine warm-up)
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `801.65 ms`
+    *   Run 2: `1090.46 ms`
+    *   Average: `~946 ms` (-15% vs Previous Moonshine WebGPU E2E)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `802.80 ms`
+    *   Run 2: `1091.33 ms`
+    *   Average: `~947 ms` (-13% vs Previous Moonshine WebGPU Worker Time)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous Moonshine WebGPU run)
+*   **Main Thread Impact:**
+    *   (Add observations - expect negligible impact during recording and processing)
+*   **Memory Observation:**
+    *   (Add observations - check `ArrayBuffer` memory in DevTools during recording, should be flat)
+*   **Accuracy Observation:**
+    *   Accuracy good ("Hi, this is a transcription test with Sonic Flow."). No degradation observed.
+*   **Result:** Successful migration! Achieved the goal of removing `MediaRecorder` overhead. E2E Latency seems slightly *faster* than the previous Moonshine baseline, potentially due to eliminating Blob creation/decoding (~150ms faster on average). Accuracy remains high. Memory usage during recording needs confirmation via DevTools.
+
+---

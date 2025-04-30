@@ -45,8 +45,6 @@ export class RingBuffer {
     this.writeIndex = new Int32Array(this.sab, 0, 1);
     // The rest holds the audio data (offset by 4 bytes)
     this.buffer = new Float32Array(this.sab, 4, this.capacity);
-
-    console.log(`RingBuffer initialized. Capacity: ${this.capacity} samples.`);
   }
 
   /**

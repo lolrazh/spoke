@@ -5,10 +5,10 @@ Goal: Achieve near real-time transcription with low latency and efficient resour
 ## Core Architectural Changes (Streaming Pipeline)
 
 *   [x] **Profiling:** Establish baseline performance metrics for the *current* implementation (End-to-end latency, GPU/CPU time per transcription).
-*   [ ] **Replace `MediaRecorder` with `AudioWorklet`:**
-    *   [ ] Create `audioworklet-processor.js` (or similar) to capture raw `Float32Array` PCM data.
-    *   [ ] Update `useTranscription` to initialize and use the `AudioWorkletNode`.
-    *   [ ] Implement a ring buffer (`Float32Array`) in `useTranscription` to store recent audio.
+*   [x] **Replace `MediaRecorder` with `AudioWorklet`:**
+    *   [x] Create `audioworklet-processor.js` (or similar) to capture raw `Float32Array` PCM data.
+    *   [x] Update `useTranscription` to initialize and use the `AudioWorkletNode`.
+    *   [x] Implement a ring buffer (`Float32Array`) in `useTranscription` to store recent audio.
     *   [ ] Implement downsampling (e.g., via `speex-resampler-wasm` or simple FIR) if needed (Worklet runs at `audioCtx.sampleRate`, Whisper needs 16kHz).
 *   [ ] **Implement Chunked Sending:**
     *   [ ] Use `setInterval` or `requestAnimationFrame` in `useTranscription` to periodically extract audio windows from the ring buffer.
