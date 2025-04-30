@@ -297,7 +297,19 @@ export function useTranscription(): UseTranscriptionReturn {
 
     try {
       console.log('[useTranscription] Setting up AudioWorklet...');
-      // 1. Create SharedArrayBuffer
+
+      // --- Add SAB availability check ---
+      if (typeof SharedArrayBuffer === 'undefined') {
+        console.error('[useTranscription] SharedArrayBuffer is not available! Cannot use high-performance capture.');
+        setError('High-performance capture disabled (SharedArrayBuffer missing). Please ensure the app environment is correctly configured.');
+        // TODO: Optionally implement fallback to MediaRecorder here if desired
+        // For now, just prevent proceeding with the AudioWorklet path.
+        setRecording(false); // Ensure recording state is false
+        return; // Stop the start process
+      }
+      // --- End SAB check ---
+
+      // 1. Create SharedArrayBuffer (only if check passes)
       // Dynamically import RingBuffer constants to get size
       const { Constants } = await import('../audio/ring-buffer.js');
       sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES);

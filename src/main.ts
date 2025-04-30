@@ -795,6 +795,20 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
+  // --- Add this header injection logic --- 
+  console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    });
+  });
+  console.log('[Main Process] onHeadersReceived listener configured.');
+  // --- End of added logic ---
+
   // Set disk cache options to avoid cache errors
   app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
   app.commandLine.appendSwitch('disable-http-cache');
