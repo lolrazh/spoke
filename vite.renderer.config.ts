@@ -16,7 +16,7 @@ export default defineConfig({
       input: {
         // Define multiple entry points
         main: join(__dirname, 'index.html'), // Your main app entry
-        'audioworklet-processor': join(__dirname, 'src/audio/audioworklet-processor.ts'), // The worklet entry
+        'audioworklet-processor': join(__dirname, 'public/audioworklet-processor.js'), // The worklet entry
       },
       output: {
         // Ensure the worklet is output as an ES module

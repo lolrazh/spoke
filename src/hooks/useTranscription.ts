@@ -316,14 +316,24 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
 
       // 2. Add AudioWorklet module (ensure path is correct relative to build output)
-      // Vite should place this in the root of the output dir based on our config
-      const workletURL = '/audioworklet-processor.js';
+      // Try using a relative path assuming it's sibling to index.html in output
+      const workletURL = './audioworklet-processor.js'; 
       try {
+          console.log(`[useTranscription] Attempting to load worklet from: ${workletURL}`);
           await audioCtxRef.current.audioWorklet.addModule(workletURL);
-          console.log('[useTranscription] AudioWorklet module added.');
+          console.log('[useTranscription] AudioWorklet module added successfully.');
       } catch (err) {
           console.error(`[useTranscription] Failed to add AudioWorklet module from ${workletURL}:`, err);
-          throw new Error(`Failed to load audio processor. ${err.message}`);
+          // Try the absolute path as a fallback just in case
+          const fallbackWorkletURL = '/audioworklet-processor.js';
+          console.log(`[useTranscription] Retrying with fallback path: ${fallbackWorkletURL}`);
+          try {
+              await audioCtxRef.current.audioWorklet.addModule(fallbackWorkletURL);
+              console.log('[useTranscription] AudioWorklet module added successfully via fallback path.');
+          } catch (fallbackErr) {
+             console.error(`[useTranscription] Failed to add AudioWorklet module from fallback path ${fallbackWorkletURL}:`, fallbackErr);
+             throw new Error(`Failed to load audio processor. ${fallbackErr.message}`); // Throw the final error
+          }
       }
 
       // 3. Create AudioWorkletNode, passing the SAB
