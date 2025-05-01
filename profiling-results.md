@@ -404,3 +404,74 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Successful migration! Achieved the goal of removing `MediaRecorder` overhead. E2E Latency seems slightly *faster* than the previous Moonshine baseline, potentially due to eliminating Blob creation/decoding (~150ms faster on average). Accuracy remains high. Memory usage during recording needs confirmation via DevTools.
 
 ---
+
+## Implementation: Tight Loop Audio Processing (No setInterval)
+
+*   **Changes Made:**
+    *   Removed `setInterval` based polling (250ms interval)
+    *   Implemented tight loop processing in `flush` with `MIN_SAMPLES_FOR_PROCESSING = 384`
+    *   Using same Moonshine Base configuration as previous test
+    *   No changes to model or quantization settings
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `998.96 ms`
+    *   Run 2: `712.82 ms`
+    *   Average: `~856 ms` (-9.5% vs Previous AudioWorklet Implementation)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `994.59 ms`
+    *   Run 2: `712.42 ms`
+    *   Average: `~853.5 ms` (-9.9% vs Previous AudioWorklet Implementation)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous Moonshine WebGPU run)
+*   **Main Thread Impact:**
+    *   Logs show clean handoff between recording and processing phases
+    *   No visible delays in state transitions
+*   **Memory Observation:**
+    *   Audio buffer sizes consistent between runs (48128 and 48810 samples)
+    *   No memory leaks or accumulation visible in logs
+*   **Accuracy Observation:**
+    *   Accuracy remains high with slight variations in transcription:
+    *   Run 1: "This is a transcription test for Sonic Flow."
+    *   Run 2: "This is a transcription test with Sonic Flow."
+*   **Result:** The removal of `setInterval` polling shows a modest improvement in average latency (~90ms faster). However, there's notable variance between runs (286ms difference) that warrants investigation.
+
+---
+
+## Implementation: Pre-allocated 16kHz Buffer (Optimization #5)
+
+*   **Changes Made:**
+    *   Removed the array of 16kHz audio chunks (`audioBuffer16k`).
+    *   Added a large, pre-allocated `Float32Array` (`preallocated16kBuffer`) initialized in `startStream`.
+    *   Modified `pullAndProcessAudio` to copy downsampled audio directly into the pre-allocated buffer.
+    *   Modified `flush` to use `preallocated16kBuffer.subarray()` instead of concatenating chunks.
+    *   Kept the "Tight Loop" processing from the previous step.
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `649.01 ms`
+    *   Run 2: `706.65 ms` 
+    *   Average: `~678 ms` (-20.8% vs Tight Loop Implementation)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `646.15 ms`
+    *   Run 2: `706.38 ms`
+    *   Average: `~676 ms` (-20.8% vs Tight Loop Implementation)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous run, but overall faster)
+*   **Main Thread Impact:**
+    *   No noticeable change in main thread behavior from logs.
+*   **Memory Observation:**
+    *   Logs confirm creation and usage of the large pre-allocated buffer (`size: 480000 samples`).
+    *   Eliminated the array of buffer references and the final concatenation step.
+    *   Slight variation in final subarray length persists (52224 vs 52906 samples).
+*   **Accuracy Observation:**
+    *   Accuracy remains high and consistent ("This is a transcription test for sonic flow.", "This is a transcription test for Sonic Flow.").
+*   **Result:** Significant performance improvement (~177ms faster average) compared to just the tight loop. Latency is also more consistent between runs (difference reduced from ~280ms to ~60ms). This confirms that reducing memory copies and allocations provides a substantial benefit.
+
+---
