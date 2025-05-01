@@ -55,7 +55,7 @@ let busy = false;
 let ringBuffer: RingBuffer | null = null;
 let audioBuffer16k: Float32Array[] = []; // Temporary storage for downsampled chunks
 let pullIntervalId: number | null = null; // Use number type for browser setInterval/clearInterval
-const PULL_INTERVAL_MS = 250; // How often to pull from RingBuffer
+const MIN_SAMPLES_FOR_PROCESSING = 384; // Minimum samples needed (128 × 3 for resampling)
 
 self.postMessage({ status: "loading" });
 
@@ -146,15 +146,9 @@ self.addEventListener("message", async (e) => {
        self.postMessage({ status: "error", error: "Cannot start: RingBuffer not ready." });
        return;
     }
-    if (pullIntervalId) {
-        console.warn("[Worker] Stream already started.");
-        return;
-    }
-    console.log(`[Worker] Starting pull loop (interval: ${PULL_INTERVAL_MS}ms)...`);
+    console.log("[Worker] Starting stream...");
     audioBuffer16k = []; // Clear any previous audio
     ringBuffer.reset(); // Reset read/write pointers
-    // Use self.setInterval for Worker scope
-    pullIntervalId = self.setInterval(pullAndProcessAudio, PULL_INTERVAL_MS);
     self.postMessage({ status: "streaming_started" }); // Inform main thread
     return;
   }
@@ -165,12 +159,6 @@ self.addEventListener("message", async (e) => {
       console.warn("[Worker] Flush requested while busy, ignoring.");
       return;
     }
-    if (pullIntervalId !== null) {
-      // Use self.clearInterval for Worker scope
-      self.clearInterval(pullIntervalId);
-      pullIntervalId = null;
-      console.log("[Worker] Pull loop stopped.");
-    }
     if (!ringBuffer) {
        console.error("[Worker] Cannot flush: RingBuffer not initialized.");
        self.postMessage({ status: "error", error: "Cannot flush: RingBuffer not ready." });
@@ -180,9 +168,11 @@ self.addEventListener("message", async (e) => {
     busy = true;
     self.postMessage({ status: "processing_start" }); // Indicate processing has begun
 
-    // Process any remaining audio in the buffer *immediately* before ASR call
-    console.log("[Worker] Processing final audio chunk before ASR...");
-    pullAndProcessAudio(); // Run one last time
+    // Process all available audio in a tight loop
+    console.log("[Worker] Processing all available audio...");
+    while (ringBuffer.availableRead() >= MIN_SAMPLES_FOR_PROCESSING) {
+      pullAndProcessAudio();
+    }
 
     // --- Concatenate and Transcribe ---
     if (audioBuffer16k.length === 0) {

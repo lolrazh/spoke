@@ -404,3 +404,39 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Successful migration! Achieved the goal of removing `MediaRecorder` overhead. E2E Latency seems slightly *faster* than the previous Moonshine baseline, potentially due to eliminating Blob creation/decoding (~150ms faster on average). Accuracy remains high. Memory usage during recording needs confirmation via DevTools.
 
 ---
+
+## Implementation: Tight Loop Audio Processing (No setInterval)
+
+*   **Changes Made:**
+    *   Removed `setInterval` based polling (250ms interval)
+    *   Implemented tight loop processing in `flush` with `MIN_SAMPLES_FOR_PROCESSING = 384`
+    *   Using same Moonshine Base configuration as previous test
+    *   No changes to model or quantization settings
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `998.96 ms`
+    *   Run 2: `712.82 ms`
+    *   Average: `~856 ms` (-9.5% vs Previous AudioWorklet Implementation)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `994.59 ms`
+    *   Run 2: `712.42 ms`
+    *   Average: `~853.5 ms` (-9.9% vs Previous AudioWorklet Implementation)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous Moonshine WebGPU run)
+*   **Main Thread Impact:**
+    *   Logs show clean handoff between recording and processing phases
+    *   No visible delays in state transitions
+*   **Memory Observation:**
+    *   Audio buffer sizes consistent between runs (48128 and 48810 samples)
+    *   No memory leaks or accumulation visible in logs
+*   **Accuracy Observation:**
+    *   Accuracy remains high with slight variations in transcription:
+    *   Run 1: "This is a transcription test for Sonic Flow."
+    *   Run 2: "This is a transcription test with Sonic Flow."
+*   **Result:** The removal of `setInterval` polling shows a modest improvement in average latency (~90ms faster). However, there's notable variance between runs (286ms difference) that warrants investigation.
+
+---
