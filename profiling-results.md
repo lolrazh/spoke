@@ -440,3 +440,38 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** The removal of `setInterval` polling shows a modest improvement in average latency (~90ms faster). However, there's notable variance between runs (286ms difference) that warrants investigation.
 
 ---
+
+## Implementation: Pre-allocated 16kHz Buffer (Optimization #5)
+
+*   **Changes Made:**
+    *   Removed the array of 16kHz audio chunks (`audioBuffer16k`).
+    *   Added a large, pre-allocated `Float32Array` (`preallocated16kBuffer`) initialized in `startStream`.
+    *   Modified `pullAndProcessAudio` to copy downsampled audio directly into the pre-allocated buffer.
+    *   Modified `flush` to use `preallocated16kBuffer.subarray()` instead of concatenating chunks.
+    *   Kept the "Tight Loop" processing from the previous step.
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `649.01 ms`
+    *   Run 2: `706.65 ms` 
+    *   Average: `~678 ms` (-20.8% vs Tight Loop Implementation)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `646.15 ms`
+    *   Run 2: `706.38 ms`
+    *   Average: `~676 ms` (-20.8% vs Tight Loop Implementation)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous run, but overall faster)
+*   **Main Thread Impact:**
+    *   No noticeable change in main thread behavior from logs.
+*   **Memory Observation:**
+    *   Logs confirm creation and usage of the large pre-allocated buffer (`size: 480000 samples`).
+    *   Eliminated the array of buffer references and the final concatenation step.
+    *   Slight variation in final subarray length persists (52224 vs 52906 samples).
+*   **Accuracy Observation:**
+    *   Accuracy remains high and consistent ("This is a transcription test for sonic flow.", "This is a transcription test for Sonic Flow.").
+*   **Result:** Significant performance improvement (~177ms faster average) compared to just the tight loop. Latency is also more consistent between runs (difference reduced from ~280ms to ~60ms). This confirms that reducing memory copies and allocations provides a substantial benefit.
+
+---

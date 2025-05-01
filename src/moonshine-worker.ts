@@ -53,9 +53,16 @@ if (useGpu) {
 let asr: any | null = null;
 let busy = false;
 let ringBuffer: RingBuffer | null = null;
-let audioBuffer16k: Float32Array[] = []; // Temporary storage for downsampled chunks
-let pullIntervalId: number | null = null; // Use number type for browser setInterval/clearInterval
+// Remove the old array of chunks
+// let audioBuffer16k: Float32Array[] = []; 
 const MIN_SAMPLES_FOR_PROCESSING = 384; // Minimum samples needed (128 × 3 for resampling)
+const MAX_RECORDING_SECONDS = 30;
+const SAMPLE_RATE_16K = 16000;
+const PREALLOCATED_BUFFER_SIZE = SAMPLE_RATE_16K * MAX_RECORDING_SECONDS;
+
+// State for pre-allocated buffer
+let preallocated16kBuffer: Float32Array | null = null;
+let current16kWriteOffset = 0;
 
 self.postMessage({ status: "loading" });
 
@@ -126,8 +133,6 @@ self.addEventListener("message", async (e) => {
       try {
         ringBuffer = new RingBuffer(data.sab);
         console.log("[Worker] RingBuffer initialized with received SharedArrayBuffer.");
-        // Send confirmation back or just log
-        // self.postMessage({ status: "worker_initialized" });
       } catch (error) {
         console.error("[Worker] Failed to initialize RingBuffer:", error);
         self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
@@ -147,7 +152,18 @@ self.addEventListener("message", async (e) => {
        return;
     }
     console.log("[Worker] Starting stream...");
-    audioBuffer16k = []; // Clear any previous audio
+    // Allocate the large buffer and reset offset
+    try {
+      preallocated16kBuffer = new Float32Array(PREALLOCATED_BUFFER_SIZE);
+      current16kWriteOffset = 0;
+      console.log(`[Worker] Pre-allocated 16kHz buffer created (size: ${PREALLOCATED_BUFFER_SIZE} samples).`);
+    } catch (allocError) {
+      console.error("[Worker] Failed to allocate 16kHz buffer:", allocError);
+      self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
+      preallocated16kBuffer = null; // Ensure it's null on failure
+      return;
+    }
+    
     ringBuffer.reset(); // Reset read/write pointers
     self.postMessage({ status: "streaming_started" }); // Inform main thread
     return;
@@ -159,9 +175,9 @@ self.addEventListener("message", async (e) => {
       console.warn("[Worker] Flush requested while busy, ignoring.");
       return;
     }
-    if (!ringBuffer) {
-       console.error("[Worker] Cannot flush: RingBuffer not initialized.");
-       self.postMessage({ status: "error", error: "Cannot flush: RingBuffer not ready." });
+    if (!ringBuffer || !preallocated16kBuffer) {
+       console.error("[Worker] Cannot flush: RingBuffer or preallocated buffer not ready.");
+       self.postMessage({ status: "error", error: "Cannot flush: Worker not properly initialized." });
        return;
     }
 
@@ -169,31 +185,22 @@ self.addEventListener("message", async (e) => {
     self.postMessage({ status: "processing_start" }); // Indicate processing has begun
 
     // Process all available audio in a tight loop
-    console.log("[Worker] Processing all available audio...");
+    console.log("[Worker] Processing final available audio...");
     while (ringBuffer.availableRead() >= MIN_SAMPLES_FOR_PROCESSING) {
       pullAndProcessAudio();
     }
 
-    // --- Concatenate and Transcribe ---
-    if (audioBuffer16k.length === 0) {
+    // --- Use the pre-allocated buffer --- 
+    if (current16kWriteOffset === 0) {
       console.log("[Worker] No audio data collected, skipping transcription.");
       self.postMessage({ status: "complete", output: "", timings: { total: 0 } });
       busy = false;
       return;
     }
 
-    // Calculate total length
-    const totalLength = audioBuffer16k.reduce((sum, buf) => sum + buf.length, 0);
-    const finalAudio16k = new Float32Array(totalLength);
-
-    // Concatenate buffers
-    let offset = 0;
-    for (const buffer of audioBuffer16k) {
-      finalAudio16k.set(buffer, offset);
-      offset += buffer.length;
-    }
-    console.log(`[Worker] Final 16kHz audio buffer created. Length: ${finalAudio16k.length} samples.`);
-    audioBuffer16k = []; // Clear the temporary buffer
+    // Get the subarray containing the actual audio data
+    const finalAudio = preallocated16kBuffer.subarray(0, current16kWriteOffset);
+    console.log(`[Worker] Using 16kHz audio subarray. Length: ${finalAudio.length} samples.`);
 
     // --- ASR Pipeline Call ---
     const t0 = performance.now();
@@ -201,7 +208,7 @@ self.addEventListener("message", async (e) => {
       if (!asr) throw new Error("ASR pipeline not ready.");
 
       console.log("[Worker] Calling ASR pipeline...");
-      const result = await asr(finalAudio16k);
+      const result = await asr(finalAudio);
       const pipelineTime = performance.now() - t0;
       console.log(`[Worker] ASR pipeline completed in ${pipelineTime.toFixed(2)} ms.`);
 
@@ -217,6 +224,9 @@ self.addEventListener("message", async (e) => {
       self.postMessage({ status: "error", error: String(err) });
     } finally {
       busy = false;
+      // Optional: Clear the buffer for next use? Reset in startStream might be sufficient.
+      // current16kWriteOffset = 0;
+      // preallocated16kBuffer = null; 
     }
     return; // Handled flush message
   }
@@ -225,37 +235,39 @@ self.addEventListener("message", async (e) => {
   console.warn(`[Worker] Unhandled message type: ${type}`);
 });
 
-// --- Helper Function for Pull Loop --- (NEW)
+// --- Helper Function for Pull Loop --- (MODIFIED)
 function pullAndProcessAudio() {
-  if (!ringBuffer) return;
+  if (!ringBuffer || !preallocated16kBuffer) return; // Check preallocated buffer too
 
   const available48k = ringBuffer.availableRead();
   if (available48k === 0) {
-    // console.log("[Worker Pull] No new 48k samples.");
     return;
   }
 
   // Ensure we read a multiple of 3 for the simple resampler
   const samplesToRead = Math.floor(available48k / 3) * 3;
   if (samplesToRead === 0) {
-     // console.log(`[Worker Pull] Not enough samples for downsampling (${available48k})`);
      return;
   }
 
   const buffer48k = new Float32Array(samplesToRead);
-  ringBuffer.read(buffer48k); // Read into the new buffer
+  ringBuffer.read(buffer48k);
 
   if (buffer48k.length > 0) {
-    // console.log(`[Worker Pull] Read ${buffer48k.length} samples @48k.`);
     try {
       const buffer16k = downsample48kTo16k(buffer48k);
       if (buffer16k.length > 0) {
-        // console.log(`[Worker Pull] Downsampled to ${buffer16k.length} samples @16k.`);
-        audioBuffer16k.push(buffer16k);
+        // Check if there's enough space in the preallocated buffer
+        if (current16kWriteOffset + buffer16k.length <= preallocated16kBuffer.length) {
+          preallocated16kBuffer.set(buffer16k, current16kWriteOffset);
+          current16kWriteOffset += buffer16k.length;
+        } else {
+          console.warn("[Worker] Preallocated 16kHz buffer overflow! Discarding chunk.");
+          // Optionally, stop processing or handle the overflow
+        }
       }
     } catch (error) {
         console.error("[Worker Pull] Error during downsampling:", error);
-        // Decide how to handle error - skip chunk? stop stream?
     }
   }
 }
