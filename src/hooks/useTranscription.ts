@@ -139,36 +139,29 @@ export function useTranscription(): UseTranscriptionReturn {
             // Don't clear text here, wait for final result
             console.time('e2e-transcription-final'); // Use a different timer for final flush
             break;
-        case 'partial': // NEW: Handle partial results
+        case 'partial': 
+        case 'complete': // Treat complete same as partial for delta handling
+            const delta = e.data?.delta as string;
             if (typeof delta === 'string' && delta) {
-                console.log(`[useTranscription] Received partial text delta: "${delta}"`);
-                // Append to internal state if needed for display
+                console.log(`[useTranscription] Received text delta (${status}): "${delta}"`);
+                // Append delta to internal state 
                 setText(prev => (prev + ' ' + delta).trim()); 
-                // Send to main process for immediate pasting
-                window.electron.insertTextAtCursor(delta + ' ') // Add space after partial
-                    .catch(err => console.error('[useTranscription] Error inserting partial text:', err));
+                // Send delta to main process for pasting
+                // REMOVED extra space here - let Whisper manage spaces via delta
+                window.electron.insertTextAtCursor(delta)
+                    .catch(err => console.error(`[useTranscription] Error inserting ${status} text:`, err));
+            }
+            // Additionally handle timings if it's the complete message
+            if (status === 'complete') {
+                 setProcessing(false);
+                 console.timeEnd('e2e-transcription-final'); 
+                 if (timings) {
+                    console.log(`[useTranscription] Worker Final Flush Timings: Total: ${timings.total?.toFixed(2)} ms`);
+                 } else {
+                    console.warn("[useTranscription] No timing info received from worker for final flush.");
+                 }
             }
             break;
-        case 'complete': // Final transcription segment from flush
-          setProcessing(false);
-          let finalDelta = '';
-          if (typeof output === 'string') {
-            finalDelta = output.trim(); // This is just the *last* segment
-          }
-          // Append the final segment to the text state
-          if (finalDelta) {
-             setText(prev => (prev + ' ' + finalDelta).trim());
-             // Also paste the final segment
-             window.electron.insertTextAtCursor(finalDelta + ' ') // Add space after final part
-                .catch(err => console.error('[useTranscription] Error inserting final text:', err));
-          }
-          console.timeEnd('e2e-transcription-final'); 
-          if (timings) {
-            console.log(`[useTranscription] Worker Final Flush Timings: Total: ${timings.total?.toFixed(2)} ms`);
-          } else {
-             console.warn("[useTranscription] No timing info received from worker for final flush.");
-          }
-          break;
         case 'error': 
         case 'init-error': 
           setError(String(workerError || 'Worker error'));

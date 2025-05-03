@@ -70,6 +70,52 @@ const PULL_LOOP_INTERVAL_MS = 250; // How often to pull from ring buffer
 let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls
+let lastPartialText = ""; // NEW: Store the cumulative text sent so far
+
+// NEW Helper function to diff text and post delta
+function diffAndSend(textNow: string, tag: 'partial' | 'complete') {
+  textNow = textNow.trim(); // Ensure consistent trimming
+  let i = 0;
+  // Find longest common prefix length
+  while (i < textNow.length && i < lastPartialText.length && textNow[i] === lastPartialText[i]) {
+    i++;
+  }
+
+  // Handle potential leading/trailing space inconsistencies during diff
+  let prefixBoundary = i;
+  // Adjust boundary if it lands mid-word or next to spaces inconsistently
+  if (i > 0 && i < textNow.length) {
+    const prevCharText = textNow[i - 1];
+    const nextCharText = textNow[i];
+    const prevCharLast = i > 0 ? lastPartialText[i - 1] : null;
+
+    // If boundary is at a space in one but not the other, adjust slightly if possible
+    if (nextCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
+       // Don't include the leading space in delta if the last text didn't end with one
+       prefixBoundary = i + 1; 
+    } else if (prevCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
+        // If new text has a space before boundary, maybe keep it? (Less common)
+        // Let's prioritize trimming delta's start
+    }
+  }
+  
+  // Extract the delta (new part) and trim leading whitespace aggressively
+  const delta = textNow.slice(prefixBoundary).trimStart(); 
+  
+  console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
+
+  if (delta) {
+    self.postMessage({ status: tag, delta });
+    // Update lastPartialText only if it was a partial send
+    // Reset it after the final complete send
+    lastPartialText = tag === 'partial' ? textNow : ""; 
+  } else if (tag === 'complete') {
+      // If complete has no delta, still reset lastPartialText
+      lastPartialText = "";
+      // Optionally send an empty complete message if needed by UI logic
+      // self.postMessage({ status: tag, delta: "" }); 
+  }
+}
 
 // Helper function for the pull loop (must be defined before use)
 async function startPullLoop() {
@@ -94,9 +140,9 @@ async function startPullLoop() {
   console.log('[Worker] Pull loop stopped.');
 }
 
-// Helper function to check and emit partial results
+// Helper function to check and emit partial results (MODIFIED)
 async function maybeEmitPartial() {
-  if (processingPartial || !preallocated16kBuffer || !asr) return; // Don't overlap calls or run if not ready
+  if (processingPartial || !preallocated16kBuffer || !asr) return; 
 
   const buffered16kSamples = current16kWriteOffset - nextDecodeStart16k;
   const bufferedSeconds = buffered16kSamples / SAMPLE_RATE_16K;
@@ -105,31 +151,25 @@ async function maybeEmitPartial() {
     console.log(`[Worker] Buffer has >= ${PARTIAL_INTERVAL_S}s (${bufferedSeconds.toFixed(2)}s) of new audio. Processing partial...`);
     processingPartial = true;
     
-    // Get the slice of *new* audio data since the last partial/start
     const sliceToProcess = preallocated16kBuffer.subarray(nextDecodeStart16k, current16kWriteOffset);
-    const sliceStartIndex = nextDecodeStart16k; // Store start index before ASR call
-    const sliceEndIndex = current16kWriteOffset; // Store end index before ASR call
+    const sliceEndIndex = current16kWriteOffset; // Store end index
 
     try {
       console.log(`[Worker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
       const tPartialStart = performance.now();
       const result = await asr(sliceToProcess);
       const tPartialEnd = performance.now();
-      const partialText = (result as any).text?.trim() ?? '';
-      console.log(`[Worker] Partial ASR completed in ${(tPartialEnd - tPartialStart).toFixed(2)} ms. Text: "${partialText}"`);
+      const currentFullText = (result as any).text?.trim() ?? ''; // Get the full text for this slice
+      console.log(`[Worker] Partial ASR completed in ${(tPartialEnd - tPartialStart).toFixed(2)} ms. Full Text: "${currentFullText}"`);
 
-      if (partialText) {
-        self.postMessage({
-          status: 'partial',
-          delta: partialText
-        });
-      }
-      // IMPORTANT: Move the start cursor for the next slice *after* successful processing
-      nextDecodeStart16k = sliceEndIndex;
+      // Use diffAndSend to post only the delta
+      diffAndSend(lastPartialText + ' ' + currentFullText, 'partial');
+      
+      // IMPORTANT: Move the start cursor *after* successful processing
+      nextDecodeStart16k = sliceEndIndex; 
 
     } catch (err) {
       console.error('[Worker] Partial decode error:', err);
-      // Decide how to handle error - retry? skip? For now, just log and allow next attempt.
     } finally {
       processingPartial = false;
     }
@@ -235,6 +275,7 @@ self.addEventListener("message", async (e) => {
       current16kWriteOffset = 0;
       nextDecodeStart16k = 0; // Reset decode cursor
       processingPartial = false; // Reset partial processing flag
+      lastPartialText = ""; // Reset history on new stream
       console.log(`[Worker] Pre-allocated 16kHz buffer created (size: ${PREALLOCATED_BUFFER_SIZE} samples).`);
     } catch (allocError) {
       console.error("[Worker] Failed to allocate 16kHz buffer:", allocError);
@@ -263,14 +304,13 @@ self.addEventListener("message", async (e) => {
     recording = false; // Signal the pull loop to stop
     
     // Wait briefly for any ongoing partial processing to finish
-    // A more robust solution might use a promise or lock
     while (processingPartial) {
         console.log('[Worker] Waiting for ongoing partial processing to finish before final flush...');
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     
     console.log('[Worker] Proceeding with final flush...');
-    if (busy) { // Check busy flag again after wait
+    if (busy) { 
       console.warn("[Worker] Flush requested while busy (after wait), ignoring.");
       return;
     }
@@ -283,9 +323,39 @@ self.addEventListener("message", async (e) => {
     busy = true;
     self.postMessage({ status: "processing_start" }); 
 
-    // Perform one last pull to get any remaining audio
-    console.log("[Worker] Processing final available audio before final ASR...");
-    pullAndProcessAudio();
+    // --- MODIFIED: Drain RingBuffer completely before final processing ---
+    console.log("[Worker] Draining final audio from RingBuffer...");
+    let stableRounds = 0;
+    const drainStartTime = performance.now();
+    while (stableRounds < 2 && (performance.now() - drainStartTime < 500)) { // Add timeout
+      const beforeSamples = current16kWriteOffset; // Check write offset before pull
+      pullAndProcessAudio(); // Pulls from 48k ring buffer, adds to 16k buffer
+      const afterSamples = current16kWriteOffset;
+      
+      if (afterSamples === beforeSamples) { // No new 16k samples were added
+          // Now, also check if the 48k ring buffer is truly empty
+          const available48k = ringBuffer.availableRead();
+          if (available48k === 0) {
+            stableRounds++;
+            console.log(`[Worker Drain] RingBuffer empty, stable round ${stableRounds}`);
+          } else {
+            stableRounds = 0; // Samples arrived, reset stability count
+            console.log(`[Worker Drain] RingBuffer not empty (${available48k}), resetting stability`);
+          }
+      } else {
+          stableRounds = 0; // New samples were processed, reset stability count
+          console.log(`[Worker Drain] Processed ${afterSamples - beforeSamples} 16k samples, resetting stability`);
+      }
+      
+      if (stableRounds < 2) {
+        await new Promise(r => setTimeout(r, 25)); // Wait before next check
+      }
+    }
+    if (performance.now() - drainStartTime >= 500) {
+        console.warn("[Worker] Drain loop timed out after 500ms. Proceeding anyway.");
+    }
+    console.log(`[Worker] RingBuffer drain complete after ${(performance.now() - drainStartTime).toFixed(1)}ms.`);
+    // --- End Draining Logic ---
 
     // --- Use the final remaining portion of the pre-allocated buffer ---
     const finalSliceStartIndex = nextDecodeStart16k;
@@ -304,7 +374,7 @@ self.addEventListener("message", async (e) => {
     
     console.log(`[Worker] Using final 16kHz audio subarray. Length: ${finalAudioSlice.length} samples.`);
 
-    // --- Final ASR Pipeline Call ---
+    // --- Final ASR Pipeline Call (MODIFIED) ---
     const t0 = performance.now();
     try {
       if (!asr) throw new Error("ASR pipeline not ready.");
@@ -314,13 +384,14 @@ self.addEventListener("message", async (e) => {
       const pipelineTime = performance.now() - t0;
       console.log(`[Worker] Final ASR pipeline completed in ${pipelineTime.toFixed(2)} ms.`);
 
-      const finalTextDelta = (result as any).text?.trim() ?? '';
-      // Send the final delta as 'complete' message
-      self.postMessage({
-        status: "complete",
-        output: finalTextDelta, // Send only the last part
-        timings: { total: pipelineTime },
-      });
+      const finalFullText = (result as any).text?.trim() ?? '';
+      
+      // Use diffAndSend for the final segment too
+      diffAndSend(lastPartialText + ' ' + finalFullText, 'complete');
+      
+      // Post timings separately if needed, diffAndSend only handles text delta
+      // self.postMessage({ status: "complete_timings", timings: { total: pipelineTime }});
+
     } catch (err) {
       const pipelineTimeOnError = performance.now() - t0;
       console.error(`[Worker] Final ASR Error after ${pipelineTimeOnError.toFixed(2)}ms:`, err);
@@ -331,6 +402,7 @@ self.addEventListener("message", async (e) => {
       nextDecodeStart16k = 0;
       current16kWriteOffset = 0;
       // preallocated16kBuffer = null; // Maybe clear buffer?
+      lastPartialText = ""; // Ensure reset here too
     }
     return; // Handled flush message
   }
@@ -370,7 +442,7 @@ function pullAndProcessAudio() {
                       preallocated16kBuffer.set(buffer16k, current16kWriteOffset);
                       current16kWriteOffset += buffer16k.length;
                   } else {
-                      console.warn("[Worker] Preallocated 16kHz buffer overflow! Discarding chunk.");
+                      console.warn("[Worker Pull] Preallocated 16kHz buffer overflow! Discarding chunk.");
                       // Stop pulling more data if buffer is full to prevent continuous warnings
                       break; 
                   }
