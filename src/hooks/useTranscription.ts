@@ -148,13 +148,19 @@ export function useTranscription(): UseTranscriptionReturn {
             }
             break;
         case 'complete': 
-            // Handle final result: Update state ONLY. Pasting happens in App.tsx
+            // Handle final result: Update state AND paste here
             const finalText = e.data?.text as string; // Expect full text now
-            if (typeof finalText === 'string') { // Allow empty string
+            if (typeof finalText === 'string') { 
                 console.log(`[useTranscription] Received final text: "${finalText}"`);
                 // Set the final, authoritative text state
                 setText(finalText); 
-                // *** DO NOT PASTE HERE ***
+                // PASTE the final text directly from the hook
+                if (finalText && window.electron) { // Ensure text is not empty before pasting
+                  window.electron.insertTextAtCursor(finalText)
+                      .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
+                } else if (!finalText) {
+                   console.log('[useTranscription] Final text is empty, skipping paste.');
+                }
             }
             // Handle timings and state for complete message
             setProcessing(false);

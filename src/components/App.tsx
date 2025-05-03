@@ -48,29 +48,14 @@ const App: React.FC = () => {
     // Dependencies are now from the hook
   }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
 
-  // --- Handle Transcription Results (REMOVED PASTE LOGIC PREVIOUSLY, ADDING IT BACK) --- 
+  // --- Handle Transcription Results (REMOVING PASTE LOGIC AGAIN) --- 
   useEffect(() => {
-    // Only paste when recording stops, processing finishes, AND there's text.
-    if (!trans.recording && !trans.processing && trans.ready && trans.text) {
-      const textToInsert = trans.text; // Get the final accumulated text
-      console.log(`[App] Pasting final accumulated text: "${textToInsert}"`);
-      if (textToInsert && window.electron) { 
-          window.electron.insertTextAtCursor(textToInsert) // Paste the full text
-            .then(insertResult => {
-              if (!insertResult.success && insertResult.error) {
-                console.error('[App] Insertion Error:', insertResult.error);
-                window.electron?.sendNotification(insertResult.error);
-              }
-            })
-            .catch(err => {
-                console.error('[App] Error during insertTextAtCursor IPC:', err);
-                window.electron?.sendNotification('Failed to insert text.');
-            });
-      } else {
-          console.log('[App] Final transcription result was empty or electron API unavailable, not inserting.');
-      }
+    // The hook now handles pasting on 'complete'.
+    // We can still log the final accumulated text if desired.
+    if (trans.text && !trans.recording && !trans.processing) { // Log only final text maybe?
+      console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
     }
-  }, [trans.recording, trans.processing, trans.ready, trans.text]); // Dependencies that signal completion
+  }, [trans.text, trans.recording, trans.processing]); // Log when text/state changes
 
   // --- Handle Errors from Hook --- 
   useEffect(() => {
