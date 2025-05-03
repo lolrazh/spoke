@@ -48,29 +48,15 @@ const App: React.FC = () => {
     // Dependencies are now from the hook
   }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
 
-  // --- Handle Transcription Results --- 
+  // --- Handle Transcription Results (REMOVED PASTE LOGIC) --- 
   useEffect(() => {
-    if (trans.text && window.electron) {
-      const textToInsert = trans.text; // Already trimmed in the hook potentially
-      console.log(`[App] Received transcription: "${textToInsert}"`);
-      if (textToInsert) { 
-          console.log('[App] Inserting text...');
-          window.electron.insertTextAtCursor(textToInsert)
-            .then(insertResult => {
-              if (!insertResult.success && insertResult.error) {
-                console.error('[App] Insertion Error:', insertResult.error);
-                window.electron?.sendNotification(insertResult.error);
-              }
-            })
-            .catch(err => {
-                console.error('[App] Error during insertTextAtCursor IPC:', err);
-                window.electron?.sendNotification('Failed to insert text.');
-            });
-      } else {
-          console.log('[App] Transcription result was empty, not inserting.');
-      }
+    // We no longer paste from here. The hook handles pasting on 'complete'.
+    // We can still log the final accumulated text if desired.
+    if (trans.text) { 
+      console.log(`[App] Accumulated transcription state updated: "${trans.text}"`);
     }
-  }, [trans.text]); // Watch for changes in the hook's text output
+    // *** REMOVED window.electron.insertTextAtCursor CALL ***
+  }, [trans.text]); // Still watch text changes for logging/UI updates if needed
 
   // --- Handle Errors from Hook --- 
   useEffect(() => {
