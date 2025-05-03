@@ -73,7 +73,7 @@ let processingPartial = false; // Flag to prevent concurrent partial ASR calls
 let lastPartialText = ""; // NEW: Store the cumulative text sent so far
 
 // NEW Helper function to diff text and post delta
-function diffAndSend(textNow: string, tag: 'partial' | 'complete') {
+function diffAndSend(textNow: string, tag: 'partial') {
   textNow = textNow.trim(); // Ensure consistent trimming
   let i = 0;
   // Find longest common prefix length
@@ -106,14 +106,7 @@ function diffAndSend(textNow: string, tag: 'partial' | 'complete') {
 
   if (delta) {
     self.postMessage({ status: tag, delta });
-    // Update lastPartialText only if it was a partial send
-    // Reset it after the final complete send
-    lastPartialText = tag === 'partial' ? textNow : ""; 
-  } else if (tag === 'complete') {
-      // If complete has no delta, still reset lastPartialText
-      lastPartialText = "";
-      // Optionally send an empty complete message if needed by UI logic
-      // self.postMessage({ status: tag, delta: "" }); 
+    lastPartialText = textNow; // Update history for next partial
   }
 }
 
@@ -162,7 +155,7 @@ async function maybeEmitPartial() {
       const currentFullText = (result as any).text?.trim() ?? ''; // Get the full text for this slice
       console.log(`[Worker] Partial ASR completed in ${(tPartialEnd - tPartialStart).toFixed(2)} ms. Full Text: "${currentFullText}"`);
 
-      // Use diffAndSend to post only the delta
+      // Use diffAndSend for partial delta only
       diffAndSend(lastPartialText + ' ' + currentFullText, 'partial');
       
       // IMPORTANT: Move the start cursor *after* successful processing
@@ -386,11 +379,16 @@ self.addEventListener("message", async (e) => {
 
       const finalFullText = (result as any).text?.trim() ?? '';
       
-      // Use diffAndSend for the final segment too
-      diffAndSend(lastPartialText + ' ' + finalFullText, 'complete');
+      // Combine with previous history for the absolute final text
+      const absoluteFinalText = (lastPartialText + ' ' + finalFullText).trim();
       
-      // Post timings separately if needed, diffAndSend only handles text delta
-      // self.postMessage({ status: "complete_timings", timings: { total: pipelineTime }});
+      // Send the *full* text in the complete message
+      console.log(`[Worker] Sending final complete message with full text: "${absoluteFinalText}"`);
+      self.postMessage({ 
+          status: 'complete', 
+          text: absoluteFinalText, // Use 'text' property for final full transcript
+          timings: { total: pipelineTime }
+        });
 
     } catch (err) {
       const pipelineTimeOnError = performance.now() - t0;

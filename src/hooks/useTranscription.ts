@@ -140,25 +140,21 @@ export function useTranscription(): UseTranscriptionReturn {
             console.time('e2e-transcription-final'); // Use a different timer for final flush
             break;
         case 'partial':
-            // Handle partial results: Update internal state ONLY
             const partialDelta = e.data?.delta as string;
             if (typeof partialDelta === 'string' && partialDelta) {
                 console.log(`[useTranscription] Received partial text delta: "${partialDelta}"`);
                 // Append delta to internal state 
                 setText(prev => (prev + ' ' + partialDelta).trim()); 
-                // *** DO NOT PASTE HERE ***
             }
             break;
         case 'complete': 
-            // Handle final result: Update state AND paste
-            const finalDelta = e.data?.delta as string;
-            if (typeof finalDelta === 'string' && finalDelta) {
-                console.log(`[useTranscription] Received final text delta: "${finalDelta}"`);
-                // Append final delta to internal state 
-                setText(prev => (prev + ' ' + finalDelta).trim());
-                // Send final delta to main process for pasting
-                window.electron.insertTextAtCursor(finalDelta)
-                    .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
+            // Handle final result: Update state ONLY. Pasting happens in App.tsx
+            const finalText = e.data?.text as string; // Expect full text now
+            if (typeof finalText === 'string') { // Allow empty string
+                console.log(`[useTranscription] Received final text: "${finalText}"`);
+                // Set the final, authoritative text state
+                setText(finalText); 
+                // *** DO NOT PASTE HERE ***
             }
             // Handle timings and state for complete message
             setProcessing(false);
