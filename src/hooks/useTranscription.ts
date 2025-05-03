@@ -2,8 +2,6 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 
 // Constants (can be moved or adjusted)
 const TARGET_AUDIO_CONTEXT_RATE = 48000; // Use 48kHz for AudioContext
-const WHISPER_SAMPLING_RATE = 16_000; // Keep for potential reference, but worker handles resampling
-const MAX_AUDIO_LENGTH_SECONDS = 30;
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
 // Define the hook's return type
@@ -11,7 +9,7 @@ export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
   ready: boolean;
-  text: string;
+  text: string; // This will now hold the *cumulative* text
   error: string | null;
   start: () => void;
   stop: () => void;
@@ -106,71 +104,77 @@ export function useTranscription(): UseTranscriptionReturn {
     };
   }, []); // Empty dependency array ensures this runs only once on mount
 
-  // --- 3️⃣ Worker Message Handler --- (Existing useEffect, but update message cases) 
+  // --- 3️⃣ Worker Message Handler --- 
   useEffect(() => {
     if (!workerRef.current) return;
 
     const onMessageReceived = (e: MessageEvent) => {
-      console.log('[useTranscription] Worker message:', e.data); // Debug
-      // Assuming status is always present
+      console.log('[useTranscription] Worker message:', e.data); 
       const status = e.data?.status;
       const output = e.data?.output;
       const workerError = e.data?.error;
       const timings = e.data?.timings;
+      const delta = e.data?.delta; // For partial results
 
       switch (status) {
         case 'loading':
           setReady(false);
-          setProcessing(true); // Indicate loading activity
+          setProcessing(true); 
           setError(null);
+          setText(''); // Clear text on new loading
           break;
-        // case 'initiate': // Not used currently
-        // case 'progress': // Not used currently
-        // case 'done': // Not used currently
-        //   break;
-        case 'ready': // Worker is initialized and warmed up
+        case 'ready': 
           setReady(true);
           setProcessing(false);
           setError(null);
           console.log('[useTranscription] Worker ready.');
           break;
-        // --- NEW/UPDATED STATUSES ---
-        case 'worker_initialized': // Optional: Confirmation worker got SAB
-           console.log('[useTranscription] Worker confirmed RingBuffer init.');
-           break;
-        case 'streaming_started': // Worker confirms it started the pull loop
+        case 'streaming_started': 
             console.log('[useTranscription] Worker confirmed streaming started.');
-            // Might not need state change here, recording state is set in start()
+            setText(''); // Clear text when streaming starts
             break;
-        case 'processing_start': // Worker is starting the ASR pipeline
-            console.log('[useTranscription] Worker started ASR processing.');
+        case 'processing_start': 
+            console.log('[useTranscription] Worker started ASR processing (for final flush).');
             setProcessing(true);
-            setText(''); // Clear previous text
-            console.time('e2e-transcription'); // Start timer here
+            // Don't clear text here, wait for final result
+            console.time('e2e-transcription-final'); // Use a different timer for final flush
             break;
-        // --- END NEW/UPDATED ---
-        // case 'update': // Not used currently
-        //   break;
-        case 'complete': // Transcription finished
+        case 'partial': // NEW: Handle partial results
+            if (typeof delta === 'string' && delta) {
+                console.log(`[useTranscription] Received partial text delta: "${delta}"`);
+                // Append to internal state if needed for display
+                setText(prev => (prev + ' ' + delta).trim()); 
+                // Send to main process for immediate pasting
+                window.electron.insertTextAtCursor(delta + ' ') // Add space after partial
+                    .catch(err => console.error('[useTranscription] Error inserting partial text:', err));
+            }
+            break;
+        case 'complete': // Final transcription segment from flush
           setProcessing(false);
-          let transcript = '';
+          let finalDelta = '';
           if (typeof output === 'string') {
-            transcript = output.trim();
+            finalDelta = output.trim(); // This is just the *last* segment
           }
-          setText(transcript);
-          console.timeEnd('e2e-transcription'); // Stop timer here
+          // Append the final segment to the text state
+          if (finalDelta) {
+             setText(prev => (prev + ' ' + finalDelta).trim());
+             // Also paste the final segment
+             window.electron.insertTextAtCursor(finalDelta + ' ') // Add space after final part
+                .catch(err => console.error('[useTranscription] Error inserting final text:', err));
+          }
+          console.timeEnd('e2e-transcription-final'); 
           if (timings) {
-            console.log(`[useTranscription] Worker Timings: Total: ${timings.total?.toFixed(2)} ms`);
+            console.log(`[useTranscription] Worker Final Flush Timings: Total: ${timings.total?.toFixed(2)} ms`);
           } else {
-             console.warn("[useTranscription] No timing info received from worker.");
+             console.warn("[useTranscription] No timing info received from worker for final flush.");
           }
           break;
-        case 'error': // Generic worker error or ASR error
-        case 'init-error': // Worker initialization failed
+        case 'error': 
+        case 'init-error': 
           setError(String(workerError || 'Worker error'));
           setProcessing(false);
-          setReady(false); // Ensure ready is false on error
-          console.timeEnd('e2e-transcription'); // Ensure timer stops on error
+          setReady(false); 
+          console.timeEnd('e2e-transcription-final'); // Ensure timer stops on error
           break;
         default:
           console.warn('[useTranscription] Unknown worker status:', status);
@@ -180,16 +184,11 @@ export function useTranscription(): UseTranscriptionReturn {
 
     workerRef.current.addEventListener('message', onMessageReceived);
 
-    // Send initial load message (removed, worker loads automatically)
-    // workerRef.current.postMessage({ type: 'load' });
-
-    // Cleanup
     return () => {
       console.log('[useTranscription] Removing worker message listener.');
       workerRef.current?.removeEventListener('message', onMessageReceived);
-      // Worker termination is handled in the first useEffect
     };
-  }, []); // Run only once
+  }, []); 
 
   // --- 4️⃣ Public API ---
   const start = useCallback(async () => {
@@ -214,12 +213,12 @@ export function useTranscription(): UseTranscriptionReturn {
       await audioCtxRef.current.resume();
     }
 
-    setError(null); // Clear previous errors
-    setText(''); // Clear previous text
+    setError(null); 
+    setText(''); // Clear text on start
 
     try {
       console.log('[useTranscription] Setting up AudioWorklet...');
-
+      
       // --- Add SAB availability check ---
       if (typeof SharedArrayBuffer === 'undefined') {
         console.error('[useTranscription] SharedArrayBuffer is not available! Cannot use high-performance capture.');
@@ -231,10 +230,10 @@ export function useTranscription(): UseTranscriptionReturn {
       }
       // --- End SAB check ---
 
-      // 1. Create SharedArrayBuffer (only if check passes)
-      // Dynamically import RingBuffer constants to get size
+      // 1. Create SharedArrayBuffer using the *updated* constant size
       const { Constants } = await import('../audio/ring-buffer.js');
-      sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES);
+      // Ensure we use the size calculated for 10s @ 48kHz
+      sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES); 
       console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
 
       // 2. Add AudioWorklet module (ensure path is correct relative to build output)
@@ -293,7 +292,7 @@ export function useTranscription(): UseTranscriptionReturn {
          throw new Error('Worker or SharedArrayBuffer not available for initialization.');
       }
 
-      // 7. Tell worker to start pulling audio
+      // 7. Tell worker to start streaming (which now starts the pull loop)
       if (workerRef.current) {
           console.log('[useTranscription] Sending startStream command to worker...');
           workerRef.current.postMessage({ type: 'startStream' });
@@ -371,7 +370,7 @@ export function useTranscription(): UseTranscriptionReturn {
     recording,
     processing,
     ready,
-    text,
+    text, // Return cumulative text
     error,
     start,
     stop,

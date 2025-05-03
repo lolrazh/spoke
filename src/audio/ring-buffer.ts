@@ -3,9 +3,18 @@
 
 console.log("RingBuffer file loaded (placeholder)"); 
 
-// Size for 5 seconds of 48kHz mono Float32 audio + 1 index slot
-const RING_BUFFER_SAMPLE_CAPACITY = 48000 * 5; // 240,000 samples
-const RING_BUFFER_SIZE_BYTES = (RING_BUFFER_SAMPLE_CAPACITY + 1) * Float32Array.BYTES_PER_ELEMENT; // +1 for the head index
+const MAX_RING_SECONDS = 10; // NEW - Target buffer duration
+
+// Calculate capacity for 48kHz * MAX_RING_SECONDS
+const RING_BUFFER_SAMPLE_CAPACITY = 48000 * MAX_RING_SECONDS; // 480,000 samples for 10s @ 48kHz
+
+// Helper function to calculate byte length needed for RingBuffer
+// Includes space for the atomic write index (Int32 = 4 bytes)
+function getByteLength(capacity: number): number {
+  return (capacity * Float32Array.BYTES_PER_ELEMENT) + 4;
+}
+
+const RING_BUFFER_SIZE_BYTES = getByteLength(RING_BUFFER_SAMPLE_CAPACITY);
 
 /**
  * A Lock-Free Ring Buffer implementation using SharedArrayBuffer for
@@ -176,10 +185,18 @@ export class RingBuffer {
     this.readIndex = 0;
     console.log("RingBuffer reset.");
   }
+
+  /**
+   * Static helper to calculate byte length based on sample capacity.
+   */
+  static getByteLength(capacity: number): number {
+    return (capacity * Float32Array.BYTES_PER_ELEMENT) + 4;
+  }
 }
 
 // Define constants for export if needed elsewhere
 export const Constants = {
+  MAX_RING_SECONDS, // Export MAX_RING_SECONDS
   RING_BUFFER_SAMPLE_CAPACITY,
   RING_BUFFER_SIZE_BYTES
 }; 
