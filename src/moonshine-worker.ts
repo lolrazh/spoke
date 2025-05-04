@@ -21,7 +21,7 @@ const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
     decoder_model_merged: "q4",
   },
   wasm: {
-    encoder_model: "fp32",
+    encoder_model: "q8",
     decoder_model_merged: "q8", // WASM might benefit from q8
   },
 };
@@ -44,7 +44,7 @@ if (useGpu) {
 } else {
     console.log("[Moonshine] using WASM backend");
     // @ts-ignore
-    // env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
+    env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
 }
 
 // ---------------------------------------------------------------------------
