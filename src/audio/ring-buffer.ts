@@ -5,8 +5,9 @@ console.log("RingBuffer file loaded (placeholder)");
 
 const MAX_RING_SECONDS = 10; // NEW - Target buffer duration
 
-// Calculate capacity for 48kHz * MAX_RING_SECONDS
-const RING_BUFFER_SAMPLE_CAPACITY = 48000 * MAX_RING_SECONDS; // 480,000 samples for 10s @ 48kHz
+// Calculate capacity for 16kHz * MAX_RING_SECONDS
+const SAMPLE_RATE_16K = 16000; // Define 16k constant
+const RING_BUFFER_SAMPLE_CAPACITY = SAMPLE_RATE_16K * MAX_RING_SECONDS; // Use 16k for capacity
 
 // Helper function to calculate byte length needed for RingBuffer
 // Includes space for the atomic write index (Int32 = 4 bytes)

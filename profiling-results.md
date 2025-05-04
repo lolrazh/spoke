@@ -475,3 +475,39 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Significant performance improvement (~177ms faster average) compared to just the tight loop. Latency is also more consistent between runs (difference reduced from ~280ms to ~60ms). This confirms that reducing memory copies and allocations provides a substantial benefit.
 
 ---
+
+## Implementation: 16kHz Direct Capture + No Drain Loop
+
+*   **Changes Made:**
+    *   Requested `{ audio: { sampleRate: 16000 } }` from `getUserMedia`.
+    *   Set `AudioContext` sample rate to 16000.
+    *   Adjusted `RingBuffer` constants for 16kHz.
+    *   Removed `downsample48kTo16k` call and file.
+    *   Modified `pullAndProcessAudio` in worker to handle 16kHz directly.
+    *   Removed the polling "drain loop" from the `flush` handler in the worker, replaced with a single call to `pullAndProcessAudio()`.
+    *   Kept "Pre-allocated 16kHz Buffer" logic.
+    *   Using `Moonshine Base (fp32/q4 Quantization) w/ WebGPU` settings.
+
+### Metrics
+
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `663.06 ms`
+    *   Run 2: `672.00 ms` 
+    *   Average: `~667.5 ms` (-1.5% vs Pre-allocated Buffer Impl.)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `663.34 ms`
+    *   Run 2: `672.00 ms`
+    *   Average: `~667.7 ms` (-1.2% vs Pre-allocated Buffer Impl.)
+*   **Worker Granular Timings (Average):** 
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   (Add observations - expect similar to previous run)
+*   **Main Thread Impact:**
+    *   No noticeable change in main thread behavior from logs.
+*   **Memory Observation:**
+    *   SharedArrayBuffer size reflects 16kHz calculation (`640004` bytes).
+    *   Preallocated 16kHz buffer size remains `480000` samples.
+    *   Final subarray lengths processed: 44672, 48000 samples.
+*   **Accuracy Observation:**
+    *   Accuracy remains high and consistent ("This is a transcription test for Sonic Flow.").
+*   **Result:** A small additional performance improvement (~10ms faster average) and simplification achieved by removing the downsampling and drain loop complexities. Latency remains consistent.

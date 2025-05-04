@@ -6,9 +6,8 @@ import {
     Progress 
 } from "@huggingface/transformers";
 
-// Import RingBuffer and Resampler
+// Import RingBuffer
 import { RingBuffer } from "./audio/ring-buffer.js";
-import { downsample48kTo16k } from "./audio/resampler.js";
 
 const MODEL_ID = "onnx-community/moonshine-base-ONNX";   // English-only                          // a bit roomier
 
@@ -55,7 +54,6 @@ let busy = false;
 let ringBuffer: RingBuffer | null = null;
 // Remove the old array of chunks
 // let audioBuffer16k: Float32Array[] = []; 
-const MIN_SAMPLES_FOR_PROCESSING = 384; // Minimum samples needed (128 × 3 for resampling)
 const MAX_RECORDING_SECONDS = 30;
 const SAMPLE_RATE_16K = 16000;
 const PREALLOCATED_BUFFER_SIZE = SAMPLE_RATE_16K * MAX_RECORDING_SECONDS;
@@ -382,48 +380,39 @@ self.addEventListener("message", async (e) => {
 });
 
 // --- Helper Function for Pull Loop --- (MODIFIED)
-// This function now just handles pulling 48k -> downsampling -> adding to 16k buffer
+// This function now handles pulling 16k data directly into the preallocated buffer
 function pullAndProcessAudio() {
   if (!ringBuffer || !preallocated16kBuffer) return; 
 
-  const available48k = ringBuffer.availableRead();
-  // Read in chunks that are multiples of 3 for the resampler
-  const processChunkSize = 480 * 3; // Process roughly 10ms chunks (480 samples @ 48k)
-  let processedSamples = 0;
+  const available16k = ringBuffer.availableRead();
+  if (available16k === 0) return; // Nothing to read
 
-  while (processedSamples < available48k) {
-      const remainingAvailable = available48k - processedSamples;
-      const samplesToRead = Math.min(processChunkSize, Math.floor(remainingAvailable / 3) * 3);
-      
-      if (samplesToRead === 0) break; // Not enough left for a multiple of 3
-
-      const buffer48k = new Float32Array(samplesToRead);
-      // Read directly into the buffer. Assumes availableRead() is correct.
-      ringBuffer.read(buffer48k); 
-      
-      processedSamples += samplesToRead; // Assume we read what we asked for
-
-      if (buffer48k.length > 0) {
-          try {
-              const buffer16k = downsample48kTo16k(buffer48k);
-              if (buffer16k.length > 0) {
-                  // Check if there's enough space in the preallocated buffer
-                  if (current16kWriteOffset + buffer16k.length <= preallocated16kBuffer.length) {
-                      preallocated16kBuffer.set(buffer16k, current16kWriteOffset);
-                      current16kWriteOffset += buffer16k.length;
-                  } else {
-                      console.warn("[Worker Pull] Preallocated 16kHz buffer overflow! Discarding chunk.");
-                      // Stop pulling more data if buffer is full to prevent continuous warnings
-                      break; 
-                  }
-              }
-          } catch (error) {
-              console.error("[Worker Pull] Error during downsampling:", error);
-          }
-      }
+  // Determine how much space is left in the preallocated buffer
+  const spaceAvailableInBuffer = preallocated16kBuffer.length - current16kWriteOffset;
+  
+  if (spaceAvailableInBuffer <= 0) {
+      console.warn("[Worker Pull] Preallocated 16kHz buffer full! Cannot read more from ring buffer.");
+      // We could potentially drop data from ringBuffer here if needed to prevent it filling up
+      // ringBuffer.read(null, available16k); // Read and discard
+      return;
   }
-  // If we processed anything, log the new write offset
-  // if (processedSamples > 0) {
-  //   console.log(`[Worker Pull] Processed ${processedSamples} 48kHz samples. New 16kHz write offset: ${current16kWriteOffset}`);
-  // }
+
+  // Read directly into the preallocated buffer at the current offset
+  // Determine the number of samples to read (minimum of available or space left)
+  const samplesToRead = Math.min(available16k, spaceAvailableInBuffer);
+  
+  // Create a subarray view of the target location in the preallocated buffer
+  const targetView = preallocated16kBuffer.subarray(
+    current16kWriteOffset, 
+    current16kWriteOffset + samplesToRead
+  );
+
+  // Perform the read from the ring buffer directly into the target view
+  ringBuffer.read(targetView); 
+
+  // Update the write offset
+  current16kWriteOffset += samplesToRead;
+
+  // Optional: Log how much was read
+  // console.log(`[Worker Pull] Read ${samplesToRead} 16kHz samples. New 16kHz write offset: ${current16kWriteOffset}`);
 }

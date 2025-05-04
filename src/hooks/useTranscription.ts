@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 
 // Constants (can be moved or adjusted)
-const TARGET_AUDIO_CONTEXT_RATE = 48000; // Use 48kHz for AudioContext
+const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
 // Define the hook's return type
@@ -71,7 +71,9 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Requesting microphone access and preparing AudioContext...');
       try {
         // Get mic permission (stream is stored in ref)
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+            audio: { sampleRate: 16000 } // Request 16kHz directly
+        });
         console.log('[useTranscription] Microphone access granted.');
 
         // Create AudioContext at the correct sample rate
