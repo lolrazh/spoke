@@ -316,39 +316,11 @@ self.addEventListener("message", async (e) => {
     busy = true;
     self.postMessage({ status: "processing_start" }); 
 
-    // --- MODIFIED: Drain RingBuffer completely before final processing ---
-    console.log("[Worker] Draining final audio from RingBuffer...");
-    let stableRounds = 0;
-    const drainStartTime = performance.now();
-    while (stableRounds < 2 && (performance.now() - drainStartTime < 500)) { // Add timeout
-      const beforeSamples = current16kWriteOffset; // Check write offset before pull
-      pullAndProcessAudio(); // Pulls from 48k ring buffer, adds to 16k buffer
-      const afterSamples = current16kWriteOffset;
-      
-      if (afterSamples === beforeSamples) { // No new 16k samples were added
-          // Now, also check if the 48k ring buffer is truly empty
-          const available48k = ringBuffer.availableRead();
-          if (available48k === 0) {
-            stableRounds++;
-            console.log(`[Worker Drain] RingBuffer empty, stable round ${stableRounds}`);
-          } else {
-            stableRounds = 0; // Samples arrived, reset stability count
-            console.log(`[Worker Drain] RingBuffer not empty (${available48k}), resetting stability`);
-          }
-      } else {
-          stableRounds = 0; // New samples were processed, reset stability count
-          console.log(`[Worker Drain] Processed ${afterSamples - beforeSamples} 16k samples, resetting stability`);
-      }
-      
-      if (stableRounds < 2) {
-        await new Promise(r => setTimeout(r, 25)); // Wait before next check
-      }
-    }
-    if (performance.now() - drainStartTime >= 500) {
-        console.warn("[Worker] Drain loop timed out after 500ms. Proceeding anyway.");
-    }
-    console.log(`[Worker] RingBuffer drain complete after ${(performance.now() - drainStartTime).toFixed(1)}ms.`);
-    // --- End Draining Logic ---
+    // --- ADDED: Single call to pull remaining audio ---
+    console.log("[Worker] Pulling final audio chunk from RingBuffer...");
+    pullAndProcessAudio(); 
+    console.log(`[Worker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
+    // --- End Single Pull ---
 
     // --- Use the final remaining portion of the pre-allocated buffer ---
     const finalSliceStartIndex = nextDecodeStart16k;
