@@ -511,3 +511,40 @@ This document tracks performance measurements for different implementations of t
 *   **Accuracy Observation:**
     *   Accuracy remains high and consistent ("This is a transcription test for Sonic Flow.").
 *   **Result:** A small additional performance improvement (~10ms faster average) and simplification achieved by removing the downsampling and drain loop complexities. Latency remains consistent.
+
+---
+
+## Implementation: 16kHz Direct Capture + No Drain Loop (q8/q8 Quantization) w/ WASM
+
+*   **Changes Made:**
+    *   Kept latest architecture: 16kHz direct capture, pre-allocated buffer, no drain loop.
+    *   Model: `onnx-community/moonshine-base-ONNX`.
+    *   Set `dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' }` (via WASM config).
+    *   Forced WASM backend in `moonshine-worker.ts`.
+
+### Metrics
+
+*   **Warm-up Time (First Run Only):** (Assume similar to previous WASM Q8/Q8: `~386 ms`)
+*   **End-to-End (E2E) Latency:** (Time from `processing_start` to `complete` message in hook - `console.time`)
+    *   Run 1: `662.90 ms`
+    *   Run 2: `648.61 ms`
+    *   Average: `~656 ms` (-92.9% vs Whisper-tiny Baseline, -52.5% vs Previous Moonshine WASM q8/q8)
+*   **Worker Processing Time (Total):** (ASR pipeline time reported by worker `timings.total`)
+    *   Run 1: `663.40 ms`
+    *   Run 2: `650.09 ms`
+    *   Average: `~657 ms` (-92.9% vs Whisper-tiny Baseline, -51.8% vs Previous Moonshine WASM q8/q8)
+*   **Worker Granular Timings (Average):**
+    *   N/A (Pipeline abstraction)
+*   **GPU Observation:**
+    *   N/A (WASM backend used)
+*   **Main Thread Impact:**
+    *   No noticeable change in main thread behavior from logs.
+*   **Memory Observation:**
+    *   SharedArrayBuffer size reflects 16kHz calculation (`640004` bytes).
+    *   Preallocated 16kHz buffer size remains `480000` samples.
+    *   Final subarray lengths processed: 45568, 44928 samples.
+*   **Accuracy Observation:**
+    *   Accuracy good ("This is a transcription test for SonicFlow.", "This is a transcription test for sonic flow.").
+*   **Result:** Fastest configuration tested overall (~656ms E2E). Combining the architectural improvements (16kHz direct capture, pre-alloc buffer, no drain loop) with Moonshine q8/q8 on WASM yields the best performance, significantly outperforming both the original Whisper baseline and the Moonshine WebGPU configurations.
+
+---
