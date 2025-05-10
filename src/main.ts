@@ -8,8 +8,8 @@ import { execSync } from 'child_process';
 import { session } from 'electron';
 
 // Add command line switches for WebGPU - KEEP THESE
-app.commandLine.appendSwitch('enable-unsafe-webgpu');
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// app.commandLine.appendSwitch('enable-unsafe-webgpu');
+// app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -58,8 +58,8 @@ const createWindow = () => {
 
   // Show window inactive only when it's ready to prevent focus stealing
   mainWindow.once('ready-to-show', () => {
-    mainWindow.showInactive();
-    console.log('Main window shown inactive.');
+    mainWindow.show();
+    console.log('Main window shown.');
     // Automatically open DevTools for debugging
     mainWindow.webContents.openDevTools({ mode: 'detach' }); 
   });
@@ -810,7 +810,7 @@ app.whenReady().then(() => {
   // --- End of added logic ---
 
   // Set disk cache options to avoid cache errors
-  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+  // app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
   app.commandLine.appendSwitch('disable-http-cache');
   
   createWindow();

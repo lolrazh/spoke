@@ -16,10 +16,6 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8
 
 // Define dtype configurations based on device with explicit typing
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
-  webgpu: {
-    encoder_model: "fp32", // Example values, adjust if needed based on testing/performance
-    decoder_model_merged: "q4",
-  },
   wasm: {
     encoder_model: "q8",
     decoder_model_merged: "q8", // WASM might benefit from q8
@@ -27,25 +23,26 @@ const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
 };
 
 // --- back-end selection exactly like before ---------------------------------
-async function webgpuAvailable() {
-  // @ts-ignore
-  return !!navigator.gpu && (await navigator.gpu.requestAdapter()) !== null;
-}
+// async function webgpuAvailable() {
+//   // @ts-ignore
+//   return !!navigator.gpu && (await navigator.gpu.requestAdapter()) !== null;
+// }
 
-const useGpu = await webgpuAvailable();
-const device = useGpu ? 'webgpu' : 'wasm';
+// const useGpu = await webgpuAvailable();
+// const device = useGpu ? 'webgpu' : 'wasm';
+const device = 'wasm'; // Force WASM backend
 const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
 
-if (useGpu) {
-    console.log("[Moonshine] using WebGPU backend");
-    // Additional WebGPU specific settings if needed (e.g., powerPreference)
-    // @ts-ignore
-    // env.backends.webgpu.powerPreference = "high-performance"; // Can potentially be set here if needed
-} else {
-    console.log("[Moonshine] using WASM backend");
-    // @ts-ignore
-    env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
-}
+// if (useGpu) {
+//     console.log("[Moonshine] using WebGPU backend");
+//     // Additional WebGPU specific settings if needed (e.g., powerPreference)
+//     // @ts-ignore
+//     // env.backends.webgpu.powerPreference = "high-performance"; // Can potentially be set here if needed
+// } else {
+console.log("[Moonshine] using WASM backend");
+// @ts-ignore
+// env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
+// }
 
 // ---------------------------------------------------------------------------
 
@@ -185,22 +182,22 @@ try {
   // Check the actual compute type being used AFTER pipeline initialization
   // Access through env seems correct based on documentation/usage
   // @ts-ignore - Accessing internal property, might change
-  const currentComputeType = env.backends.webgpu?.computeType;
+  // const currentComputeType = env.backends.webgpu?.computeType;
 
-  if (useGpu && currentComputeType) {
-    console.log(`[Moonshine] Actual WebGPU computeType used: ${currentComputeType}`);
-    // You could add more specific checks here if you were trying to force a certain type:
-    // const requestedComputeType = 'int8'; // Example if you set this via env
-    // if (currentComputeType !== requestedComputeType) {
-    //    console.warn(`[Moonshine] Requested computeType ${requestedComputeType}, but using ${currentComputeType}`);
-    // }
-  } else if (!useGpu) {
-     console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
-  } else if (useGpu && !currentComputeType) {
-     console.warn("[Moonshine] Using WebGPU, but could not read actual computeType from env.backends.webgpu");
-  }
+  // if (useGpu && currentComputeType) {
+  //   console.log(`[Moonshine] Actual WebGPU computeType used: ${currentComputeType}`);
+  //   // You could add more specific checks here if you were trying to force a certain type:
+  //   // const requestedComputeType = 'int8'; // Example if you set this via env
+  //   // if (currentComputeType !== requestedComputeType) {
+  //   //    console.warn(`[Moonshine] Requested computeType ${requestedComputeType}, but using ${currentComputeType}`);
+  //   // }
+  // } else if (!useGpu) {
+  console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
+  // } else if (useGpu && !currentComputeType) {
+  //    console.warn("[Moonshine] Using WebGPU, but could not read actual computeType from env.backends.webgpu");
+  // }
 } catch (checkError) {
-    console.warn("[Moonshine] Could not verify actual WebGPU computeType:", checkError);
+  console.warn("[Moonshine] Error during backend sanity checks (expected for WASM, as no computeType to check):", checkError);
 }
 // --- End ComputeType Check ---
 
