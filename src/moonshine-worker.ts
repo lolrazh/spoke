@@ -51,9 +51,11 @@ let busy = false;
 let ringBuffer: RingBuffer | null = null;
 // Remove the old array of chunks
 // let audioBuffer16k: Float32Array[] = []; 
-const MAX_RECORDING_SECONDS = 30;
 const SAMPLE_RATE_16K = 16000;
-const PREALLOCATED_BUFFER_SIZE = SAMPLE_RATE_16K * MAX_RECORDING_SECONDS;
+const INITIAL_BUFFER_SECONDS = 30; // Start with a 30-second buffer
+const INITIAL_BUFFER_SIZE = SAMPLE_RATE_16K * INITIAL_BUFFER_SECONDS;
+const BUFFER_GROWTH_SECONDS = 30; // Add 60 seconds worth of space when resizing
+const BUFFER_GROWTH_SIZE = SAMPLE_RATE_16K * BUFFER_GROWTH_SECONDS;
 
 // State for pre-allocated buffer
 let preallocated16kBuffer: Float32Array | null = null;
@@ -259,14 +261,14 @@ self.addEventListener("message", async (e) => {
     console.log("[Worker] Starting stream...");
     // Allocate the large buffer and reset state
     try {
-      preallocated16kBuffer = new Float32Array(PREALLOCATED_BUFFER_SIZE);
       current16kWriteOffset = 0;
       nextDecodeStart16k = 0; // Reset decode cursor
       processingPartial = false; // Reset partial processing flag
       lastPartialText = ""; // Reset history on new stream
-      console.log(`[Worker] Pre-allocated 16kHz buffer created (size: ${PREALLOCATED_BUFFER_SIZE} samples).`);
+      preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE); 
+      console.log(`[Worker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
     } catch (allocError) {
-      console.error("[Worker] Failed to allocate 16kHz buffer:", allocError);
+      console.error("[Worker] Failed to allocate initial 16kHz buffer:", allocError);
       self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
       preallocated16kBuffer = null;
       return;
@@ -384,20 +386,35 @@ function pullAndProcessAudio() {
   const available16k = ringBuffer.availableRead();
   if (available16k === 0) return; // Nothing to read
 
-  // Determine how much space is left in the preallocated buffer
-  const spaceAvailableInBuffer = preallocated16kBuffer.length - current16kWriteOffset;
+  // Determine the number of samples to read (all available from ring buffer for now)
+  const samplesToRead = available16k; 
   
-  if (spaceAvailableInBuffer <= 0) {
-      console.warn("[Worker Pull] Preallocated 16kHz buffer full! Cannot read more from ring buffer.");
-      // We could potentially drop data from ringBuffer here if needed to prevent it filling up
-      // ringBuffer.read(null, available16k); // Read and discard
-      return;
+  // --- ADD: Dynamic resizing ---
+  const requiredSize = current16kWriteOffset + samplesToRead;
+  if (requiredSize > preallocated16kBuffer.length) {
+    // Double the buffer size or increase to required size, whichever is larger
+    // CHANGE: Increase by a fixed amount (BUFFER_GROWTH_SIZE) instead of doubling, 
+    //         but ensure it's at least large enough for the required size.
+    const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
+    console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
+    try {
+      const newBuffer = new Float32Array(newSize);
+      // Copy existing data
+      newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
+      preallocated16kBuffer = newBuffer; // Replace the old buffer
+    } catch (resizeError) {
+      console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
+      // Try to proceed with what fits? Or stop? For now, stop processing this chunk.
+      self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
+      // Optionally clear the ring buffer to prevent repeated attempts?
+      // FIX: ringBuffer.read expects a target buffer, not null. Read into a temporary buffer to discard.
+      ringBuffer.read(new Float32Array(available16k)); // Read and discard to prevent loop?
+      return; 
+    }
   }
+  // --- END: Dynamic resizing ---
 
-  // Read directly into the preallocated buffer at the current offset
-  // Determine the number of samples to read (minimum of available or space left)
-  const samplesToRead = Math.min(available16k, spaceAvailableInBuffer);
-  
+  // Read directly into the (potentially resized) preallocated buffer at the current offset
   // Create a subarray view of the target location in the preallocated buffer
   const targetView = preallocated16kBuffer.subarray(
     current16kWriteOffset, 

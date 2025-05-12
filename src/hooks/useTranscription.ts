@@ -240,6 +240,10 @@ export function useTranscription(): UseTranscriptionReturn {
       sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES); 
       console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
 
+      // *** Get the ACTUAL sample rate ***
+      const actualSampleRate = audioCtxRef.current.sampleRate;
+      console.log(`[useTranscription] Actual AudioContext Sample Rate: ${actualSampleRate} Hz.`);
+
       // 2. Add AudioWorklet module (ensure path is correct relative to build output)
       // Try using a relative path assuming it's sibling to index.html in output
       const workletURL = './audioworklet-processor.js'; 
@@ -248,26 +252,24 @@ export function useTranscription(): UseTranscriptionReturn {
           await audioCtxRef.current.audioWorklet.addModule(workletURL);
           console.log('[useTranscription] AudioWorklet module added successfully.');
       } catch (err) {
-          console.error(`[useTranscription] Failed to add AudioWorklet module from ${workletURL}:`, err);
-          // Try the absolute path as a fallback just in case
-          const fallbackWorkletURL = '/audioworklet-processor.js';
-          console.log(`[useTranscription] Retrying with fallback path: ${fallbackWorkletURL}`);
-          try {
-              await audioCtxRef.current.audioWorklet.addModule(fallbackWorkletURL);
-              console.log('[useTranscription] AudioWorklet module added successfully via fallback path.');
-          } catch (fallbackErr) {
-             console.error(`[useTranscription] Failed to add AudioWorklet module from fallback path ${fallbackWorkletURL}:`, fallbackErr);
-             throw new Error(`Failed to load audio processor. ${fallbackErr.message}`); // Throw the final error
-          }
+          console.error('[useTranscription] Failed to load AudioWorklet module:', err);
+          setError('Failed to load audio processing module.');
+          setRecording(false);
+          sabRef.current = null; // Clean up SAB if worklet fails
+          return;
       }
 
-      // 3. Create AudioWorkletNode, passing the SAB
+      // 3. Create AudioWorkletNode, passing SAB and sample rates
       workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
-        processorOptions: { sab: sabRef.current }
+          processorOptions: { 
+              sab: sabRef.current, // Pass the SharedArrayBuffer
+              actualSampleRate: actualSampleRate,
+              targetSampleRate: TARGET_AUDIO_CONTEXT_RATE // Pass our desired target rate
+          } 
       });
       console.log('[useTranscription] AudioWorkletNode created.');
 
-       // Handle potential errors from the processor itself
+      // Handle potential errors from the processor itself
       workletNodeRef.current.onprocessorerror = (event) => {
         console.error('[useTranscription] AudioWorkletProcessor error:', event);
         setError('Audio processor error occurred.');
