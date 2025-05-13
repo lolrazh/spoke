@@ -115,28 +115,13 @@ async function processAvailableAudio() {
 
       // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
 
-      kvCache = result.past_key_values; 
+      kvCache = result.past_key_values;
 
       let delta = "";
-      let advancedByChunks = false;
 
-      const chunks = result.chunks ?? [];
-      if (chunks.length > 0) {
-        const emittedSeconds = emittedSamples / SAMPLE_RATE_16K;
-        const freshChunks = chunks.filter((c: any) => c.timestamp && c.timestamp[0] >= emittedSeconds);
-        if (freshChunks.length > 0) {
-          delta = freshChunks.map((chunk: any) => chunk.text).join('');
-          console.log(`[Worker] Delta from CHUNKS: "${delta}"`);
-          const lastFreshChunkTimestampEnd = freshChunks[freshChunks.length - 1].timestamp[1];
-          emittedSamples = Math.max(emittedSamples, Math.round(lastFreshChunkTimestampEnd * SAMPLE_RATE_16K));
-          advancedByChunks = true;
-        }
-      }
-      
-      // Fallback to text-based diff if no usable chunks OR if chunks didn't yield delta
-      // (but ensure currentText is actually present)
+      // Text-based diff is now the PRIMARY way
       const currentText = (result.text || "").trim();
-      if (!delta && currentText) { 
+      if (currentText) { // Only proceed if there's text from ASR
         if (previousSliceText) {
           if (currentText.startsWith(previousSliceText)) {
             delta = currentText.substring(previousSliceText.length).trim();
@@ -152,8 +137,8 @@ async function processAvailableAudio() {
             } else if (bestOverlap === 0 || currentText.length <= bestOverlap){
                if(currentText !== previousSliceText) delta = currentText;
             }
-            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: "${previousSliceText}", Curr: "${currentText}", Overlap: ${bestOverlap}, Delta: "${delta}"`);
-            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: "${delta}"`);
+            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: \"${previousSliceText}\", Curr: \"${currentText}\", Overlap: ${bestOverlap}, Delta: \"${delta}\"`);
+            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: \"${delta}\"`);
           }
         } else {
           delta = currentText;
@@ -161,15 +146,11 @@ async function processAvailableAudio() {
       }
       
       if (delta) {
-          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: "${delta}"`);
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
           self.postMessage({ status: 'partial', delta });
-          // Advance emittedSamples by CHUNK_SAMPLES if delta came from text diff and not already advanced by chunks
-          if (!advancedByChunks) {
-            emittedSamples += CHUNK_SAMPLES; 
-            console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
-          } else {
-            console.log(`[Worker] emittedSamples already advanced by chunks to ${emittedSamples}`);
-          }
+          // Advance emittedSamples by CHUNK_SAMPLES as delta came from text diff
+          emittedSamples += CHUNK_SAMPLES;
+          console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
       } else {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
           // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
@@ -346,21 +327,8 @@ self.addEventListener("message", async (e) => {
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
             // console.log("[Worker] Final Result Object:", result);
 
-            let advancedByChunksFlush = false;
-            const finalChunks = result.chunks ?? [];
-            if (finalChunks.length > 0) {
-                const finalEmittedSeconds = emittedSamples / SAMPLE_RATE_16K;
-                const finalFreshChunks = finalChunks.filter((c: any) => c.timestamp && c.timestamp[0] >= finalEmittedSeconds);
-                if (finalFreshChunks.length > 0) {
-                    finalDelta = finalFreshChunks.map((chunk: any) => chunk.text).join('');
-                    console.log(`[Worker] Final Delta from CHUNKS: "${finalDelta}"`);
-                    // No need to advance emittedSamples here as it's the final flush
-                    advancedByChunksFlush = true; 
-                }
-            }
-            
             const finalCurrentText = (result.text || "").trim();
-            if (!finalDelta && finalCurrentText) { // Fallback to text-based diff if no usable chunks
+            if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
                 if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
                     finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
                 } else if (previousSliceText) {
@@ -373,10 +341,10 @@ self.addEventListener("message", async (e) => {
                     if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
                         finalDelta = finalCurrentText.substring(bestOverlap).trim();
                     } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
-                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText; 
+                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
                     }
-                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: "${previousSliceText}", Curr: "${finalCurrentText}", Delta: "${finalDelta}"`);
-                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: "${finalDelta}"`);
+                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
+                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
                 } else {
                     finalDelta = finalCurrentText;
                 }
