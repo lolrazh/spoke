@@ -51,6 +51,7 @@ components.json
 forge.config.ts
 forge.env.d.ts
 index.html
+new-logic.md
 package.json
 postcss.config.js
 profiling-results.md
@@ -297,6 +298,109 @@ profiling-reults.md
 }
 </file>
 
+<file path="new-logic.md">
+### Brutal Audit (a.k.a. why your “1100 ms 🚀” is really a moped with nitrous)
+
+1. **You still think in “chunks”, not in “tokens”.**
+   *Where it happens* → `moonshine-worker.ts`, lines ≈ 350‑450 (`PARTIAL_INTERVAL_S = 10`, `nextDecodeStart16k`).
+   Every 10‑second wall‑clock slice you call the pipeline, get a *full* transcript of that slice, then diff it against `lastPartialText`. That guarantees you re‑transcribe the same audio over and over and then spend CPU in JS doing a fuzzy diff.
+   **Cost:** 2–3× more model time than necessary and \~70 ms/string‑diff on a 10 s slice.
+
+2. **KV‑cache? You never actually use it.**
+   You force `device:'wasm'` (good for prod), but you never pass `past_key_values` back in on the *next* call. `MoonshineConfig.use_cache` defaults to *true*, yet your worker’s `asr(slice)` is stateless. You throw the cache away every time—so each 10 s call decodes from scratch.
+
+3. **Roasting your “pre‑allocate 480 000 samples” stunt.**
+   Sure, one big `Float32Array` avoids `concat`, but you copy the same audio twice:
+   • `ringBuffer.read(targetView)` – copy SAB → RAM
+   • `slice = preallocated16kBuffer.subarray(...)` – *second* copy when you call `asr`
+   On a 45 s dictation that’s ≈14 MB of memmove. You shaved microseconds, not milliseconds.
+
+4. **Your latency timer starts *after* you stop recording.**
+   `console.time('e2e‑transcription‑final')` is fired only on `'processing_start'`, i.e. *after* you tell the worker to flush. Human perception is “hit hotkey → text appears”. The real E2E is `hotkey↔complete`, which is closer to 1 800 ms on your own logs.
+
+5. **10 s grain size is ridiculous.**
+   The pipeline’s C++ reference uses **5 s chunks with 1 s stride**. Going to 2 s/0.5 s is perfectly stable on Moonshine‑Base *if* you keep the stride. Your accuracy tanked because you removed context, not because the model is bad.
+
+6. **You ignore `chunk_length_s` + `stride_length_s` that the HF JS pipe *already gives you*.**
+   They do the stitching, timestamp alignment, and skip‑tokens for you. You reinvented it… with bugs.
+
+7. **Case‑sensitivity & punctuation “bugs” are red herrings.**
+   Whisper/Moonshine output lowercase, no punct. Your diff treats “test.” ≠ “test ” and you blame the model. Final pass a tiny punctuation‑restorer (50 ms) or run `.toLowerCase()` before diff and the “bug” vanishes.
+
+8. **WebGPU headache? Fine—then stop gating yourself on WASM matmuls.**
+   At `int8`, Moonshine‑Base takes \~600 ms for 15 s of audio on an M1 **with** KV‑cache. Split into 3×5 s with cache you’re already under 300 ms *per* mini‑chunk (= near‑live).
+
+---
+
+## The backbone you *should* be running
+
+```ts
+const CHUNK_S   = 5;            // 2 s works too, start sane
+const STRIDE_S  = 1;
+const emitter   = pipeline(
+  "automatic-speech-recognition",
+  "onnx-community/moonshine-base-ONNX",
+  { device:"wasm", chunk_length_s:CHUNK_S, stride_length_s:STRIDE_S,
+    return_timestamps:"word" } );
+
+let cache;        // past_key_values
+let emitted = 0;  // seconds we’ve finalised
+
+async function feed(audio16k) {
+  const { text, chunks, past_key_values } =
+      await emitter(audio16k, { past_key_values: cache });
+  cache = past_key_values;
+
+  // skip tokens that belong to the left‑stride
+  const fresh = chunks.filter(c => c.timestamp[0] >= emitted);
+  emitted = chunks.at(-1).timestamp[1];     // advance cursor
+
+  self.postMessage({ status:"partial", delta:fresh.map(c=>c.text).join('') });
+}
+```
+
+*That is 40 lines, zero diffing, zero ring‑buffer book‑keeping beyond “how many seconds have we shipped”.*
+
+---
+
+## ELI5 (because you said you’re a “stupid cunt”, your words)
+
+* **Imagine whispering a story to me through a door.**
+  You’re currently opening the door every 10 seconds, repeating the *entire* story so far, and asking me “What’s new?” I have to listen from the beginning each time. That’s why it’s slow.
+
+* **Use an overlap instead.**
+  Open the door every 2 seconds but repeat the *last one second* of the previous sentence. I’ll recognise that bit (“oh, I heard that already”) and jot down only the new words. No diffing, no confusion.
+
+* **The KV‑cache is like keeping my notebook open.**
+  Right now you slam it shut after every page, so I must re‑read everything. Keep it open (pass `past_key_values`) and I can start where we left off.
+
+* **Big pre‑allocated buffer = giant bucket under a faucet.**
+  Great, the water won’t spill, but you still scoop it out with a ladle, pour into another jug, then serve. Why not just pass the bucket?
+
+* **Lowercase/punctuation fights** are like yelling “You forgot the period!” in the middle of someone’s sentence. Let them finish; add punctuation at the end.
+
+---
+
+## Concrete next steps (no rabbit‑holes)
+
+| Priority | Fix                                                                                             | Effort | Win                         |
+| -------- | ----------------------------------------------------------------------------------------------- | ------ | --------------------------- |
+| ☠️ 1     | Replace 10 s timer with `chunk_length_s=3‑5`, `stride_length_s=0.5‑1` in the HF pipeline.       | 15 min | ‑40 % latency               |
+| ☠️ 2     | Keep and pass `past_key_values` between calls.                                                  | 20 min | another ‑25 %               |
+| ☠️ 3     | Stop diffing strings; append tokens after skip‑stride.                                          | 10 min | no duplicates, 0 ms JS work |
+| ⚙️ 4     | Drop the monster `Float32Array`, read SAB → direct slice to pipeline.                           | 10 min | ‑50 MB/s memcopy            |
+| ✅ 5      | After `complete`, run a 50 ms punctuation model once.                                           | 5 min  | human‑grade text            |
+| 🤷‍♂️ 6  | ONLY if you *must* support weird sample‑rates: re‑enable your WebAudio resampler (it was fine). | —      | accuracy on cheap mics      |
+
+Do those four red‑skull items and your average dictation (≤45 s) will spit the first words on‑screen in **<300 ms**, finish in ≈500‑800 ms, all on plain WASM. No VAD, no WebGPU, no tantrums.
+
+If after that you’re still above 1 s, you’ve hit the ceiling of the CPU you’re on—ship it, charge money, revisit GPUs later.
+
+---
+
+*Now quit pouring cement on your feet and run the race.*
+</file>
+
 <file path="public/audioworklet-processor.js">
 // public/audioworklet-processor.js
 // This file is a JavaScript copy of the TypeScript version for direct loading.
@@ -459,6 +563,170 @@ This method is designed for simplicity and enables smooth automatic updates in t
   },
   "tokenCount": {
     "encoding": "o200k_base"
+  }
+}
+</file>
+
+<file path="src/components/Pill.tsx">
+import React, { useState, useEffect } from 'react';
+
+interface PillProps {
+  isListening: boolean;
+  isProcessing: boolean;
+  onStartDictation: () => void;
+  onStopDictation: () => void;
+}
+
+const Pill: React.FC<PillProps> = ({ 
+  isListening, 
+  isProcessing, 
+  onStartDictation, 
+  onStopDictation 
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  // Number of dots/bars to display - consistent across all states
+  const VISUALIZATION_COUNT = 7;
+  
+  useEffect(() => {
+    // Prevent default context menu for this component only
+    const pillElement = document.querySelector('.pill-container');
+    
+    const preventDefaultContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    // Add event listener to the pill element only
+    pillElement?.addEventListener('contextmenu', preventDefaultContextMenu);
+    
+    return () => {
+      // Clean up event listener
+      pillElement?.removeEventListener('contextmenu', preventDefaultContextMenu);
+    };
+  }, []);
+  
+  // Generate frequency bars for the waveform (active state)
+  const renderFrequencyBars = () => {
+    // Create bars with consistent count
+    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+      <div 
+        key={`bar-${index}`} 
+        className="waveform-bar"
+        style={{ 
+          animationDelay: `${index * 0.1}s`,
+          height: `${3 + Math.random() * 5}px`
+        }}
+      />
+    ));
+  };
+
+  // Unified function to render dots with different styles
+  const renderDots = (type: 'static' | 'animated' | 'collapsed') => {
+    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+      <div 
+        key={`dot-${type}-${index}`} 
+        className={`dot ${type}`}
+        style={type === 'animated' ? { animationDelay: `${index * 0.12}s` } : undefined}
+      />
+    ));
+  };
+
+  // Handle context menu
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault(); // Prevent default browser context menu
+    console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
+    // Check if the electron API exists and has the showPillContextMenu method
+    if (window.electron && 'showPillContextMenu' in window.electron) {
+      // Call without coordinates
+      (window.electron as any).showPillContextMenu();
+    } else {
+      console.warn('[Pill] window.electron.showPillContextMenu not available.');
+    }
+  };
+  
+  // Determine if the pill should be in the expanded state
+  const isExpanded = isHovered || isListening || isProcessing;
+  
+  return (
+    <div 
+      className={`
+        pill-container 
+        ${isExpanded ? 'expanded' : 'collapsed'}
+        ${isListening ? 'listening' : ''}
+        ${isProcessing ? 'processing' : ''}
+        flex items-center justify-center
+      `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={isListening ? onStopDictation : onStartDictation}
+      onContextMenu={handleContextMenu}
+    >
+      <div className="pill-content flex items-center justify-center w-full h-full">
+        {/* Dormant state - show smaller dots */}
+        {!isExpanded && (
+          <div className="visualization-container">
+            {renderDots('collapsed')}
+          </div>
+        )}
+
+        {/* Hover state - show static dots */}
+        {isHovered && !isListening && !isProcessing && (
+          <div className="visualization-container">
+            {renderDots('static')}
+          </div>
+        )}
+        
+        {/* Active state - show frequency bars */}
+        {isListening && (
+          <div className="visualization-container">
+            {renderFrequencyBars()}
+          </div>
+        )}
+        
+        {/* Loading state - show animated dots */}
+        {isProcessing && !isListening && (
+          <div className="visualization-container">
+            {renderDots('animated')}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Pill;
+</file>
+
+<file path="src/contextmenu-preload.ts">
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Define the channels that the context menu is allowed to send messages on
+const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
+type ValidChannel = typeof validChannels[number];
+
+// Expose a safe API to the context menu's renderer process
+contextBridge.exposeInMainWorld('contextMenuAPI', {
+  /**
+   * Sends a message to the main process over a specified channel.
+   * Only allows sending on pre-approved channels.
+   * @param channel The IPC channel to send the message on.
+   */
+  send: (channel: ValidChannel) => {
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel);
+      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
+    } else {
+      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
+    }
+  },
+});
+
+// Add a type definition for the exposed API
+declare global {
+  interface Window {
+    contextMenuAPI: {
+      send: (channel: ValidChannel) => void;
+    };
   }
 }
 </file>
@@ -997,170 +1265,6 @@ export default defineConfig({
 })
 </file>
 
-<file path="src/components/Pill.tsx">
-import React, { useState, useEffect } from 'react';
-
-interface PillProps {
-  isListening: boolean;
-  isProcessing: boolean;
-  onStartDictation: () => void;
-  onStopDictation: () => void;
-}
-
-const Pill: React.FC<PillProps> = ({ 
-  isListening, 
-  isProcessing, 
-  onStartDictation, 
-  onStopDictation 
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-  
-  // Number of dots/bars to display - consistent across all states
-  const VISUALIZATION_COUNT = 7;
-  
-  useEffect(() => {
-    // Prevent default context menu for this component only
-    const pillElement = document.querySelector('.pill-container');
-    
-    const preventDefaultContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
-
-    // Add event listener to the pill element only
-    pillElement?.addEventListener('contextmenu', preventDefaultContextMenu);
-    
-    return () => {
-      // Clean up event listener
-      pillElement?.removeEventListener('contextmenu', preventDefaultContextMenu);
-    };
-  }, []);
-  
-  // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = () => {
-    // Create bars with consistent count
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`bar-${index}`} 
-        className="waveform-bar"
-        style={{ 
-          animationDelay: `${index * 0.1}s`,
-          height: `${3 + Math.random() * 5}px`
-        }}
-      />
-    ));
-  };
-
-  // Unified function to render dots with different styles
-  const renderDots = (type: 'static' | 'animated' | 'collapsed') => {
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`dot-${type}-${index}`} 
-        className={`dot ${type}`}
-        style={type === 'animated' ? { animationDelay: `${index * 0.12}s` } : undefined}
-      />
-    ));
-  };
-
-  // Handle context menu
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent default browser context menu
-    console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
-    // Check if the electron API exists and has the showPillContextMenu method
-    if (window.electron && 'showPillContextMenu' in window.electron) {
-      // Call without coordinates
-      (window.electron as any).showPillContextMenu();
-    } else {
-      console.warn('[Pill] window.electron.showPillContextMenu not available.');
-    }
-  };
-  
-  // Determine if the pill should be in the expanded state
-  const isExpanded = isHovered || isListening || isProcessing;
-  
-  return (
-    <div 
-      className={`
-        pill-container 
-        ${isExpanded ? 'expanded' : 'collapsed'}
-        ${isListening ? 'listening' : ''}
-        ${isProcessing ? 'processing' : ''}
-        flex items-center justify-center
-      `}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={isListening ? onStopDictation : onStartDictation}
-      onContextMenu={handleContextMenu}
-    >
-      <div className="pill-content flex items-center justify-center w-full h-full">
-        {/* Dormant state - show smaller dots */}
-        {!isExpanded && (
-          <div className="visualization-container">
-            {renderDots('collapsed')}
-          </div>
-        )}
-
-        {/* Hover state - show static dots */}
-        {isHovered && !isListening && !isProcessing && (
-          <div className="visualization-container">
-            {renderDots('static')}
-          </div>
-        )}
-        
-        {/* Active state - show frequency bars */}
-        {isListening && (
-          <div className="visualization-container">
-            {renderFrequencyBars()}
-          </div>
-        )}
-        
-        {/* Loading state - show animated dots */}
-        {isProcessing && !isListening && (
-          <div className="visualization-container">
-            {renderDots('animated')}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default Pill;
-</file>
-
-<file path="src/contextmenu-preload.ts">
-import { contextBridge, ipcRenderer } from 'electron';
-
-// Define the channels that the context menu is allowed to send messages on
-const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
-type ValidChannel = typeof validChannels[number];
-
-// Expose a safe API to the context menu's renderer process
-contextBridge.exposeInMainWorld('contextMenuAPI', {
-  /**
-   * Sends a message to the main process over a specified channel.
-   * Only allows sending on pre-approved channels.
-   * @param channel The IPC channel to send the message on.
-   */
-  send: (channel: ValidChannel) => {
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel);
-      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
-    } else {
-      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
-    }
-  },
-});
-
-// Add a type definition for the exposed API
-declare global {
-  interface Window {
-    contextMenuAPI: {
-      send: (channel: ValidChannel) => void;
-    };
-  }
-}
-</file>
-
 <file path="src/notification-preload.js">
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -1281,6 +1385,78 @@ declare global {
 }
 
 export {};
+</file>
+
+<file path="forge.config.ts">
+import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDeb } from '@electron-forge/maker-deb';
+import { MakerRpm } from '@electron-forge/maker-rpm';
+import { VitePlugin } from '@electron-forge/plugin-vite';
+import { FusesPlugin } from '@electron-forge/plugin-fuses';
+import { FuseV1Options, FuseVersion } from '@electron/fuses';
+
+const config: ForgeConfig = {
+  packagerConfig: {
+    asar: true,
+    // Path to icon base name (no extension) in source directory (as per docs)
+    icon: 'public/assets/icon', 
+  },
+  rebuildConfig: {},
+  makers: [
+    new MakerSquirrel({
+      // Path to specific .ico file for setup.exe (as per docs)
+      setupIcon: 'public/assets/icon.ico'
+    }), 
+    new MakerZIP({}, ['darwin']), 
+    new MakerRpm({}), 
+    new MakerDeb({})
+  ],
+  plugins: [
+    new VitePlugin({
+      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
+      // If you are familiar with Vite configuration, it will look really familiar.
+      build: [
+        {
+          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
+          entry: 'src/main.ts',
+          config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+        {
+          entry: 'src/contextmenu-preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+      ],
+      renderer: [
+        {
+          name: 'main_window',
+          config: 'vite.renderer.config.ts',
+        },
+      ],
+    }),
+    // Fuses are used to enable/disable various Electron functionality
+    // at package time, before code signing the application
+    new FusesPlugin({
+      version: FuseVersion.V1,
+      [FuseV1Options.RunAsNode]: false,
+      [FuseV1Options.EnableCookieEncryption]: true,
+      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    }),
+  ],
+};
+
+export default config;
 </file>
 
 <file path="src/audio/ring-buffer.ts">
@@ -1489,76 +1665,41 @@ export const Constants = {
 };
 </file>
 
-<file path="forge.config.ts">
-import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { VitePlugin } from '@electron-forge/plugin-vite';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseV1Options, FuseVersion } from '@electron/fuses';
+<file path="src/preload.ts">
+// See the Electron documentation for details on how to use preload scripts:
+// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
-const config: ForgeConfig = {
-  packagerConfig: {
-    asar: true,
-    // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon', 
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electron', {
+  toggleDictation: (callback: () => void) => {
+    // Remove any existing listeners to prevent duplicates
+    ipcRenderer.removeAllListeners('toggle-dictation');
+    // Add the new listener
+    ipcRenderer.on('toggle-dictation', () => callback());
+    
+    // Return a cleanup function that can be called when the component unmounts
+    return () => {
+      ipcRenderer.removeAllListeners('toggle-dictation');
+    };
   },
-  rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      // Path to specific .ico file for setup.exe (as per docs)
-      setupIcon: 'public/assets/icon.ico'
-    }), 
-    new MakerZIP({}, ['darwin']), 
-    new MakerRpm({}), 
-    new MakerDeb({})
-  ],
-  plugins: [
-    new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
-      build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: 'src/main.ts',
-          config: 'vite.main.config.ts',
-          target: 'main',
-        },
-        {
-          entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-        {
-          entry: 'src/contextmenu-preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-      ],
-      renderer: [
-        {
-          name: 'main_window',
-          config: 'vite.renderer.config.ts',
-        },
-      ],
-    }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-    }),
-  ],
-};
-
-export default config;
+  showPillContextMenu: () => {
+    ipcRenderer.send('show-context-menu');
+  },
+  insertTextAtCursor: (text: string) => {
+    return ipcRenderer.invoke('insert-text-at-cursor', text);
+  },
+  // Method to view the log file
+  viewLogFile: () => {
+    return ipcRenderer.invoke('view-log-file');
+  },
+  // Add a method for the renderer to request a notification
+  sendNotification: (message: string) => {
+    ipcRenderer.send('show-notification', message);
+  }
+});
 </file>
 
 <file path="src/components/HomePage.tsx">
@@ -1950,43 +2091,6 @@ const HomePage: React.FC = () => {
 };
 
 export default React.memo(HomePage);
-</file>
-
-<file path="src/preload.ts">
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-
-import { contextBridge, ipcRenderer } from 'electron';
-
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electron', {
-  toggleDictation: (callback: () => void) => {
-    // Remove any existing listeners to prevent duplicates
-    ipcRenderer.removeAllListeners('toggle-dictation');
-    // Add the new listener
-    ipcRenderer.on('toggle-dictation', () => callback());
-    
-    // Return a cleanup function that can be called when the component unmounts
-    return () => {
-      ipcRenderer.removeAllListeners('toggle-dictation');
-    };
-  },
-  showPillContextMenu: () => {
-    ipcRenderer.send('show-context-menu');
-  },
-  insertTextAtCursor: (text: string) => {
-    return ipcRenderer.invoke('insert-text-at-cursor', text);
-  },
-  // Method to view the log file
-  viewLogFile: () => {
-    return ipcRenderer.invoke('view-log-file');
-  },
-  // Add a method for the renderer to request a notification
-  sendNotification: (message: string) => {
-    ipcRenderer.send('show-notification', message);
-  }
-});
 </file>
 
 <file path="src/components/App.tsx">
@@ -2695,441 +2799,6 @@ This document tracks performance measurements for different implementations of t
 }
 </file>
 
-<file path="src/moonshine-worker.ts">
-// src/moonshine-worker.ts
-import { 
-    pipeline, 
-    env, 
-    // @ts-ignore Progress type might be nested or different now
-    Progress 
-} from "@huggingface/transformers";
-
-// Import RingBuffer
-import { RingBuffer } from "./audio/ring-buffer.js";
-
-const MODEL_ID = "onnx-community/moonshine-base-ONNX";   // English-only                          // a bit roomier
-
-// Define type for Dtype configuration
-type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8">; // Adjust allowed types if needed
-
-// Define dtype configurations based on device with explicit typing
-const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
-  wasm: {
-    encoder_model: "q8",
-    decoder_model_merged: "q8", // WASM might benefit from q8
-  },
-};
-
-// --- back-end selection exactly like before ---------------------------------
-// async function webgpuAvailable() {
-//   // @ts-ignore
-//   return !!navigator.gpu && (await navigator.gpu.requestAdapter()) !== null;
-// }
-
-// const useGpu = await webgpuAvailable();
-// const device = useGpu ? 'webgpu' : 'wasm';
-const device = 'wasm'; // Force WASM backend
-const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
-
-// if (useGpu) {
-//     console.log("[Moonshine] using WebGPU backend");
-//     // Additional WebGPU specific settings if needed (e.g., powerPreference)
-//     // @ts-ignore
-//     // env.backends.webgpu.powerPreference = "high-performance"; // Can potentially be set here if needed
-// } else {
-console.log("[Moonshine] using WASM backend");
-// @ts-ignore
-// env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
-// }
-
-// ---------------------------------------------------------------------------
-
-let asr: any | null = null;
-let busy = false;
-let ringBuffer: RingBuffer | null = null;
-// Remove the old array of chunks
-// let audioBuffer16k: Float32Array[] = []; 
-const SAMPLE_RATE_16K = 16000;
-const INITIAL_BUFFER_SECONDS = 30; // Start with a 30-second buffer
-const INITIAL_BUFFER_SIZE = SAMPLE_RATE_16K * INITIAL_BUFFER_SECONDS;
-const BUFFER_GROWTH_SECONDS = 30; // Add 60 seconds worth of space when resizing
-const BUFFER_GROWTH_SIZE = SAMPLE_RATE_16K * BUFFER_GROWTH_SECONDS;
-
-// State for pre-allocated buffer
-let preallocated16kBuffer: Float32Array | null = null;
-let current16kWriteOffset = 0;
-
-// NEW State for continuous processing
-const PARTIAL_INTERVAL_S = 10; // Emit partial result every 10 seconds
-const PULL_LOOP_INTERVAL_MS = 250; // How often to pull from ring buffer
-let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
-let recording = false; // Controls the background pull loop
-let processingPartial = false; // Flag to prevent concurrent partial ASR calls
-let lastPartialText = ""; // NEW: Store the cumulative text sent so far
-
-// NEW Helper function to diff text and post delta
-function diffAndSend(textNow: string, tag: 'partial') {
-  textNow = textNow.trim(); // Ensure consistent trimming
-  let i = 0;
-  // Find longest common prefix length
-  while (i < textNow.length && i < lastPartialText.length && textNow[i] === lastPartialText[i]) {
-    i++;
-  }
-
-  // Handle potential leading/trailing space inconsistencies during diff
-  let prefixBoundary = i;
-  // Adjust boundary if it lands mid-word or next to spaces inconsistently
-  if (i > 0 && i < textNow.length) {
-    const prevCharText = textNow[i - 1];
-    const nextCharText = textNow[i];
-    const prevCharLast = i > 0 ? lastPartialText[i - 1] : null;
-
-    // If boundary is at a space in one but not the other, adjust slightly if possible
-    if (nextCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
-       // Don't include the leading space in delta if the last text didn't end with one
-       prefixBoundary = i + 1; 
-    } else if (prevCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
-        // If new text has a space before boundary, maybe keep it? (Less common)
-        // Let's prioritize trimming delta's start
-    }
-  }
-  
-  // Extract the delta (new part) and trim leading whitespace aggressively
-  const delta = textNow.slice(prefixBoundary).trimStart(); 
-  
-  console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
-
-  if (delta) {
-    self.postMessage({ status: tag, delta });
-    lastPartialText = textNow; // Update history for next partial
-  }
-}
-
-// Helper function for the pull loop (must be defined before use)
-async function startPullLoop() {
-  console.log('[Worker] Starting pull loop...');
-  while (recording) {
-    if (!ringBuffer) {
-      console.error('[Worker] RingBuffer lost during pull loop. Stopping.');
-      recording = false;
-      break;
-    }
-
-    // Pull and process available 48kHz audio into the 16kHz buffer
-    pullAndProcessAudio(); 
-
-    // Check if we should run a partial transcription
-    await maybeEmitPartial();
-
-    // Wait a bit before the next pull to avoid busy-waiting
-    // Use a simple timeout for broader compatibility vs Atomics.waitAsync initially
-    await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS)); 
-  }
-  console.log('[Worker] Pull loop stopped.');
-}
-
-// Helper function to check and emit partial results (MODIFIED)
-async function maybeEmitPartial() {
-  if (processingPartial || !preallocated16kBuffer || !asr) return; 
-
-  const buffered16kSamples = current16kWriteOffset - nextDecodeStart16k;
-  const bufferedSeconds = buffered16kSamples / SAMPLE_RATE_16K;
-
-  if (bufferedSeconds >= PARTIAL_INTERVAL_S) {
-    console.log(`[Worker] Buffer has >= ${PARTIAL_INTERVAL_S}s (${bufferedSeconds.toFixed(2)}s) of new audio. Processing partial...`);
-    processingPartial = true;
-    
-    const sliceToProcess = preallocated16kBuffer.subarray(nextDecodeStart16k, current16kWriteOffset);
-    const sliceEndIndex = current16kWriteOffset; // Store end index
-
-    try {
-      console.log(`[Worker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
-      const tPartialStart = performance.now();
-      const result = await asr(sliceToProcess);
-      const tPartialEnd = performance.now();
-      const currentFullText = (result as any).text?.trim() ?? ''; // Get the full text for this slice
-      console.log(`[Worker] Partial ASR completed in ${(tPartialEnd - tPartialStart).toFixed(2)} ms. Full Text: "${currentFullText}"`);
-
-      // Use diffAndSend for partial delta only
-      diffAndSend(lastPartialText + ' ' + currentFullText, 'partial');
-      
-      // IMPORTANT: Move the start cursor *after* successful processing
-      nextDecodeStart16k = sliceEndIndex; 
-
-    } catch (err) {
-      console.error('[Worker] Partial decode error:', err);
-    } finally {
-      processingPartial = false;
-    }
-  }
-}
-
-self.postMessage({ status: "loading" });
-
-asr = await pipeline(
-  "automatic-speech-recognition",
-  MODEL_ID,
-  {
-    progress_callback: (p: Progress | null) => p && self.postMessage(p),
-    // Pass device and dtype config directly
-    device: device,
-    dtype: dtypeConfig,
-  }
-) as any;
-
-// --- Add ComputeType Check ---
-try {
-  // Check the actual compute type being used AFTER pipeline initialization
-  // Access through env seems correct based on documentation/usage
-  // @ts-ignore - Accessing internal property, might change
-  // const currentComputeType = env.backends.webgpu?.computeType;
-
-  // if (useGpu && currentComputeType) {
-  //   console.log(`[Moonshine] Actual WebGPU computeType used: ${currentComputeType}`);
-  //   // You could add more specific checks here if you were trying to force a certain type:
-  //   // const requestedComputeType = 'int8'; // Example if you set this via env
-  //   // if (currentComputeType !== requestedComputeType) {
-  //   //    console.warn(`[Moonshine] Requested computeType ${requestedComputeType}, but using ${currentComputeType}`);
-  //   // }
-  // } else if (!useGpu) {
-  console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
-  // } else if (useGpu && !currentComputeType) {
-  //    console.warn("[Moonshine] Using WebGPU, but could not read actual computeType from env.backends.webgpu");
-  // }
-} catch (checkError) {
-  console.warn("[Moonshine] Error during backend sanity checks (expected for WASM, as no computeType to check):", checkError);
-}
-// --- End ComputeType Check ---
-
-// --- Warm-up Call --- 
-try {
-    if (asr) {
-      console.log("[Moonshine] Performing warm-up call...");
-      const warmupStartTime = performance.now();
-      // Perform a dummy transcription on 1 second of silence
-      await asr(new Float32Array(16_000)); 
-      const warmupEndTime = performance.now();
-      console.log(`[Moonshine] Warm-up call completed in ${(warmupEndTime - warmupStartTime).toFixed(2)} ms`);
-      // Send ready message ONLY if warm-up succeeds
-      self.postMessage({ status: "ready" });
-    } else {
-      throw new Error("ASR pipeline object is null after initialization.");
-    }
-} catch (warmupError) {
-    console.error("[Moonshine] Warm-up call failed:", warmupError);
-    // Send an error status back to the main thread
-    self.postMessage({ status: "error", error: "Worker warm-up failed." });
-    // Do not proceed further if warm-up fails
-}
-
-// --- Message Handler ---
-self.addEventListener("message", async (e) => {
-  const { type, data } = e.data ?? {};
-  console.log(`[Worker] Received message: type=${type}`, data);
-
-  // --- Initialization ---
-  if (type === "init") {
-    if (data?.sab) {
-      try {
-        ringBuffer = new RingBuffer(data.sab);
-        console.log("[Worker] RingBuffer initialized with received SharedArrayBuffer.");
-      } catch (error) {
-        console.error("[Worker] Failed to initialize RingBuffer:", error);
-        self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
-      }
-    } else {
-      console.error("[Worker] 'init' message received without SharedArrayBuffer (sab).");
-      self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided." });
-    }
-    return; 
-  }
-
-  // --- Start Streaming ---
-  if (type === "startStream") {
-    if (!ringBuffer) {
-       console.error("[Worker] Cannot start stream: RingBuffer not initialized.");
-       self.postMessage({ status: "error", error: "Cannot start: RingBuffer not ready." });
-       return;
-    }
-    if (recording) {
-        console.warn("[Worker] Stream already started.");
-        return;
-    }
-    
-    console.log("[Worker] Starting stream...");
-    // Allocate the large buffer and reset state
-    try {
-      current16kWriteOffset = 0;
-      nextDecodeStart16k = 0; // Reset decode cursor
-      processingPartial = false; // Reset partial processing flag
-      lastPartialText = ""; // Reset history on new stream
-      preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE); 
-      console.log(`[Worker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
-    } catch (allocError) {
-      console.error("[Worker] Failed to allocate initial 16kHz buffer:", allocError);
-      self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
-      preallocated16kBuffer = null;
-      return;
-    }
-    
-    ringBuffer.reset(); 
-    self.postMessage({ status: "streaming_started" }); 
-    
-    // Start the background pull loop
-    recording = true;
-    startPullLoop(); // Don't await, let it run in the background
-    return;
-  }
-
-  // --- Stop Streaming & Process (Flush) --- 
-  if (type === "flush") {
-    if (!recording && !busy) {
-        console.warn('[Worker] Flush requested but not recording or already flushed.');
-        return;
-    }
-    
-    console.log('[Worker] Flush requested. Stopping pull loop...');
-    recording = false; // Signal the pull loop to stop
-    
-    // Wait briefly for any ongoing partial processing to finish
-    while (processingPartial) {
-        console.log('[Worker] Waiting for ongoing partial processing to finish before final flush...');
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    console.log('[Worker] Proceeding with final flush...');
-    if (busy) { 
-      console.warn("[Worker] Flush requested while busy (after wait), ignoring.");
-      return;
-    }
-    if (!ringBuffer || !preallocated16kBuffer) {
-       console.error("[Worker] Cannot flush: RingBuffer or preallocated buffer not ready.");
-       self.postMessage({ status: "error", error: "Cannot flush: Worker not properly initialized." });
-       return;
-    }
-
-    busy = true;
-    self.postMessage({ status: "processing_start" }); 
-
-    // --- ADDED: Single call to pull remaining audio ---
-    console.log("[Worker] Pulling final audio chunk from RingBuffer...");
-    pullAndProcessAudio(); 
-    console.log(`[Worker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
-    // --- End Single Pull ---
-
-    // --- Use the final remaining portion of the pre-allocated buffer ---
-    const finalSliceStartIndex = nextDecodeStart16k;
-    const finalSliceEndIndex = current16kWriteOffset;
-    const finalAudioSlice = preallocated16kBuffer.subarray(finalSliceStartIndex, finalSliceEndIndex);
-
-    if (finalAudioSlice.length === 0) {
-      console.log("[Worker] No new audio data since last partial, skipping final transcription.");
-      self.postMessage({ status: "complete", output: "" }); // Send empty complete
-      busy = false;
-      nextDecodeStart16k = 0; // Reset for next recording
-      current16kWriteOffset = 0;
-      // preallocated16kBuffer = null; // Maybe clear buffer?
-      return;
-    }
-    
-    console.log(`[Worker] Using final 16kHz audio subarray. Length: ${finalAudioSlice.length} samples.`);
-
-    // --- Final ASR Pipeline Call (MODIFIED) ---
-    const t0 = performance.now();
-    try {
-      if (!asr) throw new Error("ASR pipeline not ready.");
-
-      console.log("[Worker] Calling ASR pipeline for final segment...");
-      const result = await asr(finalAudioSlice);
-      const pipelineTime = performance.now() - t0;
-      console.log(`[Worker] Final ASR pipeline completed in ${pipelineTime.toFixed(2)} ms.`);
-
-      const finalFullText = (result as any).text?.trim() ?? '';
-      
-      // Combine with previous history for the absolute final text
-      const absoluteFinalText = (lastPartialText + ' ' + finalFullText).trim();
-      
-      // Send the *full* text in the complete message
-      console.log(`[Worker] Sending final complete message with full text: "${absoluteFinalText}"`);
-      self.postMessage({ 
-          status: 'complete', 
-          text: absoluteFinalText, // Use 'text' property for final full transcript
-          timings: { total: pipelineTime }
-        });
-
-    } catch (err) {
-      const pipelineTimeOnError = performance.now() - t0;
-      console.error(`[Worker] Final ASR Error after ${pipelineTimeOnError.toFixed(2)}ms:`, err);
-      self.postMessage({ status: "error", error: String(err) });
-    } finally {
-      busy = false;
-      // Reset state for the next recording session
-      nextDecodeStart16k = 0;
-      current16kWriteOffset = 0;
-      // preallocated16kBuffer = null; // Maybe clear buffer?
-      lastPartialText = ""; // Ensure reset here too
-    }
-    return; // Handled flush message
-  }
-
-  // Log unhandled messages
-  console.warn(`[Worker] Unhandled message type: ${type}`);
-});
-
-// --- Helper Function for Pull Loop --- (MODIFIED)
-// This function now handles pulling 16k data directly into the preallocated buffer
-function pullAndProcessAudio() {
-  if (!ringBuffer || !preallocated16kBuffer) return; 
-
-  const available16k = ringBuffer.availableRead();
-  if (available16k === 0) return; // Nothing to read
-
-  // Determine the number of samples to read (all available from ring buffer for now)
-  const samplesToRead = available16k; 
-  
-  // --- ADD: Dynamic resizing ---
-  const requiredSize = current16kWriteOffset + samplesToRead;
-  if (requiredSize > preallocated16kBuffer.length) {
-    // Double the buffer size or increase to required size, whichever is larger
-    // CHANGE: Increase by a fixed amount (BUFFER_GROWTH_SIZE) instead of doubling, 
-    //         but ensure it's at least large enough for the required size.
-    const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
-    console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
-    try {
-      const newBuffer = new Float32Array(newSize);
-      // Copy existing data
-      newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
-      preallocated16kBuffer = newBuffer; // Replace the old buffer
-    } catch (resizeError) {
-      console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
-      // Try to proceed with what fits? Or stop? For now, stop processing this chunk.
-      self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
-      // Optionally clear the ring buffer to prevent repeated attempts?
-      // FIX: ringBuffer.read expects a target buffer, not null. Read into a temporary buffer to discard.
-      ringBuffer.read(new Float32Array(available16k)); // Read and discard to prevent loop?
-      return; 
-    }
-  }
-  // --- END: Dynamic resizing ---
-
-  // Read directly into the (potentially resized) preallocated buffer at the current offset
-  // Create a subarray view of the target location in the preallocated buffer
-  const targetView = preallocated16kBuffer.subarray(
-    current16kWriteOffset, 
-    current16kWriteOffset + samplesToRead
-  );
-
-  // Perform the read from the ring buffer directly into the target view
-  ringBuffer.read(targetView); 
-
-  // Update the write offset
-  current16kWriteOffset += samplesToRead;
-
-  // Optional: Log how much was read
-  // console.log(`[Worker Pull] Read ${samplesToRead} 16kHz samples. New 16kHz write offset: ${current16kWriteOffset}`);
-}
-</file>
-
 <file path="src/hooks/useTranscription.ts">
 import { useRef, useState, useEffect, useCallback } from 'react';
 
@@ -3171,10 +2840,12 @@ export function useTranscription(): UseTranscriptionReturn {
   // Refs to track the latest state for potential callbacks (less critical now)
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
+  const textRef = useRef(text); // Add a ref for the current text
 
   // Update refs whenever state changes
   useEffect(() => { readyRef.current = ready; }, [ready]);
   useEffect(() => { processingRef.current = processing; }, [processing]);
+  useEffect(() => { textRef.current = text; }, [text]); // Update textRef
 
   // --- 1️⃣ Boot worker once --- 
   useEffect(() => {
@@ -3277,27 +2948,32 @@ export function useTranscription(): UseTranscriptionReturn {
         case 'partial':
             const partialDelta = e.data?.delta as string;
             if (typeof partialDelta === 'string' && partialDelta) {
-                console.log(`[useTranscription] Received partial text delta: "${partialDelta}"`);
-                // Append delta to internal state 
-                setText(prev => (prev + ' ' + partialDelta).trim()); 
+                console.log(`[useTranscription] Received partial text delta: \"${partialDelta}\"`);
+                // Append delta to internal state
+                setText(prev => (prev + ' ' + partialDelta).trim());
             }
             break;
-        case 'complete': 
-            // Handle final result: Update state AND paste here
-            const finalText = e.data?.text as string; // Expect full text now
-            if (typeof finalText === 'string') { 
-                console.log(`[useTranscription] Received final text: "${finalText}"`);
-                // Set the final, authoritative text state
-                setText(finalText); 
-                // PASTE the final text directly from the hook
-                if (finalText && window.electron) { // Ensure text is not empty before pasting
-                  window.electron.insertTextAtCursor(finalText)
-                      .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
-                } else if (!finalText) {
-                   console.log('[useTranscription] Final text is empty, skipping paste.');
-                }
+        case 'complete':
+            const finalText = e.data?.text as string; 
+            if (typeof finalText === 'string') {
+                console.log(`[useTranscription] Received final text: \"${finalText}\"`);
+                
+                setText(prev => {
+                    const accumulatedText = (prev + ' ' + finalText).trim();
+                    // Log the text that will actually be used for insertion
+                    console.log(`[useTranscription] Accumulated text for final insertion: \"${accumulatedText}\"`);
+
+                    if (accumulatedText && window.electron) {
+                        window.electron.insertTextAtCursor(accumulatedText) 
+                            .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
+                    } else if (!accumulatedText) {
+                       console.log('[useTranscription] Final accumulated text is empty, skipping paste.');
+                    }
+                    return accumulatedText;
+                });
             }
-            // Handle timings and state for complete message
+            // The log using textRef.current has been removed as the one inside setText is more immediate for this action,
+            // and App.tsx will show the final state post-render.
             setProcessing(false);
             console.timeEnd('e2e-transcription-final'); 
             if (timings) {
@@ -3350,8 +3026,9 @@ export function useTranscription(): UseTranscriptionReturn {
       await audioCtxRef.current.resume();
     }
 
-    setError(null); 
+    setError(null);
     setText(''); // Clear text on start
+    textRef.current = ''; // Also clear textRef on start
 
     try {
       console.log('[useTranscription] Setting up AudioWorklet...');
@@ -3514,6 +3191,429 @@ export function useTranscription(): UseTranscriptionReturn {
     start,
     stop,
   };
+}
+</file>
+
+<file path="src/moonshine-worker.ts">
+// src/moonshine-worker.ts
+import { 
+    pipeline, 
+    env, 
+    // @ts-ignore Progress type might be nested or different now
+    Progress 
+} from "@huggingface/transformers";
+
+// Import RingBuffer
+import { RingBuffer } from "./audio/ring-buffer.js";
+
+const MODEL_ID = "onnx-community/moonshine-base-ONNX";   // English-only                          // a bit roomier
+
+// Define type for Dtype configuration
+type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8">; // Adjust allowed types if needed
+
+// Define dtype configurations based on device with explicit typing
+const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
+  wasm: {
+    encoder_model: "q8",
+    decoder_model_merged: "q8", // WASM might benefit from q8
+  },
+};
+
+const device = 'wasm'; // Force WASM backend
+const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
+
+console.log("[Moonshine] using WASM backend");
+
+// ---------------------------------------------------------------------------
+
+let asr: any | null = null;
+let busy = false;
+let ringBuffer: RingBuffer | null = null;
+
+const SAMPLE_RATE_16K = 16000;
+
+// --- ADD: Streaming Config ---
+const CHUNK_S = 5;          // Process 5 seconds of audio at a time
+const STRIDE_S = 1;         // Overlap chunks by 1 second
+const CHUNK_SAMPLES = CHUNK_S * SAMPLE_RATE_16K;
+const STRIDE_SAMPLES = STRIDE_S * SAMPLE_RATE_16K; // Not directly used in pipeline call, but useful for logic if needed
+const PULL_LOOP_INTERVAL_MS = 50; // Check for new audio frequently
+// --- END: Streaming Config ---
+
+// --- RESTORE Buffer Size Constants ---
+const INITIAL_BUFFER_SECONDS = 30; 
+const INITIAL_BUFFER_SIZE = SAMPLE_RATE_16K * INITIAL_BUFFER_SECONDS;
+const BUFFER_GROWTH_SECONDS = 30; 
+const BUFFER_GROWTH_SIZE = SAMPLE_RATE_16K * BUFFER_GROWTH_SECONDS;
+// --- END RESTORE ---
+
+// State for pre-allocated buffer
+let preallocated16kBuffer: Float32Array | null = null;
+let current16kWriteOffset = 0;
+
+// --- ADD: New Streaming State ---
+let emittedSamples = 0; // How many samples have been processed and led to emitted text
+let kvCache: any | null = null; // Stores past_key_values for the ASR model
+let recording = false; // Controls the background pull loop
+let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
+// --- END: New Streaming State ---
+
+// --- ADD state for text-based diffing during streaming (as a fallback) ---
+let previousSliceText = ""; 
+// --- END ADD state ---
+
+// Helper function for the pull loop (MODIFIED)
+async function startPullLoop() {
+  console.log('[Worker] Starting streaming pull loop...');
+  while (recording) {
+    if (!ringBuffer) {
+      console.error('[Worker] RingBuffer lost during pull loop. Stopping.');
+      recording = false;
+      break;
+    }
+
+    // Pull available audio into the main buffer (resizes if needed)
+    pullAndProcessAudio(); 
+
+    // Check if we have enough audio to process a new chunk
+    await processAvailableAudio(); // Renamed from maybeEmitPartial
+
+    // Wait briefly before next check
+    await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS)); 
+  }
+  console.log('[Worker] Streaming pull loop stopped.');
+}
+
+// Helper function to process available audio chunks
+async function processAvailableAudio() {
+  if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
+
+  const availableSamples = current16kWriteOffset - emittedSamples;
+
+  if (availableSamples >= CHUNK_SAMPLES) {
+    processingPartial = true;
+
+    const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
+    const end = Math.min(start + CHUNK_SAMPLES + 2 * STRIDE_SAMPLES, current16kWriteOffset);
+    const slice = preallocated16kBuffer.subarray(start, end);
+
+    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length}) Emitted: ${emittedSamples}`);
+
+    try {
+      const tAsrStart = performance.now();
+      // Call ASR, with per-call streaming options (using 'as any' to bypass linter for these specific keys)
+      const result = await asr(slice, { 
+         past_key_values: kvCache,
+         chunk_length_s: CHUNK_S, 
+         stride_length_s: STRIDE_S,
+         return_timestamps: "word",
+      } as any); // Linter bypass for streaming options not in PretrainedModelOptions
+      const tAsrEnd = performance.now();
+
+      // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
+
+      kvCache = result.past_key_values;
+
+      let delta = "";
+
+      // Text-based diff is now the PRIMARY way
+      const currentText = (result.text || "").trim();
+      if (currentText) { // Only proceed if there's text from ASR
+        if (previousSliceText) {
+          if (currentText.startsWith(previousSliceText)) {
+            delta = currentText.substring(previousSliceText.length).trim();
+          } else {
+            let bestOverlap = 0;
+            for (let i = 1; i <= Math.min(previousSliceText.length, currentText.length); i++) {
+              if (currentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+                bestOverlap = i;
+              }
+            }
+            if (bestOverlap > 0 && currentText.length > bestOverlap) {
+               delta = currentText.substring(bestOverlap).trim();
+            } else if (bestOverlap === 0 || currentText.length <= bestOverlap){
+               if(currentText !== previousSliceText) delta = currentText;
+            }
+            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: \"${previousSliceText}\", Curr: \"${currentText}\", Overlap: ${bestOverlap}, Delta: \"${delta}\"`);
+            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: \"${delta}\"`);
+          }
+        } else {
+          delta = currentText;
+        }
+      }
+      
+      if (delta) {
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
+          self.postMessage({ status: 'partial', delta });
+          // Advance emittedSamples by CHUNK_SAMPLES as delta came from text diff
+          emittedSamples += CHUNK_SAMPLES;
+          console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
+      } else {
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
+          // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
+      }
+      previousSliceText = currentText; // Always update for next potential text diff
+
+    } catch (err) {
+      console.error('[Worker] ASR pipeline error during streaming:', err);
+      kvCache = null; 
+      previousSliceText = ""; 
+    } finally {
+      processingPartial = false;
+    }
+  }
+}
+
+self.postMessage({ status: "loading" });
+
+// Initialize the pipeline (NO Stream params at init - Linter bypass for per-call options)
+try {
+    console.log(`[Moonshine] Initializing pipeline...`);
+    asr = await pipeline(
+      "automatic-speech-recognition",
+      MODEL_ID,
+      {
+        progress_callback: (p: Progress | null) => p && self.postMessage(p),
+        device: device,
+        dtype: dtypeConfig,
+      }
+    ) as any;
+    console.log("[Moonshine] Pipeline initialized.");
+} catch (pipelineError) {
+    console.error("[Moonshine] Pipeline initialization failed:", pipelineError);
+    self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
+    throw pipelineError; 
+}
+
+// --- Add ComputeType Check --- 
+try {
+  console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
+} catch (checkError) {
+  console.warn("[Moonshine] Error during backend sanity checks (expected for WASM, as no computeType to check):", checkError);
+}
+// --- End ComputeType Check ---
+
+// Assume ready after pipeline init for now
+self.postMessage({ status: "ready" });
+
+
+// --- Message Handler ---
+self.addEventListener("message", async (e) => {
+  const { type, data } = e.data ?? {};
+  // --- Initialization ---
+  if (type === "init") {
+    if (data?.sab) {
+      try {
+        ringBuffer = new RingBuffer(data.sab);
+        console.log("[Worker] RingBuffer initialized with received SharedArrayBuffer.");
+      } catch (error) {
+        console.error("[Worker] Failed to initialize RingBuffer:", error);
+        self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
+      }
+    } else {
+      console.error("[Worker] 'init' message received without SharedArrayBuffer (sab).");
+      self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided." });
+    }
+    return; 
+  }
+
+  // --- Start Streaming ---
+  if (type === "startStream") {
+    if (!ringBuffer) {
+       console.error("[Worker] Cannot start stream: RingBuffer not initialized.");
+       self.postMessage({ status: "error", error: "Cannot start: RingBuffer not ready." });
+       return;
+    }
+    if (recording) {
+        console.warn("[Worker] Stream already started.");
+        return;
+    }
+    
+    console.log("[Worker] Starting stream...");
+    // Allocate the buffer and reset state
+    try {
+      // Allocate buffer using restored constants
+      preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE); 
+      current16kWriteOffset = 0;
+      console.log(`[Worker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
+
+      // --- Reset Streaming State ---
+      emittedSamples = 0;
+      kvCache = null; 
+      processingPartial = false;
+      previousSliceText = ""; // Reset for new stream
+      // --- End Reset ---
+
+    } catch (allocError) {
+      console.error("[Worker] Failed to allocate initial 16kHz buffer:", allocError);
+      self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
+      preallocated16kBuffer = null;
+      return;
+    }
+    
+    ringBuffer?.reset(); // Ensure ring buffer is also reset
+    self.postMessage({ status: "streaming_started" }); 
+    
+    // Start the background pull loop
+    recording = true;
+    startPullLoop(); // Don't await, let it run in the background
+    return;
+  }
+
+  // --- Stop Streaming & Process (Flush) --- (MODIFIED as per GPT feedback)
+  if (type === "flush") {
+    if (!recording && !busy) { // Use 'busy' flag from original code? Let's reuse 'processingPartial' for now.
+        console.warn('[Worker] Flush requested but not recording or already flushed.');
+        return;
+    }
+    
+    console.log('[Worker] Flush requested. Stopping pull loop...');
+    const wasRecording = recording; // Store original state
+    recording = false; // Signal the pull loop to stop
+    
+    // Wait briefly for any ongoing partial processing to finish
+    while (processingPartial) {
+        console.log('[Worker] Waiting for ongoing partial processing to finish before final flush...');
+        await new Promise(resolve => setTimeout(resolve, 50)); // Check frequently
+    }
+    
+    console.log('[Worker] Proceeding with final flush...');
+
+    if (!ringBuffer || !preallocated16kBuffer) {
+       console.error("[Worker] Cannot flush: RingBuffer or preallocated buffer not ready.");
+       self.postMessage({ status: "error", error: "Cannot flush: Worker not properly initialized." });
+       return;
+    }
+
+    // Prevent further processing during flush
+    processingPartial = true; 
+    self.postMessage({ status: "processing_start" }); 
+
+    // --- Pull final audio ---
+    if (wasRecording) { // Only pull if we were actually recording
+        console.log("[Worker] Pulling final audio chunk from RingBuffer...");
+        pullAndProcessAudio(); 
+        console.log(`[Worker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
+    }
+    // --- End Final Pull ---
+
+    // --- Process remaining audio using mini-slice and cache ---
+    // Calculate the slice for the remaining audio
+    const finalAvailable = current16kWriteOffset - emittedSamples;
+    let finalDelta = "";
+    let finalPipelineTime = 0;
+
+    if (finalAvailable > 0) {
+        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
+        const end = current16kWriteOffset; 
+        const finalSlice = preallocated16kBuffer.subarray(start, end);
+
+        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
+        const tFinalStart = performance.now();
+        try {
+            if (!asr) throw new Error("ASR pipeline not ready.");
+
+            console.log("[Worker] Calling ASR pipeline for final segment (with cache and PER-CALL stream params)...");
+            const result = await asr(finalSlice, {
+                 past_key_values: kvCache,
+                 chunk_length_s: CHUNK_S, 
+                 stride_length_s: STRIDE_S, // Consider stride_length_s: 0 for final flush for less aggressive overlap removal?
+                 return_timestamps: "word",
+            } as any); // Linter bypass 
+            finalPipelineTime = performance.now() - tFinalStart;
+            console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
+            // console.log("[Worker] Final Result Object:", result);
+
+            const finalCurrentText = (result.text || "").trim();
+            if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
+                if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
+                    finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
+                } else if (previousSliceText) {
+                    let bestOverlap = 0;
+                    for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
+                        if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+                            bestOverlap = i;
+                        }
+                    }
+                    if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
+                        finalDelta = finalCurrentText.substring(bestOverlap).trim();
+                    } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
+                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
+                    }
+                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
+                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
+                } else {
+                    finalDelta = finalCurrentText;
+                }
+            }
+
+            if (finalDelta) {
+                console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+            } else {
+                 console.log(`[Worker] No final delta text found to send.`);
+            }
+
+        } catch (err) {
+            console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
+            self.postMessage({ status: "error", error: String(err) });
+            emittedSamples = 0; kvCache = null; processingPartial = false; previousSliceText = ""; // Reset state
+            return; 
+        }
+    } else {
+       console.log("[Worker] No remaining audio data to process in final flush.");
+    }
+    
+    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
+    self.postMessage({ 
+        status: 'complete', 
+        text: finalDelta, 
+        timings: { total: finalPipelineTime } 
+    });
+    
+    emittedSamples = 0;
+    current16kWriteOffset = 0; 
+    kvCache = null; 
+    preallocated16kBuffer = null; 
+    processingPartial = false; 
+
+    return; 
+  }
+
+});
+
+// --- Helper Function for Pull Loop --- (MODIFIED for dynamic resizing)
+function pullAndProcessAudio() { 
+    if (!ringBuffer || !preallocated16kBuffer) return; 
+
+    const available16k = ringBuffer.availableRead();
+    if (available16k === 0) return; // Nothing to read
+  
+    const samplesToRead = available16k; 
+    
+    const requiredSize = current16kWriteOffset + samplesToRead;
+    if (requiredSize > preallocated16kBuffer.length) {
+      const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
+      console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
+      try {
+        const newBuffer = new Float32Array(newSize);
+        newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
+        preallocated16kBuffer = newBuffer; 
+      } catch (resizeError) {
+        console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
+        self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
+        ringBuffer.read(new Float32Array(available16k)); 
+        return; 
+      }
+    }
+  
+    const targetView = preallocated16kBuffer.subarray(
+      current16kWriteOffset, 
+      current16kWriteOffset + samplesToRead
+    );
+  
+    ringBuffer.read(targetView); 
+  
+    current16kWriteOffset += samplesToRead;
 }
 </file>
 

@@ -56,7 +56,6 @@ let current16kWriteOffset = 0;
 
 // --- ADD: New Streaming State ---
 let emittedSamples = 0; // How many samples have been processed and led to emitted text
-let kvCache: any | null = null; // Stores past_key_values for the ASR model
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
 // --- END: New Streaming State ---
@@ -97,7 +96,7 @@ async function processAvailableAudio() {
     processingPartial = true;
 
     const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
-    const end = Math.min(start + CHUNK_SAMPLES + 2 * STRIDE_SAMPLES, current16kWriteOffset);
+    const end = Math.min(start + CHUNK_SAMPLES + STRIDE_SAMPLES, current16kWriteOffset);
     const slice = preallocated16kBuffer.subarray(start, end);
 
     console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length}) Emitted: ${emittedSamples}`);
@@ -106,16 +105,10 @@ async function processAvailableAudio() {
       const tAsrStart = performance.now();
       // Call ASR, with per-call streaming options (using 'as any' to bypass linter for these specific keys)
       const result = await asr(slice, { 
-         past_key_values: kvCache,
-         chunk_length_s: CHUNK_S, 
-         stride_length_s: STRIDE_S,
-         return_timestamps: "word",
       } as any); // Linter bypass for streaming options not in PretrainedModelOptions
       const tAsrEnd = performance.now();
 
       // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
-
-      kvCache = result.past_key_values;
 
       let delta = "";
 
@@ -148,9 +141,9 @@ async function processAvailableAudio() {
       if (delta) {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
           self.postMessage({ status: 'partial', delta });
-          // Advance emittedSamples by CHUNK_SAMPLES as delta came from text diff
-          emittedSamples += CHUNK_SAMPLES;
-          console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
+          // MODIFIED: Advance emittedSamples by the "new" part of the chunk
+          emittedSamples += CHUNK_SAMPLES - STRIDE_SAMPLES;
+          console.log(`[Worker] Advanced emittedSamples by CHUNK_S - STRIDE_S to ${emittedSamples}`);
       } else {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
           // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
@@ -159,7 +152,6 @@ async function processAvailableAudio() {
 
     } catch (err) {
       console.error('[Worker] ASR pipeline error during streaming:', err);
-      kvCache = null; 
       previousSliceText = ""; 
     } finally {
       processingPartial = false;
@@ -242,7 +234,6 @@ self.addEventListener("message", async (e) => {
 
       // --- Reset Streaming State ---
       emittedSamples = 0;
-      kvCache = null; 
       processingPartial = false;
       previousSliceText = ""; // Reset for new stream
       // --- End Reset ---
@@ -316,12 +307,8 @@ self.addEventListener("message", async (e) => {
         try {
             if (!asr) throw new Error("ASR pipeline not ready.");
 
-            console.log("[Worker] Calling ASR pipeline for final segment (with cache and PER-CALL stream params)...");
+            console.log("[Worker] Calling ASR pipeline for final segment (NO cache, NO per-call stream params)...");
             const result = await asr(finalSlice, {
-                 past_key_values: kvCache,
-                 chunk_length_s: CHUNK_S, 
-                 stride_length_s: STRIDE_S, // Consider stride_length_s: 0 for final flush for less aggressive overlap removal?
-                 return_timestamps: "word",
             } as any); // Linter bypass 
             finalPipelineTime = performance.now() - tFinalStart;
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
@@ -359,7 +346,8 @@ self.addEventListener("message", async (e) => {
         } catch (err) {
             console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
             self.postMessage({ status: "error", error: String(err) });
-            emittedSamples = 0; kvCache = null; processingPartial = false; previousSliceText = ""; // Reset state
+            emittedSamples = 0;
+            processingPartial = false; previousSliceText = ""; // Reset state
             return; 
         }
     } else {
@@ -375,7 +363,6 @@ self.addEventListener("message", async (e) => {
     
     emittedSamples = 0;
     current16kWriteOffset = 0; 
-    kvCache = null; 
     preallocated16kBuffer = null; 
     processingPartial = false; 
 

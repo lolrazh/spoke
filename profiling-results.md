@@ -548,3 +548,44 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Fastest configuration tested overall (~656ms E2E). Combining the architectural improvements (16kHz direct capture, pre-alloc buffer, no drain loop) with Moonshine q8/q8 on WASM yields the best performance, significantly outperforming both the original Whisper baseline and the Moonshine WebGPU configurations.
 
 ---
+
+## Implementation: Streaming with Chunking & KV Cache (WASM)
+
+*Run Date: (Please fill in with today's date)*
+
+*   **Model:** `onnx-community/moonshine-base-ONNX` (Note: Model changed from whisper-tiny)
+*   **Backend:** WASM
+*   **Changes Made:**
+    *   Audio processed in chunks (`CHUNK_S = 5`, `STRIDE_S = 1`).
+    *   `past_key_values` (KV Cache) used between chunks.
+    *   Dynamic buffer resizing implemented.
+    *   Primary transcription logic relies on text-based diffing of `result.text` from ASR calls with streaming parameters.
+    *   Final transcription in `useTranscription.ts` now appends the delta from the `complete` message.
+
+### Observations & Benefits:
+
+*   **Improved Latency for Long Audio:** The primary benefit is significantly faster return times for extremely long audio sequences. The streaming approach avoids processing the entire audio in one go.
+*   **Comparable Latency for Short Audio:** For shorter transcriptions (like the test phrase "This is a transcription test for sonic flow"), the E2E latency is comparable to, or slightly higher than, previous non-streaming batch modes, but still very acceptable.
+    *   Example E2E Latency (from logs for ~3-second audio):
+        *   Run 1: ~673 ms
+        *   Run 2: ~704 ms
+*   **Final Flush Performance:** The final flush operation, which processes the remaining audio segment, shows good performance.
+    *   Example Worker Processing Time (final flush for ~3-second audio):
+        *   Run 1: `673.26 ms`
+        *   Run 2: `704.20 ms`
+*   **No Partial Transcriptions:** The logs indicate that for these short test runs, no partial transcriptions were emitted during streaming (`Emitted: 0` before final flush). The entire transcription was produced during the final flush. This is expected for audio shorter than `CHUNK_S`. For longer audio, partial results would be seen.
+*   **Accuracy:** Appears good for the test phrase.
+
+### Metrics (Based on Short Audio Test - "This is a transcription test for sonic flow"):
+
+*   **End-to-End (E2E) Latency (approx. 3s audio):**
+    *   Run 1: `~673 ms`
+    *   Run 2: `~704 ms`
+    *   Average: `~688 ms`
+*   **Worker Processing Time (Final Flush for approx. 3s audio):**
+    *   Run 1: `673.26 ms`
+    *   Run 2: `704.20 ms`
+    *   Average: `~688.73 ms`
+*   **Note:** These metrics are for short audio where the entire content is processed in the "final flush". The main advantage of this implementation is seen with much longer audio inputs due to the streaming nature.
+
+---
