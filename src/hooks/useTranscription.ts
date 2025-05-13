@@ -38,10 +38,12 @@ export function useTranscription(): UseTranscriptionReturn {
   // Refs to track the latest state for potential callbacks (less critical now)
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
+  const textRef = useRef(text); // Add a ref for the current text
 
   // Update refs whenever state changes
   useEffect(() => { readyRef.current = ready; }, [ready]);
   useEffect(() => { processingRef.current = processing; }, [processing]);
+  useEffect(() => { textRef.current = text; }, [text]); // Update textRef
 
   // --- 1️⃣ Boot worker once --- 
   useEffect(() => {
@@ -144,27 +146,32 @@ export function useTranscription(): UseTranscriptionReturn {
         case 'partial':
             const partialDelta = e.data?.delta as string;
             if (typeof partialDelta === 'string' && partialDelta) {
-                console.log(`[useTranscription] Received partial text delta: "${partialDelta}"`);
-                // Append delta to internal state 
-                setText(prev => (prev + ' ' + partialDelta).trim()); 
+                console.log(`[useTranscription] Received partial text delta: \"${partialDelta}\"`);
+                // Append delta to internal state
+                setText(prev => (prev + ' ' + partialDelta).trim());
             }
             break;
-        case 'complete': 
-            // Handle final result: Update state AND paste here
-            const finalText = e.data?.text as string; // Expect full text now
-            if (typeof finalText === 'string') { 
-                console.log(`[useTranscription] Received final text: "${finalText}"`);
-                // Set the final, authoritative text state
-                setText(finalText); 
-                // PASTE the final text directly from the hook
-                if (finalText && window.electron) { // Ensure text is not empty before pasting
-                  window.electron.insertTextAtCursor(finalText)
-                      .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
-                } else if (!finalText) {
-                   console.log('[useTranscription] Final text is empty, skipping paste.');
-                }
+        case 'complete':
+            const finalText = e.data?.text as string; 
+            if (typeof finalText === 'string') {
+                console.log(`[useTranscription] Received final text: \"${finalText}\"`);
+                
+                setText(prev => {
+                    const accumulatedText = (prev + ' ' + finalText).trim();
+                    // Log the text that will actually be used for insertion
+                    console.log(`[useTranscription] Accumulated text for final insertion: \"${accumulatedText}\"`);
+
+                    if (accumulatedText && window.electron) {
+                        window.electron.insertTextAtCursor(accumulatedText) 
+                            .catch(err => console.error(`[useTranscription] Error inserting final text:`, err));
+                    } else if (!accumulatedText) {
+                       console.log('[useTranscription] Final accumulated text is empty, skipping paste.');
+                    }
+                    return accumulatedText;
+                });
             }
-            // Handle timings and state for complete message
+            // The log using textRef.current has been removed as the one inside setText is more immediate for this action,
+            // and App.tsx will show the final state post-render.
             setProcessing(false);
             console.timeEnd('e2e-transcription-final'); 
             if (timings) {
@@ -217,8 +224,9 @@ export function useTranscription(): UseTranscriptionReturn {
       await audioCtxRef.current.resume();
     }
 
-    setError(null); 
+    setError(null);
     setText(''); // Clear text on start
+    textRef.current = ''; // Also clear textRef on start
 
     try {
       console.log('[useTranscription] Setting up AudioWorklet...');
