@@ -61,6 +61,10 @@ let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
 // --- END: New Streaming State ---
 
+// --- ADD state for text-based diffing during streaming (as a fallback) ---
+let previousSliceText = ""; 
+// --- END ADD state ---
+
 // Helper function for the pull loop (MODIFIED)
 async function startPullLoop() {
   console.log('[Worker] Starting streaming pull loop...');
@@ -83,99 +87,110 @@ async function startPullLoop() {
   console.log('[Worker] Streaming pull loop stopped.');
 }
 
-// Helper function to process available audio chunks (REPLACES maybeEmitPartial)
+// Helper function to process available audio chunks
 async function processAvailableAudio() {
   if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
 
-  // Calculate available samples *since the last emitted point*
   const availableSamples = current16kWriteOffset - emittedSamples;
 
-  // Check if we have at least a full chunk's worth of NEW audio
   if (availableSamples >= CHUNK_SAMPLES) {
-    
-    processingPartial = true; // Prevent concurrent processing
-    const processStartTime = performance.now();
+    processingPartial = true;
 
-    // --- IMPLEMENT Mini-Slice Logic ---
     const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
-    // Calculate end: start + chunk + (2 * stride for context on both sides)
-    // Ensure end doesn't exceed the actual data available
     const end = Math.min(start + CHUNK_SAMPLES + 2 * STRIDE_SAMPLES, current16kWriteOffset);
     const slice = preallocated16kBuffer.subarray(start, end);
-    // --- END Mini-Slice Logic ---
 
-    // console.log(`[Worker] Processing chunk. Available: ${availableSamples} samples. Passing buffer up to offset ${current16kWriteOffset}`);
-    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length})`);
-
+    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length}) Emitted: ${emittedSamples}`);
 
     try {
       const tAsrStart = performance.now();
-      // Call ASR, passing the mini-slice, current cache, AND stream params here
-      const result = await asr(slice, {
-         past_key_values: kvCache, 
-         // --- RE-ADD Stream parameters HERE ---
-         chunk_length_s: CHUNK_S,
+      // Call ASR, with per-call streaming options (using 'as any' to bypass linter for these specific keys)
+      const result = await asr(slice, { 
+         past_key_values: kvCache,
+         chunk_length_s: CHUNK_S, 
          stride_length_s: STRIDE_S,
-         return_timestamps: "word", 
-       });
+         return_timestamps: "word",
+      } as any); // Linter bypass for streaming options not in PretrainedModelOptions
       const tAsrEnd = performance.now();
 
-      // --- ADD LOGGING --- 
-      console.log('[Worker] ASR Result:', result); 
-      // --- END LOGGING --- 
+      // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
 
-      // Update the cache for the next call
       kvCache = result.past_key_values; 
 
-      // --- CHANGE: Simplified Delta Calculation (using result.chunks) ---
-      // Filter based on stride overlap, not absolute timestamps
-      // Use result.chunks instead of result.tokens
-      // Add nullish coalescing/check for safety
-      const chunks = result.chunks ?? []; // Default to empty array if undefined
-      const strideChunks = chunks.length > 0 ? Math.round(chunks.length * STRIDE_S / CHUNK_S) : 0;
-      const freshChunks = chunks.slice(strideChunks);
-      // --- END Simplified Delta Calculation ---
-      
-      if (freshChunks.length > 0) {
-          // Join the text from the fresh chunks
-          const delta = freshChunks.map((chunk: any) => chunk.text).join('');
-          // console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Emitted Seconds: ${emittedSeconds.toFixed(2)}. New Tokens: ${newTokens.length}. Delta: "${delta}"`);
-          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Stride Chunks: ${strideChunks}. Fresh Chunks: ${freshChunks.length}. Delta: "${delta}"`);
-    
-          // Send the delta
-          self.postMessage({ status: 'partial', delta });
-    
-          // --- CHANGE: Advance emittedSamples by fixed CHUNK_SAMPLES ---
-          emittedSamples += CHUNK_SAMPLES;
-          // --- END Advance ---
-          console.log(`[Worker] Advanced emittedSamples by ${CHUNK_SAMPLES} to ${emittedSamples}`);
+      let delta = "";
+      let advancedByChunks = false;
 
-      } else {
-          // console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Emitted Seconds: ${emittedSeconds.toFixed(2)}. No new tokens found after timestamp filter.`);
-          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Stride Chunks: ${strideChunks}. No fresh chunks found after stride slice.`);
-          // If no fresh chunks, maybe the chunk was *all* overlap? Advance emittedSamples anyway.
-          emittedSamples += CHUNK_SAMPLES; 
-          console.log(`[Worker] Advanced emittedSamples by ${CHUNK_SAMPLES} to ${emittedSamples} (even though no fresh chunks).`);
+      const chunks = result.chunks ?? [];
+      if (chunks.length > 0) {
+        const emittedSeconds = emittedSamples / SAMPLE_RATE_16K;
+        const freshChunks = chunks.filter((c: any) => c.timestamp && c.timestamp[0] >= emittedSeconds);
+        if (freshChunks.length > 0) {
+          delta = freshChunks.map((chunk: any) => chunk.text).join('');
+          console.log(`[Worker] Delta from CHUNKS: "${delta}"`);
+          const lastFreshChunkTimestampEnd = freshChunks[freshChunks.length - 1].timestamp[1];
+          emittedSamples = Math.max(emittedSamples, Math.round(lastFreshChunkTimestampEnd * SAMPLE_RATE_16K));
+          advancedByChunks = true;
+        }
       }
+      
+      // Fallback to text-based diff if no usable chunks OR if chunks didn't yield delta
+      // (but ensure currentText is actually present)
+      const currentText = (result.text || "").trim();
+      if (!delta && currentText) { 
+        if (previousSliceText) {
+          if (currentText.startsWith(previousSliceText)) {
+            delta = currentText.substring(previousSliceText.length).trim();
+          } else {
+            let bestOverlap = 0;
+            for (let i = 1; i <= Math.min(previousSliceText.length, currentText.length); i++) {
+              if (currentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+                bestOverlap = i;
+              }
+            }
+            if (bestOverlap > 0 && currentText.length > bestOverlap) {
+               delta = currentText.substring(bestOverlap).trim();
+            } else if (bestOverlap === 0 || currentText.length <= bestOverlap){
+               if(currentText !== previousSliceText) delta = currentText;
+            }
+            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: "${previousSliceText}", Curr: "${currentText}", Overlap: ${bestOverlap}, Delta: "${delta}"`);
+            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: "${delta}"`);
+          }
+        } else {
+          delta = currentText;
+        }
+      }
+      
+      if (delta) {
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: "${delta}"`);
+          self.postMessage({ status: 'partial', delta });
+          // Advance emittedSamples by CHUNK_SAMPLES if delta came from text diff and not already advanced by chunks
+          if (!advancedByChunks) {
+            emittedSamples += CHUNK_SAMPLES; 
+            console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
+          } else {
+            console.log(`[Worker] emittedSamples already advanced by chunks to ${emittedSamples}`);
+          }
+      } else {
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
+          // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
+      }
+      previousSliceText = currentText; // Always update for next potential text diff
 
     } catch (err) {
       console.error('[Worker] ASR pipeline error during streaming:', err);
-      // Consider how to handle errors - reset cache? Stop stream?
-      kvCache = null; // Reset cache on error?
+      kvCache = null; 
+      previousSliceText = ""; 
     } finally {
       processingPartial = false;
-      const processEndTime = performance.now();
-      console.log(`[Worker] processAvailableAudio finished in ${(processEndTime - processStartTime).toFixed(2)} ms.`);
     }
   }
 }
 
 self.postMessage({ status: "loading" });
 
-// Initialize the pipeline (MODIFIED - REMOVE stream params from here again)
+// Initialize the pipeline (NO Stream params at init - Linter bypass for per-call options)
 try {
-    // console.log(`[Moonshine] Initializing pipeline with CHUNK=${CHUNK_S}s, STRIDE=${STRIDE_S}s...`);
-    console.log(`[Moonshine] Initializing pipeline...`); // Simpler log
+    console.log(`[Moonshine] Initializing pipeline...`);
     asr = await pipeline(
       "automatic-speech-recognition",
       MODEL_ID,
@@ -183,19 +198,14 @@ try {
         progress_callback: (p: Progress | null) => p && self.postMessage(p),
         device: device,
         dtype: dtypeConfig,
-        // --- REMOVE Stream parameters HERE (again) ---
-        // chunk_length_s: CHUNK_S,
-        // stride_length_s: STRIDE_S,
-        // return_timestamps: "word", 
       }
     ) as any;
     console.log("[Moonshine] Pipeline initialized.");
 } catch (pipelineError) {
     console.error("[Moonshine] Pipeline initialization failed:", pipelineError);
     self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
-    throw pipelineError; // Stop worker initialization if pipeline fails
+    throw pipelineError; 
 }
-
 
 // --- Add ComputeType Check --- 
 try {
@@ -253,6 +263,7 @@ self.addEventListener("message", async (e) => {
       emittedSamples = 0;
       kvCache = null; 
       processingPartial = false;
+      previousSliceText = ""; // Reset for new stream
       // --- End Reset ---
 
     } catch (allocError) {
@@ -271,7 +282,7 @@ self.addEventListener("message", async (e) => {
     return;
   }
 
-  // --- Stop Streaming & Process (Flush) --- (MODIFIED)
+  // --- Stop Streaming & Process (Flush) --- (MODIFIED as per GPT feedback)
   if (type === "flush") {
     if (!recording && !busy) { // Use 'busy' flag from original code? Let's reuse 'processingPartial' for now.
         console.warn('[Worker] Flush requested but not recording or already flushed.');
@@ -315,70 +326,92 @@ self.addEventListener("message", async (e) => {
     let finalPipelineTime = 0;
 
     if (finalAvailable > 0) {
-        // --- IMPLEMENT Final Mini-Slice Logic ---
-        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
-        // End is the current write offset
+        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
         const end = current16kWriteOffset; 
         const finalSlice = preallocated16kBuffer.subarray(start, end);
-        // --- END Final Mini-Slice Logic ---
 
-        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length})`);
+        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
         const tFinalStart = performance.now();
         try {
             if (!asr) throw new Error("ASR pipeline not ready.");
 
-            console.log("[Worker] Calling ASR pipeline for final segment (with cache, NO stream params)...");
-            // Final call *with* cache, but *without* stream params to get final text
+            console.log("[Worker] Calling ASR pipeline for final segment (with cache and PER-CALL stream params)...");
             const result = await asr(finalSlice, {
                  past_key_values: kvCache,
-                 // --- REMOVE Stream parameters HERE for final call ---
-                 // chunk_length_s: CHUNK_S,
-                 // stride_length_s: STRIDE_S, 
-                 // return_timestamps: "word",
-            }); 
+                 chunk_length_s: CHUNK_S, 
+                 stride_length_s: STRIDE_S, // Consider stride_length_s: 0 for final flush for less aggressive overlap removal?
+                 return_timestamps: "word",
+            } as any); // Linter bypass 
             finalPipelineTime = performance.now() - tFinalStart;
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
+            // console.log("[Worker] Final Result Object:", result);
 
-            // --- CHANGE: Get final text directly from result.text ---            
-            if (result.text) {
-                finalDelta = result.text.trim(); // Use the full text from the final call
-                console.log(`[Worker] Final Delta Text: "${finalDelta}"`);
-            } else {
-                 console.log(`[Worker] No text found in final segment result.`);
-                 // If result.text is empty/undefined, check if result object has other info
-                 console.log("[Worker] Final Result Object:", result); 
+            let advancedByChunksFlush = false;
+            const finalChunks = result.chunks ?? [];
+            if (finalChunks.length > 0) {
+                const finalEmittedSeconds = emittedSamples / SAMPLE_RATE_16K;
+                const finalFreshChunks = finalChunks.filter((c: any) => c.timestamp && c.timestamp[0] >= finalEmittedSeconds);
+                if (finalFreshChunks.length > 0) {
+                    finalDelta = finalFreshChunks.map((chunk: any) => chunk.text).join('');
+                    console.log(`[Worker] Final Delta from CHUNKS: "${finalDelta}"`);
+                    // No need to advance emittedSamples here as it's the final flush
+                    advancedByChunksFlush = true; 
+                }
             }
-            // --- END Get final text ---
+            
+            const finalCurrentText = (result.text || "").trim();
+            if (!finalDelta && finalCurrentText) { // Fallback to text-based diff if no usable chunks
+                if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
+                    finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
+                } else if (previousSliceText) {
+                    let bestOverlap = 0;
+                    for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
+                        if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+                            bestOverlap = i;
+                        }
+                    }
+                    if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
+                        finalDelta = finalCurrentText.substring(bestOverlap).trim();
+                    } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
+                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText; 
+                    }
+                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: "${previousSliceText}", Curr: "${finalCurrentText}", Delta: "${finalDelta}"`);
+                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: "${finalDelta}"`);
+                } else {
+                    finalDelta = finalCurrentText;
+                }
+            }
+
+            if (finalDelta) {
+                console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+            } else {
+                 console.log(`[Worker] No final delta text found to send.`);
+            }
 
         } catch (err) {
             console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
             self.postMessage({ status: "error", error: String(err) });
-            // Reset state?
-            emittedSamples = 0;
-            kvCache = null;
-            processingPartial = false; 
-            return; // Stop flush on error
+            emittedSamples = 0; kvCache = null; processingPartial = false; previousSliceText = ""; // Reset state
+            return; 
         }
     } else {
        console.log("[Worker] No remaining audio data to process in final flush.");
     }
     
-    // Send the final delta 
-    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`); // Log the delta being sent
+    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
     self.postMessage({ 
         status: 'complete', 
-        text: finalDelta, // Send the final text delta
-        timings: { total: finalPipelineTime } // Timing for the *final* ASR call
+        text: finalDelta, 
+        timings: { total: finalPipelineTime } 
     });
     
-    // Reset state 
     emittedSamples = 0;
     current16kWriteOffset = 0; 
     kvCache = null; 
     preallocated16kBuffer = null; 
     processingPartial = false; 
 
-    return; // Handled flush message
+    return; 
   }
 
 });
