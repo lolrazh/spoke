@@ -22,94 +22,48 @@ const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   },
 };
 
-// --- back-end selection exactly like before ---------------------------------
-// async function webgpuAvailable() {
-//   // @ts-ignore
-//   return !!navigator.gpu && (await navigator.gpu.requestAdapter()) !== null;
-// }
-
-// const useGpu = await webgpuAvailable();
-// const device = useGpu ? 'webgpu' : 'wasm';
 const device = 'wasm'; // Force WASM backend
 const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
 
-// if (useGpu) {
-//     console.log("[Moonshine] using WebGPU backend");
-//     // Additional WebGPU specific settings if needed (e.g., powerPreference)
-//     // @ts-ignore
-//     // env.backends.webgpu.powerPreference = "high-performance"; // Can potentially be set here if needed
-// } else {
 console.log("[Moonshine] using WASM backend");
-// @ts-ignore
-// env.backends.wasm.numThreads = navigator.hardwareConcurrency ?? 4; // This might need to be passed differently or handled by the library
-// }
 
 // ---------------------------------------------------------------------------
 
 let asr: any | null = null;
 let busy = false;
 let ringBuffer: RingBuffer | null = null;
-// Remove the old array of chunks
-// let audioBuffer16k: Float32Array[] = []; 
+
 const SAMPLE_RATE_16K = 16000;
-const INITIAL_BUFFER_SECONDS = 30; // Start with a 30-second buffer
+
+// --- ADD: Streaming Config ---
+const CHUNK_S = 5;          // Process 5 seconds of audio at a time
+const STRIDE_S = 1;         // Overlap chunks by 1 second
+const CHUNK_SAMPLES = CHUNK_S * SAMPLE_RATE_16K;
+const STRIDE_SAMPLES = STRIDE_S * SAMPLE_RATE_16K; // Not directly used in pipeline call, but useful for logic if needed
+const PULL_LOOP_INTERVAL_MS = 50; // Check for new audio frequently
+// --- END: Streaming Config ---
+
+// --- RESTORE Buffer Size Constants ---
+const INITIAL_BUFFER_SECONDS = 30; 
 const INITIAL_BUFFER_SIZE = SAMPLE_RATE_16K * INITIAL_BUFFER_SECONDS;
-const BUFFER_GROWTH_SECONDS = 30; // Add 60 seconds worth of space when resizing
+const BUFFER_GROWTH_SECONDS = 30; 
 const BUFFER_GROWTH_SIZE = SAMPLE_RATE_16K * BUFFER_GROWTH_SECONDS;
+// --- END RESTORE ---
 
 // State for pre-allocated buffer
 let preallocated16kBuffer: Float32Array | null = null;
 let current16kWriteOffset = 0;
 
-// NEW State for continuous processing
-const PARTIAL_INTERVAL_S = 10; // Emit partial result every 10 seconds
-const PULL_LOOP_INTERVAL_MS = 250; // How often to pull from ring buffer
-let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
+// --- ADD: New Streaming State ---
+let emittedSamples = 0; // How many samples have been processed and led to emitted text
+let kvCache: any | null = null; // Stores past_key_values for the ASR model
 let recording = false; // Controls the background pull loop
-let processingPartial = false; // Flag to prevent concurrent partial ASR calls
-let lastPartialText = ""; // NEW: Store the cumulative text sent so far
+let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
+// --- END: New Streaming State ---
 
-// NEW Helper function to diff text and post delta
-function diffAndSend(textNow: string, tag: 'partial') {
-  textNow = textNow.trim(); // Ensure consistent trimming
-  let i = 0;
-  // Find longest common prefix length
-  while (i < textNow.length && i < lastPartialText.length && textNow[i] === lastPartialText[i]) {
-    i++;
-  }
-
-  // Handle potential leading/trailing space inconsistencies during diff
-  let prefixBoundary = i;
-  // Adjust boundary if it lands mid-word or next to spaces inconsistently
-  if (i > 0 && i < textNow.length) {
-    const prevCharText = textNow[i - 1];
-    const nextCharText = textNow[i];
-    const prevCharLast = i > 0 ? lastPartialText[i - 1] : null;
-
-    // If boundary is at a space in one but not the other, adjust slightly if possible
-    if (nextCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
-       // Don't include the leading space in delta if the last text didn't end with one
-       prefixBoundary = i + 1; 
-    } else if (prevCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
-        // If new text has a space before boundary, maybe keep it? (Less common)
-        // Let's prioritize trimming delta's start
-    }
-  }
-  
-  // Extract the delta (new part) and trim leading whitespace aggressively
-  const delta = textNow.slice(prefixBoundary).trimStart(); 
-  
-  console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
-
-  if (delta) {
-    self.postMessage({ status: tag, delta });
-    lastPartialText = textNow; // Update history for next partial
-  }
-}
-
-// Helper function for the pull loop (must be defined before use)
+// Helper function for the pull loop (MODIFIED)
 async function startPullLoop() {
-  console.log('[Worker] Starting pull loop...');
+  console.log('[Worker] Starting streaming pull loop...');
   while (recording) {
     if (!ringBuffer) {
       console.error('[Worker] RingBuffer lost during pull loop. Stopping.');
@@ -117,118 +71,147 @@ async function startPullLoop() {
       break;
     }
 
-    // Pull and process available 48kHz audio into the 16kHz buffer
+    // Pull available audio into the main buffer (resizes if needed)
     pullAndProcessAudio(); 
 
-    // Check if we should run a partial transcription
-    await maybeEmitPartial();
+    // Check if we have enough audio to process a new chunk
+    await processAvailableAudio(); // Renamed from maybeEmitPartial
 
-    // Wait a bit before the next pull to avoid busy-waiting
-    // Use a simple timeout for broader compatibility vs Atomics.waitAsync initially
+    // Wait briefly before next check
     await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS)); 
   }
-  console.log('[Worker] Pull loop stopped.');
+  console.log('[Worker] Streaming pull loop stopped.');
 }
 
-// Helper function to check and emit partial results (MODIFIED)
-async function maybeEmitPartial() {
-  if (processingPartial || !preallocated16kBuffer || !asr) return; 
+// Helper function to process available audio chunks (REPLACES maybeEmitPartial)
+async function processAvailableAudio() {
+  if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
 
-  const buffered16kSamples = current16kWriteOffset - nextDecodeStart16k;
-  const bufferedSeconds = buffered16kSamples / SAMPLE_RATE_16K;
+  // Calculate available samples *since the last emitted point*
+  const availableSamples = current16kWriteOffset - emittedSamples;
 
-  if (bufferedSeconds >= PARTIAL_INTERVAL_S) {
-    console.log(`[Worker] Buffer has >= ${PARTIAL_INTERVAL_S}s (${bufferedSeconds.toFixed(2)}s) of new audio. Processing partial...`);
-    processingPartial = true;
+  // Check if we have at least a full chunk's worth of NEW audio
+  if (availableSamples >= CHUNK_SAMPLES) {
     
-    const sliceToProcess = preallocated16kBuffer.subarray(nextDecodeStart16k, current16kWriteOffset);
-    const sliceEndIndex = current16kWriteOffset; // Store end index
+    processingPartial = true; // Prevent concurrent processing
+    const processStartTime = performance.now();
+
+    // --- IMPLEMENT Mini-Slice Logic ---
+    const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
+    // Calculate end: start + chunk + (2 * stride for context on both sides)
+    // Ensure end doesn't exceed the actual data available
+    const end = Math.min(start + CHUNK_SAMPLES + 2 * STRIDE_SAMPLES, current16kWriteOffset);
+    const slice = preallocated16kBuffer.subarray(start, end);
+    // --- END Mini-Slice Logic ---
+
+    // console.log(`[Worker] Processing chunk. Available: ${availableSamples} samples. Passing buffer up to offset ${current16kWriteOffset}`);
+    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length})`);
+
 
     try {
-      console.log(`[Worker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
-      const tPartialStart = performance.now();
-      const result = await asr(sliceToProcess);
-      const tPartialEnd = performance.now();
-      const currentFullText = (result as any).text?.trim() ?? ''; // Get the full text for this slice
-      console.log(`[Worker] Partial ASR completed in ${(tPartialEnd - tPartialStart).toFixed(2)} ms. Full Text: "${currentFullText}"`);
+      const tAsrStart = performance.now();
+      // Call ASR, passing the mini-slice, current cache, AND stream params here
+      const result = await asr(slice, {
+         past_key_values: kvCache, 
+         // --- RE-ADD Stream parameters HERE ---
+         chunk_length_s: CHUNK_S,
+         stride_length_s: STRIDE_S,
+         return_timestamps: "word", 
+       });
+      const tAsrEnd = performance.now();
 
-      // Use diffAndSend for partial delta only
-      diffAndSend(lastPartialText + ' ' + currentFullText, 'partial');
+      // --- ADD LOGGING --- 
+      console.log('[Worker] ASR Result:', result); 
+      // --- END LOGGING --- 
+
+      // Update the cache for the next call
+      kvCache = result.past_key_values; 
+
+      // --- CHANGE: Simplified Delta Calculation (using result.chunks) ---
+      // Filter based on stride overlap, not absolute timestamps
+      // Use result.chunks instead of result.tokens
+      // Add nullish coalescing/check for safety
+      const chunks = result.chunks ?? []; // Default to empty array if undefined
+      const strideChunks = chunks.length > 0 ? Math.round(chunks.length * STRIDE_S / CHUNK_S) : 0;
+      const freshChunks = chunks.slice(strideChunks);
+      // --- END Simplified Delta Calculation ---
       
-      // IMPORTANT: Move the start cursor *after* successful processing
-      nextDecodeStart16k = sliceEndIndex; 
+      if (freshChunks.length > 0) {
+          // Join the text from the fresh chunks
+          const delta = freshChunks.map((chunk: any) => chunk.text).join('');
+          // console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Emitted Seconds: ${emittedSeconds.toFixed(2)}. New Tokens: ${newTokens.length}. Delta: "${delta}"`);
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Stride Chunks: ${strideChunks}. Fresh Chunks: ${freshChunks.length}. Delta: "${delta}"`);
+    
+          // Send the delta
+          self.postMessage({ status: 'partial', delta });
+    
+          // --- CHANGE: Advance emittedSamples by fixed CHUNK_SAMPLES ---
+          emittedSamples += CHUNK_SAMPLES;
+          // --- END Advance ---
+          console.log(`[Worker] Advanced emittedSamples by ${CHUNK_SAMPLES} to ${emittedSamples}`);
+
+      } else {
+          // console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Emitted Seconds: ${emittedSeconds.toFixed(2)}. No new tokens found after timestamp filter.`);
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Stride Chunks: ${strideChunks}. No fresh chunks found after stride slice.`);
+          // If no fresh chunks, maybe the chunk was *all* overlap? Advance emittedSamples anyway.
+          emittedSamples += CHUNK_SAMPLES; 
+          console.log(`[Worker] Advanced emittedSamples by ${CHUNK_SAMPLES} to ${emittedSamples} (even though no fresh chunks).`);
+      }
 
     } catch (err) {
-      console.error('[Worker] Partial decode error:', err);
+      console.error('[Worker] ASR pipeline error during streaming:', err);
+      // Consider how to handle errors - reset cache? Stop stream?
+      kvCache = null; // Reset cache on error?
     } finally {
       processingPartial = false;
+      const processEndTime = performance.now();
+      console.log(`[Worker] processAvailableAudio finished in ${(processEndTime - processStartTime).toFixed(2)} ms.`);
     }
   }
 }
 
 self.postMessage({ status: "loading" });
 
-asr = await pipeline(
-  "automatic-speech-recognition",
-  MODEL_ID,
-  {
-    progress_callback: (p: Progress | null) => p && self.postMessage(p),
-    // Pass device and dtype config directly
-    device: device,
-    dtype: dtypeConfig,
-  }
-) as any;
-
-// --- Add ComputeType Check ---
+// Initialize the pipeline (MODIFIED - REMOVE stream params from here again)
 try {
-  // Check the actual compute type being used AFTER pipeline initialization
-  // Access through env seems correct based on documentation/usage
-  // @ts-ignore - Accessing internal property, might change
-  // const currentComputeType = env.backends.webgpu?.computeType;
+    // console.log(`[Moonshine] Initializing pipeline with CHUNK=${CHUNK_S}s, STRIDE=${STRIDE_S}s...`);
+    console.log(`[Moonshine] Initializing pipeline...`); // Simpler log
+    asr = await pipeline(
+      "automatic-speech-recognition",
+      MODEL_ID,
+      {
+        progress_callback: (p: Progress | null) => p && self.postMessage(p),
+        device: device,
+        dtype: dtypeConfig,
+        // --- REMOVE Stream parameters HERE (again) ---
+        // chunk_length_s: CHUNK_S,
+        // stride_length_s: STRIDE_S,
+        // return_timestamps: "word", 
+      }
+    ) as any;
+    console.log("[Moonshine] Pipeline initialized.");
+} catch (pipelineError) {
+    console.error("[Moonshine] Pipeline initialization failed:", pipelineError);
+    self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
+    throw pipelineError; // Stop worker initialization if pipeline fails
+}
 
-  // if (useGpu && currentComputeType) {
-  //   console.log(`[Moonshine] Actual WebGPU computeType used: ${currentComputeType}`);
-  //   // You could add more specific checks here if you were trying to force a certain type:
-  //   // const requestedComputeType = 'int8'; // Example if you set this via env
-  //   // if (currentComputeType !== requestedComputeType) {
-  //   //    console.warn(`[Moonshine] Requested computeType ${requestedComputeType}, but using ${currentComputeType}`);
-  //   // }
-  // } else if (!useGpu) {
+
+// --- Add ComputeType Check --- 
+try {
   console.log("[Moonshine] Using WASM backend, computeType check not applicable.");
-  // } else if (useGpu && !currentComputeType) {
-  //    console.warn("[Moonshine] Using WebGPU, but could not read actual computeType from env.backends.webgpu");
-  // }
 } catch (checkError) {
   console.warn("[Moonshine] Error during backend sanity checks (expected for WASM, as no computeType to check):", checkError);
 }
 // --- End ComputeType Check ---
 
-// --- Warm-up Call --- 
-try {
-    if (asr) {
-      console.log("[Moonshine] Performing warm-up call...");
-      const warmupStartTime = performance.now();
-      // Perform a dummy transcription on 1 second of silence
-      await asr(new Float32Array(16_000)); 
-      const warmupEndTime = performance.now();
-      console.log(`[Moonshine] Warm-up call completed in ${(warmupEndTime - warmupStartTime).toFixed(2)} ms`);
-      // Send ready message ONLY if warm-up succeeds
-      self.postMessage({ status: "ready" });
-    } else {
-      throw new Error("ASR pipeline object is null after initialization.");
-    }
-} catch (warmupError) {
-    console.error("[Moonshine] Warm-up call failed:", warmupError);
-    // Send an error status back to the main thread
-    self.postMessage({ status: "error", error: "Worker warm-up failed." });
-    // Do not proceed further if warm-up fails
-}
+// Assume ready after pipeline init for now
+self.postMessage({ status: "ready" });
+
 
 // --- Message Handler ---
 self.addEventListener("message", async (e) => {
   const { type, data } = e.data ?? {};
-  console.log(`[Worker] Received message: type=${type}`, data);
-
   // --- Initialization ---
   if (type === "init") {
     if (data?.sab) {
@@ -259,14 +242,19 @@ self.addEventListener("message", async (e) => {
     }
     
     console.log("[Worker] Starting stream...");
-    // Allocate the large buffer and reset state
+    // Allocate the buffer and reset state
     try {
-      current16kWriteOffset = 0;
-      nextDecodeStart16k = 0; // Reset decode cursor
-      processingPartial = false; // Reset partial processing flag
-      lastPartialText = ""; // Reset history on new stream
+      // Allocate buffer using restored constants
       preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE); 
+      current16kWriteOffset = 0;
       console.log(`[Worker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
+
+      // --- Reset Streaming State ---
+      emittedSamples = 0;
+      kvCache = null; 
+      processingPartial = false;
+      // --- End Reset ---
+
     } catch (allocError) {
       console.error("[Worker] Failed to allocate initial 16kHz buffer:", allocError);
       self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
@@ -274,7 +262,7 @@ self.addEventListener("message", async (e) => {
       return;
     }
     
-    ringBuffer.reset(); 
+    ringBuffer?.reset(); // Ensure ring buffer is also reset
     self.postMessage({ status: "streaming_started" }); 
     
     // Start the background pull loop
@@ -283,150 +271,149 @@ self.addEventListener("message", async (e) => {
     return;
   }
 
-  // --- Stop Streaming & Process (Flush) --- 
+  // --- Stop Streaming & Process (Flush) --- (MODIFIED)
   if (type === "flush") {
-    if (!recording && !busy) {
+    if (!recording && !busy) { // Use 'busy' flag from original code? Let's reuse 'processingPartial' for now.
         console.warn('[Worker] Flush requested but not recording or already flushed.');
         return;
     }
     
     console.log('[Worker] Flush requested. Stopping pull loop...');
+    const wasRecording = recording; // Store original state
     recording = false; // Signal the pull loop to stop
     
     // Wait briefly for any ongoing partial processing to finish
     while (processingPartial) {
         console.log('[Worker] Waiting for ongoing partial processing to finish before final flush...');
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50)); // Check frequently
     }
     
     console.log('[Worker] Proceeding with final flush...');
-    if (busy) { 
-      console.warn("[Worker] Flush requested while busy (after wait), ignoring.");
-      return;
-    }
+
     if (!ringBuffer || !preallocated16kBuffer) {
        console.error("[Worker] Cannot flush: RingBuffer or preallocated buffer not ready.");
        self.postMessage({ status: "error", error: "Cannot flush: Worker not properly initialized." });
        return;
     }
 
-    busy = true;
+    // Prevent further processing during flush
+    processingPartial = true; 
     self.postMessage({ status: "processing_start" }); 
 
-    // --- ADDED: Single call to pull remaining audio ---
-    console.log("[Worker] Pulling final audio chunk from RingBuffer...");
-    pullAndProcessAudio(); 
-    console.log(`[Worker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
-    // --- End Single Pull ---
+    // --- Pull final audio ---
+    if (wasRecording) { // Only pull if we were actually recording
+        console.log("[Worker] Pulling final audio chunk from RingBuffer...");
+        pullAndProcessAudio(); 
+        console.log(`[Worker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
+    }
+    // --- End Final Pull ---
 
-    // --- Use the final remaining portion of the pre-allocated buffer ---
-    const finalSliceStartIndex = nextDecodeStart16k;
-    const finalSliceEndIndex = current16kWriteOffset;
-    const finalAudioSlice = preallocated16kBuffer.subarray(finalSliceStartIndex, finalSliceEndIndex);
+    // --- Process remaining audio using mini-slice and cache ---
+    // Calculate the slice for the remaining audio
+    const finalAvailable = current16kWriteOffset - emittedSamples;
+    let finalDelta = "";
+    let finalPipelineTime = 0;
 
-    if (finalAudioSlice.length === 0) {
-      console.log("[Worker] No new audio data since last partial, skipping final transcription.");
-      self.postMessage({ status: "complete", output: "" }); // Send empty complete
-      busy = false;
-      nextDecodeStart16k = 0; // Reset for next recording
-      current16kWriteOffset = 0;
-      // preallocated16kBuffer = null; // Maybe clear buffer?
-      return;
+    if (finalAvailable > 0) {
+        // --- IMPLEMENT Final Mini-Slice Logic ---
+        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
+        // End is the current write offset
+        const end = current16kWriteOffset; 
+        const finalSlice = preallocated16kBuffer.subarray(start, end);
+        // --- END Final Mini-Slice Logic ---
+
+        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length})`);
+        const tFinalStart = performance.now();
+        try {
+            if (!asr) throw new Error("ASR pipeline not ready.");
+
+            console.log("[Worker] Calling ASR pipeline for final segment (with cache, NO stream params)...");
+            // Final call *with* cache, but *without* stream params to get final text
+            const result = await asr(finalSlice, {
+                 past_key_values: kvCache,
+                 // --- REMOVE Stream parameters HERE for final call ---
+                 // chunk_length_s: CHUNK_S,
+                 // stride_length_s: STRIDE_S, 
+                 // return_timestamps: "word",
+            }); 
+            finalPipelineTime = performance.now() - tFinalStart;
+            console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
+
+            // --- CHANGE: Get final text directly from result.text ---            
+            if (result.text) {
+                finalDelta = result.text.trim(); // Use the full text from the final call
+                console.log(`[Worker] Final Delta Text: "${finalDelta}"`);
+            } else {
+                 console.log(`[Worker] No text found in final segment result.`);
+                 // If result.text is empty/undefined, check if result object has other info
+                 console.log("[Worker] Final Result Object:", result); 
+            }
+            // --- END Get final text ---
+
+        } catch (err) {
+            console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
+            self.postMessage({ status: "error", error: String(err) });
+            // Reset state?
+            emittedSamples = 0;
+            kvCache = null;
+            processingPartial = false; 
+            return; // Stop flush on error
+        }
+    } else {
+       console.log("[Worker] No remaining audio data to process in final flush.");
     }
     
-    console.log(`[Worker] Using final 16kHz audio subarray. Length: ${finalAudioSlice.length} samples.`);
+    // Send the final delta 
+    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`); // Log the delta being sent
+    self.postMessage({ 
+        status: 'complete', 
+        text: finalDelta, // Send the final text delta
+        timings: { total: finalPipelineTime } // Timing for the *final* ASR call
+    });
+    
+    // Reset state 
+    emittedSamples = 0;
+    current16kWriteOffset = 0; 
+    kvCache = null; 
+    preallocated16kBuffer = null; 
+    processingPartial = false; 
 
-    // --- Final ASR Pipeline Call (MODIFIED) ---
-    const t0 = performance.now();
-    try {
-      if (!asr) throw new Error("ASR pipeline not ready.");
-
-      console.log("[Worker] Calling ASR pipeline for final segment...");
-      const result = await asr(finalAudioSlice);
-      const pipelineTime = performance.now() - t0;
-      console.log(`[Worker] Final ASR pipeline completed in ${pipelineTime.toFixed(2)} ms.`);
-
-      const finalFullText = (result as any).text?.trim() ?? '';
-      
-      // Combine with previous history for the absolute final text
-      const absoluteFinalText = (lastPartialText + ' ' + finalFullText).trim();
-      
-      // Send the *full* text in the complete message
-      console.log(`[Worker] Sending final complete message with full text: "${absoluteFinalText}"`);
-      self.postMessage({ 
-          status: 'complete', 
-          text: absoluteFinalText, // Use 'text' property for final full transcript
-          timings: { total: pipelineTime }
-        });
-
-    } catch (err) {
-      const pipelineTimeOnError = performance.now() - t0;
-      console.error(`[Worker] Final ASR Error after ${pipelineTimeOnError.toFixed(2)}ms:`, err);
-      self.postMessage({ status: "error", error: String(err) });
-    } finally {
-      busy = false;
-      // Reset state for the next recording session
-      nextDecodeStart16k = 0;
-      current16kWriteOffset = 0;
-      // preallocated16kBuffer = null; // Maybe clear buffer?
-      lastPartialText = ""; // Ensure reset here too
-    }
     return; // Handled flush message
   }
 
-  // Log unhandled messages
-  console.warn(`[Worker] Unhandled message type: ${type}`);
 });
 
-// --- Helper Function for Pull Loop --- (MODIFIED)
-// This function now handles pulling 16k data directly into the preallocated buffer
-function pullAndProcessAudio() {
-  if (!ringBuffer || !preallocated16kBuffer) return; 
+// --- Helper Function for Pull Loop --- (MODIFIED for dynamic resizing)
+function pullAndProcessAudio() { 
+    if (!ringBuffer || !preallocated16kBuffer) return; 
 
-  const available16k = ringBuffer.availableRead();
-  if (available16k === 0) return; // Nothing to read
-
-  // Determine the number of samples to read (all available from ring buffer for now)
-  const samplesToRead = available16k; 
+    const available16k = ringBuffer.availableRead();
+    if (available16k === 0) return; // Nothing to read
   
-  // --- ADD: Dynamic resizing ---
-  const requiredSize = current16kWriteOffset + samplesToRead;
-  if (requiredSize > preallocated16kBuffer.length) {
-    // Double the buffer size or increase to required size, whichever is larger
-    // CHANGE: Increase by a fixed amount (BUFFER_GROWTH_SIZE) instead of doubling, 
-    //         but ensure it's at least large enough for the required size.
-    const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
-    console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
-    try {
-      const newBuffer = new Float32Array(newSize);
-      // Copy existing data
-      newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
-      preallocated16kBuffer = newBuffer; // Replace the old buffer
-    } catch (resizeError) {
-      console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
-      // Try to proceed with what fits? Or stop? For now, stop processing this chunk.
-      self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
-      // Optionally clear the ring buffer to prevent repeated attempts?
-      // FIX: ringBuffer.read expects a target buffer, not null. Read into a temporary buffer to discard.
-      ringBuffer.read(new Float32Array(available16k)); // Read and discard to prevent loop?
-      return; 
+    const samplesToRead = available16k; 
+    
+    const requiredSize = current16kWriteOffset + samplesToRead;
+    if (requiredSize > preallocated16kBuffer.length) {
+      const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
+      console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
+      try {
+        const newBuffer = new Float32Array(newSize);
+        newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
+        preallocated16kBuffer = newBuffer; 
+      } catch (resizeError) {
+        console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
+        self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
+        ringBuffer.read(new Float32Array(available16k)); 
+        return; 
+      }
     }
-  }
-  // --- END: Dynamic resizing ---
-
-  // Read directly into the (potentially resized) preallocated buffer at the current offset
-  // Create a subarray view of the target location in the preallocated buffer
-  const targetView = preallocated16kBuffer.subarray(
-    current16kWriteOffset, 
-    current16kWriteOffset + samplesToRead
-  );
-
-  // Perform the read from the ring buffer directly into the target view
-  ringBuffer.read(targetView); 
-
-  // Update the write offset
-  current16kWriteOffset += samplesToRead;
-
-  // Optional: Log how much was read
-  // console.log(`[Worker Pull] Read ${samplesToRead} 16kHz samples. New 16kHz write offset: ${current16kWriteOffset}`);
+  
+    const targetView = preallocated16kBuffer.subarray(
+      current16kWriteOffset, 
+      current16kWriteOffset + samplesToRead
+    );
+  
+    ringBuffer.read(targetView); 
+  
+    current16kWriteOffset += samplesToRead;
 }

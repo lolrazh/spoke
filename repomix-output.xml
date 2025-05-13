@@ -105,20 +105,6 @@ This section contains the contents of the repository's files.
 }
 </file>
 
-<file path=".repomixignore">
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
-
-/node_modules
-/.vite
-/.cursor
-
-faster-implementation.md
-profiling-reults.md
-</file>
-
 <file path="forge.env.d.ts">
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 </file>
@@ -129,45 +115,6 @@ module.exports = {
     tailwindcss: {},
     autoprefixer: {},
   },
-}
-</file>
-
-<file path="repomix.config.json">
-{
-  "input": {
-    "maxFileSize": 52428800
-  },
-  "output": {
-    "filePath": "repomix-output.xml",
-    "style": "xml",
-    "parsableStyle": false,
-    "fileSummary": true,
-    "directoryStructure": true,
-    "files": true,
-    "removeComments": false,
-    "removeEmptyLines": false,
-    "compress": false,
-    "topFilesLength": 5,
-    "showLineNumbers": false,
-    "copyToClipboard": false,
-    "git": {
-      "sortByChanges": true,
-      "sortByChangesMaxCommits": 100,
-      "includeDiffs": false
-    }
-  },
-  "include": [],
-  "ignore": {
-    "useGitignore": true,
-    "useDefaultPatterns": true,
-    "customPatterns": []
-  },
-  "security": {
-    "enableSecurityCheck": true
-  },
-  "tokenCount": {
-    "encoding": "o200k_base"
-  }
 }
 </file>
 
@@ -183,6 +130,35 @@ declare module 'electron-squirrel-startup' {
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
+</file>
+
+<file path="vite.preload.config.ts">
+import { defineConfig } from 'vite';
+import path from 'node:path';
+
+// https://vitejs.dev/config
+export default defineConfig({
+  build: {
+    lib: {
+      // Specify multiple entry points for preload scripts
+      entry: {
+        preload: path.resolve(__dirname, 'src/preload.ts'),
+        'contextmenu-preload': path.resolve(__dirname, 'src/contextmenu-preload.ts'),
+      },
+      // Output format will be CommonJS as required by Electron preload scripts
+      formats: ['cjs'],
+    },
+    // Configure Rollup options for CommonJS output
+    rollupOptions: {
+      output: {
+        // Ensure output filenames match the entry point names
+        entryFileNames: '[name].js',
+      },
+    },
+    // Ensure the output directory is cleared before building
+    emptyOutDir: false, // Set to false if other build steps use the same outDir
+  },
+});
 </file>
 
 <file path=".gitignore">
@@ -281,6 +257,20 @@ out/
 
 fin.md
 implementation-reference.md
+</file>
+
+<file path=".repomixignore">
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+/node_modules
+/.vite
+/.cursor
+
+faster-implementation.md
+profiling-reults.md
 </file>
 
 <file path="components.json">
@@ -432,6 +422,45 @@ This method is designed for simplicity and enables smooth automatic updates in t
 ## Development
 
 *(Development setup instructions will be added here)*
+</file>
+
+<file path="repomix.config.json">
+{
+  "input": {
+    "maxFileSize": 52428800
+  },
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "parsableStyle": false,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "compress": false,
+    "topFilesLength": 5,
+    "showLineNumbers": false,
+    "copyToClipboard": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false
+    }
+  },
+  "include": [],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": []
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
 </file>
 
 <file path="src/index.css">
@@ -968,35 +997,6 @@ export default defineConfig({
 })
 </file>
 
-<file path="vite.preload.config.ts">
-import { defineConfig } from 'vite';
-import path from 'node:path';
-
-// https://vitejs.dev/config
-export default defineConfig({
-  build: {
-    lib: {
-      // Specify multiple entry points for preload scripts
-      entry: {
-        preload: path.resolve(__dirname, 'src/preload.ts'),
-        'contextmenu-preload': path.resolve(__dirname, 'src/contextmenu-preload.ts'),
-      },
-      // Output format will be CommonJS as required by Electron preload scripts
-      formats: ['cjs'],
-    },
-    // Configure Rollup options for CommonJS output
-    rollupOptions: {
-      output: {
-        // Ensure output filenames match the entry point names
-        entryFileNames: '[name].js',
-      },
-    },
-    // Ensure the output directory is cleared before building
-    emptyOutDir: false, // Set to false if other build steps use the same outDir
-  },
-});
-</file>
-
 <file path="src/components/Pill.tsx">
 import React, { useState, useEffect } from 'react';
 
@@ -1127,6 +1127,40 @@ const Pill: React.FC<PillProps> = ({
 export default Pill;
 </file>
 
+<file path="src/contextmenu-preload.ts">
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Define the channels that the context menu is allowed to send messages on
+const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
+type ValidChannel = typeof validChannels[number];
+
+// Expose a safe API to the context menu's renderer process
+contextBridge.exposeInMainWorld('contextMenuAPI', {
+  /**
+   * Sends a message to the main process over a specified channel.
+   * Only allows sending on pre-approved channels.
+   * @param channel The IPC channel to send the message on.
+   */
+  send: (channel: ValidChannel) => {
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel);
+      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
+    } else {
+      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
+    }
+  },
+});
+
+// Add a type definition for the exposed API
+declare global {
+  interface Window {
+    contextMenuAPI: {
+      send: (channel: ValidChannel) => void;
+    };
+  }
+}
+</file>
+
 <file path="src/notification-preload.js">
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -1146,6 +1180,13 @@ ipcRenderer.on('set-notification-message', (event, message) => {
     console.error('[Preload Notification] Could not find #message element in notification window!');
   }
 });
+</file>
+
+<file path="vite.main.config.ts">
+import { defineConfig } from 'vite';
+
+// https://vitejs.dev/config
+export default defineConfig({ });
 </file>
 
 <file path="vite.renderer.config.ts">
@@ -1219,40 +1260,6 @@ export default defineConfig({
 </html>
 </file>
 
-<file path="src/contextmenu-preload.ts">
-import { contextBridge, ipcRenderer } from 'electron';
-
-// Define the channels that the context menu is allowed to send messages on
-const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
-type ValidChannel = typeof validChannels[number];
-
-// Expose a safe API to the context menu's renderer process
-contextBridge.exposeInMainWorld('contextMenuAPI', {
-  /**
-   * Sends a message to the main process over a specified channel.
-   * Only allows sending on pre-approved channels.
-   * @param channel The IPC channel to send the message on.
-   */
-  send: (channel: ValidChannel) => {
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel);
-      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
-    } else {
-      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
-    }
-  },
-});
-
-// Add a type definition for the exposed API
-declare global {
-  interface Window {
-    contextMenuAPI: {
-      send: (channel: ValidChannel) => void;
-    };
-  }
-}
-</file>
-
 <file path="src/types/electron.d.ts">
 /**
  * TypeScript declarations for the Electron API exposed to the renderer process
@@ -1274,13 +1281,6 @@ declare global {
 }
 
 export {};
-</file>
-
-<file path="vite.main.config.ts">
-import { defineConfig } from 'vite';
-
-// https://vitejs.dev/config
-export default defineConfig({ });
 </file>
 
 <file path="src/audio/ring-buffer.ts">
@@ -1487,6 +1487,78 @@ export const Constants = {
   RING_BUFFER_SAMPLE_CAPACITY,
   RING_BUFFER_SIZE_BYTES
 };
+</file>
+
+<file path="forge.config.ts">
+import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDeb } from '@electron-forge/maker-deb';
+import { MakerRpm } from '@electron-forge/maker-rpm';
+import { VitePlugin } from '@electron-forge/plugin-vite';
+import { FusesPlugin } from '@electron-forge/plugin-fuses';
+import { FuseV1Options, FuseVersion } from '@electron/fuses';
+
+const config: ForgeConfig = {
+  packagerConfig: {
+    asar: true,
+    // Path to icon base name (no extension) in source directory (as per docs)
+    icon: 'public/assets/icon', 
+  },
+  rebuildConfig: {},
+  makers: [
+    new MakerSquirrel({
+      // Path to specific .ico file for setup.exe (as per docs)
+      setupIcon: 'public/assets/icon.ico'
+    }), 
+    new MakerZIP({}, ['darwin']), 
+    new MakerRpm({}), 
+    new MakerDeb({})
+  ],
+  plugins: [
+    new VitePlugin({
+      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
+      // If you are familiar with Vite configuration, it will look really familiar.
+      build: [
+        {
+          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
+          entry: 'src/main.ts',
+          config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+        {
+          entry: 'src/contextmenu-preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+      ],
+      renderer: [
+        {
+          name: 'main_window',
+          config: 'vite.renderer.config.ts',
+        },
+      ],
+    }),
+    // Fuses are used to enable/disable various Electron functionality
+    // at package time, before code signing the application
+    new FusesPlugin({
+      version: FuseVersion.V1,
+      [FuseV1Options.RunAsNode]: false,
+      [FuseV1Options.EnableCookieEncryption]: true,
+      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    }),
+  ],
+};
+
+export default config;
 </file>
 
 <file path="src/components/HomePage.tsx">
@@ -1915,78 +1987,6 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.send('show-notification', message);
   }
 });
-</file>
-
-<file path="forge.config.ts">
-import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { VitePlugin } from '@electron-forge/plugin-vite';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseV1Options, FuseVersion } from '@electron/fuses';
-
-const config: ForgeConfig = {
-  packagerConfig: {
-    asar: true,
-    // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon', 
-  },
-  rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      // Path to specific .ico file for setup.exe (as per docs)
-      setupIcon: 'public/assets/icon.ico'
-    }), 
-    new MakerZIP({}, ['darwin']), 
-    new MakerRpm({}), 
-    new MakerDeb({})
-  ],
-  plugins: [
-    new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
-      build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: 'src/main.ts',
-          config: 'vite.main.config.ts',
-          target: 'main',
-        },
-        {
-          entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-        {
-          entry: 'src/contextmenu-preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-      ],
-      renderer: [
-        {
-          name: 'main_window',
-          config: 'vite.renderer.config.ts',
-        },
-      ],
-    }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-    }),
-  ],
-};
-
-export default config;
 </file>
 
 <file path="src/components/App.tsx">
@@ -2626,6 +2626,75 @@ This document tracks performance measurements for different implementations of t
 ---
 </file>
 
+<file path="package.json">
+{
+  "name": "sonic-flow",
+  "productName": "sonic-flow",
+  "version": "0.6.9",
+  "description": "A Lightweight AI Dictation App",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx .",
+    "clean": "rimraf out"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Sandheep Rajkumar",
+    "email": "rajkumar.sandheep@gmail.com"
+  },
+  "license": "Proprietary",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.7.0",
+    "@electron-forge/maker-deb": "^7.7.0",
+    "@electron-forge/maker-rpm": "^7.7.0",
+    "@electron-forge/maker-squirrel": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
+    "@electron-forge/plugin-fuses": "^7.7.0",
+    "@electron-forge/plugin-vite": "^7.7.0",
+    "@electron/fuses": "^1.8.0",
+    "@types/react": "^18.0.38",
+    "@types/react-dom": "^18.0.11",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "autoprefixer": "^10.4.16",
+    "electron": "35.0.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "postcss": "^8.4.31",
+    "rimraf": "^6.0.1",
+    "tailwindcss": "^3.3.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~4.5.4",
+    "vite": "^6.2.1"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.5.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-squirrel-startup": "^1.0.1",
+    "form-data": "^4.0.2",
+    "framer-motion": "^12.7.4",
+    "lucide-react": "^0.503.0",
+    "onnxruntime-web": "^1.19.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
+    "tailwind-merge": "^3.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0",
+    "vite-plugin-electron": "^0.29.0"
+  }
+}
+</file>
+
 <file path="src/moonshine-worker.ts">
 // src/moonshine-worker.ts
 import { 
@@ -2680,9 +2749,11 @@ let busy = false;
 let ringBuffer: RingBuffer | null = null;
 // Remove the old array of chunks
 // let audioBuffer16k: Float32Array[] = []; 
-const MAX_RECORDING_SECONDS = 30;
 const SAMPLE_RATE_16K = 16000;
-const PREALLOCATED_BUFFER_SIZE = SAMPLE_RATE_16K * MAX_RECORDING_SECONDS;
+const INITIAL_BUFFER_SECONDS = 30; // Start with a 30-second buffer
+const INITIAL_BUFFER_SIZE = SAMPLE_RATE_16K * INITIAL_BUFFER_SECONDS;
+const BUFFER_GROWTH_SECONDS = 30; // Add 60 seconds worth of space when resizing
+const BUFFER_GROWTH_SIZE = SAMPLE_RATE_16K * BUFFER_GROWTH_SECONDS;
 
 // State for pre-allocated buffer
 let preallocated16kBuffer: Float32Array | null = null;
@@ -2888,14 +2959,14 @@ self.addEventListener("message", async (e) => {
     console.log("[Worker] Starting stream...");
     // Allocate the large buffer and reset state
     try {
-      preallocated16kBuffer = new Float32Array(PREALLOCATED_BUFFER_SIZE);
       current16kWriteOffset = 0;
       nextDecodeStart16k = 0; // Reset decode cursor
       processingPartial = false; // Reset partial processing flag
       lastPartialText = ""; // Reset history on new stream
-      console.log(`[Worker] Pre-allocated 16kHz buffer created (size: ${PREALLOCATED_BUFFER_SIZE} samples).`);
+      preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE); 
+      console.log(`[Worker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
     } catch (allocError) {
-      console.error("[Worker] Failed to allocate 16kHz buffer:", allocError);
+      console.error("[Worker] Failed to allocate initial 16kHz buffer:", allocError);
       self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
       preallocated16kBuffer = null;
       return;
@@ -3013,20 +3084,35 @@ function pullAndProcessAudio() {
   const available16k = ringBuffer.availableRead();
   if (available16k === 0) return; // Nothing to read
 
-  // Determine how much space is left in the preallocated buffer
-  const spaceAvailableInBuffer = preallocated16kBuffer.length - current16kWriteOffset;
+  // Determine the number of samples to read (all available from ring buffer for now)
+  const samplesToRead = available16k; 
   
-  if (spaceAvailableInBuffer <= 0) {
-      console.warn("[Worker Pull] Preallocated 16kHz buffer full! Cannot read more from ring buffer.");
-      // We could potentially drop data from ringBuffer here if needed to prevent it filling up
-      // ringBuffer.read(null, available16k); // Read and discard
-      return;
+  // --- ADD: Dynamic resizing ---
+  const requiredSize = current16kWriteOffset + samplesToRead;
+  if (requiredSize > preallocated16kBuffer.length) {
+    // Double the buffer size or increase to required size, whichever is larger
+    // CHANGE: Increase by a fixed amount (BUFFER_GROWTH_SIZE) instead of doubling, 
+    //         but ensure it's at least large enough for the required size.
+    const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
+    console.warn(`[Worker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
+    try {
+      const newBuffer = new Float32Array(newSize);
+      // Copy existing data
+      newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
+      preallocated16kBuffer = newBuffer; // Replace the old buffer
+    } catch (resizeError) {
+      console.error("[Worker Pull] Failed to resize 16kHz buffer:", resizeError);
+      // Try to proceed with what fits? Or stop? For now, stop processing this chunk.
+      self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
+      // Optionally clear the ring buffer to prevent repeated attempts?
+      // FIX: ringBuffer.read expects a target buffer, not null. Read into a temporary buffer to discard.
+      ringBuffer.read(new Float32Array(available16k)); // Read and discard to prevent loop?
+      return; 
+    }
   }
+  // --- END: Dynamic resizing ---
 
-  // Read directly into the preallocated buffer at the current offset
-  // Determine the number of samples to read (minimum of available or space left)
-  const samplesToRead = Math.min(available16k, spaceAvailableInBuffer);
-  
+  // Read directly into the (potentially resized) preallocated buffer at the current offset
   // Create a subarray view of the target location in the preallocated buffer
   const targetView = preallocated16kBuffer.subarray(
     current16kWriteOffset, 
@@ -3287,6 +3373,10 @@ export function useTranscription(): UseTranscriptionReturn {
       sabRef.current = new SharedArrayBuffer(Constants.RING_BUFFER_SIZE_BYTES); 
       console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
 
+      // *** Get the ACTUAL sample rate ***
+      const actualSampleRate = audioCtxRef.current.sampleRate;
+      console.log(`[useTranscription] Actual AudioContext Sample Rate: ${actualSampleRate} Hz.`);
+
       // 2. Add AudioWorklet module (ensure path is correct relative to build output)
       // Try using a relative path assuming it's sibling to index.html in output
       const workletURL = './audioworklet-processor.js'; 
@@ -3295,26 +3385,24 @@ export function useTranscription(): UseTranscriptionReturn {
           await audioCtxRef.current.audioWorklet.addModule(workletURL);
           console.log('[useTranscription] AudioWorklet module added successfully.');
       } catch (err) {
-          console.error(`[useTranscription] Failed to add AudioWorklet module from ${workletURL}:`, err);
-          // Try the absolute path as a fallback just in case
-          const fallbackWorkletURL = '/audioworklet-processor.js';
-          console.log(`[useTranscription] Retrying with fallback path: ${fallbackWorkletURL}`);
-          try {
-              await audioCtxRef.current.audioWorklet.addModule(fallbackWorkletURL);
-              console.log('[useTranscription] AudioWorklet module added successfully via fallback path.');
-          } catch (fallbackErr) {
-             console.error(`[useTranscription] Failed to add AudioWorklet module from fallback path ${fallbackWorkletURL}:`, fallbackErr);
-             throw new Error(`Failed to load audio processor. ${fallbackErr.message}`); // Throw the final error
-          }
+          console.error('[useTranscription] Failed to load AudioWorklet module:', err);
+          setError('Failed to load audio processing module.');
+          setRecording(false);
+          sabRef.current = null; // Clean up SAB if worklet fails
+          return;
       }
 
-      // 3. Create AudioWorkletNode, passing the SAB
+      // 3. Create AudioWorkletNode, passing SAB and sample rates
       workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
-        processorOptions: { sab: sabRef.current }
+          processorOptions: { 
+              sab: sabRef.current, // Pass the SharedArrayBuffer
+              actualSampleRate: actualSampleRate,
+              targetSampleRate: TARGET_AUDIO_CONTEXT_RATE // Pass our desired target rate
+          } 
       });
       console.log('[useTranscription] AudioWorkletNode created.');
 
-       // Handle potential errors from the processor itself
+      // Handle potential errors from the processor itself
       workletNodeRef.current.onprocessorerror = (event) => {
         console.error('[useTranscription] AudioWorkletProcessor error:', event);
         setError('Audio processor error occurred.');
@@ -3426,75 +3514,6 @@ export function useTranscription(): UseTranscriptionReturn {
     start,
     stop,
   };
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "sonic-flow",
-  "productName": "sonic-flow",
-  "version": "0.6.9",
-  "description": "A Lightweight AI Dictation App",
-  "main": ".vite/build/main.js",
-  "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
-    "clean": "rimraf out"
-  },
-  "keywords": [],
-  "author": {
-    "name": "Sandheep Rajkumar",
-    "email": "rajkumar.sandheep@gmail.com"
-  },
-  "license": "Proprietary",
-  "devDependencies": {
-    "@electron-forge/cli": "^7.7.0",
-    "@electron-forge/maker-deb": "^7.7.0",
-    "@electron-forge/maker-rpm": "^7.7.0",
-    "@electron-forge/maker-squirrel": "^7.8.0",
-    "@electron-forge/maker-zip": "^7.8.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
-    "@electron-forge/plugin-fuses": "^7.7.0",
-    "@electron-forge/plugin-vite": "^7.7.0",
-    "@electron/fuses": "^1.8.0",
-    "@types/react": "^18.0.38",
-    "@types/react-dom": "^18.0.11",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "autoprefixer": "^10.4.16",
-    "electron": "35.0.1",
-    "eslint": "^8.57.1",
-    "eslint-plugin-import": "^2.31.0",
-    "postcss": "^8.4.31",
-    "rimraf": "^6.0.1",
-    "tailwindcss": "^3.3.5",
-    "ts-node": "^10.9.2",
-    "typescript": "~4.5.4",
-    "vite": "^6.2.1"
-  },
-  "dependencies": {
-    "@huggingface/transformers": "^3.5.0",
-    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
-    "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "electron-squirrel-startup": "^1.0.1",
-    "form-data": "^4.0.2",
-    "framer-motion": "^12.7.4",
-    "lucide-react": "^0.503.0",
-    "onnxruntime-web": "^1.19.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.14.2",
-    "tailwind-merge": "^3.2.0",
-    "tailwindcss-animate": "^1.0.7",
-    "uuid": "^11.1.0",
-    "vite-plugin-electron": "^0.29.0"
-  }
 }
 </file>
 
