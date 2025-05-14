@@ -37,7 +37,7 @@ const SAMPLE_RATE_16K = 16000;
 
 // --- ADD: Streaming Config ---
 const CHUNK_S = 5;          // Process 5 seconds of audio at a time
-const STRIDE_S = 1;         // Overlap chunks by 1 second
+const STRIDE_S = 2;         // Overlap chunks by 2 seconds (NEW)
 const CHUNK_SAMPLES = CHUNK_S * SAMPLE_RATE_16K;
 const STRIDE_SAMPLES = STRIDE_S * SAMPLE_RATE_16K; // Not directly used in pipeline call, but useful for logic if needed
 const PULL_LOOP_INTERVAL_MS = 50; // Check for new audio frequently
@@ -59,6 +59,10 @@ let emittedSamples = 0; // How many samples have been processed and led to emitt
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
 // --- END: New Streaming State ---
+
+// --- ADD: Prompt State for Contextual ASR ---
+let runningPrompt = "";
+// --- END: Prompt State ---
 
 // Helper function for the pull loop (MODIFIED)
 async function startPullLoop() {
@@ -99,7 +103,9 @@ async function processAvailableAudio() {
 
     try {
       const tAsrStart = performance.now();
-      const result = await asr(slice);
+      const result = await asr(slice, { 
+        prompt: runningPrompt 
+      } as any); // Pass current runningPrompt (NEW)
       const tAsrEnd = performance.now();
 
       emittedSamples += CHUNK_SAMPLES;
@@ -110,6 +116,7 @@ async function processAvailableAudio() {
       if (delta) {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
           self.postMessage({ status: 'partial', delta });
+          runningPrompt += delta + " "; // Append to runningPrompt (NEW)
       } else {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted (chunk processed, emittedSamples advanced).`);
       }
@@ -202,7 +209,7 @@ self.addEventListener("message", async (e) => {
       // --- Reset Streaming State ---
       emittedSamples = 0;
       processingPartial = false;
-      // previousSliceText = ""; // Reset for new stream // --- REMOVE ---
+      runningPrompt = ""; // Reset for new stream (NEW)
       // --- End Reset ---
 
     } catch (allocError) {
@@ -281,7 +288,9 @@ self.addEventListener("message", async (e) => {
             // const result = await asr(finalSlice, {
             // } as any); // Linter bypass 
             console.log("[Worker] Calling ASR pipeline for final segment...");
-            const result = await asr(finalSlice); // Rely on init-time streaming options
+            const result = await asr(finalSlice, { 
+              prompt: runningPrompt 
+            } as any); // Pass current runningPrompt (NEW)
 
             finalPipelineTime = performance.now() - tFinalStart;
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
