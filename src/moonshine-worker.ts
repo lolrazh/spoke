@@ -60,10 +60,6 @@ let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
 // --- END: New Streaming State ---
 
-// --- ADD state for text-based diffing during streaming (as a fallback) ---
-let previousSliceText = ""; 
-// --- END ADD state ---
-
 // Helper function for the pull loop (MODIFIED)
 async function startPullLoop() {
   console.log('[Worker] Starting streaming pull loop...');
@@ -90,69 +86,36 @@ async function startPullLoop() {
 async function processAvailableAudio() {
   if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
 
-  const availableSamples = current16kWriteOffset - emittedSamples;
+  const processableAudioLength = current16kWriteOffset - emittedSamples;
 
-  if (availableSamples >= CHUNK_SAMPLES) {
+  if (processableAudioLength >= CHUNK_SAMPLES) {
     processingPartial = true;
 
-    const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
-    const end = Math.min(start + CHUNK_SAMPLES + STRIDE_SAMPLES, current16kWriteOffset);
-    const slice = preallocated16kBuffer.subarray(start, end);
+    const audioSliceStart = emittedSamples;
+    const audioSliceEnd = emittedSamples + CHUNK_SAMPLES; 
+    const slice = preallocated16kBuffer.subarray(audioSliceStart, audioSliceEnd);
 
-    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length}) Emitted: ${emittedSamples}`);
+    console.log(`[Worker] Preparing chunk. Slice from ${audioSliceStart} to ${audioSliceEnd} (Length: ${slice.length}). Current emittedSamples: ${emittedSamples}`);
 
     try {
       const tAsrStart = performance.now();
-      // Call ASR, with per-call streaming options (using 'as any' to bypass linter for these specific keys)
-      const result = await asr(slice, { 
-      } as any); // Linter bypass for streaming options not in PretrainedModelOptions
+      const result = await asr(slice);
       const tAsrEnd = performance.now();
 
-      // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
+      emittedSamples += CHUNK_SAMPLES;
+      console.log(`[Worker] ASR call successful. Advanced emittedSamples by CHUNK_SAMPLES to ${emittedSamples}.`);
 
-      let delta = "";
+      const delta = (result.text || "").trim();
 
-      // Text-based diff is now the PRIMARY way
-      const currentText = (result.text || "").trim();
-      if (currentText) { // Only proceed if there's text from ASR
-        if (previousSliceText) {
-          if (currentText.startsWith(previousSliceText)) {
-            delta = currentText.substring(previousSliceText.length).trim();
-          } else {
-            let bestOverlap = 0;
-            for (let i = 1; i <= Math.min(previousSliceText.length, currentText.length); i++) {
-              if (currentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
-                bestOverlap = i;
-              }
-            }
-            if (bestOverlap > 0 && currentText.length > bestOverlap) {
-               delta = currentText.substring(bestOverlap).trim();
-            } else if (bestOverlap === 0 || currentText.length <= bestOverlap){
-               if(currentText !== previousSliceText) delta = currentText;
-            }
-            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: \"${previousSliceText}\", Curr: \"${currentText}\", Overlap: ${bestOverlap}, Delta: \"${delta}\"`);
-            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: \"${delta}\"`);
-          }
-        } else {
-          delta = currentText;
-        }
-      }
-      
       if (delta) {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
           self.postMessage({ status: 'partial', delta });
-          // MODIFIED: Advance emittedSamples by the "new" part of the chunk
-          emittedSamples += CHUNK_SAMPLES - STRIDE_SAMPLES;
-          console.log(`[Worker] Advanced emittedSamples by CHUNK_S - STRIDE_S to ${emittedSamples}`);
       } else {
-          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
-          // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted (chunk processed, emittedSamples advanced).`);
       }
-      previousSliceText = currentText; // Always update for next potential text diff
 
     } catch (err) {
       console.error('[Worker] ASR pipeline error during streaming:', err);
-      previousSliceText = ""; 
     } finally {
       processingPartial = false;
     }
@@ -171,8 +134,12 @@ try {
         progress_callback: (p: Progress | null) => p && self.postMessage(p),
         device: device,
         dtype: dtypeConfig,
-      }
-    ) as any;
+        // --- ADD Pipeline Level Streaming Params ---
+        chunk_length_s: CHUNK_S,
+        stride_length_s: [STRIDE_S, STRIDE_S], 
+        // --- END ADD ---
+      } as any // Linter bypass for streaming options
+    );
     console.log("[Moonshine] Pipeline initialized.");
 } catch (pipelineError) {
     console.error("[Moonshine] Pipeline initialization failed:", pipelineError);
@@ -235,7 +202,7 @@ self.addEventListener("message", async (e) => {
       // --- Reset Streaming State ---
       emittedSamples = 0;
       processingPartial = false;
-      previousSliceText = ""; // Reset for new stream
+      // previousSliceText = ""; // Reset for new stream // --- REMOVE ---
       // --- End Reset ---
 
     } catch (allocError) {
@@ -293,52 +260,62 @@ self.addEventListener("message", async (e) => {
 
     // --- Process remaining audio using mini-slice and cache ---
     // Calculate the slice for the remaining audio
-    const finalAvailable = current16kWriteOffset - emittedSamples;
-    let finalDelta = "";
+    // const finalAvailable = current16kWriteOffset - emittedSamples;
+    let finalUserText = ""; // Changed from finalDelta to avoid confusion with partial deltas
     let finalPipelineTime = 0;
 
-    if (finalAvailable > 0) {
-        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
-        const end = current16kWriteOffset; 
-        const finalSlice = preallocated16kBuffer.subarray(start, end);
+    // if (finalAvailable > 0) {
+    if (current16kWriteOffset > emittedSamples) { // Process if there's any audio past emittedSamples
+        // const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
+        // const end = current16kWriteOffset; 
+        // const finalSlice = preallocated16kBuffer.subarray(start, end);
+        const finalSlice = preallocated16kBuffer.subarray(emittedSamples, current16kWriteOffset);
 
-        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
+        // console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
+        console.log(`[Worker] Processing final audio segment. Slice from ${emittedSamples} to ${current16kWriteOffset} (Length: ${finalSlice.length})`);
         const tFinalStart = performance.now();
         try {
             if (!asr) throw new Error("ASR pipeline not ready.");
 
-            console.log("[Worker] Calling ASR pipeline for final segment (NO cache, NO per-call stream params)...");
-            const result = await asr(finalSlice, {
-            } as any); // Linter bypass 
+            // console.log("[Worker] Calling ASR pipeline for final segment (NO cache, NO per-call stream params)...");
+            // const result = await asr(finalSlice, {
+            // } as any); // Linter bypass 
+            console.log("[Worker] Calling ASR pipeline for final segment...");
+            const result = await asr(finalSlice); // Rely on init-time streaming options
+
             finalPipelineTime = performance.now() - tFinalStart;
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
             // console.log("[Worker] Final Result Object:", result);
 
-            const finalCurrentText = (result.text || "").trim();
-            if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
-                if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
-                    finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
-                } else if (previousSliceText) {
-                    let bestOverlap = 0;
-                    for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
-                        if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
-                            bestOverlap = i;
-                        }
-                    }
-                    if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
-                        finalDelta = finalCurrentText.substring(bestOverlap).trim();
-                    } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
-                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
-                    }
-                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
-                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
-                } else {
-                    finalDelta = finalCurrentText;
-                }
-            }
+            // const finalCurrentText = (result.text || "").trim();
+            // if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
+            //     if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
+            //         finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
+            //     } else if (previousSliceText) {
+            //         let bestOverlap = 0;
+            //         for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
+            //             if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+            //                 bestOverlap = i;
+            //             }
+            //         }
+            //         if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
+            //             finalDelta = finalCurrentText.substring(bestOverlap).trim();
+            //         } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
+            //              if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
+            //         }
+            //         if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
+            //         else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
+            //     } else {
+            //         finalDelta = finalCurrentText;
+            //     }
+            // }
 
-            if (finalDelta) {
-                console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+            finalUserText = (result.text || "").trim(); // Use result.text directly
+
+            // if (finalDelta) {
+            if (finalUserText) {
+                // console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+                console.log(`[Worker] Final Text to be sent: "${finalUserText}"`);
             } else {
                  console.log(`[Worker] No final delta text found to send.`);
             }
@@ -346,18 +323,22 @@ self.addEventListener("message", async (e) => {
         } catch (err) {
             console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
             self.postMessage({ status: "error", error: String(err) });
-            emittedSamples = 0;
-            processingPartial = false; previousSliceText = ""; // Reset state
+            // emittedSamples = 0; // Keep emittedSamples as is, buffer will be reset shortly
+            // processingPartial = false; previousSliceText = ""; // Reset state // --- REMOVE ---
+            // No need to reset previousSliceText here as it's removed
+            // Resetting emittedSamples and current16kWriteOffset happens globally after this block anyway
             return; 
         }
     } else {
        console.log("[Worker] No remaining audio data to process in final flush.");
     }
     
-    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
+    // console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
+    console.log(`[Worker] Sending final complete message with text: "${finalUserText}"`);
     self.postMessage({ 
         status: 'complete', 
-        text: finalDelta, 
+        // text: finalDelta, 
+        text: finalUserText, 
         timings: { total: finalPipelineTime } 
     });
     
