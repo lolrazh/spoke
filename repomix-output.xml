@@ -51,7 +51,6 @@ components.json
 forge.config.ts
 forge.env.d.ts
 index.html
-new-logic.md
 package.json
 postcss.config.js
 profiling-results.md
@@ -296,109 +295,6 @@ profiling-reults.md
   },
   "iconLibrary": "lucide"
 }
-</file>
-
-<file path="new-logic.md">
-### Brutal Audit (a.k.a. why your “1100 ms 🚀” is really a moped with nitrous)
-
-1. **You still think in “chunks”, not in “tokens”.**
-   *Where it happens* → `moonshine-worker.ts`, lines ≈ 350‑450 (`PARTIAL_INTERVAL_S = 10`, `nextDecodeStart16k`).
-   Every 10‑second wall‑clock slice you call the pipeline, get a *full* transcript of that slice, then diff it against `lastPartialText`. That guarantees you re‑transcribe the same audio over and over and then spend CPU in JS doing a fuzzy diff.
-   **Cost:** 2–3× more model time than necessary and \~70 ms/string‑diff on a 10 s slice.
-
-2. **KV‑cache? You never actually use it.**
-   You force `device:'wasm'` (good for prod), but you never pass `past_key_values` back in on the *next* call. `MoonshineConfig.use_cache` defaults to *true*, yet your worker’s `asr(slice)` is stateless. You throw the cache away every time—so each 10 s call decodes from scratch.
-
-3. **Roasting your “pre‑allocate 480 000 samples” stunt.**
-   Sure, one big `Float32Array` avoids `concat`, but you copy the same audio twice:
-   • `ringBuffer.read(targetView)` – copy SAB → RAM
-   • `slice = preallocated16kBuffer.subarray(...)` – *second* copy when you call `asr`
-   On a 45 s dictation that’s ≈14 MB of memmove. You shaved microseconds, not milliseconds.
-
-4. **Your latency timer starts *after* you stop recording.**
-   `console.time('e2e‑transcription‑final')` is fired only on `'processing_start'`, i.e. *after* you tell the worker to flush. Human perception is “hit hotkey → text appears”. The real E2E is `hotkey↔complete`, which is closer to 1 800 ms on your own logs.
-
-5. **10 s grain size is ridiculous.**
-   The pipeline’s C++ reference uses **5 s chunks with 1 s stride**. Going to 2 s/0.5 s is perfectly stable on Moonshine‑Base *if* you keep the stride. Your accuracy tanked because you removed context, not because the model is bad.
-
-6. **You ignore `chunk_length_s` + `stride_length_s` that the HF JS pipe *already gives you*.**
-   They do the stitching, timestamp alignment, and skip‑tokens for you. You reinvented it… with bugs.
-
-7. **Case‑sensitivity & punctuation “bugs” are red herrings.**
-   Whisper/Moonshine output lowercase, no punct. Your diff treats “test.” ≠ “test ” and you blame the model. Final pass a tiny punctuation‑restorer (50 ms) or run `.toLowerCase()` before diff and the “bug” vanishes.
-
-8. **WebGPU headache? Fine—then stop gating yourself on WASM matmuls.**
-   At `int8`, Moonshine‑Base takes \~600 ms for 15 s of audio on an M1 **with** KV‑cache. Split into 3×5 s with cache you’re already under 300 ms *per* mini‑chunk (= near‑live).
-
----
-
-## The backbone you *should* be running
-
-```ts
-const CHUNK_S   = 5;            // 2 s works too, start sane
-const STRIDE_S  = 1;
-const emitter   = pipeline(
-  "automatic-speech-recognition",
-  "onnx-community/moonshine-base-ONNX",
-  { device:"wasm", chunk_length_s:CHUNK_S, stride_length_s:STRIDE_S,
-    return_timestamps:"word" } );
-
-let cache;        // past_key_values
-let emitted = 0;  // seconds we’ve finalised
-
-async function feed(audio16k) {
-  const { text, chunks, past_key_values } =
-      await emitter(audio16k, { past_key_values: cache });
-  cache = past_key_values;
-
-  // skip tokens that belong to the left‑stride
-  const fresh = chunks.filter(c => c.timestamp[0] >= emitted);
-  emitted = chunks.at(-1).timestamp[1];     // advance cursor
-
-  self.postMessage({ status:"partial", delta:fresh.map(c=>c.text).join('') });
-}
-```
-
-*That is 40 lines, zero diffing, zero ring‑buffer book‑keeping beyond “how many seconds have we shipped”.*
-
----
-
-## ELI5 (because you said you’re a “stupid cunt”, your words)
-
-* **Imagine whispering a story to me through a door.**
-  You’re currently opening the door every 10 seconds, repeating the *entire* story so far, and asking me “What’s new?” I have to listen from the beginning each time. That’s why it’s slow.
-
-* **Use an overlap instead.**
-  Open the door every 2 seconds but repeat the *last one second* of the previous sentence. I’ll recognise that bit (“oh, I heard that already”) and jot down only the new words. No diffing, no confusion.
-
-* **The KV‑cache is like keeping my notebook open.**
-  Right now you slam it shut after every page, so I must re‑read everything. Keep it open (pass `past_key_values`) and I can start where we left off.
-
-* **Big pre‑allocated buffer = giant bucket under a faucet.**
-  Great, the water won’t spill, but you still scoop it out with a ladle, pour into another jug, then serve. Why not just pass the bucket?
-
-* **Lowercase/punctuation fights** are like yelling “You forgot the period!” in the middle of someone’s sentence. Let them finish; add punctuation at the end.
-
----
-
-## Concrete next steps (no rabbit‑holes)
-
-| Priority | Fix                                                                                             | Effort | Win                         |
-| -------- | ----------------------------------------------------------------------------------------------- | ------ | --------------------------- |
-| ☠️ 1     | Replace 10 s timer with `chunk_length_s=3‑5`, `stride_length_s=0.5‑1` in the HF pipeline.       | 15 min | ‑40 % latency               |
-| ☠️ 2     | Keep and pass `past_key_values` between calls.                                                  | 20 min | another ‑25 %               |
-| ☠️ 3     | Stop diffing strings; append tokens after skip‑stride.                                          | 10 min | no duplicates, 0 ms JS work |
-| ⚙️ 4     | Drop the monster `Float32Array`, read SAB → direct slice to pipeline.                           | 10 min | ‑50 MB/s memcopy            |
-| ✅ 5      | After `complete`, run a 50 ms punctuation model once.                                           | 5 min  | human‑grade text            |
-| 🤷‍♂️ 6  | ONLY if you *must* support weird sample‑rates: re‑enable your WebAudio resampler (it was fine). | —      | accuracy on cheap mics      |
-
-Do those four red‑skull items and your average dictation (≤45 s) will spit the first words on‑screen in **<300 ms**, finish in ≈500‑800 ms, all on plain WASM. No VAD, no WebGPU, no tantrums.
-
-If after that you’re still above 1 s, you’ve hit the ceiling of the CPU you’re on—ship it, charge money, revisit GPUs later.
-
----
-
-*Now quit pouring cement on your feet and run the race.*
 </file>
 
 <file path="public/audioworklet-processor.js">
@@ -1335,58 +1231,6 @@ export default defineConfig({
 });
 </file>
 
-<file path="index.html">
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
-    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
-    <meta http-equiv="Content-Security-Policy"
-          content="
-            default-src 'self'; 
-            connect-src 'self' 
-                         https://huggingface.co 
-                         https://cdn.jsdelivr.net 
-                         blob:; 
-            script-src 'self' 'unsafe-eval'; 
-            style-src  'self' 'unsafe-inline'; 
-            img-src    'self' data:; 
-            font-src   'self' data:; 
-          ">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sonic Flow</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/renderer.tsx"></script>
-  </body>
-</html>
-</file>
-
-<file path="src/types/electron.d.ts">
-/**
- * TypeScript declarations for the Electron API exposed to the renderer process
- */
-
-declare global {
-  interface Window {
-    electron: {
-      toggleDictation: (callback: () => void) => () => void;
-      showPillContextMenu: () => void;
-      insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
-      viewLogFile: () => Promise<void>;
-      sendNotification: (message: string) => void;
-    };
-    contextMenuAPI?: {
-      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
-    };
-  }
-}
-
-export {};
-</file>
-
 <file path="forge.config.ts">
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
@@ -1457,6 +1301,58 @@ const config: ForgeConfig = {
 };
 
 export default config;
+</file>
+
+<file path="index.html">
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <meta http-equiv="Content-Security-Policy"
+          content="
+            default-src 'self'; 
+            connect-src 'self' 
+                         https://huggingface.co 
+                         https://cdn.jsdelivr.net 
+                         blob:; 
+            script-src 'self' 'unsafe-eval'; 
+            style-src  'self' 'unsafe-inline'; 
+            img-src    'self' data:; 
+            font-src   'self' data:; 
+          ">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sonic Flow</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="src/types/electron.d.ts">
+/**
+ * TypeScript declarations for the Electron API exposed to the renderer process
+ */
+
+declare global {
+  interface Window {
+    electron: {
+      toggleDictation: (callback: () => void) => () => void;
+      showPillContextMenu: () => void;
+      insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
+      viewLogFile: () => Promise<void>;
+      sendNotification: (message: string) => void;
+    };
+    contextMenuAPI?: {
+      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
+    };
+  }
+}
+
+export {};
 </file>
 
 <file path="src/audio/ring-buffer.ts">
@@ -2728,6 +2624,47 @@ This document tracks performance measurements for different implementations of t
 *   **Result:** Fastest configuration tested overall (~656ms E2E). Combining the architectural improvements (16kHz direct capture, pre-alloc buffer, no drain loop) with Moonshine q8/q8 on WASM yields the best performance, significantly outperforming both the original Whisper baseline and the Moonshine WebGPU configurations.
 
 ---
+
+## Implementation: Streaming with Chunking & KV Cache (WASM)
+
+*Run Date: (Please fill in with today's date)*
+
+*   **Model:** `onnx-community/moonshine-base-ONNX` (Note: Model changed from whisper-tiny)
+*   **Backend:** WASM
+*   **Changes Made:**
+    *   Audio processed in chunks (`CHUNK_S = 5`, `STRIDE_S = 1`).
+    *   `past_key_values` (KV Cache) used between chunks.
+    *   Dynamic buffer resizing implemented.
+    *   Primary transcription logic relies on text-based diffing of `result.text` from ASR calls with streaming parameters.
+    *   Final transcription in `useTranscription.ts` now appends the delta from the `complete` message.
+
+### Observations & Benefits:
+
+*   **Improved Latency for Long Audio:** The primary benefit is significantly faster return times for extremely long audio sequences. The streaming approach avoids processing the entire audio in one go.
+*   **Comparable Latency for Short Audio:** For shorter transcriptions (like the test phrase "This is a transcription test for sonic flow"), the E2E latency is comparable to, or slightly higher than, previous non-streaming batch modes, but still very acceptable.
+    *   Example E2E Latency (from logs for ~3-second audio):
+        *   Run 1: ~673 ms
+        *   Run 2: ~704 ms
+*   **Final Flush Performance:** The final flush operation, which processes the remaining audio segment, shows good performance.
+    *   Example Worker Processing Time (final flush for ~3-second audio):
+        *   Run 1: `673.26 ms`
+        *   Run 2: `704.20 ms`
+*   **No Partial Transcriptions:** The logs indicate that for these short test runs, no partial transcriptions were emitted during streaming (`Emitted: 0` before final flush). The entire transcription was produced during the final flush. This is expected for audio shorter than `CHUNK_S`. For longer audio, partial results would be seen.
+*   **Accuracy:** Appears good for the test phrase.
+
+### Metrics (Based on Short Audio Test - "This is a transcription test for sonic flow"):
+
+*   **End-to-End (E2E) Latency (approx. 3s audio):**
+    *   Run 1: `~673 ms`
+    *   Run 2: `~704 ms`
+    *   Average: `~688 ms`
+*   **Worker Processing Time (Final Flush for approx. 3s audio):**
+    *   Run 1: `673.26 ms`
+    *   Run 2: `704.20 ms`
+    *   Average: `~688.73 ms`
+*   **Note:** These metrics are for short audio where the entire content is processed in the "final flush". The main advantage of this implementation is seen with much longer audio inputs due to the streaming nature.
+
+---
 </file>
 
 <file path="package.json">
@@ -3214,7 +3151,7 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8
 // Define dtype configurations based on device with explicit typing
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
-    encoder_model: "q8",
+    encoder_model: "fp16",
     decoder_model_merged: "q8", // WASM might benefit from q8
   },
 };
@@ -3234,7 +3171,7 @@ const SAMPLE_RATE_16K = 16000;
 
 // --- ADD: Streaming Config ---
 const CHUNK_S = 5;          // Process 5 seconds of audio at a time
-const STRIDE_S = 1;         // Overlap chunks by 1 second
+const STRIDE_S = 2;         // Overlap chunks by 2 seconds (NEW)
 const CHUNK_SAMPLES = CHUNK_S * SAMPLE_RATE_16K;
 const STRIDE_SAMPLES = STRIDE_S * SAMPLE_RATE_16K; // Not directly used in pipeline call, but useful for logic if needed
 const PULL_LOOP_INTERVAL_MS = 50; // Check for new audio frequently
@@ -3253,14 +3190,13 @@ let current16kWriteOffset = 0;
 
 // --- ADD: New Streaming State ---
 let emittedSamples = 0; // How many samples have been processed and led to emitted text
-let kvCache: any | null = null; // Stores past_key_values for the ASR model
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls (still useful)
 // --- END: New Streaming State ---
 
-// --- ADD state for text-based diffing during streaming (as a fallback) ---
-let previousSliceText = ""; 
-// --- END ADD state ---
+// --- ADD: Prompt State for Contextual ASR ---
+let runningPrompt = "";
+// --- END: Prompt State ---
 
 // Helper function for the pull loop (MODIFIED)
 async function startPullLoop() {
@@ -3288,76 +3224,39 @@ async function startPullLoop() {
 async function processAvailableAudio() {
   if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
 
-  const availableSamples = current16kWriteOffset - emittedSamples;
+  const processableAudioLength = current16kWriteOffset - emittedSamples;
 
-  if (availableSamples >= CHUNK_SAMPLES) {
+  if (processableAudioLength >= CHUNK_SAMPLES) {
     processingPartial = true;
 
-    const start = Math.max(0, emittedSamples - STRIDE_SAMPLES);
-    const end = Math.min(start + CHUNK_SAMPLES + 2 * STRIDE_SAMPLES, current16kWriteOffset);
-    const slice = preallocated16kBuffer.subarray(start, end);
+    const audioSliceStart = emittedSamples;
+    const audioSliceEnd = emittedSamples + CHUNK_SAMPLES; 
+    const slice = preallocated16kBuffer.subarray(audioSliceStart, audioSliceEnd);
 
-    console.log(`[Worker] Processing chunk. Slice range: ${start} -> ${end} (Length: ${slice.length}) Emitted: ${emittedSamples}`);
+    console.log(`[Worker] Preparing chunk. Slice from ${audioSliceStart} to ${audioSliceEnd} (Length: ${slice.length}). Current emittedSamples: ${emittedSamples}`);
 
     try {
       const tAsrStart = performance.now();
-      // Call ASR, with per-call streaming options (using 'as any' to bypass linter for these specific keys)
       const result = await asr(slice, { 
-         past_key_values: kvCache,
-         chunk_length_s: CHUNK_S, 
-         stride_length_s: STRIDE_S,
-         return_timestamps: "word",
-      } as any); // Linter bypass for streaming options not in PretrainedModelOptions
+        prompt: runningPrompt 
+      } as any); // Pass current runningPrompt (NEW)
       const tAsrEnd = performance.now();
 
-      // console.log('[Worker] ASR Result (processAvailableAudio):', result); 
+      emittedSamples += CHUNK_SAMPLES;
+      console.log(`[Worker] ASR call successful. Advanced emittedSamples by CHUNK_SAMPLES to ${emittedSamples}.`);
 
-      kvCache = result.past_key_values;
+      const delta = (result.text || "").trim();
 
-      let delta = "";
-
-      // Text-based diff is now the PRIMARY way
-      const currentText = (result.text || "").trim();
-      if (currentText) { // Only proceed if there's text from ASR
-        if (previousSliceText) {
-          if (currentText.startsWith(previousSliceText)) {
-            delta = currentText.substring(previousSliceText.length).trim();
-          } else {
-            let bestOverlap = 0;
-            for (let i = 1; i <= Math.min(previousSliceText.length, currentText.length); i++) {
-              if (currentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
-                bestOverlap = i;
-              }
-            }
-            if (bestOverlap > 0 && currentText.length > bestOverlap) {
-               delta = currentText.substring(bestOverlap).trim();
-            } else if (bestOverlap === 0 || currentText.length <= bestOverlap){
-               if(currentText !== previousSliceText) delta = currentText;
-            }
-            if(delta && delta !== currentText) console.log(`[Worker] Text diverged. Prev: \"${previousSliceText}\", Curr: \"${currentText}\", Overlap: ${bestOverlap}, Delta: \"${delta}\"`);
-            else if(delta === currentText) console.log(`[Worker] Text fallback, using full current text as delta: \"${delta}\"`);
-          }
-        } else {
-          delta = currentText;
-        }
-      }
-      
       if (delta) {
           console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Final Delta to send: \"${delta}\"`);
           self.postMessage({ status: 'partial', delta });
-          // Advance emittedSamples by CHUNK_SAMPLES as delta came from text diff
-          emittedSamples += CHUNK_SAMPLES;
-          console.log(`[Worker] Advanced emittedSamples by CHUNK_SAMPLES (text diff) to ${emittedSamples}`);
+          runningPrompt += delta + " "; // Append to runningPrompt (NEW)
       } else {
-          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted.`);
-          // Do not advance emittedSamples if no delta was generated, to allow re-processing with more context.
+          console.log(`[Worker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta found or emitted (chunk processed, emittedSamples advanced).`);
       }
-      previousSliceText = currentText; // Always update for next potential text diff
 
     } catch (err) {
       console.error('[Worker] ASR pipeline error during streaming:', err);
-      kvCache = null; 
-      previousSliceText = ""; 
     } finally {
       processingPartial = false;
     }
@@ -3376,8 +3275,12 @@ try {
         progress_callback: (p: Progress | null) => p && self.postMessage(p),
         device: device,
         dtype: dtypeConfig,
-      }
-    ) as any;
+        // --- ADD Pipeline Level Streaming Params ---
+        chunk_length_s: CHUNK_S,
+        stride_length_s: [STRIDE_S, STRIDE_S], 
+        // --- END ADD ---
+      } as any // Linter bypass for streaming options
+    );
     console.log("[Moonshine] Pipeline initialized.");
 } catch (pipelineError) {
     console.error("[Moonshine] Pipeline initialization failed:", pipelineError);
@@ -3439,9 +3342,8 @@ self.addEventListener("message", async (e) => {
 
       // --- Reset Streaming State ---
       emittedSamples = 0;
-      kvCache = null; 
       processingPartial = false;
-      previousSliceText = ""; // Reset for new stream
+      runningPrompt = ""; // Reset for new stream (NEW)
       // --- End Reset ---
 
     } catch (allocError) {
@@ -3499,56 +3401,64 @@ self.addEventListener("message", async (e) => {
 
     // --- Process remaining audio using mini-slice and cache ---
     // Calculate the slice for the remaining audio
-    const finalAvailable = current16kWriteOffset - emittedSamples;
-    let finalDelta = "";
+    // const finalAvailable = current16kWriteOffset - emittedSamples;
+    let finalUserText = ""; // Changed from finalDelta to avoid confusion with partial deltas
     let finalPipelineTime = 0;
 
-    if (finalAvailable > 0) {
-        const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
-        const end = current16kWriteOffset; 
-        const finalSlice = preallocated16kBuffer.subarray(start, end);
+    // if (finalAvailable > 0) {
+    if (current16kWriteOffset > emittedSamples) { // Process if there's any audio past emittedSamples
+        // const start = Math.max(0, emittedSamples - STRIDE_SAMPLES); 
+        // const end = current16kWriteOffset; 
+        // const finalSlice = preallocated16kBuffer.subarray(start, end);
+        const finalSlice = preallocated16kBuffer.subarray(emittedSamples, current16kWriteOffset);
 
-        console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
+        // console.log(`[Worker] Processing final audio segment. Slice range: ${start} -> ${end} (Length: ${finalSlice.length}) Emitted: ${emittedSamples}`);
+        console.log(`[Worker] Processing final audio segment. Slice from ${emittedSamples} to ${current16kWriteOffset} (Length: ${finalSlice.length})`);
         const tFinalStart = performance.now();
         try {
             if (!asr) throw new Error("ASR pipeline not ready.");
 
-            console.log("[Worker] Calling ASR pipeline for final segment (with cache and PER-CALL stream params)...");
-            const result = await asr(finalSlice, {
-                 past_key_values: kvCache,
-                 chunk_length_s: CHUNK_S, 
-                 stride_length_s: STRIDE_S, // Consider stride_length_s: 0 for final flush for less aggressive overlap removal?
-                 return_timestamps: "word",
-            } as any); // Linter bypass 
+            // console.log("[Worker] Calling ASR pipeline for final segment (NO cache, NO per-call stream params)...");
+            // const result = await asr(finalSlice, {
+            // } as any); // Linter bypass 
+            console.log("[Worker] Calling ASR pipeline for final segment...");
+            const result = await asr(finalSlice, { 
+              prompt: runningPrompt 
+            } as any); // Pass current runningPrompt (NEW)
+
             finalPipelineTime = performance.now() - tFinalStart;
             console.log(`[Worker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
             // console.log("[Worker] Final Result Object:", result);
 
-            const finalCurrentText = (result.text || "").trim();
-            if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
-                if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
-                    finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
-                } else if (previousSliceText) {
-                    let bestOverlap = 0;
-                    for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
-                        if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
-                            bestOverlap = i;
-                        }
-                    }
-                    if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
-                        finalDelta = finalCurrentText.substring(bestOverlap).trim();
-                    } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
-                         if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
-                    }
-                    if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
-                    else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
-                } else {
-                    finalDelta = finalCurrentText;
-                }
-            }
+            // const finalCurrentText = (result.text || "").trim();
+            // if (finalCurrentText) { // Only proceed if there's text from ASR for the final segment
+            //     if (previousSliceText && finalCurrentText.startsWith(previousSliceText)) {
+            //         finalDelta = finalCurrentText.substring(previousSliceText.length).trim();
+            //     } else if (previousSliceText) {
+            //         let bestOverlap = 0;
+            //         for (let i = 1; i <= Math.min(previousSliceText.length, finalCurrentText.length); i++) {
+            //             if (finalCurrentText.substring(0, i) === previousSliceText.substring(previousSliceText.length - i)) {
+            //                 bestOverlap = i;
+            //             }
+            //         }
+            //         if (bestOverlap > 0 && finalCurrentText.length > bestOverlap) {
+            //             finalDelta = finalCurrentText.substring(bestOverlap).trim();
+            //         } else if (bestOverlap === 0 || finalCurrentText.length <= bestOverlap){
+            //              if(finalCurrentText !== previousSliceText) finalDelta = finalCurrentText;
+            //         }
+            //         if(finalDelta && finalDelta !== finalCurrentText) console.log(`[Worker] Final text diverged. Prev: \"${previousSliceText}\", Curr: \"${finalCurrentText}\", Delta: \"${finalDelta}\"`);
+            //         else if (finalDelta === finalCurrentText)  console.log(`[Worker] Final text fallback, using full current text as delta: \"${finalDelta}\"`);
+            //     } else {
+            //         finalDelta = finalCurrentText;
+            //     }
+            // }
 
-            if (finalDelta) {
-                console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+            finalUserText = (result.text || "").trim(); // Use result.text directly
+
+            // if (finalDelta) {
+            if (finalUserText) {
+                // console.log(`[Worker] Final Delta Text to be sent: "${finalDelta}"`);
+                console.log(`[Worker] Final Text to be sent: "${finalUserText}"`);
             } else {
                  console.log(`[Worker] No final delta text found to send.`);
             }
@@ -3556,23 +3466,27 @@ self.addEventListener("message", async (e) => {
         } catch (err) {
             console.error(`[Worker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
             self.postMessage({ status: "error", error: String(err) });
-            emittedSamples = 0; kvCache = null; processingPartial = false; previousSliceText = ""; // Reset state
+            // emittedSamples = 0; // Keep emittedSamples as is, buffer will be reset shortly
+            // processingPartial = false; previousSliceText = ""; // Reset state // --- REMOVE ---
+            // No need to reset previousSliceText here as it's removed
+            // Resetting emittedSamples and current16kWriteOffset happens globally after this block anyway
             return; 
         }
     } else {
        console.log("[Worker] No remaining audio data to process in final flush.");
     }
     
-    console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
+    // console.log(`[Worker] Sending final complete message with delta: "${finalDelta}"`);
+    console.log(`[Worker] Sending final complete message with text: "${finalUserText}"`);
     self.postMessage({ 
         status: 'complete', 
-        text: finalDelta, 
+        // text: finalDelta, 
+        text: finalUserText, 
         timings: { total: finalPipelineTime } 
     });
     
     emittedSamples = 0;
     current16kWriteOffset = 0; 
-    kvCache = null; 
     preallocated16kBuffer = null; 
     processingPartial = false; 
 

@@ -17,7 +17,7 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8
 // Define dtype configurations based on device with explicit typing
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
-    encoder_model: "q8",
+    encoder_model: "fp16",
     decoder_model_merged: "q8", // WASM might benefit from q8
   },
 };
