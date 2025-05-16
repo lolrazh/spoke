@@ -6,7 +6,7 @@ import started from 'electron-squirrel-startup';
 import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
-import { transcribeAudioWithGroq, cleanupAllTempAudioFiles } from './workers/groq-transcriber';
+import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -861,26 +861,11 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
-  // This should finally run now!
-  console.log('[App Event] will-quit: Handler running...');
-  try {
-    // Perform cleanup (shortcuts, etc.)
-    console.log('[App Event] will-quit: Unregistering shortcuts...');
-    globalShortcut.unregisterAll();
-    console.log('[App Event] will-quit: Shortcuts unregistered.');
-    
-    // Call cleanup for Groq transcriber temporary files
-    cleanupAllTempAudioFiles();
-    console.log('[App Event] will-quit: Groq transcriber temporary files cleaned up.');
-    
-  } catch (error) {
-    // Use original console for errors during cleanup
-    console.error('[App Event] will-quit: Error during cleanup:', error);
-    // Ensure console is restored even if error occurred before restoreConsole() call
-    // restoreConsole(); 
-    // Attempt to end stream again if it exists and error happened before ending
-    // if (logStream && !logStream.writableEnded) { ... }
-  }
+  // Unregister all shortcuts.
+  globalShortcut.unregisterAll();
+  // Call cleanup for temporary audio files - No longer needed
+  // cleanupAllTempAudioFiles(); 
+  console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===

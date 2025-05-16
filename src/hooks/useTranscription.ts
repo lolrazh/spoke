@@ -78,6 +78,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
   // --- Common Refs --
   const streamRef = useRef<MediaStream | null>(null); // Mic stream, shared by both modes
+  const profilingStartTimeRef = useRef<number | null>(null); // For profiling E2E latency
 
   // --- State Variables --
   const [recording, setRecording] = useState(false);
@@ -104,7 +105,13 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Requesting microphone access...');
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
-            audio: { sampleRate: TARGET_AUDIO_CONTEXT_RATE } 
+            audio: { 
+              sampleRate: 16000, // Target 16kHz
+              channelCount: 1,   // Mono audio
+              // bitsPerSample: 16, // Often implied by other settings, Safari might need it. Let's omit for now unless issues arise.
+              echoCancellation: false, // Lower CPU, potentially cleaner for ASR if environment is controlled
+              noiseSuppression: false, // Lower CPU, ASR models often handle noise
+            }
         });
         console.log('[useTranscription] Microphone access granted.');
         setReady(true); // Basic readiness: mic is available.
@@ -277,11 +284,14 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        const options = { mimeType: 'audio/webm' }; // Standard, well-supported
+        const options = {
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 64000, // Lower bitrate for smaller files
+        }; 
         if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            console.warn(`[useTranscription] Fallback: ${options.mimeType} not supported. Trying default MediaRecorder type.`);
-            // Let browser pick a default if webm isn't supported (highly unlikely for audio)
-            mediaRecorderRef.current = new MediaRecorder(streamRef.current);
+            console.warn(`[useTranscription] Fallback: ${options.mimeType} not supported. Trying with 'audio/webm'.`);
+            // Try a more generic webm if opus-specific one fails
+            mediaRecorderRef.current = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm', audioBitsPerSecond: 64000 });
         } else {
             mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
         }
@@ -302,30 +312,51 @@ export function useTranscription(): UseTranscriptionReturn {
             // setError('No audio was recorded.'); // Optional: inform user
             return;
           }
-          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' });
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm;codecs=opus' });
           audioChunksRef.current = []; // Clear for next recording
           
           console.log(`[useTranscription] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
           setProcessing(true);
           try {
-            const arrayBuffer = await audioBlob.arrayBuffer();
-            if (!window.electron?.transcribeGroq) {
-              throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
-            }
-            console.log('[useTranscription] Sending audio ArrayBuffer to Groq...');
-            const transcript = await window.electron.transcribeGroq(arrayBuffer);
-            console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`);
-            setText(transcript);
-            if (transcript && window.electron.insertTextAtCursor) {
-              window.electron.insertTextAtCursor(transcript)
-                .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
-            }
+            const arrayBufferPromise = audioBlob.arrayBuffer();
+            arrayBufferPromise.then(async (arrayBuffer) => {
+              console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
+              if (!window.electron?.transcribeGroq) {
+                throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+              }
+              console.log('[useTranscription] Sending audio ArrayBuffer to Groq (transferable)...');
+              
+              const preIPCTime = performance.now();
+              // Send as transferable
+              const transcript = await window.electron.transcribeGroq(arrayBuffer, [arrayBuffer]); 
+              
+              if (profilingStartTimeRef.current) {
+                const endTime = performance.now();
+                const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
+                const durationIPCAndGroq = endTime - preIPCTime; // From pre-IPC call to result
+                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - Groq transcript received.`);
+                console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
+                console.log(`[useTranscription]   IPC + Groq (Main Thread actual work): ${durationIPCAndGroq.toFixed(2)} ms`);
+                profilingStartTimeRef.current = null; // Reset for next run
+              }
+              // console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`); // Redundant with profiling log
+              setText(transcript);
+              if (transcript && window.electron.insertTextAtCursor) {
+                window.electron.insertTextAtCursor(transcript)
+                  .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+              }
+              setProcessing(false);
+            }).catch(err => {
+              console.error('[useTranscription] Error converting Blob to ArrayBuffer:', err);
+              setError(err.message || 'Failed to process audio data.');
+              setProcessing(false);
+            });
           } catch (err: any) {
-            console.error('[useTranscription] Error during Groq transcription IPC or Blob processing:', err);
+            console.error('[useTranscription] Error during Groq transcription IPC or Blob processing setup:', err);
             setError(err.message || 'Cloud transcription failed.');
-          } finally {
-            setProcessing(false);
+            setProcessing(false); // Ensure processing is false on outer catch
           }
+          // Remove finally setProcessing(false) from here as it's handled in promise chain or its catch
         };
 
         mediaRecorderRef.current.onerror = (event: Event) => {
@@ -397,12 +428,14 @@ export function useTranscription(): UseTranscriptionReturn {
     setRecording(false); // Set recording false immediately
 
     if (currentMode === 'cloud') {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        console.log('[useTranscription] Stopping MediaRecorder...');
-        mediaRecorderRef.current.stop(); // This will trigger the onstop handler
-      } else {
-        console.warn('[useTranscription] MediaRecorder not active or already stopped.');
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
+        console.warn('[useTranscription] Cloud MediaRecorder not recording or not initialized.');
+        setRecording(false); // also set recording to false here
+        return;
       }
+      console.log('[useTranscription] Profiling: Step 1 - Stopping MediaRecorder...');
+      profilingStartTimeRef.current = performance.now(); // Start E2E profiling for cloud path
+      mediaRecorderRef.current.stop(); // This will trigger 'dataavailable' then 'stop'
     } else { // currentMode === 'local'
       console.log('[useTranscription] Stopping local recording. Disconnecting AudioWorklet, notifying worker.');
       if (microphoneSourceRef.current) {

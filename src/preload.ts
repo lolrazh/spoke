@@ -32,7 +32,11 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.send('show-notification', message);
   },
   // Method for Groq transcription
-  transcribeGroq: (audioBuffer: ArrayBuffer) => {
-    return ipcRenderer.invoke('transcribe-groq', audioBuffer);
+  transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => {
+    if (transferList) {
+      return ipcRenderer.invoke('transcribe-groq', audioBuffer, transferList);
+    } else {
+      return ipcRenderer.invoke('transcribe-groq', audioBuffer);
+    }
   }
 });

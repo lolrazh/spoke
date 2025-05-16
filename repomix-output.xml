@@ -134,371 +134,6 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 </file>
 
-<file path="src/workers/groq-transcriber.ts">
-import Groq from 'groq-sdk';
-import fs from 'node:fs';
-import path from 'node:path';
-import { app } from 'electron';
-import { v4 as uuidv4 } from 'uuid';
-
-// Get API key from environment variable
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-
-// Log API key status (not the actual key) for debugging during startup
-if (app.isPackaged) {
-  console.log(`GROQ_API_KEY is ${GROQ_API_KEY ? 'set (production mode)' : 'not set (production mode)'}`);
-} else {
-  // In development, be more explicit if the key is missing, as it's crucial.
-  if (!GROQ_API_KEY) {
-    console.warn('GROQ_API_KEY is not set. Please check your .env file or environment variables.');
-  } else {
-    console.log('GROQ_API_KEY is set (development mode).');
-  }
-}
-
-
-// Temporary directory for storing audio files
-// Ensure TEMP_DIR is initialized only after app is ready to avoid issues with getPath
-let TEMP_DIR: string;
-
-function initializeTempDir() {
-  if (!TEMP_DIR) {
-    TEMP_DIR = path.join(app.getPath('temp'), 'sonic-flow-audio');
-    if (!fs.existsSync(TEMP_DIR)) {
-      fs.mkdirSync(TEMP_DIR, { recursive: true });
-    }
-  }
-}
-
-// Call this when app is ready, or before first transcription
-// For simplicity in this module, we can rely on app being ready when transcribeAudio is called,
-// or initialize it lazily. Let's ensure it's initialized before first use.
-
-/**
- * Transcribes audio using Groq API.
- * @param audioBuffer The audio data as a Buffer.
- * @param inputLanguage The language of the audio (e.g., "en").
- * @returns Promise that resolves with the transcription text.
- */
-export async function transcribeAudioWithGroq(audioBuffer: Buffer, inputLanguage: string = "en"): Promise<string> {
-  initializeTempDir(); // Ensure temp directory is ready
-
-  // Check for API key at the time of function call.
-  const apiKey = process.env.GROQ_API_KEY || '';
-  if (!apiKey) {
-    console.error('GROQ_API_KEY is not set at the time of transcription. Please ensure it is loaded.');
-    throw new Error('GROQ_API_KEY is not set. Transcription cannot proceed.');
-  }
-
-  // Initialize Groq client here to ensure it uses the most current API key.
-  // This is useful if the key might be loaded or changed after module initialization.
-  const groq = new Groq({
-    apiKey: apiKey,
-  });
-
-  const tempFilePath = path.join(TEMP_DIR, `${uuidv4()}.webm`); // Assuming webm, adjust if PCM or other format
-
-  try {
-    console.log(`[GroqTranscriber] Writing audio buffer to temporary file: ${tempFilePath} (${audioBuffer.length} bytes)`);
-    fs.writeFileSync(tempFilePath, audioBuffer);
-
-    const fileStats = fs.statSync(tempFilePath);
-    if (fileStats.size === 0) {
-      console.error('[GroqTranscriber] Temporary audio file is empty.');
-      throw new Error('Temporary audio file is empty.');
-    }
-
-    console.log(`[GroqTranscriber] Transcribing audio file: ${tempFilePath} with model distil-whisper-large-v3-en`);
-    const fileStream = fs.createReadStream(tempFilePath);
-
-    const transcription = await groq.audio.transcriptions.create({
-      file: fileStream, // Pass the stream
-      model: "distil-whisper-large-v3-en", // Using the model from prod plan's example
-      language: inputLanguage,
-      response_format: "json", // 'json', 'text', 'srt', 'verbose_json', or 'vtt'
-      temperature: 0.0, // Optional: for determinism
-    });
-
-    console.log('[GroqTranscriber] Transcription successful.');
-
-    if (!transcription.text) {
-      console.error('[GroqTranscriber] Transcription response does not contain text.');
-      throw new Error('Transcription response does not contain text.');
-    }
-    
-    return transcription.text;
-
-  } catch (error) {
-    console.error('[GroqTranscriber] Error during transcription:', error);
-    // Try to provide more specific error feedback if possible
-    if (error.response && error.response.data) {
-        console.error('[GroqTranscriber] Groq API Error Data:', error.response.data);
-    }
-    throw error; // Re-throw the error to be caught by the caller
-  } finally {
-    // Clean up the temporary file
-    if (fs.existsSync(tempFilePath)) {
-      try {
-        console.log(`[GroqTranscriber] Deleting temporary file: ${tempFilePath}`);
-        fs.unlinkSync(tempFilePath);
-      } catch (cleanupError) {
-        console.error(`[GroqTranscriber] Error deleting temporary file ${tempFilePath}:`, cleanupError);
-      }
-    }
-  }
-}
-
-/**
- * Cleans up all temporary audio files in the Sonic Flow temp directory.
- * This can be called on application quit or at other appropriate times.
- */
-export function cleanupAllTempAudioFiles(): void {
-  initializeTempDir(); // Ensure TEMP_DIR is known
-  if (fs.existsSync(TEMP_DIR)) {
-    console.log(`[GroqTranscriber] Cleaning up all temporary files in ${TEMP_DIR}`);
-    fs.readdir(TEMP_DIR, (err, files) => {
-      if (err) {
-        console.error(`[GroqTranscriber] Error reading temp directory ${TEMP_DIR} for cleanup:`, err);
-        return;
-      }
-      for (const file of files) {
-        const filePath = path.join(TEMP_DIR, file);
-        fs.unlink(filePath, unlinkErr => {
-          if (unlinkErr) {
-            console.error(`[GroqTranscriber] Error deleting temp file ${filePath}:`, unlinkErr);
-          } else {
-            console.log(`[GroqTranscriber] Deleted temp file: ${filePath}`);
-          }
-        });
-      }
-    });
-  }
-}
-
-// It might be good practice to call cleanup on app exit.
-// This can be hooked into main.ts:
-// app.on('will-quit', cleanupAllTempAudioFiles);
-</file>
-
-<file path="src/workers/local-worker.ts">
-import {
-    pipeline,
-    env,
-    // @ts-ignore Progress type might be nested or different now
-    Progress
-} from "@huggingface/transformers";
-import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
-
-// Ensure ONNX runtime is configured for WASM
-env.backends.onnx.wasm.wasmPaths = '/'; // Adjust if your ONNX WASM files are elsewhere
-
-const MODEL_ID = "onnx-community/moonshine-base-ONNX";
-
-// Define type for Dtype configuration
-type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4" | "int8">;
-
-// Define dtype configurations based on device with explicit typing
-const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
-  wasm: {
-    encoder_model: "fp16", // Using fp16 for encoder as per original
-    decoder_model_merged: "q8", // WASM might benefit from q8
-  },
-};
-
-const device = 'wasm'; // Force WASM backend
-const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
-
-console.log("[LocalWorker] using WASM backend");
-
-let asr: any | null = null;
-let busy = false; // To track if a transcription is in progress
-let ringBuffer: RingBuffer | null = null;
-let isCapturing = false;
-
-const TARGET_SAMPLE_RATE = 16000;
-
-// Placeholder for a simple resampling function
-// Input: Float32Array audio data, original sample rate
-// Output: Float32Array audio data at TARGET_SAMPLE_RATE
-function resampleTo16kHz(audioData: Float32Array, originalSampleRate: number): Float32Array {
-    if (originalSampleRate === TARGET_SAMPLE_RATE) {
-        return audioData;
-    }
-    if (originalSampleRate === 48000 && TARGET_SAMPLE_RATE === 16000) {
-        // Simple downsampling: take every 3rd sample
-        const newLength = Math.floor(audioData.length / 3);
-        const newData = new Float32Array(newLength);
-        for (let i = 0; i < newLength; i++) {
-            newData[i] = audioData[i * 3];
-        }
-        console.log(`[LocalWorker] Resampled audio from 48kHz to 16kHz (length: ${audioData.length} -> ${newData.length})`);
-        return newData;
-    }
-    // Add more sophisticated resampling or other cases if needed
-    console.warn(`[LocalWorker] Resampling from ${originalSampleRate}Hz to ${TARGET_SAMPLE_RATE}Hz not fully supported. Attempting naive resampling or returning original.`);
-    // Naive resampling for other rates (e.g. 44100 to 16000)
-    // This is a placeholder and might produce poor quality audio.
-    // A proper library should be used for production quality.
-    const ratio = originalSampleRate / TARGET_SAMPLE_RATE;
-    if (ratio <= 0) return audioData; // Should not happen
-
-    const newLength = Math.floor(audioData.length / ratio);
-    const resampled = new Float32Array(newLength);
-    for (let i = 0; i < newLength; i++) {
-        // Simple nearest neighbor, can be improved with linear interpolation etc.
-        resampled[i] = audioData[Math.floor(i * ratio)];
-    }
-    console.log(`[LocalWorker] Naively resampled audio from ${originalSampleRate}kHz to ${TARGET_SAMPLE_RATE}kHz (length: ${audioData.length} -> ${resampled.length})`);
-    if (resampled.length === 0 && audioData.length > 0) { // Safeguard
-        self.postMessage({ status: "error", error: `Resampling from ${originalSampleRate}Hz resulted in empty audio.` });
-        return audioData; // Return original to avoid breaking, but it will be wrong SR
-    }
-    return resampled;
-}
-
-
-self.postMessage({ status: "loading" });
-
-// Initialize the pipeline
-(async () => {
-    try {
-        console.log(`[LocalWorker] Initializing pipeline with model: ${MODEL_ID}`);
-        asr = await pipeline(
-            "automatic-speech-recognition",
-            MODEL_ID,
-            {
-                progress_callback: (p: Progress | null) => p && self.postMessage(p),
-                device: device,
-                dtype: dtypeConfig,
-                // No chunking/streaming parameters for single-pass
-            } as any
-        );
-        console.log("[LocalWorker] Pipeline initialized successfully.");
-        self.postMessage({ status: "ready" });
-    } catch (pipelineError) {
-        console.error("[LocalWorker] Pipeline initialization failed:", pipelineError);
-        self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
-    }
-})();
-
-self.addEventListener("message", async (e) => {
-    const { type, data } = e.data ?? {}; // Common structure for data
-
-    if (type === "init") {
-        if (data?.sab) {
-            try {
-                ringBuffer = new RingBuffer(data.sab);
-                console.log("[LocalWorker] RingBuffer initialized with SharedArrayBuffer.");
-                self.postMessage({ status: "sab_initialized" });
-            } catch (error) {
-                console.error("[LocalWorker] Failed to initialize RingBuffer:", error);
-                self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
-            }
-        } else {
-            console.error("[LocalWorker] 'init' message received without SharedArrayBuffer (sab).");
-            self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided for RingBuffer." });
-        }
-        return;
-    }
-
-    if (type === "start-capture") {
-        if (!ringBuffer) {
-            self.postMessage({ status: "error", error: "RingBuffer not initialized. Send 'init' with SAB first." });
-            return;
-        }
-        ringBuffer.reset(); // Clear any old data
-        isCapturing = true;
-        console.log("[LocalWorker] Capture started. Ready to receive audio via SAB.");
-        self.postMessage({ status: "capture_started" });
-        return;
-    }
-
-    if (type === "stop-capture-and-transcribe") {
-        if (!asr) {
-            self.postMessage({ status: "error", error: "ASR model not ready." });
-            return;
-        }
-        if (busy) {
-            self.postMessage({ status: "error", error: "Worker is busy with another transcription." });
-            return;
-        }
-        if (!ringBuffer) {
-            self.postMessage({ status: "error", error: "RingBuffer not initialized." });
-            return;
-        }
-        isCapturing = false;
-        busy = true;
-        self.postMessage({ status: "processing_full_audio" });
-        console.log("[LocalWorker] Stopping capture. Reading full audio from RingBuffer for single-pass transcription.");
-
-        // It's assumed the main thread controls the AudioWorklet and stops writing to SAB.
-        // Here, we read everything that's been written.
-        const available = ringBuffer.availableRead();
-        let capturedAudio: Float32Array;
-
-        if (available > 0) {
-            const tempBuffer = new Float32Array(available);
-            ringBuffer.read(tempBuffer); // read into tempBuffer and it returns null
-            capturedAudio = tempBuffer;
-        } else {
-            capturedAudio = new Float32Array(0);
-        }
-        
-        if (!capturedAudio || capturedAudio.length === 0) {
-            console.warn("[LocalWorker] No audio data captured from RingBuffer.");
-            self.postMessage({ status: "completed", transcription: "" }); // Send empty if no audio
-            busy = false;
-            return;
-        }
-
-        console.log(`[LocalWorker] Read ${capturedAudio.length} samples from RingBuffer.`);
-        // The RingBuffer should be storing 16kHz audio directly if AudioContext is 16kHz.
-        // The `originalSampleRate` parameter here is for the audio *from the RingBuffer*.
-        // If the AudioContext feeding the SAB is 16kHz, this will be 16000.
-        const originalSampleRate = data?.sampleRate || TARGET_SAMPLE_RATE; // Expect sampleRate from caller or default to 16k
-
-        try {
-            // Resample if necessary. If audio from RingBuffer is already 16kHz, this will be a no-op.
-            const audioToTranscribe = resampleTo16kHz(capturedAudio, originalSampleRate);
-
-            if (audioToTranscribe.length === 0 && capturedAudio.length > 0) {
-                 console.error("[LocalWorker] Resampling resulted in empty audio. Cannot transcribe.");
-                 self.postMessage({ status: "error", error: "Resampling failed, resulting in empty audio." });
-                 busy = false;
-                 return;
-            }
-
-            const tAsrStart = performance.now();
-            const result = await asr(audioToTranscribe, {} as any); 
-            const tAsrEnd = performance.now();
-
-            const transcription = (result.text || "").trim();
-            console.log(`[LocalWorker] Single-pass ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Transcription: "${transcription}"`);
-            self.postMessage({ status: "completed", transcription });
-
-        } catch (err) {
-            console.error('[LocalWorker] ASR pipeline error during transcription:', err);
-            self.postMessage({ status: "error", error: "Transcription failed in worker." });
-        } finally {
-            busy = false;
-        }
-    }
-});
-
-// Log any unhandled errors within the worker
-self.onerror = (event) => {
-    console.error("[LocalWorker] Unhandled error in worker:", event);
-    self.postMessage({ status: "error", error: "An unexpected error occurred in the worker." });
-};
-
-self.onunhandledrejection = (event) => {
-    console.error("[LocalWorker] Unhandled promise rejection in worker:", event);
-    self.postMessage({ status: "error", error: "An unexpected promise rejection occurred in the worker." });
-};
-
-console.log("[LocalWorker] Event listener added. Worker script loaded and ready for messages.");
-</file>
-
 <file path="vite.preload.config.ts">
 import { defineConfig } from 'vite';
 import path from 'node:path';
@@ -526,104 +161,6 @@ export default defineConfig({
     emptyOutDir: false, // Set to false if other build steps use the same outDir
   },
 });
-</file>
-
-<file path=".gitignore">
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# Diagnostic reports (https://nodejs.org/api/report.html)
-report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-.DS_Store
-
-# Directory for instrumented libs generated by jscoverage/JSCover
-lib-cov
-
-# Coverage directory used by tools like istanbul
-coverage
-*.lcov
-
-# nyc test coverage
-.nyc_output
-
-# node-waf configuration
-.lock-wscript
-
-# Compiled binary addons (https://nodejs.org/api/addons.html)
-build/Release
-
-# Dependency directories
-node_modules/
-jspm_packages/
-
-# TypeScript v1 declaration files
-typings/
-
-# TypeScript cache
-*.tsbuildinfo
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.test
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-
-# next.js build output
-.next
-
-# nuxt.js build output
-.nuxt
-
-# vuepress build output
-.vuepress/dist
-
-# Serverless directories
-.serverless/
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# Webpack
-.webpack/
-
-# Vite
-.vite/
-
-# Electron-Forge
-out/
-
-fin.md
-implementation-reference.md
 </file>
 
 <file path=".repomixignore">
@@ -1656,6 +1193,105 @@ export default defineConfig({
 })
 </file>
 
+<file path=".gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+.DS_Store
+
+# Directory for instrumented libs generated by jscoverage/JSCover
+lib-cov
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript v1 declaration files
+typings/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+.env.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# Webpack
+.webpack/
+
+# Vite
+.vite/
+
+# Electron-Forge
+out/
+
+fin.md
+implementation-reference.md
+</file>
+
 <file path="src/notification-preload.js">
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -1675,6 +1311,428 @@ ipcRenderer.on('set-notification-message', (event, message) => {
     console.error('[Preload Notification] Could not find #message element in notification window!');
   }
 });
+</file>
+
+<file path="src/workers/groq-transcriber.ts">
+import Groq from 'groq-sdk';
+import fs from 'node:fs';
+import path from 'node:path';
+import { app } from 'electron';
+import { v4 as uuidv4 } from 'uuid';
+
+// Get API key from environment variable
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+
+// Log API key status (not the actual key) for debugging during startup
+if (app.isPackaged) {
+  console.log(`GROQ_API_KEY is ${GROQ_API_KEY ? 'set (production mode)' : 'not set (production mode)'}`);
+} else {
+  // In development, be more explicit if the key is missing, as it's crucial.
+  if (!GROQ_API_KEY) {
+    console.warn('GROQ_API_KEY is not set. Please check your .env file or environment variables.');
+  } else {
+    console.log('GROQ_API_KEY is set (development mode).');
+  }
+}
+
+
+// Temporary directory for storing audio files
+// Ensure TEMP_DIR is initialized only after app is ready to avoid issues with getPath
+let TEMP_DIR: string;
+
+function initializeTempDir() {
+  if (!TEMP_DIR) {
+    TEMP_DIR = path.join(app.getPath('temp'), 'sonic-flow-audio');
+    if (!fs.existsSync(TEMP_DIR)) {
+      fs.mkdirSync(TEMP_DIR, { recursive: true });
+    }
+  }
+}
+
+// Call this when app is ready, or before first transcription
+// For simplicity in this module, we can rely on app being ready when transcribeAudio is called,
+// or initialize it lazily. Let's ensure it's initialized before first use.
+
+/**
+ * Transcribes audio using Groq API.
+ * @param audioBuffer The audio data as a Buffer.
+ * @param inputLanguage The language of the audio (e.g., "en").
+ * @returns Promise that resolves with the transcription text.
+ */
+export async function transcribeAudioWithGroq(audioBuffer: Buffer, inputLanguage: string = "en"): Promise<string> {
+  initializeTempDir(); // Ensure temp directory is ready
+
+  // Check for API key at the time of function call.
+  const apiKey = process.env.GROQ_API_KEY || '';
+  if (!apiKey) {
+    console.error('GROQ_API_KEY is not set at the time of transcription. Please ensure it is loaded.');
+    throw new Error('GROQ_API_KEY is not set. Transcription cannot proceed.');
+  }
+
+  // Initialize Groq client here to ensure it uses the most current API key.
+  // This is useful if the key might be loaded or changed after module initialization.
+  const groq = new Groq({
+    apiKey: apiKey,
+  });
+
+  const tempFilePath = path.join(TEMP_DIR, `${uuidv4()}.webm`); // Changed from .wav to .webm
+
+  try {
+    console.log(`[GroqTranscriber] Writing audio buffer to temporary file: ${tempFilePath} (${audioBuffer.length} bytes)`);
+    fs.writeFileSync(tempFilePath, audioBuffer);
+
+    const fileStats = fs.statSync(tempFilePath);
+    if (fileStats.size === 0) {
+      console.error('[GroqTranscriber] Temporary audio file is empty.');
+      throw new Error('Temporary audio file is empty.');
+    }
+
+    console.log(`[GroqTranscriber] Transcribing audio file: ${tempFilePath} with model distil-whisper-large-v3-en`);
+    const fileStream = fs.createReadStream(tempFilePath);
+
+    const transcription = await groq.audio.transcriptions.create({
+      file: fileStream, // Pass the stream
+      model: "distil-whisper-large-v3-en", // Using the model from prod plan's example
+      language: inputLanguage,
+      response_format: "json", // 'json', 'text', 'srt', 'verbose_json', or 'vtt'
+      temperature: 0.0, // Optional: for determinism
+    });
+
+    console.log('[GroqTranscriber] Transcription successful.');
+
+    if (!transcription.text) {
+      console.error('[GroqTranscriber] Transcription response does not contain text.');
+      throw new Error('Transcription response does not contain text.');
+    }
+    
+    return transcription.text;
+
+  } catch (error) {
+    console.error('[GroqTranscriber] Error during transcription:', error);
+    // Try to provide more specific error feedback if possible
+    if (error.response && error.response.data) {
+        console.error('[GroqTranscriber] Groq API Error Data:', error.response.data);
+    }
+    throw error; // Re-throw the error to be caught by the caller
+  } finally {
+    // Clean up the temporary file
+    if (fs.existsSync(tempFilePath)) {
+      try {
+        console.log(`[GroqTranscriber] Deleting temporary file: ${tempFilePath}`);
+        fs.unlinkSync(tempFilePath);
+      } catch (cleanupError) {
+        console.error(`[GroqTranscriber] Error deleting temporary file ${tempFilePath}:`, cleanupError);
+      }
+    }
+  }
+}
+
+/**
+ * Cleans up all temporary audio files in the Sonic Flow temp directory.
+ * This can be called on application quit or at other appropriate times.
+ */
+export function cleanupAllTempAudioFiles(): void {
+  initializeTempDir(); // Ensure TEMP_DIR is known
+  if (fs.existsSync(TEMP_DIR)) {
+    console.log(`[GroqTranscriber] Cleaning up all temporary files in ${TEMP_DIR}`);
+    fs.readdir(TEMP_DIR, (err, files) => {
+      if (err) {
+        console.error(`[GroqTranscriber] Error reading temp directory ${TEMP_DIR} for cleanup:`, err);
+        return;
+      }
+      for (const file of files) {
+        const filePath = path.join(TEMP_DIR, file);
+        fs.unlink(filePath, unlinkErr => {
+          if (unlinkErr) {
+            console.error(`[GroqTranscriber] Error deleting temp file ${filePath}:`, unlinkErr);
+          } else {
+            console.log(`[GroqTranscriber] Deleted temp file: ${filePath}`);
+          }
+        });
+      }
+    });
+  }
+}
+
+// It might be good practice to call cleanup on app exit.
+// This can be hooked into main.ts:
+// app.on('will-quit', cleanupAllTempAudioFiles);
+</file>
+
+<file path="src/workers/local-worker.ts">
+import {
+    pipeline,
+    env,
+    // @ts-ignore Progress type might be nested or different now
+    Progress
+} from "@huggingface/transformers";
+import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
+
+const MODEL_ID = "onnx-community/moonshine-tiny-ONNX";
+
+// Define type for Dtype configuration
+type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "int8">;
+
+// Define dtype configurations based on device with explicit typing
+const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
+  wasm: {
+    encoder_model: "q8", // Using fp16 for encoder as per original
+    decoder_model_merged: "q8", // WASM might benefit from q8
+  },
+};
+
+const device = 'wasm'; // Force WASM backend
+const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
+
+console.log("[LocalWorker] using WASM backend");
+
+let asr: any | null = null;
+let busy = false; // To track if a transcription is in progress
+let ringBuffer: RingBuffer | null = null;
+let isCapturing = false;
+
+const TARGET_SAMPLE_RATE = 16000;
+
+// Placeholder for a simple resampling function
+// Input: Float32Array audio data, original sample rate
+// Output: Float32Array audio data at TARGET_SAMPLE_RATE
+function resampleTo16kHz(audioData: Float32Array, originalSampleRate: number): Float32Array {
+    if (originalSampleRate === TARGET_SAMPLE_RATE) {
+        return audioData;
+    }
+    if (originalSampleRate === 48000 && TARGET_SAMPLE_RATE === 16000) {
+        // Simple downsampling: take every 3rd sample
+        const newLength = Math.floor(audioData.length / 3);
+        const newData = new Float32Array(newLength);
+        for (let i = 0; i < newLength; i++) {
+            newData[i] = audioData[i * 3];
+        }
+        console.log(`[LocalWorker] Resampled audio from 48kHz to 16kHz (length: ${audioData.length} -> ${newData.length})`);
+        return newData;
+    }
+    // Add more sophisticated resampling or other cases if needed
+    console.warn(`[LocalWorker] Resampling from ${originalSampleRate}Hz to ${TARGET_SAMPLE_RATE}Hz not fully supported. Attempting naive resampling or returning original.`);
+    // Naive resampling for other rates (e.g. 44100 to 16000)
+    // This is a placeholder and might produce poor quality audio.
+    // A proper library should be used for production quality.
+    const ratio = originalSampleRate / TARGET_SAMPLE_RATE;
+    if (ratio <= 0) return audioData; // Should not happen
+
+    const newLength = Math.floor(audioData.length / ratio);
+    const resampled = new Float32Array(newLength);
+    for (let i = 0; i < newLength; i++) {
+        // Simple nearest neighbor, can be improved with linear interpolation etc.
+        resampled[i] = audioData[Math.floor(i * ratio)];
+    }
+    console.log(`[LocalWorker] Naively resampled audio from ${originalSampleRate}kHz to ${TARGET_SAMPLE_RATE}kHz (length: ${audioData.length} -> ${resampled.length})`);
+    if (resampled.length === 0 && audioData.length > 0) { // Safeguard
+        self.postMessage({ status: "error", error: `Resampling from ${originalSampleRate}Hz resulted in empty audio.` });
+        return audioData; // Return original to avoid breaking, but it will be wrong SR
+    }
+    return resampled;
+}
+
+// No immediate pipeline initialization here.
+// Worker will wait for 'initialize-local-asr' message.
+
+self.addEventListener("message", async (e) => {
+    const { type, data } = e.data ?? {}; // Common structure for data
+
+    if (type === "init") {
+        if (data?.sab) {
+            try {
+                ringBuffer = new RingBuffer(data.sab);
+                console.log("[LocalWorker] RingBuffer initialized with SharedArrayBuffer.");
+                self.postMessage({ status: "sab_initialized" });
+            } catch (error) {
+                console.error("[LocalWorker] Failed to initialize RingBuffer:", error);
+                self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
+            }
+        } else {
+            console.error("[LocalWorker] 'init' message received without SharedArrayBuffer (sab).");
+            self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided for RingBuffer." });
+        }
+        return;
+    }
+
+    if (type === "initialize-local-asr") {
+        if (asr) {
+            console.log("[LocalWorker] ASR pipeline already initialized.");
+            self.postMessage({ status: "asr_model_ready" }); // Inform host it's ready
+            return;
+        }
+        if (busy) { // Check if already busy with initialization
+            console.warn("[LocalWorker] Already busy initializing ASR pipeline.");
+            return;
+        }
+        busy = true;
+        self.postMessage({ status: "asr_model_loading" });
+        console.log(`[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`);
+        try {
+            asr = await pipeline(
+                "automatic-speech-recognition",
+                MODEL_ID,
+                {
+                    progress_callback: (p: Progress | null) => p && self.postMessage({ ...p, status: 'model_progress'}), // Send progress with a distinct status
+                    device: device,
+                    dtype: dtypeConfig,
+                } as any
+            );
+            console.log("[LocalWorker] ASR Pipeline initialized successfully.");
+            self.postMessage({ status: "asr_model_ready" });
+        } catch (pipelineError) {
+            console.error("[LocalWorker] ASR Pipeline initialization failed:", pipelineError);
+            self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
+            asr = null; // Ensure asr is null if init fails
+        } finally {
+            busy = false;
+        }
+        return;
+    }
+
+    if (type === "start-capture") {
+        if (!ringBuffer) {
+            self.postMessage({ status: "error", error: "RingBuffer not initialized. Send 'init' with SAB first." });
+            return;
+        }
+        ringBuffer.reset(); // Clear any old data
+        isCapturing = true;
+        console.log("[LocalWorker] Capture started. Ready to receive audio via SAB.");
+        self.postMessage({ status: "capture_started" });
+        return;
+    }
+
+    if (type === "stop-capture-and-transcribe") {
+        if (!asr) {
+            self.postMessage({ status: "error", error: "ASR model not ready." });
+            return;
+        }
+        if (busy) {
+            self.postMessage({ status: "error", error: "Worker is busy with another transcription." });
+            return;
+        }
+        if (!ringBuffer) {
+            self.postMessage({ status: "error", error: "RingBuffer not initialized." });
+            return;
+        }
+        isCapturing = false;
+        busy = true;
+        self.postMessage({ status: "processing_full_audio" });
+        console.log("[LocalWorker] Stopping capture. Reading full audio from RingBuffer for single-pass transcription.");
+
+        // It's assumed the main thread controls the AudioWorklet and stops writing to SAB.
+        // Here, we read everything that's been written.
+        const available = ringBuffer.availableRead();
+        let capturedAudio: Float32Array;
+
+        if (available > 0) {
+            const tempBuffer = new Float32Array(available);
+            ringBuffer.read(tempBuffer); // read into tempBuffer and it returns null
+            capturedAudio = tempBuffer;
+        } else {
+            capturedAudio = new Float32Array(0);
+        }
+        
+        if (!capturedAudio || capturedAudio.length === 0) {
+            console.warn("[LocalWorker] No audio data captured from RingBuffer.");
+            self.postMessage({ status: "completed", transcription: "" }); // Send empty if no audio
+            busy = false;
+            return;
+        }
+
+        console.log(`[LocalWorker] Read ${capturedAudio.length} samples from RingBuffer.`);
+        // The RingBuffer should be storing 16kHz audio directly if AudioContext is 16kHz.
+        // The `originalSampleRate` parameter here is for the audio *from the RingBuffer*.
+        // If the AudioContext feeding the SAB is 16kHz, this will be 16000.
+        const originalSampleRate = data?.sampleRate || TARGET_SAMPLE_RATE; // Expect sampleRate from caller or default to 16k
+
+        try {
+            // Resample if necessary. If audio from RingBuffer is already 16kHz, this will be a no-op.
+            const audioToTranscribe = resampleTo16kHz(capturedAudio, originalSampleRate);
+
+            if (audioToTranscribe.length === 0 && capturedAudio.length > 0) {
+                 console.error("[LocalWorker] Resampling resulted in empty audio. Cannot transcribe.");
+                 self.postMessage({ status: "error", error: "Resampling failed, resulting in empty audio." });
+                 busy = false;
+                 return;
+            }
+
+            const tAsrStart = performance.now();
+            const result = await asr(audioToTranscribe, {} as any); 
+            const tAsrEnd = performance.now();
+
+            const transcription = (result.text || "").trim();
+            console.log(`[LocalWorker] Single-pass ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Transcription: "${transcription}"`);
+            self.postMessage({ status: "completed", transcription });
+
+        } catch (err) {
+            console.error('[LocalWorker] ASR pipeline error during transcription:', err);
+            self.postMessage({ status: "error", error: "Transcription failed in worker." });
+        } finally {
+            busy = false;
+        }
+        return; // Ensure we don't fall through
+    }
+
+    // NEW: Handler to get raw audio buffer for cloud processing
+    if (type === "stop-capture-and-get-buffer") {
+        if (!ringBuffer) {
+            self.postMessage({ status: "error", error: "RingBuffer not initialized." });
+            return;
+        }
+        if (busy) { // Still check busy flag to avoid race conditions if it were used more broadly
+            self.postMessage({ status: "error", error: "Worker is busy." });
+            return;
+        }
+
+        isCapturing = false;
+        busy = true; // Mark as busy while extracting audio
+        
+        console.log("[LocalWorker] Stopping capture. Reading full audio from RingBuffer to send raw.");
+
+        const available = ringBuffer.availableRead();
+        let capturedAudio: Float32Array;
+
+        if (available > 0) {
+            const tempBuffer = new Float32Array(available);
+            ringBuffer.read(tempBuffer);
+            capturedAudio = tempBuffer;
+        } else {
+            capturedAudio = new Float32Array(0);
+        }
+        
+        if (!capturedAudio || capturedAudio.length === 0) {
+            console.warn("[LocalWorker] No audio data captured from RingBuffer for raw export.");
+            // Send an empty buffer if no audio, or an error?
+            // For now, send it and let the receiver decide.
+        }
+        
+        const sampleRateToReport = data?.sampleRate || TARGET_SAMPLE_RATE;
+        console.log(`[LocalWorker] Read ${capturedAudio.length} raw samples from RingBuffer. Reporting sample rate: ${sampleRateToReport}Hz.`);
+        
+        self.postMessage({ 
+            status: "raw_audio_buffer_ready", 
+            audio: capturedAudio, // Send Float32Array directly
+            sampleRate: sampleRateToReport 
+        });
+        
+        busy = false;
+        return;
+    }
+});
+
+// Log any unhandled errors within the worker
+self.onerror = (event) => {
+    console.error("[LocalWorker] Unhandled error in worker:", event);
+    self.postMessage({ status: "error", error: "An unexpected error occurred in the worker." });
+};
+
+self.onunhandledrejection = (event) => {
+    console.error("[LocalWorker] Unhandled promise rejection in worker:", event);
+    self.postMessage({ status: "error", error: "An unexpected promise rejection occurred in the worker." });
+};
+
+console.log("[LocalWorker] Event listener added. Worker script loaded and ready for messages.");
 </file>
 
 <file path="vite.main.config.ts">
@@ -2055,47 +2113,6 @@ export const Constants = {
   RING_BUFFER_SAMPLE_CAPACITY,
   RING_BUFFER_SIZE_BYTES
 };
-</file>
-
-<file path="src/preload.ts">
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-
-import { contextBridge, ipcRenderer } from 'electron';
-
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electron', {
-  toggleDictation: (callback: () => void) => {
-    // Remove any existing listeners to prevent duplicates
-    ipcRenderer.removeAllListeners('toggle-dictation');
-    // Add the new listener
-    ipcRenderer.on('toggle-dictation', () => callback());
-    
-    // Return a cleanup function that can be called when the component unmounts
-    return () => {
-      ipcRenderer.removeAllListeners('toggle-dictation');
-    };
-  },
-  showPillContextMenu: () => {
-    ipcRenderer.send('show-context-menu');
-  },
-  insertTextAtCursor: (text: string) => {
-    return ipcRenderer.invoke('insert-text-at-cursor', text);
-  },
-  // Method to view the log file
-  viewLogFile: () => {
-    return ipcRenderer.invoke('view-log-file');
-  },
-  // Add a method for the renderer to request a notification
-  sendNotification: (message: string) => {
-    ipcRenderer.send('show-notification', message);
-  },
-  // Method for Groq transcription
-  transcribeGroq: (audioBuffer: ArrayBuffer) => {
-    return ipcRenderer.invoke('transcribe-groq', audioBuffer);
-  }
-});
 </file>
 
 <file path="src/components/HomePage.tsx">
@@ -2487,6 +2504,47 @@ const HomePage: React.FC = () => {
 };
 
 export default React.memo(HomePage);
+</file>
+
+<file path="src/preload.ts">
+// See the Electron documentation for details on how to use preload scripts:
+// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
+
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electron', {
+  toggleDictation: (callback: () => void) => {
+    // Remove any existing listeners to prevent duplicates
+    ipcRenderer.removeAllListeners('toggle-dictation');
+    // Add the new listener
+    ipcRenderer.on('toggle-dictation', () => callback());
+    
+    // Return a cleanup function that can be called when the component unmounts
+    return () => {
+      ipcRenderer.removeAllListeners('toggle-dictation');
+    };
+  },
+  showPillContextMenu: () => {
+    ipcRenderer.send('show-context-menu');
+  },
+  insertTextAtCursor: (text: string) => {
+    return ipcRenderer.invoke('insert-text-at-cursor', text);
+  },
+  // Method to view the log file
+  viewLogFile: () => {
+    return ipcRenderer.invoke('view-log-file');
+  },
+  // Add a method for the renderer to request a notification
+  sendNotification: (message: string) => {
+    ipcRenderer.send('show-notification', message);
+  },
+  // Method for Groq transcription
+  transcribeGroq: (audioBuffer: ArrayBuffer) => {
+    return ipcRenderer.invoke('transcribe-groq', audioBuffer);
+  }
+});
 </file>
 
 <file path="src/components/App.tsx">
@@ -3220,6 +3278,7 @@ This document tracks performance measurements for different implementations of t
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^16.5.0",
     "electron-squirrel-startup": "^1.0.1",
     "form-data": "^4.0.2",
     "framer-motion": "^12.7.4",
@@ -3247,344 +3306,460 @@ const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
-  processing: boolean; // This will indicate processing by Groq or local worker
-  ready: boolean; // Indicates if the system (mic, initial worker/engine setup) is ready
-  text: string; 
+  processing: boolean;
+  ready: boolean;
+  text: string;
   error: string | null;
   start: () => void;
-  stop: () => void; // stop will now trigger Groq if that's the mode
-  // Add a mode switcher if complex, for now, assume Groq is primary after audio capture
+  stop: () => void;
+  currentMode: 'local' | 'cloud';
+  setMode: (mode: 'local' | 'cloud') => void;
+}
+
+// Helper function to encode Float32Array to WAV ArrayBuffer
+function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
+  const numChannels = 1;
+  const bitsPerSample = 16; // 16-bit PCM
+  const bytesPerSample = bitsPerSample / 8;
+
+  const dataSize = samples.length * numChannels * bytesPerSample;
+  const fileSize = 44 + dataSize; // 44 bytes for header
+
+  const buffer = new ArrayBuffer(fileSize);
+  const view = new DataView(buffer);
+
+  function writeString(offset: number, str: string) {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  }
+
+  // RIFF header
+  writeString(0, 'RIFF');
+  view.setUint32(4, fileSize - 8, true); // fileSize - 8
+  writeString(8, 'WAVE');
+
+  // fmt chunk
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+  view.setUint16(20, 1, true);  // AudioFormat (1 for PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byteRate
+  view.setUint16(32, numChannels * bytesPerSample, true); // blockAlign
+  view.setUint16(34, bitsPerSample, true);
+
+  // data chunk
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Write PCM samples
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i])); // Clamp to [-1, 1]
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true); // Convert to 16-bit signed int
+  }
+  return buffer;
 }
 
 export function useTranscription(): UseTranscriptionReturn {
-  const workerRef = useRef<Worker | null>(null);
-  // --- Removed MediaRecorder refs ---
-  // const recorderRef = useRef<MediaRecorder | null>(null);
-  // const audioChunksRef = useRef<Blob[]>([]);
-  // --- Added AudioWorklet refs ---
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
+  const localWorkerRef = useRef<Worker | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null); // For local AudioWorklet path
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const sabRef = useRef<SharedArrayBuffer | null>(null); // To hold the SharedArrayBuffer
-  const streamRef = useRef<MediaStream | null>(null); // Keep track of the mic stream
-  const audioSampleRateRef = useRef<number>(TARGET_AUDIO_CONTEXT_RATE); // Store the sample rate
+  const sabRef = useRef<SharedArrayBuffer | null>(null);
+  const localAudioSampleRateRef = useRef<number>(TARGET_AUDIO_CONTEXT_RATE);
 
-  // --- State Variables ---
-  // const [stream, setStream] = useState<MediaStream | null>(null); // Use ref instead
+  // --- Refs for Cloud ASR (MediaRecorder) --
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // --- Common Refs --
+  const streamRef = useRef<MediaStream | null>(null); // Mic stream, shared by both modes
+
+  // --- State Variables --
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud');
 
-  // Refs to track the latest state for potential callbacks (less critical now)
+  // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
-  const textRef = useRef(text); // Add a ref for the current text
+  const textRef = useRef(text);
 
   // Update refs whenever state changes
   useEffect(() => { readyRef.current = ready; }, [ready]);
   useEffect(() => { processingRef.current = processing; }, [processing]);
-  useEffect(() => { textRef.current = text; }, [text]); // Update textRef
+  useEffect(() => { textRef.current = text; }, [text]);
 
-  // --- 1️⃣ Boot local ASR worker (previously moonshine-worker) --- 
+  // --- Effects for Mic Permission (runs for both modes initially) --
   useEffect(() => {
-    if (workerRef.current) return;
-
-    console.log('[useTranscription] Initializing local ASR worker (local-worker.ts)...');
-    // IMPORTANT: Adjust the URL to the new worker path
-    workerRef.current = new Worker(
-      new URL('../workers/local-worker.ts', import.meta.url),
-      { type: 'module' }
-    );
-    
-    // Initialize worker with SharedArrayBuffer once available (see step 2)
-    // This will be handled after AudioContext and SAB are created.
-
-    // Cleanup
+    (async () => {
+      if (streamRef.current) return; // Mic stream already obtained
+      console.log('[useTranscription] Requesting microphone access...');
+      try {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ 
+            audio: { sampleRate: TARGET_AUDIO_CONTEXT_RATE } 
+        });
+        console.log('[useTranscription] Microphone access granted.');
+        setReady(true); // Basic readiness: mic is available.
+      } catch (err) {
+        console.error("[useTranscription] Microphone access error:", err);
+        setError('Microphone permissions denied or microphone not available.');
+        setReady(false);
+      }
+    })();
+    // Cleanup mic stream when component unmounts
     return () => {
-      console.log('[useTranscription] Terminating local ASR worker.');
-      workerRef.current?.terminate();
-      workerRef.current = null;
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      console.log('[useTranscription] Microphone stream stopped on unmount.');
     };
   }, []);
 
-  // --- 2️⃣ Ask for mic & create AudioContext & SAB once --- 
+  // --- Effects for LOCAL ASR WORKER setup (only if mode is local) --
   useEffect(() => {
-    (async () => {
-      if (audioCtxRef.current) return; // Already initialized
-
-      console.log('[useTranscription] Requesting microphone access and preparing AudioContext/SAB...');
-      try {
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ 
-            audio: { sampleRate: TARGET_AUDIO_CONTEXT_RATE } // Request target rate
-        });
-        console.log('[useTranscription] Microphone access granted.');
-
+    if (currentMode === 'local' && !localWorkerRef.current) {
+      console.log('[useTranscription] Local mode: Initializing local ASR worker, AudioContext, SAB...');
+      
+      // Initialize AudioContext for local path
+      if (!audioCtxRef.current) {
         audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
-        audioSampleRateRef.current = audioCtxRef.current.sampleRate; // Store the actual sample rate
-        console.log(`[useTranscription] AudioContext created (Rate: ${audioSampleRateRef.current}Hz).`);
+        localAudioSampleRateRef.current = audioCtxRef.current.sampleRate;
+        console.log(`[useTranscription] Local AudioContext created (Rate: ${localAudioSampleRateRef.current}Hz).`);
+      }
 
-        // Create SharedArrayBuffer for RingBuffer in the worker
-        // Capacity based on RingBuffer's internal constants (e.g., 10 seconds at 16kHz)
-        // This needs to match what RingBuffer expects or be configurable.
-        // For now, let's assume RingBuffer.Constants.RING_BUFFER_SIZE_BYTES can be imported or known.
-        // Let's use a placeholder size if not directly importable here.
-        // RingBuffer constructor in worker can also create it if no SAB is passed, but we want to create it here.
-        // The RingBuffer class itself defines RING_BUFFER_SAMPLE_CAPACITY.
-        // static getByteLength(capacity: number): number { return (capacity * Float32Array.BYTES_PER_ELEMENT) + 4; }
-        // const RING_BUFFER_SAMPLE_CAPACITY = 16000 * 10; // 10 seconds at 16kHz
-        // const sabSizeBytes = (RING_BUFFER_SAMPLE_CAPACITY * Float32Array.BYTES_PER_ELEMENT) + 4;
-        // This logic should ideally use the same constants as RingBuffer.ts to avoid mismatch.
-        // For now, let worker handle SAB creation if none is passed, or ensure size matches.
-        // The `local-worker.ts` expects a SAB. Let's use a known size from `RingBuffer.ts` (16000 * 10 samples)
-        const sabCapacity = 16000 * 10; // samples for 10 seconds
+      // Initialize SAB for local path
+      if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
+        const sabCapacity = 16000 * 10; // samples for 10 seconds (as in local-worker)
         const sabSizeBytes = (sabCapacity * Float32Array.BYTES_PER_ELEMENT) + Int32Array.BYTES_PER_ELEMENT;
-
         sabRef.current = new SharedArrayBuffer(sabSizeBytes);
-        console.log(`[useTranscription] SharedArrayBuffer created (${sabSizeBytes} bytes).`);
-
-        // Now, init the worker with the SAB
-        if (workerRef.current && sabRef.current) {
-            workerRef.current.postMessage({ 
-                type: 'init', 
-                data: { sab: sabRef.current }
-            });
-        } else {
-            console.error("[useTranscription] Worker or SAB not ready for init message.");
-            setError("Failed to initialize worker with audio buffer.");
-        }
-
-      } catch (err) {
-        console.error("[useTranscription] Microphone access or AudioContext/SAB creation error:", err);
-        setError('Microphone permissions denied or AudioContext/SAB failed.');
-        streamRef.current = null;
+        console.log(`[useTranscription] Local SharedArrayBuffer created (${sabSizeBytes} bytes).`);
+      } else if (typeof SharedArrayBuffer === 'undefined') {
+        console.error('[useTranscription] Local mode: SharedArrayBuffer is not supported. Local ASR will not work.');
+        setError('SharedArrayBuffer not supported, local ASR disabled.');
+        return; // Cannot proceed with local setup
       }
-    })();
 
-    // Cleanup (already handles stream and AudioContext)
-    return () => {
-      console.log('[useTranscription] Cleaning up stream and AudioContext...');
-      // Stop stream tracks if they exist
-      streamRef.current?.getTracks().forEach(track => track.stop());
-      // Close AudioContext if it exists
-      audioCtxRef.current?.close().catch(console.error);
+      // Initialize Local Worker
+      localWorkerRef.current = new Worker(
+        new URL('../workers/local-worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+      console.log('[useTranscription] Local ASR worker instance created.');
 
-      // Clear refs on cleanup
-      streamRef.current = null;
-      audioCtxRef.current = null;
-      // Also clear worklet/source refs if they exist (though they are managed by start/stop now)
-      workletNodeRef.current = null;
-      microphoneSourceRef.current = null;
-      sabRef.current = null; // Clear SAB ref on unmount
-    };
-  }, []); // Runs once on mount
+      // Send INIT message to local worker with SAB
+      if (sabRef.current) {
+        localWorkerRef.current.postMessage({ 
+            type: 'init', 
+            data: { sab: sabRef.current }
+        });
+      } else {
+        console.error("[useTranscription] Local SAB not ready for init message to worker.");
+        setError("Failed to initialize local worker with audio buffer.");
+        localWorkerRef.current.terminate();
+        localWorkerRef.current = null;
+        return;
+      }
+      
+      // Send message to load local ASR model
+      localWorkerRef.current.postMessage({ type: 'initialize-local-asr' });
+      // `ready` state for local will be set true by worker message 'asr_model_ready'
+      setReady(false); // Set to false until local model confirms readiness
+      setProcessing(true); // Indicate local model loading
 
-  // --- 3️⃣ Worker Message Handler (from local-worker.ts) --- 
-  useEffect(() => {
-    if (!workerRef.current) return;
-
-    const onMessageReceived = async (e: MessageEvent) => {
-      console.log('[useTranscription] local-worker message:', e.data); 
-      const status = e.data?.status;
-      const workerError = e.data?.error;
-      const transcription = e.data?.transcription;
-
-      switch (status) {
-        case 'loading':
-          setReady(false);
-          setProcessing(true); 
-          setError(null);
-          setText('');
-          break;
-        case 'sab_initialized': // Worker confirms SAB is received
-          console.log('[useTranscription] Local worker confirmed SAB initialization.');
-          // Potentially set a specific state indicating SAB is ready in worker
-          break;
-        case 'ready': // ASR Model in worker is ready
-          setReady(true); // Worker's ASR model is ready
-          setProcessing(false);
-          setError(null);
-          console.log('[useTranscription] Local ASR worker model ready.');
-          break;
-        case 'capture_started':
-            console.log('[useTranscription] Worker confirmed capture started.');
-            // UI already set to recording via setRecording(true) in start()
+      // Add message listener for the local worker
+      const localWorkerListener = (e: MessageEvent) => {
+        console.log('[useTranscription] Message from local-worker:', e.data);
+        const { status, transcription, error: workerError } = e.data;
+        switch (status) {
+          case 'sab_initialized':
+            console.log('[useTranscription] Local worker confirmed SAB init.');
             break;
-        case 'processing_full_audio':
-            console.log('[useTranscription] Worker is processing full audio.');
-            setProcessing(true); // Indicate processing in UI
+          case 'asr_model_loading':
+            setProcessing(true);
+            setReady(false);
+            setText('');
+            setError(null);
+            console.log('[useTranscription] Local ASR model loading...');
             break;
-        case 'completed': // Local transcription completed
-          if (typeof transcription === 'string') {
-            console.log(`[useTranscription] Local transcription received: "${transcription.substring(0,100)}..."`);
-            setText(transcription);
-            // Insert text if electron API is available (as per original logic)
+          case 'asr_model_ready':
+            setProcessing(false);
+            setReady(true);
+            setError(null);
+            console.log('[useTranscription] Local ASR model ready.');
+            break;
+          case 'capture_started': // Handled by local worker
+            break;
+          case 'processing_full_audio': // Local worker processing
+            setProcessing(true);
+            break;
+          case 'completed': // Local transcription complete
+            setText(transcription || '');
             if (transcription && window.electron?.insertTextAtCursor) {
-               window.electron.insertTextAtCursor(transcription)
-                 .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
+              window.electron.insertTextAtCursor(transcription)
+                .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
             }
-          } else {
-            console.warn('[useTranscription] Received completed status without transcription text.');
-            setText(''); // Clear text if transcription is not a string
-          }
-          setProcessing(false);
-          break;
-        case 'error': 
-          setError(String(workerError || 'Local ASR worker error'));
-          setProcessing(false);
-          setReady(false); // If worker errors, it might not be ready
-          break;
-        default:
-          // This replaces the old 'final-audio-buffer' case for local fallback
-          // The Groq logic will need to be re-introduced with a mode switch
-          if (status === 'final-audio-buffer') {
-             console.warn(`[useTranscription] Received unexpected 'final-audio-buffer' from local-worker. This should be handled by cloud path.`);
-          } else {
-             console.warn('[useTranscription] Unknown local-worker status:', status);
-          }
-          break;
+            setProcessing(false);
+            break;
+          case 'error':
+            setError(String(workerError || 'Local ASR worker error'));
+            setProcessing(false);
+            setReady(false);
+            break;
+          default:
+            console.warn('[useTranscription] Unknown message from local-worker:', e.data);
+        }
+      };
+      localWorkerRef.current.addEventListener('message', localWorkerListener);
+
+      // Cleanup for local worker path
+      return () => {
+        console.log('[useTranscription] Cleaning up local ASR worker and AudioContext.');
+        localWorkerRef.current?.terminate();
+        localWorkerRef.current = null;
+        audioCtxRef.current?.close().catch(console.error);
+        audioCtxRef.current = null;
+        // SAB and streamRef are managed by their own effects or refs
+        // workletNode and microphoneSourceRef are cleaned up in stop() for local mode
+        setReady(streamRef.current ? true : false); // Reset ready to mic status if switching away from local
+        setProcessing(false);
+      };
+    } else if (currentMode === 'cloud' && localWorkerRef.current) {
+      // If switching from local to cloud, terminate the local worker and clean up
+      console.log('[useTranscription] Switched to Cloud mode. Terminating local ASR worker.');
+      localWorkerRef.current.terminate();
+      localWorkerRef.current = null;
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(console.error);
+        audioCtxRef.current = null;
       }
-    };
-
-    workerRef.current.addEventListener('message', onMessageReceived);
-
-    return () => {
-      console.log('[useTranscription] Removing local-worker message listener.');
-      workerRef.current?.removeEventListener('message', onMessageReceived);
-    };
-  // }, []); // Original: No dependency on window.electron for listener itself
-  // Re-evaluating dependencies: workerRef changes, but it's stable after first mount.
-  // Adding window.electron to dependencies if its methods are called directly within this effect,
-  // though they are called from within a message handler.
-  // For now, keeping it simple. If `window.electron` itself could change, it should be a dependency.
-  }, [/* workerRef is stable, window.electron assumed stable for now */]);
+      // Reset relevant states
+      setReady(streamRef.current ? true : false); // Cloud ready if mic is available
+      setProcessing(false);
+    }
+  }, [currentMode]);
 
   // --- 4️⃣ Public API ---
   const start = useCallback(async () => {
-    console.log('[useTranscription] start() called.');
+    console.log(`[useTranscription] start() called. Mode: ${currentMode}`);
     if (recording) {
       console.warn('[useTranscription] Already recording.');
       return;
     }
-    // `ready` here means the ASR model in the worker is ready.
-    // We also need AudioContext, SAB, and mic stream.
-    if (!ready || !audioCtxRef.current || !streamRef.current || !sabRef.current) { 
-      const notReadyReason = !ready ? 'ASR model not ready' :
-                             !audioCtxRef.current ? 'AudioContext not ready' :
-                             !streamRef.current ? 'Microphone stream not available' :
-                             !sabRef.current ? 'SharedAudioBuffer not ready' : 'Unknown reason';
-      console.warn(`[useTranscription] Cannot start: ${notReadyReason}.`);
-      setError(`Cannot start recording: ${notReadyReason}. Check permissions and logs.`);
+    if (!streamRef.current) {
+      setError('Microphone stream not available. Cannot start recording.');
+      console.error('[useTranscription] Mic stream not available for start().');
+      setReady(false);
       return;
     }
-
-    if (audioCtxRef.current.state === 'suspended') {
-      console.log('[useTranscription] Resuming AudioContext...');
-      await audioCtxRef.current.resume();
+    // Ensure general readiness (mic) before mode-specific checks
+    if (!ready && currentMode === 'local') { // For local mode, `ready` means model is also ready
+        setError('Local transcription engine not ready.');
+        console.warn('[useTranscription] Local ASR not ready, cannot start.');
+        return;
+    }
+     if (!ready && currentMode === 'cloud') { // For cloud, `ready` means mic is available.
+        setError('Mic not available.'); // Should have been caught by streamRef check
+        console.warn('[useTranscription] Mic not ready for cloud recording.');
+        return;
     }
 
     setError(null);
-    setText(''); // Clear previous transcription
-    
-    try {
-      // Ensure AudioWorklet processor is added
-      // This path is from the original code and assumes 'audio-worklet-processor.js'
-      // It should be compatible with the SAB/RingBuffer approach.
-      const workletPath = new URL('../audio/audio-worklet-processor.js', import.meta.url).toString();
-      // Check if already added to prevent errors (AudioWorklet module can be added only once)
-      // A more robust check might involve inspecting audioCtxRef.current.audioWorklet
-      if (!workletNodeRef.current) { // Simple check, assumes it's null if not added or cleaned up
-          console.log('[useTranscription] Adding AudioWorklet module:', workletPath);
-          await audioCtxRef.current.audioWorklet.addModule(workletPath);
-          console.log('[useTranscription] AudioWorklet module added.');
-      } else {
-          console.log('[useTranscription] AudioWorklet module already added or active.');
-      }
+    setText('');
+    setRecording(true);
 
-      microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
-      workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'audio-worklet-processor', {
-          processorOptions: {
-              sab: sabRef.current, // Pass SAB to worklet
-              // targetSampleRate: audioSampleRateRef.current // Worklet might not need this if it uses AudioContext's rate
+    if (currentMode === 'cloud') {
+      console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
+      audioChunksRef.current = []; // Clear previous chunks
+      try {
+        const options = { mimeType: 'audio/webm' }; // Standard, well-supported
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.warn(`[useTranscription] Fallback: ${options.mimeType} not supported. Trying default MediaRecorder type.`);
+            // Let browser pick a default if webm isn't supported (highly unlikely for audio)
+            mediaRecorderRef.current = new MediaRecorder(streamRef.current);
+        } else {
+            mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
+        }
+        console.log('[useTranscription] MediaRecorder using MIME type:', mediaRecorderRef.current.mimeType);
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+            console.log(`[useTranscription] MediaRecorder data available: ${event.data.size} bytes`);
           }
-      });
-      
-      microphoneSourceRef.current.connect(workletNodeRef.current);
-      // No direct connection to destination needed if worklet only writes to SAB
-      // workletNodeRef.current.connect(audioCtxRef.current.destination); // Only if worklet also outputs audio
+        };
 
-      // Tell local-worker to start capture (it will use the SAB initialized earlier)
-      workerRef.current?.postMessage({ type: 'start-capture' });
-      
-      setRecording(true);
-      console.log('[useTranscription] Recording started. AudioWorklet connected and worker notified.');
+        mediaRecorderRef.current.onstop = async () => {
+          console.log('[useTranscription] MediaRecorder stopped. Processing collected audio chunks.');
+          if (audioChunksRef.current.length === 0) {
+            console.warn('[useTranscription] No audio chunks recorded.');
+            setProcessing(false);
+            // setError('No audio was recorded.'); // Optional: inform user
+            return;
+          }
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' });
+          audioChunksRef.current = []; // Clear for next recording
+          
+          console.log(`[useTranscription] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
+          setProcessing(true);
+          try {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            if (!window.electron?.transcribeGroq) {
+              throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+            }
+            console.log('[useTranscription] Sending audio ArrayBuffer to Groq...');
+            const transcript = await window.electron.transcribeGroq(arrayBuffer);
+            console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`);
+            setText(transcript);
+            if (transcript && window.electron.insertTextAtCursor) {
+              window.electron.insertTextAtCursor(transcript)
+                .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+            }
+          } catch (err: any) {
+            console.error('[useTranscription] Error during Groq transcription IPC or Blob processing:', err);
+            setError(err.message || 'Cloud transcription failed.');
+          } finally {
+            setProcessing(false);
+          }
+        };
 
-    } catch (err) {
-      console.error('[useTranscription] Error starting recording or AudioWorklet setup:', err);
-      setError(`Failed to start recording: ${err.message}`);
-      setRecording(false);
-      // Cleanup partial setup if error occurs mid-way
-      if (microphoneSourceRef.current) microphoneSourceRef.current.disconnect();
-      if (workletNodeRef.current) workletNodeRef.current.disconnect();
-      microphoneSourceRef.current = null;
-      workletNodeRef.current = null;
+        mediaRecorderRef.current.onerror = (event: Event) => {
+            console.error('[useTranscription] MediaRecorder error:', event);
+            setError('Error during MediaRecorder operation.');
+            setRecording(false);
+            setProcessing(false);
+        };
+
+        mediaRecorderRef.current.start(); // Default timeslice (collect all until stop)
+        console.log('[useTranscription] MediaRecorder started.');
+
+      } catch (err: any) {
+        console.error('[useTranscription] Error starting MediaRecorder:', err);
+        setError(`Failed to start cloud recording: ${err.message}`);
+        setRecording(false);
+      }
+    } else { // currentMode === 'local'
+      if (!localWorkerRef.current || !audioCtxRef.current || !sabRef.current || !streamRef.current) {
+        setError('Local ASR system not fully initialized. Cannot start.');
+        console.error('[useTranscription] Attempted to start local recording but components are missing.');
+        setRecording(false);
+        return;
+      }
+      console.log('[useTranscription] Starting local recording with AudioWorklet...');
+      try {
+        // Ensure AudioContext is running
+        if (audioCtxRef.current.state === 'suspended') {
+          await audioCtxRef.current.resume();
+        }
+        const workletPath = '/audioworklet-processor.js'; 
+        // Check if module already added, this is tricky as addModule doesn't return status
+        // For simplicity, assuming it might need to be added each time or managed via a flag if errors occur.
+        try {
+          await audioCtxRef.current.audioWorklet.addModule(workletPath);
+        } catch (moduleError) {
+          // Ignore if already added, but log other errors
+          if (!String(moduleError).includes('already been loaded')) {
+            console.error('[useTranscription] Error adding AudioWorklet module:', moduleError);
+            throw moduleError; // Propagate error
+          } else {
+            console.log('[useTranscription] AudioWorklet module likely already added.');
+          }
+        }
+        
+        microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
+        workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
+            processorOptions: { sab: sabRef.current }
+        });
+        microphoneSourceRef.current.connect(workletNodeRef.current);
+        // DO NOT connect workletNode to destination unless debugging audio passthrough
+        
+        localWorkerRef.current.postMessage({ type: 'start-capture' });
+        console.log('[useTranscription] Local recording started. AudioWorklet connected, worker notified.');
+      } catch (err: any) {
+        console.error('[useTranscription] Error starting local recording or AudioWorklet:', err);
+        setError(`Failed to start local recording: ${err.message}`);
+        setRecording(false);
+      }
     }
-  }, [recording, ready /*, other dependencies like audioCtxRef, streamRef, sabRef, workerRef by being refs are stable */]);
+  }, [recording, currentMode, ready, streamRef]); // streamRef is now a dependency for mic check
 
   const stop = useCallback(async () => {
-    console.log('[useTranscription] stop() called.');
+    console.log(`[useTranscription] stop() called. Mode: ${currentMode}`);
     if (!recording) {
       console.warn('[useTranscription] Not recording, cannot stop.');
       return;
     }
+    setRecording(false); // Set recording false immediately
 
-    setRecording(false);
-    // setProcessing(true); // Worker will set its own processing state via message
-
-    console.log('[useTranscription] Stopping recording. Disconnecting AudioWorklet and notifying worker.');
-
-    if (microphoneSourceRef.current) {
-      microphoneSourceRef.current.disconnect();
-      microphoneSourceRef.current = null;
-    }
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      // Optional: consider workletNodeRef.current.port.postMessage({ type: 'stop' }) if worklet needs explicit stop
-      workletNodeRef.current = null; // Important to allow re-creation if start is called again
-    }
-    // streamRef.current tracks are stopped on unmount, not per recording session.
-
-    // Notify the local worker to stop capture and process the audio
-    if (workerRef.current) {
-        // Pass the sample rate of the audio that was written to the SAB
-        // This should be audioCtxRef.current.sampleRate which is stored in audioSampleRateRef.current
-        workerRef.current.postMessage({ 
+    if (currentMode === 'cloud') {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        console.log('[useTranscription] Stopping MediaRecorder...');
+        mediaRecorderRef.current.stop(); // This will trigger the onstop handler
+      } else {
+        console.warn('[useTranscription] MediaRecorder not active or already stopped.');
+      }
+    } else { // currentMode === 'local'
+      console.log('[useTranscription] Stopping local recording. Disconnecting AudioWorklet, notifying worker.');
+      if (microphoneSourceRef.current) {
+        microphoneSourceRef.current.disconnect();
+        microphoneSourceRef.current = null;
+      }
+      if (workletNodeRef.current) {
+        workletNodeRef.current.disconnect();
+        workletNodeRef.current = null;
+      }
+      if (localWorkerRef.current) {
+        localWorkerRef.current.postMessage({ 
             type: 'stop-capture-and-transcribe',
-            data: { sampleRate: audioSampleRateRef.current } 
+            data: { sampleRate: localAudioSampleRateRef.current } 
         });
-        console.log(`[useTranscription] Sent 'stop-capture-and-transcribe' to worker with SR: ${audioSampleRateRef.current}Hz.`);
-    } else {
-        console.error("[useTranscription] Worker not available to stop capture.");
-        setError("Failed to send stop signal to transcription worker.");
-        setProcessing(false);
+        // setProcessing(true); // Worker will send messages to update processing state
+      } else {
+        console.error("[useTranscription] Local worker not available to stop capture.");
+        setError("Failed to send stop signal to local transcription worker.");
+      }
+    }
+  }, [recording, currentMode]);
+
+  const setMode = useCallback((mode: 'local' | 'cloud') => {
+    if (mode === currentMode) return;
+    console.log(`[useTranscription] Setting mode from ${currentMode} to: ${mode}`);
+    
+    // If currently recording, stop it before switching modes
+    if (recording) {
+      console.warn('[useTranscription] Recording active. Stopping current recording before mode switch.');
+      // Calling stop here will use the logic for the *current* mode before it changes.
+      stop(); 
     }
 
-    // The old logic for 'final-audio-buffer' and Groq is now replaced by the worker's 'completed' message for local fallback.
-    // TODO: Re-integrate Groq path with a mode switch.
-    // For now, this `stop` function is geared towards the local worker.
+    setCurrentMode(mode);
+    setText('');
+    setError(null);
+    setProcessing(false);
+    // `ready` state will be managed by the useEffect for local worker init or mic check for cloud.
+    // When switching to cloud, if mic is available (streamRef.current exists), it should be ready.
+    // When switching to local, ready will be false until local model is loaded.
+    if (mode === 'cloud') {
+      setReady(streamRef.current ? true : false);
+    } else {
+      setReady(false); // Will be set true by local worker init effect
+    }
+  }, [currentMode, recording, stop]); // Added stop and recording as dependencies for safety
 
-  }, [recording /*, workerRef, audioSampleRateRef by being refs are stable */]);
-
-  // Return the public interface
   return {
     recording,
     processing,
     ready,
-    text, // Return cumulative text
+    text,
     error,
     start,
     stop,
+    currentMode,
+    setMode,
   };
 }
 
@@ -3638,6 +3813,7 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
 </file>
 
 <file path="src/main.ts">
+import 'dotenv/config'; // Load .env file variables
 import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
 import path from 'node:path';
 import process from 'node:process';

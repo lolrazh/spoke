@@ -10,7 +10,7 @@ declare global {
       insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
       viewLogFile: () => Promise<void>;
       sendNotification: (message: string) => void;
-      transcribeGroq: (audioBuffer: ArrayBuffer) => Promise<string>;
+      transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
