@@ -59,7 +59,7 @@ export async function transcribeAudioWithGroq(audioBuffer: Buffer, inputLanguage
     apiKey: apiKey,
   });
 
-  const tempFilePath = path.join(TEMP_DIR, `${uuidv4()}.wav`); // Changed from .webm to .wav
+  const tempFilePath = path.join(TEMP_DIR, `${uuidv4()}.webm`); // Changed from .wav to .webm
 
   try {
     console.log(`[GroqTranscriber] Writing audio buffer to temporary file: ${tempFilePath} (${audioBuffer.length} bytes)`);

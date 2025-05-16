@@ -70,30 +70,8 @@ function resampleTo16kHz(audioData: Float32Array, originalSampleRate: number): F
     return resampled;
 }
 
-
-self.postMessage({ status: "loading" });
-
-// Initialize the pipeline
-(async () => {
-    try {
-        console.log(`[LocalWorker] Initializing pipeline with model: ${MODEL_ID}`);
-        asr = await pipeline(
-            "automatic-speech-recognition",
-            MODEL_ID,
-            {
-                progress_callback: (p: Progress | null) => p && self.postMessage(p),
-                device: device,
-                dtype: dtypeConfig,
-                // No chunking/streaming parameters for single-pass
-            } as any
-        );
-        console.log("[LocalWorker] Pipeline initialized successfully.");
-        self.postMessage({ status: "ready" });
-    } catch (pipelineError) {
-        console.error("[LocalWorker] Pipeline initialization failed:", pipelineError);
-        self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
-    }
-})();
+// No immediate pipeline initialization here.
+// Worker will wait for 'initialize-local-asr' message.
 
 self.addEventListener("message", async (e) => {
     const { type, data } = e.data ?? {}; // Common structure for data
@@ -111,6 +89,41 @@ self.addEventListener("message", async (e) => {
         } else {
             console.error("[LocalWorker] 'init' message received without SharedArrayBuffer (sab).");
             self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided for RingBuffer." });
+        }
+        return;
+    }
+
+    if (type === "initialize-local-asr") {
+        if (asr) {
+            console.log("[LocalWorker] ASR pipeline already initialized.");
+            self.postMessage({ status: "asr_model_ready" }); // Inform host it's ready
+            return;
+        }
+        if (busy) { // Check if already busy with initialization
+            console.warn("[LocalWorker] Already busy initializing ASR pipeline.");
+            return;
+        }
+        busy = true;
+        self.postMessage({ status: "asr_model_loading" });
+        console.log(`[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`);
+        try {
+            asr = await pipeline(
+                "automatic-speech-recognition",
+                MODEL_ID,
+                {
+                    progress_callback: (p: Progress | null) => p && self.postMessage({ ...p, status: 'model_progress'}), // Send progress with a distinct status
+                    device: device,
+                    dtype: dtypeConfig,
+                } as any
+            );
+            console.log("[LocalWorker] ASR Pipeline initialized successfully.");
+            self.postMessage({ status: "asr_model_ready" });
+        } catch (pipelineError) {
+            console.error("[LocalWorker] ASR Pipeline initialization failed:", pipelineError);
+            self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
+            asr = null; // Ensure asr is null if init fails
+        } finally {
+            busy = false;
         }
         return;
     }
