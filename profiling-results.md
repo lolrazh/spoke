@@ -589,3 +589,33 @@ This document tracks performance measurements for different implementations of t
 *   **Note:** These metrics are for short audio where the entire content is processed in the "final flush". The main advantage of this implementation is seen with much longer audio inputs due to the streaming nature.
 
 ---
+
+## Groq Cloud Transcription (distil-whisper-large-v3-en)
+
+*Run Date: (Recent, as per latest user logs)*
+
+*   **Mode:** Cloud (Groq API)
+*   **Model:** `distil-whisper-large-v3-en` (via Groq API)
+*   **Audio Config:** `MediaRecorder` with `audio/webm;codecs=opus`, 16kHz mono, 64kbps.
+*   **IPC:** `ArrayBuffer` sent as transferable.
+*   **Main Process:** `File` object created from buffer in memory (no disk I/O for temp file).
+
+### Observations:
+
+*   For short audio clips (~3-4 seconds), E2E latency is excellent (~350-430 ms).
+*   For a longer audio clip (~22.5 seconds, 180KB), the E2E latency increases significantly to ~3.7 seconds.
+*   The renderer-side processing (Blob creation, ArrayBuffer conversion) is consistently very fast (4-8 ms).
+*   The majority of the time, and the part that scales with audio length, is within the `IPC + Groq (Main Thread + API)` segment.
+
+### Metrics (E2E: `MediaRecorder.stop` to result in hook; IPC+Groq: Main thread work + Groq API time)
+
+*   **End-to-End (E2E) Latency (approx. 3s audio):**
+    *   Run 1: `423.88 ms`
+    *   Run 2: `354.61 ms`
+    *   Average: `~388.5 ms`
+*   **IPC + Groq (Main Thread + API):**
+    *   Run 1: `419.37 ms`
+    *   Run 2: `349.79 ms`
+    *   Average: `~384.58 ms`
+
+---

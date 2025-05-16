@@ -14,18 +14,18 @@ if (!GROQ_API_KEY) {
 
 // Helper to create a File object for Groq SDK using the global File constructor
 // Assumes Node.js v20+ environment (Electron 35 bundles Node 20.11.1) where File is global.
-function createFileObject(buffer: Buffer, filename: string, mimeType: string): File {
-  // A Node.js Buffer is a Uint8Array, which is a valid BlobPart for the File constructor.
-  return new File([buffer], filename, { type: mimeType, lastModified: Date.now() });
+function createFileObject(data: ArrayBuffer, filename: string, mimeType: string): File {
+  // An ArrayBuffer is a valid BlobPart for the File constructor.
+  return new File([data], filename, { type: mimeType, lastModified: Date.now() });
 }
 
 /**
  * Transcribes audio using Groq API.
- * @param audioBuffer The audio data as a Buffer.
+ * @param audioData The audio data as an ArrayBuffer.
  * @param inputLanguage The language of the audio (e.g., "en").
  * @returns Promise that resolves with the transcription text.
  */
-export async function transcribeAudioWithGroq(audioBuffer: Buffer, inputLanguage: string = "en"): Promise<string> {
+export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY || '';
   if (!apiKey) {
     console.error('GROQ_API_KEY is not set at the time of transcription. Please ensure it is loaded.');
@@ -37,14 +37,14 @@ export async function transcribeAudioWithGroq(audioBuffer: Buffer, inputLanguage
   });
 
   try {
-    if (audioBuffer.length === 0) {
-      console.error('[GroqTranscriber] Audio buffer is empty.');
-      throw new Error('Audio buffer is empty.');
+    if (audioData.byteLength === 0) {
+      console.error('[GroqTranscriber] Audio data (ArrayBuffer) is empty.');
+      throw new Error('Audio data (ArrayBuffer) is empty.');
     }
 
-    const audioFile = createFileObject(audioBuffer, "audio.webm", "audio/webm");
+    const audioFile = createFileObject(audioData, "audio.webm", "audio/webm");
 
-    console.log(`[GroqTranscriber] Profiling: Step 3 - Preparing to call Groq API (model: distil-whisper-large-v3-en) with audio File object (${audioBuffer.length} bytes).`);
+    console.log(`[GroqTranscriber] Profiling: Step 3 - Preparing to call Groq API (model: distil-whisper-large-v3-en) with audio File object (${audioData.byteLength} bytes).`);
     const groqApiStartTime = performance.now();
 
     const transcription = await groq.audio.transcriptions.create({

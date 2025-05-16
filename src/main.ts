@@ -1071,15 +1071,12 @@ ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { /
   console.log('[MainIPC] Received transcribe-groq request');
   if (!audioBuffer || audioBuffer.byteLength === 0) {
     console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
-    // It's better to throw an error that can be caught by the invoke call in renderer
     throw new Error('Audio buffer is empty.');
   }
   try {
-    // Convert ArrayBuffer to Node.js Buffer for the Groq transcriber function
-    const nodeBuffer = Buffer.from(audioBuffer);
-    
-    console.log(`[MainIPC] Calling transcribeAudioWithGroq with buffer size: ${nodeBuffer.length}`);
-    const transcript = await transcribeAudioWithGroq(nodeBuffer);
+    // Pass the ArrayBuffer directly
+    console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
+    const transcript = await transcribeAudioWithGroq(audioBuffer);
     console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
     return transcript; // This will be the result of the promise in the renderer
   } catch (error) {
