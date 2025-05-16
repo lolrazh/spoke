@@ -30,5 +30,9 @@ contextBridge.exposeInMainWorld('electron', {
   // Add a method for the renderer to request a notification
   sendNotification: (message: string) => {
     ipcRenderer.send('show-notification', message);
+  },
+  // Method for Groq transcription
+  transcribeGroq: (audioBuffer: ArrayBuffer) => {
+    return ipcRenderer.invoke('transcribe-groq', audioBuffer);
   }
 });

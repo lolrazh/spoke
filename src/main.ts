@@ -1,11 +1,11 @@
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
 import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
-import { session } from 'electron';
+import { transcribeAudioWithGroq, cleanupAllTempAudioFiles } from './workers/groq-transcriber';
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -868,6 +868,10 @@ app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     console.log('[App Event] will-quit: Shortcuts unregistered.');
     
+    // Call cleanup for Groq transcriber temporary files
+    cleanupAllTempAudioFiles();
+    console.log('[App Event] will-quit: Groq transcriber temporary files cleaned up.');
+    
   } catch (error) {
     // Use original console for errors during cleanup
     console.error('[App Event] will-quit: Error during cleanup:', error);
@@ -1075,3 +1079,27 @@ const createHomeWindow = () => {
     console.log('[Home Window Event] homeWindow variable set to null.');
   });
 };
+
+// IPC handler for Groq transcription
+ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { // Expect ArrayBuffer from renderer
+  console.log('[MainIPC] Received transcribe-groq request');
+  if (!audioBuffer || audioBuffer.byteLength === 0) {
+    console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
+    // It's better to throw an error that can be caught by the invoke call in renderer
+    throw new Error('Audio buffer is empty.');
+  }
+  try {
+    // Convert ArrayBuffer to Node.js Buffer for the Groq transcriber function
+    const nodeBuffer = Buffer.from(audioBuffer);
+    
+    console.log(`[MainIPC] Calling transcribeAudioWithGroq with buffer size: ${nodeBuffer.length}`);
+    const transcript = await transcribeAudioWithGroq(nodeBuffer);
+    console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
+    return transcript; // This will be the result of the promise in the renderer
+  } catch (error) {
+    console.error('[MainIPC] Error in transcribe-groq handler:', error);
+    // Re-throw the error so it can be caught by the .invoke() call in the renderer
+    // Consider sanitizing or simplifying the error before sending it back
+    throw new Error(error.message || 'Groq transcription failed in main process.');
+  }
+});
