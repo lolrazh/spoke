@@ -189,30 +189,55 @@ async function processAvailableAudio() {
       const tAsrStart = performance.now();
       // @ts-ignore - Transformers.js pipeline options are flexible
       const result = await asr(slice, { 
-        prompt: runningPrompt // Pass current runningPrompt
+        prompt: runningPrompt // Pass current runningPrompt (which is already refined from previous step)
       }); 
       const tAsrEnd = performance.now();
 
-      // IMPORTANT: The `asr` pipeline with streaming params handles stride and overlap internally.
-      // We advance `emittedSamples` by `CHUNK_SAMPLES` because that's the size of the primary audio processed.
-      // The pipeline might return text that corresponds to more or less than this due to stride.
-      // The `runningPrompt` aims to give context for these overlaps.
       emittedSamples += CHUNK_SAMPLES; 
       // console.log(`[LocalWorker] ASR call successful. Advanced emittedSamples by CHUNK_SAMPLES to ${emittedSamples}.`);
 
       const delta = (result.text || "").trim();
 
       if (delta) {
-          // console.log(`[LocalWorker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Partial Delta: "${delta}"`);
-          self.postMessage({ status: 'partial', transcription: delta }); // Send 'transcription' key like 'completed'
-          runningPrompt = mergeWithOverlap(runningPrompt, delta).merged;
+          self.postMessage({ status: 'partial', transcription: delta });
+
+          // --- Suspicious Overlap Detection & Correction (Phase 1, Item 1.1 & 1.2) ---
+          const OL_MIN_CHARS = 3;
+          const OL_MIN_RATIO = 0.25;
+          const ROLLBACK_WORDS_COUNT = 5; // Renamed for clarity
+
+          const actualOverlapLen = overlapLen(runningPrompt, delta);
+          const isSuspicious = actualOverlapLen < OL_MIN_CHARS || 
+                               (Math.min(runningPrompt.length, delta.length) > 0 && 
+                                actualOverlapLen / Math.min(runningPrompt.length, delta.length) < OL_MIN_RATIO);
+          
+          let correctionTriggered = false;
+
+          console.log(`[LocalWorker Overlap] Previous prompt length: ${runningPrompt.length}, Delta length: ${delta.length}, Actual overlap: ${actualOverlapLen}, Suspicious: ${isSuspicious}`);
+
+          if (isSuspicious && runningPrompt.length > 0) { // Only rollback if there's a prompt to rollback from
+              console.log(`[LocalWorker Overlap] Suspicious overlap detected. Applying correction. Rolling back ~${ROLLBACK_WORDS_COUNT} words.`);
+              correctionTriggered = true;
+              let promptWords = runningPrompt.split(/\s+/);
+              const headWords = promptWords.length > ROLLBACK_WORDS_COUNT ? promptWords.slice(0, -ROLLBACK_WORDS_COUNT) : [];
+              const headPrompt = headWords.join(" ");
+              runningPrompt = mergeWithOverlap(headPrompt, delta).merged;
+          } else {
+              runningPrompt = mergeWithOverlap(runningPrompt, delta).merged;
+          }
+          console.log(`[LocalWorker Overlap] Correction triggered: ${correctionTriggered}. New runningPrompt length: ${runningPrompt.length}`);
+          // --- End Suspicious Overlap Logic ---
 
           // Refine runningPrompt: Trim, lowercase, and remove trailing punctuation
+          // --- MAX_PROMPT_TOKENS logic is TEMPORARILY DISABLED FOR DEBUGGING (as per user instruction) ---
+          /*
           let promptWords = runningPrompt.split(/\s+/);
           if (promptWords.length > MAX_PROMPT_TOKENS) {
             promptWords = promptWords.slice(-MAX_PROMPT_TOKENS);
           }
           runningPrompt = promptWords.join(" ");
+          */
+          // --- END TEMPORARILY DISABLED ---
           runningPrompt = runningPrompt.toLowerCase();
           runningPrompt = runningPrompt.replace(/[.,!?;:]+$/, "").trim(); // Remove common trailing punctuation
 

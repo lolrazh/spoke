@@ -4,6 +4,36 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
+// --- Text Diffing Helper Functions (copied from local-worker.ts) ---
+/** Longest suffix of `prev` that is a prefix of `next` */
+function overlapLen(prev: string, next: string): number {
+  const max = Math.min(prev.length, next.length);
+  for (let len = max; len > 0; len--) {
+    if (prev.endsWith(next.slice(0, len))) return len;
+  }
+  return 0;
+}
+
+/** Drop duplicate overlap and concatenate */
+function mergeWithOverlap(prev: string, next: string): { merged: string, overlapLength: number } {
+  const p = prev.trim();
+  const n = next.trim();
+  const o = overlapLen(p, n);
+  let mergedText;
+  if (p && n) {
+    if (o > 0) {
+      mergedText = (p + n.slice(o));
+    } else {
+      mergedText = (p + " " + n);
+    }
+  } else if (n) {
+    mergedText = n;
+  } else {
+    mergedText = p;
+  }
+  return { merged: mergedText.replace(/\s+/g, " ").trim(), overlapLength: o };
+}
+
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -190,7 +220,7 @@ export function useTranscription(): UseTranscriptionReturn {
           case 'asr_model_loading':
             setProcessing(true);
             setReady(false);
-            setText('');
+            setText(''); // Ensure text is cleared when model is loading
             setError(null);
             console.log('[useTranscription] Local ASR model loading...');
             break;
@@ -201,6 +231,12 @@ export function useTranscription(): UseTranscriptionReturn {
             console.log('[useTranscription] Local ASR model ready.');
             break;
           case 'capture_started': // Handled by local worker
+            setText(''); // Clear text when new capture starts
+            break;
+          case 'partial': // Handle partial transcriptions for smoother UI updates
+            if (typeof transcription === 'string') {
+              setText(prevText => mergeWithOverlap(prevText, transcription).merged);
+            }
             break;
           case 'processing_full_audio': // Local worker processing
             setProcessing(true);
