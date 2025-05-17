@@ -32,7 +32,7 @@ let ringBuffer: RingBuffer | null = null;
 const TARGET_SAMPLE_RATE = 16000; // Already 16k
 
 // --- Streaming Config (from moonshine-worker.ts) ---
-const CHUNK_S = 7;          // Process 5 seconds of audio at a time
+const CHUNK_S = 4;          // Process 5 seconds of audio at a time
 const STRIDE_S = 2;         // Overlap chunks by 2 seconds
 const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
 const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
@@ -50,9 +50,13 @@ let current16kWriteOffset = 0;
 let emittedSamples = 0;         // How many samples have been processed and led to emitted text
 let recording = false;          // Controls the background pull loop
 let processingPartial = false;  // Flag to prevent concurrent partial ASR calls
-let runningPrompt = "";         // For contextual ASR
 
-const MAX_PROMPT_TOKENS = 200; // As per diff-plan.md suggestion
+// --- Local Agreement State ---
+let confirmedTranscriptSoFar: string = "";
+let previousChunkDelta: string = "";
+const OL_MIN_CHARS_FOR_LA = 3; // Minimum characters for a common prefix to be considered substantial in LA
+
+const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
 
 // --- Text Diffing Helper Functions ---
 /** Longest suffix of `prev` that is a prefix of `next` */
@@ -126,6 +130,15 @@ function resampleTo16kHz(audioData: Float32Array, originalSampleRate: number): F
     return resampled;
 }
 
+// --- Local Agreement Helper ---
+function longestCommonPrefix(str1: string, str2: string): string {
+    let i = 0;
+    while (i < str1.length && i < str2.length && str1[i] === str2[i]) {
+        i++;
+    }
+    return str1.substring(0, i);
+}
+
 // --- Streaming Helper Functions (adapted from moonshine-worker.ts) ---
 
 // Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
@@ -189,57 +202,65 @@ async function processAvailableAudio() {
       const tAsrStart = performance.now();
       // @ts-ignore - Transformers.js pipeline options are flexible
       const result = await asr(slice, { 
-        prompt: runningPrompt // Pass current runningPrompt (which is already refined from previous step)
+        prompt: confirmedTranscriptSoFar // Pass current confirmedTranscriptSoFar (refined before use)
       }); 
       const tAsrEnd = performance.now();
 
       emittedSamples += CHUNK_SAMPLES; 
       // console.log(`[LocalWorker] ASR call successful. Advanced emittedSamples by CHUNK_SAMPLES to ${emittedSamples}.`);
 
-      const delta = (result.text || "").trim();
+      const newDelta = (result.text || "").trim();
 
-      if (delta) {
-          self.postMessage({ status: 'partial', transcription: delta });
-
-          // --- Suspicious Overlap Detection & Correction (Phase 1, Item 1.1 & 1.2) ---
-          const OL_MIN_CHARS = 3;
-          const OL_MIN_RATIO = 0.25;
-          const ROLLBACK_WORDS_COUNT = 5; // Renamed for clarity
-
-          const actualOverlapLen = overlapLen(runningPrompt, delta);
-          const isSuspicious = actualOverlapLen < OL_MIN_CHARS || 
-                               (Math.min(runningPrompt.length, delta.length) > 0 && 
-                                actualOverlapLen / Math.min(runningPrompt.length, delta.length) < OL_MIN_RATIO);
-          
-          let correctionTriggered = false;
-
-          console.log(`[LocalWorker Overlap] Previous prompt length: ${runningPrompt.length}, Delta length: ${delta.length}, Actual overlap: ${actualOverlapLen}, Suspicious: ${isSuspicious}`);
-
-          if (isSuspicious && runningPrompt.length > 0) { // Only rollback if there's a prompt to rollback from
-              console.log(`[LocalWorker Overlap] Suspicious overlap detected. Applying correction. Rolling back ~${ROLLBACK_WORDS_COUNT} words.`);
-              correctionTriggered = true;
-              let promptWords = runningPrompt.split(/\s+/);
-              const headWords = promptWords.length > ROLLBACK_WORDS_COUNT ? promptWords.slice(0, -ROLLBACK_WORDS_COUNT) : [];
-              const headPrompt = headWords.join(" ");
-              runningPrompt = mergeWithOverlap(headPrompt, delta).merged;
+      if (newDelta) {
+          // --- Local Agreement Logic (Simplified Initial Implementation) ---
+          if (previousChunkDelta === "") {
+              previousChunkDelta = newDelta;
+              // Optional: Send newDelta as a tentative partial to UI if desired for faster feedback
+              // self.postMessage({ status: 'tentative_partial', transcription: newDelta });
+              console.log(`[LocalWorker LA] First delta stored: "${newDelta.substring(0,50)}..."`);
           } else {
-              runningPrompt = mergeWithOverlap(runningPrompt, delta).merged;
-          }
-          console.log(`[LocalWorker Overlap] Correction triggered: ${correctionTriggered}. New runningPrompt length: ${runningPrompt.length}`);
-          // --- End Suspicious Overlap Logic ---
+              const common = longestCommonPrefix(previousChunkDelta, newDelta);
+              console.log(`[LocalWorker LA] Comparing prev: "${previousChunkDelta.substring(0,50)}..." with new: "${newDelta.substring(0,50)}..." -> Common: "${common.substring(0,50)}..."`);
 
-          // Refine runningPrompt: Trim, lowercase, and remove trailing punctuation
-          // --- MAX_PROMPT_TOKENS logic is TEMPORARILY DISABLED FOR DEBUGGING (as per user instruction) ---
+              if (common.length > OL_MIN_CHARS_FOR_LA) {
+                  confirmedTranscriptSoFar = mergeWithOverlap(confirmedTranscriptSoFar, common).merged;
+                  console.log(`[LocalWorker LA] Committed common part. confirmedTranscriptSoFar: "${confirmedTranscriptSoFar.substring(0,100)}..."`);
+              } else {
+                  // Divergence or insignificant overlap. Commit the entirety of the previousChunkDelta.
+                  console.log(`[LocalWorker LA] Divergence/poor overlap. Committing previousChunkDelta fully.`);
+                  confirmedTranscriptSoFar = mergeWithOverlap(confirmedTranscriptSoFar, previousChunkDelta).merged;
+                  console.log(`[LocalWorker LA] Committed previousChunkDelta. confirmedTranscriptSoFar: "${confirmedTranscriptSoFar.substring(0,100)}..."`);
+              }
+              self.postMessage({ status: 'partial', transcription: confirmedTranscriptSoFar });
+              previousChunkDelta = newDelta; // Current delta becomes previous for next round
+          }
+          // --- End Local Agreement Logic ---
+
+          // --- REMOVED Suspicious Overlap Detection & Correction Logic --- 
+
+          // Refine confirmedTranscriptSoFar for the *next* ASR prompt (not for current emission to UI)
+          // This refinement happens *after* LA and *before* the next ASR call.
+          // The `prompt` to asr() at the top of this try block uses this refined version from the *previous* iteration.
+          let promptForNextASR = confirmedTranscriptSoFar; // Start with the latest confirmed text
+          
+          // --- MAX_PROMPT_TOKENS logic is TEMPORARILY DISABLED (as per user instruction) ---
           /*
-          let promptWords = runningPrompt.split(/\s+/);
+          let promptWords = promptForNextASR.split(/\s+/);
           if (promptWords.length > MAX_PROMPT_TOKENS) {
             promptWords = promptWords.slice(-MAX_PROMPT_TOKENS);
           }
-          runningPrompt = promptWords.join(" ");
+          promptForNextASR = promptWords.join(" ");
           */
           // --- END TEMPORARILY DISABLED ---
-          runningPrompt = runningPrompt.toLowerCase();
-          runningPrompt = runningPrompt.replace(/[.,!?;:]+$/, "").trim(); // Remove common trailing punctuation
+          promptForNextASR = promptForNextASR.toLowerCase();
+          promptForNextASR = promptForNextASR.replace(/[.,!?;:]+$/, "").trim();
+          // Note: We are refining a copy for the next prompt. 
+          // confirmedTranscriptSoFar itself (sent to UI) remains un-normalized by this step.
+          // If the prompt for ASR should be exactly what's confirmed (casing etc), 
+          // then this refinement should apply to 'confirmedTranscriptSoFar' directly before asr() call.
+          // For now, assume prompt refinement for ASR is okay, and UI gets case-preserved confirmed text.
+          // Let's refine confirmedTranscriptSoFar directly, as it's used for the prompt.
+          confirmedTranscriptSoFar = promptForNextASR; 
 
       } else {
           // console.log(`[LocalWorker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta from this chunk.`);
@@ -361,7 +382,8 @@ self.addEventListener("message", async (e) => {
 
         emittedSamples = 0;
         processingPartial = false;
-        runningPrompt = ""; // Reset prompt for new stream
+        confirmedTranscriptSoFar = ""; // Reset LA state
+        previousChunkDelta = "";   // Reset LA state
         
         ringBuffer.reset(); 
         self.postMessage({ status: "capture_started" }); // Signal that capture/streaming has begun
@@ -374,7 +396,7 @@ self.addEventListener("message", async (e) => {
     if (type === "stop-capture-and-transcribe") { // Now acts as "flush"
         if (!recording && !processingPartial && preallocated16kBuffer === null) {
              console.warn('[LocalWorker] Flush requested but not recording, not processing, and no buffer. Likely already flushed or never started.');
-             self.postMessage({ status: "completed", transcription: runningPrompt || "" }); // Send current prompt if any
+             self.postMessage({ status: "completed", transcription: confirmedTranscriptSoFar || "" }); // Send current prompt if any
              return;
         }
         
@@ -405,7 +427,7 @@ self.addEventListener("message", async (e) => {
         }
         if (!preallocated16kBuffer) {
             console.warn("[LocalWorker] No preallocated buffer to flush (might have been an error or empty recording).");
-            self.postMessage({ status: "completed", transcription: runningPrompt || "" });
+            self.postMessage({ status: "completed", transcription: confirmedTranscriptSoFar || "" });
             return;
         }
 
@@ -424,14 +446,14 @@ self.addEventListener("message", async (e) => {
 
         if (remainingAudioLength > 0) {
             const finalSlice = preallocated16kBuffer.subarray(emittedSamples, current16kWriteOffset);
-            console.log(`[LocalWorker] Processing final audio segment. Slice from ${emittedSamples} to ${current16kWriteOffset} (Length: ${finalSlice.length}). Prompt: "${runningPrompt}"`);
+            console.log(`[LocalWorker] Processing final audio segment. Slice from ${emittedSamples} to ${current16kWriteOffset} (Length: ${finalSlice.length}). Prompt: "${confirmedTranscriptSoFar}"`);
             
             processingPartial = true; // Mark as busy for this final transcription
             const tFinalStart = performance.now();
             try {
                 // @ts-ignore - Transformers.js pipeline options are flexible
                 const result = await asr(finalSlice, {
-                  prompt: runningPrompt, // Use the accumulated prompt
+                  prompt: confirmedTranscriptSoFar, // Use the accumulated prompt
                   // For the final chunk, we don't need to provide chunk_length_s/stride_length_s
                   // as we want the model to process this segment as a whole conclusion.
                   // The pipeline should already be configured with streaming params.
@@ -458,13 +480,16 @@ self.addEventListener("message", async (e) => {
            console.log("[LocalWorker] No remaining audio data to process in final flush beyond what was streamed.");
         }
         
-        // The runningPrompt already contains text from 'partial' messages.
-        // If finalUserText has content, it's the transcription of the very last bit of audio.
-        // We should append this to the runningPrompt to form the complete transcription.
-        const completeTranscriptionResult = mergeWithOverlap(runningPrompt, finalUserText); // NEW WAY
-        const completeTranscription = completeTranscriptionResult.merged;
+        // The confirmedTranscriptSoFar already contains text from 'partial' messages (via LA logic).
+        // Append the last unconfirmed delta (previousChunkDelta holds the very last segment processed by ASR)
+        if (previousChunkDelta) { // Ensure there is a previous delta to merge
+            confirmedTranscriptSoFar = mergeWithOverlap(confirmedTranscriptSoFar, previousChunkDelta).merged;
+            previousChunkDelta = ""; // Clear it after merging
+        }
+        
+        const completeTranscription = confirmedTranscriptSoFar;
 
-        console.log(`[LocalWorker] Sending final 'completed' message. Transcription: "${completeTranscription}"`);
+        console.log(`[LocalWorker LA] Sending final 'completed' message. Transcription: "${completeTranscription}"`);
         self.postMessage({ 
             status: 'completed', 
             transcription: completeTranscription,
@@ -474,11 +499,12 @@ self.addEventListener("message", async (e) => {
         // Reset state for next recording
         emittedSamples = 0;
         current16kWriteOffset = 0; 
+        confirmedTranscriptSoFar = ""; // Reset LA state
+        previousChunkDelta = "";   // Reset LA state
         if (preallocated16kBuffer) { // Make sure it exists before trying to nullify
              preallocated16kBuffer.fill(0); // Optional: clear buffer
              preallocated16kBuffer = null; 
         }
-        runningPrompt = "";
         // `recording` is already false
         // `processingPartial` should be false here
         return;
