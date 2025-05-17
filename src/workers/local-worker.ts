@@ -7,7 +7,7 @@ import {
 import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
 
 // Updated MODEL_ID for streaming
-const MODEL_ID = "onnx-community/moonshine-base-ONNX";
+const MODEL_ID = "onnx-community/moonshine-tiny-ONNX";
 
 // Define type for Dtype configuration
 type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "int8">; // q4f16 from local, q4 from moonshine. Sticking with local options.
@@ -15,7 +15,7 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "i
 // Define dtype configurations based on device with explicit typing (Updated from moonshine-worker)
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
-    encoder_model: "fp16", // from moonshine-worker
+    encoder_model: "q8", // from moonshine-worker
     decoder_model_merged: "q8", // from moonshine-worker
   },
 };
@@ -32,7 +32,7 @@ let ringBuffer: RingBuffer | null = null;
 const TARGET_SAMPLE_RATE = 16000; // Already 16k
 
 // --- Streaming Config (from moonshine-worker.ts) ---
-const CHUNK_S = 5;          // Process 5 seconds of audio at a time
+const CHUNK_S = 7;          // Process 5 seconds of audio at a time
 const STRIDE_S = 2;         // Overlap chunks by 2 seconds
 const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
 const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
@@ -51,6 +51,41 @@ let emittedSamples = 0;         // How many samples have been processed and led 
 let recording = false;          // Controls the background pull loop
 let processingPartial = false;  // Flag to prevent concurrent partial ASR calls
 let runningPrompt = "";         // For contextual ASR
+
+const MAX_PROMPT_TOKENS = 200; // As per diff-plan.md suggestion
+
+// --- Text Diffing Helper Functions ---
+/** Longest suffix of `prev` that is a prefix of `next` */
+function overlapLen(prev: string, next: string): number {
+  const max = Math.min(prev.length, next.length);
+  for (let len = max; len > 0; len--) {
+    if (prev.endsWith(next.slice(0, len))) return len;
+  }
+  return 0;
+}
+
+/** Drop duplicate overlap and concatenate */
+function mergeWithOverlap(prev: string, next: string): { merged: string, overlapLength: number } {
+  // cheap normalisation
+  const p = prev.trim();
+  const n = next.trim();
+  const o = overlapLen(p, n);
+  // Ensure a space if prev is not empty and next is not empty and o is 0 or p doesn't end with a space
+  let mergedText;
+  if (p && n) {
+    if (o > 0) {
+      mergedText = (p + n.slice(o));
+    } else {
+      mergedText = (p + " " + n);
+    }
+  } else if (n) {
+    mergedText = n;
+  } else {
+    mergedText = p;
+  }
+  // Refined replace to handle multiple spaces carefully and trim.
+  return { merged: mergedText.replace(/\s+/g, " ").trim(), overlapLength: o };
+}
 
 // Placeholder for a simple resampling function
 // Input: Float32Array audio data, original sample rate
@@ -170,7 +205,17 @@ async function processAvailableAudio() {
       if (delta) {
           // console.log(`[LocalWorker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. Partial Delta: "${delta}"`);
           self.postMessage({ status: 'partial', transcription: delta }); // Send 'transcription' key like 'completed'
-          runningPrompt += delta + " "; // Append to runningPrompt
+          runningPrompt = mergeWithOverlap(runningPrompt, delta).merged;
+
+          // Refine runningPrompt: Trim, lowercase, and remove trailing punctuation
+          let promptWords = runningPrompt.split(/\s+/);
+          if (promptWords.length > MAX_PROMPT_TOKENS) {
+            promptWords = promptWords.slice(-MAX_PROMPT_TOKENS);
+          }
+          runningPrompt = promptWords.join(" ");
+          runningPrompt = runningPrompt.toLowerCase();
+          runningPrompt = runningPrompt.replace(/[.,!?;:]+$/, "").trim(); // Remove common trailing punctuation
+
       } else {
           // console.log(`[LocalWorker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta from this chunk.`);
       }
@@ -391,7 +436,8 @@ self.addEventListener("message", async (e) => {
         // The runningPrompt already contains text from 'partial' messages.
         // If finalUserText has content, it's the transcription of the very last bit of audio.
         // We should append this to the runningPrompt to form the complete transcription.
-        const completeTranscription = (runningPrompt + (finalUserText ? (runningPrompt.endsWith(" ") ? "" : " ") + finalUserText : "")).trim();
+        const completeTranscriptionResult = mergeWithOverlap(runningPrompt, finalUserText); // NEW WAY
+        const completeTranscription = completeTranscriptionResult.merged;
 
         console.log(`[LocalWorker] Sending final 'completed' message. Transcription: "${completeTranscription}"`);
         self.postMessage({ 
