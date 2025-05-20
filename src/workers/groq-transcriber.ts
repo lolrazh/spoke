@@ -50,7 +50,7 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
     const transcription = await groq.audio.transcriptions.create({
       file: audioFile, // This should now be a proper File object
       model: "distil-whisper-large-v3-en",
-      prompt: "You are Sonic Flow. Format text neatly. Your vocabulary includes: Supabase, Groq",
+      prompt: "Your vocabulary includes: Supabase, Groq",
       language: inputLanguage,
       response_format: "json",
       temperature: 0.0,
