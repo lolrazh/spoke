@@ -66,12 +66,17 @@ class CaptureProcessor extends AudioWorkletProcessor {
       return true; // Keep alive
     }
 
-    // Write the data to the ring buffer
-    const written = this.ringBuffer.write(inputChannelData);
-    if (written < inputChannelData.length) {
-        // Logging handled in RingBuffer
-        // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
-    }
+    // Write the ORIGINAL inputChannelData to the ring buffer
+    // (assuming AudioContext has already resampled it to its own rate, e.g., 16kHz)
+    if (inputChannelData.length > 0) { // Check if there's data to write
+        const written = this.ringBuffer.write(inputChannelData);
+        if (written < inputChannelData.length) {
+            // Logging handled in RingBuffer
+            // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
+        }
+    } /* else if (inputChannelData.length > 0) { // This condition is now part of the if above
+        // console.warn('CaptureProcessor: Resampling resulted in empty audio data, nothing to write.');
+    } */
 
     // Return true to keep the processor node alive
     return true;

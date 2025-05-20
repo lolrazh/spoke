@@ -1,1 +1,0 @@
-fuck the diff shit. bring back local implementation from git version "212b38001a6b85d4f0168ec6246bb2965408a87f" as fallback maybe. this is it. just do sequential/streaaming buffer and you're done. ezpz. good latency as well. 
