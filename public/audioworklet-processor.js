@@ -4,6 +4,8 @@
 // Import the RingBuffer class.
 // Path is relative from public root to src directory.
 import { RingBuffer } from '../src/audio/ring-buffer.js';
+// Import the new resampler function
+import { resample48kTo16k } from '../src/audio/resample.js';
 
 // Define the base class if needed (though typically provided by the environment)
 // Ensure AudioWorkletProcessor is available in the global scope
@@ -66,11 +68,21 @@ class CaptureProcessor extends AudioWorkletProcessor {
       return true; // Keep alive
     }
 
-    // Write the data to the ring buffer
-    const written = this.ringBuffer.write(inputChannelData);
-    if (written < inputChannelData.length) {
-        // Logging handled in RingBuffer
-        // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
+    // Resample the input data from 48kHz (assumed) to 16kHz
+    // This assumes the input from the microphone/browser is at 48kHz.
+    // If the actual input sample rate can vary, this needs to be more robust,
+    // potentially getting the actual sample rate via processorOptions or elsewhere.
+    const resampledData16k = resample48kTo16k(inputChannelData);
+
+    // Write the RESAMPLED data to the ring buffer
+    if (resampledData16k.length > 0) {
+        const written = this.ringBuffer.write(resampledData16k);
+        if (written < resampledData16k.length) {
+            // Logging handled in RingBuffer
+            // console.warn(`CaptureProcessor: Wrote only ${written}/${resampledData16k.length} frames of resampled data`);
+        }
+    } else if (inputChannelData.length > 0) {
+        // console.warn('CaptureProcessor: Resampling resulted in empty audio data, nothing to write.');
     }
 
     // Return true to keep the processor node alive
