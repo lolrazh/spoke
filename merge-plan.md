@@ -1,8 +1,3 @@
-Below is a “PR blueprint” that maps **exactly** what you need to port from the *old* worker into the *new* code-path (and what to rip out).
-I’ve grouped the work into atomic commits so the reviewer can follow the logic and bisect if something breaks.
-
----
-
 ## 0 Commit pre-flight
 
 | Step    | Command / action                                                  | Why                                                                           |
@@ -142,13 +137,3 @@ Run the WER harness before and after to prove the refactor is a net win.
 5. **docs: update pipeline diagrams**
 
 Each commit should leave the build green.
-
----
-
-### TL;DR
-
-* **Sequential buffer** + **HF internal sliding window** gives you the accuracy.
-* **Proper 48 k → 16 k resample** keeps sibilants & stops aliasing.
-* Thread pool + saner pull cadence keeps the new worker’s speed.
-
-Follow the commit checklist above and the PR will be easy to review, bisectable, and should land with WER ≈ old worker, latency ≈ new worker.
