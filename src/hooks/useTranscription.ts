@@ -116,7 +116,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('local'); // Default to local mode
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -320,17 +320,30 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        const options = {
-          mimeType: 'audio/webm;codecs=opus',
-          audioBitsPerSecond: 64000, // Lower bitrate for smaller files
-        }; 
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            console.warn(`[useTranscription] Fallback: ${options.mimeType} not supported. Trying with 'audio/webm'.`);
-            // Try a more generic webm if opus-specific one fails
-            mediaRecorderRef.current = new MediaRecorder(streamRef.current, { mimeType: 'audio/webm', audioBitsPerSecond: 64000 });
-        } else {
-            mediaRecorderRef.current = new MediaRecorder(streamRef.current, options);
+        let chosenMimeType = 'audio/wav'; // Prioritize WAV
+        const audioBitsPerSecond = 128000; // Can adjust WAV bitrate if necessary, or omit for browser default
+
+        if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
+          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/webm;codecs=opus'.`);
+          chosenMimeType = 'audio/webm;codecs=opus';
+          if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
+            console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying generic 'audio/webm'.`);
+            chosenMimeType = 'audio/webm';
+            if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
+              console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
+              setError('No supported audio format found for recording (WAV/WebM).');
+              setRecording(false);
+              return;
+            }
+          }
         }
+        
+        const options = {
+          mimeType: chosenMimeType,
+          audioBitsPerSecond: chosenMimeType === 'audio/wav' ? undefined : audioBitsPerSecond, // WAV doesn't typically use audioBitsPerSecond in MediaRecorder
+        };
+
+        mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
         console.log('[useTranscription] MediaRecorder using MIME type:', mediaRecorderRef.current.mimeType);
 
         mediaRecorderRef.current.ondataavailable = (event) => {
@@ -348,7 +361,7 @@ export function useTranscription(): UseTranscriptionReturn {
             // setError('No audio was recorded.'); // Optional: inform user
             return;
           }
-          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm;codecs=opus' });
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || chosenMimeType });
           audioChunksRef.current = []; // Clear for next recording
           
           console.log(`[useTranscription] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
