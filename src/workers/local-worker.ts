@@ -7,7 +7,7 @@ import {
 import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
 
 // Updated MODEL_ID for streaming
-const MODEL_ID = "onnx-community/moonshine-tiny-ONNX";
+const MODEL_ID = "onnx-community/moonshine-base-ONNX";
 
 // Define type for Dtype configuration
 type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "int8">; // q4f16 from local, q4 from moonshine. Sticking with local options.
@@ -15,7 +15,7 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "i
 // Define dtype configurations based on device with explicit typing (Updated from moonshine-worker)
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
-    encoder_model: "q8", // from moonshine-worker
+    encoder_model: "fp16", // from moonshine-worker
     decoder_model_merged: "q8", // from moonshine-worker
   },
 };
