@@ -18,23 +18,6 @@ const Pill: React.FC<PillProps> = ({
   // Number of dots/bars to display - consistent across all states
   const VISUALIZATION_COUNT = 7;
   
-  useEffect(() => {
-    // Prevent default context menu for this component only
-    const pillElement = document.querySelector('.pill-container');
-    
-    const preventDefaultContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
-
-    // Add event listener to the pill element only
-    pillElement?.addEventListener('contextmenu', preventDefaultContextMenu);
-    
-    return () => {
-      // Clean up event listener
-      pillElement?.removeEventListener('contextmenu', preventDefaultContextMenu);
-    };
-  }, []);
-  
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = () => {
     // Create bars with consistent count
