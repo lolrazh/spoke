@@ -4,6 +4,9 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
+// Define CloudEngine type first
+type CloudEngine = 'groq' | 'gemini';
+
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -15,6 +18,8 @@ export interface UseTranscriptionReturn {
   stop: () => void;
   currentMode: 'local' | 'cloud';
   setMode: (mode: 'local' | 'cloud') => void;
+  cloudEngine: CloudEngine;
+  setCloudEngine: (engine: CloudEngine) => void;
 }
 
 // Helper function to encode Float32Array to WAV ArrayBuffer
@@ -87,6 +92,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -340,29 +346,36 @@ export function useTranscription(): UseTranscriptionReturn {
             const arrayBufferPromise = audioBlob.arrayBuffer();
             arrayBufferPromise.then(async (arrayBuffer) => {
               console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              if (!window.electron?.transcribeGroq) {
+              
+              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
                 throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
+                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
               }
-              console.log('[useTranscription] Sending audio ArrayBuffer to Groq (transferable)...');
+
+              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
               
               const preIPCTime = performance.now();
-              // Send as transferable
-              const transcript = await window.electron.transcribeGroq(arrayBuffer, [arrayBuffer]); 
+              const transcriptPromise =
+                cloudEngine === 'groq'
+                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
+                  : window.electron.transcribeGemini(arrayBuffer, [arrayBuffer]).then(result => result.text);
+              
+              const transcript = await transcriptPromise;
               
               if (profilingStartTimeRef.current) {
                 const endTime = performance.now();
                 const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndGroq = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - Groq transcript received.`);
+                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
+                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
                 console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + Groq (Main Thread actual work): ${durationIPCAndGroq.toFixed(2)} ms`);
+                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
                 profilingStartTimeRef.current = null; // Reset for next run
               }
-              // console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`); // Redundant with profiling log
               setText(transcript);
               if (transcript && window.electron.insertTextAtCursor) {
                 window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
               }
               setProcessing(false);
             }).catch(err => {
@@ -513,6 +526,8 @@ export function useTranscription(): UseTranscriptionReturn {
     stop,
     currentMode,
     setMode,
+    cloudEngine,
+    setCloudEngine,
   };
 }
 
@@ -559,6 +574,12 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
       console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
       return new Promise(resolve => setTimeout(() => {
         resolve("Mocked Groq transcript from window.electron mock.");
+      }, 500));
+    },
+    transcribeGemini: async (audioBuffer: ArrayBuffer): Promise<{text: string}> => {
+      console.warn('[Mock Electron] transcribeGemini called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
+      return new Promise(resolve => setTimeout(() => {
+        resolve({ text: "Mocked Gemini transcript from window.electron mock." });
       }, 500));
     }
   };

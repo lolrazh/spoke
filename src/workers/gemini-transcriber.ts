@@ -26,8 +26,8 @@ function arrayBufferToBase64(data: ArrayBuffer): string {
 export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
   mimeType = 'audio/wav',
-  prompt = 'Generate an exact transcript of the speech.'
-): Promise<string> {
+  prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
+): Promise<{ text: string }> {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
 
   if (audioData.byteLength === 0)
@@ -61,7 +61,7 @@ export async function transcribeAudioWithGemini(
       });
 
       if (!text) throw new Error('No transcript returned.');
-      return text;
+      return { text };
     }
 
     // >20 MB → Files API
@@ -73,7 +73,7 @@ export async function transcribeAudioWithGemini(
 
     // SDK currently expects a File, Buffer or fs path. We feed a Buffer.
     const fileHandle = await ai.files.upload({
-      file: Buffer.from(audioData),
+      file: Buffer.from(audioData) as any,
       config: { mimeType },
     });
 
@@ -89,7 +89,7 @@ export async function transcribeAudioWithGemini(
     });
 
     if (!text) throw new Error('No transcript returned.');
-    return text;
+    return { text };
   } catch (err: any) {
     console.error('[GeminiTranscriber] Error:', err?.message || err);
     throw err;

@@ -38,5 +38,7 @@ contextBridge.exposeInMainWorld('electron', {
     } else {
       return ipcRenderer.invoke('transcribe-groq', audioBuffer);
     }
-  }
+  },
+  transcribeGemini: (buf: ArrayBuffer, transfer?: Transferable[]) =>
+    ipcRenderer.invoke('transcribe-gemini', buf, transfer),
 });
