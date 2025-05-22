@@ -11,6 +11,11 @@ declare global {
       viewLogFile: () => Promise<void>;
       sendNotification: (message: string) => void;
       transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
+      transcribeGemini: (
+        buf: ArrayBuffer,
+        mimeType: string,
+        transfer?: Transferable[]
+      ) => Promise<{ text: string }>;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;

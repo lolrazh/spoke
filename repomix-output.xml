@@ -49,7 +49,6 @@ forge.env.d.ts
 index.html
 package.json
 postcss.config.js
-prod-plan.md
 profiling-results.md
 public/audioworklet-processor.js
 README.md
@@ -71,10 +70,10 @@ src/types/electron-squirrel-startup.d.ts
 src/types/electron.d.ts
 src/types/vite-env.d.ts
 src/types/worker.d.ts
+src/workers/gemini-transcriber.ts
 src/workers/groq-transcriber.ts
 src/workers/local-worker.ts
 tailwind.config.js
-task.md
 tsconfig.json
 vite.config.ts
 vite.main.config.ts
@@ -104,6 +103,30 @@ This section contains the contents of the repository's files.
 }
 </file>
 
+<file path="components.json">
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "tailwind.config.js",
+    "css": "src/index.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+</file>
+
 <file path="forge.env.d.ts">
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 </file>
@@ -115,37 +138,6 @@ module.exports = {
     autoprefixer: {},
   },
 }
-</file>
-
-<file path="README.md">
-# Sonic Flow
-
-Lightweight AI dictation app.
-
-## Installation
-
-### Windows
-
-The Windows installer (`Sonic-Flow Setup.exe`) uses Squirrel.Windows for a seamless installation experience:
-
-1.  **No Prompts:** When you run the setup file, you'll see a brief loading animation. There are no traditional setup steps asking for installation paths or options.
-2.  **Silent Install:** The application installs itself automatically in the background to your user profile's local application data folder (usually `C:\Users\<YourUsername>\AppData\Local\sonic-flow\`).
-3.  **Auto-Launch:** Once installed, the application will launch immediately.
-4.  **Shortcuts:** Shortcuts will be created on your Desktop and/or Start Menu.
-
-This method is designed for simplicity and enables smooth automatic updates in the future.
-
-### macOS / Linux
-
-*(Installation instructions for other platforms will be added here)*
-
-## Usage
-
-*(Usage instructions will be added here)*
-
-## Development
-
-*(Development setup instructions will be added here)*
 </file>
 
 <file path="src/contextmenu-preload.ts">
@@ -182,99 +174,74 @@ declare global {
 }
 </file>
 
-<file path="src/lib/settings.ts">
-import { app } from 'electron';
-import fs from 'node:fs';
-import path from 'node:path';
+<file path="src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 
-// Define the settings interface
-interface AppSettings {
-  hotkey: string;
-  hideTimeout?: number; // For future "hide for X time" feature
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
 }
+</file>
 
-// Default settings
-const DEFAULT_SETTINGS: AppSettings = {
-  hotkey: 'Ctrl+H',
-  hideTimeout: 3600000 // 1 hour in milliseconds
-};
+<file path="src/notification-preload.js">
+const { contextBridge, ipcRenderer } = require('electron');
 
-// Path to the settings file
-const SETTINGS_PATH = path.join(
-  app.getPath('userData'),
-  'settings.json'
-);
+contextBridge.exposeInMainWorld('notificationAPI', {
+  // We don't expose a function TO the window, 
+  // instead, we listen FOR events FROM the main process.
+});
 
-/**
- * Load settings from disk
- * Creates default settings file if it doesn't exist
- */
-export function loadSettings(): AppSettings {
-  try {
-    // Check if settings file exists
-    if (!fs.existsSync(SETTINGS_PATH)) {
-      // Create default settings file
-      fs.writeFileSync(
-        SETTINGS_PATH,
-        JSON.stringify(DEFAULT_SETTINGS, null, 2)
-      );
-      return { ...DEFAULT_SETTINGS };
-    }
-
-    // Read and parse settings file
-    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
-    const settings = JSON.parse(data) as AppSettings;
-    
-    // Ensure all required fields exist (in case of corrupted settings)
-    return { ...DEFAULT_SETTINGS, ...settings };
-  } catch (error) {
-    console.error('Failed to load settings:', error);
-    return { ...DEFAULT_SETTINGS };
+// Listen for the message from the main process
+ipcRenderer.on('set-notification-message', (event, message) => {
+  console.log(`[Preload Notification] Received 'set-notification-message' with message: "${message}"`);
+  const messageElement = document.getElementById('message');
+  if (messageElement) {
+    console.log(`[Preload Notification] Found #message element. Setting textContent.`);
+    messageElement.textContent = message;
+  } else {
+    console.error('[Preload Notification] Could not find #message element in notification window!');
   }
+});
+</file>
+
+<file path="src/renderer.tsx">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './components/App';
+import HomePage from './components/HomePage';
+import { HashRouter, Routes, Route } from 'react-router-dom';
+import './index.css';
+
+// Create root element
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  const root = document.createElement('div');
+  root.id = 'root';
+  document.body.appendChild(root);
+  
+  const reactRoot = createRoot(root);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
+} else {
+  const reactRoot = createRoot(rootElement);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
 }
 
-/**
- * Save settings to disk
- */
-export function saveSettings(settings: AppSettings): boolean {
-  try {
-    fs.writeFileSync(
-      SETTINGS_PATH,
-      JSON.stringify(settings, null, 2)
-    );
-    return true;
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-    return false;
-  }
-}
-
-/**
- * Update a specific setting
- */
-export function updateSetting<K extends keyof AppSettings>(
-  key: K,
-  value: AppSettings[K]
-): boolean {
-  try {
-    const settings = loadSettings();
-    settings[key] = value;
-    return saveSettings(settings);
-  } catch (error) {
-    console.error(`Failed to update setting ${key}:`, error);
-    return false;
-  }
-}
-
-/**
- * Validate if a hotkey string is in the correct format
- */
-export function isValidHotkey(hotkey: string): boolean {
-  // Basic validation - should contain at least one modifier
-  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
-  return modifiers.some(modifier => hotkey.includes(modifier)) && 
-         hotkey.includes('+');
-}
+console.log('🎤 Sonic Flow is running');
 </file>
 
 <file path="src/types/electron-squirrel-startup.d.ts">
@@ -291,8 +258,123 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 </file>
 
-<file path="task.md">
-fuck the diff shit. bring back local implementation from git version "212b38001a6b85d4f0168ec6246bb2965408a87f" as fallback maybe. this is it. just do sequential/streaaming buffer and you're done. ezpz. good latency as well.
+<file path="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+    darkMode: ["class"],
+    content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+  	extend: {
+  		colors: {
+  			'sonic-orange': '#FF5F1F',
+  			'sonic-dark': '#1A1A1A',
+  			'sonic-darker': '#121212',
+  			'sonic-light-orange': '#FF8A47',
+  			'sonic-gray': '#2A2A2A',
+  			background: 'hsl(var(--background))',
+  			foreground: 'hsl(var(--foreground))',
+  			card: {
+  				DEFAULT: 'hsl(var(--card))',
+  				foreground: 'hsl(var(--card-foreground))'
+  			},
+  			popover: {
+  				DEFAULT: 'hsl(var(--popover))',
+  				foreground: 'hsl(var(--popover-foreground))'
+  			},
+  			primary: {
+  				DEFAULT: 'hsl(var(--primary))',
+  				foreground: 'hsl(var(--primary-foreground))'
+  			},
+  			secondary: {
+  				DEFAULT: 'hsl(var(--secondary))',
+  				foreground: 'hsl(var(--secondary-foreground))'
+  			},
+  			muted: {
+  				DEFAULT: 'hsl(var(--muted))',
+  				foreground: 'hsl(var(--muted-foreground))'
+  			},
+  			accent: {
+  				DEFAULT: 'hsl(var(--accent))',
+  				foreground: 'hsl(var(--accent-foreground))'
+  			},
+  			destructive: {
+  				DEFAULT: 'hsl(var(--destructive))',
+  				foreground: 'hsl(var(--destructive-foreground))'
+  			},
+  			border: 'hsl(var(--border))',
+  			input: 'hsl(var(--input))',
+  			ring: 'hsl(var(--ring))',
+  			chart: {
+  				'1': 'hsl(var(--chart-1))',
+  				'2': 'hsl(var(--chart-2))',
+  				'3': 'hsl(var(--chart-3))',
+  				'4': 'hsl(var(--chart-4))',
+  				'5': 'hsl(var(--chart-5))'
+  			}
+  		},
+  		boxShadow: {
+  			neomorphic: '0 4px 8px rgba(0, 0, 0, 0.3), inset 1px 1px 1px rgba(255, 255, 255, 0.07)'
+  		},
+  		backgroundImage: {
+  			'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))'
+  		},
+  		borderRadius: {
+  			lg: 'var(--radius)',
+  			md: 'calc(var(--radius) - 2px)',
+  			sm: 'calc(var(--radius) - 4px)'
+  		}
+  	}
+  },
+  plugins: [require("tailwindcss-animate")],
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "jsx": "react",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+// eslint-disable-next-line import/default
+import electron from 'vite-plugin-electron'
+import path from 'path'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    electron({
+      entry: 'src/main.ts', // Path to your Electron main process file
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  }
+})
 </file>
 
 <file path="vite.preload.config.ts">
@@ -322,268 +404,6 @@ export default defineConfig({
     emptyOutDir: false, // Set to false if other build steps use the same outDir
   },
 });
-</file>
-
-<file path=".repomixignore">
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
-
-/node_modules
-/.vite
-/.cursor
-
-faster-implementation.md
-profiling-reults.md
-</file>
-
-<file path="components.json">
-{
-  "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "new-york",
-  "rsc": false,
-  "tsx": true,
-  "tailwind": {
-    "config": "tailwind.config.js",
-    "css": "src/index.css",
-    "baseColor": "neutral",
-    "cssVariables": true,
-    "prefix": ""
-  },
-  "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
-  },
-  "iconLibrary": "lucide"
-}
-</file>
-
-<file path="prod-plan.md">
-Below is a *battle-tested* roadmap that folds every item you mentioned into a coherent release programme.  I’ve split it into **(A) architecture & feature work**, **(B) distribution & DevOps**, and **(C) security / privacy hardening**.  Each subsection contains actionable tasks, ownership hints, and “foot-guns to avoid.”  Follow it top-to-bottom and you’ll be in the Microsoft Store with a production-grade app and a clean security posture.
-
----
-
-## A. Architecture & Feature Work
-
-### 1  Cloud transcription via Groq → Cloudflare Worker
-
-| task                                                 | detail                                                                                                                                                                                                                                                                                                                   | key files to touch                                                                                 |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| **A-1.1  Build the Worker**                          | • Use `workers.ai` or a plain C3 Worker with fetch to `https://api.groq.com/openai/v1/audio/transcriptions`.<br>• Add `GROQ_API_KEY` and *rate-limit/Billing tier* env vars via **Wrangler secrets**.<br>• Accept `POST /v1/transcribe` with raw 16 kHz PCM, JSON-stream, or multipart-form.                             | *(new)* `cloudflare/worker.ts`                                                                     |
-| **A-1.2  Auth from client**                          | • On launch, obtain a short-lived Supabase JWT (see §B-3) and pass it as `Authorization: Bearer …` to the Worker.  Worker verifies via Supabase Admin API before calling Groq.                                                                                                                                           | `src/hooks/useTranscription.ts`                                                                    |
-| **A-1.3  Client fallback logic**                     | • Add a small “capability probe” — ping Worker, if 200 OK use **cloud mode**, else fall back to local Moonshine.<br>• Pipe large audio the same way you already stream to the WASM ASR: `ReadableStream` → `fetch` with `duplex:"half"` so you can send chunks while reading partial JSON responses (Groq supports SSE). | `src/moonshine-worker.ts` (split into `cloud-worker.ts` & `local-worker.ts`, then pick at runtime) |
-| **A-1.4  Remove chunking complexity for local mode** | • Moonshine Tiny on WASM already runs in ≤700 ms for short dictations; re-enable *single-pass* inference to simplify maintenance.  Keep your RingBuffer & 16 kHz capture, but delete the KV-cache logic.                                                                                                                 | same                                                                                               |
-
-### 2  Model caching on first install
-
-1. Package **Moonshine-tiny-q8.onnx** in the app’s `resources/models/`; size ≈ 48 MB.
-2. In `src/main.ts` first-run hook, copy it into `%LOCALAPPDATA%/sonic‐flow/models` so future auto-updates don’t redownload.
-3. For Store submission, put the model in a **Resource Pack** so it’s delta-compressed by MSIX.
-
-### 3  Hotkey change to “Ctrl + Win”
-
-* Electron accelerator string is **`CommandOrControl+Super`**.
-* Update `loadSettings()` default, migrate existing settings, and change tooltip text.
-* **Windows quirk:** the Win key is swallowed by the shell if no non-modifier key is pressed.  Your combo is fine, but document that on Win 11 it won’t work if the user has a system overlay using the same chord.
-
-### 4  Multi-monitor pill
-
-1. In `src/main.ts` on every (a) hotkey press, (b) `mousemove` throttle, call `screen.getCursorScreenPoint()` and `screen.getDisplayNearestPoint()`.
-2. If the display id differs from the pill’s current display, `setPosition()` so the pill hugs the bottom centre of that monitor.
-3. Disable on macOS ≤ 10.13 where Electron’s co-ordinate space is off by 2× under retina.
-
-### 5  Home window → Control Centre
-
-* Add React hooks that read **enumerated media devices** (`navigator.mediaDevices.enumerateDevices()`) and populate the “Input device” dropdown live.
-* Add toggles for “Use Groq cloud mode”, “Auto-switch screen”, “Enable local fallback”, “Diagnostics”.
-* Persist in `settings.json` (already abstracted in `src/lib/settings.ts`).
-
-### 6  Instrumentation with Sentry
-
-* `npm i @sentry/electron`
-* In `src/main.ts` initialise with `autoSessionTracking: true, integrations:[new SentryProfilingIntegration()]`.
-* In renderer preload expose `window.logError()` that forwards to Sentry so workers/UI can capture exceptions without full Node context.
-* Strip stack-trace PII before upload (`beforeSend`).
-
----
-
-## B. Distribution & DevOps
-
-### 1  MSIX packaging & Microsoft Store
-
-| step      | detail                                                                                                                               |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **B-1.1** | Switch Forge maker from Squirrel to `@electron/forge-maker-msix` (built-in since Forge 7.4).                                         |
-| **B-1.2** | Create a *Partner Center* app submission, reserve “Sonic Flow”, generate Store certificate, add to `packagerConfig.certificateFile`. |
-| **B-1.3** | Add `AppxManifest` capabilities: `internetClient`, `microphone`, `userAccountInformation`, `runFullTrust` (for global hotkeys).      |
-| **B-1.4** | Store auto-updates come from MSIX flighting; disable your internal auto-update channel on Windows to avoid conflict.                 |
-
-### 2  GitHub Actions CI/CD
-
-1. **Matrix** build (win-x64, mac-universal, linux) with `actions/setup-node`, `actions/setup-java` (MSIX signing).
-2. Cache `~/.cache/electron`, `~/.cache/onnx` to keep pipeline < 6 min.
-3. On tagged commit `v*`, run Forge make → upload MSIX/MSI/ZIP to *GitHub Release*.
-4. On `main` push, push Worker code with `wrangler deploy --env production`.
-
-### 3  Supabase Auth & DB
-
-| table           | columns                                                                         | purpose             |
-| --------------- | ------------------------------------------------------------------------------- | ------------------- |
-| `users`         | id (uuid, pk), email, created\_at                                               | canonical user info |
-| `subscriptions` | id, user\_id ➜ users.id fk, paddle\_subscription\_id, status, tier, expires\_at | payment gating      |
-
-* Use Supabase **Row Level Security**: only allow `auth.uid()` to select its row.
-* Generate JWT for Worker verification: `supabase.auth.getSession()` → `access_token`.
-
-### 4  Paddle billing & gating
-
-* Create Paddle “Sonic Flow Pro” plan, web-hook to Supabase Edge Function sets `status='active'`.
-* In app: poll `/rest/v1/subscriptions` at launch; cache in IndexedDB; re-validate every 15 min.
-* In `useTranscription`, before sending audio, ensure `context.subscriptionActive` – else show “upgrade” notification and block recording.
-
----
-
-## C. Security & Privacy Audit (current code)
-
-| finding                                                                                                                                                                                          | severity                              | fix                                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Context-isolation disabled** in `captureWindow` (`contextIsolation:false`).                                                                                                                    | **High** – allows DOM + Node overlap. | Set `contextIsolation:true`, move DOM→main messaging through a small preload with `contextBridge`.                        |
-| **`nodeIntegration` true** in `captureWindow` *and* it loads inline HTML.                                                                                                                        | High                                  | Same as above; never allow Node in a window that consumes untrusted data (the user could paste JS into the hotkey field). |
-| **Un-scoped IPC Channels** (`toggle-dictation`, `insert-text-at-cursor`) are fine, but `ipcRenderer.on('reset-ui')` in hotkey HTML uses an un-sanitised `hotkey` string.                         | Medium                                | Escape HTML entities (you already do this in notifications – copy that helper).                                           |
-| **`execSync('powershell …')` paste helper** runs user-controlled text? No – text goes to clipboard.  Still, PowerShell invocation can be abused if an attacker can inject environment variables. | Medium                                | Pass `-NoLogo -NoProfile -NonInteractive -Command`, and wrap in try/catch.                                                |
-| **COOP/COEP set via `onHeadersReceived`** – good.  But WebGPU flags commented out; make them conditional on platform to avoid exposing experimental features on macOS/Intel GPUs that crash.     | Info                                  | `if (process.platform==='win32') app.commandLine.appendSwitch('enable-unsafe-webgpu')`.                                   |
-| **Secrets in renderer** – none found. Keep it that way by proxying Groq through Worker.                                                                                                          |                                       |                                                                                                                           |
-| **Supabase anon public key** will live in renderer (needed).  Restrict policies so anon can *only* call auth endpoints.                                                                          |                                       |                                                                                                                           |
-| **GlobalShortcut collisions** – registering `Ctrl+Win` may fail if user has PowerToys or Windows-Native overlay.  You already show a dialog – extend wording.                                    |                                       |                                                                                                                           |
-| **Auto-update** – Store handles Windows; for mac/Linux keep Forge auto updater **signing** key in GitHub Secrets, not repo.                                                                      |                                       |                                                                                                                           |
-
----
-
-## Suggested Timeline (realistic pace, one dev)
-
-| week | deliverable                                                      |
-| ---- | ---------------------------------------------------------------- |
-| 1    | Cloudflare Worker + client fallback, refactor workers.           |
-| 2    | Sentry instrumentation, hotkey migration, pill multi-monitor.    |
-| 3    | Control Centre UX + microphone selector.                         |
-| 4    | Supabase auth, Paddle web-hooks, gating middleware.              |
-| 5    | MSIX build, Store submission, model caching.                     |
-| 6    | CI/CD pipeline, security hardening fixes, final pen-test & docs. |
-
----
-
-### Final notes
-
-*Keep the scope tight:* Cloud transcription = better accuracy, local Moonshine = offline resilience – that dual-path is plenty for v1.  Defer fancy diarisation or speaker ID until you have paying users.
-
-Once you’ve ticked the week-6 boxes, you’ll have:
-
-* **Accurate, low-latency dictation** (Groq) with **offline fallback** (Moonshine)
-* **Payments & entitlement** enforced in both Cloudflare Worker and client
-* **Crash/error telemetry** and **signed MSIX** ready for Microsoft Store
-* A clean security posture validated against Electron’s 2025 checklist.
-
-Good luck shipping — and remember: “Ship, then iterate.”
-</file>
-
-<file path="public/audioworklet-processor.js">
-// public/audioworklet-processor.js
-// This file is a JavaScript copy of the TypeScript version for direct loading.
-
-// Import the RingBuffer class.
-// Path is relative from public root to src directory.
-import { RingBuffer } from '../src/audio/ring-buffer.js';
-
-// Define the base class if needed (though typically provided by the environment)
-// Ensure AudioWorkletProcessor is available in the global scope
-if (typeof AudioWorkletProcessor === 'undefined') {
-    console.error("AudioWorkletProcessor is not defined in this scope!");
-    // Optionally define a dummy class to prevent further errors immediately
-    // globalThis.AudioWorkletProcessor = class AudioWorkletProcessor { constructor(){} process(){return true;} };
-}
-
-
-/**
- * An AudioWorkletProcessor that captures raw audio samples (Float32)
- * and writes them into a RingBuffer residing in a SharedArrayBuffer.
- */
-class CaptureProcessor extends AudioWorkletProcessor {
-  ringBuffer = null; // Use instance property instead of private field for JS
-
-  constructor(options) { // Remove TS parameter type
-    super(options);
-
-    const processorOptions = options?.processorOptions; // Easier access
-
-    if (!processorOptions?.sab) {
-      console.error('CaptureProcessor: SharedArrayBuffer not provided in processorOptions.sab');
-      return;
-    }
-
-    try {
-      // Directly use processorOptions.sab
-      this.ringBuffer = new RingBuffer(processorOptions.sab);
-      console.log('CaptureProcessor: RingBuffer initialized successfully.');
-    } catch (error) {
-      console.error('CaptureProcessor: Failed to initialize RingBuffer:', error);
-      this.ringBuffer = null;
-    }
-
-     // Optional: Listen for messages from the main thread
-     this.port.onmessage = (event) => {
-      console.log('CaptureProcessor received message:', event.data);
-      // Handle messages if needed, e.g., event.data.command === 'reset' -> this.ringBuffer?.reset();
-    };
-  }
-
-  /**
-   * Called by the audio engine with new audio blocks.
-   */
-  process(inputs, outputs, parameters) { // Remove TS parameter types
-    // Check if the ring buffer was initialized successfully
-     if (!this.ringBuffer) {
-       // console.warn('CaptureProcessor: RingBuffer not available, dropping audio.');
-       return true; // Keep alive
-     }
-
-    // Get the first channel of the first input (mono audio)
-    const inputChannelData = inputs[0]?.[0];
-
-    // Basic sanity check
-    if (!inputChannelData || inputChannelData.length === 0) {
-      // console.log('CaptureProcessor: No input data received.');
-      return true; // Keep alive
-    }
-
-    // Write the data to the ring buffer
-    const written = this.ringBuffer.write(inputChannelData);
-    if (written < inputChannelData.length) {
-        // Logging handled in RingBuffer
-        // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
-    }
-
-    // Return true to keep the processor node alive
-    return true;
-  }
-}
-
-// Register the processor with the browser
-try {
-   // Use the same name as before
-   // Ensure registerProcessor is available
-   if (typeof registerProcessor === 'function') {
-       registerProcessor('capture-processor', CaptureProcessor);
-       console.log('CaptureProcessor registered (from public JS file).');
-   } else {
-       console.error("registerProcessor is not defined in this scope!");
-   }
-} catch (error) {
-   console.error('Failed to register CaptureProcessor (from public JS file):', error);
-}
 </file>
 
 <file path="repomix.config.json">
@@ -645,23 +465,6 @@ const Pill: React.FC<PillProps> = ({
   
   // Number of dots/bars to display - consistent across all states
   const VISUALIZATION_COUNT = 7;
-  
-  useEffect(() => {
-    // Prevent default context menu for this component only
-    const pillElement = document.querySelector('.pill-container');
-    
-    const preventDefaultContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-    };
-
-    // Add event listener to the pill element only
-    pillElement?.addEventListener('contextmenu', preventDefaultContextMenu);
-    
-    return () => {
-      // Clean up event listener
-      pillElement?.removeEventListener('contextmenu', preventDefaultContextMenu);
-    };
-  }, []);
   
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = () => {
@@ -763,13 +566,13 @@ export default Pill;
 @layer components {
   .pill-container {
     position: fixed;
-    bottom: 4px;
+    bottom: 2px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(18, 18, 18, 0.98);
     border-radius: 14px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.03);
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     z-index: 1000;
     backdrop-filter: blur(5px);
@@ -1015,74 +818,99 @@ body {
 }
 </file>
 
-<file path="src/lib/utils.ts">
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+<file path="src/lib/settings.ts">
+import { app } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+// Define the settings interface
+interface AppSettings {
+  hotkey: string;
+  hideTimeout?: number; // For future "hide for X time" feature
 }
-</file>
 
-<file path="src/notification-preload.js">
-const { contextBridge, ipcRenderer } = require('electron');
+// Default settings
+const DEFAULT_SETTINGS: AppSettings = {
+  hotkey: 'CommandorControl+H',
+  hideTimeout: 3600000 // 1 hour in milliseconds
+};
 
-contextBridge.exposeInMainWorld('notificationAPI', {
-  // We don't expose a function TO the window, 
-  // instead, we listen FOR events FROM the main process.
-});
+// Path to the settings file
+const SETTINGS_PATH = path.join(
+  app.getPath('userData'),
+  'settings.json'
+);
 
-// Listen for the message from the main process
-ipcRenderer.on('set-notification-message', (event, message) => {
-  console.log(`[Preload Notification] Received 'set-notification-message' with message: "${message}"`);
-  const messageElement = document.getElementById('message');
-  if (messageElement) {
-    console.log(`[Preload Notification] Found #message element. Setting textContent.`);
-    messageElement.textContent = message;
-  } else {
-    console.error('[Preload Notification] Could not find #message element in notification window!');
+/**
+ * Load settings from disk
+ * Creates default settings file if it doesn't exist
+ */
+export function loadSettings(): AppSettings {
+  try {
+    // Check if settings file exists
+    if (!fs.existsSync(SETTINGS_PATH)) {
+      // Create default settings file
+      fs.writeFileSync(
+        SETTINGS_PATH,
+        JSON.stringify(DEFAULT_SETTINGS, null, 2)
+      );
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    // Read and parse settings file
+    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
+    const settings = JSON.parse(data) as AppSettings;
+    
+    // Ensure all required fields exist (in case of corrupted settings)
+    return { ...DEFAULT_SETTINGS, ...settings };
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    return { ...DEFAULT_SETTINGS };
   }
-});
-</file>
-
-<file path="src/renderer.tsx">
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './components/App';
-import HomePage from './components/HomePage';
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import './index.css';
-
-// Create root element
-const rootElement = document.getElementById('root');
-
-if (!rootElement) {
-  const root = document.createElement('div');
-  root.id = 'root';
-  document.body.appendChild(root);
-  
-  const reactRoot = createRoot(root);
-  reactRoot.render(
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
-      </Routes>
-    </HashRouter>
-  );
-} else {
-  const reactRoot = createRoot(rootElement);
-  reactRoot.render(
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
-      </Routes>
-    </HashRouter>
-  );
 }
 
-console.log('🎤 Sonic Flow is running');
+/**
+ * Save settings to disk
+ */
+export function saveSettings(settings: AppSettings): boolean {
+  try {
+    fs.writeFileSync(
+      SETTINGS_PATH,
+      JSON.stringify(settings, null, 2)
+    );
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
+  }
+}
+
+/**
+ * Update a specific setting
+ */
+export function updateSetting<K extends keyof AppSettings>(
+  key: K,
+  value: AppSettings[K]
+): boolean {
+  try {
+    const settings = loadSettings();
+    settings[key] = value;
+    return saveSettings(settings);
+  } catch (error) {
+    console.error(`Failed to update setting ${key}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Validate if a hotkey string is in the correct format
+ */
+export function isValidHotkey(hotkey: string): boolean {
+  // Basic validation - should contain at least one modifier
+  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
+  return modifiers.some(modifier => hotkey.includes(modifier)) && 
+         hotkey.includes('+');
+}
 </file>
 
 <file path="src/types/worker.d.ts">
@@ -1094,125 +922,6 @@ declare module '*?worker' {
   const workerConstructor: new () => Worker;
   export default workerConstructor;
 }
-</file>
-
-<file path="tailwind.config.js">
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-    darkMode: ["class"],
-    content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
-  theme: {
-  	extend: {
-  		colors: {
-  			'sonic-orange': '#FF5F1F',
-  			'sonic-dark': '#1A1A1A',
-  			'sonic-darker': '#121212',
-  			'sonic-light-orange': '#FF8A47',
-  			'sonic-gray': '#2A2A2A',
-  			background: 'hsl(var(--background))',
-  			foreground: 'hsl(var(--foreground))',
-  			card: {
-  				DEFAULT: 'hsl(var(--card))',
-  				foreground: 'hsl(var(--card-foreground))'
-  			},
-  			popover: {
-  				DEFAULT: 'hsl(var(--popover))',
-  				foreground: 'hsl(var(--popover-foreground))'
-  			},
-  			primary: {
-  				DEFAULT: 'hsl(var(--primary))',
-  				foreground: 'hsl(var(--primary-foreground))'
-  			},
-  			secondary: {
-  				DEFAULT: 'hsl(var(--secondary))',
-  				foreground: 'hsl(var(--secondary-foreground))'
-  			},
-  			muted: {
-  				DEFAULT: 'hsl(var(--muted))',
-  				foreground: 'hsl(var(--muted-foreground))'
-  			},
-  			accent: {
-  				DEFAULT: 'hsl(var(--accent))',
-  				foreground: 'hsl(var(--accent-foreground))'
-  			},
-  			destructive: {
-  				DEFAULT: 'hsl(var(--destructive))',
-  				foreground: 'hsl(var(--destructive-foreground))'
-  			},
-  			border: 'hsl(var(--border))',
-  			input: 'hsl(var(--input))',
-  			ring: 'hsl(var(--ring))',
-  			chart: {
-  				'1': 'hsl(var(--chart-1))',
-  				'2': 'hsl(var(--chart-2))',
-  				'3': 'hsl(var(--chart-3))',
-  				'4': 'hsl(var(--chart-4))',
-  				'5': 'hsl(var(--chart-5))'
-  			}
-  		},
-  		boxShadow: {
-  			neomorphic: '0 4px 8px rgba(0, 0, 0, 0.3), inset 1px 1px 1px rgba(255, 255, 255, 0.07)'
-  		},
-  		backgroundImage: {
-  			'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))'
-  		},
-  		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
-  		}
-  	}
-  },
-  plugins: [require("tailwindcss-animate")],
-}
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "noImplicitAny": true,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "outDir": "dist",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "jsx": "react",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["src/**/*"]
-}
-</file>
-
-<file path="vite.config.ts">
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-// eslint-disable-next-line import/default
-import electron from 'vite-plugin-electron'
-import path from 'path'
-
-export default defineConfig({
-  plugins: [
-    react(),
-    electron({
-      entry: 'src/main.ts', // Path to your Electron main process file
-    }),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
-})
 </file>
 
 <file path=".gitignore">
@@ -1314,11 +1023,283 @@ fin.md
 implementation-reference.md
 </file>
 
-<file path="vite.main.config.ts">
-import { defineConfig } from 'vite';
+<file path=".repomixignore">
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
 
-// https://vitejs.dev/config
-export default defineConfig({ });
+/node_modules
+/.vite
+/.cursor
+
+faster-implementation.md
+profiling-reults.md
+repomix-output.xml
+</file>
+
+<file path="README.md">
+# Sonic Flow
+
+**Sonic Flow: A Lightweight, AI-Powered Dictation App**
+
+Sonic Flow is a desktop application designed to transform your voice into text seamlessly. It listens to your speech and inserts the transcribed text directly at your cursor's position in any application. Experience the convenience of hands-free typing with support for both privacy-focused local, on-device transcription and highly accurate cloud-based transcription.
+
+## Features
+
+Sonic Flow offers a range of features to enhance your productivity:
+
+*   **Real-time Dictation:** Transcribes your speech into text as you speak.
+*   **Dual Transcription Modes:**
+    *   **Local Mode:** Utilizes on-device ASR (Automatic Speech Recognition) for offline use and enhanced privacy.
+    *   **Cloud Mode:** Leverages the Groq API for potentially higher accuracy transcription (requires an internet connection).
+*   **Global Hotkey:** Toggle dictation on or off from any application using a configurable system-wide hotkey.
+*   **Minimalist "Pill" UI:** A discreet, always-on-top UI element allows for quick interaction (start/stop dictation) and provides visual feedback on the app's status (idle, listening, processing).
+*   **Main Application Window:** Access a comprehensive interface for:
+    *   **Dashboard:** View usage statistics, such as total dictations and estimated time saved.
+    *   **Settings:** Customize application behavior (e.g., launch on startup), select recognition language, and configure microphone input.
+    *   **Account Management:** (Placeholder for future user account features).
+*   **Automatic Text Insertion:** Transcribed text is automatically pasted at your current cursor location.
+*   **System Notifications:** Receive feedback on important events, such as engine loading status or errors.
+
+## Technologies Used
+
+Sonic Flow is built with a modern stack of technologies:
+
+*   **Core Framework:** Electron (for cross-platform desktop application development)
+*   **Frontend:** React (with TypeScript) for building the user interface, Tailwind CSS for styling.
+*   **Build System:** Vite (for fast development and optimized builds)
+*   **AI & Transcription Engine:**
+    *   **Local ASR:**
+        *   `@huggingface/transformers` (potential library for loading/running local models)
+        *   ONNX Runtime (`onnxruntime-web`) (for efficient execution of machine learning models)
+        *   Web Workers (to run ASR in the background without freezing the UI)
+        *   AudioWorklet API & `SharedArrayBuffer` (for efficient audio capture and processing)
+    *   **Cloud ASR:**
+        *   Groq SDK (`groq-sdk`) (for interacting with Groq's transcription API)
+    *   **Audio Capture:** WebRTC `MediaRecorder` API (for cloud mode audio capture)
+*   **Linting:** ESLint with TypeScript support.
+
+## Getting Started / Development
+
+To get Sonic Flow running on your local machine for development:
+
+1.  **Prerequisites:**
+    *   Node.js (v18.x or later recommended)
+    *   npm (comes with Node.js) or yarn
+
+2.  **Clone the Repository:**
+    ```bash
+    git clone https://github.com/your-username/sonic-flow.git # Replace with the actual repository URL
+    cd sonic-flow
+    ```
+
+3.  **Install Dependencies:**
+    ```bash
+    npm install
+    ```
+    (Or if you prefer yarn: `yarn install`)
+
+4.  **Run the Application:**
+    ```bash
+    npm start
+    ```
+    This will launch the application in development mode with hot reloading enabled.
+
+5.  **Switching Transcription Modes:**
+    *   The application allows switching between 'local' and 'cloud' transcription modes. This setting is typically found in the main application window's "Settings" area.
+    *   **Note for Local Mode:** The first time you switch to or start in local mode, the necessary AI models will be downloaded and initialized. This might take some time. Subsequent starts will be faster.
+    *   **Note for Cloud Mode:** Ensure you have a working internet connection. Configuration for API keys (e.g., for Groq) might be required (see Configuration section).
+
+## Building the Application
+
+Sonic Flow uses Electron Forge to package and build distributables for various operating systems.
+
+1.  **Package the Application:**
+    *   This command bundles your application code.
+    ```bash
+    npm run package
+    ```
+
+2.  **Create Distributables (Make):**
+    *   This command creates installable versions of your application (e.g., `.dmg` for macOS, `.exe` for Windows, `.deb`/`.rpm` for Linux).
+    ```bash
+    npm run make
+    ```
+    The generated installers and packaged application files will be located in the `out` directory.
+
+For more details on specific build targets or configurations, refer to the `forge.config.ts` file and the official Electron Forge documentation.
+
+## Project Structure
+
+Here's an overview of the key directories and files in Sonic Flow:
+
+```
+sonic-flow/
+├── .vite/                # Vite's build output and cache
+├── out/                  # Output directory for packaged application and installers
+├── public/               # Static assets
+│   ├── assets/           # Icons, images
+│   └── audioworklet-processor.js # Custom AudioWorklet for local audio capture
+├── src/                  # Source code
+│   ├── audio/            # Audio processing utilities (e.g., ring buffers)
+│   ├── components/       # React components
+│   │   ├── App.tsx       # Core application component managing the "Pill" UI and dictation state
+│   │   └── HomePage.tsx  # UI for the main application window (dashboard, settings)
+│   ├── hooks/            # Custom React hooks
+│   │   └── useTranscription.ts # Central hook managing transcription logic (local & cloud)
+│   ├── lib/              # Utility functions and libraries
+│   ├── workers/          # Web Workers
+│   │   └── local-worker.ts # Worker for handling local ASR model loading and transcription
+│   ├── main.ts           # Electron main process entry point
+│   ├── preload.ts        # Electron preload script for IPC and exposing Node.js features securely
+│   ├── renderer.tsx      # React application entry point for the renderer process
+│   └── index.css         # Global styles
+├── .eslintrc.json        # ESLint configuration
+├── forge.config.ts       # Electron Forge build configuration
+├── package.json          # Project metadata, dependencies, and scripts
+├── tsconfig.json         # TypeScript compiler configuration
+└── vite.config.ts        # Vite base configuration
+```
+
+## Configuration
+
+For certain features, like cloud-based transcription using the Groq API, you may need to configure API keys.
+
+1.  **Groq API Key:**
+    *   To use the cloud transcription mode, you'll need an API key from Groq.
+    *   Create a `.env` file in the root of the project (e.g., copy `.env.example` if provided, or create a new one).
+    *   Add your Groq API key to the `.env` file like this:
+        ```
+        GROQ_API_KEY=your_actual_api_key_here
+        ```
+    *   The application uses `dotenv` to load these variables during development. Ensure this file is not committed to version control if it contains sensitive keys. Add `.env` to your `.gitignore` file if it's not already there.
+
+**Note:** The specific environment variable names and requirements might vary. Check the relevant parts of the source code (e.g., where `groq-sdk` is initialized or where `process.env` is accessed) for the exact variable names if you encounter issues.
+
+## Contributing
+
+Contributions to Sonic Flow are welcome! If you'd like to help improve the application, please follow these general guidelines:
+
+1.  **Fork the Repository:** Create your own fork of the main Sonic Flow repository.
+2.  **Create a Branch:** Make your changes in a dedicated branch in your forked repository. Name your branch descriptively (e.g., `feature/new-shortcut` or `fix/settings-bug`).
+3.  **Make Your Changes:** Implement your feature or bug fix.
+4.  **Lint Your Code:** Ensure your code adheres to the project's coding standards by running the linter:
+    ```bash
+    npm run lint
+    ```
+    Fix any linting errors or warnings before committing.
+5.  **Test Your Changes:** (If applicable) Add unit or integration tests for your changes and ensure all tests pass.
+6.  **Commit Your Changes:** Write clear and concise commit messages.
+7.  **Submit a Pull Request:** Open a pull request from your branch to the `main` branch (or the relevant development branch) of the original Sonic Flow repository. Provide a clear description of the changes you've made.
+
+We'll review your pull request as soon as possible.
+
+## License
+
+Sonic Flow is currently released under a **Proprietary License**.
+
+For more details, please refer to the `LICENSE` file in the repository (if available) or contact the project author.
+</file>
+
+<file path="src/workers/gemini-transcriber.ts">
+// gemini-transcriber.ts
+import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
+// import { Blob } from 'node:buffer';              // Node20+ already has Buffer
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+
+if (!GEMINI_API_KEY) {
+  console.warn('[GeminiTranscriber] GEMINI_API_KEY is not set.');
+} else {
+  console.log('[GeminiTranscriber] GEMINI_API_KEY is set.');
+}
+
+/** Helper: ArrayBuffer ➞ base64 (Gemini inline audio path) */
+function arrayBufferToBase64(data: ArrayBuffer): string {
+  return Buffer.from(data).toString('base64');
+}
+
+/**
+ * Transcribes audio with Gemini 2.0 Flash.
+ * Falls back to Files API automatically for blobs > 20 MB.
+ *
+ * @param audioData   raw audio as ArrayBuffer (16-bit PCM mono, 16 kHz works great)
+ * @param mimeType    defaults to 'audio/wav' – Gemini also takes mp3, aac, ogg, flac…
+ * @param prompt      customise formatting / vocabulary here
+ */
+export async function transcribeAudioWithGemini(
+  audioData: ArrayBuffer,
+  mimeType: string,
+  prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
+): Promise<{ text: string }> {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+
+  if (audioData.byteLength === 0)
+    throw new Error('Audio data (ArrayBuffer) is empty.');
+
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+  try {
+    // ≤20 MB → send inline; otherwise upload then reference file URI
+    if (audioData.byteLength <= 20 * 1024 * 1024) {
+      console.log(
+        `[GeminiTranscriber] Sending ${(
+          audioData.byteLength /
+          1024
+        ).toFixed(1)} KB inline to Gemini…`
+      );
+
+      const base64Audio = arrayBufferToBase64(audioData);
+
+      const { text } = await ai.models.generateContent({
+        model: 'gemini-2.0-flash-lite',
+        contents: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Audio,
+            },
+          },
+        ],
+      });
+
+      if (!text) throw new Error('No transcript returned.');
+      return { text: text.trim() };
+    }
+
+    // >20 MB → Files API
+    console.log(
+      `[GeminiTranscriber] Audio is ${(audioData.byteLength / 1024 / 1024).toFixed(
+        2
+      )} MB – uploading via Files API…`
+    );
+
+    // SDK currently expects a File, Buffer or fs path. We feed a Buffer.
+    const fileHandle = await ai.files.upload({
+      file: Buffer.from(audioData) as any,
+      config: { mimeType },
+    });
+
+    const { text } = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-lite',
+      contents: [
+        { text: prompt },
+        {
+          // createPartFromUri is handy but inline object works too
+          fileData: { mimeType, fileUri: fileHandle.uri },
+        } as any,
+      ],
+    });
+
+    if (!text) throw new Error('No transcript returned.');
+    return { text: text.trim() };
+  } catch (err: any) {
+    console.error('[GeminiTranscriber] Error:', err?.message || err);
+    throw err;
+  }
+}
 </file>
 
 <file path="vite.renderer.config.ts">
@@ -1462,6 +1443,125 @@ export default config;
     <script type="module" src="/src/renderer.tsx"></script>
   </body>
 </html>
+</file>
+
+<file path="public/audioworklet-processor.js">
+// public/audioworklet-processor.js
+// This file is a JavaScript copy of the TypeScript version for direct loading.
+
+// Import the RingBuffer class.
+// Path is relative from public root to src directory.
+import { RingBuffer } from '../src/audio/ring-buffer.js';
+
+// Define the base class if needed (though typically provided by the environment)
+// Ensure AudioWorkletProcessor is available in the global scope
+if (typeof AudioWorkletProcessor === 'undefined') {
+    console.error("AudioWorkletProcessor is not defined in this scope!");
+    // Optionally define a dummy class to prevent further errors immediately
+    // globalThis.AudioWorkletProcessor = class AudioWorkletProcessor { constructor(){} process(){return true;} };
+}
+
+
+/**
+ * An AudioWorkletProcessor that captures raw audio samples (Float32)
+ * and writes them into a RingBuffer residing in a SharedArrayBuffer.
+ */
+class CaptureProcessor extends AudioWorkletProcessor {
+  ringBuffer = null; // Use instance property instead of private field for JS
+
+  constructor(options) { // Remove TS parameter type
+    super(options);
+
+    const processorOptions = options?.processorOptions; // Easier access
+
+    if (!processorOptions?.sab) {
+      console.error('CaptureProcessor: SharedArrayBuffer not provided in processorOptions.sab');
+      return;
+    }
+
+    try {
+      // Directly use processorOptions.sab
+      this.ringBuffer = new RingBuffer(processorOptions.sab);
+      console.log('CaptureProcessor: RingBuffer initialized successfully.');
+    } catch (error) {
+      console.error('CaptureProcessor: Failed to initialize RingBuffer:', error);
+      this.ringBuffer = null;
+    }
+
+     // Optional: Listen for messages from the main thread
+     this.port.onmessage = (event) => {
+      console.log('CaptureProcessor received message:', event.data);
+      // Handle messages if needed, e.g., event.data.command === 'reset' -> this.ringBuffer?.reset();
+    };
+  }
+
+  /**
+   * Called by the audio engine with new audio blocks.
+   */
+  process(inputs, outputs, parameters) { // Remove TS parameter types
+    // Check if the ring buffer was initialized successfully
+     if (!this.ringBuffer) {
+       // console.warn('CaptureProcessor: RingBuffer not available, dropping audio.');
+       return true; // Keep alive
+     }
+
+    // Get the first channel of the first input (mono audio)
+    const inputChannelData = inputs[0]?.[0];
+
+    // Basic sanity check
+    if (!inputChannelData || inputChannelData.length === 0) {
+      // console.log('CaptureProcessor: No input data received.');
+      return true; // Keep alive
+    }
+
+    // Write the ORIGINAL inputChannelData to the ring buffer
+    // (assuming AudioContext has already resampled it to its own rate, e.g., 16kHz)
+    if (inputChannelData.length > 0) { // Check if there's data to write
+        const written = this.ringBuffer.write(inputChannelData);
+        if (written < inputChannelData.length) {
+            // Logging handled in RingBuffer
+            // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
+        }
+    } /* else if (inputChannelData.length > 0) { // This condition is now part of the if above
+        // console.warn('CaptureProcessor: Resampling resulted in empty audio data, nothing to write.');
+    } */
+
+    // Return true to keep the processor node alive
+    return true;
+  }
+}
+
+// Register the processor with the browser
+try {
+   // Use the same name as before
+   // Ensure registerProcessor is available
+   if (typeof registerProcessor === 'function') {
+       registerProcessor('capture-processor', CaptureProcessor);
+       console.log('CaptureProcessor registered (from public JS file).');
+   } else {
+       console.error("registerProcessor is not defined in this scope!");
+   }
+} catch (error) {
+   console.error('Failed to register CaptureProcessor (from public JS file):', error);
+}
+</file>
+
+<file path="vite.main.config.ts">
+import { defineConfig } from 'vite';
+
+// https://vitejs.dev/config
+export default defineConfig({
+  resolve: {
+    // Tell Vite to always resolve `ws` to the same version, preventing potential issues
+    // if it's a dependency of multiple packages.
+    dedupe: ['ws'],
+  },
+  ssr: {
+    // Mark 'ws' as external so it's not bundled into the main process output.
+    // Electron will load it using Node's native require.
+    external: ['ws'],
+  },
+});
 </file>
 
 <file path="src/audio/ring-buffer.ts">
@@ -1668,536 +1768,6 @@ export const Constants = {
   RING_BUFFER_SAMPLE_CAPACITY,
   RING_BUFFER_SIZE_BYTES
 };
-</file>
-
-<file path="src/types/electron.d.ts">
-/**
- * TypeScript declarations for the Electron API exposed to the renderer process
- */
-
-declare global {
-  interface Window {
-    electron: {
-      toggleDictation: (callback: () => void) => () => void;
-      showPillContextMenu: () => void;
-      insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
-      viewLogFile: () => Promise<void>;
-      sendNotification: (message: string) => void;
-      transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
-    };
-    contextMenuAPI?: {
-      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
-    };
-  }
-}
-
-export {};
-</file>
-
-<file path="src/workers/local-worker.ts">
-import {
-    pipeline,
-    env,
-    // @ts-ignore Progress type might be nested or different now
-    Progress
-} from "@huggingface/transformers";
-import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
-
-// Updated MODEL_ID for streaming
-const MODEL_ID = "onnx-community/moonshine-tiny-ONNX";
-
-// Define type for Dtype configuration
-type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "int8">; // q4f16 from local, q4 from moonshine. Sticking with local options.
-
-// Define dtype configurations based on device with explicit typing (Updated from moonshine-worker)
-const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
-  wasm: {
-    encoder_model: "q8", // from moonshine-worker
-    decoder_model_merged: "q8", // from moonshine-worker
-  },
-};
-
-const device = 'wasm'; // Force WASM backend
-const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
-
-console.log("[LocalWorker] using WASM backend with streaming capability.");
-
-let asr: any | null = null;
-let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
-let ringBuffer: RingBuffer | null = null;
-
-const TARGET_SAMPLE_RATE = 16000; // Already 16k
-
-// --- Streaming Config (from moonshine-worker.ts) ---
-const CHUNK_S = 7;          // Process 5 seconds of audio at a time
-const STRIDE_S = 2;         // Overlap chunks by 2 seconds
-const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
-const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
-const PULL_LOOP_INTERVAL_MS = 50; // Check for new audio frequently
-
-// --- Buffer Size Constants (from moonshine-worker.ts) ---
-const INITIAL_BUFFER_SECONDS = 30; 
-const INITIAL_BUFFER_SIZE = TARGET_SAMPLE_RATE * INITIAL_BUFFER_SECONDS;
-const BUFFER_GROWTH_SECONDS = 30; 
-const BUFFER_GROWTH_SIZE = TARGET_SAMPLE_RATE * BUFFER_GROWTH_SECONDS;
-
-// --- Streaming State Variables (from moonshine-worker.ts) ---
-let preallocated16kBuffer: Float32Array | null = null;
-let current16kWriteOffset = 0;
-let emittedSamples = 0;         // How many samples have been processed and led to emitted text
-let recording = false;          // Controls the background pull loop
-let processingPartial = false;  // Flag to prevent concurrent partial ASR calls
-let runningPrompt = "";         // For contextual ASR
-
-const MAX_PROMPT_TOKENS = 200; // As per diff-plan.md suggestion
-
-// --- Text Diffing Helper Functions ---
-/** Longest suffix of `prev` that is a prefix of `next` */
-function overlapLen(prev: string, next: string): number {
-  const max = Math.min(prev.length, next.length);
-  for (let len = max; len > 0; len--) {
-    if (prev.endsWith(next.slice(0, len))) return len;
-  }
-  return 0;
-}
-
-/** Drop duplicate overlap and concatenate */
-function mergeWithOverlap(prev: string, next: string): { merged: string, overlapLength: number } {
-  // cheap normalisation
-  const p = prev.trim();
-  const n = next.trim();
-  const o = overlapLen(p, n);
-  // Ensure a space if prev is not empty and next is not empty and o is 0 or p doesn't end with a space
-  let mergedText;
-  if (p && n) {
-    if (o > 0) {
-      mergedText = (p + n.slice(o));
-    } else {
-      mergedText = (p + " " + n);
-    }
-  } else if (n) {
-    mergedText = n;
-  } else {
-    mergedText = p;
-  }
-  // Refined replace to handle multiple spaces carefully and trim.
-  return { merged: mergedText.replace(/\s+/g, " ").trim(), overlapLength: o };
-}
-
-// Placeholder for a simple resampling function
-// Input: Float32Array audio data, original sample rate
-// Output: Float32Array audio data at TARGET_SAMPLE_RATE
-function resampleTo16kHz(audioData: Float32Array, originalSampleRate: number): Float32Array {
-    if (originalSampleRate === TARGET_SAMPLE_RATE) {
-        return audioData;
-    }
-    if (originalSampleRate === 48000 && TARGET_SAMPLE_RATE === 16000) {
-        // Simple downsampling: take every 3rd sample
-        const newLength = Math.floor(audioData.length / 3);
-        const newData = new Float32Array(newLength);
-        for (let i = 0; i < newLength; i++) {
-            newData[i] = audioData[i * 3];
-        }
-        console.log(`[LocalWorker] Resampled audio from 48kHz to 16kHz (length: ${audioData.length} -> ${newData.length})`);
-        return newData;
-    }
-    // Add more sophisticated resampling or other cases if needed
-    console.warn(`[LocalWorker] Resampling from ${originalSampleRate}Hz to ${TARGET_SAMPLE_RATE}Hz not fully supported. Attempting naive resampling or returning original.`);
-    // Naive resampling for other rates (e.g. 44100 to 16000)
-    // This is a placeholder and might produce poor quality audio.
-    // A proper library should be used for production quality.
-    const ratio = originalSampleRate / TARGET_SAMPLE_RATE;
-    if (ratio <= 0) return audioData; // Should not happen
-
-    const newLength = Math.floor(audioData.length / ratio);
-    const resampled = new Float32Array(newLength);
-    for (let i = 0; i < newLength; i++) {
-        // Simple nearest neighbor, can be improved with linear interpolation etc.
-        resampled[i] = audioData[Math.floor(i * ratio)];
-    }
-    console.log(`[LocalWorker] Naively resampled audio from ${originalSampleRate}kHz to ${TARGET_SAMPLE_RATE}kHz (length: ${audioData.length} -> ${resampled.length})`);
-    if (resampled.length === 0 && audioData.length > 0) { // Safeguard
-        self.postMessage({ status: "error", error: `Resampling from ${originalSampleRate}Hz resulted in empty audio.` });
-        return audioData; // Return original to avoid breaking, but it will be wrong SR
-    }
-    return resampled;
-}
-
-// --- Streaming Helper Functions (adapted from moonshine-worker.ts) ---
-
-// Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
-function pullAndProcessAudio() { 
-    if (!ringBuffer || !preallocated16kBuffer) {
-        console.warn("[LocalWorker Pull] RingBuffer or preallocated16kBuffer not ready.");
-        return;
-    }
-
-    const availableInRing = ringBuffer.availableRead();
-    if (availableInRing === 0) return;
-  
-    const samplesToRead = availableInRing; 
-    
-    const requiredSize = current16kWriteOffset + samplesToRead;
-    if (requiredSize > preallocated16kBuffer.length) {
-      const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
-      console.warn(`[LocalWorker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
-      try {
-        const newBuffer = new Float32Array(newSize);
-        newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
-        preallocated16kBuffer = newBuffer; 
-      } catch (resizeError) {
-        console.error("[LocalWorker Pull] Failed to resize 16kHz buffer:", resizeError);
-        self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
-        // Try to clear the ring buffer to prevent it from blocking
-        const tempDrain = new Float32Array(samplesToRead);
-        ringBuffer.read(tempDrain); 
-        return; 
-      }
-    }
-  
-    // Read directly into the preallocated buffer.
-    // Assumes RingBuffer contains 16kHz audio as AudioContext is set to 16kHz.
-    const targetView = preallocated16kBuffer.subarray(
-      current16kWriteOffset, 
-      current16kWriteOffset + samplesToRead
-    );
-    
-    // ringBuffer.read expects a buffer to fill and returns null if successful.
-    ringBuffer.read(targetView); 
-    current16kWriteOffset += samplesToRead;
-}
-
-// Processes available audio chunks for streaming transcription
-async function processAvailableAudio() {
-  if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
-
-  const processableAudioLength = current16kWriteOffset - emittedSamples;
-
-  if (processableAudioLength >= CHUNK_SAMPLES) {
-    processingPartial = true;
-
-    const audioSliceStart = emittedSamples;
-    const audioSliceEnd = emittedSamples + CHUNK_SAMPLES; 
-    const slice = preallocated16kBuffer.subarray(audioSliceStart, audioSliceEnd);
-
-    // console.log(`[LocalWorker] Preparing chunk. Slice from ${audioSliceStart} to ${audioSliceEnd} (Length: ${slice.length}). Emitted: ${emittedSamples}. Prompt: "${runningPrompt}"`);
-
-    try {
-      const tAsrStart = performance.now();
-      // @ts-ignore - Transformers.js pipeline options are flexible
-      const result = await asr(slice, { 
-        prompt: runningPrompt // Pass current runningPrompt (which is already refined from previous step)
-      }); 
-      const tAsrEnd = performance.now();
-
-      emittedSamples += CHUNK_SAMPLES; 
-      // console.log(`[LocalWorker] ASR call successful. Advanced emittedSamples by CHUNK_SAMPLES to ${emittedSamples}.`);
-
-      const delta = (result.text || "").trim();
-
-      if (delta) {
-          self.postMessage({ status: 'partial', transcription: delta });
-
-          // --- Suspicious Overlap Detection & Correction (Phase 1, Item 1.1 & 1.2) ---
-          const OL_MIN_CHARS = 3;
-          const OL_MIN_RATIO = 0.25;
-          const ROLLBACK_WORDS_COUNT = 5; // Renamed for clarity
-
-          const actualOverlapLen = overlapLen(runningPrompt, delta);
-          const isSuspicious = actualOverlapLen < OL_MIN_CHARS || 
-                               (Math.min(runningPrompt.length, delta.length) > 0 && 
-                                actualOverlapLen / Math.min(runningPrompt.length, delta.length) < OL_MIN_RATIO);
-          
-          let correctionTriggered = false;
-
-          console.log(`[LocalWorker Overlap] Previous prompt length: ${runningPrompt.length}, Delta length: ${delta.length}, Actual overlap: ${actualOverlapLen}, Suspicious: ${isSuspicious}`);
-
-          if (isSuspicious && runningPrompt.length > 0) { // Only rollback if there's a prompt to rollback from
-              console.log(`[LocalWorker Overlap] Suspicious overlap detected. Applying correction. Rolling back ~${ROLLBACK_WORDS_COUNT} words.`);
-              correctionTriggered = true;
-              let promptWords = runningPrompt.split(/\s+/);
-              const headWords = promptWords.length > ROLLBACK_WORDS_COUNT ? promptWords.slice(0, -ROLLBACK_WORDS_COUNT) : [];
-              const headPrompt = headWords.join(" ");
-              runningPrompt = mergeWithOverlap(headPrompt, delta).merged;
-          } else {
-              runningPrompt = mergeWithOverlap(runningPrompt, delta).merged;
-          }
-          console.log(`[LocalWorker Overlap] Correction triggered: ${correctionTriggered}. New runningPrompt length: ${runningPrompt.length}`);
-          // --- End Suspicious Overlap Logic ---
-
-          // Refine runningPrompt: Trim, lowercase, and remove trailing punctuation
-          // --- MAX_PROMPT_TOKENS logic is TEMPORARILY DISABLED FOR DEBUGGING (as per user instruction) ---
-          /*
-          let promptWords = runningPrompt.split(/\s+/);
-          if (promptWords.length > MAX_PROMPT_TOKENS) {
-            promptWords = promptWords.slice(-MAX_PROMPT_TOKENS);
-          }
-          runningPrompt = promptWords.join(" ");
-          */
-          // --- END TEMPORARILY DISABLED ---
-          runningPrompt = runningPrompt.toLowerCase();
-          runningPrompt = runningPrompt.replace(/[.,!?;:]+$/, "").trim(); // Remove common trailing punctuation
-
-      } else {
-          // console.log(`[LocalWorker] ASR completed in ${(tAsrEnd - tAsrStart).toFixed(2)} ms. No delta from this chunk.`);
-      }
-
-    } catch (err) {
-      console.error('[LocalWorker] ASR pipeline error during streaming chunk:', err);
-      // Potentially post an error message, but be careful not to flood.
-      // For now, just log it. The flush operation will try to process remaining audio.
-    } finally {
-      processingPartial = false;
-    }
-  }
-}
-
-// Main loop for pulling and processing audio during streaming
-async function startPullLoop() {
-  console.log('[LocalWorker] Starting streaming pull loop...');
-  while (recording) {
-    if (!ringBuffer) {
-      console.error('[LocalWorker] RingBuffer lost during pull loop. Stopping.');
-      self.postMessage({ status: "error", error: "RingBuffer not available during streaming." });
-      recording = false;
-      break;
-    }
-
-    pullAndProcessAudio(); 
-    await processAvailableAudio();
-
-    await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS)); 
-  }
-  console.log('[LocalWorker] Streaming pull loop stopped.');
-}
-
-self.addEventListener("message", async (e) => {
-    const { type, data } = e.data ?? {};
-
-    if (type === "init") {
-        if (data?.sab) {
-            try {
-                ringBuffer = new RingBuffer(data.sab);
-                console.log("[LocalWorker] RingBuffer initialized with SharedArrayBuffer.");
-                self.postMessage({ status: "sab_initialized" });
-            } catch (error) {
-                console.error("[LocalWorker] Failed to initialize RingBuffer:", error);
-                self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
-            }
-        } else {
-            console.error("[LocalWorker] 'init' message received without SharedArrayBuffer (sab).");
-            self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided for RingBuffer." });
-        }
-        return;
-    }
-
-    if (type === "initialize-local-asr") {
-        if (asr) {
-            console.log("[LocalWorker] ASR pipeline already initialized.");
-            self.postMessage({ status: "asr_model_ready" });
-            return;
-        }
-        if (modelInitializationInProgress) {
-            console.warn("[LocalWorker] Already busy initializing ASR pipeline.");
-            return;
-        }
-        modelInitializationInProgress = true;
-        self.postMessage({ status: "asr_model_loading" });
-        console.log(`[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`);
-        try {
-            // @ts-ignore - Transformers.js pipeline options are flexible - This comment might be slightly misplaced for the fix
-            asr = await pipeline(
-                "automatic-speech-recognition",
-                MODEL_ID,
-                {
-                    progress_callback: (p: Progress | null) => p && self.postMessage({ ...p, status: 'model_progress'}),
-                    device: device,
-                    dtype: dtypeConfig,
-                    // Streaming parameters for the pipeline
-                    chunk_length_s: CHUNK_S,
-                    stride_length_s: [STRIDE_S, STRIDE_S], // Must be array [left, right]
-                } as any // Explicitly cast options object to any to bypass linter error
-            );
-            console.log("[LocalWorker] ASR Streaming Pipeline initialized successfully.");
-            self.postMessage({ status: "asr_model_ready" });
-        } catch (pipelineError) {
-            console.error("[LocalWorker] ASR Pipeline initialization failed:", pipelineError);
-            self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
-            asr = null;
-        } finally {
-            modelInitializationInProgress = false;
-        }
-        return;
-    }
-
-    if (type === "start-capture") { // Now initiates streaming
-        if (!asr) {
-            self.postMessage({ status: "error", error: "ASR model not ready. Please initialize first." });
-            return;
-        }
-        if (!ringBuffer) {
-            self.postMessage({ status: "error", error: "RingBuffer not initialized. Send 'init' with SAB first." });
-            return;
-        }
-        if (recording) {
-            console.warn("[LocalWorker] Stream already started.");
-            return;
-        }
-        console.log("[LocalWorker] Starting audio capture for streaming...");
-        
-        try {
-            preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE);
-            current16kWriteOffset = 0;
-            console.log(`[LocalWorker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
-        } catch (allocError) {
-            console.error("[LocalWorker] Failed to allocate initial 16kHz buffer:", allocError);
-            self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
-            preallocated16kBuffer = null;
-            return;
-        }
-
-        emittedSamples = 0;
-        processingPartial = false;
-        runningPrompt = ""; // Reset prompt for new stream
-        
-        ringBuffer.reset(); 
-        self.postMessage({ status: "capture_started" }); // Signal that capture/streaming has begun
-        
-        recording = true;
-        startPullLoop(); // Don't await, let it run in the background
-        return;
-    }
-
-    if (type === "stop-capture-and-transcribe") { // Now acts as "flush"
-        if (!recording && !processingPartial && preallocated16kBuffer === null) {
-             console.warn('[LocalWorker] Flush requested but not recording, not processing, and no buffer. Likely already flushed or never started.');
-             self.postMessage({ status: "completed", transcription: runningPrompt || "" }); // Send current prompt if any
-             return;
-        }
-        
-        const wasRecording = recording;
-        console.log('[LocalWorker] Flush requested. Stopping pull loop and processing remaining audio.');
-        recording = false; // Signal the pull loop to stop
-
-        // Wait briefly for any ongoing partial processing from the loop to finish
-        // This loop ensures that `processAvailableAudio` completes its current execution if it was mid-way.
-        let waitCount = 0;
-        const maxWaitIterations = 100; // Max 5 seconds (100 * 50ms)
-        while (processingPartial && waitCount < maxWaitIterations) {
-            console.log('[LocalWorker] Waiting for ongoing partial processing before final flush...');
-            await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS));
-            waitCount++;
-        }
-        if (processingPartial) {
-            console.warn('[LocalWorker] Timeout waiting for partial processing. Proceeding with flush anyway.');
-            processingPartial = false; // Force it if stuck
-        }
-        
-        self.postMessage({ status: "processing_full_audio" }); // Indicate final processing
-
-        if (!asr) {
-            self.postMessage({ status: "error", error: "ASR model not ready for flush." });
-            if (preallocated16kBuffer) preallocated16kBuffer = null; // Clean up buffer
-            return;
-        }
-        if (!preallocated16kBuffer) {
-            console.warn("[LocalWorker] No preallocated buffer to flush (might have been an error or empty recording).");
-            self.postMessage({ status: "completed", transcription: runningPrompt || "" });
-            return;
-        }
-
-        // Perform one final pull from the RingBuffer if it was recording
-        if (wasRecording && ringBuffer) {
-            console.log("[LocalWorker] Pulling final audio chunk from RingBuffer for flush...");
-            pullAndProcessAudio(); 
-            console.log(`[LocalWorker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
-        }
-        
-        let finalUserText = "";
-        let finalPipelineTime = 0;
-
-        // Process the remaining audio segment that hasn't been covered by `emittedSamples`
-        const remainingAudioLength = current16kWriteOffset - emittedSamples;
-
-        if (remainingAudioLength > 0) {
-            const finalSlice = preallocated16kBuffer.subarray(emittedSamples, current16kWriteOffset);
-            console.log(`[LocalWorker] Processing final audio segment. Slice from ${emittedSamples} to ${current16kWriteOffset} (Length: ${finalSlice.length}). Prompt: "${runningPrompt}"`);
-            
-            processingPartial = true; // Mark as busy for this final transcription
-            const tFinalStart = performance.now();
-            try {
-                // @ts-ignore - Transformers.js pipeline options are flexible
-                const result = await asr(finalSlice, {
-                  prompt: runningPrompt, // Use the accumulated prompt
-                  // For the final chunk, we don't need to provide chunk_length_s/stride_length_s
-                  // as we want the model to process this segment as a whole conclusion.
-                  // The pipeline should already be configured with streaming params.
-                });
-
-                finalPipelineTime = performance.now() - tFinalStart;
-                console.log(`[LocalWorker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
-                
-                const newText = (result.text || "").trim();
-                if (newText) {
-                    finalUserText = newText; // The result of the final chunk is appended
-                    console.log(`[LocalWorker] Final Text from ASR: "${finalUserText}"`);
-                } else {
-                    console.log(`[LocalWorker] No additional text from final ASR segment.`);
-                }
-
-            } catch (err) {
-                console.error(`[LocalWorker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
-                self.postMessage({ status: "error", error: `Final ASR Error: ${String(err)}` });
-            } finally {
-                processingPartial = false;
-            }
-        } else {
-           console.log("[LocalWorker] No remaining audio data to process in final flush beyond what was streamed.");
-        }
-        
-        // The runningPrompt already contains text from 'partial' messages.
-        // If finalUserText has content, it's the transcription of the very last bit of audio.
-        // We should append this to the runningPrompt to form the complete transcription.
-        const completeTranscriptionResult = mergeWithOverlap(runningPrompt, finalUserText); // NEW WAY
-        const completeTranscription = completeTranscriptionResult.merged;
-
-        console.log(`[LocalWorker] Sending final 'completed' message. Transcription: "${completeTranscription}"`);
-        self.postMessage({ 
-            status: 'completed', 
-            transcription: completeTranscription,
-            timings: { total_asr_time_final_segment: finalPipelineTime } 
-        });
-        
-        // Reset state for next recording
-        emittedSamples = 0;
-        current16kWriteOffset = 0; 
-        if (preallocated16kBuffer) { // Make sure it exists before trying to nullify
-             preallocated16kBuffer.fill(0); // Optional: clear buffer
-             preallocated16kBuffer = null; 
-        }
-        runningPrompt = "";
-        // `recording` is already false
-        // `processingPartial` should be false here
-        return;
-    }
-
-    // Fallback for unknown messages (though all relevant types should be handled above)
-    if (type !== "init" && type !== "initialize-local-asr" && type !== "start-capture" && type !== "stop-capture-and-transcribe") {
-        console.warn(`[LocalWorker] Received unknown message type: ${type}`);
-    }
-});
-
-self.onerror = (event) => {
-    console.error("[LocalWorker] Unhandled error in worker:", event);
-    self.postMessage({ status: "error", error: "An unexpected error occurred in the worker." });
-};
-
-self.onunhandledrejection = (event) => {
-    console.error("[LocalWorker] Unhandled promise rejection in worker:", event);
-    self.postMessage({ status: "error", error: "An unexpected promise rejection occurred in the worker." });
-};
-
-console.log("[LocalWorker] Streaming-capable event listener added. Worker script loaded.");
 </file>
 
 <file path="src/components/HomePage.tsx">
@@ -2632,8 +2202,39 @@ contextBridge.exposeInMainWorld('electron', {
     } else {
       return ipcRenderer.invoke('transcribe-groq', audioBuffer);
     }
-  }
+  },
+  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
+    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
 });
+</file>
+
+<file path="src/types/electron.d.ts">
+/**
+ * TypeScript declarations for the Electron API exposed to the renderer process
+ */
+
+declare global {
+  interface Window {
+    electron: {
+      toggleDictation: (callback: () => void) => () => void;
+      showPillContextMenu: () => void;
+      insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
+      viewLogFile: () => Promise<void>;
+      sendNotification: (message: string) => void;
+      transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
+      transcribeGemini: (
+        buf: ArrayBuffer,
+        mimeType: string,
+        transfer?: Transferable[]
+      ) => Promise<{ text: string }>;
+    };
+    contextMenuAPI?: {
+      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
+    };
+  }
+}
+
+export {};
 </file>
 
 <file path="src/workers/groq-transcriber.ts">
@@ -2799,6 +2400,512 @@ const App: React.FC = () => {
 };
 
 export default App;
+</file>
+
+<file path="src/workers/local-worker.ts">
+import {
+    pipeline,
+    env,
+    // @ts-ignore Progress type might be nested or different now
+    Progress
+} from "@huggingface/transformers";
+import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
+
+// Updated MODEL_ID for streaming
+const MODEL_ID = "onnx-community/moonshine-base-ONNX";
+
+// Define type for Dtype configuration
+type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "int8">; // q4f16 from local, q4 from moonshine. Sticking with local options.
+
+// Define dtype configurations based on device with explicit typing (Updated from moonshine-worker)
+const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
+  wasm: {
+    encoder_model: "fp16", // from moonshine-worker
+    decoder_model_merged: "q8", // from moonshine-worker
+  },
+};
+
+const device = 'wasm'; // Force WASM backend
+const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
+
+console.log("[LocalWorker] using WASM backend with streaming capability.");
+
+let asr: any | null = null;
+let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
+let ringBuffer: RingBuffer | null = null;
+
+const TARGET_SAMPLE_RATE = 16000; // Already 16k
+
+// --- REMOVED Streaming Config ---
+// const CHUNK_S = 4;
+// const STRIDE_S = 2;
+// const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
+// const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
+const PULL_LOOP_INTERVAL_MS = 100; // Check for new audio frequently (Changed from 50 to 100)
+
+// --- Buffer Size Constants (from moonshine-worker.ts) ---
+const INITIAL_BUFFER_SECONDS = 30; 
+const INITIAL_BUFFER_SIZE = TARGET_SAMPLE_RATE * INITIAL_BUFFER_SECONDS;
+const BUFFER_GROWTH_SECONDS = 30; 
+const BUFFER_GROWTH_SIZE = TARGET_SAMPLE_RATE * BUFFER_GROWTH_SECONDS;
+
+// --- Streaming State Variables (from moonshine-worker.ts / sequential buffering) ---
+let preallocated16kBuffer: Float32Array | null = null;
+let current16kWriteOffset = 0;
+// let emittedSamples = 0; // REMOVED - Replaced by nextDecodeStart16k
+let recording = false;          // Controls the background pull loop
+let processingPartial = false;  // Flag to prevent concurrent partial ASR calls
+
+// --- REMOVED Local Agreement State ---
+// let confirmedTranscriptSoFar: string = "";
+// let previousChunkDelta: string = "";
+// const OL_MIN_CHARS_FOR_LA = 3;
+
+// --- Sequential Buffering State (from old-code.md / merge-plan) ---
+const PARTIAL_INTERVAL_S = 10; // Emit partial result every 10 seconds
+let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
+let lastPartialText = ""; // Store the cumulative text sent so far (for diffing)
+
+
+const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
+
+// --- REMOVED Text Diffing Helper Functions (overlapLen, mergeWithOverlap) ---
+
+// --- REMOVED resampleTo16kHz (it's now in audio/resample.ts and used in AudioWorklet) ---
+
+// --- REMOVED Local Agreement Helper (longestCommonPrefix) ---
+
+// --- NEW diffAndSend function (from old-code.md) ---
+function diffAndSend(textNow: string, tag: 'partial') {
+  textNow = textNow.trim(); // Ensure consistent trimming
+  let i = 0;
+  // Find longest common prefix length
+  while (i < textNow.length && i < lastPartialText.length && textNow[i] === lastPartialText[i]) {
+    i++;
+  }
+
+  let prefixBoundary = i;
+  if (i > 0 && i < textNow.length) {
+    const prevCharText = textNow[i - 1];
+    const nextCharText = textNow[i];
+    const prevCharLast = i > 0 ? lastPartialText[i - 1] : null;
+
+    if (nextCharText === ' ' && prevCharLast && prevCharLast !== ' ') {
+       prefixBoundary = i + 1; 
+    }
+  }
+  
+  const delta = textNow.slice(prefixBoundary).trimStart(); 
+  
+  // console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
+
+  if (delta) {
+    self.postMessage({ status: tag, delta }); // Send delta for 'partial'
+    lastPartialText = textNow; // Update history for next partial
+  }
+}
+
+
+// --- Streaming Helper Functions (adapted from moonshine-worker.ts) ---
+
+// Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
+function pullAndProcessAudio() { 
+    if (!ringBuffer || !preallocated16kBuffer) {
+        console.warn("[LocalWorker Pull] RingBuffer or preallocated16kBuffer not ready.");
+        return;
+    }
+
+    const availableInRing = ringBuffer.availableRead();
+    if (availableInRing === 0) return;
+  
+    const samplesToRead = availableInRing; 
+    
+    const requiredSize = current16kWriteOffset + samplesToRead;
+    if (requiredSize > preallocated16kBuffer.length) {
+      const newSize = Math.max(requiredSize, preallocated16kBuffer.length + BUFFER_GROWTH_SIZE); 
+      console.warn(`[LocalWorker Pull] Resizing 16kHz buffer from ${preallocated16kBuffer.length} to ${newSize} samples.`);
+      try {
+        const newBuffer = new Float32Array(newSize);
+        newBuffer.set(preallocated16kBuffer.subarray(0, current16kWriteOffset), 0); 
+        preallocated16kBuffer = newBuffer; 
+      } catch (resizeError) {
+        console.error("[LocalWorker Pull] Failed to resize 16kHz buffer:", resizeError);
+        self.postMessage({ status: "error", error: "Failed to resize audio buffer during recording." });
+        // Try to clear the ring buffer to prevent it from blocking
+        const tempDrain = new Float32Array(samplesToRead);
+        ringBuffer.read(tempDrain); 
+        return; 
+      }
+    }
+  
+    // Read directly into the preallocated buffer.
+    // Assumes RingBuffer contains 16kHz audio as AudioContext is set to 16kHz.
+    const targetView = preallocated16kBuffer.subarray(
+      current16kWriteOffset, 
+      current16kWriteOffset + samplesToRead
+    );
+    
+    // ringBuffer.read expects a buffer to fill and returns null if successful.
+    ringBuffer.read(targetView); 
+    current16kWriteOffset += samplesToRead;
+}
+
+// --- DELETED processAvailableAudio() ---
+
+// --- NEW maybeEmitPartial function (from old-code.md, adapted) ---
+async function maybeEmitPartial() {
+  if (processingPartial || !preallocated16kBuffer || !asr || !recording) return; 
+
+  const buffered16kSamples = current16kWriteOffset - nextDecodeStart16k;
+  const bufferedSeconds = buffered16kSamples / TARGET_SAMPLE_RATE; // Use TARGET_SAMPLE_RATE
+
+  if (bufferedSeconds >= PARTIAL_INTERVAL_S) {
+    // console.log(`[LocalWorker] Buffer has >= ${PARTIAL_INTERVAL_S}s (${bufferedSeconds.toFixed(2)}s) of new audio. Processing partial...`);
+    processingPartial = true;
+    
+    const sliceToProcess = preallocated16kBuffer.subarray(nextDecodeStart16k, current16kWriteOffset);
+    const sliceEndIndexInFullBuffer = current16kWriteOffset; // Store end index in the main buffer
+
+    try {
+      // console.log(`[LocalWorker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
+      // const tPartialStart = performance.now();
+      // @ts-ignore
+      const result = await asr(sliceToProcess); // No explicit prompt
+      // const tPartialEnd = performance.now();
+      const currentFullTextForThisSlice = (result as any).text?.trim() ?? '';
+      // console.log(`[LocalWorker] Partial ASR completed. Full Text for this slice: "${currentFullTextForThisSlice}"`);
+
+      // Use diffAndSend for partial delta. The text to compare against is `lastPartialText`.
+      // The new "full" text is the concatenation of previous confirmed text and the new segment's text.
+      diffAndSend(lastPartialText + (lastPartialText ? ' ' : '') + currentFullTextForThisSlice, 'partial');
+      
+      // IMPORTANT: Move the start cursor *after* successful processing
+      nextDecodeStart16k = sliceEndIndexInFullBuffer; 
+
+    } catch (err) {
+      console.error('[LocalWorker] Partial decode error:', err);
+      // Optionally send an error back to UI if partials fail consistently
+    } finally {
+      processingPartial = false;
+    }
+  }
+}
+
+
+// Main loop for pulling and processing audio during streaming
+async function startPullLoop() {
+  console.log('[LocalWorker] Starting streaming pull loop...');
+  while (recording) {
+    if (!ringBuffer) {
+      console.error('[LocalWorker] RingBuffer lost during pull loop. Stopping.');
+      self.postMessage({ status: "error", error: "RingBuffer not available during streaming." });
+      recording = false;
+      break;
+    }
+
+    pullAndProcessAudio(); 
+    await maybeEmitPartial(); // MODIFIED: Call new function
+
+    await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS)); 
+  }
+  console.log('[LocalWorker] Streaming pull loop stopped.');
+}
+
+self.addEventListener("message", async (e) => {
+    const { type, data } = e.data ?? {};
+
+    if (type === "init") {
+        if (data?.sab) {
+            try {
+                ringBuffer = new RingBuffer(data.sab);
+                console.log("[LocalWorker] RingBuffer initialized with SharedArrayBuffer.");
+                self.postMessage({ status: "sab_initialized" });
+            } catch (error) {
+                console.error("[LocalWorker] Failed to initialize RingBuffer:", error);
+                self.postMessage({ status: "error", error: "Worker failed to initialize RingBuffer." });
+            }
+        } else {
+            console.error("[LocalWorker] 'init' message received without SharedArrayBuffer (sab).");
+            self.postMessage({ status: "error", error: "Worker initialization failed: No SAB provided for RingBuffer." });
+        }
+        return;
+    }
+
+    if (type === "initialize-local-asr") {
+        if (asr) {
+            console.log("[LocalWorker] ASR pipeline already initialized.");
+            self.postMessage({ status: "asr_model_ready" });
+            return;
+        }
+        if (modelInitializationInProgress) {
+            console.warn("[LocalWorker] Already busy initializing ASR pipeline.");
+            return;
+        }
+        modelInitializationInProgress = true;
+        self.postMessage({ status: "asr_model_loading" });
+        console.log(`[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`);
+        try {
+            // @ts-ignore - Transformers.js pipeline options are flexible - This comment might be slightly misplaced for the fix
+            asr = await pipeline(
+                "automatic-speech-recognition",
+                MODEL_ID,
+                {
+                    progress_callback: (p: Progress | null) => p && self.postMessage({ ...p, status: 'model_progress'}),
+                    device: device,
+                    dtype: dtypeConfig,
+                    // REMOVED: chunk_length_s: CHUNK_S,
+                    // REMOVED: stride_length_s: [STRIDE_S, STRIDE_S], 
+                } as any 
+            );
+            console.log("[LocalWorker] ASR Streaming Pipeline initialized successfully.");
+            self.postMessage({ status: "asr_model_ready" });
+        } catch (pipelineError) {
+            console.error("[LocalWorker] ASR Pipeline initialization failed:", pipelineError);
+            self.postMessage({ status: "error", error: "Worker failed to initialize ASR pipeline." });
+            asr = null;
+        } finally {
+            modelInitializationInProgress = false;
+        }
+        return;
+    }
+
+    if (type === "start-capture") { // Now initiates streaming
+        if (!asr) {
+            self.postMessage({ status: "error", error: "ASR model not ready. Please initialize first." });
+            return;
+        }
+        if (!ringBuffer) {
+            self.postMessage({ status: "error", error: "RingBuffer not initialized. Send 'init' with SAB first." });
+            return;
+        }
+        if (recording) {
+            console.warn("[LocalWorker] Stream already started.");
+            return;
+        }
+        console.log("[LocalWorker] Starting audio capture for streaming...");
+        
+        try {
+            preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE);
+            current16kWriteOffset = 0;
+            console.log(`[LocalWorker] Initial 16kHz buffer created (size: ${INITIAL_BUFFER_SIZE} samples).`);
+        } catch (allocError) {
+            console.error("[LocalWorker] Failed to allocate initial 16kHz buffer:", allocError);
+            self.postMessage({ status: "error", error: "Failed to allocate audio buffer." });
+            preallocated16kBuffer = null;
+            return;
+        }
+
+        // emittedSamples = 0; // REMOVED
+        processingPartial = false;
+        // REMOVED: confirmedTranscriptSoFar = ""; 
+        // REMOVED: previousChunkDelta = "";   
+        nextDecodeStart16k = 0; // Reset for sequential buffer
+        lastPartialText = ""; // Reset for sequential buffer
+        
+        ringBuffer.reset(); 
+        self.postMessage({ status: "capture_started" }); // Signal that capture/streaming has begun
+        
+        recording = true;
+        startPullLoop(); // Don't await, let it run in the background
+        return;
+    }
+
+    if (type === "stop-capture-and-transcribe") { // Now acts as "flush"
+        if (!recording && !processingPartial && preallocated16kBuffer === null) {
+             console.warn('[LocalWorker] Flush requested but not recording, not processing, and no buffer. Likely already flushed or never started.');
+             self.postMessage({ status: "completed", transcription: lastPartialText || "" }); // Send last known text
+             return;
+        }
+        
+        const wasRecording = recording;
+        console.log('[LocalWorker] Flush requested. Stopping pull loop and processing remaining audio.');
+        recording = false; // Signal the pull loop to stop
+
+        // Wait briefly for any ongoing partial processing from the loop to finish
+        // This loop ensures that `processAvailableAudio` completes its current execution if it was mid-way.
+        let waitCount = 0;
+        const maxWaitIterations = 100; // Max 5 seconds (100 * 50ms)
+        while (processingPartial && waitCount < maxWaitIterations) {
+            console.log('[LocalWorker] Waiting for ongoing partial processing before final flush...');
+            await new Promise(resolve => setTimeout(resolve, PULL_LOOP_INTERVAL_MS));
+            waitCount++;
+        }
+        if (processingPartial) {
+            console.warn('[LocalWorker] Timeout waiting for partial processing. Proceeding with flush anyway.');
+            processingPartial = false; // Force it if stuck
+        }
+        
+        self.postMessage({ status: "processing_full_audio" }); // Indicate final processing
+
+        if (!asr) {
+            self.postMessage({ status: "error", error: "ASR model not ready for flush." });
+            if (preallocated16kBuffer) preallocated16kBuffer = null; // Clean up buffer
+            return;
+        }
+        if (!preallocated16kBuffer) {
+            console.warn("[LocalWorker] No preallocated buffer to flush (might have been an error or empty recording).");
+            self.postMessage({ status: "completed", transcription: lastPartialText || "" });
+            return;
+        }
+
+        // Perform one final pull from the RingBuffer if it was recording
+        if (wasRecording && ringBuffer) {
+            console.log("[LocalWorker] Pulling final audio chunk from RingBuffer for flush...");
+            pullAndProcessAudio(); 
+            console.log(`[LocalWorker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`);
+        }
+        
+        let finalUserTextSegment = ""; // Renamed from finalUserText to avoid confusion
+        let finalPipelineTime = 0;
+
+        // Process the remaining audio segment that hasn't been covered by `nextDecodeStart16k`
+        const remainingAudioLength = current16kWriteOffset - nextDecodeStart16k; 
+
+        if (remainingAudioLength > 0) {
+            const finalSlice = preallocated16kBuffer.subarray(nextDecodeStart16k, current16kWriteOffset); 
+            console.log(`[LocalWorker] Processing final audio segment. Slice from ${nextDecodeStart16k} to ${current16kWriteOffset} (Length: ${finalSlice.length}).`); 
+            
+            processingPartial = true; 
+            const tFinalStart = performance.now();
+            try {
+                // @ts-ignore - Transformers.js pipeline options are flexible
+                const result = await asr(finalSlice); // No explicit prompt
+
+                finalPipelineTime = performance.now() - tFinalStart;
+                console.log(`[LocalWorker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`);
+                
+                finalUserTextSegment = (result.text || "").trim(); // Store only the segment from the final ASR call
+                if (finalUserTextSegment) {
+                    console.log(`[LocalWorker] Text from final ASR segment: "${finalUserTextSegment}"`);
+                } else {
+                    console.log(`[LocalWorker] No additional text from final ASR segment.`);
+                }
+
+            } catch (err) {
+                console.error(`[LocalWorker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`, String(err));
+                self.postMessage({ status: "error", error: `Final ASR Error: ${String(err)}` });
+            } finally {
+                processingPartial = false;
+            }
+        } else {
+           console.log("[LocalWorker] No remaining audio data to process in final flush beyond what was streamed.");
+        }
+        
+        // Construct final text using lastPartialText and the segment from the final ASR output
+        const absoluteFinalText = (lastPartialText + (lastPartialText && finalUserTextSegment ? ' ' : '') + finalUserTextSegment).trim();
+        console.log(`[LocalWorker] Sending final 'completed' message. Transcription: "${absoluteFinalText}"`);
+
+        self.postMessage({ 
+            status: 'completed', 
+            transcription: absoluteFinalText, 
+            timings: { total_asr_time_final_segment: finalPipelineTime } 
+        });
+        
+        // Reset state for next recording
+        // emittedSamples = 0; // REMOVED
+        current16kWriteOffset = 0; 
+        nextDecodeStart16k = 0; 
+        lastPartialText = ""; 
+        if (preallocated16kBuffer) { 
+             preallocated16kBuffer.fill(0); 
+             preallocated16kBuffer = null; 
+        }
+        // `recording` is already false
+        // `processingPartial` should be false here
+        return;
+    }
+
+    // Fallback for unknown messages (though all relevant types should be handled above)
+    if (type !== "init" && type !== "initialize-local-asr" && type !== "start-capture" && type !== "stop-capture-and-transcribe") {
+        console.warn(`[LocalWorker] Received unknown message type: ${type}`);
+    }
+});
+
+self.onerror = (event) => {
+    console.error("[LocalWorker] Unhandled error in worker:", event);
+    self.postMessage({ status: "error", error: "An unexpected error occurred in the worker." });
+};
+
+self.onunhandledrejection = (event) => {
+    console.error("[LocalWorker] Unhandled promise rejection in worker:", event);
+    self.postMessage({ status: "error", error: "An unexpected promise rejection occurred in the worker." });
+};
+
+console.log("[LocalWorker] Streaming-capable event listener added. Worker script loaded.");
+</file>
+
+<file path="package.json">
+{
+  "name": "sonic-flow",
+  "productName": "sonic-flow",
+  "version": "0.6.9",
+  "description": "A Lightweight AI Dictation App",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "eslint --ext .ts,.tsx .",
+    "clean": "rimraf out"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Sandheep Rajkumar",
+    "email": "rajkumar.sandheep@gmail.com"
+  },
+  "license": "Proprietary",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.7.0",
+    "@electron-forge/maker-deb": "^7.7.0",
+    "@electron-forge/maker-rpm": "^7.7.0",
+    "@electron-forge/maker-squirrel": "^7.8.0",
+    "@electron-forge/maker-zip": "^7.8.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
+    "@electron-forge/plugin-fuses": "^7.7.0",
+    "@electron-forge/plugin-vite": "^7.7.0",
+    "@electron/fuses": "^1.8.0",
+    "@types/react": "^18.0.38",
+    "@types/react-dom": "^18.0.11",
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "autoprefixer": "^10.4.16",
+    "bufferutil": "^4.0.9",
+    "electron": "35.0.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.31.0",
+    "postcss": "^8.4.31",
+    "rimraf": "^6.0.1",
+    "tailwindcss": "^3.3.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~4.5.4",
+    "utf-8-validate": "^5.0.10",
+    "vite": "^6.2.1"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.1",
+    "@huggingface/transformers": "^3.5.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.5.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "form-data": "^4.0.2",
+    "framer-motion": "^12.7.4",
+    "groq-sdk": "^0.21.0",
+    "lucide-react": "^0.503.0",
+    "onnxruntime-web": "^1.19.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.14.2",
+    "tailwind-merge": "^3.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "uuid": "^11.1.0",
+    "vite-plugin-electron": "^0.29.0"
+  }
+}
 </file>
 
 <file path="profiling-results.md">
@@ -3425,75 +3532,700 @@ This document tracks performance measurements for different implementations of t
 ---
 </file>
 
-<file path="package.json">
-{
-  "name": "sonic-flow",
-  "productName": "sonic-flow",
-  "version": "0.6.9",
-  "description": "A Lightweight AI Dictation App",
-  "main": ".vite/build/main.js",
-  "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
-    "clean": "rimraf out"
-  },
-  "keywords": [],
-  "author": {
-    "name": "Sandheep Rajkumar",
-    "email": "rajkumar.sandheep@gmail.com"
-  },
-  "license": "Proprietary",
-  "devDependencies": {
-    "@electron-forge/cli": "^7.7.0",
-    "@electron-forge/maker-deb": "^7.7.0",
-    "@electron-forge/maker-rpm": "^7.7.0",
-    "@electron-forge/maker-squirrel": "^7.8.0",
-    "@electron-forge/maker-zip": "^7.8.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
-    "@electron-forge/plugin-fuses": "^7.7.0",
-    "@electron-forge/plugin-vite": "^7.7.0",
-    "@electron/fuses": "^1.8.0",
-    "@types/react": "^18.0.38",
-    "@types/react-dom": "^18.0.11",
-    "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "autoprefixer": "^10.4.16",
-    "electron": "35.0.1",
-    "eslint": "^8.57.1",
-    "eslint-plugin-import": "^2.31.0",
-    "postcss": "^8.4.31",
-    "rimraf": "^6.0.1",
-    "tailwindcss": "^3.3.5",
-    "ts-node": "^10.9.2",
-    "typescript": "~4.5.4",
-    "vite": "^6.2.1"
-  },
-  "dependencies": {
-    "@huggingface/transformers": "^3.5.0",
-    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
-    "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "dotenv": "^16.5.0",
-    "electron-squirrel-startup": "^1.0.1",
-    "form-data": "^4.0.2",
-    "framer-motion": "^12.7.4",
-    "groq-sdk": "^0.21.0",
-    "lucide-react": "^0.503.0",
-    "onnxruntime-web": "^1.19.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.14.2",
-    "tailwind-merge": "^3.2.0",
-    "tailwindcss-animate": "^1.0.7",
-    "uuid": "^11.1.0",
-    "vite-plugin-electron": "^0.29.0"
-  }
+<file path="src/main.ts">
+import 'dotenv/config'; // Load .env file variables
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
+import path from 'node:path';
+import process from 'node:process';
+import started from 'electron-squirrel-startup';
+import { loadSettings, updateSetting } from './lib/settings';
+import fs from 'node:fs';
+import { execSync } from 'child_process';
+import { transcribeAudioWithGroq } from './workers/groq-transcriber';
+import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
+
+// Add command line switches for WebGPU - KEEP THESE
+// app.commandLine.appendSwitch('enable-unsafe-webgpu');
+// app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
+// Handle creating/removing shortcuts on Windows when installing/uninstalling.
+if (started) {
+  app.quit();
 }
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let currentHotkey = '';
+let contextMenuWindow: BrowserWindow | null = null;
+let contextMenuOpen = false;
+let notificationWindow: BrowserWindow | null = null;
+let notificationTimeout: NodeJS.Timeout | null = null;
+let isQuitting = false;
+let homeWindow: BrowserWindow | null = null;
+
+// Determine the path to the icon file (works in both packaged and dev environments)
+const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+
+const createWindow = () => {
+  // Create the browser window.
+  mainWindow = new BrowserWindow({
+    width: 120,
+    height: 35,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+      enableWebSQL: false,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: ['--enable-features=SharedArrayBuffer'],
+    },
+    icon: iconPath,
+  });
+
+  // Also set the icon explicitly after creation (optional but good practice)
+  mainWindow.setIcon(iconPath);
+
+  // Show window inactive only when it's ready to prevent focus stealing
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    console.log('Main window shown.');
+    // Automatically open DevTools for debugging
+    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
+  });
+
+  // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
+  mainWindow.on('closed', () => {
+    console.log('Main window has been closed.');
+    mainWindow = null; // Ensure reference is cleared
+  });
+
+  // Position window at the bottom center of the screen
+  const { width, height } = mainWindow.getBounds();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
+
+  // and load the index.html of the app.
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+  }
+
+  // Hide menu bar
+  mainWindow.setMenuBarVisibility(false);
+
+  // Make window click-through except for the pill UI
+  mainWindow.setIgnoreMouseEvents(false);
+
+  // Register global shortcut from settings
+  registerGlobalShortcut();
+
+  // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    // In a real app, you might want to be more specific about which permissions
+    // and origins you grant, but for local development/SAB, granting broadly is common.
+    console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
+    callback(true);
+  });
+};
+
+// Register the global shortcut based on settings
+const registerGlobalShortcut = () => {
+  // Unregister any existing shortcuts
+  globalShortcut.unregisterAll();
+  
+  // Load settings to get the hotkey
+  const settings = loadSettings();
+  currentHotkey = settings.hotkey;
+  
+  // Register the shortcut
+  try {
+    globalShortcut.register(currentHotkey, () => {
+      if (mainWindow) {
+        // Send message to renderer process to toggle dictation
+        mainWindow.webContents.send('toggle-dictation');
+      }
+    });
+    console.log(`Registered global shortcut: ${currentHotkey}`);
+  } catch (error) {
+    console.error(`Failed to register shortcut ${currentHotkey}:`, error);
+    // Show an error dialog to the user
+    dialog.showErrorBox(
+      'Hotkey Registration Failed',
+      `Could not register the hotkey "${currentHotkey}". ` +
+      `This might be due to missing permissions or the hotkey being used by another application. ` +
+      `Please try changing the hotkey in the settings or ensure the application has the necessary permissions.`
+    );
+    // Set currentHotkey to empty string or null to indicate no active hotkey
+    currentHotkey = ''; 
+    // No fallback registration attempt - let the user fix it.
+  }
+};
+
+const createTray = () => {
+  try {
+    // Check if tray already exists
+    if (tray) {
+      return;
+    }
+    
+    // Load the icon from the assets folder
+    const icon = nativeImage.createFromPath(iconPath);
+    
+    if (icon.isEmpty()) {
+      console.error(`Failed to load tray icon from path: ${iconPath}. Using empty icon.`);
+      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+    } else {
+      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
+      tray = new Tray(icon);
+    }
+    
+    tray.setToolTip('Sonic Flow');
+
+    // Listen for right-click events on the tray icon
+    tray.on('right-click', (event, bounds) => {
+      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
+      // Use the bottom-right corner of the bounds as the anchor
+      const anchorX = bounds.x + bounds.width;
+      const anchorY = bounds.y + bounds.height;
+      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
+      // Show the custom HTML context menu, aligning bottom-right to anchor
+      showContextMenu(anchorX, anchorY);
+    });
+
+    // Optional: Handle left-click if needed (e.g., toggle main window?)
+    // tray.on('click', () => {
+    //   console.log('[Tray Event] Left-click detected.');
+    //   // Example: mainWindow?.show();
+    // });
+
+  } catch (error) {
+    console.error('Failed to create tray:', error);
+    // Ensure tray is null if creation fails
+    if (tray) tray.destroy();
+    tray = null; 
+  }
+};
+
+// Create the notification window (similar to context menu)
+const createNotificationWindow = () => {
+  if (notificationWindow) return;
+
+  notificationWindow = new BrowserWindow({
+    width: 180,
+    height: 40,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    minimizable: false,
+    maximizable: false,
+    focusable: false, // Changed back to false since we don't need interaction
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: undefined,
+    },
+    backgroundColor: '#00000000',
+    hasShadow: false
+  });
+
+  notificationWindow.on('closed', () => {
+    console.log('Notification window closed.');
+    notificationWindow = null;
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+        notificationTimeout = null;
+    }
+  });
+};
+
+// Create the custom context menu window
+const createContextMenuWindow = () => {
+  if (contextMenuWindow) return;
+  
+  // Create a frameless window that looks like a menu
+  contextMenuWindow = new BrowserWindow({
+    width: 140, 
+    height: 100, // Adjusted height
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'contextmenu-preload.js'), 
+      contextIsolation: true, 
+      nodeIntegration: false, 
+    },
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    hasShadow: true
+  });
+  
+  const contextMenuHtml = `
+    <html>
+    <head>
+      <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          background-color: transparent;
+          overflow: hidden;
+        }
+        
+        body {
+          margin: 0;
+          padding: 0;
+          color: #ffffff;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          overflow: hidden;
+          user-select: none;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .container {
+          background-color: #2c2c2c;
+          border: 1px solid #444444;
+          border-radius: 12px;
+          padding: 4px; 
+          overflow: hidden;
+        }
+        
+        .menu-items {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          padding: 0; 
+        }
+        
+        .menu-item {
+          font-size: 12px;
+          padding: 4px 6px; 
+          margin: 2px 0;
+          cursor: pointer;
+          border-radius: 6px; 
+          text-align: left;
+          color: #ffffff;
+          background-color: transparent;
+          border: none;
+          width: auto; 
+          display: block;
+        }
+        
+        .menu-item:hover {
+          background-color: #3c3c3c;
+          border-radius: 6px; 
+        }
+        
+        .separator {
+          height: 1px;
+          background-color: #444444;
+          margin: 4px 0; 
+          width: 100%;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="menu-items">
+          <button id="homeBtn" class="menu-item">Home</button>
+          <div class="separator"></div>
+          <button id="exitBtn" class="menu-item">Exit</button>
+        </div>
+      </div>
+      
+      <script>
+        if (window.contextMenuAPI) {
+          document.getElementById('homeBtn').addEventListener('click', () => {
+            window.contextMenuAPI.send('menu-home');
+          });
+          
+          document.getElementById('exitBtn').addEventListener('click', () => {
+            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
+            window.contextMenuAPI.send('menu-exit');
+          });
+        } else {
+          console.error('[Context Menu] contextMenuAPI not found on window object!');
+        }
+      </script>
+    </body>
+    </html>
+  `;
+  
+  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
+  
+  contextMenuWindow.on('blur', () => {
+    hideContextMenu();
+  });
+  
+  contextMenuWindow.on('closed', () => {
+    console.log('Context menu window closed.');
+    contextMenuWindow = null;
+    if (!isQuitting) {
+      console.log('Recreating context menu window.');
+      createContextMenuWindow(); 
+    } else {
+      console.log('Not recreating context menu window because app is quitting.');
+    }
+  });
+};
+
+const showContextMenu = (anchorX?: number, anchorY?: number) => {
+  if (contextMenuOpen || !contextMenuWindow) return;
+  
+  contextMenuOpen = true;
+  const menuSize = contextMenuWindow.getSize();
+  const menuWidth = menuSize[0];
+  const menuHeight = menuSize[1];
+  
+  let positionX: number;
+  let positionY: number;
+  
+  if (anchorX !== undefined && anchorY !== undefined) {
+    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
+    positionX = anchorX - menuWidth;
+    positionY = anchorY - menuHeight;
+    
+    const fineTuneX = 0; 
+    const fineTuneY = 0; 
+    positionX += fineTuneX;
+    positionY += fineTuneY;
+    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
+  } 
+  else if (mainWindow) { 
+    console.log('[showContextMenu] Positioning relative to pill');
+    const pillBounds = mainWindow.getBounds();
+    const currentMenuSize = contextMenuWindow.getSize(); 
+    const currentMenuHeight = currentMenuSize[1];
+    const currentMenuWidth = currentMenuSize[0];
+
+    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
+    const calculatedPosY = pillBounds.y - currentMenuHeight;
+    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
+    positionY = calculatedPosY + upwardAdjustment; 
+    
+    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
+    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
+  } 
+  else {
+    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
+    contextMenuOpen = false; 
+    return; 
+  }
+  
+  contextMenuWindow.setPosition(positionX, positionY);
+  contextMenuWindow.show();
+};
+
+// Hide the context menu
+const hideContextMenu = () => {
+  if (!contextMenuOpen || !contextMenuWindow) return;
+  contextMenuOpen = false;
+  contextMenuWindow.hide();
+};
+
+// Add a handler for insert-text-at-cursor
+ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
+  let originalClipboardText: string | undefined = undefined;
+  try {
+    console.log('=== TEXT INSERTION PROCESS START ===');
+    console.log('Received text:', text);
+
+    originalClipboardText = clipboard.readText();
+    console.log('Original clipboard text stored.');
+
+    const trimmedText = text.trimStart(); 
+    clipboard.writeText(trimmedText);
+    console.log('Transcription text copied to clipboard');
+
+    const activeWindow = BrowserWindow.getFocusedWindow();
+    let operationSuccess = false;
+    let operationError: string | null = null;
+    const wasElectronWindowFocused = !!activeWindow; 
+
+    if (wasElectronWindowFocused) {
+      console.log('Electron window is focused. Skipping OS paste attempt.');
+      operationSuccess = true; 
+      showNotificationPopup('Output copied to clipboard');
+    } else {
+      console.log('No Electron window is focused, attempting OS-level paste.');
+      try {
+        if (process.platform === 'win32') {
+          console.log('Executing paste command via PowerShell');
+          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
+        } else if (process.platform === 'darwin') {
+          console.log('Executing paste command via AppleScript');
+          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
+        } else if (process.platform === 'linux') {
+          console.log('Executing paste command via xdotool');
+          execSync('xdotool key ctrl+v');
+        } else {
+          throw new Error('Unsupported platform for OS-level paste');
+        }
+        console.log('OS paste command executed successfully.');
+        operationSuccess = true;
+      } catch (err) {
+        console.error('Failed to execute OS paste command:', err);
+        operationError = 'Unable to paste text. Please make sure a text field is focused.';
+        operationSuccess = false;
+      }
+
+      if (operationSuccess) {
+        clipboard.writeText(originalClipboardText);
+        console.log('Original clipboard text restored after successful OS paste.');
+      } else {
+        console.log('OS paste failed. Transcription text remains in clipboard.');
+        showNotificationPopup('Output copied to clipboard');
+      }
+    }
+
+    if (!operationSuccess && !wasElectronWindowFocused) {
+        console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
+        return { success: false, error: operationError }; 
+    }
+    
+    console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
+    return { success: true }; 
+
+  } catch (error) {
+    console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
+    console.error('Error during text insertion:', error);
+    showNotificationPopup('Output copied to clipboard (error)');
+    console.log('Transcription text remains in clipboard due to error.');
+    return {
+      success: false,
+      error: 'An error occurred during text insertion. Text copied to clipboard.'
+    };
+  }
+});
+
+app.whenReady().then(() => {
+  console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    });
+  });
+  console.log('[Main Process] onHeadersReceived listener configured.');
+
+  app.commandLine.appendSwitch('disable-http-cache');
+  
+  createWindow();
+  createTray();
+  createContextMenuWindow();
+  createHomeWindow();
+  createNotificationWindow();
+
+  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
+    console.log(`[IPC Main] Received show-context-menu event from pill.`);
+    showContextMenu(); 
+  });
+
+  ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
+    console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
+    showNotificationPopup(message);
+  });
+});
+
+app.on('window-all-closed', () => {
+  console.log('[App Event] window-all-closed - Checking platform...');
+  if (process.platform !== 'darwin') {
+    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+app.on('before-quit', () => {
+  console.log('[App Event] before-quit: Setting isQuitting flag to true.');
+  isQuitting = true;
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+});
+
+// === IPC Handlers for Hotkey Window (Registered ONCE) ===
+// ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => { ... });
+// ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
+// === END IPC Handlers ===
+
+// === IPC Handlers for Context Menu (Registered ONCE) ===
+ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
+  console.log('[IPC Main] \'menu-home\' received.');
+  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
+  if (homeWindow) {
+    console.log('[IPC Main] Home window exists, focusing...');
+    homeWindow.focus();
+  } else {
+    console.log('[IPC Main] Home window is null, creating new window...');
+    createHomeWindow();
+  }
+  hideContextMenu();
+});
+
+ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
+  console.log('[IPC Main] Received menu-exit event');
+  hideContextMenu(); 
+  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
+  app.quit();
+});
+// === END IPC Handlers ===
+
+const showNotificationPopup = (message: string, durationMs = 2000) => {
+  if (!mainWindow) return;
+  
+  if (!notificationWindow) {
+    console.log('Notification window not found, creating...');
+    createNotificationWindow();
+    if (!notificationWindow) {
+      console.error('Failed to create notification window.');
+      return;
+    }
+  }
+
+  if (notificationTimeout) {
+    clearTimeout(notificationTimeout);
+    notificationTimeout = null;
+  }
+
+  const pillBounds = mainWindow.getBounds();
+  const notificationSize = notificationWindow.getSize();
+  const notificationHeight = notificationSize[1];
+  const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
+  const gap = -5; 
+  const posY = pillBounds.y - notificationHeight - gap; 
+
+  console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
+  notificationWindow.setPosition(posX, posY);
+
+  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const dynamicNotificationHtml = `
+    <html>
+    <head>
+      <style>
+        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; }
+        body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+        .container { background-color: rgba(44, 44, 44, 0.95); border: 1px solid rgba(80, 80, 80, 0.8); border-radius: 12px; padding: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .container.visible { opacity: 1; }
+        .message { font-size: 13px; padding: 6px 10px; text-align: center; white-space: nowrap; }
+      </style>
+    </head>
+    <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
+    </html>
+  `;
+
+  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
+  console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
+
+  notificationWindow.webContents.once('did-finish-load', () => {
+    console.log('Notification window finished loading dynamic HTML. Adding visible class.');
+    notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.add("visible")', true);
+    notificationWindow.showInactive();
+  });
+
+  notificationTimeout = setTimeout(() => {
+    if (notificationWindow && !notificationWindow.isDestroyed()) {
+      console.log('Hiding notification window after timeout (removing visible class).');
+      notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.remove("visible")', true);
+      setTimeout(() => {
+        if (notificationWindow && !notificationWindow.isDestroyed()) {
+          notificationWindow.hide();
+        }
+      }, 300); 
+    }
+    notificationTimeout = null;
+  }, durationMs);
+};
+
+const createHomeWindow = () => {
+  if (homeWindow) {
+    homeWindow.focus();
+    return;
+  }
+
+  const newWidth = 920; 
+  const newHeight = 470;
+
+  homeWindow = new BrowserWindow({
+    width: newWidth,
+    height: newHeight,
+    minWidth: newWidth,  
+    minHeight: newHeight, 
+    show: false, 
+    title: 'Sonic Flow Home',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+      enableWebSQL: false,
+    },
+    icon: iconPath, 
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
+  } else {
+    const indexHtml = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    homeWindow.loadURL(`file://${indexHtml}#/home`);
+  }
+
+  homeWindow.setMenuBarVisibility(false);
+
+  homeWindow.once('ready-to-show', () => {
+    homeWindow?.show();
+  });
+
+  homeWindow.on('closed', () => {
+    console.log('[Home Window Event] \'closed\' event triggered.');
+    homeWindow = null;
+    console.log('[Home Window Event] homeWindow variable set to null.');
+  });
+};
+
+ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { 
+  console.log('[MainIPC] Received transcribe-groq request');
+  if (!audioBuffer || audioBuffer.byteLength === 0) {
+    console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
+    throw new Error('Audio buffer is empty.');
+  }
+  try {
+    console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
+    const transcript = await transcribeAudioWithGroq(audioBuffer);
+    console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
+    return transcript; 
+  } catch (error) {
+    console.error('[MainIPC] Error in transcribe-groq handler:', error);
+    throw new Error(error.message || 'Groq transcription failed in main process.');
+  }
+});
+
+ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
+  if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
+  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
+});
 </file>
 
 <file path="src/hooks/useTranscription.ts">
@@ -3503,35 +4235,8 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
-// --- Text Diffing Helper Functions (copied from local-worker.ts) ---
-/** Longest suffix of `prev` that is a prefix of `next` */
-function overlapLen(prev: string, next: string): number {
-  const max = Math.min(prev.length, next.length);
-  for (let len = max; len > 0; len--) {
-    if (prev.endsWith(next.slice(0, len))) return len;
-  }
-  return 0;
-}
-
-/** Drop duplicate overlap and concatenate */
-function mergeWithOverlap(prev: string, next: string): { merged: string, overlapLength: number } {
-  const p = prev.trim();
-  const n = next.trim();
-  const o = overlapLen(p, n);
-  let mergedText;
-  if (p && n) {
-    if (o > 0) {
-      mergedText = (p + n.slice(o));
-    } else {
-      mergedText = (p + " " + n);
-    }
-  } else if (n) {
-    mergedText = n;
-  } else {
-    mergedText = p;
-  }
-  return { merged: mergedText.replace(/\s+/g, " ").trim(), overlapLength: o };
-}
+// Define CloudEngine type first
+type CloudEngine = 'groq' | 'gemini';
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -3544,6 +4249,8 @@ export interface UseTranscriptionReturn {
   stop: () => void;
   currentMode: 'local' | 'cloud';
   setMode: (mode: 'local' | 'cloud') => void;
+  cloudEngine: CloudEngine;
+  setCloudEngine: (engine: CloudEngine) => void;
 }
 
 // Helper function to encode Float32Array to WAV ArrayBuffer
@@ -3616,6 +4323,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -3635,10 +4343,9 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 16000, // Target 16kHz
+              sampleRate: 48000, // Prefer 48kHz
               channelCount: 1,   // Mono audio
-              // bitsPerSample: 16, // Often implied by other settings, Safari might need it. Let's omit for now unless issues arise.
-              echoCancellation: false, // Lower CPU, potentially cleaner for ASR if environment is controlled
+              echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
             }
         });
@@ -3711,7 +4418,7 @@ export function useTranscription(): UseTranscriptionReturn {
       // Add message listener for the local worker
       const localWorkerListener = (e: MessageEvent) => {
         console.log('[useTranscription] Message from local-worker:', e.data);
-        const { status, transcription, error: workerError } = e.data;
+        const { status, transcription, error: workerError, delta } = e.data;
         switch (status) {
           case 'sab_initialized':
             console.log('[useTranscription] Local worker confirmed SAB init.');
@@ -3733,8 +4440,8 @@ export function useTranscription(): UseTranscriptionReturn {
             setText(''); // Clear text when new capture starts
             break;
           case 'partial': // Handle partial transcriptions for smoother UI updates
-            if (typeof transcription === 'string') {
-              setText(prevText => mergeWithOverlap(prevText, transcription).merged);
+            if (typeof delta === 'string') {
+              setText(prev => (prev + (prev ? ' ' : '') + delta).trim());
             }
             break;
           case 'processing_full_audio': // Local worker processing
@@ -3819,27 +4526,24 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        let chosenMimeType = 'audio/wav'; // Prioritize WAV
-        const audioBitsPerSecond = 128000; // Can adjust WAV bitrate if necessary, or omit for browser default
+        // Directly use audio/webm with Opus
+        let chosenMimeType = 'audio/webm;codecs=opus'; 
+        const audioBitsPerSecond = 128000; 
 
         if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/webm;codecs=opus'.`);
-          chosenMimeType = 'audio/webm;codecs=opus';
+          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
+          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
           if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying generic 'audio/webm'.`);
-            chosenMimeType = 'audio/webm';
-            if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-              console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-              setError('No supported audio format found for recording (WAV/WebM).');
-              setRecording(false);
-              return;
-            }
+            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
+            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
+            setRecording(false);
+            return;
           }
         }
         
         const options = {
           mimeType: chosenMimeType,
-          audioBitsPerSecond: chosenMimeType === 'audio/wav' ? undefined : audioBitsPerSecond, // WAV doesn't typically use audioBitsPerSecond in MediaRecorder
+          audioBitsPerSecond: audioBitsPerSecond,
         };
 
         mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
@@ -3869,29 +4573,37 @@ export function useTranscription(): UseTranscriptionReturn {
             const arrayBufferPromise = audioBlob.arrayBuffer();
             arrayBufferPromise.then(async (arrayBuffer) => {
               console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              if (!window.electron?.transcribeGroq) {
+              
+              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
                 throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
+                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
               }
-              console.log('[useTranscription] Sending audio ArrayBuffer to Groq (transferable)...');
+
+              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
               
               const preIPCTime = performance.now();
-              // Send as transferable
-              const transcript = await window.electron.transcribeGroq(arrayBuffer, [arrayBuffer]); 
+              const transcriptPromise =
+                cloudEngine === 'groq'
+                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
+                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
+                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
+              
+              const transcript = await transcriptPromise;
               
               if (profilingStartTimeRef.current) {
                 const endTime = performance.now();
                 const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndGroq = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - Groq transcript received.`);
+                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
+                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
                 console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + Groq (Main Thread actual work): ${durationIPCAndGroq.toFixed(2)} ms`);
+                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
                 profilingStartTimeRef.current = null; // Reset for next run
               }
-              // console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`); // Redundant with profiling log
               setText(transcript);
               if (transcript && window.electron.insertTextAtCursor) {
                 window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
               }
               setProcessing(false);
             }).catch(err => {
@@ -4042,6 +4754,8 @@ export function useTranscription(): UseTranscriptionReturn {
     stop,
     currentMode,
     setMode,
+    cloudEngine,
+    setCloudEngine,
   };
 }
 
@@ -4084,1105 +4798,20 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
     sendNotification: (message: string) => {
       console.log(`[Mock Electron] sendNotification called with: "${message}"`);
     },
-    transcribeGroq: async (audioBuffer: ArrayBuffer): Promise<string> => {
+    transcribeGroq: async (audioBuffer: ArrayBuffer, transferList?: Transferable[]): Promise<string> => { // Added transferList to mock
       console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
       return new Promise(resolve => setTimeout(() => {
         resolve("Mocked Groq transcript from window.electron mock.");
       }, 500));
+    },
+    transcribeGemini: async (audioBuffer: ArrayBuffer, mimeType: string, transferList?: Transferable[]): Promise<{text: string}> => { // Matched signature
+      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). This should be an Electron IPC call.`);
+      return new Promise(resolve => setTimeout(() => {
+        resolve({ text: "Mocked Gemini transcript from window.electron mock." });
+      }, 500));
     }
   };
 }
-</file>
-
-<file path="src/main.ts">
-import 'dotenv/config'; // Load .env file variables
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
-import path from 'node:path';
-import process from 'node:process';
-import started from 'electron-squirrel-startup';
-import { loadSettings, updateSetting } from './lib/settings';
-import fs from 'node:fs';
-import { execSync } from 'child_process';
-import { transcribeAudioWithGroq } from './workers/groq-transcriber';
-
-// Add command line switches for WebGPU - KEEP THESE
-// app.commandLine.appendSwitch('enable-unsafe-webgpu');
-// app.commandLine.appendSwitch('ignore-gpu-blocklist');
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
-
-let mainWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
-let currentHotkey = '';
-let hotkeyDialogOpen = false;
-let captureWindow: BrowserWindow | null = null;
-let contextMenuWindow: BrowserWindow | null = null;
-let contextMenuOpen = false;
-let notificationWindow: BrowserWindow | null = null;
-let notificationTimeout: NodeJS.Timeout | null = null;
-let isQuitting = false;
-let homeWindow: BrowserWindow | null = null;
-
-// Determine the path to the icon file (works in both packaged and dev environments)
-const iconPath = path.join(__dirname, 'assets', 'icon.ico');
-
-const createWindow = () => {
-  // Create the browser window.
-  mainWindow = new BrowserWindow({
-    width: 120,
-    height: 35,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: false,
-      enableWebSQL: false,
-      nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js'),
-      additionalArguments: ['--enable-features=SharedArrayBuffer'],
-    },
-    icon: iconPath,
-  });
-
-  // Also set the icon explicitly after creation (optional but good practice)
-  mainWindow.setIcon(iconPath);
-
-  // Show window inactive only when it's ready to prevent focus stealing
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    console.log('Main window shown.');
-    // Automatically open DevTools for debugging
-    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
-  });
-
-  // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
-  mainWindow.on('closed', () => {
-    console.log('Main window has been closed.');
-    mainWindow = null; // Ensure reference is cleared
-  });
-
-  // Position window at the bottom center of the screen
-  const { width, height } = mainWindow.getBounds();
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
-
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
-  }
-
-  // Hide menu bar
-  mainWindow.setMenuBarVisibility(false);
-
-  // Make window click-through except for the pill UI
-  mainWindow.setIgnoreMouseEvents(false);
-
-  // Register global shortcut from settings
-  registerGlobalShortcut();
-
-  // Pre-create the hotkey capture window for better performance
-  createHotkeyCaptureWindow();
-
-  // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    // In a real app, you might want to be more specific about which permissions
-    // and origins you grant, but for local development/SAB, granting broadly is common.
-    console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
-    callback(true);
-  });
-};
-
-// Register the global shortcut based on settings
-const registerGlobalShortcut = () => {
-  // Unregister any existing shortcuts
-  globalShortcut.unregisterAll();
-  
-  // Load settings to get the hotkey
-  const settings = loadSettings();
-  currentHotkey = settings.hotkey;
-  
-  // Register the shortcut
-  try {
-    globalShortcut.register(currentHotkey, () => {
-      if (mainWindow) {
-        // Send message to renderer process to toggle dictation
-        mainWindow.webContents.send('toggle-dictation');
-      }
-    });
-    console.log(`Registered global shortcut: ${currentHotkey}`);
-  } catch (error) {
-    console.error(`Failed to register shortcut ${currentHotkey}:`, error);
-    // Show an error dialog to the user
-    dialog.showErrorBox(
-      'Hotkey Registration Failed',
-      `Could not register the hotkey "${currentHotkey}". ` +
-      `This might be due to missing permissions or the hotkey being used by another application. ` +
-      `Please try changing the hotkey in the settings or ensure the application has the necessary permissions.`
-    );
-    // Set currentHotkey to empty string or null to indicate no active hotkey
-    currentHotkey = ''; 
-    // No fallback registration attempt - let the user fix it.
-  }
-};
-
-// Handle hotkey change
-const handleHotkeyChange = (newHotkey: string) => {
-  if (newHotkey === currentHotkey) return;
-  
-  updateSetting('hotkey', newHotkey);
-  currentHotkey = newHotkey;
-  registerGlobalShortcut();
-};
-
-// Create the hotkey capture window once and reuse it
-const createHotkeyCaptureWindow = () => {
-  if (captureWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  captureWindow = new BrowserWindow({
-    width: 200, // Reduced from 220
-    height: 125,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      contextIsolation: false,
-      nodeIntegration: false, // Disabled for security
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  // HTML for key capture UI - simplified to match native context menu
-  const captureHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; /* Reduced container padding */
-          overflow: hidden;
-        }
-        
-        .capture-area {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 4px 0; /* Reduced from 6px to 4px to match container padding */
-        }
-        
-        .key-display {
-          font-size: 13px;
-          padding: 5px 8px; /* Reduced horizontal padding */
-          margin: 5px 0;
-          background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 3px to 6px for more rounded corners */
-          text-align: center;
-          width: 170px; /* Reduced width */
-          min-height: 18px;
-        }
-        
-        .key-display.listening {
-          border: 1px solid #555555;
-        }
-        
-        .hint {
-          font-size: 11px;
-          color: #aaaaaa;
-          margin-top: 3px;
-          text-align: center;
-        }
-        
-        .buttons {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 4px;
-          margin-bottom: 2px;
-        }
-        
-        button {
-          background-color: transparent;
-          border: none;
-          color: #ffffff;
-          padding: 4px 6px; /* Reduced horizontal padding to match context menu */
-          font-size: 12px;
-          cursor: pointer;
-          border-radius: 6px; /* Increased from 4px to 6px for more rounded corners */
-        }
-        
-        button:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 4px to 6px to match non-hover state */
-        }
-        
-        button.primary {
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="capture-area">
-          <div id="keyDisplay" class="key-display listening">Press a key combination</div>
-          <div class="hint">Press modifier + key (e.g. Alt+Shift+D)</div>
-        </div>
-        <div class="buttons">
-          <button id="cancelBtn">Cancel</button>
-          <button id="saveBtn" class="primary" disabled>Save</button>
-        </div>
-      </div>
-      
-      <script>
-        const { ipcRenderer } = require('electron');
-        const keyDisplay = document.getElementById('keyDisplay');
-        const saveBtn = document.getElementById('saveBtn');
-        const cancelBtn = document.getElementById('cancelBtn');
-        
-        let capturedHotkey = '';
-        let currentHotkey = '';
-        
-        // Reset the UI when shown and display current hotkey
-        ipcRenderer.on('reset-ui', (_, hotkey) => {
-          currentHotkey = hotkey;
-          capturedHotkey = '';
-          
-          // Show current hotkey
-          keyDisplay.textContent = currentHotkey || 'No hotkey set';
-          keyDisplay.classList.remove('listening');
-          saveBtn.disabled = true;
-        });
-        
-        // Capture key combinations
-        document.addEventListener('keydown', (e) => {
-          // Only capture keys if in listening mode
-          if (!keyDisplay.classList.contains('listening')) return;
-          
-          e.preventDefault();
-          
-          // Get modifiers
-          const modifiers = [];
-          if (e.altKey) modifiers.push('Alt');
-          if (e.ctrlKey) modifiers.push('Ctrl');
-          if (e.shiftKey) modifiers.push('Shift');
-          if (e.metaKey) modifiers.push(navigator.platform.includes('Mac') ? 'Command' : 'Super');
-          
-          // Get the key
-          let key = e.key;
-          
-          // Skip if only modifier keys are pressed
-          if (['Alt', 'Control', 'Shift', 'Meta'].includes(key)) {
-            return;
-          }
-          
-          // Format the key (capitalize first letter for letters)
-          if (key.length === 1) {
-            key = key.toUpperCase();
-          }
-          
-          // Create the hotkey string
-          if (modifiers.length > 0) {
-            capturedHotkey = [...modifiers, key].join('+');
-            keyDisplay.textContent = capturedHotkey;
-            keyDisplay.classList.remove('listening');
-            saveBtn.disabled = false;
-          }
-        });
-        
-        // Click to start capturing a new hotkey
-        keyDisplay.addEventListener('click', () => {
-          keyDisplay.textContent = 'Press a key combination';
-          keyDisplay.classList.add('listening');
-          capturedHotkey = '';
-          saveBtn.disabled = true;
-        });
-        
-        // Save button
-        saveBtn.addEventListener('click', () => {
-          if (capturedHotkey) {
-            ipcRenderer.send('save-hotkey', capturedHotkey);
-          }
-        });
-        
-        // Cancel button
-        cancelBtn.addEventListener('click', () => {
-          ipcRenderer.send('cancel-hotkey');
-        });
-      </script>
-    </body>
-    </html>
-  `;
-  
-  // Load the HTML
-  captureWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(captureHtml)}`);
-  
-  // Handle blur (clicking outside)
-  captureWindow.on('blur', () => {
-    hideHotkeyCaptureWindow();
-  });
-  
-  // Handle close
-  captureWindow.on('closed', () => {
-    console.log('Hotkey capture window closed.');
-    captureWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating hotkey capture window.');
-      createHotkeyCaptureWindow(); // Recreate for next use
-    } else {
-      console.log('Not recreating hotkey capture window because app is quitting.');
-    }
-  });
-};
-
-// Show the hotkey capture window
-const showHotkeyCaptureWindow = () => {
-  if (hotkeyDialogOpen || !mainWindow || !captureWindow) return;
-  hotkeyDialogOpen = true;
-  
-  // Position above the pill
-  const pillBounds = mainWindow.getBounds();
-  const captureSize = captureWindow.getSize();
-  
-  // Position centered above the pill with a smaller gap to be closer to the pill
-  captureWindow.setPosition(
-    Math.floor(pillBounds.x + (pillBounds.width / 2) - (captureSize[0] / 2)),
-    pillBounds.y - captureSize[1] - 2 // Reduced vertical offset from 5 to 2 to be even closer to the pill
-  );
-  
-  // Reset the UI and pass the current hotkey
-  captureWindow.webContents.send('reset-ui', currentHotkey);
-  
-  // Show the window
-  captureWindow.show();
-};
-
-// Hide the hotkey capture window
-const hideHotkeyCaptureWindow = () => {
-  if (!hotkeyDialogOpen || !captureWindow) return;
-  hotkeyDialogOpen = false;
-  captureWindow.hide();
-};
-
-// Validate hotkey format
-const isValidHotkeyFormat = (hotkey: string): boolean => {
-  // Basic validation - should contain at least one modifier and a key
-  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
-  return modifiers.some(modifier => hotkey.includes(modifier)) && 
-         hotkey.includes('+') &&
-         hotkey.split('+').length >= 2;
-};
-
-const createTray = () => {
-  try {
-    // Check if tray already exists
-    if (tray) {
-      return;
-    }
-    
-    // Load the icon from the assets folder
-    const icon = nativeImage.createFromPath(iconPath);
-    
-    if (icon.isEmpty()) {
-      console.error(`Failed to load tray icon from path: ${iconPath}. Using empty icon.`);
-      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
-    } else {
-      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
-      tray = new Tray(icon);
-    }
-    
-    tray.setToolTip('Sonic Flow');
-
-    // Listen for right-click events on the tray icon
-    tray.on('right-click', (event, bounds) => {
-      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
-      // Use the bottom-right corner of the bounds as the anchor
-      const anchorX = bounds.x + bounds.width;
-      const anchorY = bounds.y + bounds.height;
-      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
-      // Show the custom HTML context menu, aligning bottom-right to anchor
-      showContextMenu(anchorX, anchorY);
-    });
-
-    // Optional: Handle left-click if needed (e.g., toggle main window?)
-    // tray.on('click', () => {
-    //   console.log('[Tray Event] Left-click detected.');
-    //   // Example: mainWindow?.show();
-    // });
-
-  } catch (error) {
-    console.error('Failed to create tray:', error);
-    // Ensure tray is null if creation fails
-    if (tray) tray.destroy();
-    tray = null; 
-  }
-};
-
-// Create the notification window (similar to context menu)
-const createNotificationWindow = () => {
-  if (notificationWindow) return;
-
-  notificationWindow = new BrowserWindow({
-    width: 180,
-    height: 40,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    minimizable: false,
-    maximizable: false,
-    focusable: false, // Changed back to false since we don't need interaction
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: undefined,
-    },
-    backgroundColor: '#00000000',
-    hasShadow: false
-  });
-
-  notificationWindow.on('closed', () => {
-    console.log('Notification window closed.');
-    notificationWindow = null;
-    if (notificationTimeout) {
-        clearTimeout(notificationTimeout);
-        notificationTimeout = null;
-    }
-  });
-};
-
-// Create the custom context menu window
-const createContextMenuWindow = () => {
-  if (contextMenuWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  contextMenuWindow = new BrowserWindow({
-    width: 140, // Further reduced width from 160 to 140
-    height: 150,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      // Use the new preload script
-      preload: path.join(__dirname, 'contextmenu-preload.js'), // Correct path for build output
-      contextIsolation: true, // Enable context isolation (required for contextBridge)
-      nodeIntegration: false, // Keep nodeIntegration disabled for security
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  // HTML for context menu UI - styled to match the hotkey selection menu
-  const contextMenuHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; /* Reduced container padding */
-          overflow: hidden;
-        }
-        
-        .menu-items {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
-          padding: 0; /* Removed vertical padding */
-        }
-        
-        .menu-item {
-          font-size: 12px;
-          padding: 4px 6px; /* Changed from 6px 6px to 4px 6px to make padding consistent */
-          margin: 2px 0;
-          cursor: pointer;
-          border-radius: 6px; /* Increased from 4px to 6px for more rounded corners */
-          text-align: left;
-          color: #ffffff;
-          background-color: transparent;
-          border: none;
-          width: auto; /* Let the button size naturally */
-          display: block;
-        }
-        
-        .menu-item:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 4px to 6px to match non-hover state */
-        }
-        
-        .separator {
-          height: 1px;
-          background-color: #444444;
-          margin: 4px 0; /* Consistent margin */
-          width: 100%;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="menu-items">
-          <button id="homeBtn" class="menu-item">Home</button>
-          <button id="hotkeyBtn" class="menu-item">Change Hotkey</button>
-          <div class="separator"></div>
-          <button id="exitBtn" class="menu-item">Exit</button>
-        </div>
-      </div>
-      
-      <script>
-        // Remove require('electron') - no longer needed and wouldn't work anyway
-        // const { ipcRenderer } = require('electron'); 
-        
-        // Ensure the API is available before adding listeners
-        if (window.contextMenuAPI) {
-          // Set up button click handlers using the exposed API
-          document.getElementById('homeBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-home');
-          });
-          
-          document.getElementById('hotkeyBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-hotkey');
-          });
-          
-          document.getElementById('exitBtn').addEventListener('click', () => {
-            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
-            window.contextMenuAPI.send('menu-exit');
-          });
-        } else {
-          console.error('[Context Menu] contextMenuAPI not found on window object!');
-        }
-      </script>
-    </body>
-    </html>
-  `;
-  
-  // Load the HTML
-  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
-  
-  // Handle blur (clicking outside)
-  contextMenuWindow.on('blur', () => {
-    hideContextMenu();
-  });
-  
-  // Handle close
-  contextMenuWindow.on('closed', () => {
-    console.log('Context menu window closed.');
-    contextMenuWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating context menu window.');
-      createContextMenuWindow(); // Recreate for next use
-    } else {
-      console.log('Not recreating context menu window because app is quitting.');
-    }
-  });
-};
-
-// Show the custom context menu
-// Accepts anchorX, anchorY coordinates for positioning the bottom-right corner
-const showContextMenu = (anchorX?: number, anchorY?: number) => {
-  // Check if context menu is already open or doesn't exist
-  if (contextMenuOpen || !contextMenuWindow) return;
-  
-  contextMenuOpen = true;
-  const menuSize = contextMenuWindow.getSize();
-  const menuWidth = menuSize[0];
-  const menuHeight = menuSize[1];
-  
-  let positionX: number;
-  let positionY: number;
-  
-  // If anchor coordinates are provided (e.g., from tray click), position relative to them
-  if (anchorX !== undefined && anchorY !== undefined) {
-    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
-    // Calculate top-left position to align the menu's bottom-right corner with the anchor point
-    positionX = anchorX - menuWidth;
-    positionY = anchorY - menuHeight;
-    
-    // Optional Fine-Tuning (keep for tray)
-    const fineTuneX = 0; 
-    const fineTuneY = 0; 
-    positionX += fineTuneX;
-    positionY += fineTuneY;
-    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
-  } 
-  // If anchor coordinates are NOT provided (e.g., from pill click), position above the pill
-  else if (mainWindow) { // Ensure mainWindow exists for pill bounds
-    console.log('[showContextMenu] Positioning relative to pill');
-    const pillBounds = mainWindow.getBounds();
-    // Get size again just before calculation
-    const currentMenuSize = contextMenuWindow.getSize(); 
-    const currentMenuHeight = currentMenuSize[1];
-    const currentMenuWidth = currentMenuSize[0];
-
-    // Center the menu horizontally above the pill
-    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
-    // Align bottom with pill top (gap=0), then add offset to move down
-    const calculatedPosY = pillBounds.y - currentMenuHeight;
-    const downwardOffset = 40; // Move down by 40px
-    positionY = calculatedPosY + downwardOffset; 
-    
-    // Log the values used for calculation
-    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${downwardOffset}, calculated posY=${positionY}`);
-
-    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
-  } 
-  // Fallback if no anchor and no mainWindow (shouldn't happen for pill click)
-  else {
-    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
-    contextMenuOpen = false; // Reset flag
-    return; 
-  }
-  
-  // Set the calculated position
-  contextMenuWindow.setPosition(positionX, positionY);
-  
-  // Show the window
-  contextMenuWindow.show();
-};
-
-// Hide the context menu
-const hideContextMenu = () => {
-  if (!contextMenuOpen || !contextMenuWindow) return;
-  contextMenuOpen = false;
-  contextMenuWindow.hide();
-};
-
-// Add a handler for insert-text-at-cursor
-ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
-  let originalClipboardText: string | undefined = undefined;
-  try {
-    console.log('=== TEXT INSERTION PROCESS START ===');
-    console.log('Received text:', text);
-
-    // Read and store the current clipboard content (text only)
-    // const { clipboard } = require('electron'); // Removed require
-    originalClipboardText = clipboard.readText();
-    console.log('Original clipboard text stored.');
-
-    // Copy the transcription text to clipboard
-    const trimmedText = text.trimStart(); // Trim leading whitespace
-    clipboard.writeText(trimmedText);
-    console.log('Transcription text copied to clipboard');
-
-    // Check if an Electron window is focused
-    const activeWindow = BrowserWindow.getFocusedWindow();
-    let operationSuccess = false;
-    let operationError: string | null = null;
-    const wasElectronWindowFocused = !!activeWindow; // Track if an electron window was initially focused
-
-    if (wasElectronWindowFocused) {
-      // Electron window is focused: Skip paste attempt
-      console.log('Electron window is focused. Skipping OS paste attempt.');
-      operationSuccess = true; // Considered success as text is on clipboard
-      showNotificationPopup('Output copied to clipboard');
-      // Do NOT restore original clipboard
-
-    } else {
-      // No Electron window focused: Attempt OS-level paste
-      console.log('No Electron window is focused, attempting OS-level paste.');
-      try {
-        // const { execSync } = require('child_process'); // Removed require
-        if (process.platform === 'win32') {
-          console.log('Executing paste command via PowerShell');
-          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
-        } else if (process.platform === 'darwin') {
-          console.log('Executing paste command via AppleScript');
-          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
-        } else if (process.platform === 'linux') {
-          console.log('Executing paste command via xdotool');
-          execSync('xdotool key ctrl+v');
-        } else {
-          throw new Error('Unsupported platform for OS-level paste');
-        }
-        console.log('OS paste command executed successfully.');
-        operationSuccess = true;
-      } catch (err) {
-        console.error('Failed to execute OS paste command:', err);
-        operationError = 'Unable to paste text. Please make sure a text field is focused.';
-        operationSuccess = false;
-      }
-
-      // Restore the original clipboard content ONLY if OS paste was successful
-      if (operationSuccess) {
-        clipboard.writeText(originalClipboardText);
-        console.log('Original clipboard text restored after successful OS paste.');
-      } else {
-        console.log('OS paste failed. Transcription text remains in clipboard.');
-        showNotificationPopup('Output copied to clipboard');
-      }
-    }
-
-    // If OS paste failed, we still return failure to the renderer
-    if (!operationSuccess && !wasElectronWindowFocused) {
-        console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
-        return { success: false, error: operationError }; 
-    }
-    
-    // Return final status (success means either paste worked or text is on clipboard because electron window was focused)
-    console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
-    return { success: true }; // Return success even if only copied
-
-  } catch (error) {
-    console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
-    console.error('Error during text insertion:', error);
-    showNotificationPopup('Output copied to clipboard (error)');
-    console.log('Transcription text remains in clipboard due to error.');
-    return {
-      success: false,
-      error: 'An error occurred during text insertion. Text copied to clipboard.'
-    };
-  }
-});
-
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-app.whenReady().then(() => {
-  // --- Add this header injection logic --- 
-  console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
-    });
-  });
-  console.log('[Main Process] onHeadersReceived listener configured.');
-  // --- End of added logic ---
-
-  // Set disk cache options to avoid cache errors
-  // app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
-  app.commandLine.appendSwitch('disable-http-cache');
-  
-  createWindow();
-  createTray();
-  createContextMenuWindow();
-  createHomeWindow();
-  createNotificationWindow();
-
-  // Set up IPC handler for showing the custom context menu (from pill click)
-  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
-    console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    // Call showContextMenu WITHOUT coordinates to trigger pill positioning logic
-    showContextMenu(); 
-  });
-
-  // Set up IPC handler for showing notifications requested by the renderer
-  ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
-    console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
-    showNotificationPopup(message);
-  });
-});
-
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  // Standard behavior: Quit when all windows are closed (except on macOS).
-  console.log('[App Event] window-all-closed - Checking platform...');
-  if (process.platform !== 'darwin') {
-    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-app.on('before-quit', () => {
-  console.log('[App Event] before-quit: Setting isQuitting flag to true.');
-  isQuitting = true;
-  // Note: We keep essential cleanup in will-quit as it runs AFTER windows close attempt
-});
-
-app.on('will-quit', () => {
-  // Unregister all shortcuts.
-  globalShortcut.unregisterAll();
-  // Call cleanup for temporary audio files - No longer needed
-  // cleanupAllTempAudioFiles(); 
-  console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
-});
-
-// === IPC Handlers for Hotkey Window (Registered ONCE) ===
-ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => {
-  if (isValidHotkeyFormat(hotkey)) {
-    handleHotkeyChange(hotkey);
-  }
-  hideHotkeyCaptureWindow();
-});
-
-ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => {
-  hideHotkeyCaptureWindow();
-});
-// === END IPC Handlers ===
-
-// === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] \'menu-home\' received.');
-  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
-  if (homeWindow) {
-    console.log('[IPC Main] Home window exists, focusing...');
-    homeWindow.focus();
-  } else {
-    console.log('[IPC Main] Home window is null, creating new window...');
-    createHomeWindow();
-  }
-  hideContextMenu();
-});
-
-ipcMain.on('menu-hotkey', (_event: Electron.IpcMainEvent) => {
-  hideContextMenu();
-  showHotkeyCaptureWindow();
-});
-
-ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu(); // Hide the menu visually first
-  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
-  app.quit();
-});
-// === END IPC Handlers ===
-
-// Show the notification popup
-const showNotificationPopup = (message: string, durationMs = 2000) => {
-  if (!mainWindow) return;
-  
-  if (!notificationWindow) {
-    console.log('Notification window not found, creating...');
-    createNotificationWindow();
-    if (!notificationWindow) {
-      console.error('Failed to create notification window.');
-      return;
-    }
-  }
-
-  if (notificationTimeout) {
-    clearTimeout(notificationTimeout);
-    notificationTimeout = null;
-  }
-
-  const pillBounds = mainWindow.getBounds();
-  const notificationSize = notificationWindow.getSize();
-  const notificationHeight = notificationSize[1];
-  const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  // Revert to gap-based logic, but use a negative gap to position slightly below pill top
-  const gap = -5; // Negative gap moves it down
-  const posY = pillBounds.y - notificationHeight - gap; 
-
-  console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
-  notificationWindow.setPosition(posX, posY);
-
-  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const dynamicNotificationHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-        }
-        
-        .container {
-          background-color: rgba(44, 44, 44, 0.95);
-          border: 1px solid rgba(80, 80, 80, 0.8);
-          border-radius: 12px;
-          padding: 4px;
-          overflow: hidden;
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-          opacity: 0;
-          transition: opacity 0.3s ease-in-out;
-        }
-        
-        .container.visible {
-          opacity: 1;
-        }
-        
-        .message {
-          font-size: 13px;
-          padding: 6px 10px;
-          text-align: center;
-          white-space: nowrap;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="message">${safeMessage}</div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
-  console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
-
-  notificationWindow.webContents.once('did-finish-load', () => {
-    console.log('Notification window finished loading dynamic HTML. Adding visible class.');
-    notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.add("visible")', true);
-    notificationWindow.showInactive();
-  });
-
-  notificationTimeout = setTimeout(() => {
-    if (notificationWindow && !notificationWindow.isDestroyed()) {
-      console.log('Hiding notification window after timeout (removing visible class).');
-      notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.remove("visible")', true);
-      setTimeout(() => {
-        if (notificationWindow && !notificationWindow.isDestroyed()) {
-          notificationWindow.hide();
-        }
-      }, 300); // Wait for fade out animation
-    }
-    notificationTimeout = null;
-  }, durationMs);
-};
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
-
-// Add the new function for the Home window
-const createHomeWindow = () => {
-  if (homeWindow) {
-    homeWindow.focus();
-    return;
-  }
-
-  // Reduce width by 10%, height by 20% from 1100x700
-  const newWidth = 920; 
-  const newHeight = 470;
-
-  homeWindow = new BrowserWindow({
-    width: newWidth,
-    height: newHeight,
-    minWidth: newWidth,  // Set minimum width
-    minHeight: newHeight, // Set minimum height
-    show: false, // Don't show immediately, wait for ready-to-show
-    title: 'Sonic Flow Home',
-    webPreferences: {
-      // Consider creating a dedicated preload script for the home window later
-      // preload: path.join(__dirname, 'home-preload.js'), 
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-      enableWebSQL: false,
-    },
-    icon: iconPath, // Reuse the same icon
-  });
-
-  // Load the React-based home route (dev vs. production)
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
-  } else {
-    const indexHtml = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
-    homeWindow.loadURL(`file://${indexHtml}#/home`);
-  }
-
-  // Optional: Remove menu bar
-  homeWindow.setMenuBarVisibility(false);
-
-  homeWindow.once('ready-to-show', () => {
-    homeWindow?.show();
-  });
-
-  homeWindow.on('closed', () => {
-    console.log('[Home Window Event] \'closed\' event triggered.');
-    homeWindow = null;
-    console.log('[Home Window Event] homeWindow variable set to null.');
-  });
-};
-
-// IPC handler for Groq transcription
-ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { // Expect ArrayBuffer from renderer
-  console.log('[MainIPC] Received transcribe-groq request');
-  if (!audioBuffer || audioBuffer.byteLength === 0) {
-    console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
-    throw new Error('Audio buffer is empty.');
-  }
-  try {
-    // Pass the ArrayBuffer directly
-    console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
-    const transcript = await transcribeAudioWithGroq(audioBuffer);
-    console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
-    return transcript; // This will be the result of the promise in the renderer
-  } catch (error) {
-    console.error('[MainIPC] Error in transcribe-groq handler:', error);
-    // Re-throw the error so it can be caught by the .invoke() call in the renderer
-    // Consider sanitizing or simplifying the error before sending it back
-    throw new Error(error.message || 'Groq transcription failed in main process.');
-  }
-});
 </file>
 
 </files>

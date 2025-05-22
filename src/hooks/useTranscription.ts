@@ -4,6 +4,9 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
 
+// Define CloudEngine type first
+type CloudEngine = 'groq' | 'gemini';
+
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -15,6 +18,8 @@ export interface UseTranscriptionReturn {
   stop: () => void;
   currentMode: 'local' | 'cloud';
   setMode: (mode: 'local' | 'cloud') => void;
+  cloudEngine: CloudEngine;
+  setCloudEngine: (engine: CloudEngine) => void;
 }
 
 // Helper function to encode Float32Array to WAV ArrayBuffer
@@ -87,6 +92,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -106,10 +112,9 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 16000, // Target 16kHz
+              sampleRate: 48000, // Prefer 48kHz
               channelCount: 1,   // Mono audio
-              // bitsPerSample: 16, // Often implied by other settings, Safari might need it. Let's omit for now unless issues arise.
-              echoCancellation: false, // Lower CPU, potentially cleaner for ASR if environment is controlled
+              echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
             }
         });
@@ -290,27 +295,24 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        let chosenMimeType = 'audio/wav'; // Prioritize WAV
-        const audioBitsPerSecond = 128000; // Can adjust WAV bitrate if necessary, or omit for browser default
+        // Directly use audio/webm with Opus
+        let chosenMimeType = 'audio/webm;codecs=opus'; 
+        const audioBitsPerSecond = 128000; 
 
         if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/webm;codecs=opus'.`);
-          chosenMimeType = 'audio/webm;codecs=opus';
+          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
+          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
           if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying generic 'audio/webm'.`);
-            chosenMimeType = 'audio/webm';
-            if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-              console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-              setError('No supported audio format found for recording (WAV/WebM).');
-              setRecording(false);
-              return;
-            }
+            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
+            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
+            setRecording(false);
+            return;
           }
         }
         
         const options = {
           mimeType: chosenMimeType,
-          audioBitsPerSecond: chosenMimeType === 'audio/wav' ? undefined : audioBitsPerSecond, // WAV doesn't typically use audioBitsPerSecond in MediaRecorder
+          audioBitsPerSecond: audioBitsPerSecond,
         };
 
         mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
@@ -340,29 +342,37 @@ export function useTranscription(): UseTranscriptionReturn {
             const arrayBufferPromise = audioBlob.arrayBuffer();
             arrayBufferPromise.then(async (arrayBuffer) => {
               console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              if (!window.electron?.transcribeGroq) {
+              
+              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
                 throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
+                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
               }
-              console.log('[useTranscription] Sending audio ArrayBuffer to Groq (transferable)...');
+
+              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
               
               const preIPCTime = performance.now();
-              // Send as transferable
-              const transcript = await window.electron.transcribeGroq(arrayBuffer, [arrayBuffer]); 
+              const transcriptPromise =
+                cloudEngine === 'groq'
+                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
+                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
+                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
+              
+              const transcript = await transcriptPromise;
               
               if (profilingStartTimeRef.current) {
                 const endTime = performance.now();
                 const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndGroq = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - Groq transcript received.`);
+                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
+                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
                 console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + Groq (Main Thread actual work): ${durationIPCAndGroq.toFixed(2)} ms`);
+                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
                 profilingStartTimeRef.current = null; // Reset for next run
               }
-              // console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`); // Redundant with profiling log
               setText(transcript);
               if (transcript && window.electron.insertTextAtCursor) {
                 window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
               }
               setProcessing(false);
             }).catch(err => {
@@ -513,6 +523,8 @@ export function useTranscription(): UseTranscriptionReturn {
     stop,
     currentMode,
     setMode,
+    cloudEngine,
+    setCloudEngine,
   };
 }
 
@@ -555,10 +567,16 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
     sendNotification: (message: string) => {
       console.log(`[Mock Electron] sendNotification called with: "${message}"`);
     },
-    transcribeGroq: async (audioBuffer: ArrayBuffer): Promise<string> => {
+    transcribeGroq: async (audioBuffer: ArrayBuffer, transferList?: Transferable[]): Promise<string> => { // Added transferList to mock
       console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
       return new Promise(resolve => setTimeout(() => {
         resolve("Mocked Groq transcript from window.electron mock.");
+      }, 500));
+    },
+    transcribeGemini: async (audioBuffer: ArrayBuffer, mimeType: string, transferList?: Transferable[]): Promise<{text: string}> => { // Matched signature
+      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). This should be an Electron IPC call.`);
+      return new Promise(resolve => setTimeout(() => {
+        resolve({ text: "Mocked Gemini transcript from window.electron mock." });
       }, 500));
     }
   };

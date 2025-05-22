@@ -7,6 +7,7 @@ import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
+import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -684,4 +685,9 @@ ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => {
     console.error('[MainIPC] Error in transcribe-groq handler:', error);
     throw new Error(error.message || 'Groq transcription failed in main process.');
   }
+});
+
+ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
+  if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
+  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
 });
