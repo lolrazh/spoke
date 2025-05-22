@@ -20,8 +20,6 @@ if (started) {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let currentHotkey = '';
-let hotkeyDialogOpen = false;
-let captureWindow: BrowserWindow | null = null;
 let contextMenuWindow: BrowserWindow | null = null;
 let contextMenuOpen = false;
 let notificationWindow: BrowserWindow | null = null;
@@ -93,9 +91,6 @@ const createWindow = () => {
   // Register global shortcut from settings
   registerGlobalShortcut();
 
-  // Pre-create the hotkey capture window for better performance
-  createHotkeyCaptureWindow();
-
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     // In a real app, you might want to be more specific about which permissions
@@ -136,276 +131,6 @@ const registerGlobalShortcut = () => {
     currentHotkey = ''; 
     // No fallback registration attempt - let the user fix it.
   }
-};
-
-// Handle hotkey change
-const handleHotkeyChange = (newHotkey: string) => {
-  if (newHotkey === currentHotkey) return;
-  
-  updateSetting('hotkey', newHotkey);
-  currentHotkey = newHotkey;
-  registerGlobalShortcut();
-};
-
-// Create the hotkey capture window once and reuse it
-const createHotkeyCaptureWindow = () => {
-  if (captureWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  captureWindow = new BrowserWindow({
-    width: 200, // Reduced from 220
-    height: 125,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      contextIsolation: false,
-      nodeIntegration: false, // Disabled for security
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  // HTML for key capture UI - simplified to match native context menu
-  const captureHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; /* Reduced container padding */
-          overflow: hidden;
-        }
-        
-        .capture-area {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 4px 0; /* Reduced from 6px to 4px to match container padding */
-        }
-        
-        .key-display {
-          font-size: 13px;
-          padding: 5px 8px; /* Reduced horizontal padding */
-          margin: 5px 0;
-          background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 3px to 6px for more rounded corners */
-          text-align: center;
-          width: 170px; /* Reduced width */
-          min-height: 18px;
-        }
-        
-        .key-display.listening {
-          border: 1px solid #555555;
-        }
-        
-        .hint {
-          font-size: 11px;
-          color: #aaaaaa;
-          margin-top: 3px;
-          text-align: center;
-        }
-        
-        .buttons {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 4px;
-          margin-bottom: 2px;
-        }
-        
-        button {
-          background-color: transparent;
-          border: none;
-          color: #ffffff;
-          padding: 4px 6px; /* Reduced horizontal padding to match context menu */
-          font-size: 12px;
-          cursor: pointer;
-          border-radius: 6px; /* Increased from 4px to 6px for more rounded corners */
-        }
-        
-        button:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 4px to 6px to match non-hover state */
-        }
-        
-        button.primary {
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="capture-area">
-          <div id="keyDisplay" class="key-display listening">Press a key combination</div>
-          <div class="hint">Press modifier + key (e.g. Alt+Shift+D)</div>
-        </div>
-        <div class="buttons">
-          <button id="cancelBtn">Cancel</button>
-          <button id="saveBtn" class="primary" disabled>Save</button>
-        </div>
-      </div>
-      
-      <script>
-        const { ipcRenderer } = require('electron');
-        const keyDisplay = document.getElementById('keyDisplay');
-        const saveBtn = document.getElementById('saveBtn');
-        const cancelBtn = document.getElementById('cancelBtn');
-        
-        let capturedHotkey = '';
-        let currentHotkey = '';
-        
-        // Reset the UI when shown and display current hotkey
-        ipcRenderer.on('reset-ui', (_, hotkey) => {
-          currentHotkey = hotkey;
-          capturedHotkey = '';
-          
-          // Show current hotkey
-          keyDisplay.textContent = currentHotkey || 'No hotkey set';
-          keyDisplay.classList.remove('listening');
-          saveBtn.disabled = true;
-        });
-        
-        // Capture key combinations
-        document.addEventListener('keydown', (e) => {
-          // Only capture keys if in listening mode
-          if (!keyDisplay.classList.contains('listening')) return;
-          
-          e.preventDefault();
-          
-          // Get modifiers
-          const modifiers = [];
-          if (e.altKey) modifiers.push('Alt');
-          if (e.ctrlKey) modifiers.push('Ctrl');
-          if (e.shiftKey) modifiers.push('Shift');
-          if (e.metaKey) modifiers.push(navigator.platform.includes('Mac') ? 'Command' : 'Super');
-          
-          // Get the key
-          let key = e.key;
-          
-          // Skip if only modifier keys are pressed
-          if (['Alt', 'Control', 'Shift', 'Meta'].includes(key)) {
-            return;
-          }
-          
-          // Format the key (capitalize first letter for letters)
-          if (key.length === 1) {
-            key = key.toUpperCase();
-          }
-          
-          // Create the hotkey string
-          if (modifiers.length > 0) {
-            capturedHotkey = [...modifiers, key].join('+');
-            keyDisplay.textContent = capturedHotkey;
-            keyDisplay.classList.remove('listening');
-            saveBtn.disabled = false;
-          }
-        });
-        
-        // Click to start capturing a new hotkey
-        keyDisplay.addEventListener('click', () => {
-          keyDisplay.textContent = 'Press a key combination';
-          keyDisplay.classList.add('listening');
-          capturedHotkey = '';
-          saveBtn.disabled = true;
-        });
-        
-        // Save button
-        saveBtn.addEventListener('click', () => {
-          if (capturedHotkey) {
-            ipcRenderer.send('save-hotkey', capturedHotkey);
-          }
-        });
-        
-        // Cancel button
-        cancelBtn.addEventListener('click', () => {
-          ipcRenderer.send('cancel-hotkey');
-        });
-      </script>
-    </body>
-    </html>
-  `;
-  
-  // Load the HTML
-  captureWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(captureHtml)}`);
-  
-  // Handle blur (clicking outside)
-  captureWindow.on('blur', () => {
-    hideHotkeyCaptureWindow();
-  });
-  
-  // Handle close
-  captureWindow.on('closed', () => {
-    console.log('Hotkey capture window closed.');
-    captureWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating hotkey capture window.');
-      createHotkeyCaptureWindow(); // Recreate for next use
-    } else {
-      console.log('Not recreating hotkey capture window because app is quitting.');
-    }
-  });
-};
-
-// Show the hotkey capture window
-const showHotkeyCaptureWindow = () => {
-  if (hotkeyDialogOpen || !mainWindow || !captureWindow) return;
-  hotkeyDialogOpen = true;
-  
-  // Position above the pill
-  const pillBounds = mainWindow.getBounds();
-  const captureSize = captureWindow.getSize();
-  
-  // Position centered above the pill with a smaller gap to be closer to the pill
-  captureWindow.setPosition(
-    Math.floor(pillBounds.x + (pillBounds.width / 2) - (captureSize[0] / 2)),
-    pillBounds.y - captureSize[1] - 2 // Reduced vertical offset from 5 to 2 to be even closer to the pill
-  );
-  
-  // Reset the UI and pass the current hotkey
-  captureWindow.webContents.send('reset-ui', currentHotkey);
-  
-  // Show the window
-  captureWindow.show();
-};
-
-// Hide the hotkey capture window
-const hideHotkeyCaptureWindow = () => {
-  if (!hotkeyDialogOpen || !captureWindow) return;
-  hotkeyDialogOpen = false;
-  captureWindow.hide();
-};
-
-// Validate hotkey format
-const isValidHotkeyFormat = (hotkey: string): boolean => {
-  // Basic validation - should contain at least one modifier and a key
-  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
-  return modifiers.some(modifier => hotkey.includes(modifier)) && 
-         hotkey.includes('+') &&
-         hotkey.split('+').length >= 2;
 };
 
 const createTray = () => {
@@ -494,18 +219,17 @@ const createContextMenuWindow = () => {
   
   // Create a frameless window that looks like a menu
   contextMenuWindow = new BrowserWindow({
-    width: 140, // Further reduced width from 160 to 140
-    height: 150,
+    width: 140, 
+    height: 100, // Adjusted height
     frame: false,
     transparent: true,
     resizable: false,
     minimizable: false,
     maximizable: false,
     webPreferences: {
-      // Use the new preload script
-      preload: path.join(__dirname, 'contextmenu-preload.js'), // Correct path for build output
-      contextIsolation: true, // Enable context isolation (required for contextBridge)
-      nodeIntegration: false, // Keep nodeIntegration disabled for security
+      preload: path.join(__dirname, 'contextmenu-preload.js'), 
+      contextIsolation: true, 
+      nodeIntegration: false, 
     },
     skipTaskbar: true,
     show: false,
@@ -514,7 +238,6 @@ const createContextMenuWindow = () => {
     hasShadow: true
   });
   
-  // HTML for context menu UI - styled to match the hotkey selection menu
   const contextMenuHtml = `
     <html>
     <head>
@@ -540,7 +263,7 @@ const createContextMenuWindow = () => {
           background-color: #2c2c2c;
           border: 1px solid #444444;
           border-radius: 12px;
-          padding: 4px; /* Reduced container padding */
+          padding: 4px; 
           overflow: hidden;
         }
         
@@ -548,32 +271,32 @@ const createContextMenuWindow = () => {
           display: flex;
           flex-direction: column;
           width: 100%;
-          padding: 0; /* Removed vertical padding */
+          padding: 0; 
         }
         
         .menu-item {
           font-size: 12px;
-          padding: 4px 6px; /* Changed from 6px 6px to 4px 6px to make padding consistent */
+          padding: 4px 6px; 
           margin: 2px 0;
           cursor: pointer;
-          border-radius: 6px; /* Increased from 4px to 6px for more rounded corners */
+          border-radius: 6px; 
           text-align: left;
           color: #ffffff;
           background-color: transparent;
           border: none;
-          width: auto; /* Let the button size naturally */
+          width: auto; 
           display: block;
         }
         
         .menu-item:hover {
           background-color: #3c3c3c;
-          border-radius: 6px; /* Increased from 4px to 6px to match non-hover state */
+          border-radius: 6px; 
         }
         
         .separator {
           height: 1px;
           background-color: #444444;
-          margin: 4px 0; /* Consistent margin */
+          margin: 4px 0; 
           width: 100%;
         }
       </style>
@@ -582,25 +305,15 @@ const createContextMenuWindow = () => {
       <div class="container">
         <div class="menu-items">
           <button id="homeBtn" class="menu-item">Home</button>
-          <button id="hotkeyBtn" class="menu-item">Change Hotkey</button>
           <div class="separator"></div>
           <button id="exitBtn" class="menu-item">Exit</button>
         </div>
       </div>
       
       <script>
-        // Remove require('electron') - no longer needed and wouldn't work anyway
-        // const { ipcRenderer } = require('electron'); 
-        
-        // Ensure the API is available before adding listeners
         if (window.contextMenuAPI) {
-          // Set up button click handlers using the exposed API
           document.getElementById('homeBtn').addEventListener('click', () => {
             window.contextMenuAPI.send('menu-home');
-          });
-          
-          document.getElementById('hotkeyBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-hotkey');
           });
           
           document.getElementById('exitBtn').addEventListener('click', () => {
@@ -615,31 +328,25 @@ const createContextMenuWindow = () => {
     </html>
   `;
   
-  // Load the HTML
   contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
   
-  // Handle blur (clicking outside)
   contextMenuWindow.on('blur', () => {
     hideContextMenu();
   });
   
-  // Handle close
   contextMenuWindow.on('closed', () => {
     console.log('Context menu window closed.');
     contextMenuWindow = null;
     if (!isQuitting) {
       console.log('Recreating context menu window.');
-      createContextMenuWindow(); // Recreate for next use
+      createContextMenuWindow(); 
     } else {
       console.log('Not recreating context menu window because app is quitting.');
     }
   });
 };
 
-// Show the custom context menu
-// Accepts anchorX, anchorY coordinates for positioning the bottom-right corner
 const showContextMenu = (anchorX?: number, anchorY?: number) => {
-  // Check if context menu is already open or doesn't exist
   if (contextMenuOpen || !contextMenuWindow) return;
   
   contextMenuOpen = true;
@@ -650,52 +357,39 @@ const showContextMenu = (anchorX?: number, anchorY?: number) => {
   let positionX: number;
   let positionY: number;
   
-  // If anchor coordinates are provided (e.g., from tray click), position relative to them
   if (anchorX !== undefined && anchorY !== undefined) {
     console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
-    // Calculate top-left position to align the menu's bottom-right corner with the anchor point
     positionX = anchorX - menuWidth;
     positionY = anchorY - menuHeight;
     
-    // Optional Fine-Tuning (keep for tray)
     const fineTuneX = 0; 
     const fineTuneY = 0; 
     positionX += fineTuneX;
     positionY += fineTuneY;
     console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
   } 
-  // If anchor coordinates are NOT provided (e.g., from pill click), position above the pill
-  else if (mainWindow) { // Ensure mainWindow exists for pill bounds
+  else if (mainWindow) { 
     console.log('[showContextMenu] Positioning relative to pill');
     const pillBounds = mainWindow.getBounds();
-    // Get size again just before calculation
     const currentMenuSize = contextMenuWindow.getSize(); 
     const currentMenuHeight = currentMenuSize[1];
     const currentMenuWidth = currentMenuSize[0];
 
-    // Center the menu horizontally above the pill
     positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
-    // Align bottom with pill top (gap=0), then add offset to move down
     const calculatedPosY = pillBounds.y - currentMenuHeight;
-    const downwardOffset = 40; // Move down by 40px
-    positionY = calculatedPosY + downwardOffset; 
+    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
+    positionY = calculatedPosY + upwardAdjustment; 
     
-    // Log the values used for calculation
-    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${downwardOffset}, calculated posY=${positionY}`);
-
+    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
     console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
   } 
-  // Fallback if no anchor and no mainWindow (shouldn't happen for pill click)
   else {
     console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
-    contextMenuOpen = false; // Reset flag
+    contextMenuOpen = false; 
     return; 
   }
   
-  // Set the calculated position
   contextMenuWindow.setPosition(positionX, positionY);
-  
-  // Show the window
   contextMenuWindow.show();
 };
 
@@ -713,34 +407,25 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
     console.log('=== TEXT INSERTION PROCESS START ===');
     console.log('Received text:', text);
 
-    // Read and store the current clipboard content (text only)
-    // const { clipboard } = require('electron'); // Removed require
     originalClipboardText = clipboard.readText();
     console.log('Original clipboard text stored.');
 
-    // Copy the transcription text to clipboard
-    const trimmedText = text.trimStart(); // Trim leading whitespace
+    const trimmedText = text.trimStart(); 
     clipboard.writeText(trimmedText);
     console.log('Transcription text copied to clipboard');
 
-    // Check if an Electron window is focused
     const activeWindow = BrowserWindow.getFocusedWindow();
     let operationSuccess = false;
     let operationError: string | null = null;
-    const wasElectronWindowFocused = !!activeWindow; // Track if an electron window was initially focused
+    const wasElectronWindowFocused = !!activeWindow; 
 
     if (wasElectronWindowFocused) {
-      // Electron window is focused: Skip paste attempt
       console.log('Electron window is focused. Skipping OS paste attempt.');
-      operationSuccess = true; // Considered success as text is on clipboard
+      operationSuccess = true; 
       showNotificationPopup('Output copied to clipboard');
-      // Do NOT restore original clipboard
-
     } else {
-      // No Electron window focused: Attempt OS-level paste
       console.log('No Electron window is focused, attempting OS-level paste.');
       try {
-        // const { execSync } = require('child_process'); // Removed require
         if (process.platform === 'win32') {
           console.log('Executing paste command via PowerShell');
           execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
@@ -761,7 +446,6 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
         operationSuccess = false;
       }
 
-      // Restore the original clipboard content ONLY if OS paste was successful
       if (operationSuccess) {
         clipboard.writeText(originalClipboardText);
         console.log('Original clipboard text restored after successful OS paste.');
@@ -771,15 +455,13 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
       }
     }
 
-    // If OS paste failed, we still return failure to the renderer
     if (!operationSuccess && !wasElectronWindowFocused) {
         console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
         return { success: false, error: operationError }; 
     }
     
-    // Return final status (success means either paste worked or text is on clipboard because electron window was focused)
     console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
-    return { success: true }; // Return success even if only copied
+    return { success: true }; 
 
   } catch (error) {
     console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
@@ -793,10 +475,7 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
   }
 });
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
 app.whenReady().then(() => {
-  // --- Add this header injection logic --- 
   console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -808,10 +487,7 @@ app.whenReady().then(() => {
     });
   });
   console.log('[Main Process] onHeadersReceived listener configured.');
-  // --- End of added logic ---
 
-  // Set disk cache options to avoid cache errors
-  // app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
   app.commandLine.appendSwitch('disable-http-cache');
   
   createWindow();
@@ -820,25 +496,18 @@ app.whenReady().then(() => {
   createHomeWindow();
   createNotificationWindow();
 
-  // Set up IPC handler for showing the custom context menu (from pill click)
   ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
     console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    // Call showContextMenu WITHOUT coordinates to trigger pill positioning logic
     showContextMenu(); 
   });
 
-  // Set up IPC handler for showing notifications requested by the renderer
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
     showNotificationPopup(message);
   });
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  // Standard behavior: Quit when all windows are closed (except on macOS).
   console.log('[App Event] window-all-closed - Checking platform...');
   if (process.platform !== 'darwin') {
     console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
@@ -847,8 +516,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
@@ -857,28 +524,16 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   console.log('[App Event] before-quit: Setting isQuitting flag to true.');
   isQuitting = true;
-  // Note: We keep essential cleanup in will-quit as it runs AFTER windows close attempt
 });
 
 app.on('will-quit', () => {
-  // Unregister all shortcuts.
   globalShortcut.unregisterAll();
-  // Call cleanup for temporary audio files - No longer needed
-  // cleanupAllTempAudioFiles(); 
   console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===
-ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => {
-  if (isValidHotkeyFormat(hotkey)) {
-    handleHotkeyChange(hotkey);
-  }
-  hideHotkeyCaptureWindow();
-});
-
-ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => {
-  hideHotkeyCaptureWindow();
-});
+// ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => { ... });
+// ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
 // === END IPC Handlers ===
 
 // === IPC Handlers for Context Menu (Registered ONCE) ===
@@ -895,20 +550,14 @@ ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
   hideContextMenu();
 });
 
-ipcMain.on('menu-hotkey', (_event: Electron.IpcMainEvent) => {
-  hideContextMenu();
-  showHotkeyCaptureWindow();
-});
-
 ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
   console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu(); // Hide the menu visually first
+  hideContextMenu(); 
   console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
   app.quit();
 });
 // === END IPC Handlers ===
 
-// Show the notification popup
 const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return;
   
@@ -930,8 +579,7 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
   const notificationSize = notificationWindow.getSize();
   const notificationHeight = notificationSize[1];
   const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  // Revert to gap-based logic, but use a negative gap to position slightly below pill top
-  const gap = -5; // Negative gap moves it down
+  const gap = -5; 
   const posY = pillBounds.y - notificationHeight - gap; 
 
   console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
@@ -942,50 +590,14 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
     <html>
     <head>
       <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-        }
-        
-        .container {
-          background-color: rgba(44, 44, 44, 0.95);
-          border: 1px solid rgba(80, 80, 80, 0.8);
-          border-radius: 12px;
-          padding: 4px;
-          overflow: hidden;
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-          opacity: 0;
-          transition: opacity 0.3s ease-in-out;
-        }
-        
-        .container.visible {
-          opacity: 1;
-        }
-        
-        .message {
-          font-size: 13px;
-          padding: 6px 10px;
-          text-align: center;
-          white-space: nowrap;
-        }
+        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; }
+        body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+        .container { background-color: rgba(44, 44, 44, 0.95); border: 1px solid rgba(80, 80, 80, 0.8); border-radius: 12px; padding: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .container.visible { opacity: 1; }
+        .message { font-size: 13px; padding: 6px 10px; text-align: center; white-space: nowrap; }
       </style>
     </head>
-    <body>
-      <div class="container">
-        <div class="message">${safeMessage}</div>
-      </div>
-    </body>
+    <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
     </html>
   `;
 
@@ -1006,45 +618,37 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
         if (notificationWindow && !notificationWindow.isDestroyed()) {
           notificationWindow.hide();
         }
-      }, 300); // Wait for fade out animation
+      }, 300); 
     }
     notificationTimeout = null;
   }, durationMs);
 };
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
-
-// Add the new function for the Home window
 const createHomeWindow = () => {
   if (homeWindow) {
     homeWindow.focus();
     return;
   }
 
-  // Reduce width by 10%, height by 20% from 1100x700
   const newWidth = 920; 
   const newHeight = 470;
 
   homeWindow = new BrowserWindow({
     width: newWidth,
     height: newHeight,
-    minWidth: newWidth,  // Set minimum width
-    minHeight: newHeight, // Set minimum height
-    show: false, // Don't show immediately, wait for ready-to-show
+    minWidth: newWidth,  
+    minHeight: newHeight, 
+    show: false, 
     title: 'Sonic Flow Home',
     webPreferences: {
-      // Consider creating a dedicated preload script for the home window later
-      // preload: path.join(__dirname, 'home-preload.js'), 
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
       enableWebSQL: false,
     },
-    icon: iconPath, // Reuse the same icon
+    icon: iconPath, 
   });
 
-  // Load the React-based home route (dev vs. production)
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
   } else {
@@ -1052,7 +656,6 @@ const createHomeWindow = () => {
     homeWindow.loadURL(`file://${indexHtml}#/home`);
   }
 
-  // Optional: Remove menu bar
   homeWindow.setMenuBarVisibility(false);
 
   homeWindow.once('ready-to-show', () => {
@@ -1066,23 +669,19 @@ const createHomeWindow = () => {
   });
 };
 
-// IPC handler for Groq transcription
-ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { // Expect ArrayBuffer from renderer
+ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { 
   console.log('[MainIPC] Received transcribe-groq request');
   if (!audioBuffer || audioBuffer.byteLength === 0) {
     console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
     throw new Error('Audio buffer is empty.');
   }
   try {
-    // Pass the ArrayBuffer directly
     console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
     const transcript = await transcribeAudioWithGroq(audioBuffer);
     console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
-    return transcript; // This will be the result of the promise in the renderer
+    return transcript; 
   } catch (error) {
     console.error('[MainIPC] Error in transcribe-groq handler:', error);
-    // Re-throw the error so it can be caught by the .invoke() call in the renderer
-    // Consider sanitizing or simplifying the error before sending it back
     throw new Error(error.message || 'Groq transcription failed in main process.');
   }
 });
