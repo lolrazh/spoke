@@ -687,7 +687,7 @@ ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => {
   }
 });
 
-ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer) => {
+ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
   if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
-  return await transcribeAudioWithGemini(arrayBuffer);
+  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
 });

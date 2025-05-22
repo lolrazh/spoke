@@ -13,6 +13,7 @@ declare global {
       transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
       transcribeGemini: (
         buf: ArrayBuffer,
+        mimeType: string,
         transfer?: Transferable[]
       ) => Promise<{ text: string }>;
     };

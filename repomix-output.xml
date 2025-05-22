@@ -258,106 +258,6 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
 </file>
 
-<file path="src/workers/gemini-transcriber.ts">
-// gemini-transcriber.ts
-import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
-// import { Blob } from 'node:buffer';              // Node20+ already has Buffer
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-
-if (!GEMINI_API_KEY) {
-  console.warn('[GeminiTranscriber] GEMINI_API_KEY is not set.');
-} else {
-  console.log('[GeminiTranscriber] GEMINI_API_KEY is set.');
-}
-
-/** Helper: ArrayBuffer ➞ base64 (Gemini inline audio path) */
-function arrayBufferToBase64(data: ArrayBuffer): string {
-  return Buffer.from(data).toString('base64');
-}
-
-/**
- * Transcribes audio with Gemini 2.0 Flash.
- * Falls back to Files API automatically for blobs > 20 MB.
- *
- * @param audioData   raw audio as ArrayBuffer (16-bit PCM mono, 16 kHz works great)
- * @param mimeType    defaults to 'audio/wav' – Gemini also takes mp3, aac, ogg, flac…
- * @param prompt      customise formatting / vocabulary here
- */
-export async function transcribeAudioWithGemini(
-  audioData: ArrayBuffer,
-  mimeType = 'audio/wav',
-  prompt = 'Generate an exact transcript of the speech.'
-): Promise<string> {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
-
-  if (audioData.byteLength === 0)
-    throw new Error('Audio data (ArrayBuffer) is empty.');
-
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-  try {
-    // ≤20 MB → send inline; otherwise upload then reference file URI
-    if (audioData.byteLength <= 20 * 1024 * 1024) {
-      console.log(
-        `[GeminiTranscriber] Sending ${(
-          audioData.byteLength /
-          1024
-        ).toFixed(1)} KB inline to Gemini…`
-      );
-
-      const base64Audio = arrayBufferToBase64(audioData);
-
-      const { text } = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType,
-              data: base64Audio,
-            },
-          },
-        ],
-      });
-
-      if (!text) throw new Error('No transcript returned.');
-      return text;
-    }
-
-    // >20 MB → Files API
-    console.log(
-      `[GeminiTranscriber] Audio is ${(audioData.byteLength / 1024 / 1024).toFixed(
-        2
-      )} MB – uploading via Files API…`
-    );
-
-    // SDK currently expects a File, Buffer or fs path. We feed a Buffer.
-    const fileHandle = await ai.files.upload({
-      file: Buffer.from(audioData),
-      config: { mimeType },
-    });
-
-    const { text } = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: [
-        { text: prompt },
-        {
-          // createPartFromUri is handy but inline object works too
-          fileData: { mimeType, fileUri: fileHandle.uri },
-        } as any,
-      ],
-    });
-
-    if (!text) throw new Error('No transcript returned.');
-    return text;
-  } catch (err: any) {
-    console.error('[GeminiTranscriber] Error:', err?.message || err);
-    throw err;
-  }
-}
-</file>
-
 <file path="tailwind.config.js">
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -1302,11 +1202,104 @@ Sonic Flow is currently released under a **Proprietary License**.
 For more details, please refer to the `LICENSE` file in the repository (if available) or contact the project author.
 </file>
 
-<file path="vite.main.config.ts">
-import { defineConfig } from 'vite';
+<file path="src/workers/gemini-transcriber.ts">
+// gemini-transcriber.ts
+import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
+// import { Blob } from 'node:buffer';              // Node20+ already has Buffer
 
-// https://vitejs.dev/config
-export default defineConfig({ });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+
+if (!GEMINI_API_KEY) {
+  console.warn('[GeminiTranscriber] GEMINI_API_KEY is not set.');
+} else {
+  console.log('[GeminiTranscriber] GEMINI_API_KEY is set.');
+}
+
+/** Helper: ArrayBuffer ➞ base64 (Gemini inline audio path) */
+function arrayBufferToBase64(data: ArrayBuffer): string {
+  return Buffer.from(data).toString('base64');
+}
+
+/**
+ * Transcribes audio with Gemini 2.0 Flash.
+ * Falls back to Files API automatically for blobs > 20 MB.
+ *
+ * @param audioData   raw audio as ArrayBuffer (16-bit PCM mono, 16 kHz works great)
+ * @param mimeType    defaults to 'audio/wav' – Gemini also takes mp3, aac, ogg, flac…
+ * @param prompt      customise formatting / vocabulary here
+ */
+export async function transcribeAudioWithGemini(
+  audioData: ArrayBuffer,
+  mimeType: string,
+  prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
+): Promise<{ text: string }> {
+  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+
+  if (audioData.byteLength === 0)
+    throw new Error('Audio data (ArrayBuffer) is empty.');
+
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+  try {
+    // ≤20 MB → send inline; otherwise upload then reference file URI
+    if (audioData.byteLength <= 20 * 1024 * 1024) {
+      console.log(
+        `[GeminiTranscriber] Sending ${(
+          audioData.byteLength /
+          1024
+        ).toFixed(1)} KB inline to Gemini…`
+      );
+
+      const base64Audio = arrayBufferToBase64(audioData);
+
+      const { text } = await ai.models.generateContent({
+        model: 'gemini-2.0-flash-lite',
+        contents: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType,
+              data: base64Audio,
+            },
+          },
+        ],
+      });
+
+      if (!text) throw new Error('No transcript returned.');
+      return { text: text.trim() };
+    }
+
+    // >20 MB → Files API
+    console.log(
+      `[GeminiTranscriber] Audio is ${(audioData.byteLength / 1024 / 1024).toFixed(
+        2
+      )} MB – uploading via Files API…`
+    );
+
+    // SDK currently expects a File, Buffer or fs path. We feed a Buffer.
+    const fileHandle = await ai.files.upload({
+      file: Buffer.from(audioData) as any,
+      config: { mimeType },
+    });
+
+    const { text } = await ai.models.generateContent({
+      model: 'gemini-2.0-flash-lite',
+      contents: [
+        { text: prompt },
+        {
+          // createPartFromUri is handy but inline object works too
+          fileData: { mimeType, fileUri: fileHandle.uri },
+        } as any,
+      ],
+    });
+
+    if (!text) throw new Error('No transcript returned.');
+    return { text: text.trim() };
+  } catch (err: any) {
+    console.error('[GeminiTranscriber] Error:', err?.message || err);
+    throw err;
+  }
+}
 </file>
 
 <file path="vite.renderer.config.ts">
@@ -1551,6 +1544,24 @@ try {
 } catch (error) {
    console.error('Failed to register CaptureProcessor (from public JS file):', error);
 }
+</file>
+
+<file path="vite.main.config.ts">
+import { defineConfig } from 'vite';
+
+// https://vitejs.dev/config
+export default defineConfig({
+  resolve: {
+    // Tell Vite to always resolve `ws` to the same version, preventing potential issues
+    // if it's a dependency of multiple packages.
+    dedupe: ['ws'],
+  },
+  ssr: {
+    // Mark 'ws' as external so it's not bundled into the main process output.
+    // Electron will load it using Node's native require.
+    external: ['ws'],
+  },
+});
 </file>
 
 <file path="src/audio/ring-buffer.ts">
@@ -2191,7 +2202,9 @@ contextBridge.exposeInMainWorld('electron', {
     } else {
       return ipcRenderer.invoke('transcribe-groq', audioBuffer);
     }
-  }
+  },
+  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
+    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
 });
 </file>
 
@@ -2209,6 +2222,11 @@ declare global {
       viewLogFile: () => Promise<void>;
       sendNotification: (message: string) => void;
       transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => Promise<string>;
+      transcribeGemini: (
+        buf: ArrayBuffer,
+        mimeType: string,
+        transfer?: Transferable[]
+      ) => Promise<{ text: string }>;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
@@ -2852,6 +2870,7 @@ console.log("[LocalWorker] Streaming-capable event listener added. Worker script
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "autoprefixer": "^10.4.16",
+    "bufferutil": "^4.0.9",
     "electron": "35.0.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
@@ -2860,6 +2879,7 @@ console.log("[LocalWorker] Streaming-capable event listener added. Worker script
     "tailwindcss": "^3.3.5",
     "ts-node": "^10.9.2",
     "typescript": "~4.5.4",
+    "utf-8-validate": "^5.0.10",
     "vite": "^6.2.1"
   },
   "dependencies": {
@@ -3522,6 +3542,7 @@ import { loadSettings, updateSetting } from './lib/settings';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
+import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -4200,6 +4221,11 @@ ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => {
     throw new Error(error.message || 'Groq transcription failed in main process.');
   }
 });
+
+ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
+  if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
+  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
+});
 </file>
 
 <file path="src/hooks/useTranscription.ts">
@@ -4208,6 +4234,9 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 // Constants (can be moved or adjusted)
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
+
+// Define CloudEngine type first
+type CloudEngine = 'groq' | 'gemini';
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -4220,6 +4249,8 @@ export interface UseTranscriptionReturn {
   stop: () => void;
   currentMode: 'local' | 'cloud';
   setMode: (mode: 'local' | 'cloud') => void;
+  cloudEngine: CloudEngine;
+  setCloudEngine: (engine: CloudEngine) => void;
 }
 
 // Helper function to encode Float32Array to WAV ArrayBuffer
@@ -4292,6 +4323,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -4311,10 +4343,9 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 16000, // Target 16kHz
+              sampleRate: 48000, // Prefer 48kHz
               channelCount: 1,   // Mono audio
-              // bitsPerSample: 16, // Often implied by other settings, Safari might need it. Let's omit for now unless issues arise.
-              echoCancellation: false, // Lower CPU, potentially cleaner for ASR if environment is controlled
+              echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
             }
         });
@@ -4495,27 +4526,24 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        let chosenMimeType = 'audio/wav'; // Prioritize WAV
-        const audioBitsPerSecond = 128000; // Can adjust WAV bitrate if necessary, or omit for browser default
+        // Directly use audio/webm with Opus
+        let chosenMimeType = 'audio/webm;codecs=opus'; 
+        const audioBitsPerSecond = 128000; 
 
         if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/webm;codecs=opus'.`);
-          chosenMimeType = 'audio/webm;codecs=opus';
+          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
+          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
           if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying generic 'audio/webm'.`);
-            chosenMimeType = 'audio/webm';
-            if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-              console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-              setError('No supported audio format found for recording (WAV/WebM).');
-              setRecording(false);
-              return;
-            }
+            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
+            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
+            setRecording(false);
+            return;
           }
         }
         
         const options = {
           mimeType: chosenMimeType,
-          audioBitsPerSecond: chosenMimeType === 'audio/wav' ? undefined : audioBitsPerSecond, // WAV doesn't typically use audioBitsPerSecond in MediaRecorder
+          audioBitsPerSecond: audioBitsPerSecond,
         };
 
         mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
@@ -4545,29 +4573,37 @@ export function useTranscription(): UseTranscriptionReturn {
             const arrayBufferPromise = audioBlob.arrayBuffer();
             arrayBufferPromise.then(async (arrayBuffer) => {
               console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              if (!window.electron?.transcribeGroq) {
+              
+              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
                 throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
+                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
               }
-              console.log('[useTranscription] Sending audio ArrayBuffer to Groq (transferable)...');
+
+              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
               
               const preIPCTime = performance.now();
-              // Send as transferable
-              const transcript = await window.electron.transcribeGroq(arrayBuffer, [arrayBuffer]); 
+              const transcriptPromise =
+                cloudEngine === 'groq'
+                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
+                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
+                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
+              
+              const transcript = await transcriptPromise;
               
               if (profilingStartTimeRef.current) {
                 const endTime = performance.now();
                 const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndGroq = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - Groq transcript received.`);
+                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
+                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
                 console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + Groq (Main Thread actual work): ${durationIPCAndGroq.toFixed(2)} ms`);
+                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
                 profilingStartTimeRef.current = null; // Reset for next run
               }
-              // console.log(`[useTranscription] Groq transcript received: "${transcript.substring(0, 100)}..."`); // Redundant with profiling log
               setText(transcript);
               if (transcript && window.electron.insertTextAtCursor) {
                 window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error('[useTranscription] Error inserting Groq text:', err));
+                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
               }
               setProcessing(false);
             }).catch(err => {
@@ -4718,6 +4754,8 @@ export function useTranscription(): UseTranscriptionReturn {
     stop,
     currentMode,
     setMode,
+    cloudEngine,
+    setCloudEngine,
   };
 }
 
@@ -4760,10 +4798,16 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
     sendNotification: (message: string) => {
       console.log(`[Mock Electron] sendNotification called with: "${message}"`);
     },
-    transcribeGroq: async (audioBuffer: ArrayBuffer): Promise<string> => {
+    transcribeGroq: async (audioBuffer: ArrayBuffer, transferList?: Transferable[]): Promise<string> => { // Added transferList to mock
       console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
       return new Promise(resolve => setTimeout(() => {
         resolve("Mocked Groq transcript from window.electron mock.");
+      }, 500));
+    },
+    transcribeGemini: async (audioBuffer: ArrayBuffer, mimeType: string, transferList?: Transferable[]): Promise<{text: string}> => { // Matched signature
+      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). This should be an Electron IPC call.`);
+      return new Promise(resolve => setTimeout(() => {
+        resolve({ text: "Mocked Gemini transcript from window.electron mock." });
       }, 500));
     }
   };

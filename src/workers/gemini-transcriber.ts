@@ -25,7 +25,7 @@ function arrayBufferToBase64(data: ArrayBuffer): string {
  */
 export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
-  mimeType = 'audio/wav',
+  mimeType: string,
   prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
 ): Promise<{ text: string }> {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
@@ -48,7 +48,7 @@ export async function transcribeAudioWithGemini(
       const base64Audio = arrayBufferToBase64(audioData);
 
       const { text } = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.0-flash-lite',
         contents: [
           { text: prompt },
           {
@@ -61,7 +61,7 @@ export async function transcribeAudioWithGemini(
       });
 
       if (!text) throw new Error('No transcript returned.');
-      return { text };
+      return { text: text.trim() };
     }
 
     // >20 MB → Files API
@@ -78,7 +78,7 @@ export async function transcribeAudioWithGemini(
     });
 
     const { text } = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.0-flash-lite',
       contents: [
         { text: prompt },
         {
@@ -89,7 +89,7 @@ export async function transcribeAudioWithGemini(
     });
 
     if (!text) throw new Error('No transcript returned.');
-    return { text };
+    return { text: text.trim() };
   } catch (err: any) {
     console.error('[GeminiTranscriber] Error:', err?.message || err);
     throw err;

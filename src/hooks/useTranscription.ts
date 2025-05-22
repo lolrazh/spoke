@@ -112,10 +112,9 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 16000, // Target 16kHz
+              sampleRate: 48000, // Prefer 48kHz
               channelCount: 1,   // Mono audio
-              // bitsPerSample: 16, // Often implied by other settings, Safari might need it. Let's omit for now unless issues arise.
-              echoCancellation: false, // Lower CPU, potentially cleaner for ASR if environment is controlled
+              echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
             }
         });
@@ -296,27 +295,24 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
       audioChunksRef.current = []; // Clear previous chunks
       try {
-        let chosenMimeType = 'audio/wav'; // Prioritize WAV
-        const audioBitsPerSecond = 128000; // Can adjust WAV bitrate if necessary, or omit for browser default
+        // Directly use audio/webm with Opus
+        let chosenMimeType = 'audio/webm;codecs=opus'; 
+        const audioBitsPerSecond = 128000; 
 
         if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/webm;codecs=opus'.`);
-          chosenMimeType = 'audio/webm;codecs=opus';
+          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
+          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
           if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying generic 'audio/webm'.`);
-            chosenMimeType = 'audio/webm';
-            if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-              console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-              setError('No supported audio format found for recording (WAV/WebM).');
-              setRecording(false);
-              return;
-            }
+            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
+            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
+            setRecording(false);
+            return;
           }
         }
         
         const options = {
           mimeType: chosenMimeType,
-          audioBitsPerSecond: chosenMimeType === 'audio/wav' ? undefined : audioBitsPerSecond, // WAV doesn't typically use audioBitsPerSecond in MediaRecorder
+          audioBitsPerSecond: audioBitsPerSecond,
         };
 
         mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
@@ -359,7 +355,8 @@ export function useTranscription(): UseTranscriptionReturn {
               const transcriptPromise =
                 cloudEngine === 'groq'
                   ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
-                  : window.electron.transcribeGemini(arrayBuffer, [arrayBuffer]).then(result => result.text);
+                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
+                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
               
               const transcript = await transcriptPromise;
               
@@ -570,14 +567,14 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
     sendNotification: (message: string) => {
       console.log(`[Mock Electron] sendNotification called with: "${message}"`);
     },
-    transcribeGroq: async (audioBuffer: ArrayBuffer): Promise<string> => {
+    transcribeGroq: async (audioBuffer: ArrayBuffer, transferList?: Transferable[]): Promise<string> => { // Added transferList to mock
       console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
       return new Promise(resolve => setTimeout(() => {
         resolve("Mocked Groq transcript from window.electron mock.");
       }, 500));
     },
-    transcribeGemini: async (audioBuffer: ArrayBuffer): Promise<{text: string}> => {
-      console.warn('[Mock Electron] transcribeGemini called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
+    transcribeGemini: async (audioBuffer: ArrayBuffer, mimeType: string, transferList?: Transferable[]): Promise<{text: string}> => { // Matched signature
+      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). This should be an Electron IPC call.`);
       return new Promise(resolve => setTimeout(() => {
         resolve({ text: "Mocked Gemini transcript from window.electron mock." });
       }, 500));
