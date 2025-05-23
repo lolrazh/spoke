@@ -79,7 +79,8 @@ export default {
 				const audioBytes = await audioFile.arrayBuffer();
 				const base64Audio = bufferToBase64(audioBytes);
 
-				const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${env.GEMINI_API_KEY}`;
+				// const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${env.GEMINI_API_KEY}`;
+				const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent`;
 				
 				const geminiPayload = {
 					contents: [
@@ -107,6 +108,7 @@ export default {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
+						'x-goog-api-key': env.GEMINI_API_KEY, // Correctly pass API key in header
 					},
 					body: JSON.stringify(geminiPayload),
 				});

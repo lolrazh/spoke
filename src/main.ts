@@ -1,4 +1,3 @@
-import 'dotenv/config'; // Load .env file variables
 import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
