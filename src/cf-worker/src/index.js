@@ -8,6 +8,8 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+const FETCH_TIMEOUT = 30000; // 30 seconds
+
 export default {
 	async fetch(request, env, ctx) {
 		const url = new URL(request.url);
@@ -37,15 +39,30 @@ export default {
 				groqFormData.append('temperature', '0.0');
 				groqFormData.append('prompt', 'Your vocabulary includes: Supabase, Groq');
 
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+				let groqResponse;
 
-				const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-					method: 'POST',
-					headers: {
-						'Authorization': `Bearer ${env.GROQ_API_KEY}`,
-						// Content-Type is set automatically by fetch with FormData
-					},
-					body: groqFormData,
-				});
+				try {
+					groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+						method: 'POST',
+						headers: {
+							'Authorization': `Bearer ${env.GROQ_API_KEY}`,
+							// Content-Type is set automatically by fetch with FormData
+						},
+						body: groqFormData,
+						signal: controller.signal,
+					});
+				} catch (error) {
+					clearTimeout(timeoutId);
+					if (error.name === 'AbortError') {
+						console.error('Groq API request timed out');
+						return new Response('Groq API request timed out', { status: 504 }); // Gateway Timeout
+					}
+					console.error('Groq API network error:', error.message);
+					return new Response(`Groq API network error: ${error.message}`, { status: 500 });
+				}
+				clearTimeout(timeoutId);
 
 				if (!groqResponse.ok) {
 					const errorText = await groqResponse.text();
@@ -104,14 +121,30 @@ export default {
 					// generationConfig could be added here if needed
 				};
 
-				const geminiResponse = await fetch(geminiApiUrl, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'x-goog-api-key': env.GEMINI_API_KEY, // Correctly pass API key in header
-					},
-					body: JSON.stringify(geminiPayload),
-				});
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+				let geminiResponse;
+
+				try {
+					geminiResponse = await fetch(geminiApiUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'x-goog-api-key': env.GEMINI_API_KEY, // Correctly pass API key in header
+						},
+						body: JSON.stringify(geminiPayload),
+						signal: controller.signal,
+					});
+				} catch (error) {
+					clearTimeout(timeoutId);
+					if (error.name === 'AbortError') {
+						console.error('Gemini API request timed out');
+						return new Response('Gemini API request timed out', { status: 504 }); // Gateway Timeout
+					}
+					console.error('Gemini API network error:', error.message);
+					return new Response(`Gemini API network error: ${error.message}`, { status: 500 });
+				}
+				clearTimeout(timeoutId);
 
 				if (!geminiResponse.ok) {
 					const errorText = await geminiResponse.text();
