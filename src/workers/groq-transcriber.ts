@@ -1,78 +1,70 @@
-import Groq from 'groq-sdk';
-// import { Blob } from 'node:buffer'; // Removed Blob import, relying on global File
+// import Groq from 'groq-sdk'; // No longer using SDK directly
+import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
 
-// Get API key from environment variable
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-
-// Log API key status (not the actual key) for debugging during startup
-// Removed app.isPackaged check as app module is not directly available here.
-if (!GROQ_API_KEY) {
-  console.warn('[GroqTranscriber] GROQ_API_KEY is not set. Please check your .env file or environment variables.');
-} else {
-  console.log('[GroqTranscriber] GROQ_API_KEY is set (development mode check - this log appears in all modes).');
-}
-
-// Helper to create a File object for Groq SDK using the global File constructor
-// Assumes Node.js v20+ environment (Electron 35 bundles Node 20.11.1) where File is global.
-function createFileObject(data: ArrayBuffer, filename: string, mimeType: string): File {
-  // An ArrayBuffer is a valid BlobPart for the File constructor.
-  return new File([data], filename, { type: mimeType, lastModified: Date.now() });
-}
+// API key is no longer handled here; it's in the Cloudflare worker environment.
+// Logging for API key status can be removed.
 
 /**
- * Transcribes audio using Groq API.
+ * Transcribes audio by sending it to a Cloudflare worker, which then calls the Groq API.
  * @param audioData The audio data as an ArrayBuffer.
  * @param inputLanguage The language of the audio (e.g., "en").
  * @returns Promise that resolves with the transcription text.
  */
 export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY || '';
-  if (!apiKey) {
-    console.error('GROQ_API_KEY is not set at the time of transcription. Please ensure it is loaded.');
-    throw new Error('GROQ_API_KEY is not set. Transcription cannot proceed.');
-  }
-
-  const groq = new Groq({
-    apiKey: apiKey,
-  });
+  const workerUrl = 'https://api.sonicflow.app/groq';
 
   try {
     if (audioData.byteLength === 0) {
-      console.error('[GroqTranscriber] Audio data (ArrayBuffer) is empty.');
+      console.error('[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
       throw new Error('Audio data (ArrayBuffer) is empty.');
     }
 
-    const audioFile = createFileObject(audioData, "audio.webm", "audio/webm");
+    // Create a Blob from the ArrayBuffer. The filename is not strictly necessary for the worker
+    // as it primarily deals with the content, but providing a default like 'audio.webm' is good practice.
+    // The mime type is also important for the receiving end if it needs to interpret the blob.
+    // Since the original code used 'audio.webm', we can assume the input is webm.
+    const audioBlob = new Blob([audioData], { type: 'audio/webm' });
 
-    console.log(`[GroqTranscriber] Profiling: Step 3 - Preparing to call Groq API (model: distil-whisper-large-v3-en) with audio File object (${audioData.byteLength} bytes).`);
-    const groqApiStartTime = performance.now();
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'audio.webm'); // Key is 'audio', filename is 'audio.webm'
+    formData.append('language', inputLanguage);
+    // The worker will add other Groq-specific parameters like model, prompt, etc.
 
-    const transcription = await groq.audio.transcriptions.create({
-      file: audioFile, // This should now be a proper File object
-      model: "distil-whisper-large-v3-en",
-      prompt: "Your vocabulary includes: Supabase, Groq",
-      language: inputLanguage,
-      response_format: "json",
-      temperature: 0.0,
+    console.log(`[GroqTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
+    const startTime = performance.now();
+
+    const response = await fetch(workerUrl, {
+      method: 'POST',
+      body: formData,
+      // Headers like Content-Type for FormData are set automatically by fetch
     });
 
-    const groqApiEndTime = performance.now();
-    console.log(`[GroqTranscriber] Profiling: Step 4 (Main) - Groq API call completed in ${(groqApiEndTime - groqApiStartTime).toFixed(2)} ms.`);
+    const endTime = performance.now();
+    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
 
-    if (!transcription.text) {
-      console.error('[GroqTranscriber] Transcription response does not contain text.');
-      throw new Error('Transcription response does not contain text.');
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[GroqTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
+      throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result || typeof result.text !== 'string') {
+      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker:', result);
+      throw new Error('Unexpected response format from transcription service.');
     }
     
-    return transcription.text;
+    return result.text;
 
   } catch (error) {
-    console.error('[GroqTranscriber] Error during transcription:', error);
-    if (error.response && error.response.data) {
-        console.error('[GroqTranscriber] Groq API Error Data:', error.response.data);
+    console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);
+    // To provide more context, we check if it's a FetchError or similar network issue
+    if (error instanceof Error && error.message.includes('fetch')) { // Basic check for fetch related errors
+        throw new Error(`Network error during transcription: ${error.message}`);
     }
-    throw error;
+    throw error; // Re-throw other errors
   }
 }
 
-// Removed initializeTempDir and cleanupAllTempAudioFiles as they are no longer needed. 
+// Removed createFileObject, initializeTempDir, and cleanupAllTempAudioFiles as they are no longer needed. 

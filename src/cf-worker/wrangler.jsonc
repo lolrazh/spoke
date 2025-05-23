@@ -1,0 +1,8 @@
+{
+	"name": "sonic-flow",
+	"main": "src/index.js",
+	"compatibility_date": "2025-05-23",
+	"observability": {
+		"enabled": true,
+	},
+}
