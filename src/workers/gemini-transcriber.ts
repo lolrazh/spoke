@@ -1,97 +1,75 @@
 // gemini-transcriber.ts
-import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
-// import { Blob } from 'node:buffer';              // Node20+ already has Buffer
+// import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
+import { Blob } from 'node:buffer';              // Node20+ already has Buffer
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+// API key is no longer handled here; it's in the Cloudflare worker environment.
+// Logging for API key status can be removed from here.
 
-if (!GEMINI_API_KEY) {
-  console.warn('[GeminiTranscriber] GEMINI_API_KEY is not set.');
-} else {
-  console.log('[GeminiTranscriber] GEMINI_API_KEY is set.');
-}
-
-/** Helper: ArrayBuffer ➞ base64 (Gemini inline audio path) */
-function arrayBufferToBase64(data: ArrayBuffer): string {
-  return Buffer.from(data).toString('base64');
-}
+// The arrayBufferToBase64 helper is also not needed here anymore, as the worker handles it.
 
 /**
- * Transcribes audio with Gemini 2.0 Flash.
- * Falls back to Files API automatically for blobs > 20 MB.
+ * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
  *
- * @param audioData   raw audio as ArrayBuffer (16-bit PCM mono, 16 kHz works great)
- * @param mimeType    defaults to 'audio/wav' – Gemini also takes mp3, aac, ogg, flac…
- * @param prompt      customise formatting / vocabulary here
+ * @param audioData   raw audio as ArrayBuffer
+ * @param mimeType    e.g., 'audio/webm', 'audio/wav' – worker passes this to Gemini
+ * @param prompt      custom prompt for Gemini (optional)
  */
 export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
   mimeType: string,
   prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
 ): Promise<{ text: string }> {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing');
+  const workerUrl = 'https://api.sonicflow.app/gemini';
 
-  if (audioData.byteLength === 0)
+  // API Key check is now done in the worker, not here.
+  // if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing'); // Removed
+
+  if (audioData.byteLength === 0) {
+    console.error('[GeminiTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
     throw new Error('Audio data (ArrayBuffer) is empty.');
-
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+  }
 
   try {
-    // ≤20 MB → send inline; otherwise upload then reference file URI
-    if (audioData.byteLength <= 20 * 1024 * 1024) {
-      console.log(
-        `[GeminiTranscriber] Sending ${(
-          audioData.byteLength /
-          1024
-        ).toFixed(1)} KB inline to Gemini…`
-      );
+    // Create a Blob from the ArrayBuffer.
+    // The filename is not strictly necessary for the worker, but providing one (e.g., based on mimeType) is fine.
+    const filename = `audio.${mimeType.split('/')[1] || 'bin'}`;
+    const audioBlob = new Blob([audioData], { type: mimeType });
 
-      const base64Audio = arrayBufferToBase64(audioData);
+    const formData = new FormData();
+    formData.append('audio', audioBlob, filename);
+    formData.append('mimeType', mimeType);
+    formData.append('prompt', prompt); // Send the prompt to the worker
 
-      const { text } = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-lite',
-        contents: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType,
-              data: base64Audio,
-            },
-          },
-        ],
-      });
+    console.log(`[GeminiTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes, type: ${mimeType}) to CF Worker: ${workerUrl}`);
+    const startTime = performance.now();
 
-      if (!text) throw new Error('No transcript returned.');
-      return { text: text.trim() };
+    const response = await fetch(workerUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    const endTime = performance.now();
+    console.log(`[GeminiTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[GeminiTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
+      // Ensure the error thrown matches the expected structure if specific error handling is in place upstream
+      throw new Error(`Gemini transcription failed via CF Worker: ${response.status} - ${errorText}`);
     }
 
-    // >20 MB → Files API
-    console.log(
-      `[GeminiTranscriber] Audio is ${(audioData.byteLength / 1024 / 1024).toFixed(
-        2
-      )} MB – uploading via Files API…`
-    );
+    const result = await response.json();
 
-    // SDK currently expects a File, Buffer or fs path. We feed a Buffer.
-    const fileHandle = await ai.files.upload({
-      file: Buffer.from(audioData) as any,
-      config: { mimeType },
-    });
+    if (!result || typeof result.text !== 'string') {
+      console.error('[GeminiTranscriber-CFW]	Unexpected response format from CF Worker:', result);
+      throw new Error('Unexpected response format from Gemini service via CF Worker.');
+    }
 
-    const { text } = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-lite',
-      contents: [
-        { text: prompt },
-        {
-          // createPartFromUri is handy but inline object works too
-          fileData: { mimeType, fileUri: fileHandle.uri },
-        } as any,
-      ],
-    });
+    return { text: result.text.trim() }; // Ensure it returns { text: ... } as per original signature
 
-    if (!text) throw new Error('No transcript returned.');
-    return { text: text.trim() };
   } catch (err: any) {
-    console.error('[GeminiTranscriber] Error:', err?.message || err);
-    throw err;
+    console.error('[GeminiTranscriber-CFW]	Error during transcription via CF Worker:', err?.message || err);
+    // Propagate the error; specific error construction can be done here if needed
+    throw err; 
   }
 }
