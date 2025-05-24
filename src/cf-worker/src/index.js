@@ -19,22 +19,34 @@ export default {
 		}
 
 		try {
-			const formData = await request.formData();
-			const audioFile = formData.get('audio');
-			if (!audioFile || !(audioFile instanceof File)) {
-				return new Response('Missing "audio" file in FormData', { status: 400 });
-			}
-
 			if (url.pathname === '/groq') {
-				// --- Groq Logic ---
+				// --- Groq Logic with Raw ArrayBuffer ---
 				if (!env.GROQ_API_KEY) {
 					return new Response('GROQ_API_KEY not configured in worker environment', { status: 500 });
 				}
 
+				// Handle raw ArrayBuffer data with headers
+				const contentType = request.headers.get('Content-Type');
+				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
+				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
+
+				if (!contentType || !contentType.startsWith('audio/')) {
+					return new Response('Expected audio content type', { status: 400 });
+				}
+
+				// Get raw audio data
+				const audioArrayBuffer = await request.arrayBuffer();
+				if (audioArrayBuffer.byteLength === 0) {
+					return new Response('Empty audio data received', { status: 400 });
+				}
+
+				// Create File object for Groq API (which still expects FormData)
+				const audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
+
 				const groqFormData = new FormData();
-				groqFormData.append('file', audioFile, audioFile.name || 'audio.webm'); // Groq SDK uses 'file'
+				groqFormData.append('file', audioFile); // Groq SDK uses 'file'
 				groqFormData.append('model', 'distil-whisper-large-v3-en');
-				groqFormData.append('language', formData.get('language') || 'en');
+				groqFormData.append('language', audioLanguage);
 				groqFormData.append('response_format', 'json');
 				groqFormData.append('temperature', '0.0');
 				groqFormData.append('prompt', 'Your vocabulary includes: Supabase, Groq');
@@ -79,6 +91,12 @@ export default {
 				// --- Gemini Logic ---
 				if (!env.GEMINI_API_KEY) {
 					return new Response('GEMINI_API_KEY not configured in worker environment', { status: 500 });
+				}
+
+				const formData = await request.formData();
+				const audioFile = formData.get('audio');
+				if (!audioFile || !(audioFile instanceof File)) {
+					return new Response('Missing "audio" file in FormData', { status: 400 });
 				}
 
 				const mimeType = formData.get('mimeType');

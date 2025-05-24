@@ -19,24 +19,18 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
       throw new Error('Audio data (ArrayBuffer) is empty.');
     }
 
-    // Create a Blob from the ArrayBuffer. The filename is not strictly necessary for the worker
-    // as it primarily deals with the content, but providing a default like 'audio.webm' is good practice.
-    // The mime type is also important for the receiving end if it needs to interpret the blob.
-    // Since the original code used 'audio.webm', we can assume the input is webm.
-    const audioBlob = new Blob([audioData], { type: 'audio/webm' });
-
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'audio.webm'); // Key is 'audio', filename is 'audio.webm'
-    formData.append('language', inputLanguage);
-    // The worker will add other Groq-specific parameters like model, prompt, etc.
-
+    // Send raw ArrayBuffer with headers instead of FormData to eliminate double serialization
     console.log(`[GroqTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
     const startTime = performance.now();
 
     const response = await fetch(workerUrl, {
       method: 'POST',
-      body: formData,
-      // Headers like Content-Type for FormData are set automatically by fetch
+      headers: {
+        'Content-Type': 'audio/webm',
+        'X-Audio-Language': inputLanguage,
+        'X-Audio-Filename': 'audio.webm'
+      },
+      body: audioData // Send raw ArrayBuffer
     });
 
     const endTime = performance.now();
