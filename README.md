@@ -8,25 +8,53 @@ Sonic Flow is a desktop application designed to transform your voice into text s
 
 Sonic Flow offers a range of features to enhance your productivity:
 
-*   **Real-time Dictation:** Transcribes your speech into text as you speak.
+*   **Real-time Dictation:** Transcribes your speech into text as you speak. For local transcription, partial results may be displayed in real-time.
 *   **Dual Transcription Modes:**
-    *   **Local Mode:** Utilizes on-device ASR (Automatic Speech Recognition) for offline use and enhanced privacy.
-    *   **Cloud Mode:** Leverages the Groq API for potentially higher accuracy transcription (requires an internet connection).
-*   **Global Hotkey:** Toggle dictation on or off from any application using a configurable system-wide hotkey.
+    *   **Versatile Transcription Modes:** Choose between offline local transcription for privacy and speed, or powerful cloud-based transcription for potentially higher accuracy.
+    *   **Local Mode:**
+        *   Utilizes a sophisticated on-device ASR (Automatic Speech Recognition) engine.
+        *   Employs Web Workers, AudioWorklet, and SharedArrayBuffer technology for efficient, non-blocking audio processing.
+        *   Provides feedback during initial model download/setup (`Engine loading...`) and when ready for use.
+        *   Ideal for offline usage and when data privacy is paramount.
+    *   **Cloud Mode:**
+        *   Supports multiple leading AI providers: **Groq API** and **Google Gemini API**.
+        *   Allows users to select their preferred cloud transcription engine through the Settings in the Home window.
+        *   Requires an active internet connection.
+*   **Global Hotkey:** Toggle dictation on or off from any application using a configurable system-wide hotkey. The application provides an error notification if the hotkey registration fails (e.g., due to system conflicts or permissions).
 *   **Minimalist "Pill" UI:** A discreet, always-on-top UI element allows for quick interaction (start/stop dictation) and provides visual feedback on the app's status (idle, listening, processing).
-*   **Main Application Window:** Access a comprehensive interface for:
-    *   **Dashboard:** View usage statistics, such as total dictations and estimated time saved.
-    *   **Settings:** Customize application behavior (e.g., launch on startup), select recognition language, and configure microphone input.
-    *   **Account Management:** (Placeholder for future user account features).
-*   **Automatic Text Insertion:** Transcribed text is automatically pasted at your current cursor location.
-*   **System Notifications:** Receive feedback on important events, such as engine loading status or errors.
+*   **Home Window (Dashboard & Settings):** Accessible from the tray icon's context menu, the Home window provides a central hub for insights and customization:
+    *   **Dashboard Tab:**
+        *   View key usage statistics, such as 'Total Dictations' and total 'Dictation Time'.
+        *   Visualize your productivity with a 'Time Saved with Dictation' chart, comparing dictation speed against average typing speed.
+        *   Displays information related to your subscription plan (e.g., 'Pro Plan' status and benefits – note: some elements may be illustrative of future premium features).
+    *   **Settings Tab:**
+        *   _Application Settings:_
+            *   Toggle 'Launch on startup' to have Sonic Flow start automatically.
+            *   Select your preferred 'Recognition language' from a list of supported languages (e.g., English US/UK, Spanish, French, German).
+        *   _Microphone Setup:_
+            *   Choose your desired audio 'Input device' from available microphones.
+            *   Adjust 'Input sensitivity' for optimal performance.
+    *   **Account Tab:**
+        *   Manage basic profile information (e.g., Display Name, Email). Further account management features are planned.
+*   **Advanced Automatic Text Insertion:** Transcribed text is automatically pasted at your current cursor location. Sonic Flow uses a robust mechanism that leverages OS-level paste commands (via PowerShell on Windows, AppleScript on macOS, and xdotool on Linux) and intelligently restores your original clipboard content post-insertion. If an Electron window is focused, or if OS-level paste fails, text is copied to the clipboard with a notification.
+*   **Custom System Notifications:** Receive timely feedback through a custom-designed, non-intrusive notification system. Events include: engine loading status (e.g., 'Engine loading...'), errors during operation, and confirmation messages like 'Output copied to clipboard'.
+*   **NEW Feature: Tray Icon & Context Menu:**
+    *   **Convenient Tray Access:**
+        *   Sonic Flow resides in the system tray for unobtrusive access.
+        *   A right-click on the tray icon opens a custom context menu, providing quick options to:
+            *   Open the **Home window** (Dashboard & Settings).
+            *   **Exit** the application.
 
 ## Technologies Used
 
 Sonic Flow is built with a modern stack of technologies:
 
 *   **Core Framework:** Electron (for cross-platform desktop application development)
-*   **Frontend:** React (with TypeScript) for building the user interface, Tailwind CSS for styling.
+*   **Frontend:**
+    *   React (with TypeScript): For the main user interface components (Pill UI, Home Window).
+    *   Tailwind CSS: For styling the React components.
+    *   Framer Motion: For animations within the React components.
+    *   Custom HTML/CSS/JS: Utilized directly within Electron BrowserWindows for lightweight, dynamic UI elements such as the tray context menu and notification pop-ups.
 *   **Build System:** Vite (for fast development and optimized builds)
 *   **AI & Transcription Engine:**
     *   **Local ASR:**
@@ -36,6 +64,7 @@ Sonic Flow is built with a modern stack of technologies:
         *   AudioWorklet API & `SharedArrayBuffer` (for efficient audio capture and processing)
     *   **Cloud ASR:**
         *   Groq SDK (`groq-sdk`) (for interacting with Groq's transcription API)
+        *   Google Gemini API (for alternative high-accuracy cloud transcription)
     *   **Audio Capture:** WebRTC `MediaRecorder` API (for cloud mode audio capture)
 *   **Linting:** ESLint with TypeScript support.
 
@@ -109,9 +138,12 @@ sonic-flow/
 │   │   └── useTranscription.ts # Central hook managing transcription logic (local & cloud)
 │   ├── lib/              # Utility functions and libraries
 │   ├── workers/          # Web Workers
-│   │   └── local-worker.ts # Worker for handling local ASR model loading and transcription
+│   │   ├── local-worker.ts # Worker for handling local ASR model loading and transcription
+│   │   ├── gemini-transcriber.ts # Worker for handling Gemini cloud transcription via a backend service.
+│   │   └── groq-transcriber.ts   # Worker for handling Groq cloud transcription.
 │   ├── main.ts           # Electron main process entry point
 │   ├── preload.ts        # Electron preload script for IPC and exposing Node.js features securely
+│   ├── contextmenu-preload.js # Preload script for the custom tray context menu window.
 │   ├── renderer.tsx      # React application entry point for the renderer process
 │   └── index.css         # Global styles
 ├── .eslintrc.json        # ESLint configuration
@@ -123,7 +155,7 @@ sonic-flow/
 
 ## Configuration
 
-For certain features, like cloud-based transcription using the Groq API, you may need to configure API keys.
+For certain features, like using a self-configured Groq API for cloud-based transcription, you may need to configure API keys. Other cloud services like Google Gemini are accessed via an intermediary backend and do not require direct user API key input in the desktop app.
 
 1.  **Groq API Key:**
     *   To use the cloud transcription mode, you'll need an API key from Groq.
@@ -133,6 +165,12 @@ For certain features, like cloud-based transcription using the Groq API, you may
         GROQ_API_KEY=your_actual_api_key_here
         ```
     *   The application uses `dotenv` to load these variables during development. Ensure this file is not committed to version control if it contains sensitive keys. Add `.env` to your `.gitignore` file if it's not already there.
+
+2.  **Google Gemini API:**
+    *   The Sonic Flow application can also utilize Google Gemini for cloud-based transcription.
+    *   This integration is facilitated through a backend service hosted at `https://api.sonicflow.app/gemini`.
+    *   Unlike the Groq API, users of the Sonic Flow desktop application do **not** need to configure a personal Gemini API key directly within the app. The API key management for Gemini is handled by this backend service.
+    *   To use Gemini transcription, simply select "Gemini" as your cloud engine in the application's settings. Ensure you have an internet connection.
 
 **Note:** The specific environment variable names and requirements might vary. Check the relevant parts of the source code (e.g., where `groq-sdk` is initialized or where `process.env` is accessed) for the exact variable names if you encounter issues.
 
