@@ -89,9 +89,6 @@ const createWindow = () => {
   // Make window click-through except for the pill UI
   mainWindow.setIgnoreMouseEvents(false);
 
-  // Register global shortcut from settings
-  registerGlobalShortcut();
-
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     // In a real app, you might want to be more specific about which permissions
@@ -99,39 +96,6 @@ const createWindow = () => {
     console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
     callback(true);
   });
-};
-
-// Register the global shortcut based on settings
-const registerGlobalShortcut = () => {
-  // Unregister any existing shortcuts
-  globalShortcut.unregisterAll();
-  
-  // Load settings to get the hotkey
-  const settings = loadSettings();
-  currentHotkey = settings.hotkey;
-  
-  // Register the shortcut
-  try {
-    globalShortcut.register(currentHotkey, () => {
-      if (mainWindow) {
-        // Send message to renderer process to toggle dictation
-        mainWindow.webContents.send('toggle-dictation');
-      }
-    });
-    console.log(`Registered global shortcut: ${currentHotkey}`);
-  } catch (error) {
-    console.error(`Failed to register shortcut ${currentHotkey}:`, error);
-    // Show an error dialog to the user
-    dialog.showErrorBox(
-      'Hotkey Registration Failed',
-      `Could not register the hotkey "${currentHotkey}". ` +
-      `This might be due to missing permissions or the hotkey being used by another application. ` +
-      `Please try changing the hotkey in the settings or ensure the application has the necessary permissions.`
-    );
-    // Set currentHotkey to empty string or null to indicate no active hotkey
-    currentHotkey = ''; 
-    // No fallback registration attempt - let the user fix it.
-  }
 };
 
 const createTray = () => {

@@ -21,41 +21,12 @@ const App: React.FC = () => {
   // Show processing during model load AND transcription
   const isProcessing = !trans.ready || trans.processing; 
 
-  // --- Connect Hotkey logic to the new hook --- 
+  // --- Handle Transcription Results ---
   useEffect(() => {
-    if (!window.electron) return;
-
-    const handleToggleDictation = () => {
-      console.log('Toggle hotkey. State:', { 
-          recording: trans.recording, 
-          processing: trans.processing, 
-          ready: trans.ready 
-      });
-      if (trans.recording) {
-        trans.stop(); // Call hook's stop function
-      } else if (trans.ready && !trans.processing) { // Only start if ready and not busy
-        trans.start(); // Call hook's start function
-      } else {
-          console.warn('Cannot toggle dictation: Not ready or currently processing.');
-          // Optionally notify user
-          if (!trans.ready) window.electron?.sendNotification('Engine loading...');
-          if (trans.processing) window.electron?.sendNotification('Processing audio...');
-      }
-    };
-
-    const cleanup = window.electron.toggleDictation(handleToggleDictation);
-    return cleanup;
-    // Dependencies are now from the hook
-  }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
-
-  // --- Handle Transcription Results (REMOVING PASTE LOGIC AGAIN) --- 
-  useEffect(() => {
-    // The hook now handles pasting on 'complete'.
-    // We can still log the final accumulated text if desired.
-    if (trans.text && !trans.recording && !trans.processing) { // Log only final text maybe?
+    if (trans.text && !trans.recording && !trans.processing) {
       console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
     }
-  }, [trans.text, trans.recording, trans.processing]); // Log when text/state changes
+  }, [trans.text, trans.recording, trans.processing]);
 
   // --- Handle Errors from Hook --- 
   useEffect(() => {
@@ -63,23 +34,66 @@ const App: React.FC = () => {
       console.error('[App] Transcription Hook Error:', trans.error);
       window.electron.sendNotification(trans.error); 
     }
-  }, [trans.error]); // Watch for changes in the hook's error state
+  }, [trans.error]);
 
-  // --- ALT key push-to-talk listener ---
+  // --- RIGHT ALT key - Hold vs. Tap Logic ---
   useEffect(() => {
-    if (!window.electron) return;
+    if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
 
-    const down = () => !trans.recording && trans.start();
-    const up = () => trans.recording && trans.stop();
-    
-    const off1 = window.electron.onPTTDown(down);
-    const off2 = window.electron.onPTTUp(up);
-    
-    return () => { 
-      off1(); 
-      off2(); 
+    const HOLD_DURATION_MS = 180; // ms
+    let pressTimer: ReturnType<typeof setTimeout> | null = null;
+    let isLongPress = false;
+
+    const handleRightAltDown = () => {
+      console.log('[App] Right Alt DOWN');
+      isLongPress = false; // Reset on new press
+      pressTimer = setTimeout(() => {
+        isLongPress = true;
+        console.log('[App] Right Alt LONG PRESS detected');
+        if (!trans.recording) {
+          console.log('[App] Starting PTT recording (long press)');
+          trans.start(); // Start push-to-talk
+        }
+      }, HOLD_DURATION_MS);
     };
-  }, [trans.recording, trans.start, trans.stop]);
+
+    const handleRightAltUp = () => {
+      console.log('[App] Right Alt UP');
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+
+      if (isLongPress) {
+        // If it was a long press (PTT), stop recording on release
+        if (trans.recording) {
+          console.log('[App] Stopping PTT recording (long press release)');
+          trans.stop();
+        }
+      } else {
+        // If it was a short press (tap), toggle hands-free mode
+        console.log('[App] Short tap detected, toggling hands-free');
+        if (trans.recording) {
+          trans.stop();
+        } else {
+          trans.start();
+        }
+      }
+      isLongPress = false; // Reset for next press cycle
+    };
+
+    const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
+    const unsubscribePTTUp = window.electron.onPTTUp(handleRightAltUp);
+
+    return () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer); // Clear timer on unmount
+      }
+      unsubscribePTTDown();
+      unsubscribePTTUp();
+      console.log('[App] Cleaned up Right Alt listeners');
+    };
+  }, [trans.recording, trans.start, trans.stop, trans.ready, trans.processing]); // Added trans.ready and trans.processing
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">

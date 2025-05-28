@@ -18,7 +18,7 @@ Add-Type -Namespace u -Name k -MemberDefinition '
 ' ;
 $down = $false
 while ($true){
-  $now = ([u.k]::GetAsyncKeyState(0x12) -band 0x8000) -ne 0   # 0x12 = VK_MENU (Alt)
+  $now = ([u.k]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0   # 0xA5 = VK_RMENU (Right Alt)
   if ($now -and -not $down){ Write-Output "down"; $down=$true }
   elseif (-not $now -and $down){ Write-Output "up"; $down=$false }
   Start-Sleep -Milliseconds 16
@@ -26,11 +26,9 @@ while ($true){
 
   const osa = `
 use framework "Carbon"
-property kVK_Option : 0x3A
+property kVK_Option_R : 61
 on isKeyDown()
-  set mods to current application's NSScreen's mainScreen()'s \
-          deviceDescription()'s objectForKey:"NSEventModifierFlags"
-  return ((mods as integer) div 1048576 mod 2) = 1 -- option flag
+  return (current application's CGEventSourceKeyState(0, 61)) as boolean
 end isKeyDown
 set down to false
 repeat
@@ -48,7 +46,7 @@ end repeat`.trim();
 #!/usr/bin/env bash
 down=0
 while :; do
-  read -rs -n1 -t0.016 k < /dev/input/by-path/*-kbd 2>/dev/null
+  read -rsn1 -t0.016 k < <(grep -m1 -E 'code +100.*value +1' /dev/input/event*)
   state=$?
   if [[ $state -eq 0 && $down -eq 0 ]]; then echo down; down=1
   elif [[ $state -ne 0 && $down -eq 1 ]]; then echo up; down=0; fi
