@@ -84,7 +84,7 @@ const App: React.FC = () => {
       unsubscribePTTDown();
       unsubscribePTTUp();
     };
-  }, [trans.recording, trans.start, trans.stop, trans.ready, trans.processing]);
+  }, [trans.start, trans.stop]);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
