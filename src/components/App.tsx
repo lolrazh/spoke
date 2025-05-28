@@ -93,7 +93,7 @@ const App: React.FC = () => {
       unsubscribePTTUp();
       console.log('[App] Cleaned up Right Alt listeners');
     };
-  }, [trans.recording, trans.start, trans.stop, trans.ready, trans.processing]); // Added trans.ready and trans.processing
+  }, [trans.start, trans.stop]);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
