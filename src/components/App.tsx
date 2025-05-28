@@ -45,34 +45,26 @@ const App: React.FC = () => {
     let isLongPress = false;
 
     const handleRightAltDown = () => {
-      console.log('[App] Right Alt DOWN');
       isLongPress = false; // Reset on new press
       pressTimer = setTimeout(() => {
         isLongPress = true;
-        console.log('[App] Right Alt LONG PRESS detected');
         if (!trans.recording) {
-          console.log('[App] Starting PTT recording (long press)');
           trans.start(); // Start push-to-talk
         }
       }, HOLD_DURATION_MS);
     };
 
     const handleRightAltUp = () => {
-      console.log('[App] Right Alt UP');
       if (pressTimer) {
         clearTimeout(pressTimer);
         pressTimer = null;
       }
 
       if (isLongPress) {
-        // If it was a long press (PTT), stop recording on release
         if (trans.recording) {
-          console.log('[App] Stopping PTT recording (long press release)');
           trans.stop();
         }
       } else {
-        // If it was a short press (tap), toggle hands-free mode
-        console.log('[App] Short tap detected, toggling hands-free');
         if (trans.recording) {
           trans.stop();
         } else {
@@ -87,13 +79,12 @@ const App: React.FC = () => {
 
     return () => {
       if (pressTimer) {
-        clearTimeout(pressTimer); // Clear timer on unmount
+        clearTimeout(pressTimer);
       }
       unsubscribePTTDown();
       unsubscribePTTUp();
-      console.log('[App] Cleaned up Right Alt listeners');
     };
-  }, [trans.recording, trans.start, trans.stop, trans.ready, trans.processing]); // Added trans.ready and trans.processing
+  }, [trans.recording, trans.start, trans.stop, trans.ready, trans.processing]);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
