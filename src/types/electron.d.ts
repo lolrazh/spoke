@@ -16,6 +16,9 @@ declare global {
         mimeType: string,
         transfer?: Transferable[]
       ) => Promise<{ text: string }>;
+      // ALT key push-to-talk events
+      onPTTDown: (cb: () => void) => () => void;
+      onPTTUp: (cb: () => void) => () => void;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;

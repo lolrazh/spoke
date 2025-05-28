@@ -9,53 +9,30 @@ import { useTranscription } from '../hooks/useTranscription'; // Adjust path if 
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
 
 const App: React.FC = () => {
-  // Instantiate the new hook
   const trans = useTranscription();
 
-  // --- REMOVE TEMPORARY State --- 
-  // const [isListening, setIsListening] = useState(false); 
-  // const [isLoading, setIsLoading] = useState(false); 
+  // Refs for the Right-Alt key logic
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef<boolean>(false);
+  // Ref to always hold the latest trans object for use in callbacks
+  const latestTransRef = useRef(trans);
+
+  // --- Update latestTransRef whenever trans changes ---
+  useEffect(() => {
+    latestTransRef.current = trans;
+  }, [trans]);
 
   // --- Map hook state to Pill props --- 
   const isListening = trans.recording; 
   // Show processing during model load AND transcription
   const isProcessing = !trans.ready || trans.processing; 
 
-  // --- Connect Hotkey logic to the new hook --- 
+  // --- Handle Transcription Results ---
   useEffect(() => {
-    if (!window.electron) return;
-
-    const handleToggleDictation = () => {
-      console.log('Toggle hotkey. State:', { 
-          recording: trans.recording, 
-          processing: trans.processing, 
-          ready: trans.ready 
-      });
-      if (trans.recording) {
-        trans.stop(); // Call hook's stop function
-      } else if (trans.ready && !trans.processing) { // Only start if ready and not busy
-        trans.start(); // Call hook's start function
-      } else {
-          console.warn('Cannot toggle dictation: Not ready or currently processing.');
-          // Optionally notify user
-          if (!trans.ready) window.electron?.sendNotification('Engine loading...');
-          if (trans.processing) window.electron?.sendNotification('Processing audio...');
-      }
-    };
-
-    const cleanup = window.electron.toggleDictation(handleToggleDictation);
-    return cleanup;
-    // Dependencies are now from the hook
-  }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
-
-  // --- Handle Transcription Results (REMOVING PASTE LOGIC AGAIN) --- 
-  useEffect(() => {
-    // The hook now handles pasting on 'complete'.
-    // We can still log the final accumulated text if desired.
-    if (trans.text && !trans.recording && !trans.processing) { // Log only final text maybe?
+    if (trans.text && !trans.recording && !trans.processing) {
       console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
     }
-  }, [trans.text, trans.recording, trans.processing]); // Log when text/state changes
+  }, [trans.text, trans.recording, trans.processing]);
 
   // --- Handle Errors from Hook --- 
   useEffect(() => {
@@ -63,7 +40,59 @@ const App: React.FC = () => {
       console.error('[App] Transcription Hook Error:', trans.error);
       window.electron.sendNotification(trans.error); 
     }
-  }, [trans.error]); // Watch for changes in the hook's error state
+  }, [trans.error]);
+
+  // --- RIGHT ALT key - Hold vs. Tap Logic ---
+  useEffect(() => {
+    if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
+
+    const HOLD_DURATION_MS = 180; // ms
+
+    const handleRightAltDown = () => {
+      isLongPressRef.current = false; 
+      // Clear any existing timer from a potentially missed 'up' event
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        if (!latestTransRef.current.recording) {
+          latestTransRef.current.start(); 
+        }
+      }, HOLD_DURATION_MS);
+    };
+
+    const handleRightAltUp = () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+
+      if (isLongPressRef.current) {
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
+        }
+      } else {
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
+        } else {
+          latestTransRef.current.start();
+        }
+      }
+      isLongPressRef.current = false; 
+    };
+
+    const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
+    const unsubscribePTTUp = window.electron.onPTTUp(handleRightAltUp);
+
+    return () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+      unsubscribePTTDown();
+      unsubscribePTTUp();
+    };
+  }, [trans.start, trans.stop]);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">

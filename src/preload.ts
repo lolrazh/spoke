@@ -41,4 +41,15 @@ contextBridge.exposeInMainWorld('electron', {
   },
   transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
     ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
+  // ALT key push-to-talk events
+  onPTTDown: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-down');
+    ipcRenderer.on('ptt-down', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-down');
+  },
+  onPTTUp: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-up');
+    ipcRenderer.on('ptt-up', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-up');
+  },
 });

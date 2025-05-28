@@ -10,7 +10,7 @@ interface AppSettings {
 
 // Default settings
 const DEFAULT_SETTINGS: AppSettings = {
-  hotkey: 'CommandorControl+H',
+  hotkey: 'CommandOrControl+Space',
   hideTimeout: 3600000 // 1 hour in milliseconds
 };
 
