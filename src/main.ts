@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
+import { startAltListener } from './main/alt-listener';
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -495,6 +496,14 @@ app.whenReady().then(() => {
   createContextMenuWindow();
   createHomeWindow();
   createNotificationWindow();
+
+  // ✨ ALT key listener for push-to-talk
+  startAltListener(state => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send(
+      state === "down" ? "ptt-down" : "ptt-up"
+    );
+  });
 
   ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
     console.log(`[IPC Main] Received show-context-menu event from pill.`);

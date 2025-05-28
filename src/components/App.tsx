@@ -65,6 +65,22 @@ const App: React.FC = () => {
     }
   }, [trans.error]); // Watch for changes in the hook's error state
 
+  // --- ALT key push-to-talk listener ---
+  useEffect(() => {
+    if (!window.electron) return;
+
+    const down = () => !trans.recording && trans.start();
+    const up = () => trans.recording && trans.stop();
+    
+    const off1 = window.electron.onPTTDown(down);
+    const off2 = window.electron.onPTTUp(up);
+    
+    return () => { 
+      off1(); 
+      off2(); 
+    };
+  }, [trans.recording, trans.start, trans.stop]);
+
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill 
