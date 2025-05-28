@@ -9,12 +9,18 @@ import { useTranscription } from '../hooks/useTranscription'; // Adjust path if 
 // const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
 
 const App: React.FC = () => {
-  // Instantiate the new hook
   const trans = useTranscription();
 
-  // --- REMOVE TEMPORARY State --- 
-  // const [isListening, setIsListening] = useState(false); 
-  // const [isLoading, setIsLoading] = useState(false); 
+  // Refs for the Right-Alt key logic
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef<boolean>(false);
+  // Ref to always hold the latest trans object for use in callbacks
+  const latestTransRef = useRef(trans);
+
+  // --- Update latestTransRef whenever trans changes ---
+  useEffect(() => {
+    latestTransRef.current = trans;
+  }, [trans]);
 
   // --- Map hook state to Pill props --- 
   const isListening = trans.recording; 
@@ -41,45 +47,47 @@ const App: React.FC = () => {
     if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
 
     const HOLD_DURATION_MS = 180; // ms
-    let pressTimer: ReturnType<typeof setTimeout> | null = null;
-    let isLongPress = false;
 
     const handleRightAltDown = () => {
-      isLongPress = false; // Reset on new press
-      pressTimer = setTimeout(() => {
-        isLongPress = true;
-        if (!trans.recording) {
-          trans.start(); // Start push-to-talk
+      isLongPressRef.current = false; 
+      // Clear any existing timer from a potentially missed 'up' event
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        if (!latestTransRef.current.recording) {
+          latestTransRef.current.start(); 
         }
       }, HOLD_DURATION_MS);
     };
 
     const handleRightAltUp = () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
       }
 
-      if (isLongPress) {
-        if (trans.recording) {
-          trans.stop();
+      if (isLongPressRef.current) {
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
         }
       } else {
-        if (trans.recording) {
-          trans.stop();
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
         } else {
-          trans.start();
+          latestTransRef.current.start();
         }
       }
-      isLongPress = false; // Reset for next press cycle
+      isLongPressRef.current = false; 
     };
 
     const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
     const unsubscribePTTUp = window.electron.onPTTUp(handleRightAltUp);
 
     return () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
       }
       unsubscribePTTDown();
       unsubscribePTTUp();
