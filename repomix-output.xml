@@ -70,6 +70,7 @@ src/index.css
 src/lib/settings.ts
 src/lib/utils.ts
 src/main.ts
+src/main/alt-listener.ts
 src/notification-preload.js
 src/preload.ts
 src/renderer.tsx
@@ -132,6 +133,78 @@ This section contains the contents of the repository's files.
   },
   "iconLibrary": "lucide"
 }
+</file>
+
+<file path="forge.config.ts">
+import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDeb } from '@electron-forge/maker-deb';
+import { MakerRpm } from '@electron-forge/maker-rpm';
+import { VitePlugin } from '@electron-forge/plugin-vite';
+import { FusesPlugin } from '@electron-forge/plugin-fuses';
+import { FuseV1Options, FuseVersion } from '@electron/fuses';
+
+const config: ForgeConfig = {
+  packagerConfig: {
+    asar: true,
+    // Path to icon base name (no extension) in source directory (as per docs)
+    icon: 'public/assets/icon', 
+  },
+  rebuildConfig: {},
+  makers: [
+    new MakerSquirrel({
+      // Path to specific .ico file for setup.exe (as per docs)
+      setupIcon: 'public/assets/icon.ico'
+    }), 
+    new MakerZIP({}, ['darwin']), 
+    new MakerRpm({}), 
+    new MakerDeb({})
+  ],
+  plugins: [
+    new VitePlugin({
+      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
+      // If you are familiar with Vite configuration, it will look really familiar.
+      build: [
+        {
+          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
+          entry: 'src/main.ts',
+          config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+        {
+          entry: 'src/contextmenu-preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+      ],
+      renderer: [
+        {
+          name: 'main_window',
+          config: 'vite.renderer.config.ts',
+        },
+      ],
+    }),
+    // Fuses are used to enable/disable various Electron functionality
+    // at package time, before code signing the application
+    new FusesPlugin({
+      version: FuseVersion.V1,
+      [FuseV1Options.RunAsNode]: false,
+      [FuseV1Options.EnableCookieEncryption]: true,
+      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    }),
+  ],
+};
+
+export default config;
 </file>
 
 <file path="forge.env.d.ts">
@@ -654,6 +727,17 @@ declare module 'electron-squirrel-startup' {
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string | undefined;
+</file>
+
+<file path="src/types/worker.d.ts">
+// src/types/worker.d.ts
+declare module '*?worker' {
+  // Defines the type for Vite worker imports:
+  // `import MyWorker from './my-worker?worker'`
+  // `const worker = new MyWorker()`
+  const workerConstructor: new () => Worker;
+  export default workerConstructor;
+}
 </file>
 
 <file path="tsconfig.json">
@@ -1223,112 +1307,6 @@ const Pill: React.FC<PillProps> = ({
 export default Pill;
 </file>
 
-<file path="src/lib/settings.ts">
-import { app } from 'electron';
-import fs from 'node:fs';
-import path from 'node:path';
-
-// Define the settings interface
-interface AppSettings {
-  hotkey: string;
-  hideTimeout?: number; // For future "hide for X time" feature
-}
-
-// Default settings
-const DEFAULT_SETTINGS: AppSettings = {
-  hotkey: 'CommandorControl+H',
-  hideTimeout: 3600000 // 1 hour in milliseconds
-};
-
-// Path to the settings file
-const SETTINGS_PATH = path.join(
-  app.getPath('userData'),
-  'settings.json'
-);
-
-/**
- * Load settings from disk
- * Creates default settings file if it doesn't exist
- */
-export function loadSettings(): AppSettings {
-  try {
-    // Check if settings file exists
-    if (!fs.existsSync(SETTINGS_PATH)) {
-      // Create default settings file
-      fs.writeFileSync(
-        SETTINGS_PATH,
-        JSON.stringify(DEFAULT_SETTINGS, null, 2)
-      );
-      return { ...DEFAULT_SETTINGS };
-    }
-
-    // Read and parse settings file
-    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
-    const settings = JSON.parse(data) as AppSettings;
-    
-    // Ensure all required fields exist (in case of corrupted settings)
-    return { ...DEFAULT_SETTINGS, ...settings };
-  } catch (error) {
-    console.error('Failed to load settings:', error);
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-/**
- * Save settings to disk
- */
-export function saveSettings(settings: AppSettings): boolean {
-  try {
-    fs.writeFileSync(
-      SETTINGS_PATH,
-      JSON.stringify(settings, null, 2)
-    );
-    return true;
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-    return false;
-  }
-}
-
-/**
- * Update a specific setting
- */
-export function updateSetting<K extends keyof AppSettings>(
-  key: K,
-  value: AppSettings[K]
-): boolean {
-  try {
-    const settings = loadSettings();
-    settings[key] = value;
-    return saveSettings(settings);
-  } catch (error) {
-    console.error(`Failed to update setting ${key}:`, error);
-    return false;
-  }
-}
-
-/**
- * Validate if a hotkey string is in the correct format
- */
-export function isValidHotkey(hotkey: string): boolean {
-  // Basic validation - should contain at least one modifier
-  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
-  return modifiers.some(modifier => hotkey.includes(modifier)) && 
-         hotkey.includes('+');
-}
-</file>
-
-<file path="src/types/worker.d.ts">
-// src/types/worker.d.ts
-declare module '*?worker' {
-  // Defines the type for Vite worker imports:
-  // `import MyWorker from './my-worker?worker'`
-  // `const worker = new MyWorker()`
-  const workerConstructor: new () => Worker;
-  export default workerConstructor;
-}
-</file>
-
 <file path="tailwind.config.js">
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -1419,78 +1397,6 @@ module.exports = {
 faster-implementation.md
 profiling-reults.md
 repomix-output.xml
-</file>
-
-<file path="forge.config.ts">
-import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { VitePlugin } from '@electron-forge/plugin-vite';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseV1Options, FuseVersion } from '@electron/fuses';
-
-const config: ForgeConfig = {
-  packagerConfig: {
-    asar: true,
-    // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon', 
-  },
-  rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      // Path to specific .ico file for setup.exe (as per docs)
-      setupIcon: 'public/assets/icon.ico'
-    }), 
-    new MakerZIP({}, ['darwin']), 
-    new MakerRpm({}), 
-    new MakerDeb({})
-  ],
-  plugins: [
-    new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
-      build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: 'src/main.ts',
-          config: 'vite.main.config.ts',
-          target: 'main',
-        },
-        {
-          entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-        {
-          entry: 'src/contextmenu-preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-      ],
-      renderer: [
-        {
-          name: 'main_window',
-          config: 'vite.renderer.config.ts',
-        },
-      ],
-    }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-    }),
-  ],
-};
-
-export default config;
 </file>
 
 <file path="src/cf-worker/package.json">
@@ -1795,6 +1701,83 @@ body {
     @apply bg-background text-foreground;
   }
 }
+</file>
+
+<file path="src/main/alt-listener.ts">
+// tiny wrapper that starts the correct helper script for the platform
+import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { app } from "electron";
+
+export type AltState = "down" | "up";
+let child: ChildProcessWithoutNullStreams | null = null;
+
+export function startAltListener(cb: (state: AltState) => void) {
+  if (child) return;                              // already running
+
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+
+  // Plain-text script bodies – no external files to ship.
+  const pwsh = `
+Add-Type -Namespace u -Name k -MemberDefinition '
+ [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v);
+' ;
+$down = $false
+while ($true){
+  $now = ([u.k]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0   # 0xA5 = VK_RMENU (Right Alt)
+  if ($now -and -not $down){ Write-Output "down"; $down=$true }
+  elseif (-not $now -and $down){ Write-Output "up"; $down=$false }
+  Start-Sleep -Milliseconds 16
+}`.trim();
+
+  const osa = `
+use framework "Carbon"
+property kVK_Option_R : 61
+on isKeyDown()
+  return (current application's CGEventSourceKeyState(0, 61)) as boolean
+end isKeyDown
+set down to false
+repeat
+  set now to isKeyDown()
+  if now and (down is false) then
+    do shell script "echo down"
+  else if (not now) and down then
+    do shell script "echo up"
+  end if
+  set down to now
+  delay 0.016
+end repeat`.trim();
+
+  const bash = `
+#!/usr/bin/env bash
+down=0
+while :; do
+  read -rsn1 -t0.016 k < <(grep -m1 -E 'code +100.*value +1' /dev/input/event*)
+  state=$?
+  if [[ $state -eq 0 && $down -eq 0 ]]; then echo down; down=1
+  elif [[ $state -ne 0 && $down -eq 1 ]]; then echo up; down=0; fi
+done`.trim();
+
+  if (isWin) {
+    child = spawn("powershell.exe",
+      ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", pwsh]);
+  } else if (isMac) {
+    child = spawn("osascript", ["-e", osa]);
+  } else { // linux
+    child = spawn("bash", ["-c", bash]);
+  }
+
+  child.stdout.on("data", d => {
+    const msg = String(d).trim();
+    if (msg === "down" || msg === "up") cb(msg as AltState);
+  });
+
+  child.on("error", err => console.error("alt-listener error:", err));
+  child.on("exit",  ()  => { child = null; });
+}
+
+export function stopAltListener() { child?.kill(); child = null; }
+app.on("will-quit", stopAltListener);
 </file>
 
 <file path="vite.main.config.ts">
@@ -2160,6 +2143,101 @@ Sonic Flow is currently released under a **Proprietary License**.
 For more details, please refer to the `LICENSE` file in the repository (if available) or contact the project author.
 </file>
 
+<file path="src/lib/settings.ts">
+import { app } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Define the settings interface
+interface AppSettings {
+  hotkey: string;
+  hideTimeout?: number; // For future "hide for X time" feature
+}
+
+// Default settings
+const DEFAULT_SETTINGS: AppSettings = {
+  hotkey: 'CommandOrControl+Space',
+  hideTimeout: 3600000 // 1 hour in milliseconds
+};
+
+// Path to the settings file
+const SETTINGS_PATH = path.join(
+  app.getPath('userData'),
+  'settings.json'
+);
+
+/**
+ * Load settings from disk
+ * Creates default settings file if it doesn't exist
+ */
+export function loadSettings(): AppSettings {
+  try {
+    // Check if settings file exists
+    if (!fs.existsSync(SETTINGS_PATH)) {
+      // Create default settings file
+      fs.writeFileSync(
+        SETTINGS_PATH,
+        JSON.stringify(DEFAULT_SETTINGS, null, 2)
+      );
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    // Read and parse settings file
+    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
+    const settings = JSON.parse(data) as AppSettings;
+    
+    // Ensure all required fields exist (in case of corrupted settings)
+    return { ...DEFAULT_SETTINGS, ...settings };
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+/**
+ * Save settings to disk
+ */
+export function saveSettings(settings: AppSettings): boolean {
+  try {
+    fs.writeFileSync(
+      SETTINGS_PATH,
+      JSON.stringify(settings, null, 2)
+    );
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
+  }
+}
+
+/**
+ * Update a specific setting
+ */
+export function updateSetting<K extends keyof AppSettings>(
+  key: K,
+  value: AppSettings[K]
+): boolean {
+  try {
+    const settings = loadSettings();
+    settings[key] = value;
+    return saveSettings(settings);
+  } catch (error) {
+    console.error(`Failed to update setting ${key}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Validate if a hotkey string is in the correct format
+ */
+export function isValidHotkey(hotkey: string): boolean {
+  // Basic validation - should contain at least one modifier
+  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
+  return modifiers.some(modifier => hotkey.includes(modifier)) && 
+         hotkey.includes('+');
+}
+</file>
+
 <file path="src/cf-worker/wrangler.jsonc">
 {
 	"name": "sonic-flow",
@@ -2171,84 +2249,6 @@ For more details, please refer to the `LICENSE` file in the repository (if avail
 	"placement": {
 		  "mode": "smart"
 		}
-}
-</file>
-
-<file path="src/workers/gemini-transcriber.ts">
-// gemini-transcriber.ts
-// import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
-import { Blob } from 'node:buffer';              // Node20+ already has Buffer
-
-// API key is no longer handled here; it's in the Cloudflare worker environment.
-// Logging for API key status can be removed from here.
-
-// The arrayBufferToBase64 helper is also not needed here anymore, as the worker handles it.
-
-/**
- * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
- *
- * @param audioData   raw audio as ArrayBuffer
- * @param mimeType    e.g., 'audio/webm', 'audio/wav' – worker passes this to Gemini
- * @param prompt      custom prompt for Gemini (optional)
- */
-export async function transcribeAudioWithGemini(
-  audioData: ArrayBuffer,
-  mimeType: string,
-  prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
-): Promise<{ text: string }> {
-  const workerUrl = 'https://api.sonicflow.app/gemini';
-
-  // API Key check is now done in the worker, not here.
-  // if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing'); // Removed
-
-  if (audioData.byteLength === 0) {
-    console.error('[GeminiTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
-    throw new Error('Audio data (ArrayBuffer) is empty.');
-  }
-
-  try {
-    // Create a Blob from the ArrayBuffer.
-    // The filename is not strictly necessary for the worker, but providing one (e.g., based on mimeType) is fine.
-    const filename = `audio.${mimeType.split('/')[1] || 'bin'}`;
-    const audioBlob = new Blob([audioData], { type: mimeType });
-
-    const formData = new FormData();
-    formData.append('audio', audioBlob, filename);
-    formData.append('mimeType', mimeType);
-    formData.append('prompt', prompt); // Send the prompt to the worker
-
-    console.log(`[GeminiTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes, type: ${mimeType}) to CF Worker: ${workerUrl}`);
-    const startTime = performance.now();
-
-    const response = await fetch(workerUrl, {
-      method: 'POST',
-      body: formData,
-    });
-
-    const endTime = performance.now();
-    console.log(`[GeminiTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[GeminiTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
-      // Ensure the error thrown matches the expected structure if specific error handling is in place upstream
-      throw new Error(`Gemini transcription failed via CF Worker: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (!result || typeof result.text !== 'string') {
-      console.error('[GeminiTranscriber-CFW]	Unexpected response format from CF Worker:', result);
-      throw new Error('Unexpected response format from Gemini service via CF Worker.');
-    }
-
-    return { text: result.text.trim() }; // Ensure it returns { text: ... } as per original signature
-
-  } catch (err: any) {
-    console.error('[GeminiTranscriber-CFW]	Error during transcription via CF Worker:', err?.message || err);
-    // Propagate the error; specific error construction can be done here if needed
-    throw err; 
-  }
 }
 </file>
 
@@ -2502,316 +2502,18 @@ contextBridge.exposeInMainWorld('electron', {
   },
   transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
     ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
+  // ALT key push-to-talk events
+  onPTTDown: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-down');
+    ipcRenderer.on('ptt-down', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-down');
+  },
+  onPTTUp: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-up');
+    ipcRenderer.on('ptt-up', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-up');
+  },
 });
-</file>
-
-<file path="src/cf-worker/src/index.js">
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
-const FETCH_TIMEOUT = 30000; // 30 seconds
-
-export default {
-	async fetch(request, env, ctx) {
-		const url = new URL(request.url);
-
-		if (request.method !== 'POST') {
-			return new Response('Expected POST request', { status: 405 });
-		}
-
-		try {
-			if (url.pathname === '/groq') {
-				// --- Groq Logic with Raw ArrayBuffer ---
-				if (!env.GROQ_API_KEY) {
-					return new Response('GROQ_API_KEY not configured in worker environment', { status: 500 });
-				}
-
-				// Handle raw ArrayBuffer data with headers
-				const contentType = request.headers.get('Content-Type');
-				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
-				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
-
-				if (!contentType || !contentType.startsWith('audio/')) {
-					return new Response('Expected audio content type', { status: 400 });
-				}
-
-				// Get raw audio data
-				const audioArrayBuffer = await request.arrayBuffer();
-				if (audioArrayBuffer.byteLength === 0) {
-					return new Response('Empty audio data received', { status: 400 });
-				}
-
-				// Create File object for Groq API (which still expects FormData)
-				const audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
-
-				const groqFormData = new FormData();
-				groqFormData.append('file', audioFile); // Groq SDK uses 'file'
-				groqFormData.append('model', 'distil-whisper-large-v3-en');
-				groqFormData.append('language', audioLanguage);
-				groqFormData.append('response_format', 'json');
-				groqFormData.append('temperature', '0.0');
-				groqFormData.append('prompt', 'Your vocabulary includes: Supabase, Groq');
-
-				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-				let groqResponse;
-
-				try {
-					groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-						method: 'POST',
-						headers: {
-							'Authorization': `Bearer ${env.GROQ_API_KEY}`,
-							// Content-Type is set automatically by fetch with FormData
-						},
-						body: groqFormData,
-						signal: controller.signal,
-					});
-				} catch (error) {
-					clearTimeout(timeoutId);
-					if (error.name === 'AbortError') {
-						console.error('Groq API request timed out');
-						return new Response('Groq API request timed out', { status: 504 }); // Gateway Timeout
-					}
-					console.error('Groq API network error:', error.message);
-					return new Response(`Groq API network error: ${error.message}`, { status: 500 });
-				}
-				clearTimeout(timeoutId);
-
-				if (!groqResponse.ok) {
-					const errorText = await groqResponse.text();
-					console.error('Groq API Error:', errorText);
-					return new Response(`Groq API error: ${groqResponse.status} ${errorText}`, { status: groqResponse.status });
-				}
-
-				const transcriptionResult = await groqResponse.json();
-				return new Response(JSON.stringify({ text: transcriptionResult.text }), {
-					headers: { 'Content-Type': 'application/json' },
-				});
-
-			} else if (url.pathname === '/gemini') {
-				// --- Gemini Logic ---
-				if (!env.GEMINI_API_KEY) {
-					return new Response('GEMINI_API_KEY not configured in worker environment', { status: 500 });
-				}
-
-				const formData = await request.formData();
-				const audioFile = formData.get('audio');
-				if (!audioFile || !(audioFile instanceof File)) {
-					return new Response('Missing "audio" file in FormData', { status: 400 });
-				}
-
-				const mimeType = formData.get('mimeType');
-				if (!mimeType) {
-					return new Response('Missing "mimeType" in FormData for Gemini', { status: 400 });
-				}
-				
-				const prompt = formData.get('prompt') || 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.';
-
-				// Gemini REST API can take base64 inline data for smaller files.
-				// For larger files, the SDK uploads to Google's File API first.
-				// We'll directly send inline data as the client-side hook doesn't differentiate yet for >20MB to the worker.
-				// If >20MB files are common and cause issues, this part might need the Files API via fetch.
-				
-				const audioBytes = await audioFile.arrayBuffer();
-				const base64Audio = bufferToBase64(audioBytes);
-
-				const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent`;
-				
-				const geminiPayload = {
-					contents: [
-						{ role: "user", parts: [{ text: prompt }] },
-						{
-							role: "model", // Placeholder for system/model instructions if API evolves
-							parts: [{ text: "Okay, I will transcribe the following audio."}] // Simple ack
-						},
-						{
-							role: "user",
-							parts: [
-								{
-									inlineData: {
-										mimeType: mimeType,
-										data: base64Audio,
-									},
-								},
-							],
-						},
-					],
-					// generationConfig could be added here if needed
-				};
-
-				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-				let geminiResponse;
-
-				try {
-					geminiResponse = await fetch(geminiApiUrl, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							'x-goog-api-key': env.GEMINI_API_KEY, // Correctly pass API key in header
-						},
-						body: JSON.stringify(geminiPayload),
-						signal: controller.signal,
-					});
-				} catch (error) {
-					clearTimeout(timeoutId);
-					if (error.name === 'AbortError') {
-						console.error('Gemini API request timed out');
-						return new Response('Gemini API request timed out', { status: 504 }); // Gateway Timeout
-					}
-					console.error('Gemini API network error:', error.message);
-					return new Response(`Gemini API network error: ${error.message}`, { status: 500 });
-				}
-				clearTimeout(timeoutId);
-
-				if (!geminiResponse.ok) {
-					const errorText = await geminiResponse.text();
-					console.error('Gemini API Error:', errorText);
-					return new Response(`Gemini API error: ${geminiResponse.status} ${errorText}`, { status: geminiResponse.status });
-				}
-
-				const geminiResult = await geminiResponse.json();
-				// Extract text based on Gemini's API response structure for generateContent
-				// It's usually in result.candidates[0].content.parts[0].text
-				let transcribedText = '';
-				if (geminiResult.candidates && geminiResult.candidates.length > 0 &&
-						geminiResult.candidates[0].content && geminiResult.candidates[0].content.parts &&
-						geminiResult.candidates[0].content.parts.length > 0 && geminiResult.candidates[0].content.parts[0].text) {
-					transcribedText = geminiResult.candidates[0].content.parts[0].text;
-				} else {
-					console.error('Gemini API did not return text in the expected format:', JSON.stringify(geminiResult, null, 2));
-					return new Response('Gemini API did not return text in the expected format.', { status: 500 });
-				}
-
-				return new Response(JSON.stringify({ text: transcribedText.trim() }), {
-					headers: { 'Content-Type': 'application/json' },
-				});
-
-			} else {
-				return new Response('Not Found. Use /groq or /gemini', { status: 404 });
-			}
-		} catch (error) {
-			console.error('Worker Error:', error.message, error.stack);
-			return new Response(`Worker error: ${error.message}`, { status: 500 });
-		}
-	},
-};
-
-// Helper function: ArrayBuffer to base64
-// (Cannot use Node.js Buffer in CF Worker directly, need a universal way or use TextEncoder/Decoder)
-function bufferToBase64(buf) {
-	const PADDING = '=';
-	const bin = new Uint8Array(buf);
-	let b64 = '';
-	for (let i = 0; i < bin.length; i += 3) {
-		const c1 = bin[i + 0];
-		const c2 = bin[i + 1];
-		const c3 = bin[i + 2];
-		b64 += b64chars[c1 >> 2];
-		b64 += b64chars[((c1 &  3) << 4) | (c2 >> 4)];
-		b64 += (isNaN(c2)) ? PADDING : b64chars[((c2 & 15) << 2) | (c3 >> 6)];
-		b64 += (isNaN(c2) || isNaN(c3)) ? PADDING : b64chars[c3 & 63];
-	}
-	return b64;
-}
-
-const b64chars = [
-	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-	'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-	'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
-];
-</file>
-
-<file path="src/components/App.tsx">
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Pill from './Pill';
-// Import the new consolidated hook
-import { useTranscription } from '../hooks/useTranscription'; // Adjust path if needed
-// Remove old audio import
-// import { startRecording, stopRecording } from '../lib/audio';
-
-// Placeholder transcription text (would be replaced with actual API call result)
-// const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
-
-const App: React.FC = () => {
-  // Instantiate the new hook
-  const trans = useTranscription();
-
-  // --- REMOVE TEMPORARY State --- 
-  // const [isListening, setIsListening] = useState(false); 
-  // const [isLoading, setIsLoading] = useState(false); 
-
-  // --- Map hook state to Pill props --- 
-  const isListening = trans.recording; 
-  // Show processing during model load AND transcription
-  const isProcessing = !trans.ready || trans.processing; 
-
-  // --- Connect Hotkey logic to the new hook --- 
-  useEffect(() => {
-    if (!window.electron) return;
-
-    const handleToggleDictation = () => {
-      console.log('Toggle hotkey. State:', { 
-          recording: trans.recording, 
-          processing: trans.processing, 
-          ready: trans.ready 
-      });
-      if (trans.recording) {
-        trans.stop(); // Call hook's stop function
-      } else if (trans.ready && !trans.processing) { // Only start if ready and not busy
-        trans.start(); // Call hook's start function
-      } else {
-          console.warn('Cannot toggle dictation: Not ready or currently processing.');
-          // Optionally notify user
-          if (!trans.ready) window.electron?.sendNotification('Engine loading...');
-          if (trans.processing) window.electron?.sendNotification('Processing audio...');
-      }
-    };
-
-    const cleanup = window.electron.toggleDictation(handleToggleDictation);
-    return cleanup;
-    // Dependencies are now from the hook
-  }, [trans.recording, trans.processing, trans.ready, trans.start, trans.stop]);
-
-  // --- Handle Transcription Results (REMOVING PASTE LOGIC AGAIN) --- 
-  useEffect(() => {
-    // The hook now handles pasting on 'complete'.
-    // We can still log the final accumulated text if desired.
-    if (trans.text && !trans.recording && !trans.processing) { // Log only final text maybe?
-      console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
-    }
-  }, [trans.text, trans.recording, trans.processing]); // Log when text/state changes
-
-  // --- Handle Errors from Hook --- 
-  useEffect(() => {
-    if (trans.error && window.electron) {
-      console.error('[App] Transcription Hook Error:', trans.error);
-      window.electron.sendNotification(trans.error); 
-    }
-  }, [trans.error]); // Watch for changes in the hook's error state
-
-  return (
-    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
-      <Pill 
-        isListening={isListening}
-        isProcessing={isProcessing} 
-        // Connect Pill clicks directly to hook functions
-        onStartDictation={trans.start}
-        onStopDictation={trans.stop}
-      />
-    </div>
-  );
-};
-
-export default App;
 </file>
 
 <file path="src/types/electron.d.ts">
@@ -2833,6 +2535,9 @@ declare global {
         mimeType: string,
         transfer?: Transferable[]
       ) => Promise<{ text: string }>;
+      // ALT key push-to-talk events
+      onPTTDown: (cb: () => void) => () => void;
+      onPTTUp: (cb: () => void) => () => void;
     };
     contextMenuAPI?: {
       send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
@@ -2843,71 +2548,194 @@ declare global {
 export {};
 </file>
 
-<file path="src/workers/groq-transcriber.ts">
-// import Groq from 'groq-sdk'; // No longer using SDK directly
-import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
+<file path="src/workers/gemini-transcriber.ts">
+// gemini-transcriber.ts
+// import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.
-// Logging for API key status can be removed.
+// Logging for API key status can be removed from here.
+
+// The arrayBufferToBase64 helper is also not needed here anymore, as the worker handles it.
 
 /**
- * Transcribes audio by sending it to a Cloudflare worker, which then calls the Groq API.
- * @param audioData The audio data as an ArrayBuffer.
- * @param inputLanguage The language of the audio (e.g., "en").
- * @returns Promise that resolves with the transcription text.
+ * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
+ *
+ * @param audioData   raw audio as ArrayBuffer
+ * @param mimeType    e.g., 'audio/webm', 'audio/wav' – worker passes this to Gemini
+ * @param prompt      custom prompt for Gemini (optional)
  */
-export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<string> {
-  const workerUrl = 'https://api.sonicflow.app/groq';
+export async function transcribeAudioWithGemini(
+  audioData: ArrayBuffer,
+  mimeType: string,
+  prompt = 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.'
+): Promise<{ text: string }> {
+  const workerUrl = 'https://api.sonicflow.app/gemini';
+
+  // API Key check is now done in the worker, not here.
+  // if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing'); // Removed
+
+  if (audioData.byteLength === 0) {
+    console.error('[GeminiTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
+    throw new Error('Audio data (ArrayBuffer) is empty.');
+  }
 
   try {
-    if (audioData.byteLength === 0) {
-      console.error('[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
-      throw new Error('Audio data (ArrayBuffer) is empty.');
-    }
+    // Create a Blob from the ArrayBuffer.
+    // The filename is not strictly necessary for the worker, but providing one (e.g., based on mimeType) is fine.
+    const filename = `audio.${mimeType.split('/')[1] || 'bin'}`;
+    const audioBlob = new Blob([audioData], { type: mimeType });
 
-    // Send raw ArrayBuffer with headers instead of FormData to eliminate double serialization
-    console.log(`[GroqTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
+    const formData = new FormData();
+    formData.append('audio', audioBlob, filename);
+    formData.append('mimeType', mimeType);
+    formData.append('prompt', prompt); // Send the prompt to the worker
+
+    console.log(`[GeminiTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes, type: ${mimeType}) to CF Worker: ${workerUrl}`);
     const startTime = performance.now();
 
     const response = await fetch(workerUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'audio/webm',
-        'X-Audio-Language': inputLanguage,
-        'X-Audio-Filename': 'audio.webm'
-      },
-      body: audioData // Send raw ArrayBuffer
+      body: formData,
     });
 
     const endTime = performance.now();
-    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
+    console.log(`[GeminiTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[GroqTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
-      throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+      console.error(`[GeminiTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
+      // Ensure the error thrown matches the expected structure if specific error handling is in place upstream
+      throw new Error(`Gemini transcription failed via CF Worker: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
-    
-    if (!result || typeof result.text !== 'string') {
-      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker:', result);
-      throw new Error('Unexpected response format from transcription service.');
-    }
-    
-    return result.text;
 
-  } catch (error) {
-    console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);
-    // To provide more context, we check if it's a FetchError or similar network issue
-    if (error instanceof Error && error.message.includes('fetch')) { // Basic check for fetch related errors
-        throw new Error(`Network error during transcription: ${error.message}`);
+    if (!result || typeof result.text !== 'string') {
+      console.error('[GeminiTranscriber-CFW]	Unexpected response format from CF Worker:', result);
+      throw new Error('Unexpected response format from Gemini service via CF Worker.');
     }
-    throw error; // Re-throw other errors
+
+    return { text: result.text.trim() }; // Ensure it returns { text: ... } as per original signature
+
+  } catch (err: any) {
+    console.error('[GeminiTranscriber-CFW]	Error during transcription via CF Worker:', err?.message || err);
+    // Propagate the error; specific error construction can be done here if needed
+    throw err; 
   }
 }
+</file>
 
-// Removed createFileObject, initializeTempDir, and cleanupAllTempAudioFiles as they are no longer needed.
+<file path="src/components/App.tsx">
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Pill from './Pill';
+// Import the new consolidated hook
+import { useTranscription } from '../hooks/useTranscription'; // Adjust path if needed
+// Remove old audio import
+// import { startRecording, stopRecording } from '../lib/audio';
+
+// Placeholder transcription text (would be replaced with actual API call result)
+// const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
+
+const App: React.FC = () => {
+  const trans = useTranscription();
+
+  // Refs for the Right-Alt key logic
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef<boolean>(false);
+  // Ref to always hold the latest trans object for use in callbacks
+  const latestTransRef = useRef(trans);
+
+  // --- Update latestTransRef whenever trans changes ---
+  useEffect(() => {
+    latestTransRef.current = trans;
+  }, [trans]);
+
+  // --- Map hook state to Pill props --- 
+  const isListening = trans.recording; 
+  // Show processing during model load AND transcription
+  const isProcessing = !trans.ready || trans.processing; 
+
+  // --- Handle Transcription Results ---
+  useEffect(() => {
+    if (trans.text && !trans.recording && !trans.processing) {
+      console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
+    }
+  }, [trans.text, trans.recording, trans.processing]);
+
+  // --- Handle Errors from Hook --- 
+  useEffect(() => {
+    if (trans.error && window.electron) {
+      console.error('[App] Transcription Hook Error:', trans.error);
+      window.electron.sendNotification(trans.error); 
+    }
+  }, [trans.error]);
+
+  // --- RIGHT ALT key - Hold vs. Tap Logic ---
+  useEffect(() => {
+    if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
+
+    const HOLD_DURATION_MS = 180; // ms
+
+    const handleRightAltDown = () => {
+      isLongPressRef.current = false; 
+      // Clear any existing timer from a potentially missed 'up' event
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        if (!latestTransRef.current.recording) {
+          latestTransRef.current.start(); 
+        }
+      }, HOLD_DURATION_MS);
+    };
+
+    const handleRightAltUp = () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+
+      if (isLongPressRef.current) {
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
+        }
+      } else {
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
+        } else {
+          latestTransRef.current.start();
+        }
+      }
+      isLongPressRef.current = false; 
+    };
+
+    const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
+    const unsubscribePTTUp = window.electron.onPTTUp(handleRightAltUp);
+
+    return () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+      unsubscribePTTDown();
+      unsubscribePTTUp();
+    };
+  }, [trans.start, trans.stop]);
+
+  return (
+    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
+      <Pill 
+        isListening={isListening}
+        isProcessing={isProcessing} 
+        // Connect Pill clicks directly to hook functions
+        onStartDictation={trans.start}
+        onStopDictation={trans.stop}
+      />
+    </div>
+  );
+};
+
+export default App;
 </file>
 
 <file path="src/workers/local-worker.ts">
@@ -3342,11 +3170,302 @@ self.onunhandledrejection = (event) => {
 console.log("[LocalWorker] Streaming-capable event listener added. Worker script loaded.");
 </file>
 
+<file path="src/cf-worker/src/index.js">
+/**
+ * Welcome to Cloudflare Workers! This is your first worker.
+ *
+ * - Run `npm run dev` in your terminal to start a development server
+ * - Open a browser tab at http://localhost:8787/ to see your worker in action
+ * - Run `npm run deploy` to publish your worker
+ *
+ * Learn more at https://developers.cloudflare.com/workers/
+ */
+
+const FETCH_TIMEOUT = 30000; // 30 seconds
+
+export default {
+	async fetch(request, env, ctx) {
+		const url = new URL(request.url);
+
+		if (request.method !== 'POST') {
+			return new Response('Expected POST request', { status: 405 });
+		}
+
+		try {
+			if (url.pathname === '/groq') {
+				// --- Groq Logic with Raw ArrayBuffer ---
+				if (!env.GROQ_API_KEY) {
+					return new Response('GROQ_API_KEY not configured in worker environment', { status: 500 });
+				}
+
+				// Handle raw ArrayBuffer data with headers
+				const contentType = request.headers.get('Content-Type');
+				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
+				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
+
+				if (!contentType || (!contentType.toLowerCase().startsWith('audio/wav') && !contentType.toLowerCase().startsWith('audio/webm'))) {
+					return new Response('Expected audio/wav or audio/webm content type', { status: 400 });
+				}
+
+				// Get raw audio data
+				const audioArrayBuffer = await request.arrayBuffer();
+				if (audioArrayBuffer.byteLength === 0) {
+					return new Response('Empty audio data received', { status: 400 });
+				}
+
+				// Create File object for Groq API (which still expects FormData)
+				const audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
+
+				const groqFormData = new FormData();
+				groqFormData.append('file', audioFile); // Groq SDK uses 'file'
+				groqFormData.append('model', 'distil-whisper-large-v3-en');
+				groqFormData.append('language', audioLanguage);
+				groqFormData.append('response_format', 'json');
+				groqFormData.append('temperature', '0.0');
+				groqFormData.append('prompt', 'Your vocabulary includes: Supabase, Groq');
+
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+				let groqResponse;
+
+				try {
+					groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+						method: 'POST',
+						headers: {
+							'Authorization': `Bearer ${env.GROQ_API_KEY}`,
+							// Content-Type is set automatically by fetch with FormData
+						},
+						body: groqFormData,
+						signal: controller.signal,
+					});
+				} catch (error) {
+					clearTimeout(timeoutId);
+					if (error.name === 'AbortError') {
+						console.error('Groq API request timed out');
+						return new Response('Groq API request timed out', { status: 504 }); // Gateway Timeout
+					}
+					console.error('Groq API network error:', error.message);
+					return new Response(`Groq API network error: ${error.message}`, { status: 500 });
+				}
+				clearTimeout(timeoutId);
+
+				if (!groqResponse.ok) {
+					const errorText = await groqResponse.text();
+					console.error('Groq API Error:', errorText);
+					return new Response(`Groq API error: ${groqResponse.status} ${errorText}`, { status: groqResponse.status });
+				}
+
+				const transcriptionResult = await groqResponse.json();
+				return new Response(JSON.stringify({ text: transcriptionResult.text }), {
+					headers: { 'Content-Type': 'application/json' },
+				});
+
+			} else if (url.pathname === '/gemini') {
+				// --- Gemini Logic ---
+				if (!env.GEMINI_API_KEY) {
+					return new Response('GEMINI_API_KEY not configured in worker environment', { status: 500 });
+				}
+
+				const formData = await request.formData();
+				const audioFile = formData.get('audio');
+				if (!audioFile || !(audioFile instanceof File)) {
+					return new Response('Missing "audio" file in FormData', { status: 400 });
+				}
+
+				const mimeType = formData.get('mimeType');
+				if (!mimeType) {
+					return new Response('Missing "mimeType" in FormData for Gemini', { status: 400 });
+				}
+				
+				const prompt = formData.get('prompt') || 'You are part of the world\'s best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., \'item one, item two, item three\' or \'firstly, secondly, thirdly\'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.';
+
+				// Gemini REST API can take base64 inline data for smaller files.
+				// For larger files, the SDK uploads to Google's File API first.
+				// We'll directly send inline data as the client-side hook doesn't differentiate yet for >20MB to the worker.
+				// If >20MB files are common and cause issues, this part might need the Files API via fetch.
+				
+				const audioBytes = await audioFile.arrayBuffer();
+				const base64Audio = bufferToBase64(audioBytes);
+
+				const geminiApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-001:generateContent`;
+				
+				const geminiPayload = {
+					contents: [
+						{ role: "user", parts: [{ text: prompt }] },
+						{
+							role: "model", // Placeholder for system/model instructions if API evolves
+							parts: [{ text: "Okay, I will transcribe the following audio."}] // Simple ack
+						},
+						{
+							role: "user",
+							parts: [
+								{
+									inlineData: {
+										mimeType: mimeType,
+										data: base64Audio,
+									},
+								},
+							],
+						},
+					],
+				};
+
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+				let geminiResponse;
+
+				try {
+					geminiResponse = await fetch(geminiApiUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'x-goog-api-key': env.GEMINI_API_KEY, // Correctly pass API key in header
+						},
+						body: JSON.stringify(geminiPayload),
+						signal: controller.signal,
+					});
+				} catch (error) {
+					clearTimeout(timeoutId);
+					if (error.name === 'AbortError') {
+						console.error('Gemini API request timed out');
+						return new Response('Gemini API request timed out', { status: 504 }); // Gateway Timeout
+					}
+					console.error('Gemini API network error:', error.message);
+					return new Response(`Gemini API network error: ${error.message}`, { status: 500 });
+				}
+				clearTimeout(timeoutId);
+
+				if (!geminiResponse.ok) {
+					const errorText = await geminiResponse.text();
+					console.error('Gemini API Error:', errorText);
+					return new Response(`Gemini API error: ${geminiResponse.status} ${errorText}`, { status: geminiResponse.status });
+				}
+
+				const geminiResult = await geminiResponse.json();
+				// Extract text based on Gemini's API response structure for generateContent
+				// It's usually in result.candidates[0].content.parts[0].text
+				let transcribedText = '';
+				if (geminiResult.candidates && geminiResult.candidates.length > 0 &&
+						geminiResult.candidates[0].content && geminiResult.candidates[0].content.parts &&
+						geminiResult.candidates[0].content.parts.length > 0 && geminiResult.candidates[0].content.parts[0].text) {
+					transcribedText = geminiResult.candidates[0].content.parts[0].text;
+				} else {
+					console.error('Gemini API did not return text in the expected format:', JSON.stringify(geminiResult, null, 2));
+					return new Response('Gemini API did not return text in the expected format.', { status: 500 });
+				}
+
+				return new Response(JSON.stringify({ text: transcribedText.trim() }), {
+					headers: { 'Content-Type': 'application/json' },
+				});
+
+			} else {
+				return new Response('Not Found. Use /groq or /gemini', { status: 404 });
+			}
+		} catch (error) {
+			console.error('Worker Error:', error.message, error.stack);
+			return new Response(`Worker error: ${error.message}`, { status: 500 });
+		}
+	},
+};
+
+// Helper function: ArrayBuffer to base64
+// (Cannot use Node.js Buffer in CF Worker directly, need a universal way or use TextEncoder/Decoder)
+function bufferToBase64(buf) {
+	const PADDING = '=';
+	const bin = new Uint8Array(buf);
+	let b64 = '';
+	for (let i = 0; i < bin.length; i += 3) {
+		const c1 = bin[i + 0];
+		const c2 = bin[i + 1];
+		const c3 = bin[i + 2];
+		b64 += b64chars[c1 >> 2];
+		b64 += b64chars[((c1 &  3) << 4) | (c2 >> 4)];
+		b64 += (isNaN(c2)) ? PADDING : b64chars[((c2 & 15) << 2) | (c3 >> 6)];
+		b64 += (isNaN(c2) || isNaN(c3)) ? PADDING : b64chars[c3 & 63];
+	}
+	return b64;
+}
+
+const b64chars = [
+	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+	'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
+	'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
+];
+</file>
+
+<file path="src/workers/groq-transcriber.ts">
+// import Groq from 'groq-sdk'; // No longer using SDK directly
+import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
+
+// API key is no longer handled here; it's in the Cloudflare worker environment.
+// Logging for API key status can be removed.
+
+/**
+ * Transcribes audio by sending it to a Cloudflare worker, which then calls the Groq API.
+ * @param audioData The audio data as an ArrayBuffer.
+ * @param inputLanguage The language of the audio (e.g., "en").
+ * @returns Promise that resolves with the transcription text.
+ */
+export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<string> {
+  const workerUrl = 'https://api.sonicflow.app/groq';
+
+  try {
+    if (audioData.byteLength === 0) {
+      console.error('[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
+      throw new Error('Audio data (ArrayBuffer) is empty.');
+    }
+
+    // Send raw ArrayBuffer with headers instead of FormData to eliminate double serialization
+    console.log(`[GroqTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
+    const startTime = performance.now();
+
+    const response = await fetch(workerUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'audio/wav',
+        'X-Audio-Language': inputLanguage,
+        'X-Audio-Filename': 'audio.wav'
+      },
+      body: audioData // Send raw ArrayBuffer
+    });
+
+    const endTime = performance.now();
+    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[GroqTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
+      throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result || typeof result.text !== 'string') {
+      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker:', result);
+      throw new Error('Unexpected response format from transcription service.');
+    }
+    
+    return result.text;
+
+  } catch (error) {
+    console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);
+    // To provide more context, we check if it's a FetchError or similar network issue
+    if (error instanceof Error && error.message.includes('fetch')) { // Basic check for fetch related errors
+        throw new Error(`Network error during transcription: ${error.message}`);
+    }
+    throw error; // Re-throw other errors
+  }
+}
+
+// Removed createFileObject, initializeTempDir, and cleanupAllTempAudioFiles as they are no longer needed.
+</file>
+
 <file path="package.json">
 {
   "name": "sonic-flow",
   "productName": "sonic-flow",
-  "version": "0.6.9",
+  "version": "0.7.0",
   "description": "A Lightweight AI Dictation App",
   "main": ".vite/build/main.js",
   "scripts": {
@@ -3412,701 +3531,6 @@ console.log("[LocalWorker] Streaming-capable event listener added. Worker script
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
-</file>
-
-<file path="src/main.ts">
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
-import path from 'node:path';
-import process from 'node:process';
-import started from 'electron-squirrel-startup';
-import { loadSettings, updateSetting } from './lib/settings';
-import fs from 'node:fs';
-import { execSync } from 'child_process';
-import { transcribeAudioWithGroq } from './workers/groq-transcriber';
-import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
-
-// Add command line switches for WebGPU - KEEP THESE
-// app.commandLine.appendSwitch('enable-unsafe-webgpu');
-// app.commandLine.appendSwitch('ignore-gpu-blocklist');
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
-
-let mainWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
-let currentHotkey = '';
-let contextMenuWindow: BrowserWindow | null = null;
-let contextMenuOpen = false;
-let notificationWindow: BrowserWindow | null = null;
-let notificationTimeout: NodeJS.Timeout | null = null;
-let isQuitting = false;
-let homeWindow: BrowserWindow | null = null;
-
-// Determine the path to the icon file (works in both packaged and dev environments)
-const iconPath = path.join(__dirname, 'assets', 'icon.ico');
-
-const createWindow = () => {
-  // Create the browser window.
-  mainWindow = new BrowserWindow({
-    width: 120,
-    height: 35,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      sandbox: false,
-      enableWebSQL: false,
-      nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.js'),
-      additionalArguments: ['--enable-features=SharedArrayBuffer'],
-    },
-    icon: iconPath,
-  });
-
-  // Also set the icon explicitly after creation (optional but good practice)
-  mainWindow.setIcon(iconPath);
-
-  // Show window inactive only when it's ready to prevent focus stealing
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    console.log('Main window shown.');
-    // Automatically open DevTools for debugging
-    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
-  });
-
-  // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
-  mainWindow.on('closed', () => {
-    console.log('Main window has been closed.');
-    mainWindow = null; // Ensure reference is cleared
-  });
-
-  // Position window at the bottom center of the screen
-  const { width, height } = mainWindow.getBounds();
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
-
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
-  }
-
-  // Hide menu bar
-  mainWindow.setMenuBarVisibility(false);
-
-  // Make window click-through except for the pill UI
-  mainWindow.setIgnoreMouseEvents(false);
-
-  // Register global shortcut from settings
-  registerGlobalShortcut();
-
-  // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    // In a real app, you might want to be more specific about which permissions
-    // and origins you grant, but for local development/SAB, granting broadly is common.
-    console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
-    callback(true);
-  });
-};
-
-// Register the global shortcut based on settings
-const registerGlobalShortcut = () => {
-  // Unregister any existing shortcuts
-  globalShortcut.unregisterAll();
-  
-  // Load settings to get the hotkey
-  const settings = loadSettings();
-  currentHotkey = settings.hotkey;
-  
-  // Register the shortcut
-  try {
-    globalShortcut.register(currentHotkey, () => {
-      if (mainWindow) {
-        // Send message to renderer process to toggle dictation
-        mainWindow.webContents.send('toggle-dictation');
-      }
-    });
-    console.log(`Registered global shortcut: ${currentHotkey}`);
-  } catch (error) {
-    console.error(`Failed to register shortcut ${currentHotkey}:`, error);
-    // Show an error dialog to the user
-    dialog.showErrorBox(
-      'Hotkey Registration Failed',
-      `Could not register the hotkey "${currentHotkey}". ` +
-      `This might be due to missing permissions or the hotkey being used by another application. ` +
-      `Please try changing the hotkey in the settings or ensure the application has the necessary permissions.`
-    );
-    // Set currentHotkey to empty string or null to indicate no active hotkey
-    currentHotkey = ''; 
-    // No fallback registration attempt - let the user fix it.
-  }
-};
-
-const createTray = () => {
-  try {
-    // Check if tray already exists
-    if (tray) {
-      return;
-    }
-    
-    // Load the icon from the assets folder
-    const icon = nativeImage.createFromPath(iconPath);
-    
-    if (icon.isEmpty()) {
-      console.error(`Failed to load tray icon from path: ${iconPath}. Using empty icon.`);
-      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
-    } else {
-      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
-      tray = new Tray(icon);
-    }
-    
-    tray.setToolTip('Sonic Flow');
-
-    // Listen for right-click events on the tray icon
-    tray.on('right-click', (event, bounds) => {
-      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
-      // Use the bottom-right corner of the bounds as the anchor
-      const anchorX = bounds.x + bounds.width;
-      const anchorY = bounds.y + bounds.height;
-      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
-      // Show the custom HTML context menu, aligning bottom-right to anchor
-      showContextMenu(anchorX, anchorY);
-    });
-
-    // Optional: Handle left-click if needed (e.g., toggle main window?)
-    // tray.on('click', () => {
-    //   console.log('[Tray Event] Left-click detected.');
-    //   // Example: mainWindow?.show();
-    // });
-
-  } catch (error) {
-    console.error('Failed to create tray:', error);
-    // Ensure tray is null if creation fails
-    if (tray) tray.destroy();
-    tray = null; 
-  }
-};
-
-// Create the notification window (similar to context menu)
-const createNotificationWindow = () => {
-  if (notificationWindow) return;
-
-  notificationWindow = new BrowserWindow({
-    width: 180,
-    height: 40,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    minimizable: false,
-    maximizable: false,
-    focusable: false, // Changed back to false since we don't need interaction
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: undefined,
-    },
-    backgroundColor: '#00000000',
-    hasShadow: false
-  });
-
-  notificationWindow.on('closed', () => {
-    console.log('Notification window closed.');
-    notificationWindow = null;
-    if (notificationTimeout) {
-        clearTimeout(notificationTimeout);
-        notificationTimeout = null;
-    }
-  });
-};
-
-// Create the custom context menu window
-const createContextMenuWindow = () => {
-  if (contextMenuWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  contextMenuWindow = new BrowserWindow({
-    width: 140, 
-    height: 100, // Adjusted height
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'contextmenu-preload.js'), 
-      contextIsolation: true, 
-      nodeIntegration: false, 
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  const contextMenuHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; 
-          overflow: hidden;
-        }
-        
-        .menu-items {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
-          padding: 0; 
-        }
-        
-        .menu-item {
-          font-size: 12px;
-          padding: 4px 6px; 
-          margin: 2px 0;
-          cursor: pointer;
-          border-radius: 6px; 
-          text-align: left;
-          color: #ffffff;
-          background-color: transparent;
-          border: none;
-          width: auto; 
-          display: block;
-        }
-        
-        .menu-item:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; 
-        }
-        
-        .separator {
-          height: 1px;
-          background-color: #444444;
-          margin: 4px 0; 
-          width: 100%;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="menu-items">
-          <button id="homeBtn" class="menu-item">Home</button>
-          <div class="separator"></div>
-          <button id="exitBtn" class="menu-item">Exit</button>
-        </div>
-      </div>
-      
-      <script>
-        if (window.contextMenuAPI) {
-          document.getElementById('homeBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-home');
-          });
-          
-          document.getElementById('exitBtn').addEventListener('click', () => {
-            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
-            window.contextMenuAPI.send('menu-exit');
-          });
-        } else {
-          console.error('[Context Menu] contextMenuAPI not found on window object!');
-        }
-      </script>
-    </body>
-    </html>
-  `;
-  
-  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
-  
-  contextMenuWindow.on('blur', () => {
-    hideContextMenu();
-  });
-  
-  contextMenuWindow.on('closed', () => {
-    console.log('Context menu window closed.');
-    contextMenuWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating context menu window.');
-      createContextMenuWindow(); 
-    } else {
-      console.log('Not recreating context menu window because app is quitting.');
-    }
-  });
-};
-
-const showContextMenu = (anchorX?: number, anchorY?: number) => {
-  if (contextMenuOpen || !contextMenuWindow) return;
-  
-  contextMenuOpen = true;
-  const menuSize = contextMenuWindow.getSize();
-  const menuWidth = menuSize[0];
-  const menuHeight = menuSize[1];
-  
-  let positionX: number;
-  let positionY: number;
-  
-  if (anchorX !== undefined && anchorY !== undefined) {
-    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
-    positionX = anchorX - menuWidth;
-    positionY = anchorY - menuHeight;
-    
-    const fineTuneX = 0; 
-    const fineTuneY = 0; 
-    positionX += fineTuneX;
-    positionY += fineTuneY;
-    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
-  } 
-  else if (mainWindow) { 
-    console.log('[showContextMenu] Positioning relative to pill');
-    const pillBounds = mainWindow.getBounds();
-    const currentMenuSize = contextMenuWindow.getSize(); 
-    const currentMenuHeight = currentMenuSize[1];
-    const currentMenuWidth = currentMenuSize[0];
-
-    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
-    const calculatedPosY = pillBounds.y - currentMenuHeight;
-    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
-    positionY = calculatedPosY + upwardAdjustment; 
-    
-    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
-    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
-  } 
-  else {
-    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
-    contextMenuOpen = false; 
-    return; 
-  }
-  
-  contextMenuWindow.setPosition(positionX, positionY);
-  contextMenuWindow.show();
-};
-
-// Hide the context menu
-const hideContextMenu = () => {
-  if (!contextMenuOpen || !contextMenuWindow) return;
-  contextMenuOpen = false;
-  contextMenuWindow.hide();
-};
-
-// Add a handler for insert-text-at-cursor
-ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
-  let originalClipboardText: string | undefined = undefined;
-  try {
-    console.log('=== TEXT INSERTION PROCESS START ===');
-    console.log('Received text:', text);
-
-    originalClipboardText = clipboard.readText();
-    console.log('Original clipboard text stored.');
-
-    const trimmedText = text.trimStart(); 
-    clipboard.writeText(trimmedText);
-    console.log('Transcription text copied to clipboard');
-
-    const activeWindow = BrowserWindow.getFocusedWindow();
-    let operationSuccess = false;
-    let operationError: string | null = null;
-    const wasElectronWindowFocused = !!activeWindow; 
-
-    if (wasElectronWindowFocused) {
-      console.log('Electron window is focused. Skipping OS paste attempt.');
-      operationSuccess = true; 
-      showNotificationPopup('Output copied to clipboard');
-    } else {
-      console.log('No Electron window is focused, attempting OS-level paste.');
-      try {
-        if (process.platform === 'win32') {
-          console.log('Executing paste command via PowerShell');
-          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
-        } else if (process.platform === 'darwin') {
-          console.log('Executing paste command via AppleScript');
-          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
-        } else if (process.platform === 'linux') {
-          console.log('Executing paste command via xdotool');
-          execSync('xdotool key ctrl+v');
-        } else {
-          throw new Error('Unsupported platform for OS-level paste');
-        }
-        console.log('OS paste command executed successfully.');
-        operationSuccess = true;
-      } catch (err) {
-        console.error('Failed to execute OS paste command:', err);
-        operationError = 'Unable to paste text. Please make sure a text field is focused.';
-        operationSuccess = false;
-      }
-
-      if (operationSuccess) {
-        clipboard.writeText(originalClipboardText);
-        console.log('Original clipboard text restored after successful OS paste.');
-      } else {
-        console.log('OS paste failed. Transcription text remains in clipboard.');
-        showNotificationPopup('Output copied to clipboard');
-      }
-    }
-
-    if (!operationSuccess && !wasElectronWindowFocused) {
-        console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
-        return { success: false, error: operationError }; 
-    }
-    
-    console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
-    return { success: true }; 
-
-  } catch (error) {
-    console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
-    console.error('Error during text insertion:', error);
-    showNotificationPopup('Output copied to clipboard (error)');
-    console.log('Transcription text remains in clipboard due to error.');
-    return {
-      success: false,
-      error: 'An error occurred during text insertion. Text copied to clipboard.'
-    };
-  }
-});
-
-app.whenReady().then(() => {
-  console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
-    });
-  });
-  console.log('[Main Process] onHeadersReceived listener configured.');
-
-  app.commandLine.appendSwitch('disable-http-cache');
-  
-  createWindow();
-  createTray();
-  createContextMenuWindow();
-  createHomeWindow();
-  createNotificationWindow();
-
-  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
-    console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    showContextMenu(); 
-  });
-
-  ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
-    console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
-    showNotificationPopup(message);
-  });
-});
-
-app.on('window-all-closed', () => {
-  console.log('[App Event] window-all-closed - Checking platform...');
-  if (process.platform !== 'darwin') {
-    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-app.on('before-quit', () => {
-  console.log('[App Event] before-quit: Setting isQuitting flag to true.');
-  isQuitting = true;
-});
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-  console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
-});
-
-// === IPC Handlers for Hotkey Window (Registered ONCE) ===
-// ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => { ... });
-// ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
-// === END IPC Handlers ===
-
-// === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] \'menu-home\' received.');
-  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
-  if (homeWindow) {
-    console.log('[IPC Main] Home window exists, focusing...');
-    homeWindow.focus();
-  } else {
-    console.log('[IPC Main] Home window is null, creating new window...');
-    createHomeWindow();
-  }
-  hideContextMenu();
-});
-
-ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu(); 
-  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
-  app.quit();
-});
-// === END IPC Handlers ===
-
-const showNotificationPopup = (message: string, durationMs = 2000) => {
-  if (!mainWindow) return;
-  
-  if (!notificationWindow) {
-    console.log('Notification window not found, creating...');
-    createNotificationWindow();
-    if (!notificationWindow) {
-      console.error('Failed to create notification window.');
-      return;
-    }
-  }
-
-  if (notificationTimeout) {
-    clearTimeout(notificationTimeout);
-    notificationTimeout = null;
-  }
-
-  const pillBounds = mainWindow.getBounds();
-  const notificationSize = notificationWindow.getSize();
-  const notificationHeight = notificationSize[1];
-  const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
-  const gap = -5; 
-  const posY = pillBounds.y - notificationHeight - gap; 
-
-  console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
-  notificationWindow.setPosition(posX, posY);
-
-  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const dynamicNotificationHtml = `
-    <html>
-    <head>
-      <style>
-        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; }
-        body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
-        .container { background-color: rgba(44, 44, 44, 0.95); border: 1px solid rgba(80, 80, 80, 0.8); border-radius: 12px; padding: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.3s ease-in-out; }
-        .container.visible { opacity: 1; }
-        .message { font-size: 13px; padding: 6px 10px; text-align: center; white-space: nowrap; }
-      </style>
-    </head>
-    <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
-    </html>
-  `;
-
-  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
-  console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
-
-  notificationWindow.webContents.once('did-finish-load', () => {
-    console.log('Notification window finished loading dynamic HTML. Adding visible class.');
-    notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.add("visible")', true);
-    notificationWindow.showInactive();
-  });
-
-  notificationTimeout = setTimeout(() => {
-    if (notificationWindow && !notificationWindow.isDestroyed()) {
-      console.log('Hiding notification window after timeout (removing visible class).');
-      notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.remove("visible")', true);
-      setTimeout(() => {
-        if (notificationWindow && !notificationWindow.isDestroyed()) {
-          notificationWindow.hide();
-        }
-      }, 300); 
-    }
-    notificationTimeout = null;
-  }, durationMs);
-};
-
-const createHomeWindow = () => {
-  if (homeWindow) {
-    homeWindow.focus();
-    return;
-  }
-
-  const newWidth = 920; 
-  const newHeight = 470;
-
-  homeWindow = new BrowserWindow({
-    width: newWidth,
-    height: newHeight,
-    minWidth: newWidth,  
-    minHeight: newHeight, 
-    show: false, 
-    title: 'Sonic Flow Home',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-      enableWebSQL: false,
-    },
-    icon: iconPath, 
-  });
-
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
-  } else {
-    const indexHtml = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
-    homeWindow.loadURL(`file://${indexHtml}#/home`);
-  }
-
-  homeWindow.setMenuBarVisibility(false);
-
-  homeWindow.once('ready-to-show', () => {
-    homeWindow?.show();
-  });
-
-  homeWindow.on('closed', () => {
-    console.log('[Home Window Event] \'closed\' event triggered.');
-    homeWindow = null;
-    console.log('[Home Window Event] homeWindow variable set to null.');
-  });
-};
-
-ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { 
-  console.log('[MainIPC] Received transcribe-groq request');
-  if (!audioBuffer || audioBuffer.byteLength === 0) {
-    console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
-    throw new Error('Audio buffer is empty.');
-  }
-  try {
-    console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
-    const transcript = await transcribeAudioWithGroq(audioBuffer);
-    console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
-    return transcript; 
-  } catch (error) {
-    console.error('[MainIPC] Error in transcribe-groq handler:', error);
-    throw new Error(error.message || 'Groq transcription failed in main process.');
-  }
-});
-
-ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
-  if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
-  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
-});
 </file>
 
 <file path="profiling-results.md">
@@ -4733,8 +4157,677 @@ This document tracks performance measurements for different implementations of t
 ---
 </file>
 
+<file path="src/main.ts">
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
+import path from 'node:path';
+import process from 'node:process';
+import started from 'electron-squirrel-startup';
+import { loadSettings, updateSetting } from './lib/settings';
+import fs from 'node:fs';
+import { execSync } from 'child_process';
+import { transcribeAudioWithGroq } from './workers/groq-transcriber';
+import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
+import { startAltListener } from './main/alt-listener';
+
+// Add command line switches for WebGPU - KEEP THESE
+// app.commandLine.appendSwitch('enable-unsafe-webgpu');
+// app.commandLine.appendSwitch('ignore-gpu-blocklist');
+
+// Handle creating/removing shortcuts on Windows when installing/uninstalling.
+if (started) {
+  app.quit();
+}
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let currentHotkey = '';
+let contextMenuWindow: BrowserWindow | null = null;
+let contextMenuOpen = false;
+let notificationWindow: BrowserWindow | null = null;
+let notificationTimeout: NodeJS.Timeout | null = null;
+let isQuitting = false;
+let homeWindow: BrowserWindow | null = null;
+
+// Determine the path to the icon file (works in both packaged and dev environments)
+const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+
+const createWindow = () => {
+  // Create the browser window.
+  mainWindow = new BrowserWindow({
+    width: 120,
+    height: 35,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+      enableWebSQL: false,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: ['--enable-features=SharedArrayBuffer'],
+    },
+    icon: iconPath,
+  });
+
+  // Also set the icon explicitly after creation (optional but good practice)
+  mainWindow.setIcon(iconPath);
+
+  // Show window inactive only when it's ready to prevent focus stealing
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    console.log('Main window shown.');
+    // Automatically open DevTools for debugging
+    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
+  });
+
+  // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
+  mainWindow.on('closed', () => {
+    console.log('Main window has been closed.');
+    mainWindow = null; // Ensure reference is cleared
+  });
+
+  // Position window at the bottom center of the screen
+  const { width, height } = mainWindow.getBounds();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
+
+  // and load the index.html of the app.
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+  }
+
+  // Hide menu bar
+  mainWindow.setMenuBarVisibility(false);
+
+  // Make window click-through except for the pill UI
+  mainWindow.setIgnoreMouseEvents(false);
+
+  // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    // In a real app, you might want to be more specific about which permissions
+    // and origins you grant, but for local development/SAB, granting broadly is common.
+    console.log(`Granting permission: ${permission} to ${webContents.getURL()}`);
+    callback(true);
+  });
+};
+
+const createTray = () => {
+  try {
+    // Check if tray already exists
+    if (tray) {
+      return;
+    }
+    
+    // Load the icon from the assets folder
+    const icon = nativeImage.createFromPath(iconPath);
+    
+    if (icon.isEmpty()) {
+      console.error(`Failed to load tray icon from path: ${iconPath}. Using empty icon.`);
+      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+    } else {
+      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
+      tray = new Tray(icon);
+    }
+    
+    tray.setToolTip('Sonic Flow');
+
+    // Listen for right-click events on the tray icon
+    tray.on('right-click', (event, bounds) => {
+      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
+      // Use the bottom-right corner of the bounds as the anchor
+      const anchorX = bounds.x + bounds.width;
+      const anchorY = bounds.y + bounds.height;
+      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
+      // Show the custom HTML context menu, aligning bottom-right to anchor
+      showContextMenu(anchorX, anchorY);
+    });
+
+    // Optional: Handle left-click if needed (e.g., toggle main window?)
+    // tray.on('click', () => {
+    //   console.log('[Tray Event] Left-click detected.');
+    //   // Example: mainWindow?.show();
+    // });
+
+  } catch (error) {
+    console.error('Failed to create tray:', error);
+    // Ensure tray is null if creation fails
+    if (tray) tray.destroy();
+    tray = null; 
+  }
+};
+
+// Create the notification window (similar to context menu)
+const createNotificationWindow = () => {
+  if (notificationWindow) return;
+
+  notificationWindow = new BrowserWindow({
+    width: 180,
+    height: 40,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    minimizable: false,
+    maximizable: false,
+    focusable: false, // Changed back to false since we don't need interaction
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: undefined,
+    },
+    backgroundColor: '#00000000',
+    hasShadow: false
+  });
+
+  notificationWindow.on('closed', () => {
+    console.log('Notification window closed.');
+    notificationWindow = null;
+    if (notificationTimeout) {
+        clearTimeout(notificationTimeout);
+        notificationTimeout = null;
+    }
+  });
+};
+
+// Create the custom context menu window
+const createContextMenuWindow = () => {
+  if (contextMenuWindow) return;
+  
+  // Create a frameless window that looks like a menu
+  contextMenuWindow = new BrowserWindow({
+    width: 140, 
+    height: 100, // Adjusted height
+    frame: false,
+    transparent: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'contextmenu-preload.js'), 
+      contextIsolation: true, 
+      nodeIntegration: false, 
+    },
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    backgroundColor: '#00000000',
+    hasShadow: true
+  });
+  
+  const contextMenuHtml = `
+    <html>
+    <head>
+      <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          background-color: transparent;
+          overflow: hidden;
+        }
+        
+        body {
+          margin: 0;
+          padding: 0;
+          color: #ffffff;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          overflow: hidden;
+          user-select: none;
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .container {
+          background-color: #2c2c2c;
+          border: 1px solid #444444;
+          border-radius: 12px;
+          padding: 4px; 
+          overflow: hidden;
+        }
+        
+        .menu-items {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          padding: 0; 
+        }
+        
+        .menu-item {
+          font-size: 12px;
+          padding: 4px 6px; 
+          margin: 2px 0;
+          cursor: pointer;
+          border-radius: 6px; 
+          text-align: left;
+          color: #ffffff;
+          background-color: transparent;
+          border: none;
+          width: auto; 
+          display: block;
+        }
+        
+        .menu-item:hover {
+          background-color: #3c3c3c;
+          border-radius: 6px; 
+        }
+        
+        .separator {
+          height: 1px;
+          background-color: #444444;
+          margin: 4px 0; 
+          width: 100%;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="menu-items">
+          <button id="homeBtn" class="menu-item">Home</button>
+          <div class="separator"></div>
+          <button id="exitBtn" class="menu-item">Exit</button>
+        </div>
+      </div>
+      
+      <script>
+        if (window.contextMenuAPI) {
+          document.getElementById('homeBtn').addEventListener('click', () => {
+            window.contextMenuAPI.send('menu-home');
+          });
+          
+          document.getElementById('exitBtn').addEventListener('click', () => {
+            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
+            window.contextMenuAPI.send('menu-exit');
+          });
+        } else {
+          console.error('[Context Menu] contextMenuAPI not found on window object!');
+        }
+      </script>
+    </body>
+    </html>
+  `;
+  
+  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
+  
+  contextMenuWindow.on('blur', () => {
+    hideContextMenu();
+  });
+  
+  contextMenuWindow.on('closed', () => {
+    console.log('Context menu window closed.');
+    contextMenuWindow = null;
+    if (!isQuitting) {
+      console.log('Recreating context menu window.');
+      createContextMenuWindow(); 
+    } else {
+      console.log('Not recreating context menu window because app is quitting.');
+    }
+  });
+};
+
+const showContextMenu = (anchorX?: number, anchorY?: number) => {
+  if (contextMenuOpen || !contextMenuWindow) return;
+  
+  contextMenuOpen = true;
+  const menuSize = contextMenuWindow.getSize();
+  const menuWidth = menuSize[0];
+  const menuHeight = menuSize[1];
+  
+  let positionX: number;
+  let positionY: number;
+  
+  if (anchorX !== undefined && anchorY !== undefined) {
+    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
+    positionX = anchorX - menuWidth;
+    positionY = anchorY - menuHeight;
+    
+    const fineTuneX = 0; 
+    const fineTuneY = 0; 
+    positionX += fineTuneX;
+    positionY += fineTuneY;
+    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
+  } 
+  else if (mainWindow) { 
+    console.log('[showContextMenu] Positioning relative to pill');
+    const pillBounds = mainWindow.getBounds();
+    const currentMenuSize = contextMenuWindow.getSize(); 
+    const currentMenuHeight = currentMenuSize[1];
+    const currentMenuWidth = currentMenuSize[0];
+
+    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
+    const calculatedPosY = pillBounds.y - currentMenuHeight;
+    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
+    positionY = calculatedPosY + upwardAdjustment; 
+    
+    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
+    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
+  } 
+  else {
+    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
+    contextMenuOpen = false; 
+    return; 
+  }
+  
+  contextMenuWindow.setPosition(positionX, positionY);
+  contextMenuWindow.show();
+};
+
+// Hide the context menu
+const hideContextMenu = () => {
+  if (!contextMenuOpen || !contextMenuWindow) return;
+  contextMenuOpen = false;
+  contextMenuWindow.hide();
+};
+
+// Add a handler for insert-text-at-cursor
+ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
+  let originalClipboardText: string | undefined = undefined;
+  try {
+    console.log('=== TEXT INSERTION PROCESS START ===');
+    console.log('Received text:', text);
+
+    originalClipboardText = clipboard.readText();
+    console.log('Original clipboard text stored.');
+
+    const trimmedText = text.trimStart(); 
+    clipboard.writeText(trimmedText);
+    console.log('Transcription text copied to clipboard');
+
+    const activeWindow = BrowserWindow.getFocusedWindow();
+    let operationSuccess = false;
+    let operationError: string | null = null;
+    const wasElectronWindowFocused = !!activeWindow; 
+
+    if (wasElectronWindowFocused) {
+      console.log('Electron window is focused. Skipping OS paste attempt.');
+      operationSuccess = true; 
+      showNotificationPopup('Output copied to clipboard');
+    } else {
+      console.log('No Electron window is focused, attempting OS-level paste.');
+      try {
+        if (process.platform === 'win32') {
+          console.log('Executing paste command via PowerShell');
+          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
+        } else if (process.platform === 'darwin') {
+          console.log('Executing paste command via AppleScript');
+          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
+        } else if (process.platform === 'linux') {
+          console.log('Executing paste command via xdotool');
+          execSync('xdotool key ctrl+v');
+        } else {
+          throw new Error('Unsupported platform for OS-level paste');
+        }
+        console.log('OS paste command executed successfully.');
+        operationSuccess = true;
+      } catch (err) {
+        console.error('Failed to execute OS paste command:', err);
+        operationError = 'Unable to paste text. Please make sure a text field is focused.';
+        operationSuccess = false;
+      }
+
+      if (operationSuccess) {
+        clipboard.writeText(originalClipboardText);
+        console.log('Original clipboard text restored after successful OS paste.');
+      } else {
+        console.log('OS paste failed. Transcription text remains in clipboard.');
+        showNotificationPopup('Output copied to clipboard');
+      }
+    }
+
+    if (!operationSuccess && !wasElectronWindowFocused) {
+        console.log('=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===');
+        return { success: false, error: operationError }; 
+    }
+    
+    console.log('=== TEXT INSERTION PROCESS COMPLETE ===');
+    return { success: true }; 
+
+  } catch (error) {
+    console.error('=== TEXT INSERTION PROCESS FAILED (Exception) ===');
+    console.error('Error during text insertion:', error);
+    showNotificationPopup('Output copied to clipboard (error)');
+    console.log('Transcription text remains in clipboard due to error.');
+    return {
+      success: false,
+      error: 'An error occurred during text insertion. Text copied to clipboard.'
+    };
+  }
+});
+
+app.whenReady().then(() => {
+  console.log('[Main Process] Setting up onHeadersReceived listener for COOP/COEP...');
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    });
+  });
+  console.log('[Main Process] onHeadersReceived listener configured.');
+
+  app.commandLine.appendSwitch('disable-http-cache');
+  
+  createWindow();
+  createTray();
+  createContextMenuWindow();
+  createHomeWindow();
+  createNotificationWindow();
+
+  // ✨ ALT key listener for push-to-talk
+  startAltListener(state => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send(
+      state === "down" ? "ptt-down" : "ptt-up"
+    );
+  });
+
+  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
+    console.log(`[IPC Main] Received show-context-menu event from pill.`);
+    showContextMenu(); 
+  });
+
+  ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
+    console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
+    showNotificationPopup(message);
+  });
+});
+
+app.on('window-all-closed', () => {
+  console.log('[App Event] window-all-closed - Checking platform...');
+  if (process.platform !== 'darwin') {
+    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+app.on('before-quit', () => {
+  console.log('[App Event] before-quit: Setting isQuitting flag to true.');
+  isQuitting = true;
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+});
+
+// === IPC Handlers for Hotkey Window (Registered ONCE) ===
+// ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => { ... });
+// ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
+// === END IPC Handlers ===
+
+// === IPC Handlers for Context Menu (Registered ONCE) ===
+ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
+  console.log('[IPC Main] \'menu-home\' received.');
+  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
+  if (homeWindow) {
+    console.log('[IPC Main] Home window exists, focusing...');
+    homeWindow.focus();
+  } else {
+    console.log('[IPC Main] Home window is null, creating new window...');
+    createHomeWindow();
+  }
+  hideContextMenu();
+});
+
+ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
+  console.log('[IPC Main] Received menu-exit event');
+  hideContextMenu(); 
+  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
+  app.quit();
+});
+// === END IPC Handlers ===
+
+const showNotificationPopup = (message: string, durationMs = 2000) => {
+  if (!mainWindow) return;
+  
+  if (!notificationWindow) {
+    console.log('Notification window not found, creating...');
+    createNotificationWindow();
+    if (!notificationWindow) {
+      console.error('Failed to create notification window.');
+      return;
+    }
+  }
+
+  if (notificationTimeout) {
+    clearTimeout(notificationTimeout);
+    notificationTimeout = null;
+  }
+
+  const pillBounds = mainWindow.getBounds();
+  const notificationSize = notificationWindow.getSize();
+  const notificationHeight = notificationSize[1];
+  const posX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (notificationSize[0] / 2));
+  const gap = -5; 
+  const posY = pillBounds.y - notificationHeight - gap; 
+
+  console.log(`Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`);
+  notificationWindow.setPosition(posX, posY);
+
+  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const dynamicNotificationHtml = `
+    <html>
+    <head>
+      <style>
+        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; }
+        body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+        .container { background-color: rgba(44, 44, 44, 0.95); border: 1px solid rgba(80, 80, 80, 0.8); border-radius: 12px; padding: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .container.visible { opacity: 1; }
+        .message { font-size: 13px; padding: 6px 10px; text-align: center; white-space: nowrap; }
+      </style>
+    </head>
+    <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
+    </html>
+  `;
+
+  notificationWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`);
+  console.log(`Loading dynamic HTML into notification window with message: "${safeMessage}"`);
+
+  notificationWindow.webContents.once('did-finish-load', () => {
+    console.log('Notification window finished loading dynamic HTML. Adding visible class.');
+    notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.add("visible")', true);
+    notificationWindow.showInactive();
+  });
+
+  notificationTimeout = setTimeout(() => {
+    if (notificationWindow && !notificationWindow.isDestroyed()) {
+      console.log('Hiding notification window after timeout (removing visible class).');
+      notificationWindow.webContents.executeJavaScript('document.querySelector(".container").classList.remove("visible")', true);
+      setTimeout(() => {
+        if (notificationWindow && !notificationWindow.isDestroyed()) {
+          notificationWindow.hide();
+        }
+      }, 300); 
+    }
+    notificationTimeout = null;
+  }, durationMs);
+};
+
+const createHomeWindow = () => {
+  if (homeWindow) {
+    homeWindow.focus();
+    return;
+  }
+
+  const newWidth = 920; 
+  const newHeight = 470;
+
+  homeWindow = new BrowserWindow({
+    width: newWidth,
+    height: newHeight,
+    minWidth: newWidth,  
+    minHeight: newHeight, 
+    show: false, 
+    title: 'Sonic Flow Home',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      spellcheck: false,
+      enableWebSQL: false,
+    },
+    icon: iconPath, 
+  });
+
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
+  } else {
+    const indexHtml = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    homeWindow.loadURL(`file://${indexHtml}#/home`);
+  }
+
+  homeWindow.setMenuBarVisibility(false);
+
+  homeWindow.once('ready-to-show', () => {
+    homeWindow?.show();
+  });
+
+  homeWindow.on('closed', () => {
+    console.log('[Home Window Event] \'closed\' event triggered.');
+    homeWindow = null;
+    console.log('[Home Window Event] homeWindow variable set to null.');
+  });
+};
+
+ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer) => { 
+  console.log('[MainIPC] Received transcribe-groq request');
+  if (!audioBuffer || audioBuffer.byteLength === 0) {
+    console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
+    throw new Error('Audio buffer is empty.');
+  }
+  try {
+    console.log(`[MainIPC] Calling transcribeAudioWithGroq with ArrayBuffer size: ${audioBuffer.byteLength}`);
+    const transcript = await transcribeAudioWithGroq(audioBuffer);
+    console.log(`[MainIPC] Groq transcription successful: "${transcript.substring(0,100)}..."`);
+    return transcript; 
+  } catch (error) {
+    console.error('[MainIPC] Error in transcribe-groq handler:', error);
+    throw new Error(error.message || 'Groq transcription failed in main process.');
+  }
+});
+
+ipcMain.handle('transcribe-gemini', async (_e, arrayBuffer: ArrayBuffer, mimeType: string) => {
+  if (!arrayBuffer || !arrayBuffer.byteLength) throw new Error('Empty audio buffer');
+  return await transcribeAudioWithGemini(arrayBuffer, mimeType);
+});
+</file>
+
 <file path="src/hooks/useTranscription.ts">
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { RingBuffer } from '../audio/ring-buffer'; // Using the imported class
 
 // Constants (can be moved or adjusted)
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
@@ -4742,6 +4835,41 @@ const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
+
+// REMOVED local RingBuffer interface to use the imported class
+// interface RingBuffer { ... }
+
+// NEW util: pulls everything that has been written to the SAB
+async function drainSabToFloat32(ring: RingBuffer | null): Promise<Float32Array> {
+  if (!ring) {
+    console.error("[drainSabToFloat32] RingBuffer instance is null!");
+    return new Float32Array(0);
+  }
+  const total = ring.availableRead();
+  if (total === 0) {
+    console.log("[drainSabToFloat32] No data available to read.");
+    return new Float32Array(0);
+  }
+  const buf = new Float32Array(total);
+  ring.read(buf); // The imported RingBuffer.read(targetBuffer) fills buf and returns null.
+                  // The buf itself is modified.
+  return buf;
+}
+
+// NEW util: trims silence from audio data
+function trimSilence(f32: Float32Array, thresh = 0.005): Float32Array {
+  if (f32.length === 0) return f32;
+  let l = 0, r = f32.length - 1;
+  while (l < f32.length && Math.abs(f32[l]) < thresh) l++;
+
+  if (l === f32.length) { // All samples are below threshold
+    console.log("[trimSilence] Audio is all silence.");
+    return new Float32Array(0);
+  }
+
+  while (r > l && Math.abs(f32[r]) < thresh) r--;
+  return f32.subarray(l, r + 1);
+}
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -4807,15 +4935,18 @@ function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null); // For local AudioWorklet path
+  // These refs are now potentially shared or re-initialized for cloud AudioWorklet path
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const sabRef = useRef<SharedArrayBuffer | null>(null);
+  const ringBufferRef = useRef<RingBuffer | null>(null); // Will hold instance of imported RingBuffer
+
   const localAudioSampleRateRef = useRef<number>(TARGET_AUDIO_CONTEXT_RATE);
 
-  // --- Refs for Cloud ASR (MediaRecorder) --
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  // --- REMOVED Refs for Cloud ASR (MediaRecorder) --
+  // const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // const audioChunksRef = useRef<Blob[]>([]);
 
   // --- Common Refs --
   const streamRef = useRef<MediaStream | null>(null); // Mic stream, shared by both modes
@@ -4828,7 +4959,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
-  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('groq');
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -4874,20 +5005,30 @@ export function useTranscription(): UseTranscriptionReturn {
     if (currentMode === 'local' && !localWorkerRef.current) {
       console.log('[useTranscription] Local mode: Initializing local ASR worker, AudioContext, SAB...');
       
-      // Initialize AudioContext for local path
       if (!audioCtxRef.current) {
         audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
         localAudioSampleRateRef.current = audioCtxRef.current.sampleRate;
-        console.log(`[useTranscription] Local AudioContext created (Rate: ${localAudioSampleRateRef.current}Hz).`);
+        console.log(`[useTranscription] AudioContext created (Rate: ${audioCtxRef.current.sampleRate}Hz).`);
       }
 
-      // Initialize SAB for local path
       if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-        const sabCapacity = 16000 * 10; // samples for 10 seconds (as in local-worker)
-        const sabSizeBytes = (sabCapacity * Float32Array.BYTES_PER_ELEMENT) + Int32Array.BYTES_PER_ELEMENT;
-        sabRef.current = new SharedArrayBuffer(sabSizeBytes);
-        console.log(`[useTranscription] Local SharedArrayBuffer created (${sabSizeBytes} bytes).`);
-      } else if (typeof SharedArrayBuffer === 'undefined') {
+        const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+        const pointerSizeBytes = 4; // For one Int32 write index, as per ring-buffer.ts
+        const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
+        const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
+
+        try {
+            sabRef.current = new SharedArrayBuffer(totalSabSizeBytes);
+            console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
+            ringBufferRef.current = new RingBuffer(sabRef.current);
+            console.log('[useTranscription] RingBuffer instance created for local mode.');
+        } catch (e) {
+            console.error("[useTranscription] Failed to create SharedArrayBuffer or RingBuffer for local mode:", e);
+            setError("Failed to initialize audio buffer for local transcription.");
+            sabRef.current = null; 
+            ringBufferRef.current = null;
+        }
+      } else if (typeof SharedArrayBuffer === 'undefined' && !sabRef.current) { 
         console.error('[useTranscription] Local mode: SharedArrayBuffer is not supported. Local ASR will not work.');
         setError('SharedArrayBuffer not supported, local ASR disabled.');
         return; // Cannot proceed with local setup
@@ -5011,135 +5152,124 @@ export function useTranscription(): UseTranscriptionReturn {
       setReady(false);
       return;
     }
-    // Ensure general readiness (mic) before mode-specific checks
-    if (!ready && currentMode === 'local') { // For local mode, `ready` means model is also ready
+    if (!ready && currentMode === 'local') {
         setError('Local transcription engine not ready.');
         console.warn('[useTranscription] Local ASR not ready, cannot start.');
         return;
     }
-     if (!ready && currentMode === 'cloud') { // For cloud, `ready` means mic is available.
-        setError('Mic not available.'); // Should have been caught by streamRef check
-        console.warn('[useTranscription] Mic not ready for cloud recording.');
+     if (!ready && currentMode === 'cloud') { 
+        setError('Mic not available or system not ready for cloud recording.');
+        console.warn('[useTranscription] Mic/System not ready for cloud recording.');
         return;
     }
 
     setError(null);
     setText('');
-    setRecording(true);
+    // setRecording(true) moved into mode-specific logic after async ops
 
     if (currentMode === 'cloud') {
-      console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
-      audioChunksRef.current = []; // Clear previous chunks
-      try {
-        // Directly use audio/webm with Opus
-        let chosenMimeType = 'audio/webm;codecs=opus'; 
-        const audioBitsPerSecond = 128000; 
+      console.log('[useTranscription] Starting cloud recording with AudioWorklet...');
+      
+      const ensureAudioContextReady = async () => {
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed' || audioCtxRef.current.sampleRate !== TARGET_AUDIO_CONTEXT_RATE) {
+          audioCtxRef.current?.close().catch(console.error); 
+          audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
+          console.log(`[useTranscription] Cloud: AudioContext created/recreated (Rate: ${audioCtxRef.current.sampleRate}Hz).`);
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+          await audioCtxRef.current.resume();
+          console.log('[useTranscription] Cloud: AudioContext resumed.');
+        }
+      };
 
-        if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
-          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
-          if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
-            setRecording(false);
-            return;
+      const ensureWorkletLoaded = async (workletPath: string) => {
+        if (!audioCtxRef.current) throw new Error("AudioContext not initialized for worklet loading.");
+        try {
+          await audioCtxRef.current.audioWorklet.addModule(workletPath);
+          console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' added.`);
+        } catch (moduleError: any) {
+          if (moduleError.name === 'InvalidStateError' || (moduleError.message && (moduleError.message.includes('already been loaded') || moduleError.message.includes('has already been added')))) {
+            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' likely already added.`);
+          } else {
+            console.error('[useTranscription] Cloud: Error adding AudioWorklet module:', moduleError);
+            throw moduleError; 
           }
         }
-        
-        const options = {
-          mimeType: chosenMimeType,
-          audioBitsPerSecond: audioBitsPerSecond,
-        };
+      };
+      
+      (async () => {
+        try {
+          setProcessing(true); 
+          await ensureAudioContextReady();
 
-        mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
-        console.log('[useTranscription] MediaRecorder using MIME type:', mediaRecorderRef.current.mimeType);
-
-        mediaRecorderRef.current.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-            console.log(`[useTranscription] MediaRecorder data available: ${event.data.size} bytes`);
-          }
-        };
-
-        mediaRecorderRef.current.onstop = async () => {
-          console.log('[useTranscription] MediaRecorder stopped. Processing collected audio chunks.');
-          if (audioChunksRef.current.length === 0) {
-            console.warn('[useTranscription] No audio chunks recorded.');
-            setProcessing(false);
-            // setError('No audio was recorded.'); // Optional: inform user
+          if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
+            const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+            const pointerSizeBytes = 4; // For one Int32 write index
+            const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
+            const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
+            try {
+                sabRef.current = new SharedArrayBuffer(totalSabSizeBytes);
+                console.log(`[useTranscription] Cloud: SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
+                ringBufferRef.current = new RingBuffer(sabRef.current);
+                console.log('[useTranscription] RingBuffer instance created for cloud mode.');
+            } catch (e) {
+                 console.error("[useTranscription] Cloud: Failed to create SharedArrayBuffer or RingBuffer:", e);
+                 setError("Failed to initialize audio buffer for cloud.");
+                 sabRef.current = null; ringBufferRef.current = null;
+                 setRecording(false); setProcessing(false);
+                 return;
+            }
+          } else if (!sabRef.current && typeof SharedArrayBuffer === 'undefined') {
+            console.error('[useTranscription] Cloud: SharedArrayBuffer is not supported.');
+            setError('SharedArrayBuffer not supported for cloud recording.');
+            setRecording(false); setProcessing(false);
             return;
           }
-          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || chosenMimeType });
-          audioChunksRef.current = []; // Clear for next recording
           
-          console.log(`[useTranscription] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
-          setProcessing(true);
-          try {
-            const arrayBufferPromise = audioBlob.arrayBuffer();
-            arrayBufferPromise.then(async (arrayBuffer) => {
-              console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              
-              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
-                throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
-              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
-                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
-              }
-
-              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
-              
-              const preIPCTime = performance.now();
-              const transcriptPromise =
-                cloudEngine === 'groq'
-                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
-                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
-                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
-              
-              const transcript = await transcriptPromise;
-              
-              if (profilingStartTimeRef.current) {
-                const endTime = performance.now();
-                const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
-                console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
-                profilingStartTimeRef.current = null; // Reset for next run
-              }
-              setText(transcript);
-              if (transcript && window.electron.insertTextAtCursor) {
-                window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
-              }
-              setProcessing(false);
-            }).catch(err => {
-              console.error('[useTranscription] Error converting Blob to ArrayBuffer:', err);
-              setError(err.message || 'Failed to process audio data.');
-              setProcessing(false);
-            });
-          } catch (err: any) {
-            console.error('[useTranscription] Error during Groq transcription IPC or Blob processing setup:', err);
-            setError(err.message || 'Cloud transcription failed.');
-            setProcessing(false); // Ensure processing is false on outer catch
+          // If SAB exists but RingBuffer was not created (e.g. race condition or mode switch)
+          if (sabRef.current && !ringBufferRef.current) {
+            try {
+                ringBufferRef.current = new RingBuffer(sabRef.current);
+                console.log('[useTranscription] Cloud: RingBuffer instance re-created/validated.');
+            } catch (e) {
+                console.error("[useTranscription] Cloud: Failed to create RingBuffer for existing SAB:", e);
+                setError("Failed to initialize RingBuffer for cloud recording.");
+                setRecording(false); setProcessing(false);
+                return;
+            }
           }
-          // Remove finally setProcessing(false) from here as it's handled in promise chain or its catch
-        };
 
-        mediaRecorderRef.current.onerror = (event: Event) => {
-            console.error('[useTranscription] MediaRecorder error:', event);
-            setError('Error during MediaRecorder operation.');
-            setRecording(false);
-            setProcessing(false);
-        };
+          await ensureWorkletLoaded('/audioworklet-processor.js');
 
-        mediaRecorderRef.current.start(); // Default timeslice (collect all until stop)
-        console.log('[useTranscription] MediaRecorder started.');
+          if (!audioCtxRef.current || !streamRef.current || !sabRef.current || !ringBufferRef.current) {
+            throw new Error("Audio context, stream, SAB, or RingBuffer not available for cloud worklet setup.");
+          }
 
-      } catch (err: any) {
-        console.error('[useTranscription] Error starting MediaRecorder:', err);
-        setError(`Failed to start cloud recording: ${err.message}`);
-        setRecording(false);
-      }
+          microphoneSourceRef.current?.disconnect();
+          workletNodeRef.current?.disconnect();
+          
+          // Reset RingBuffer before starting a new recording session
+          ringBufferRef.current.reset(); 
+
+          microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
+          workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
+            processorOptions: { sab: sabRef.current }
+          });
+          microphoneSourceRef.current.connect(workletNodeRef.current);
+          
+          setRecording(true);
+          setProcessing(false); 
+          console.log('[useTranscription] Cloud AudioWorklet recording started.');
+        } catch (err: any) {
+          console.error('[useTranscription] Error starting cloud AudioWorklet recording:', err);
+          setError(`Failed to start cloud recording (worklet): ${err.message}`);
+          setRecording(false);
+          setProcessing(false);
+        }
+      })();
+      // Old MediaRecorder logic for cloud start is now removed.
     } else { // currentMode === 'local'
+      // Existing local mode start logic
       if (!localWorkerRef.current || !audioCtxRef.current || !sabRef.current || !streamRef.current) {
         setError('Local ASR system not fully initialized. Cannot start.');
         console.error('[useTranscription] Attempted to start local recording but components are missing.');
@@ -5193,15 +5323,85 @@ export function useTranscription(): UseTranscriptionReturn {
     setRecording(false); // Set recording false immediately
 
     if (currentMode === 'cloud') {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
-        console.warn('[useTranscription] Cloud MediaRecorder not recording or not initialized.');
-        setRecording(false); // also set recording to false here
+      console.log('[useTranscription] Stopping cloud AudioWorklet recording...');
+      microphoneSourceRef.current?.disconnect();
+      microphoneSourceRef.current = null;
+      workletNodeRef.current?.disconnect();
+      workletNodeRef.current = null;
+      
+      if (!ringBufferRef.current) {
+        console.error("[useTranscription] Cloud stop: RingBuffer not available. Ensure it's initialized.");
+        setError("Failed to process audio: RingBuffer instance missing.");
+        // setProcessing(false); // Will be handled by finally if an async op was started
         return;
       }
-      console.log('[useTranscription] Profiling: Step 1 - Stopping MediaRecorder...');
-      profilingStartTimeRef.current = performance.now(); // Start E2E profiling for cloud path
-      mediaRecorderRef.current.stop(); // This will trigger 'dataavailable' then 'stop'
+
+      (async () => {
+        setProcessing(true);
+        try {
+          const pcmF32 = await drainSabToFloat32(ringBufferRef.current);
+          
+          if (pcmF32.length === 0) {
+            console.warn('[useTranscription] No audio data from RingBuffer or data was all silence. Not sending.');
+            setText(''); 
+            setProcessing(false);
+            return;
+          }
+
+          const trimmedPcmF32 = trimSilence(pcmF32);
+          if (trimmedPcmF32.length === 0) {
+            console.warn('[useTranscription] Audio is all silence after trimming. Not sending.');
+            setText('');
+            setProcessing(false);
+            return;
+          }
+
+          const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+
+          profilingStartTimeRef.current = performance.now();
+          const preIPCTime = performance.now();
+          let transcript = '';
+
+          if (cloudEngine === 'groq') {
+            if (!window.electron?.transcribeGroq) {
+              throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+            }
+            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Groq...`);
+            transcript = await window.electron.transcribeGroq(wavBuf.slice(0), [wavBuf.slice(0)]);
+          } else { 
+            if (!window.electron?.transcribeGemini) {
+              throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
+            }
+            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`);
+            const geminiResult = await window.electron.transcribeGemini(wavBuf.slice(0), 'audio/wav', [wavBuf.slice(0)]);
+            transcript = geminiResult.text;
+          }
+          
+          if (profilingStartTimeRef.current) {
+            const endTime = performance.now();
+            const durationTotal = endTime - profilingStartTimeRef.current; 
+            const durationIPCAndEngine = endTime - preIPCTime;
+            console.log(`[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`);
+            console.log(`[useTranscription]   E2E (Stop Rec -> UI Text): ${durationTotal.toFixed(2)} ms`);
+            console.log(`[useTranscription]   IPC + ${cloudEngine} Engine: ${durationIPCAndEngine.toFixed(2)} ms`);
+            profilingStartTimeRef.current = null;
+          }
+
+          setText(transcript);
+          if (transcript && window.electron.insertTextAtCursor) {
+            window.electron.insertTextAtCursor(transcript)
+              .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
+          }
+        } catch (err: any) {
+          console.error('[useTranscription] Error during cloud AudioWorklet transcription or IPC:', err);
+          setError(err.message || 'Cloud transcription (worklet) failed.');
+        } finally {
+          setProcessing(false);
+        }
+      })();
+      // Old MediaRecorder logic for cloud stop is now removed.
     } else { // currentMode === 'local'
+      // Existing local mode stop logic
       console.log('[useTranscription] Stopping local recording. Disconnecting AudioWorklet, notifying worker.');
       if (microphoneSourceRef.current) {
         microphoneSourceRef.current.disconnect();
@@ -5263,19 +5463,6 @@ export function useTranscription(): UseTranscriptionReturn {
     setCloudEngine,
   };
 }
-
-// Augment the Window interface if not already done globally (e.g., in a .d.ts file)
-// This is often in a file like 'electron.d.ts' or similar for Electron projects.
-// interface Window {
-//   electron?: {
-//     toggleDictation: (callback: () => void) => () => void;
-//     showPillContextMenu: () => void;
-//     insertTextAtCursor: (text: string) => Promise<void>; // Original was Promise<void>
-//     viewLogFile: () => Promise<string | null>;
-//     sendNotification: (message: string) => void;
-//     transcribeGroq: (audioBuffer: ArrayBuffer) => Promise<string>; 
-//   };
-// }
 
 // Mock for environments where window.electron might not be fully defined (e.g. web testing)
 // This should align with the interface Window.electron expected by the hook.

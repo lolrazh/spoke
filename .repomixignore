@@ -6,7 +6,3 @@
 /node_modules
 /.vite
 /.cursor
-
-faster-implementation.md
-profiling-reults.md
-repomix-output.xml
