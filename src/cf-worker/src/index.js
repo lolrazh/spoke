@@ -30,7 +30,7 @@ export default {
 				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
 				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
 
-				if (!contentType || (contentType !== 'audio/wav' && contentType !== 'audio/webm')) {
+				if (!contentType || (!contentType.toLowerCase().startsWith('audio/wav') && !contentType.toLowerCase().startsWith('audio/webm'))) {
 					return new Response('Expected audio/wav or audio/webm content type', { status: 400 });
 				}
 
