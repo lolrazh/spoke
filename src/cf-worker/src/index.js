@@ -30,8 +30,8 @@ export default {
 				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
 				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
 
-				if (!contentType || !contentType.startsWith('audio/')) {
-					return new Response('Expected audio content type', { status: 400 });
+				if (!contentType || (contentType !== 'audio/wav' && contentType !== 'audio/webm')) {
+					return new Response('Expected audio/wav or audio/webm content type', { status: 400 });
 				}
 
 				// Get raw audio data
@@ -135,7 +135,6 @@ export default {
 							],
 						},
 					],
-					// generationConfig could be added here if needed
 				};
 
 				const controller = new AbortController();

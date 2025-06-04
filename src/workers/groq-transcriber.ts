@@ -26,9 +26,9 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
     const response = await fetch(workerUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'audio/webm',
+        'Content-Type': 'audio/wav',
         'X-Audio-Language': inputLanguage,
-        'X-Audio-Filename': 'audio.webm'
+        'X-Audio-Filename': 'audio.wav'
       },
       body: audioData // Send raw ArrayBuffer
     });

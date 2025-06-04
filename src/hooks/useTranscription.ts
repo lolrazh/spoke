@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { RingBuffer } from '../audio/ring-buffer'; // Using the imported class
 
 // Constants (can be moved or adjusted)
 const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
@@ -6,6 +7,41 @@ const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
+
+// REMOVED local RingBuffer interface to use the imported class
+// interface RingBuffer { ... }
+
+// NEW util: pulls everything that has been written to the SAB
+async function drainSabToFloat32(ring: RingBuffer | null): Promise<Float32Array> {
+  if (!ring) {
+    console.error("[drainSabToFloat32] RingBuffer instance is null!");
+    return new Float32Array(0);
+  }
+  const total = ring.availableRead();
+  if (total === 0) {
+    console.log("[drainSabToFloat32] No data available to read.");
+    return new Float32Array(0);
+  }
+  const buf = new Float32Array(total);
+  ring.read(buf); // The imported RingBuffer.read(targetBuffer) fills buf and returns null.
+                  // The buf itself is modified.
+  return buf;
+}
+
+// NEW util: trims silence from audio data
+function trimSilence(f32: Float32Array, thresh = 0.005): Float32Array {
+  if (f32.length === 0) return f32;
+  let l = 0, r = f32.length - 1;
+  while (l < f32.length && Math.abs(f32[l]) < thresh) l++;
+
+  if (l === f32.length) { // All samples are below threshold
+    console.log("[trimSilence] Audio is all silence.");
+    return new Float32Array(0);
+  }
+
+  while (r > l && Math.abs(f32[r]) < thresh) r--;
+  return f32.subarray(l, r + 1);
+}
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -71,15 +107,18 @@ function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null); // For local AudioWorklet path
+  // These refs are now potentially shared or re-initialized for cloud AudioWorklet path
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const sabRef = useRef<SharedArrayBuffer | null>(null);
+  const ringBufferRef = useRef<RingBuffer | null>(null); // Will hold instance of imported RingBuffer
+
   const localAudioSampleRateRef = useRef<number>(TARGET_AUDIO_CONTEXT_RATE);
 
-  // --- Refs for Cloud ASR (MediaRecorder) --
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  // --- REMOVED Refs for Cloud ASR (MediaRecorder) --
+  // const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // const audioChunksRef = useRef<Blob[]>([]);
 
   // --- Common Refs --
   const streamRef = useRef<MediaStream | null>(null); // Mic stream, shared by both modes
@@ -138,20 +177,30 @@ export function useTranscription(): UseTranscriptionReturn {
     if (currentMode === 'local' && !localWorkerRef.current) {
       console.log('[useTranscription] Local mode: Initializing local ASR worker, AudioContext, SAB...');
       
-      // Initialize AudioContext for local path
       if (!audioCtxRef.current) {
         audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
         localAudioSampleRateRef.current = audioCtxRef.current.sampleRate;
-        console.log(`[useTranscription] Local AudioContext created (Rate: ${localAudioSampleRateRef.current}Hz).`);
+        console.log(`[useTranscription] AudioContext created (Rate: ${audioCtxRef.current.sampleRate}Hz).`);
       }
 
-      // Initialize SAB for local path
       if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-        const sabCapacity = 16000 * 10; // samples for 10 seconds (as in local-worker)
-        const sabSizeBytes = (sabCapacity * Float32Array.BYTES_PER_ELEMENT) + Int32Array.BYTES_PER_ELEMENT;
-        sabRef.current = new SharedArrayBuffer(sabSizeBytes);
-        console.log(`[useTranscription] Local SharedArrayBuffer created (${sabSizeBytes} bytes).`);
-      } else if (typeof SharedArrayBuffer === 'undefined') {
+        const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+        const pointerSizeBytes = 4; // For one Int32 write index, as per ring-buffer.ts
+        const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
+        const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
+
+        try {
+            sabRef.current = new SharedArrayBuffer(totalSabSizeBytes);
+            console.log(`[useTranscription] SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
+            ringBufferRef.current = new RingBuffer(sabRef.current);
+            console.log('[useTranscription] RingBuffer instance created for local mode.');
+        } catch (e) {
+            console.error("[useTranscription] Failed to create SharedArrayBuffer or RingBuffer for local mode:", e);
+            setError("Failed to initialize audio buffer for local transcription.");
+            sabRef.current = null; 
+            ringBufferRef.current = null;
+        }
+      } else if (typeof SharedArrayBuffer === 'undefined' && !sabRef.current) { 
         console.error('[useTranscription] Local mode: SharedArrayBuffer is not supported. Local ASR will not work.');
         setError('SharedArrayBuffer not supported, local ASR disabled.');
         return; // Cannot proceed with local setup
@@ -275,135 +324,124 @@ export function useTranscription(): UseTranscriptionReturn {
       setReady(false);
       return;
     }
-    // Ensure general readiness (mic) before mode-specific checks
-    if (!ready && currentMode === 'local') { // For local mode, `ready` means model is also ready
+    if (!ready && currentMode === 'local') {
         setError('Local transcription engine not ready.');
         console.warn('[useTranscription] Local ASR not ready, cannot start.');
         return;
     }
-     if (!ready && currentMode === 'cloud') { // For cloud, `ready` means mic is available.
-        setError('Mic not available.'); // Should have been caught by streamRef check
-        console.warn('[useTranscription] Mic not ready for cloud recording.');
+     if (!ready && currentMode === 'cloud') { 
+        setError('Mic not available or system not ready for cloud recording.');
+        console.warn('[useTranscription] Mic/System not ready for cloud recording.');
         return;
     }
 
     setError(null);
     setText('');
-    setRecording(true);
+    // setRecording(true) moved into mode-specific logic after async ops
 
     if (currentMode === 'cloud') {
-      console.log('[useTranscription] Starting cloud recording with MediaRecorder...');
-      audioChunksRef.current = []; // Clear previous chunks
-      try {
-        // Directly use audio/webm with Opus
-        let chosenMimeType = 'audio/webm;codecs=opus'; 
-        const audioBitsPerSecond = 128000; 
+      console.log('[useTranscription] Starting cloud recording with AudioWorklet...');
+      
+      const ensureAudioContextReady = async () => {
+        if (!audioCtxRef.current || audioCtxRef.current.state === 'closed' || audioCtxRef.current.sampleRate !== TARGET_AUDIO_CONTEXT_RATE) {
+          audioCtxRef.current?.close().catch(console.error); 
+          audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
+          console.log(`[useTranscription] Cloud: AudioContext created/recreated (Rate: ${audioCtxRef.current.sampleRate}Hz).`);
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+          await audioCtxRef.current.resume();
+          console.log('[useTranscription] Cloud: AudioContext resumed.');
+        }
+      };
 
-        if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-          console.warn(`[useTranscription] MIME type '${chosenMimeType}' not supported. Trying 'audio/ogg;codecs=opus'.`);
-          chosenMimeType = 'audio/ogg;codecs=opus'; // Fallback to OGG container if WebM/Opus isn't supported
-          if (!MediaRecorder.isTypeSupported(chosenMimeType)) {
-            console.error(`[useTranscription] Fallback MIME type '${chosenMimeType}' also not supported. Cannot record.`);
-            setError('No supported Opus audio format found for recording (WebM/Opus or Ogg/Opus).');
-            setRecording(false);
-            return;
+      const ensureWorkletLoaded = async (workletPath: string) => {
+        if (!audioCtxRef.current) throw new Error("AudioContext not initialized for worklet loading.");
+        try {
+          await audioCtxRef.current.audioWorklet.addModule(workletPath);
+          console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' added.`);
+        } catch (moduleError: any) {
+          if (moduleError.name === 'InvalidStateError' || (moduleError.message && (moduleError.message.includes('already been loaded') || moduleError.message.includes('has already been added')))) {
+            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' likely already added.`);
+          } else {
+            console.error('[useTranscription] Cloud: Error adding AudioWorklet module:', moduleError);
+            throw moduleError; 
           }
         }
-        
-        const options = {
-          mimeType: chosenMimeType,
-          audioBitsPerSecond: audioBitsPerSecond,
-        };
+      };
+      
+      (async () => {
+        try {
+          setProcessing(true); 
+          await ensureAudioContextReady();
 
-        mediaRecorderRef.current = new MediaRecorder(streamRef.current!, options);
-        console.log('[useTranscription] MediaRecorder using MIME type:', mediaRecorderRef.current.mimeType);
-
-        mediaRecorderRef.current.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-            console.log(`[useTranscription] MediaRecorder data available: ${event.data.size} bytes`);
-          }
-        };
-
-        mediaRecorderRef.current.onstop = async () => {
-          console.log('[useTranscription] MediaRecorder stopped. Processing collected audio chunks.');
-          if (audioChunksRef.current.length === 0) {
-            console.warn('[useTranscription] No audio chunks recorded.');
-            setProcessing(false);
-            // setError('No audio was recorded.'); // Optional: inform user
+          if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
+            const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+            const pointerSizeBytes = 4; // For one Int32 write index
+            const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
+            const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
+            try {
+                sabRef.current = new SharedArrayBuffer(totalSabSizeBytes);
+                console.log(`[useTranscription] Cloud: SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`);
+                ringBufferRef.current = new RingBuffer(sabRef.current);
+                console.log('[useTranscription] RingBuffer instance created for cloud mode.');
+            } catch (e) {
+                 console.error("[useTranscription] Cloud: Failed to create SharedArrayBuffer or RingBuffer:", e);
+                 setError("Failed to initialize audio buffer for cloud.");
+                 sabRef.current = null; ringBufferRef.current = null;
+                 setRecording(false); setProcessing(false);
+                 return;
+            }
+          } else if (!sabRef.current && typeof SharedArrayBuffer === 'undefined') {
+            console.error('[useTranscription] Cloud: SharedArrayBuffer is not supported.');
+            setError('SharedArrayBuffer not supported for cloud recording.');
+            setRecording(false); setProcessing(false);
             return;
           }
-          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || chosenMimeType });
-          audioChunksRef.current = []; // Clear for next recording
           
-          console.log(`[useTranscription] Audio blob created: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
-          setProcessing(true);
-          try {
-            const arrayBufferPromise = audioBlob.arrayBuffer();
-            arrayBufferPromise.then(async (arrayBuffer) => {
-              console.log(`[useTranscription] Profiling: Step 2 - ArrayBuffer created (${arrayBuffer.byteLength} bytes).`);
-              
-              if (cloudEngine === 'groq' && !window.electron?.transcribeGroq) {
-                throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
-              } else if (cloudEngine === 'gemini' && !window.electron?.transcribeGemini) {
-                throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
-              }
-
-              console.log(`[useTranscription] Sending audio ArrayBuffer to ${cloudEngine} (transferable)...`);
-              
-              const preIPCTime = performance.now();
-              const transcriptPromise =
-                cloudEngine === 'groq'
-                  ? window.electron.transcribeGroq(arrayBuffer, [arrayBuffer])
-                  // Pass audioBlob.type as mimeType to transcribeGemini. Corrected argument order.
-                  : window.electron.transcribeGemini(arrayBuffer, audioBlob.type, [arrayBuffer]).then(result => result.text);
-              
-              const transcript = await transcriptPromise;
-              
-              if (profilingStartTimeRef.current) {
-                const endTime = performance.now();
-                const durationTotal = endTime - profilingStartTimeRef.current; // From mediaRecorder.stop() to result
-                const durationIPCAndEngine = endTime - preIPCTime; // From pre-IPC call to result
-                console.log(`[useTranscription] Profiling: Step 4 (Renderer) - ${cloudEngine} transcript received.`);
-                console.log(`[useTranscription]   Total E2E (MediaRecorder.stop to result): ${durationTotal.toFixed(2)} ms`);
-                console.log(`[useTranscription]   IPC + ${cloudEngine} (Main Thread actual work): ${durationIPCAndEngine.toFixed(2)} ms`);
-                profilingStartTimeRef.current = null; // Reset for next run
-              }
-              setText(transcript);
-              if (transcript && window.electron.insertTextAtCursor) {
-                window.electron.insertTextAtCursor(transcript)
-                  .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
-              }
-              setProcessing(false);
-            }).catch(err => {
-              console.error('[useTranscription] Error converting Blob to ArrayBuffer:', err);
-              setError(err.message || 'Failed to process audio data.');
-              setProcessing(false);
-            });
-          } catch (err: any) {
-            console.error('[useTranscription] Error during Groq transcription IPC or Blob processing setup:', err);
-            setError(err.message || 'Cloud transcription failed.');
-            setProcessing(false); // Ensure processing is false on outer catch
+          // If SAB exists but RingBuffer was not created (e.g. race condition or mode switch)
+          if (sabRef.current && !ringBufferRef.current) {
+            try {
+                ringBufferRef.current = new RingBuffer(sabRef.current);
+                console.log('[useTranscription] Cloud: RingBuffer instance re-created/validated.');
+            } catch (e) {
+                console.error("[useTranscription] Cloud: Failed to create RingBuffer for existing SAB:", e);
+                setError("Failed to initialize RingBuffer for cloud recording.");
+                setRecording(false); setProcessing(false);
+                return;
+            }
           }
-          // Remove finally setProcessing(false) from here as it's handled in promise chain or its catch
-        };
 
-        mediaRecorderRef.current.onerror = (event: Event) => {
-            console.error('[useTranscription] MediaRecorder error:', event);
-            setError('Error during MediaRecorder operation.');
-            setRecording(false);
-            setProcessing(false);
-        };
+          await ensureWorkletLoaded('/audioworklet-processor.js');
 
-        mediaRecorderRef.current.start(); // Default timeslice (collect all until stop)
-        console.log('[useTranscription] MediaRecorder started.');
+          if (!audioCtxRef.current || !streamRef.current || !sabRef.current || !ringBufferRef.current) {
+            throw new Error("Audio context, stream, SAB, or RingBuffer not available for cloud worklet setup.");
+          }
 
-      } catch (err: any) {
-        console.error('[useTranscription] Error starting MediaRecorder:', err);
-        setError(`Failed to start cloud recording: ${err.message}`);
-        setRecording(false);
-      }
+          microphoneSourceRef.current?.disconnect();
+          workletNodeRef.current?.disconnect();
+          
+          // Reset RingBuffer before starting a new recording session
+          ringBufferRef.current.reset(); 
+
+          microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
+          workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, 'capture-processor', {
+            processorOptions: { sab: sabRef.current }
+          });
+          microphoneSourceRef.current.connect(workletNodeRef.current);
+          
+          setRecording(true);
+          setProcessing(false); 
+          console.log('[useTranscription] Cloud AudioWorklet recording started.');
+        } catch (err: any) {
+          console.error('[useTranscription] Error starting cloud AudioWorklet recording:', err);
+          setError(`Failed to start cloud recording (worklet): ${err.message}`);
+          setRecording(false);
+          setProcessing(false);
+        }
+      })();
+      // Old MediaRecorder logic for cloud start is now removed.
     } else { // currentMode === 'local'
+      // Existing local mode start logic
       if (!localWorkerRef.current || !audioCtxRef.current || !sabRef.current || !streamRef.current) {
         setError('Local ASR system not fully initialized. Cannot start.');
         console.error('[useTranscription] Attempted to start local recording but components are missing.');
@@ -457,15 +495,85 @@ export function useTranscription(): UseTranscriptionReturn {
     setRecording(false); // Set recording false immediately
 
     if (currentMode === 'cloud') {
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
-        console.warn('[useTranscription] Cloud MediaRecorder not recording or not initialized.');
-        setRecording(false); // also set recording to false here
+      console.log('[useTranscription] Stopping cloud AudioWorklet recording...');
+      microphoneSourceRef.current?.disconnect();
+      microphoneSourceRef.current = null;
+      workletNodeRef.current?.disconnect();
+      workletNodeRef.current = null;
+      
+      if (!ringBufferRef.current) {
+        console.error("[useTranscription] Cloud stop: RingBuffer not available. Ensure it's initialized.");
+        setError("Failed to process audio: RingBuffer instance missing.");
+        // setProcessing(false); // Will be handled by finally if an async op was started
         return;
       }
-      console.log('[useTranscription] Profiling: Step 1 - Stopping MediaRecorder...');
-      profilingStartTimeRef.current = performance.now(); // Start E2E profiling for cloud path
-      mediaRecorderRef.current.stop(); // This will trigger 'dataavailable' then 'stop'
+
+      (async () => {
+        setProcessing(true);
+        try {
+          const pcmF32 = await drainSabToFloat32(ringBufferRef.current);
+          
+          if (pcmF32.length === 0) {
+            console.warn('[useTranscription] No audio data from RingBuffer or data was all silence. Not sending.');
+            setText(''); 
+            setProcessing(false);
+            return;
+          }
+
+          const trimmedPcmF32 = trimSilence(pcmF32);
+          if (trimmedPcmF32.length === 0) {
+            console.warn('[useTranscription] Audio is all silence after trimming. Not sending.');
+            setText('');
+            setProcessing(false);
+            return;
+          }
+
+          const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+
+          profilingStartTimeRef.current = performance.now();
+          const preIPCTime = performance.now();
+          let transcript = '';
+
+          if (cloudEngine === 'groq') {
+            if (!window.electron?.transcribeGroq) {
+              throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
+            }
+            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Groq...`);
+            transcript = await window.electron.transcribeGroq(wavBuf.slice(0), [wavBuf.slice(0)]);
+          } else { 
+            if (!window.electron?.transcribeGemini) {
+              throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
+            }
+            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`);
+            const geminiResult = await window.electron.transcribeGemini(wavBuf.slice(0), 'audio/wav', [wavBuf.slice(0)]);
+            transcript = geminiResult.text;
+          }
+          
+          if (profilingStartTimeRef.current) {
+            const endTime = performance.now();
+            const durationTotal = endTime - profilingStartTimeRef.current; 
+            const durationIPCAndEngine = endTime - preIPCTime;
+            console.log(`[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`);
+            console.log(`[useTranscription]   E2E (Stop Rec -> UI Text): ${durationTotal.toFixed(2)} ms`);
+            console.log(`[useTranscription]   IPC + ${cloudEngine} Engine: ${durationIPCAndEngine.toFixed(2)} ms`);
+            profilingStartTimeRef.current = null;
+          }
+
+          setText(transcript);
+          if (transcript && window.electron.insertTextAtCursor) {
+            window.electron.insertTextAtCursor(transcript)
+              .catch(err => console.error(`[useTranscription] Error inserting ${cloudEngine} text:`, err));
+          }
+        } catch (err: any) {
+          console.error('[useTranscription] Error during cloud AudioWorklet transcription or IPC:', err);
+          setError(err.message || 'Cloud transcription (worklet) failed.');
+        } finally {
+          setProcessing(false);
+        }
+      })();
+      // Old MediaRecorder logic for cloud stop is now removed.
     } else { // currentMode === 'local'
+      // Existing local mode stop logic
       console.log('[useTranscription] Stopping local recording. Disconnecting AudioWorklet, notifying worker.');
       if (microphoneSourceRef.current) {
         microphoneSourceRef.current.disconnect();
@@ -527,19 +635,6 @@ export function useTranscription(): UseTranscriptionReturn {
     setCloudEngine,
   };
 }
-
-// Augment the Window interface if not already done globally (e.g., in a .d.ts file)
-// This is often in a file like 'electron.d.ts' or similar for Electron projects.
-// interface Window {
-//   electron?: {
-//     toggleDictation: (callback: () => void) => () => void;
-//     showPillContextMenu: () => void;
-//     insertTextAtCursor: (text: string) => Promise<void>; // Original was Promise<void>
-//     viewLogFile: () => Promise<string | null>;
-//     sendNotification: (message: string) => void;
-//     transcribeGroq: (audioBuffer: ArrayBuffer) => Promise<string>; 
-//   };
-// }
 
 // Mock for environments where window.electron might not be fully defined (e.g. web testing)
 // This should align with the interface Window.electron expected by the hook.
