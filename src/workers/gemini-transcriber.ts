@@ -1,6 +1,5 @@
 // gemini-transcriber.ts
 // import { GoogleGenAI } from '@google/genai';        // npm i @google/genai
-import { Blob } from 'node:buffer';              // Node20+ already has Buffer
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.
 // Logging for API key status can be removed from here.
