@@ -10,6 +10,10 @@ export default defineConfig({
       '@': join(__dirname, 'src'), // Example alias
     },
   },
+  // Add worker configuration
+  worker: {
+    format: 'es',
+  },
   // Add build options for the main app and the worklet
   build: {
     rollupOptions: {

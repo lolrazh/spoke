@@ -1,3 +1,5 @@
+console.log("[LocalWorker] Worker file starting to load...");
+
 import {
     pipeline,
     env,
@@ -5,6 +7,13 @@ import {
     Progress
 } from "@huggingface/transformers";
 import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
+
+console.log("[LocalWorker] Imports completed successfully");
+
+// Configure transformers.js environment
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+console.log("[LocalWorker] Transformers environment configured");
 
 // Updated MODEL_ID for streaming
 const MODEL_ID = "onnx-community/moonshine-base-ONNX";
@@ -16,7 +25,7 @@ type DtypeConfig = Record<string, "auto" | "fp32" | "fp16" | "q8" | "q4f16" | "i
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
     encoder_model: "fp16", // from moonshine-worker
-    decoder_model_merged: "q8", // from moonshine-worker
+    decoder_model_merged: "fp16", // from moonshine-worker
   },
 };
 

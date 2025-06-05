@@ -130,7 +130,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('local'); // Default to local mode
   const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
@@ -207,11 +207,18 @@ export function useTranscription(): UseTranscriptionReturn {
       }
 
       // Initialize Local Worker
-      localWorkerRef.current = new Worker(
-        new URL('../workers/local-worker.ts', import.meta.url),
-        { type: 'module' }
-      );
-      console.log('[useTranscription] Local ASR worker instance created.');
+      try {
+        console.log('[useTranscription] Creating local worker...');
+        localWorkerRef.current = new Worker(
+          new URL('../workers/local-worker.ts', import.meta.url),
+          { type: 'module' }
+        );
+        console.log('[useTranscription] Local ASR worker instance created successfully.');
+      } catch (workerError) {
+        console.error('[useTranscription] Failed to create local worker:', workerError);
+        setError(`Failed to create local worker: ${workerError}`);
+        return;
+      }
 
       // Send INIT message to local worker with SAB
       if (sabRef.current) {
@@ -477,6 +484,7 @@ export function useTranscription(): UseTranscriptionReturn {
         // DO NOT connect workletNode to destination unless debugging audio passthrough
         
         localWorkerRef.current.postMessage({ type: 'start-capture' });
+        setRecording(true);
         console.log('[useTranscription] Local recording started. AudioWorklet connected, worker notified.');
       } catch (err: any) {
         console.error('[useTranscription] Error starting local recording or AudioWorklet:', err);
