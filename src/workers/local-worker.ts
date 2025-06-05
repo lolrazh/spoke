@@ -15,6 +15,18 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 console.log("[LocalWorker] Transformers environment configured");
 
+// Enable WASM SIMD and Threading
+const wasmConfig = (env.backends as any)['wasm']; // Cast env.backends to any before accessing 'wasm'
+if (wasmConfig) {
+    console.log("[LocalWorker] Configuring WASM backend for SIMD and Threading...");
+    wasmConfig.simd = true;
+    wasmConfig.numThreads = navigator.hardwareConcurrency || 4;
+    wasmConfig.proxy = true; // Required for multi-threading in a worker
+    console.log(`[LocalWorker] WASM backend configured: SIMD=${wasmConfig.simd}, Threads=${wasmConfig.numThreads}, Proxy=${wasmConfig.proxy}`);
+} else {
+    console.warn("[LocalWorker] WASM backend not available in env.backends. Skipping SIMD/Threading configuration.");
+}
+
 // Updated MODEL_ID for streaming
 const MODEL_ID = "onnx-community/moonshine-base-ONNX";
 

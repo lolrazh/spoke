@@ -130,7 +130,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('local'); // Default to local mode
   const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks

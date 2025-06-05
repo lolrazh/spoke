@@ -1,10 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { join } from 'node:path';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    viteStaticCopy({
+      targets: [
+        {
+          src: join(__dirname, 'node_modules/onnxruntime-web/dist/*.wasm'),
+          dest: '.' // copies to the root of the output directory (dist/)
+        },
+        {
+          src: join(__dirname, 'node_modules/onnxruntime-web/dist/ort-wasm-threaded.worker.js'),
+          dest: '.' // copies to the root of the output directory (dist/)
+        }
+      ]
+    })
+  ],
   resolve: {
     alias: {
       '@': join(__dirname, 'src'), // Example alias
