@@ -553,9 +553,6 @@ export function useTranscription(): UseTranscriptionReturn {
             if (!window.electron?.transcribeGroq) {
               throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
             }
-            // For Groq, send raw PCM Float32 data directly
-            // Assert that trimmedPcmF32.buffer is an ArrayBuffer here, then slice it.
-            // This slice creates a new ArrayBuffer with just the segment's data.
             const pcmF32ArrayBuffer = (trimmedPcmF32.buffer as ArrayBuffer).slice(
               trimmedPcmF32.byteOffset,
               trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength
@@ -566,13 +563,13 @@ export function useTranscription(): UseTranscriptionReturn {
             const groqResult = await window.electron.transcribeGroq(
               pcmF32ArrayBuffer, 
               [pcmF32ArrayBuffer],
-              ts
+              ts // Pass renderer ts object (contains drain_start, drain_end, trim_start, trim_end, ipc_start)
             );
             mark('ipc_end');
 
             transcript = groqResult.transcript;
-            timingsFromMain = groqResult.timings;
-          } else { // For Gemini, continue sending WAV for now
+            timingsFromMain = groqResult.timings || {}; // { main_net, worker_pcm_to_wav, worker_stt_api_call }
+          } else { // Gemini
             const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
             if (!window.electron?.transcribeGemini) {
               throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
@@ -584,37 +581,47 @@ export function useTranscription(): UseTranscriptionReturn {
               wavBuf, 
               'audio/wav', 
               [wavBuf], 
-              ts
+              ts // Pass renderer ts object
             );
             mark('ipc_end');
             transcript = geminiFullResult.text;
-            timingsFromMain = geminiFullResult.timings || {};
+            timingsFromMain = geminiFullResult.timings || {}; // { main_net, worker_stt_api_call }
           }
           
-          // --- TIMING CALCULATION & LOGGING ---
-          const finalTimings = {
-            drain: ts['drain_end'] - ts['drain_start'],
-            trim:  ts['trim_end']  - ts['trim_start'],
-            ipc_to_main: ts['ipc_end'] - ts['ipc_start'],
-            ...(timingsFromMain || {}),
-            total_end_to_end: performance.now() - ts['drain_start']
+          // --- TIMING CALCULATION & LOGGING (New Disjoint Logic) ---
+          const drain_duration = ts['drain_end'] - ts['drain_start'];
+          const trim_duration =  ts['trim_end']  - ts['trim_start'];
+          const ipc_full_round_trip_by_renderer = ts['ipc_end'] - ts['ipc_start'];
+
+          // Sum of disjoint parts received from main process
+          // Ensure all expected keys from timingsFromMain are numbers and sum them up
+          const sum_of_disjoint_parts_from_main = Object.values(timingsFromMain)
+            .reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
+
+          const ipc_renderer_exclusive_overhead = Math.max(0, ipc_full_round_trip_by_renderer - sum_of_disjoint_parts_from_main);
+
+          const allDisjointTimings: Record<string, number> = {
+            drain: drain_duration,
+            trim: trim_duration,
+            ipc_overhead: ipc_renderer_exclusive_overhead, // Exclusive IPC overhead
+            // Spread timings received from main, which are already disjoint parts like main_net, worker_pcm_to_wav, worker_stt_api_call
+            ...timingsFromMain 
           };
           
-          console.log(`[useTranscription] Timings for ${cloudEngine}:`);
-          console.table(finalTimings);
-          // if (setTimingsProp) setTimingsProp(finalTimings); // If using a prop
-          // else setTimingsState(finalTimings); // If using local state for timings
-          
+          // Calculate total_end_to_end by summing all disjoint parts
+          allDisjointTimings.total_end_to_end = Object.values(allDisjointTimings)
+            .reduce((sum, value) => sum + (typeof value === 'number' ? value : 0), 0);
+
+          console.log(`[useTranscription] Timings for ${cloudEngine} (disjoint):`);
+          console.table(allDisjointTimings);
+
+          // Original profiling log (can be updated or removed)
           if (profilingStartTimeRef.current) {
+            // const endTime = performance.now();
+            // const durationTotalActual = endTime - profilingStartTimeRef.current;
             console.log(`[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`);
-            console.log(`[useTranscription]   E2E (Stop Rec -> UI Text): ${finalTimings.total_end_to_end.toFixed(2)} ms`);
-            let engineSpecificTimings = 0;
-            if (timingsFromMain) {
-                engineSpecificTimings = (timingsFromMain.main_to_worker || 0) + 
-                                      (timingsFromMain.worker_groq_api || timingsFromMain.worker_gemini_api || 0) + 
-                                      (timingsFromMain.worker_to_main || 0);
-            }
-            console.log(`[useTranscription]   IPC + ${cloudEngine} Engine (detailed): ${engineSpecificTimings.toFixed(2)} ms`);
+            console.log(`[useTranscription]   Summed E2E from table: ${allDisjointTimings.total_end_to_end.toFixed(2)} ms`);
+            // console.log(`[useTranscription]   Actual Wall Clock E2E (stop() to result): ${durationTotalActual.toFixed(2)} ms`);
             profilingStartTimeRef.current = null;
           }
 

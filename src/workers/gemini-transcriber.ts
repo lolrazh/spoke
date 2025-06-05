@@ -6,6 +6,8 @@
 
 // The arrayBufferToBase64 helper is also not needed here anymore, as the worker handles it.
 
+import { performance } from 'node:perf_hooks'; // ESM style import
+
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
  *
@@ -40,15 +42,16 @@ export async function transcribeAudioWithGemini(
     formData.append('prompt', prompt); // Send the prompt to the worker
 
     console.log(`[GeminiTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes, type: ${mimeType}) to CF Worker: ${workerUrl}`);
-    const startTime = performance.now();
-
+    
+    const main_helper_fetch_start_time = performance.now();
     const response = await fetch(workerUrl, {
       method: 'POST',
       body: formData,
     });
+    const main_helper_fetch_end_time = performance.now();
+    const main_fetch_gross_duration = main_helper_fetch_end_time - main_helper_fetch_start_time;
 
-    const endTime = performance.now();
-    console.log(`[GeminiTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
+    console.log(`[GeminiTranscriber-CFW]	CF Worker call completed in ${main_fetch_gross_duration.toFixed(2)} ms (gross duration).`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -57,18 +60,30 @@ export async function transcribeAudioWithGemini(
       throw new Error(`Gemini transcription failed via CF Worker: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const workerJsonResponse = await response.json();
 
-    if (!result || typeof result.text !== 'string') {
-      console.error('[GeminiTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', result);
+    if (!workerJsonResponse || typeof workerJsonResponse.text !== 'string') {
+      console.error('[GeminiTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', workerJsonResponse);
       throw new Error('Unexpected response format from Gemini service via CF Worker (text missing).');
     }
-    if (!result.timings) {
-      console.warn('[GeminiTranscriber-CFW]	Timings not found in CF Worker response. Proceeding without them.', result);
-      return { text: result.text.trim(), timings: {} }; 
-    }
 
-    return { text: result.text.trim(), timings: result.timings };
+    const workerReportedTimings = workerJsonResponse.timings || {};
+    const workerTotalDuration = workerReportedTimings.worker_total_duration || 0;
+    
+    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
+    // Gemini path in worker does not have pcm_to_wav, so only stt_api_call contributes if worker_total_duration is missing.
+    const effectiveWorkerTotal = workerTotalDuration > 0 ? workerTotalDuration :
+                                 (workerReportedTimings.worker_stt_api_call || 0);
+
+    const main_net_exclusive_overhead = Math.max(0, main_fetch_gross_duration - effectiveWorkerTotal);
+
+    const finalTimingsToReturn = {
+      main_net: main_net_exclusive_overhead,
+      worker_stt_api_call: workerReportedTimings.worker_stt_api_call, // Directly use the key from worker
+    };
+    
+    console.log('[GeminiTranscriber-CFW] Processed timings. main_net_exclusive:', main_net_exclusive_overhead, 'finalTimingsToReturn:', finalTimingsToReturn);
+    return { text: workerJsonResponse.text.trim(), timings: finalTimingsToReturn };
 
   } catch (err: any) {
     console.error('[GeminiTranscriber-CFW]	Error during transcription via CF Worker:', err?.message || err);

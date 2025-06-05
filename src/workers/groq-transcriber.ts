@@ -13,6 +13,9 @@ import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
 export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<{ text: string, timings: Record<string, number> }> {
   const workerUrl = 'https://api.sonicflow.app/groq';
 
+  // For performance.now() in Node.js environment
+  const { performance } = require('node:perf_hooks');
+
   try {
     if (audioData.byteLength === 0) {
       console.error('[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
@@ -21,8 +24,8 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
 
     // Sending raw PCM Float32 ArrayBuffer directly
     console.log(`[GroqTranscriber-CFW]	Sending raw PCM F32 (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
-    const startTime = performance.now();
-
+    
+    const main_helper_fetch_start_time = performance.now();
     const response = await fetch(workerUrl, {
       method: 'POST',
       headers: {
@@ -36,9 +39,10 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
       },
       body: audioData // Send raw ArrayBuffer
     });
+    const main_helper_fetch_end_time = performance.now();
+    const main_fetch_gross_duration = main_helper_fetch_end_time - main_helper_fetch_start_time;
 
-    const endTime = performance.now();
-    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${(endTime - startTime).toFixed(2)} ms.`);
+    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${main_fetch_gross_duration.toFixed(2)} ms (gross duration).`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -46,18 +50,32 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
       throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const workerJsonResponse = await response.json();
     
-    if (!result || typeof result.text !== 'string') {
-      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', result);
+    if (!workerJsonResponse || typeof workerJsonResponse.text !== 'string') {
+      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', workerJsonResponse);
       throw new Error('Unexpected response format from transcription service via CF Worker (text missing).');
     }
-    if (!result.timings) {
-      console.warn('[GroqTranscriber-CFW]	Timings not found in CF Worker response. Proceeding without them.', result);
-      return { text: result.text, timings: {} };
-    }
+
+    const workerReportedTimings = workerJsonResponse.timings || {};
+    const workerTotalDuration = workerReportedTimings.worker_total_duration || 0;
     
-    return { text: result.text, timings: result.timings };
+    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
+    const effectiveWorkerTotal = workerTotalDuration > 0 ? workerTotalDuration :
+                                 ((workerReportedTimings.worker_pcm_to_wav || 0) + (workerReportedTimings.worker_stt_api_call || 0));
+
+    const main_net_exclusive_overhead = Math.max(0, main_fetch_gross_duration - effectiveWorkerTotal);
+
+    const finalTimingsToReturn = {
+      main_net: main_net_exclusive_overhead,
+      worker_pcm_to_wav: workerReportedTimings.worker_pcm_to_wav,
+      worker_stt_api_call: workerReportedTimings.worker_stt_api_call, // Directly use the key from worker
+    };
+    // Remove undefined pcm_to_wav if not applicable (worker might not send it if input was not PCM)
+    if (finalTimingsToReturn.worker_pcm_to_wav === undefined) delete finalTimingsToReturn.worker_pcm_to_wav;
+
+    console.log('[GroqTranscriber-CFW] Processed timings. main_net_exclusive:', main_net_exclusive_overhead, 'finalTimingsToReturn:', finalTimingsToReturn);
+    return { text: workerJsonResponse.text, timings: finalTimingsToReturn };
 
   } catch (error) {
     console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);

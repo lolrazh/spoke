@@ -646,115 +646,39 @@ const createHomeWindow = () => {
 };
 
 ipcMain.handle('transcribe-groq', async (event, audioBuffer: ArrayBuffer, transferListAudio: Transferable[] | undefined, upstreamTimings?: Record<string, number>) => {
-  const mark = (l: string) => performance.now();
-  const t = upstreamTimings ?? {};
-
-  console.log('[MainIPC] Received transcribe-groq request. Upstream timings keys:', Object.keys(t));
+  console.log('[MainIPC] Received transcribe-groq request.');
   if (!audioBuffer || audioBuffer.byteLength === 0) {
     console.error('[MainIPC] Audio buffer is empty or null for Groq transcription.');
-    return { transcript: '', error: 'Audio buffer is empty.', timings: t };
+    return { transcript: '', error: 'Audio buffer is empty.', timings: upstreamTimings || {} };
   }
   
-  let workerResponse;
   try {
-    t['main_call_worker_fn_start'] = mark('main_call_worker_fn_start');
-    workerResponse = await transcribeAudioWithGroq(audioBuffer);
-    t['main_call_worker_fn_end'] = mark('main_call_worker_fn_end');
+    const { text, timings: disjointTimingsFromHelper } = await transcribeAudioWithGroq(audioBuffer);
     
-    const main_duration_of_worker_fn_call = t['main_call_worker_fn_end'] - t['main_call_worker_fn_start'];
-    const cf_worker_reported_timings = workerResponse.timings || {};
-
-    const cf_worker_processing_duration = cf_worker_reported_timings.worker_total || 
-                                       ((cf_worker_reported_timings.worker_pcm_to_wav || 0) + (cf_worker_reported_timings.worker_groq_api || 0));
-
-    const network_plus_main_overhead_duration = main_duration_of_worker_fn_call - cf_worker_processing_duration;
-    
-    let main_to_worker_flight_duration = 0;
-    let worker_to_main_flight_duration = 0;
-
-    if (network_plus_main_overhead_duration > 0) {
-        main_to_worker_flight_duration = network_plus_main_overhead_duration / 2;
-        worker_to_main_flight_duration = network_plus_main_overhead_duration / 2;
-    } else {
-        main_to_worker_flight_duration = Math.max(0, network_plus_main_overhead_duration / 2); // Avoid negative
-        worker_to_main_flight_duration = Math.max(0, network_plus_main_overhead_duration / 2); // Avoid negative
-    }
-    
-    t['main_response_ready_time'] = mark('main_response_ready_time');
-    const main_to_renderer_prep_duration = t['main_response_ready_time'] - t['main_call_worker_fn_end'];
-
-    const timingsToReturnToRenderer: Record<string, number> = {
-      main_to_worker: main_to_worker_flight_duration,
-      worker_pcm_to_wav: cf_worker_reported_timings.worker_pcm_to_wav,
-      worker_groq_api: cf_worker_reported_timings.worker_groq_api,
-      worker_to_main: worker_to_main_flight_duration,
-      main_to_renderer: main_to_renderer_prep_duration,
-    };
-    if (cf_worker_reported_timings.worker_total) { // Also pass worker_total if available
-        timingsToReturnToRenderer.worker_total_from_cf = cf_worker_reported_timings.worker_total;
-    }
-
-    console.log(`[MainIPC] Groq transcription successful: "${workerResponse.text.substring(0,30)}..." Returning timings:`, Object.keys(timingsToReturnToRenderer));
-    return { transcript: workerResponse.text, timings: timingsToReturnToRenderer };
+    console.log(`[MainIPC] Groq transcription successful: "${text.substring(0,30)}..." Returning timings from helper:`, Object.keys(disjointTimingsFromHelper));
+    return { transcript: text, timings: disjointTimingsFromHelper };
 
   } catch (error: any) {
     console.error('[MainIPC] Error in transcribe-groq handler:', error);
-    return { transcript: '', error: error.message || 'Groq transcription failed in main process.', timings: t };
+    return { transcript: '', error: error.message || 'Groq transcription failed in main process.', timings: upstreamTimings || {} };
   }
 });
 
 ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mimeType: string, transferListAudio: Transferable[] | undefined, upstreamTimings?: Record<string, number>) => {
-  const mark = (l: string) => performance.now();
-  const t = upstreamTimings ?? {};
-
-  console.log('[MainIPC] Received transcribe-gemini request. Upstream timings keys:', Object.keys(t));
+  console.log('[MainIPC] Received transcribe-gemini request.');
   if (!arrayBuffer || !arrayBuffer.byteLength) {
     console.error('[MainIPC] Audio buffer is empty or null for Gemini transcription.');
-    return { transcript: '', error: 'Audio buffer is empty.', timings: t };
+    return { transcript: '', error: 'Audio buffer is empty.', timings: upstreamTimings || {} };
   }
 
-  let workerResponse;
   try {
-    t['main_call_worker_fn_start'] = mark('main_call_worker_fn_start');
-    workerResponse = await transcribeAudioWithGemini(arrayBuffer, mimeType);
-    t['main_call_worker_fn_end'] = mark('main_call_worker_fn_end');
-
-    const main_duration_of_worker_fn_call = t['main_call_worker_fn_end'] - t['main_call_worker_fn_start'];
-    const cf_worker_reported_timings = workerResponse.timings || {};
-
-    const cf_worker_processing_duration = cf_worker_reported_timings.worker_total || (cf_worker_reported_timings.worker_gemini_api || 0);
-
-    const network_plus_main_overhead_duration = main_duration_of_worker_fn_call - cf_worker_processing_duration;
-
-    let main_to_worker_flight_duration = 0;
-    let worker_to_main_flight_duration = 0;
-
-    if (network_plus_main_overhead_duration > 0) {
-        main_to_worker_flight_duration = network_plus_main_overhead_duration / 2;
-        worker_to_main_flight_duration = network_plus_main_overhead_duration / 2;
-    } else {
-        main_to_worker_flight_duration = Math.max(0, network_plus_main_overhead_duration / 2);
-        worker_to_main_flight_duration = Math.max(0, network_plus_main_overhead_duration / 2);
-    }
-
-    t['main_response_ready_time'] = mark('main_response_ready_time');
-    const main_to_renderer_prep_duration = t['main_response_ready_time'] - t['main_call_worker_fn_end'];
-
-    const timingsToReturnToRenderer: Record<string, number> = {
-      main_to_worker: main_to_worker_flight_duration,
-      worker_gemini_api: cf_worker_reported_timings.worker_gemini_api,
-      worker_to_main: worker_to_main_flight_duration,
-      main_to_renderer: main_to_renderer_prep_duration,
-    };
-    if (cf_worker_reported_timings.worker_total) { // Also pass worker_total if available
-        timingsToReturnToRenderer.worker_total_from_cf = cf_worker_reported_timings.worker_total;
-    }
+    const { text, timings: disjointTimingsFromHelper } = await transcribeAudioWithGemini(arrayBuffer, mimeType);
     
-    console.log(`[MainIPC] Gemini transcription successful: "${workerResponse.text.substring(0,30)}..." Returning timings:`, Object.keys(timingsToReturnToRenderer));
-    return { transcript: workerResponse.text, timings: timingsToReturnToRenderer };
+    console.log(`[MainIPC] Gemini transcription successful: "${text.substring(0,30)}..." Returning timings from helper:`, Object.keys(disjointTimingsFromHelper));
+    return { transcript: text, timings: disjointTimingsFromHelper };
 
   } catch (error: any) {
      console.error('[MainIPC] Error in transcribe-gemini handler:', error);
-    return { transcript: '', error: error.message || 'Gemini transcription failed in main process.', timings: t };
+    return { transcript: '', error: error.message || 'Gemini transcription failed in main process.', timings: upstreamTimings || {} };
   }
 });
