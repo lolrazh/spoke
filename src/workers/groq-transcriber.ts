@@ -10,7 +10,7 @@ import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
  * @param inputLanguage The language of the audio (e.g., "en").
  * @returns Promise that resolves with the transcription text.
  */
-export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<string> {
+export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<{ text: string, timings: Record<string, number> }> {
   const workerUrl = 'https://api.sonicflow.app/groq';
 
   try {
@@ -49,11 +49,15 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
     const result = await response.json();
     
     if (!result || typeof result.text !== 'string') {
-      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker:', result);
-      throw new Error('Unexpected response format from transcription service.');
+      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', result);
+      throw new Error('Unexpected response format from transcription service via CF Worker (text missing).');
+    }
+    if (!result.timings) {
+      console.warn('[GroqTranscriber-CFW]	Timings not found in CF Worker response. Proceeding without them.', result);
+      return { text: result.text, timings: {} };
     }
     
-    return result.text;
+    return { text: result.text, timings: result.timings };
 
   } catch (error) {
     console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);

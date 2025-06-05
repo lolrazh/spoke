@@ -12,6 +12,10 @@ const FETCH_TIMEOUT = 10000; // 10 seconds (Reduced from 30 seconds)
 
 export default {
 	async fetch(request, env, ctx) {
+		const t = {};
+		const mark = label => t[label] = Date.now(); // Using Date.now() as performance.now() is not always available in CF workers in the same way
+		mark('worker_entry');
+
 		const url = new URL(request.url);
 
 		if (request.method !== 'POST') {
@@ -42,7 +46,9 @@ export default {
 						return new Response('Empty audio/pcm data received', { status: 400 });
 					}
 
+					mark('pcm_to_wav_start');
 					const wavArrayBuffer = pcmToWav(pcmArrayBuffer, { sampleRate, channels, bitDepth });
+					mark('pcm_to_wav_end');
 					audioFile = new File([wavArrayBuffer], audioFilename, { type: 'audio/wav' });
 					console.log(`[CF Worker /groq] Converted PCM (${pcmArrayBuffer.byteLength} bytes) to WAV (${wavArrayBuffer.byteLength} bytes)`);
 				
@@ -72,6 +78,7 @@ export default {
 				let groqResponse;
 
 				try {
+					mark('groq_fetch_start');
 					groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
 						method: 'POST',
 						headers: {
@@ -90,6 +97,7 @@ export default {
 					console.error('Groq API network error:', error.message);
 					return new Response(`Groq API network error: ${error.message}`, { status: 500 });
 				}
+				mark('groq_fetch_end');
 				clearTimeout(timeoutId);
 
 				if (!groqResponse.ok) {
@@ -99,7 +107,12 @@ export default {
 				}
 
 				const transcriptionResult = await groqResponse.json();
-				return new Response(JSON.stringify({ text: transcriptionResult.text }), {
+				const timings = {
+					worker_pcm_to_wav: t['pcm_to_wav_end'] - t['pcm_to_wav_start'],
+					worker_groq_api:   t['groq_fetch_end'] - t['groq_fetch_start'],
+					worker_total: Date.now() - t['worker_entry']
+				};
+				return new Response(JSON.stringify({ text: transcriptionResult.text, timings }), {
 					headers: { 'Content-Type': 'application/json' },
 				});
 
@@ -154,6 +167,7 @@ export default {
 				let geminiResponse;
 
 				try {
+					mark('gemini_fetch_start');
 					geminiResponse = await fetch(geminiApiUrl, {
 						method: 'POST',
 						headers: {
@@ -172,6 +186,7 @@ export default {
 					console.error('Gemini API network error:', error.message);
 					return new Response(`Gemini API network error: ${error.message}`, { status: 500 });
 				}
+				mark('gemini_fetch_end');
 				clearTimeout(timeoutId);
 
 				if (!geminiResponse.ok) {
@@ -192,8 +207,11 @@ export default {
 					console.error('Gemini API did not return text in the expected format:', JSON.stringify(geminiResult, null, 2));
 					return new Response('Gemini API did not return text in the expected format.', { status: 500 });
 				}
-
-				return new Response(JSON.stringify({ text: transcribedText.trim() }), {
+				const timings = {
+					worker_gemini_api: t['gemini_fetch_end'] - t['gemini_fetch_start'],
+					worker_total: Date.now() - t['worker_entry']
+				};
+				return new Response(JSON.stringify({ text: transcribedText.trim(), timings }), {
 					headers: { 'Content-Type': 'application/json' },
 				});
 

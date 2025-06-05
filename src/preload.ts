@@ -32,15 +32,12 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.send('show-notification', message);
   },
   // Method for Groq transcription
-  transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => {
-    if (transferList) {
-      return ipcRenderer.invoke('transcribe-groq', audioBuffer, transferList);
-    } else {
-      return ipcRenderer.invoke('transcribe-groq', audioBuffer);
-    }
+  transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[], upstreamTimings?: Record<string, number>) => {
+    return ipcRenderer.invoke('transcribe-groq', audioBuffer, transferList, upstreamTimings);
   },
-  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
-    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
+  // Method for Gemini transcription
+  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[], upstreamTimings?: Record<string, number>) =>
+    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer, upstreamTimings),
   // ALT key push-to-talk events
   onPTTDown: (cb: () => void) => {
     ipcRenderer.removeAllListeners('ptt-down');

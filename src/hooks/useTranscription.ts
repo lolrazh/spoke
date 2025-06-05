@@ -56,6 +56,7 @@ export interface UseTranscriptionReturn {
   setMode: (mode: 'local' | 'cloud') => void;
   cloudEngine: CloudEngine;
   setCloudEngine: (engine: CloudEngine) => void;
+  setTimings?: (timings: Record<string, number>) => void; // Optional: if you want to pass it to UI
 }
 
 // Helper function to encode Float32Array to WAV ArrayBuffer
@@ -130,8 +131,8 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('local'); // Default to local mode
-  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('groq');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -495,7 +496,7 @@ export function useTranscription(): UseTranscriptionReturn {
   }, [recording, currentMode, ready, streamRef]); // streamRef is now a dependency for mic check
 
   const stop = useCallback(async () => {
-    console.log(`[useTranscription] stop() called. Mode: ${currentMode}`);
+    console.log(`[useTranscription] stop() called. Mode: ${currentMode}, Engine: ${cloudEngine}`);
     if (!recording) {
       console.warn('[useTranscription] Not recording, cannot stop.');
       return;
@@ -518,8 +519,14 @@ export function useTranscription(): UseTranscriptionReturn {
 
       (async () => {
         setProcessing(true);
+        // --- TIMING START ---
+        const ts: Record<string, number> = {};
+        const mark = (label: string) => (ts[label] = performance.now());
+        // --- TIMING END ---
         try {
+          mark('drain_start');
           const pcmF32 = await drainSabToFloat32(ringBufferRef.current);
+          mark('drain_end');
           
           if (pcmF32.length === 0) {
             console.warn('[useTranscription] No audio data from RingBuffer or data was all silence. Not sending.');
@@ -528,7 +535,10 @@ export function useTranscription(): UseTranscriptionReturn {
             return;
           }
 
+          mark('trim_start');
           const trimmedPcmF32 = trimSilence(pcmF32);
+          mark('trim_end');
+
           if (trimmedPcmF32.length === 0) {
             console.warn('[useTranscription] Audio is all silence after trimming. Not sending.');
             setText('');
@@ -536,8 +546,8 @@ export function useTranscription(): UseTranscriptionReturn {
             return;
           }
 
-          const preIPCTime = performance.now();
           let transcript = '';
+          let timingsFromMain: Record<string, number> = {};
 
           if (cloudEngine === 'groq') {
             if (!window.electron?.transcribeGroq) {
@@ -551,24 +561,60 @@ export function useTranscription(): UseTranscriptionReturn {
               trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength
             );
             console.log(`[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`);
-            transcript = await window.electron.transcribeGroq(pcmF32ArrayBuffer, [pcmF32ArrayBuffer]);
+            
+            mark('ipc_start');
+            const groqResult = await window.electron.transcribeGroq(
+              pcmF32ArrayBuffer, 
+              [pcmF32ArrayBuffer],
+              ts
+            );
+            mark('ipc_end');
+
+            transcript = groqResult.transcript;
+            timingsFromMain = groqResult.timings;
           } else { // For Gemini, continue sending WAV for now
             const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
             if (!window.electron?.transcribeGemini) {
               throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
             }
             console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`);
-            const geminiResult = await window.electron.transcribeGemini(wavBuf, 'audio/wav', [wavBuf]);
-            transcript = geminiResult.text;
+            
+            mark('ipc_start');
+            const geminiFullResult = await window.electron.transcribeGemini(
+              wavBuf, 
+              'audio/wav', 
+              [wavBuf], 
+              ts
+            );
+            mark('ipc_end');
+            transcript = geminiFullResult.text;
+            timingsFromMain = geminiFullResult.timings || {};
           }
           
+          // --- TIMING CALCULATION & LOGGING ---
+          const finalTimings = {
+            drain: ts['drain_end'] - ts['drain_start'],
+            trim:  ts['trim_end']  - ts['trim_start'],
+            ipc_to_main: ts['ipc_end'] - ts['ipc_start'],
+            ...(timingsFromMain || {}),
+            total_end_to_end: performance.now() - ts['drain_start']
+          };
+          
+          console.log(`[useTranscription] Timings for ${cloudEngine}:`);
+          console.table(finalTimings);
+          // if (setTimingsProp) setTimingsProp(finalTimings); // If using a prop
+          // else setTimingsState(finalTimings); // If using local state for timings
+          
           if (profilingStartTimeRef.current) {
-            const endTime = performance.now();
-            const durationTotal = endTime - profilingStartTimeRef.current; 
-            const durationIPCAndEngine = endTime - preIPCTime;
             console.log(`[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`);
-            console.log(`[useTranscription]   E2E (Stop Rec -> UI Text): ${durationTotal.toFixed(2)} ms`);
-            console.log(`[useTranscription]   IPC + ${cloudEngine} Engine: ${durationIPCAndEngine.toFixed(2)} ms`);
+            console.log(`[useTranscription]   E2E (Stop Rec -> UI Text): ${finalTimings.total_end_to_end.toFixed(2)} ms`);
+            let engineSpecificTimings = 0;
+            if (timingsFromMain) {
+                engineSpecificTimings = (timingsFromMain.main_to_worker || 0) + 
+                                      (timingsFromMain.worker_groq_api || timingsFromMain.worker_gemini_api || 0) + 
+                                      (timingsFromMain.worker_to_main || 0);
+            }
+            console.log(`[useTranscription]   IPC + ${cloudEngine} Engine (detailed): ${engineSpecificTimings.toFixed(2)} ms`);
             profilingStartTimeRef.current = null;
           }
 
@@ -675,16 +721,48 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
     sendNotification: (message: string) => {
       console.log(`[Mock Electron] sendNotification called with: "${message}"`);
     },
-    transcribeGroq: async (audioBuffer: ArrayBuffer, transferList?: Transferable[]): Promise<string> => { // Added transferList to mock
-      console.warn('[Mock Electron] transcribeGroq called with ArrayBuffer (length: '+audioBuffer.byteLength+'). This should be an Electron IPC call.');
+    transcribeGroq: async (
+      audioBuffer: ArrayBuffer, 
+      transferList?: Transferable[], 
+      upstreamTimings?: Record<string, number>
+    ): Promise<{ transcript: string, timings: Record<string, number> }> => {
+      console.warn(`[Mock Electron] transcribeGroq called with ArrayBuffer (length: ${audioBuffer.byteLength}). Upstream timings:`, upstreamTimings);
+      // Simulate some main/worker timings for the mock
+      const mockMainTimings = {
+        main_pack: Math.random() * 10,
+        main_to_worker: Math.random() * 50,
+        worker_pcm_to_wav: Math.random() * 5,
+        worker_groq_api: Math.random() * 500,
+        worker_to_main: Math.random() * 50,
+        main_to_renderer: Math.random() * 1
+      };
       return new Promise(resolve => setTimeout(() => {
-        resolve("Mocked Groq transcript from window.electron mock.");
+        resolve({
+          transcript: "Mocked Groq transcript from window.electron mock.",
+          timings: mockMainTimings 
+        });
       }, 500));
     },
-    transcribeGemini: async (audioBuffer: ArrayBuffer, mimeType: string, transferList?: Transferable[]): Promise<{text: string}> => { // Matched signature
-      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). This should be an Electron IPC call.`);
+    transcribeGemini: async (
+      audioBuffer: ArrayBuffer, 
+      mimeType: string, 
+      transferList?: Transferable[],
+      upstreamTimings?: Record<string, number>
+    ): Promise<{text: string, timings?: Record<string, number>}> => {
+      console.warn(`[Mock Electron] transcribeGemini called with ArrayBuffer (length: ${audioBuffer.byteLength}, mimeType: ${mimeType}). Upstream timings:`, upstreamTimings);
+      // const cloudEngine = 'gemini'; // This would need to be available in this scope or passed
+      const mockMainTimings = {
+        main_pack: Math.random() * 10,
+        main_to_worker: Math.random() * 50,
+        worker_gemini_api: Math.random() * 600,
+        worker_to_main: Math.random() * 50,
+        main_to_renderer: Math.random() * 1
+      };
       return new Promise(resolve => setTimeout(() => {
-        resolve({ text: "Mocked Gemini transcript from window.electron mock." });
+        resolve({ 
+          text: "Mocked Gemini transcript from window.electron mock.",
+          timings: mockMainTimings
+        });
       }, 500));
     }
   };
