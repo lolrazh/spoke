@@ -8,7 +8,7 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-const FETCH_TIMEOUT = 30000; // 30 seconds
+const FETCH_TIMEOUT = 10000; // 10 seconds (Reduced from 30 seconds)
 
 export default {
 	async fetch(request, env, ctx) {
@@ -20,31 +20,47 @@ export default {
 
 		try {
 			if (url.pathname === '/groq') {
-				// --- Groq Logic with Raw ArrayBuffer ---
+				// --- Groq Logic ---
 				if (!env.GROQ_API_KEY) {
 					return new Response('GROQ_API_KEY not configured in worker environment', { status: 500 });
 				}
 
-				// Handle raw ArrayBuffer data with headers
-				const contentType = request.headers.get('Content-Type');
+				const contentType = request.headers.get('Content-Type')?.toLowerCase();
 				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
-				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
+				
+				let audioFile; // Will be a File object for FormData
+				let audioFilename = 'audio.wav'; // Default filename, can be adjusted
 
-				if (!contentType || (!contentType.toLowerCase().startsWith('audio/wav') && !contentType.toLowerCase().startsWith('audio/webm'))) {
-					return new Response('Expected audio/wav or audio/webm content type', { status: 400 });
+				if (contentType === 'audio/pcm') {
+					console.log('[CF Worker /groq] Received audio/pcm, converting to WAV.');
+					const sampleRate = request.headers.get('X-Sample-Rate') || '16000';
+					const channels = request.headers.get('X-Channels') || '1';
+					const bitDepth = request.headers.get('X-Bit-Depth') || '32'; // Assuming Float32 PCM
+
+					const pcmArrayBuffer = await request.arrayBuffer();
+					if (pcmArrayBuffer.byteLength === 0) {
+						return new Response('Empty audio/pcm data received', { status: 400 });
+					}
+
+					const wavArrayBuffer = pcmToWav(pcmArrayBuffer, { sampleRate, channels, bitDepth });
+					audioFile = new File([wavArrayBuffer], audioFilename, { type: 'audio/wav' });
+					console.log(`[CF Worker /groq] Converted PCM (${pcmArrayBuffer.byteLength} bytes) to WAV (${wavArrayBuffer.byteLength} bytes)`);
+				
+				} else if (contentType && (contentType.startsWith('audio/wav') || contentType.startsWith('audio/webm'))) {
+					console.log(`[CF Worker /groq] Received direct ${contentType}.`);
+					audioFilename = request.headers.get('X-Audio-Filename') || (contentType.startsWith('audio/wav') ? 'audio.wav' : 'audio.webm');
+					const audioArrayBuffer = await request.arrayBuffer();
+					if (audioArrayBuffer.byteLength === 0) {
+						return new Response(`Empty ${contentType} data received`, { status: 400 });
+					}
+					audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
+				} else {
+					return new Response('Expected audio/pcm, audio/wav, or audio/webm content type for /groq route', { status: 400 });
 				}
 
-				// Get raw audio data
-				const audioArrayBuffer = await request.arrayBuffer();
-				if (audioArrayBuffer.byteLength === 0) {
-					return new Response('Empty audio data received', { status: 400 });
-				}
-
-				// Create File object for Groq API (which still expects FormData)
-				const audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
-
+				// Common Groq API call logic using audioFile
 				const groqFormData = new FormData();
-				groqFormData.append('file', audioFile); // Groq SDK uses 'file'
+				groqFormData.append('file', audioFile); 
 				groqFormData.append('model', 'distil-whisper-large-v3-en');
 				groqFormData.append('language', audioLanguage);
 				groqFormData.append('response_format', 'json');
@@ -119,10 +135,6 @@ export default {
 				const geminiPayload = {
 					contents: [
 						{ role: "user", parts: [{ text: prompt }] },
-						{
-							role: "model", // Placeholder for system/model instructions if API evolves
-							parts: [{ text: "Okay, I will transcribe the following audio."}] // Simple ack
-						},
 						{
 							role: "user",
 							parts: [
@@ -219,3 +231,54 @@ const b64chars = [
 	'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
 	'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
 ];
+
+// Helper function to convert PCM ArrayBuffer to WAV ArrayBuffer
+function pcmToWav(pcmBuffer, options) {
+	const numChannels = parseInt(options.channels, 10) || 1;
+	const sampleRate = parseInt(options.sampleRate, 10) || 16000;
+	const bitDepth = parseInt(options.bitDepth, 10) || 32;
+	const bytesPerSample = bitDepth / 8;
+
+	const blockAlign = numChannels * bytesPerSample;
+	const byteRate = sampleRate * blockAlign;
+	const dataSize = pcmBuffer.byteLength;
+
+	const buffer = new ArrayBuffer(44 + dataSize);
+	const view = new DataView(buffer);
+
+	function writeString(offset, string) {
+		for (let i = 0; i < string.length; i++) {
+			view.setUint8(offset + i, string.charCodeAt(i));
+		}
+	}
+
+	// RIFF header
+	writeString(0, 'RIFF');
+	view.setUint32(4, 36 + dataSize, true); // ChunkSize
+	writeString(8, 'WAVE');
+
+	// fmt chunk
+	writeString(12, 'fmt ');
+	view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+	// AudioFormat: 1 for PCM (integer), 3 for IEEE float (Float32 is IEEE float)
+	const audioFormat = (bitDepth === 32 && bytesPerSample === 4) ? 3 : 1;
+	view.setUint16(20, audioFormat, true);
+	view.setUint16(22, numChannels, true);
+	view.setUint32(24, sampleRate, true);
+	view.setUint32(28, byteRate, true);
+	view.setUint16(32, blockAlign, true);
+	view.setUint16(34, bitDepth, true);
+
+	// data chunk
+	writeString(36, 'data');
+	view.setUint32(40, dataSize, true);
+
+	// Write PCM data: copy data from pcmBuffer
+	// Create a Uint8Array view of the pcmBuffer to copy it byte by byte
+	const pcmArray = new Uint8Array(pcmBuffer);
+	// Create a Uint8Array view of the WAV buffer's data part to set the pcm data
+	const wavDataArray = new Uint8Array(buffer, 44);
+	wavDataArray.set(pcmArray);
+
+	return buffer;
+}

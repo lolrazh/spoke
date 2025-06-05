@@ -131,7 +131,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
-  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('groq');
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -536,9 +536,6 @@ export function useTranscription(): UseTranscriptionReturn {
             return;
           }
 
-          const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
-
-          profilingStartTimeRef.current = performance.now();
           const preIPCTime = performance.now();
           let transcript = '';
 
@@ -546,14 +543,22 @@ export function useTranscription(): UseTranscriptionReturn {
             if (!window.electron?.transcribeGroq) {
               throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
             }
-            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Groq...`);
-            transcript = await window.electron.transcribeGroq(wavBuf.slice(0), [wavBuf.slice(0)]);
-          } else { 
+            // For Groq, send raw PCM Float32 data directly
+            // Assert that trimmedPcmF32.buffer is an ArrayBuffer here, then slice it.
+            // This slice creates a new ArrayBuffer with just the segment's data.
+            const pcmF32ArrayBuffer = (trimmedPcmF32.buffer as ArrayBuffer).slice(
+              trimmedPcmF32.byteOffset,
+              trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength
+            );
+            console.log(`[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`);
+            transcript = await window.electron.transcribeGroq(pcmF32ArrayBuffer, [pcmF32ArrayBuffer]);
+          } else { // For Gemini, continue sending WAV for now
+            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
             if (!window.electron?.transcribeGemini) {
               throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
             }
             console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`);
-            const geminiResult = await window.electron.transcribeGemini(wavBuf.slice(0), 'audio/wav', [wavBuf.slice(0)]);
+            const geminiResult = await window.electron.transcribeGemini(wavBuf, 'audio/wav', [wavBuf]);
             transcript = geminiResult.text;
           }
           
