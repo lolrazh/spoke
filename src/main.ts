@@ -28,34 +28,32 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
-// Determine the path to the icon file (works in both packaged and dev environments)
+// FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
+// Try multiple possible locations for the icon
 const getIconPath = () => {
-  let iconFile: string;
-  switch (process.platform) {
-    case 'win32':
-      iconFile = 'icon.ico';
-      break;
-    case 'darwin':
-      iconFile = 'icon.icns';
-      break;
-    default: // Linux and others
-      iconFile = 'icon.png';
-      break;
+  const possiblePaths = [
+    path.join(__dirname, 'assets', 'icon.png'),           // Vite build location
+    path.join(__dirname, '..', 'assets', 'icon.png'),    // Alternative location
+    path.join(process.resourcesPath, 'icon.png'),         // extraResource location
+    path.join(__dirname, '..', '..', 'public', 'assets', 'icon.png') // Source location
+  ];
+  
+  for (const iconPath of possiblePaths) {
+    try {
+      if (fs.existsSync(iconPath)) {
+        console.log(`[Main Process] Found icon at: ${iconPath}`);
+        return iconPath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
   }
-  return path.join(__dirname, 'assets', iconFile);
+  
+  console.warn('[Main Process] No icon found in any expected location');
+  return possiblePaths[0]; // fallback
 };
 
 const iconPath = getIconPath();
-
-// Linux icon path (as required by Electron Forge docs for Linux support)
-const getLinuxIconPath = () => {
-  if (process.platform === 'linux') {
-    return path.join(__dirname, 'assets', 'icon.png');
-  }
-  return iconPath;
-};
-
-const linuxIconPath = getLinuxIconPath();
 
 const createWindow = () => {
   // Create the browser window.
@@ -79,8 +77,8 @@ const createWindow = () => {
   };
 
   // Try to set the icon, but don't crash if it fails
-  // Use Linux-specific icon path for Linux as per Electron Forge docs
-  const windowIconPath = process.platform === 'linux' ? linuxIconPath : iconPath;
+  // Use PNG for all platforms - it works better at runtime
+  const windowIconPath = iconPath;
   
   try {
     const icon = nativeImage.createFromPath(windowIconPath);
@@ -504,6 +502,20 @@ app.whenReady().then(() => {
 
   app.commandLine.appendSwitch('disable-http-cache');
   
+  // macOS dock icon setup (optional enhancements)
+  if (process.platform === 'darwin') {
+    try {
+      // Try to set the dock icon explicitly (fallback if app bundle icon fails)
+      const dockIcon = nativeImage.createFromPath(iconPath);
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+        console.log('[Main Process] Dock icon set successfully');
+      }
+    } catch (error) {
+      console.warn('[Main Process] Failed to set dock icon:', error.message);
+    }
+  }
+  
   createWindow();
   createTray();
   createContextMenuWindow();
@@ -538,8 +550,18 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  // On macOS, re-create a window when the dock icon is clicked and no windows are open
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else {
+    // If windows exist, show the main window or home window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    } else if (homeWindow && !homeWindow.isDestroyed()) {
+      homeWindow.show();
+    } else {
+      createWindow();
+    }
   }
 });
 

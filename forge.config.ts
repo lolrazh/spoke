@@ -10,8 +10,14 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    // Path to icon base name (no file extension required per Forge docs)
-    icon: './public/assets/icon'
+    // FUCK IT - USE PNG! Let's be explicit about this
+    icon: './public/assets/icon.png',
+    // Ensure icon files are copied to the app bundle
+    extraResource: [
+      './public/assets/icon.png',
+      './public/assets/icon.ico',
+      './public/assets/icon.icns'
+    ]
   },
   rebuildConfig: {},
   makers: [
