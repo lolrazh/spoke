@@ -29,11 +29,27 @@ let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
 // Determine the path to the icon file (works in both packaged and dev environments)
-const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+const getIconPath = () => {
+  let iconFile: string;
+  switch (process.platform) {
+    case 'win32':
+      iconFile = 'icon.ico';
+      break;
+    case 'darwin':
+      iconFile = 'icon.icns';
+      break;
+    default: // Linux and others
+      iconFile = 'icon.png';
+      break;
+  }
+  return path.join(__dirname, 'assets', iconFile);
+};
+
+const iconPath = getIconPath();
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
+  const windowOptions: any = {
     width: 120,
     height: 35,
     frame: false,
@@ -50,11 +66,31 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       additionalArguments: ['--enable-features=SharedArrayBuffer'],
     },
-    icon: iconPath,
-  });
+  };
 
-  // Also set the icon explicitly after creation (optional but good practice)
-  mainWindow.setIcon(iconPath);
+  // Try to set the icon, but don't crash if it fails
+  try {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      windowOptions.icon = iconPath;
+    } else {
+      console.warn(`Icon not found at path: ${iconPath}, continuing without icon`);
+    }
+  } catch (error) {
+    console.warn(`Failed to load icon: ${error.message}, continuing without icon`);
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
+
+  // Also try to set the icon explicitly after creation (optional but good practice)
+  try {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      mainWindow.setIcon(iconPath);
+    }
+  } catch (error) {
+    console.warn(`Failed to set window icon: ${error.message}`);
+  }
 
   // Show window inactive only when it's ready to prevent focus stealing
   mainWindow.once('ready-to-show', () => {

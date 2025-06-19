@@ -6,18 +6,19 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'path';
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon', 
+    icon: path.resolve(__dirname, 'public', 'assets', 'icon')
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
       // Path to specific .ico file for setup.exe (as per docs)
-      setupIcon: 'public/assets/icon.ico'
+      setupIcon: path.resolve(__dirname, 'public', 'assets', 'icon.ico')
     }), 
     new MakerZIP({}, ['darwin']), 
     new MakerRpm({}), 

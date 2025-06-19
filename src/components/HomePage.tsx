@@ -136,7 +136,7 @@ const HomePage: React.FC = () => {
           {/* Logo/Title */}
           <div className="px-4 mb-5 flex items-center gap-2">
             <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.7 }}>
-              <img src="/assets/icon.ico" alt="Sonic Flow Icon" className="w-6 h-6" />
+                              <img src="/assets/icon.ico" alt="Sonic Flow Icon" className="w-6 h-6" />
             </motion.div>
             <h1 className="text-lg font-medium text-white">
               Sonic Flow
