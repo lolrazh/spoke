@@ -47,6 +47,16 @@ const getIconPath = () => {
 
 const iconPath = getIconPath();
 
+// Linux icon path (as required by Electron Forge docs for Linux support)
+const getLinuxIconPath = () => {
+  if (process.platform === 'linux') {
+    return path.join(__dirname, 'assets', 'icon.png');
+  }
+  return iconPath;
+};
+
+const linuxIconPath = getLinuxIconPath();
+
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
@@ -69,12 +79,15 @@ const createWindow = () => {
   };
 
   // Try to set the icon, but don't crash if it fails
+  // Use Linux-specific icon path for Linux as per Electron Forge docs
+  const windowIconPath = process.platform === 'linux' ? linuxIconPath : iconPath;
+  
   try {
-    const icon = nativeImage.createFromPath(iconPath);
+    const icon = nativeImage.createFromPath(windowIconPath);
     if (!icon.isEmpty()) {
-      windowOptions.icon = iconPath;
+      windowOptions.icon = windowIconPath;
     } else {
-      console.warn(`Icon not found at path: ${iconPath}, continuing without icon`);
+      console.warn(`Icon not found at path: ${windowIconPath}, continuing without icon`);
     }
   } catch (error) {
     console.warn(`Failed to load icon: ${error.message}, continuing without icon`);
@@ -84,9 +97,9 @@ const createWindow = () => {
 
   // Also try to set the icon explicitly after creation (optional but good practice)
   try {
-    const icon = nativeImage.createFromPath(iconPath);
+    const icon = nativeImage.createFromPath(windowIconPath);
     if (!icon.isEmpty()) {
-      mainWindow.setIcon(iconPath);
+      mainWindow.setIcon(windowIconPath);
     }
   } catch (error) {
     console.warn(`Failed to set window icon: ${error.message}`);
