@@ -92,5 +92,7 @@ typings/
 # Electron-Forge
 out/
 
-fin.md
-implementation-reference.md
+# repomix
+.repomixignore
+repomix.config.json
+repomix-output.xml

@@ -40,6 +40,46 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+public/
+  audioworklet-processor.js
+src/
+  audio/
+    ring-buffer.ts
+  cf-worker/
+    src/
+      index.js
+    .editorconfig
+    .gitignore
+    .prettierrc
+    package.json
+    vitest.config.js
+    wrangler.jsonc
+  components/
+    App.tsx
+    HomePage.tsx
+    Pill.tsx
+  hooks/
+    useTranscription.ts
+  lib/
+    settings.ts
+    utils.ts
+  main/
+    alt-listener.ts
+  types/
+    electron-squirrel-startup.d.ts
+    electron.d.ts
+    vite-env.d.ts
+    worker.d.ts
+  workers/
+    gemini-transcriber.ts
+    groq-transcriber.ts
+    local-worker.ts
+  contextmenu-preload.ts
+  index.css
+  main.ts
+  notification-preload.js
+  preload.ts
+  renderer.tsx
 .eslintrc.json
 .gitignore
 .repomixignore
@@ -49,37 +89,8 @@ forge.env.d.ts
 index.html
 package.json
 postcss.config.js
-public/audioworklet-processor.js
 README.md
 repomix.config.json
-src/audio/ring-buffer.ts
-src/cf-worker/.editorconfig
-src/cf-worker/.gitignore
-src/cf-worker/.prettierrc
-src/cf-worker/package.json
-src/cf-worker/src/index.js
-src/cf-worker/vitest.config.js
-src/cf-worker/wrangler.jsonc
-src/components/App.tsx
-src/components/HomePage.tsx
-src/components/Pill.tsx
-src/contextmenu-preload.ts
-src/hooks/useTranscription.ts
-src/index.css
-src/lib/settings.ts
-src/lib/utils.ts
-src/main.ts
-src/main/alt-listener.ts
-src/notification-preload.js
-src/preload.ts
-src/renderer.tsx
-src/types/electron-squirrel-startup.d.ts
-src/types/electron.d.ts
-src/types/vite-env.d.ts
-src/types/worker.d.ts
-src/workers/gemini-transcriber.ts
-src/workers/groq-transcriber.ts
-src/workers/local-worker.ts
 tailwind.config.js
 tsconfig.json
 vite.config.ts
@@ -90,6 +101,135 @@ vite.renderer.config.ts
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+</file>
+
+<file path="src/types/electron-squirrel-startup.d.ts">
+declare module 'electron-squirrel-startup' {
+  const started: boolean;
+  export default started;
+}
+</file>
+
+<file path="src/types/vite-env.d.ts">
+/// <reference types="vite/client" />
+
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
+declare const MAIN_WINDOW_VITE_NAME: string | undefined;
+</file>
+
+<file path="src/types/worker.d.ts">
+// src/types/worker.d.ts
+declare module '*?worker' {
+  // Defines the type for Vite worker imports:
+  // `import MyWorker from './my-worker?worker'`
+  // `const worker = new MyWorker()`
+  const workerConstructor: new () => Worker;
+  export default workerConstructor;
+}
+</file>
+
+<file path="src/contextmenu-preload.ts">
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Define the channels that the context menu is allowed to send messages on
+const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
+type ValidChannel = typeof validChannels[number];
+
+// Expose a safe API to the context menu's renderer process
+contextBridge.exposeInMainWorld('contextMenuAPI', {
+  /**
+   * Sends a message to the main process over a specified channel.
+   * Only allows sending on pre-approved channels.
+   * @param channel The IPC channel to send the message on.
+   */
+  send: (channel: ValidChannel) => {
+    if (validChannels.includes(channel)) {
+      ipcRenderer.send(channel);
+      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
+    } else {
+      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
+    }
+  },
+});
+
+// Add a type definition for the exposed API
+declare global {
+  interface Window {
+    contextMenuAPI: {
+      send: (channel: ValidChannel) => void;
+    };
+  }
+}
+</file>
+
+<file path="src/notification-preload.js">
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('notificationAPI', {
+  // We don't expose a function TO the window, 
+  // instead, we listen FOR events FROM the main process.
+});
+
+// Listen for the message from the main process
+ipcRenderer.on('set-notification-message', (event, message) => {
+  console.log(`[Preload Notification] Received 'set-notification-message' with message: "${message}"`);
+  const messageElement = document.getElementById('message');
+  if (messageElement) {
+    console.log(`[Preload Notification] Found #message element. Setting textContent.`);
+    messageElement.textContent = message;
+  } else {
+    console.error('[Preload Notification] Could not find #message element in notification window!');
+  }
+});
+</file>
+
+<file path="src/renderer.tsx">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './components/App';
+import HomePage from './components/HomePage';
+import { HashRouter, Routes, Route } from 'react-router-dom';
+import './index.css';
+
+// Create root element
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  const root = document.createElement('div');
+  root.id = 'root';
+  document.body.appendChild(root);
+  
+  const reactRoot = createRoot(root);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
+} else {
+  const reactRoot = createRoot(rootElement);
+  reactRoot.render(
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/home" element={<HomePage />} />
+      </Routes>
+    </HashRouter>
+  );
+}
+
+console.log('🎤 Sonic Flow is running');
+</file>
 
 <file path=".eslintrc.json">
 {
@@ -134,78 +274,6 @@ This section contains the contents of the repository's files.
 }
 </file>
 
-<file path="forge.config.ts">
-import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
-import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { VitePlugin } from '@electron-forge/plugin-vite';
-import { FusesPlugin } from '@electron-forge/plugin-fuses';
-import { FuseV1Options, FuseVersion } from '@electron/fuses';
-
-const config: ForgeConfig = {
-  packagerConfig: {
-    asar: true,
-    // Path to icon base name (no extension) in source directory (as per docs)
-    icon: 'public/assets/icon', 
-  },
-  rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({
-      // Path to specific .ico file for setup.exe (as per docs)
-      setupIcon: 'public/assets/icon.ico'
-    }), 
-    new MakerZIP({}, ['darwin']), 
-    new MakerRpm({}), 
-    new MakerDeb({})
-  ],
-  plugins: [
-    new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
-      build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: 'src/main.ts',
-          config: 'vite.main.config.ts',
-          target: 'main',
-        },
-        {
-          entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-        {
-          entry: 'src/contextmenu-preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-      ],
-      renderer: [
-        {
-          name: 'main_window',
-          config: 'vite.renderer.config.ts',
-        },
-      ],
-    }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-    }),
-  ],
-};
-
-export default config;
-</file>
-
 <file path="forge.env.d.ts">
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
 </file>
@@ -217,6 +285,293 @@ module.exports = {
     autoprefixer: {},
   },
 }
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "jsx": "react",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}
+</file>
+
+<file path="vite.config.ts">
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+// eslint-disable-next-line import/default
+import electron from 'vite-plugin-electron'
+import path from 'path'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    electron({
+      entry: 'src/main.ts', // Path to your Electron main process file
+    }),
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  }
+})
+</file>
+
+<file path="vite.preload.config.ts">
+import { defineConfig } from 'vite';
+import path from 'node:path';
+
+// https://vitejs.dev/config
+export default defineConfig({
+  build: {
+    lib: {
+      // Specify multiple entry points for preload scripts
+      entry: {
+        preload: path.resolve(__dirname, 'src/preload.ts'),
+        'contextmenu-preload': path.resolve(__dirname, 'src/contextmenu-preload.ts'),
+      },
+      // Output format will be CommonJS as required by Electron preload scripts
+      formats: ['cjs'],
+    },
+    // Configure Rollup options for CommonJS output
+    rollupOptions: {
+      output: {
+        // Ensure output filenames match the entry point names
+        entryFileNames: '[name].js',
+      },
+    },
+    // Ensure the output directory is cleared before building
+    emptyOutDir: false, // Set to false if other build steps use the same outDir
+  },
+});
+</file>
+
+<file path="src/cf-worker/.editorconfig">
+# http://editorconfig.org
+root = true
+
+[*]
+indent_style = tab
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.yml]
+indent_style = space
+</file>
+
+<file path="src/cf-worker/.gitignore">
+# Logs
+
+logs
+_.log
+npm-debug.log_
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# Runtime data
+
+pids
+_.pid
+_.seed
+\*.pid.lock
+
+# Directory for instrumented libs generated by jscoverage/JSCover
+
+lib-cov
+
+# Coverage directory used by tools like istanbul
+
+coverage
+\*.lcov
+
+# nyc test coverage
+
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+
+bower_components
+
+# node-waf configuration
+
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+
+build/Release
+
+# Dependency directories
+
+node_modules/
+jspm_packages/
+
+# Snowpack dependency directory (https://snowpack.dev/)
+
+web_modules/
+
+# TypeScript cache
+
+\*.tsbuildinfo
+
+# Optional npm cache directory
+
+.npm
+
+# Optional eslint cache
+
+.eslintcache
+
+# Optional stylelint cache
+
+.stylelintcache
+
+# Microbundle cache
+
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+
+.node_repl_history
+
+# Output of 'npm pack'
+
+\*.tgz
+
+# Yarn Integrity file
+
+.yarn-integrity
+
+# dotenv environment variable files
+
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# parcel-bundler cache (https://parceljs.org/)
+
+.cache
+.parcel-cache
+
+# Next.js build output
+
+.next
+out
+
+# Nuxt.js build / generate output
+
+.nuxt
+dist
+
+# Gatsby files
+
+.cache/
+
+# Comment in the public line in if your project uses Gatsby and not Next.js
+
+# https://nextjs.org/blog/next-9-1#public-directory-support
+
+# public
+
+# vuepress build output
+
+.vuepress/dist
+
+# vuepress v2.x temp and cache directory
+
+.temp
+.cache
+
+# Docusaurus cache and generated files
+
+.docusaurus
+
+# Serverless directories
+
+.serverless/
+
+# FuseBox cache
+
+.fusebox/
+
+# DynamoDB Local files
+
+.dynamodb/
+
+# TernJS port file
+
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+
+.vscode-test
+
+# yarn v2
+
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.\*
+
+# wrangler project
+
+.dev.vars
+.wrangler/
+</file>
+
+<file path="src/cf-worker/.prettierrc">
+{
+	"printWidth": 140,
+	"singleQuote": true,
+	"semi": true,
+	"useTabs": true
+}
+</file>
+
+<file path="src/cf-worker/vitest.config.js">
+import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
+
+export default defineWorkersConfig({
+	test: {
+		poolOptions: {
+			workers: {
+				wrangler: { configPath: './wrangler.jsonc' },
+			},
+		},
+	},
+});
 </file>
 
 <file path="src/components/HomePage.tsx">
@@ -358,7 +713,7 @@ const HomePage: React.FC = () => {
           {/* Logo/Title */}
           <div className="px-4 mb-5 flex items-center gap-2">
             <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.7 }}>
-              <img src="/assets/icon.ico" alt="Sonic Flow Icon" className="w-6 h-6" />
+                              <img src="/assets/icon.ico" alt="Sonic Flow Icon" className="w-6 h-6" />
             </motion.div>
             <h1 className="text-lg font-medium text-white">
               Sonic Flow
@@ -610,207 +965,117 @@ const HomePage: React.FC = () => {
 export default React.memo(HomePage);
 </file>
 
-<file path="src/contextmenu-preload.ts">
-import { contextBridge, ipcRenderer } from 'electron';
+<file path="src/components/Pill.tsx">
+import React, { useState, useEffect } from 'react';
 
-// Define the channels that the context menu is allowed to send messages on
-const validChannels = ['menu-home', /* 'menu-hide', */ 'menu-hotkey', 'menu-exit'] as const;
-type ValidChannel = typeof validChannels[number];
-
-// Expose a safe API to the context menu's renderer process
-contextBridge.exposeInMainWorld('contextMenuAPI', {
-  /**
-   * Sends a message to the main process over a specified channel.
-   * Only allows sending on pre-approved channels.
-   * @param channel The IPC channel to send the message on.
-   */
-  send: (channel: ValidChannel) => {
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel);
-      console.log(`[Preload] Sent IPC message on channel: ${channel}`); // Log from preload
-    } else {
-      console.warn(`[Preload] Ignoring IPC message on invalid channel: ${channel}`);
-    }
-  },
-});
-
-// Add a type definition for the exposed API
-declare global {
-  interface Window {
-    contextMenuAPI: {
-      send: (channel: ValidChannel) => void;
-    };
-  }
+interface PillProps {
+  isListening: boolean;
+  isProcessing: boolean;
+  onStartDictation: () => void;
+  onStopDictation: () => void;
 }
-</file>
 
-<file path="src/lib/utils.ts">
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-</file>
-
-<file path="src/notification-preload.js">
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('notificationAPI', {
-  // We don't expose a function TO the window, 
-  // instead, we listen FOR events FROM the main process.
-});
-
-// Listen for the message from the main process
-ipcRenderer.on('set-notification-message', (event, message) => {
-  console.log(`[Preload Notification] Received 'set-notification-message' with message: "${message}"`);
-  const messageElement = document.getElementById('message');
-  if (messageElement) {
-    console.log(`[Preload Notification] Found #message element. Setting textContent.`);
-    messageElement.textContent = message;
-  } else {
-    console.error('[Preload Notification] Could not find #message element in notification window!');
-  }
-});
-</file>
-
-<file path="src/renderer.tsx">
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './components/App';
-import HomePage from './components/HomePage';
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import './index.css';
-
-// Create root element
-const rootElement = document.getElementById('root');
-
-if (!rootElement) {
-  const root = document.createElement('div');
-  root.id = 'root';
-  document.body.appendChild(root);
+const Pill: React.FC<PillProps> = ({ 
+  isListening, 
+  isProcessing, 
+  onStartDictation, 
+  onStopDictation 
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
   
-  const reactRoot = createRoot(root);
-  reactRoot.render(
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
-      </Routes>
-    </HashRouter>
-  );
-} else {
-  const reactRoot = createRoot(rootElement);
-  reactRoot.render(
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
-      </Routes>
-    </HashRouter>
-  );
-}
+  // Number of dots/bars to display - consistent across all states
+  const VISUALIZATION_COUNT = 7;
+  
+  // Generate frequency bars for the waveform (active state)
+  const renderFrequencyBars = () => {
+    // Create bars with consistent count
+    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+      <div 
+        key={`bar-${index}`} 
+        className="waveform-bar"
+        style={{ 
+          animationDelay: `${index * 0.1}s`,
+          height: `${3 + Math.random() * 5}px`
+        }}
+      />
+    ));
+  };
 
-console.log('🎤 Sonic Flow is running');
-</file>
+  // Unified function to render dots with different styles
+  const renderDots = (type: 'static' | 'animated' | 'collapsed') => {
+    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+      <div 
+        key={`dot-${type}-${index}`} 
+        className={`dot ${type}`}
+        style={type === 'animated' ? { animationDelay: `${index * 0.12}s` } : undefined}
+      />
+    ));
+  };
 
-<file path="src/types/electron-squirrel-startup.d.ts">
-declare module 'electron-squirrel-startup' {
-  const started: boolean;
-  export default started;
-}
-</file>
-
-<file path="src/types/vite-env.d.ts">
-/// <reference types="vite/client" />
-
-declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
-declare const MAIN_WINDOW_VITE_NAME: string | undefined;
-</file>
-
-<file path="src/types/worker.d.ts">
-// src/types/worker.d.ts
-declare module '*?worker' {
-  // Defines the type for Vite worker imports:
-  // `import MyWorker from './my-worker?worker'`
-  // `const worker = new MyWorker()`
-  const workerConstructor: new () => Worker;
-  export default workerConstructor;
-}
-</file>
-
-<file path="tsconfig.json">
-{
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "noImplicitAny": true,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "outDir": "dist",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "jsx": "react",
-    "paths": {
-      "@/*": ["./src/*"]
+  // Handle context menu
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault(); // Prevent default browser context menu
+    console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
+    // Check if the electron API exists and has the showPillContextMenu method
+    if (window.electron && 'showPillContextMenu' in window.electron) {
+      // Call without coordinates
+      (window.electron as any).showPillContextMenu();
+    } else {
+      console.warn('[Pill] window.electron.showPillContextMenu not available.');
     }
-  },
-  "include": ["src/**/*"]
-}
-</file>
+  };
+  
+  // Determine if the pill should be in the expanded state
+  const isExpanded = isHovered || isListening || isProcessing;
+  
+  return (
+    <div 
+      className={`
+        pill-container 
+        ${isExpanded ? 'expanded' : 'collapsed'}
+        ${isListening ? 'listening' : ''}
+        ${isProcessing ? 'processing' : ''}
+        flex items-center justify-center
+      `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={isListening ? onStopDictation : onStartDictation}
+      onContextMenu={handleContextMenu}
+    >
+      <div className="pill-content flex items-center justify-center w-full h-full">
+        {/* Dormant state - show smaller dots */}
+        {!isExpanded && (
+          <div className="visualization-container">
+            {renderDots('collapsed')}
+          </div>
+        )}
 
-<file path="vite.config.ts">
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-// eslint-disable-next-line import/default
-import electron from 'vite-plugin-electron'
-import path from 'path'
+        {/* Hover state - show static dots */}
+        {isHovered && !isListening && !isProcessing && (
+          <div className="visualization-container">
+            {renderDots('static')}
+          </div>
+        )}
+        
+        {/* Active state - show frequency bars */}
+        {isListening && (
+          <div className="visualization-container">
+            {renderFrequencyBars()}
+          </div>
+        )}
+        
+        {/* Loading state - show animated dots */}
+        {isProcessing && !isListening && (
+          <div className="visualization-container">
+            {renderDots('animated')}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
-export default defineConfig({
-  plugins: [
-    react(),
-    electron({
-      entry: 'src/main.ts', // Path to your Electron main process file
-    }),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
-})
-</file>
-
-<file path="vite.preload.config.ts">
-import { defineConfig } from 'vite';
-import path from 'node:path';
-
-// https://vitejs.dev/config
-export default defineConfig({
-  build: {
-    lib: {
-      // Specify multiple entry points for preload scripts
-      entry: {
-        preload: path.resolve(__dirname, 'src/preload.ts'),
-        'contextmenu-preload': path.resolve(__dirname, 'src/contextmenu-preload.ts'),
-      },
-      // Output format will be CommonJS as required by Electron preload scripts
-      formats: ['cjs'],
-    },
-    // Configure Rollup options for CommonJS output
-    rollupOptions: {
-      output: {
-        // Ensure output filenames match the entry point names
-        entryFileNames: '[name].js',
-      },
-    },
-    // Ensure the output directory is cleared before building
-    emptyOutDir: false, // Set to false if other build steps use the same outDir
-  },
-});
+export default Pill;
 </file>
 
 <file path=".gitignore">
@@ -980,332 +1245,6 @@ implementation-reference.md
 }
 </file>
 
-<file path="src/cf-worker/.editorconfig">
-# http://editorconfig.org
-root = true
-
-[*]
-indent_style = tab
-end_of_line = lf
-charset = utf-8
-trim_trailing_whitespace = true
-insert_final_newline = true
-
-[*.yml]
-indent_style = space
-</file>
-
-<file path="src/cf-worker/.gitignore">
-# Logs
-
-logs
-_.log
-npm-debug.log_
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# Diagnostic reports (https://nodejs.org/api/report.html)
-
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# Runtime data
-
-pids
-_.pid
-_.seed
-\*.pid.lock
-
-# Directory for instrumented libs generated by jscoverage/JSCover
-
-lib-cov
-
-# Coverage directory used by tools like istanbul
-
-coverage
-\*.lcov
-
-# nyc test coverage
-
-.nyc_output
-
-# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
-
-.grunt
-
-# Bower dependency directory (https://bower.io/)
-
-bower_components
-
-# node-waf configuration
-
-.lock-wscript
-
-# Compiled binary addons (https://nodejs.org/api/addons.html)
-
-build/Release
-
-# Dependency directories
-
-node_modules/
-jspm_packages/
-
-# Snowpack dependency directory (https://snowpack.dev/)
-
-web_modules/
-
-# TypeScript cache
-
-\*.tsbuildinfo
-
-# Optional npm cache directory
-
-.npm
-
-# Optional eslint cache
-
-.eslintcache
-
-# Optional stylelint cache
-
-.stylelintcache
-
-# Microbundle cache
-
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-
-.node_repl_history
-
-# Output of 'npm pack'
-
-\*.tgz
-
-# Yarn Integrity file
-
-.yarn-integrity
-
-# dotenv environment variable files
-
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# parcel-bundler cache (https://parceljs.org/)
-
-.cache
-.parcel-cache
-
-# Next.js build output
-
-.next
-out
-
-# Nuxt.js build / generate output
-
-.nuxt
-dist
-
-# Gatsby files
-
-.cache/
-
-# Comment in the public line in if your project uses Gatsby and not Next.js
-
-# https://nextjs.org/blog/next-9-1#public-directory-support
-
-# public
-
-# vuepress build output
-
-.vuepress/dist
-
-# vuepress v2.x temp and cache directory
-
-.temp
-.cache
-
-# Docusaurus cache and generated files
-
-.docusaurus
-
-# Serverless directories
-
-.serverless/
-
-# FuseBox cache
-
-.fusebox/
-
-# DynamoDB Local files
-
-.dynamodb/
-
-# TernJS port file
-
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-
-.vscode-test
-
-# yarn v2
-
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.pnp.\*
-
-# wrangler project
-
-.dev.vars
-.wrangler/
-</file>
-
-<file path="src/cf-worker/.prettierrc">
-{
-	"printWidth": 140,
-	"singleQuote": true,
-	"semi": true,
-	"useTabs": true
-}
-</file>
-
-<file path="src/cf-worker/vitest.config.js">
-import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
-
-export default defineWorkersConfig({
-	test: {
-		poolOptions: {
-			workers: {
-				wrangler: { configPath: './wrangler.jsonc' },
-			},
-		},
-	},
-});
-</file>
-
-<file path="src/components/Pill.tsx">
-import React, { useState, useEffect } from 'react';
-
-interface PillProps {
-  isListening: boolean;
-  isProcessing: boolean;
-  onStartDictation: () => void;
-  onStopDictation: () => void;
-}
-
-const Pill: React.FC<PillProps> = ({ 
-  isListening, 
-  isProcessing, 
-  onStartDictation, 
-  onStopDictation 
-}) => {
-  const [isHovered, setIsHovered] = useState(false);
-  
-  // Number of dots/bars to display - consistent across all states
-  const VISUALIZATION_COUNT = 7;
-  
-  // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = () => {
-    // Create bars with consistent count
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`bar-${index}`} 
-        className="waveform-bar"
-        style={{ 
-          animationDelay: `${index * 0.1}s`,
-          height: `${3 + Math.random() * 5}px`
-        }}
-      />
-    ));
-  };
-
-  // Unified function to render dots with different styles
-  const renderDots = (type: 'static' | 'animated' | 'collapsed') => {
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`dot-${type}-${index}`} 
-        className={`dot ${type}`}
-        style={type === 'animated' ? { animationDelay: `${index * 0.12}s` } : undefined}
-      />
-    ));
-  };
-
-  // Handle context menu
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent default browser context menu
-    console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
-    // Check if the electron API exists and has the showPillContextMenu method
-    if (window.electron && 'showPillContextMenu' in window.electron) {
-      // Call without coordinates
-      (window.electron as any).showPillContextMenu();
-    } else {
-      console.warn('[Pill] window.electron.showPillContextMenu not available.');
-    }
-  };
-  
-  // Determine if the pill should be in the expanded state
-  const isExpanded = isHovered || isListening || isProcessing;
-  
-  return (
-    <div 
-      className={`
-        pill-container 
-        ${isExpanded ? 'expanded' : 'collapsed'}
-        ${isListening ? 'listening' : ''}
-        ${isProcessing ? 'processing' : ''}
-        flex items-center justify-center
-      `}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={isListening ? onStopDictation : onStartDictation}
-      onContextMenu={handleContextMenu}
-    >
-      <div className="pill-content flex items-center justify-center w-full h-full">
-        {/* Dormant state - show smaller dots */}
-        {!isExpanded && (
-          <div className="visualization-container">
-            {renderDots('collapsed')}
-          </div>
-        )}
-
-        {/* Hover state - show static dots */}
-        {isHovered && !isListening && !isProcessing && (
-          <div className="visualization-container">
-            {renderDots('static')}
-          </div>
-        )}
-        
-        {/* Active state - show frequency bars */}
-        {isListening && (
-          <div className="visualization-container">
-            {renderFrequencyBars()}
-          </div>
-        )}
-        
-        {/* Loading state - show animated dots */}
-        {isProcessing && !isListening && (
-          <div className="visualization-container">
-            {renderDots('animated')}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default Pill;
-</file>
-
 <file path="tailwind.config.js">
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -1400,6 +1339,83 @@ module.exports = {
 		"vitest": "~3.0.7"
 	}
 }
+</file>
+
+<file path="src/main/alt-listener.ts">
+// tiny wrapper that starts the correct helper script for the platform
+import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import { app } from "electron";
+
+export type AltState = "down" | "up";
+let child: ChildProcessWithoutNullStreams | null = null;
+
+export function startAltListener(cb: (state: AltState) => void) {
+  if (child) return;                              // already running
+
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+
+  // Plain-text script bodies – no external files to ship.
+  const pwsh = `
+Add-Type -Namespace u -Name k -MemberDefinition '
+ [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v);
+' ;
+$down = $false
+while ($true){
+  $now = ([u.k]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0   # 0xA5 = VK_RMENU (Right Alt)
+  if ($now -and -not $down){ Write-Output "down"; $down=$true }
+  elseif (-not $now -and $down){ Write-Output "up"; $down=$false }
+  Start-Sleep -Milliseconds 16
+}`.trim();
+
+  const osa = `
+use framework "Carbon"
+property kVK_Option_R : 61
+on isKeyDown()
+  return (current application's CGEventSourceKeyState(0, 61)) as boolean
+end isKeyDown
+set down to false
+repeat
+  set now to isKeyDown()
+  if now and (down is false) then
+    do shell script "echo down"
+  else if (not now) and down then
+    do shell script "echo up"
+  end if
+  set down to now
+  delay 0.016
+end repeat`.trim();
+
+  const bash = `
+#!/usr/bin/env bash
+down=0
+while :; do
+  read -rsn1 -t0.016 k < <(grep -m1 -E 'code +100.*value +1' /dev/input/event*)
+  state=$?
+  if [[ $state -eq 0 && $down -eq 0 ]]; then echo down; down=1
+  elif [[ $state -ne 0 && $down -eq 1 ]]; then echo up; down=0; fi
+done`.trim();
+
+  if (isWin) {
+    child = spawn("powershell.exe",
+      ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", pwsh]);
+  } else if (isMac) {
+    child = spawn("osascript", ["-e", osa]);
+  } else { // linux
+    child = spawn("bash", ["-c", bash]);
+  }
+
+  child.stdout.on("data", d => {
+    const msg = String(d).trim();
+    if (msg === "down" || msg === "up") cb(msg as AltState);
+  });
+
+  child.on("error", err => console.error("alt-listener error:", err));
+  child.on("exit",  ()  => { child = null; });
+}
+
+export function stopAltListener() { child?.kill(); child = null; }
+app.on("will-quit", stopAltListener);
 </file>
 
 <file path="src/index.css">
@@ -1687,83 +1703,6 @@ body {
 }
 </file>
 
-<file path="src/main/alt-listener.ts">
-// tiny wrapper that starts the correct helper script for the platform
-import { spawn, ChildProcessWithoutNullStreams } from "child_process";
-import { app } from "electron";
-
-export type AltState = "down" | "up";
-let child: ChildProcessWithoutNullStreams | null = null;
-
-export function startAltListener(cb: (state: AltState) => void) {
-  if (child) return;                              // already running
-
-  const isWin = process.platform === "win32";
-  const isMac = process.platform === "darwin";
-
-  // Plain-text script bodies – no external files to ship.
-  const pwsh = `
-Add-Type -Namespace u -Name k -MemberDefinition '
- [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v);
-' ;
-$down = $false
-while ($true){
-  $now = ([u.k]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0   # 0xA5 = VK_RMENU (Right Alt)
-  if ($now -and -not $down){ Write-Output "down"; $down=$true }
-  elseif (-not $now -and $down){ Write-Output "up"; $down=$false }
-  Start-Sleep -Milliseconds 16
-}`.trim();
-
-  const osa = `
-use framework "Carbon"
-property kVK_Option_R : 61
-on isKeyDown()
-  return (current application's CGEventSourceKeyState(0, 61)) as boolean
-end isKeyDown
-set down to false
-repeat
-  set now to isKeyDown()
-  if now and (down is false) then
-    do shell script "echo down"
-  else if (not now) and down then
-    do shell script "echo up"
-  end if
-  set down to now
-  delay 0.016
-end repeat`.trim();
-
-  const bash = `
-#!/usr/bin/env bash
-down=0
-while :; do
-  read -rsn1 -t0.016 k < <(grep -m1 -E 'code +100.*value +1' /dev/input/event*)
-  state=$?
-  if [[ $state -eq 0 && $down -eq 0 ]]; then echo down; down=1
-  elif [[ $state -ne 0 && $down -eq 1 ]]; then echo up; down=0; fi
-done`.trim();
-
-  if (isWin) {
-    child = spawn("powershell.exe",
-      ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", pwsh]);
-  } else if (isMac) {
-    child = spawn("osascript", ["-e", osa]);
-  } else { // linux
-    child = spawn("bash", ["-c", bash]);
-  }
-
-  child.stdout.on("data", d => {
-    const msg = String(d).trim();
-    if (msg === "down" || msg === "up") cb(msg as AltState);
-  });
-
-  child.on("error", err => console.error("alt-listener error:", err));
-  child.on("exit",  ()  => { child = null; });
-}
-
-export function stopAltListener() { child?.kill(); child = null; }
-app.on("will-quit", stopAltListener);
-</file>
-
 <file path="vite.main.config.ts">
 import { defineConfig } from 'vite';
 
@@ -1780,17 +1719,6 @@ export default defineConfig({
     external: ['ws'],
   },
 });
-</file>
-
-<file path=".repomixignore">
-# Add patterns to ignore here, one per line
-# Example:
-# *.log
-# tmp/
-
-/node_modules
-/.vite
-/.cursor
 </file>
 
 <file path="public/audioworklet-processor.js">
@@ -1892,6 +1820,195 @@ try {
 } catch (error) {
    console.error('Failed to register CaptureProcessor (from public JS file):', error);
 }
+</file>
+
+<file path="src/lib/settings.ts">
+import { app } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Define the settings interface
+interface AppSettings {
+  hotkey: string;
+  hideTimeout?: number; // For future "hide for X time" feature
+}
+
+// Default settings
+const DEFAULT_SETTINGS: AppSettings = {
+  hotkey: 'CommandOrControl+Space',
+  hideTimeout: 3600000 // 1 hour in milliseconds
+};
+
+// Path to the settings file
+const SETTINGS_PATH = path.join(
+  app.getPath('userData'),
+  'settings.json'
+);
+
+/**
+ * Load settings from disk
+ * Creates default settings file if it doesn't exist
+ */
+export function loadSettings(): AppSettings {
+  try {
+    // Check if settings file exists
+    if (!fs.existsSync(SETTINGS_PATH)) {
+      // Create default settings file
+      fs.writeFileSync(
+        SETTINGS_PATH,
+        JSON.stringify(DEFAULT_SETTINGS, null, 2)
+      );
+      return { ...DEFAULT_SETTINGS };
+    }
+
+    // Read and parse settings file
+    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
+    const settings = JSON.parse(data) as AppSettings;
+    
+    // Ensure all required fields exist (in case of corrupted settings)
+    return { ...DEFAULT_SETTINGS, ...settings };
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+/**
+ * Save settings to disk
+ */
+export function saveSettings(settings: AppSettings): boolean {
+  try {
+    fs.writeFileSync(
+      SETTINGS_PATH,
+      JSON.stringify(settings, null, 2)
+    );
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
+  }
+}
+
+/**
+ * Update a specific setting
+ */
+export function updateSetting<K extends keyof AppSettings>(
+  key: K,
+  value: AppSettings[K]
+): boolean {
+  try {
+    const settings = loadSettings();
+    settings[key] = value;
+    return saveSettings(settings);
+  } catch (error) {
+    console.error(`Failed to update setting ${key}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Validate if a hotkey string is in the correct format
+ */
+export function isValidHotkey(hotkey: string): boolean {
+  // Basic validation - should contain at least one modifier
+  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
+  return modifiers.some(modifier => hotkey.includes(modifier)) && 
+         hotkey.includes('+');
+}
+</file>
+
+<file path=".repomixignore">
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+/node_modules
+/.vite
+/.cursor
+</file>
+
+<file path="forge.config.ts">
+import type { ForgeConfig } from '@electron-forge/shared-types';
+import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDeb } from '@electron-forge/maker-deb';
+import { MakerRpm } from '@electron-forge/maker-rpm';
+import { VitePlugin } from '@electron-forge/plugin-vite';
+import { FusesPlugin } from '@electron-forge/plugin-fuses';
+import { FuseV1Options, FuseVersion } from '@electron/fuses';
+
+const config: ForgeConfig = {
+  packagerConfig: {
+    asar: true,
+    // FUCK IT - USE PNG! Let's be explicit about this
+    icon: './public/assets/icon.png',
+    // Ensure icon files are copied to the app bundle
+    extraResource: [
+      './public/assets/icon.png',
+      './public/assets/icon.ico',
+      './public/assets/icon.icns'
+    ]
+  },
+  rebuildConfig: {},
+  makers: [
+    new MakerSquirrel({
+      // Windows installer icons (as per Electron Forge docs)
+      setupIcon: './public/assets/icon.ico'
+    }), 
+    new MakerZIP({}, ['darwin']), 
+    new MakerRpm({}), 
+    new MakerDeb({
+      options: {
+        // Linux icon configuration (as per Electron Forge docs)
+        icon: './public/assets/icon.png'
+      }
+    })
+  ],
+  plugins: [
+    new VitePlugin({
+      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
+      // If you are familiar with Vite configuration, it will look really familiar.
+      build: [
+        {
+          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
+          entry: 'src/main.ts',
+          config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+        {
+          entry: 'src/contextmenu-preload.ts',
+          config: 'vite.preload.config.ts',
+          target: 'preload'
+        },
+      ],
+      renderer: [
+        {
+          name: 'main_window',
+          config: 'vite.renderer.config.ts',
+        },
+      ],
+    }),
+    // Fuses are used to enable/disable various Electron functionality
+    // at package time, before code signing the application
+    new FusesPlugin({
+      version: FuseVersion.V1,
+      [FuseV1Options.RunAsNode]: false,
+      [FuseV1Options.EnableCookieEncryption]: true,
+      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+      [FuseV1Options.EnableNodeCliInspectArguments]: false,
+      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    }),
+  ],
+};
+
+export default config;
 </file>
 
 <file path="README.md">
@@ -2094,147 +2211,6 @@ We'll review your pull request as soon as possible.
 Sonic Flow is currently released under a **Proprietary License**.
 
 For more details, please refer to the `LICENSE` file in the repository (if available) or contact the project author.
-</file>
-
-<file path="src/lib/settings.ts">
-import { app } from 'electron';
-import fs from 'node:fs';
-import path from 'node:path';
-
-// Define the settings interface
-interface AppSettings {
-  hotkey: string;
-  hideTimeout?: number; // For future "hide for X time" feature
-}
-
-// Default settings
-const DEFAULT_SETTINGS: AppSettings = {
-  hotkey: 'CommandOrControl+Space',
-  hideTimeout: 3600000 // 1 hour in milliseconds
-};
-
-// Path to the settings file
-const SETTINGS_PATH = path.join(
-  app.getPath('userData'),
-  'settings.json'
-);
-
-/**
- * Load settings from disk
- * Creates default settings file if it doesn't exist
- */
-export function loadSettings(): AppSettings {
-  try {
-    // Check if settings file exists
-    if (!fs.existsSync(SETTINGS_PATH)) {
-      // Create default settings file
-      fs.writeFileSync(
-        SETTINGS_PATH,
-        JSON.stringify(DEFAULT_SETTINGS, null, 2)
-      );
-      return { ...DEFAULT_SETTINGS };
-    }
-
-    // Read and parse settings file
-    const data = fs.readFileSync(SETTINGS_PATH, 'utf-8');
-    const settings = JSON.parse(data) as AppSettings;
-    
-    // Ensure all required fields exist (in case of corrupted settings)
-    return { ...DEFAULT_SETTINGS, ...settings };
-  } catch (error) {
-    console.error('Failed to load settings:', error);
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-/**
- * Save settings to disk
- */
-export function saveSettings(settings: AppSettings): boolean {
-  try {
-    fs.writeFileSync(
-      SETTINGS_PATH,
-      JSON.stringify(settings, null, 2)
-    );
-    return true;
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-    return false;
-  }
-}
-
-/**
- * Update a specific setting
- */
-export function updateSetting<K extends keyof AppSettings>(
-  key: K,
-  value: AppSettings[K]
-): boolean {
-  try {
-    const settings = loadSettings();
-    settings[key] = value;
-    return saveSettings(settings);
-  } catch (error) {
-    console.error(`Failed to update setting ${key}:`, error);
-    return false;
-  }
-}
-
-/**
- * Validate if a hotkey string is in the correct format
- */
-export function isValidHotkey(hotkey: string): boolean {
-  // Basic validation - should contain at least one modifier
-  const modifiers = ['Alt', 'Shift', 'Ctrl', 'Command', 'Option', 'Super'];
-  return modifiers.some(modifier => hotkey.includes(modifier)) && 
-         hotkey.includes('+');
-}
-</file>
-
-<file path="vite.renderer.config.ts">
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { join } from 'node:path';
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': join(__dirname, 'src'), // Example alias
-    },
-  },
-  // Add worker configuration
-  worker: {
-    format: 'es',
-  },
-  // Add build options for the main app and the worklet
-  build: {
-    rollupOptions: {
-      input: {
-        // Define multiple entry points
-        main: join(__dirname, 'index.html'), // Your main app entry
-        'audioworklet-processor': join(__dirname, 'public/audioworklet-processor.js'), // The worklet entry
-      },
-      output: {
-        // Ensure the worklet is output as an ES module
-        entryFileNames: (chunkInfo) => {
-          // Keep original names for entry points
-          return chunkInfo.name === 'main' ? '[name].js' : '[name].js';
-        },
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]',
-        format: 'es', // Ensure ES module format
-      },
-    },
-    // Target environments that support ES modules and top-level await
-    target: 'esnext',
-    // Output directory (relative to project root)
-    outDir: 'dist',
-    // Empty output directory before build
-    emptyOutDir: true,
-  },
-});
 </file>
 
 <file path="src/cf-worker/wrangler.jsonc">
@@ -2457,64 +2433,6 @@ export const Constants = {
 };
 </file>
 
-<file path="src/preload.ts">
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-
-import { contextBridge, ipcRenderer } from 'electron';
-
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electron', {
-  toggleDictation: (callback: () => void) => {
-    // Remove any existing listeners to prevent duplicates
-    ipcRenderer.removeAllListeners('toggle-dictation');
-    // Add the new listener
-    ipcRenderer.on('toggle-dictation', () => callback());
-    
-    // Return a cleanup function that can be called when the component unmounts
-    return () => {
-      ipcRenderer.removeAllListeners('toggle-dictation');
-    };
-  },
-  showPillContextMenu: () => {
-    ipcRenderer.send('show-context-menu');
-  },
-  insertTextAtCursor: (text: string) => {
-    return ipcRenderer.invoke('insert-text-at-cursor', text);
-  },
-  // Method to view the log file
-  viewLogFile: () => {
-    return ipcRenderer.invoke('view-log-file');
-  },
-  // Add a method for the renderer to request a notification
-  sendNotification: (message: string) => {
-    ipcRenderer.send('show-notification', message);
-  },
-  // Method for Groq transcription
-  transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => {
-    if (transferList) {
-      return ipcRenderer.invoke('transcribe-groq', audioBuffer, transferList);
-    } else {
-      return ipcRenderer.invoke('transcribe-groq', audioBuffer);
-    }
-  },
-  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
-    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
-  // ALT key push-to-talk events
-  onPTTDown: (cb: () => void) => {
-    ipcRenderer.removeAllListeners('ptt-down');
-    ipcRenderer.on('ptt-down', cb);
-    return () => ipcRenderer.removeAllListeners('ptt-down');
-  },
-  onPTTUp: (cb: () => void) => {
-    ipcRenderer.removeAllListeners('ptt-up');
-    ipcRenderer.on('ptt-up', cb);
-    return () => ipcRenderer.removeAllListeners('ptt-up');
-  },
-});
-</file>
-
 <file path="src/types/electron.d.ts">
 /**
  * TypeScript declarations for the Electron API exposed to the renderer process
@@ -2622,6 +2540,125 @@ export async function transcribeAudioWithGemini(
     throw err; 
   }
 }
+</file>
+
+<file path="src/preload.ts">
+// See the Electron documentation for details on how to use preload scripts:
+// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
+
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld('electron', {
+  toggleDictation: (callback: () => void) => {
+    // Remove any existing listeners to prevent duplicates
+    ipcRenderer.removeAllListeners('toggle-dictation');
+    // Add the new listener
+    ipcRenderer.on('toggle-dictation', () => callback());
+    
+    // Return a cleanup function that can be called when the component unmounts
+    return () => {
+      ipcRenderer.removeAllListeners('toggle-dictation');
+    };
+  },
+  showPillContextMenu: () => {
+    ipcRenderer.send('show-context-menu');
+  },
+  insertTextAtCursor: (text: string) => {
+    return ipcRenderer.invoke('insert-text-at-cursor', text);
+  },
+  // Method to view the log file
+  viewLogFile: () => {
+    return ipcRenderer.invoke('view-log-file');
+  },
+  // Add a method for the renderer to request a notification
+  sendNotification: (message: string) => {
+    ipcRenderer.send('show-notification', message);
+  },
+  // Method for Groq transcription
+  transcribeGroq: (audioBuffer: ArrayBuffer, transferList?: Transferable[]) => {
+    if (transferList) {
+      return ipcRenderer.invoke('transcribe-groq', audioBuffer, transferList);
+    } else {
+      return ipcRenderer.invoke('transcribe-groq', audioBuffer);
+    }
+  },
+  transcribeGemini: (buf: ArrayBuffer, mimeType: string, transfer?: Transferable[]) =>
+    ipcRenderer.invoke('transcribe-gemini', buf, mimeType, transfer),
+  // ALT key push-to-talk events
+  onPTTDown: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-down');
+    ipcRenderer.on('ptt-down', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-down');
+  },
+  onPTTUp: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('ptt-up');
+    ipcRenderer.on('ptt-up', cb);
+    return () => ipcRenderer.removeAllListeners('ptt-up');
+  },
+});
+</file>
+
+<file path="vite.renderer.config.ts">
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { join } from 'node:path';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    react(),
+    viteStaticCopy({
+      targets: [
+        {
+          src: join(__dirname, 'node_modules/onnxruntime-web/dist/*.wasm'),
+          dest: '.' // copies to the root of the output directory (dist/)
+        },
+        {
+          src: join(__dirname, 'public/assets/icon.*'),
+          dest: 'assets' // copies icon files to dist/assets/
+        }
+      ]
+    })
+  ],
+  resolve: {
+    alias: {
+      '@': join(__dirname, 'src'), // Example alias
+    },
+  },
+  // Add worker configuration
+  worker: {
+    format: 'es',
+  },
+  // Add build options for the main app and the worklet
+  build: {
+    rollupOptions: {
+      input: {
+        // Define multiple entry points
+        main: join(__dirname, 'index.html'), // Your main app entry
+        'audioworklet-processor': join(__dirname, 'public/audioworklet-processor.js'), // The worklet entry
+      },
+      output: {
+        // Ensure the worklet is output as an ES module
+        entryFileNames: (chunkInfo) => {
+          // Keep original names for entry points
+          return chunkInfo.name === 'main' ? '[name].js' : '[name].js';
+        },
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+        format: 'es', // Ensure ES module format
+      },
+    },
+    // Target environments that support ES modules and top-level await
+    target: 'esnext',
+    // Output directory (relative to project root)
+    outDir: 'dist',
+    // Empty output directory before build
+    emptyOutDir: true,
+  },
+});
 </file>
 
 <file path="src/components/App.tsx">
@@ -2748,7 +2785,7 @@ export default App;
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-const FETCH_TIMEOUT = 30000; // 30 seconds
+const FETCH_TIMEOUT = 10000; // 10 seconds (Reduced from 30 seconds)
 
 export default {
 	async fetch(request, env, ctx) {
@@ -2760,31 +2797,47 @@ export default {
 
 		try {
 			if (url.pathname === '/groq') {
-				// --- Groq Logic with Raw ArrayBuffer ---
+				// --- Groq Logic ---
 				if (!env.GROQ_API_KEY) {
 					return new Response('GROQ_API_KEY not configured in worker environment', { status: 500 });
 				}
 
-				// Handle raw ArrayBuffer data with headers
-				const contentType = request.headers.get('Content-Type');
+				const contentType = request.headers.get('Content-Type')?.toLowerCase();
 				const audioLanguage = request.headers.get('X-Audio-Language') || 'en';
-				const audioFilename = request.headers.get('X-Audio-Filename') || 'audio.webm';
+				
+				let audioFile; // Will be a File object for FormData
+				let audioFilename = 'audio.wav'; // Default filename, can be adjusted
 
-				if (!contentType || (!contentType.toLowerCase().startsWith('audio/wav') && !contentType.toLowerCase().startsWith('audio/webm'))) {
-					return new Response('Expected audio/wav or audio/webm content type', { status: 400 });
+				if (contentType === 'audio/pcm') {
+					console.log('[CF Worker /groq] Received audio/pcm, converting to WAV.');
+					const sampleRate = request.headers.get('X-Sample-Rate') || '16000';
+					const channels = request.headers.get('X-Channels') || '1';
+					const bitDepth = request.headers.get('X-Bit-Depth') || '32'; // Assuming Float32 PCM
+
+					const pcmArrayBuffer = await request.arrayBuffer();
+					if (pcmArrayBuffer.byteLength === 0) {
+						return new Response('Empty audio/pcm data received', { status: 400 });
+					}
+
+					const wavArrayBuffer = pcmToWav(pcmArrayBuffer, { sampleRate, channels, bitDepth });
+					audioFile = new File([wavArrayBuffer], audioFilename, { type: 'audio/wav' });
+					console.log(`[CF Worker /groq] Converted PCM (${pcmArrayBuffer.byteLength} bytes) to WAV (${wavArrayBuffer.byteLength} bytes)`);
+				
+				} else if (contentType && (contentType.startsWith('audio/wav') || contentType.startsWith('audio/webm'))) {
+					console.log(`[CF Worker /groq] Received direct ${contentType}.`);
+					audioFilename = request.headers.get('X-Audio-Filename') || (contentType.startsWith('audio/wav') ? 'audio.wav' : 'audio.webm');
+					const audioArrayBuffer = await request.arrayBuffer();
+					if (audioArrayBuffer.byteLength === 0) {
+						return new Response(`Empty ${contentType} data received`, { status: 400 });
+					}
+					audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
+				} else {
+					return new Response('Expected audio/pcm, audio/wav, or audio/webm content type for /groq route', { status: 400 });
 				}
 
-				// Get raw audio data
-				const audioArrayBuffer = await request.arrayBuffer();
-				if (audioArrayBuffer.byteLength === 0) {
-					return new Response('Empty audio data received', { status: 400 });
-				}
-
-				// Create File object for Groq API (which still expects FormData)
-				const audioFile = new File([audioArrayBuffer], audioFilename, { type: contentType });
-
+				// Common Groq API call logic using audioFile
 				const groqFormData = new FormData();
-				groqFormData.append('file', audioFile); // Groq SDK uses 'file'
+				groqFormData.append('file', audioFile); 
 				groqFormData.append('model', 'distil-whisper-large-v3-en');
 				groqFormData.append('language', audioLanguage);
 				groqFormData.append('response_format', 'json');
@@ -2859,10 +2912,6 @@ export default {
 				const geminiPayload = {
 					contents: [
 						{ role: "user", parts: [{ text: prompt }] },
-						{
-							role: "model", // Placeholder for system/model instructions if API evolves
-							parts: [{ text: "Okay, I will transcribe the following audio."}] // Simple ack
-						},
 						{
 							role: "user",
 							parts: [
@@ -2959,6 +3008,57 @@ const b64chars = [
 	'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
 	'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
 ];
+
+// Helper function to convert PCM ArrayBuffer to WAV ArrayBuffer
+function pcmToWav(pcmBuffer, options) {
+	const numChannels = parseInt(options.channels, 10) || 1;
+	const sampleRate = parseInt(options.sampleRate, 10) || 16000;
+	const bitDepth = parseInt(options.bitDepth, 10) || 32;
+	const bytesPerSample = bitDepth / 8;
+
+	const blockAlign = numChannels * bytesPerSample;
+	const byteRate = sampleRate * blockAlign;
+	const dataSize = pcmBuffer.byteLength;
+
+	const buffer = new ArrayBuffer(44 + dataSize);
+	const view = new DataView(buffer);
+
+	function writeString(offset, string) {
+		for (let i = 0; i < string.length; i++) {
+			view.setUint8(offset + i, string.charCodeAt(i));
+		}
+	}
+
+	// RIFF header
+	writeString(0, 'RIFF');
+	view.setUint32(4, 36 + dataSize, true); // ChunkSize
+	writeString(8, 'WAVE');
+
+	// fmt chunk
+	writeString(12, 'fmt ');
+	view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+	// AudioFormat: 1 for PCM (integer), 3 for IEEE float (Float32 is IEEE float)
+	const audioFormat = (bitDepth === 32 && bytesPerSample === 4) ? 3 : 1;
+	view.setUint16(20, audioFormat, true);
+	view.setUint16(22, numChannels, true);
+	view.setUint32(24, sampleRate, true);
+	view.setUint32(28, byteRate, true);
+	view.setUint16(32, blockAlign, true);
+	view.setUint16(34, bitDepth, true);
+
+	// data chunk
+	writeString(36, 'data');
+	view.setUint32(40, dataSize, true);
+
+	// Write PCM data: copy data from pcmBuffer
+	// Create a Uint8Array view of the pcmBuffer to copy it byte by byte
+	const pcmArray = new Uint8Array(pcmBuffer);
+	// Create a Uint8Array view of the WAV buffer's data part to set the pcm data
+	const wavDataArray = new Uint8Array(buffer, 44);
+	wavDataArray.set(pcmArray);
+
+	return buffer;
+}
 </file>
 
 <file path="src/workers/groq-transcriber.ts">
@@ -2983,16 +3083,20 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
       throw new Error('Audio data (ArrayBuffer) is empty.');
     }
 
-    // Send raw ArrayBuffer with headers instead of FormData to eliminate double serialization
-    console.log(`[GroqTranscriber-CFW]	Sending audio (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
+    // Sending raw PCM Float32 ArrayBuffer directly
+    console.log(`[GroqTranscriber-CFW]	Sending raw PCM F32 (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
     const startTime = performance.now();
 
     const response = await fetch(workerUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'audio/wav',
+        // Indicate that the body is raw PCM data (Float32)
+        'Content-Type': 'audio/pcm',
         'X-Audio-Language': inputLanguage,
-        'X-Audio-Filename': 'audio.wav'
+        'X-Sample-Rate': '16000',      // Assuming 16kHz from useTranscription
+        'X-Bit-Depth': '32',         // Float32 is 32-bit
+        'X-Channels': '1',           // Mono audio
+        // 'X-Audio-Filename' is not strictly needed if not using FormData on worker side for this path
       },
       body: audioData // Send raw ArrayBuffer
     });
@@ -3074,11 +3178,11 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
     "ts-node": "^10.9.2",
     "typescript": "~4.5.4",
     "utf-8-validate": "^5.0.10",
-    "vite": "^6.2.1"
+    "vite": "^6.2.1",
+    "vite-plugin-static-copy": "^3.0.0"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.5.0",
-    "@rollup/rollup-win32-x64-msvc": "^4.40.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
@@ -3095,6 +3199,9 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
     "vite-plugin-electron": "^0.29.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.40.0"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
@@ -3117,6 +3224,18 @@ console.log("[LocalWorker] Imports completed successfully");
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 console.log("[LocalWorker] Transformers environment configured");
+
+// Enable WASM SIMD and Threading
+const wasmConfig = (env.backends as any)['wasm']; // Cast env.backends to any before accessing 'wasm'
+if (wasmConfig) {
+    console.log("[LocalWorker] Configuring WASM backend for SIMD and Threading...");
+    wasmConfig.simd = true;
+    wasmConfig.numThreads = navigator.hardwareConcurrency || 4;
+    wasmConfig.proxy = true; // Required for multi-threading in a worker
+    console.log(`[LocalWorker] WASM backend configured: SIMD=${wasmConfig.simd}, Threads=${wasmConfig.numThreads}, Proxy=${wasmConfig.proxy}`);
+} else {
+    console.warn("[LocalWorker] WASM backend not available in env.backends. Skipping SIMD/Threading configuration.");
+}
 
 // Updated MODEL_ID for streaming
 const MODEL_ID = "onnx-community/moonshine-base-ONNX";
@@ -3572,12 +3691,36 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
-// Determine the path to the icon file (works in both packaged and dev environments)
-const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+// FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
+// Try multiple possible locations for the icon
+const getIconPath = () => {
+  const possiblePaths = [
+    path.join(__dirname, 'assets', 'icon.png'),           // Vite build location
+    path.join(__dirname, '..', 'assets', 'icon.png'),    // Alternative location
+    path.join(process.resourcesPath, 'icon.png'),         // extraResource location
+    path.join(__dirname, '..', '..', 'public', 'assets', 'icon.png') // Source location
+  ];
+  
+  for (const iconPath of possiblePaths) {
+    try {
+      if (fs.existsSync(iconPath)) {
+        console.log(`[Main Process] Found icon at: ${iconPath}`);
+        return iconPath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+  
+  console.warn('[Main Process] No icon found in any expected location');
+  return possiblePaths[0]; // fallback
+};
+
+const iconPath = getIconPath();
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
+  const windowOptions: any = {
     width: 120,
     height: 35,
     frame: false,
@@ -3594,11 +3737,34 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       additionalArguments: ['--enable-features=SharedArrayBuffer'],
     },
-    icon: iconPath,
-  });
+  };
 
-  // Also set the icon explicitly after creation (optional but good practice)
-  mainWindow.setIcon(iconPath);
+  // Try to set the icon, but don't crash if it fails
+  // Use PNG for all platforms - it works better at runtime
+  const windowIconPath = iconPath;
+  
+  try {
+    const icon = nativeImage.createFromPath(windowIconPath);
+    if (!icon.isEmpty()) {
+      windowOptions.icon = windowIconPath;
+    } else {
+      console.warn(`Icon not found at path: ${windowIconPath}, continuing without icon`);
+    }
+  } catch (error) {
+    console.warn(`Failed to load icon: ${error.message}, continuing without icon`);
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
+
+  // Also try to set the icon explicitly after creation (optional but good practice)
+  try {
+    const icon = nativeImage.createFromPath(windowIconPath);
+    if (!icon.isEmpty()) {
+      mainWindow.setIcon(windowIconPath);
+    }
+  } catch (error) {
+    console.warn(`Failed to set window icon: ${error.message}`);
+  }
 
   // Show window inactive only when it's ready to prevent focus stealing
   mainWindow.once('ready-to-show', () => {
@@ -3999,6 +4165,20 @@ app.whenReady().then(() => {
 
   app.commandLine.appendSwitch('disable-http-cache');
   
+  // macOS dock icon setup (optional enhancements)
+  if (process.platform === 'darwin') {
+    try {
+      // Try to set the dock icon explicitly (fallback if app bundle icon fails)
+      const dockIcon = nativeImage.createFromPath(iconPath);
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+        console.log('[Main Process] Dock icon set successfully');
+      }
+    } catch (error) {
+      console.warn('[Main Process] Failed to set dock icon:', error.message);
+    }
+  }
+  
   createWindow();
   createTray();
   createContextMenuWindow();
@@ -4033,8 +4213,18 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  // On macOS, re-create a window when the dock icon is clicked and no windows are open
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else {
+    // If windows exist, show the main window or home window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    } else if (homeWindow && !homeWindow.isDestroyed()) {
+      homeWindow.show();
+    } else {
+      createWindow();
+    }
   }
 });
 
@@ -4342,8 +4532,8 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('cloud'); // Default to local mode
-  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('groq');
+  const [currentMode, setCurrentMode] = useState<'local' | 'cloud'>('local'); // Default to local mode
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>('gemini');
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -4748,9 +4938,6 @@ export function useTranscription(): UseTranscriptionReturn {
             return;
           }
 
-          const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
-
-          profilingStartTimeRef.current = performance.now();
           const preIPCTime = performance.now();
           let transcript = '';
 
@@ -4758,14 +4945,22 @@ export function useTranscription(): UseTranscriptionReturn {
             if (!window.electron?.transcribeGroq) {
               throw new Error('Groq transcription service (window.electron.transcribeGroq) is not available.');
             }
-            console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Groq...`);
-            transcript = await window.electron.transcribeGroq(wavBuf.slice(0), [wavBuf.slice(0)]);
-          } else { 
+            // For Groq, send raw PCM Float32 data directly
+            // Assert that trimmedPcmF32.buffer is an ArrayBuffer here, then slice it.
+            // This slice creates a new ArrayBuffer with just the segment's data.
+            const pcmF32ArrayBuffer = (trimmedPcmF32.buffer as ArrayBuffer).slice(
+              trimmedPcmF32.byteOffset,
+              trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength
+            );
+            console.log(`[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`);
+            transcript = await window.electron.transcribeGroq(pcmF32ArrayBuffer, [pcmF32ArrayBuffer]);
+          } else { // For Gemini, continue sending WAV for now
+            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
             if (!window.electron?.transcribeGemini) {
               throw new Error('Gemini transcription service (window.electron.transcribeGemini) is not available.');
             }
             console.log(`[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`);
-            const geminiResult = await window.electron.transcribeGemini(wavBuf.slice(0), 'audio/wav', [wavBuf.slice(0)]);
+            const geminiResult = await window.electron.transcribeGemini(wavBuf, 'audio/wav', [wavBuf]);
             transcript = geminiResult.text;
           }
           
