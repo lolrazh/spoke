@@ -31,12 +31,36 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
-// Determine the path to the icon file (works in both packaged and dev environments)
-const iconPath = path.join(__dirname, 'assets', 'icon.ico');
+// FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
+// Try multiple possible locations for the icon
+const getIconPath = () => {
+  const possiblePaths = [
+    path.join(__dirname, 'assets', 'icon.png'),           // Vite build location
+    path.join(__dirname, '..', 'assets', 'icon.png'),    // Alternative location
+    path.join(process.resourcesPath, 'icon.png'),         // extraResource location
+    path.join(__dirname, '..', '..', 'public', 'assets', 'icon.png') // Source location
+  ];
+  
+  for (const iconPath of possiblePaths) {
+    try {
+      if (fs.existsSync(iconPath)) {
+        console.log(`[Main Process] Found icon at: ${iconPath}`);
+        return iconPath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+  
+  console.warn('[Main Process] No icon found in any expected location');
+  return possiblePaths[0]; // fallback
+};
+
+const iconPath = getIconPath();
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
+  const windowOptions: any = {
     width: 120,
     height: 35,
     frame: false,
@@ -53,11 +77,34 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       additionalArguments: ['--enable-features=SharedArrayBuffer'],
     },
-    icon: iconPath,
-  });
+  };
 
-  // Also set the icon explicitly after creation (optional but good practice)
-  mainWindow.setIcon(iconPath);
+  // Try to set the icon, but don't crash if it fails
+  // Use PNG for all platforms - it works better at runtime
+  const windowIconPath = iconPath;
+  
+  try {
+    const icon = nativeImage.createFromPath(windowIconPath);
+    if (!icon.isEmpty()) {
+      windowOptions.icon = windowIconPath;
+    } else {
+      console.warn(`Icon not found at path: ${windowIconPath}, continuing without icon`);
+    }
+  } catch (error) {
+    console.warn(`Failed to load icon: ${error.message}, continuing without icon`);
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
+
+  // Also try to set the icon explicitly after creation (optional but good practice)
+  try {
+    const icon = nativeImage.createFromPath(windowIconPath);
+    if (!icon.isEmpty()) {
+      mainWindow.setIcon(windowIconPath);
+    }
+  } catch (error) {
+    console.warn(`Failed to set window icon: ${error.message}`);
+  }
 
   // Show window inactive only when it's ready to prevent focus stealing
   mainWindow.once('ready-to-show', () => {
@@ -458,6 +505,20 @@ app.whenReady().then(() => {
 
   app.commandLine.appendSwitch('disable-http-cache');
   
+  // macOS dock icon setup (optional enhancements)
+  if (process.platform === 'darwin') {
+    try {
+      // Try to set the dock icon explicitly (fallback if app bundle icon fails)
+      const dockIcon = nativeImage.createFromPath(iconPath);
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+        console.log('[Main Process] Dock icon set successfully');
+      }
+    } catch (error) {
+      console.warn('[Main Process] Failed to set dock icon:', error.message);
+    }
+  }
+  
   createWindow();
   createTray();
   createContextMenuWindow();
@@ -492,8 +553,18 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  // On macOS, re-create a window when the dock icon is clicked and no windows are open
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else {
+    // If windows exist, show the main window or home window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    } else if (homeWindow && !homeWindow.isDestroyed()) {
+      homeWindow.show();
+    } else {
+      createWindow();
+    }
   }
 });
 

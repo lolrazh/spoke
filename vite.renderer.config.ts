@@ -14,8 +14,8 @@ export default defineConfig({
           dest: '.' // copies to the root of the output directory (dist/)
         },
         {
-          src: join(__dirname, 'node_modules/onnxruntime-web/dist/ort-wasm-threaded.worker.js'),
-          dest: '.' // copies to the root of the output directory (dist/)
+          src: join(__dirname, 'public/assets/icon.*'),
+          dest: 'assets' // copies icon files to dist/assets/
         }
       ]
     })
