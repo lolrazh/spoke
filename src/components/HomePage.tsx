@@ -213,13 +213,13 @@ const HomePage: React.FC = () => {
                       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 150" preserveAspectRatio="none">
                         <defs>
                           <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="rgba(255, 95, 31, 0.4)" />
-                            <stop offset="100%" stopColor="rgba(255, 95, 31, 0)" />
+                            <stop offset="0%" stopColor="rgba(160, 160, 160, 0.4)" />
+                            <stop offset="100%" stopColor="rgba(160, 160, 160, 0)" />
                           </linearGradient>
                         </defs>
                         <motion.path 
                           d={chartPath}
-                          stroke="#FF5F1F" 
+                          stroke="#A0A0A0" 
                           strokeWidth="2" 
                           fill="none" 
                           strokeLinecap="round"
@@ -239,7 +239,7 @@ const HomePage: React.FC = () => {
                           <motion.circle 
                             key={index}
                             cx={point.x} cy={point.y} r="3" 
-                            fill="#FF5F1F" stroke="#121212" strokeWidth="1.5"
+                            fill="#A0A0A0" stroke="#121212" strokeWidth="1.5"
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 * index }}

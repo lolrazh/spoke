@@ -11,10 +11,10 @@ module.exports = {
   theme: {
   	extend: {
   		colors: {
-  			'sonic-orange': '#FF5F1F',
+  			'sonic-orange': '#A0A0A0',
   			'sonic-dark': '#1A1A1A',
   			'sonic-darker': '#121212',
-  			'sonic-light-orange': '#FF8A47',
+  			'sonic-light-orange': '#CCCCCC',
   			'sonic-gray': '#2A2A2A',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
