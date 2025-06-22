@@ -33,7 +33,7 @@ let homeWindow: BrowserWindow | null = null;
 
 const PILL_SIZE = {
   COLLAPSED: { width: 45, height: 16 },
-  EXPANDED: { width: 90, height: 28 }
+  EXPANDED: { width: 90, height: 37 }
 };
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime

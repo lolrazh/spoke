@@ -5,15 +5,16 @@
 @layer components {
   .pill-container {
     position: fixed;
-    bottom: 2px;
+    bottom: -2px;
     left: 50%;
     transform: translateX(-50%);
     width: 90px;
-    height: 28px;
-    transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    height: 25px;
+    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
     transform-origin: center;
     cursor: pointer;
     z-index: 1000;
+    will-change: transform;
   }
 
   .pill-container::before {
@@ -25,15 +26,19 @@
     border: 1px solid rgba(160, 160, 160, 0.25);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(5px);
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
   .pill-container:not(.collapsed) {
-    transform: translateX(-50%) scale(1);
+    transform: translateX(-50%) scale(1.1);
+  }
+
+  .pill-container:not(.collapsed):hover {
+    transform: translateX(-50%) scale(0.95);
   }
 
   .pill-container.collapsed {
-    transform: translateX(-50%) scale(0.5);
+    transform: translateX(-50%) scale(0.7);
     animation: breathe 4s ease-in-out infinite;
   }
 
