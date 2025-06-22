@@ -44,18 +44,7 @@ const Pill: React.FC<PillProps> = ({
     ));
   };
 
-  // Handle context menu
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent default browser context menu
-    console.log(`[Pill] Context menu requested.`); // Removed coordinate logging
-    // Check if the electron API exists and has the showPillContextMenu method
-    if (window.electron && 'showPillContextMenu' in window.electron) {
-      // Call without coordinates
-      (window.electron as any).showPillContextMenu();
-    } else {
-      console.warn('[Pill] window.electron.showPillContextMenu not available.');
-    }
-  };
+
   
   // Determine if the pill should be in the expanded state
   const isExpanded = isHovered || isListening || isProcessing;
@@ -69,7 +58,6 @@ const Pill: React.FC<PillProps> = ({
         ${isProcessing ? 'processing' : ''}
       `}
       onClick={isListening ? onStopDictation : onStartDictation}
-      onContextMenu={handleContextMenu}
     >
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">

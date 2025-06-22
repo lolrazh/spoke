@@ -8,7 +8,6 @@ export default defineConfig({
       // Specify multiple entry points for preload scripts
       entry: {
         preload: path.resolve(__dirname, 'src/preload.ts'),
-        'contextmenu-preload': path.resolve(__dirname, 'src/contextmenu-preload.ts'),
       },
       // Output format will be CommonJS as required by Electron preload scripts
       formats: ['cjs'],

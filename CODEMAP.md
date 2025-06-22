@@ -23,7 +23,7 @@ This folder contains all application source code. The logic is split across the 
 - `main.ts` – Boots the Electron app. Creates windows (pill, home, notification), registers global shortcuts, and wires up IPC handlers for transcription and text insertion. It orchestrates the overall workflow.
 - `preload.ts` – Runs in the renderer context and exposes a minimal `window.electron` API used by React components. This ensures the renderer cannot access Node APIs directly.
 - `renderer.tsx` – Entrypoint for React. Renders `<App>` and `<HomePage>` via React Router.
-- `contextmenu-preload.ts` / `notification-preload.js` – Preload scripts for the custom tray context menu and toast‑style notification window.
+- `notification-preload.js` – Preload script for the toast‑style notification window.
 - `index.css` – Global styles including Tailwind utilities.
 
 ### Components
@@ -31,7 +31,7 @@ This folder contains all application source code. The logic is split across the 
 These reside in `src/components/` and form the user interface.
 
 - `App.tsx` – Main React component containing the floating "pill" that the user interacts with. It uses the `useTranscription` hook to start and stop recording.
-- `HomePage.tsx` – Dashboard and settings window opened from the tray menu.
+- `HomePage.tsx` – Dashboard and settings window opened from the native macOS tray menu.
 - `Pill.tsx` – Renders the pill UI. Hover, listening and processing states change the visualization. Clicking toggles transcription. This is the best place to modify pill colors or animations.
 
 ### Custom hook

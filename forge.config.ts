@@ -1,8 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -10,29 +7,16 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    // FUCK IT - USE PNG! Let's be explicit about this
+    // macOS app icon
     icon: './public/assets/icon.png',
-    // Ensure icon files are copied to the app bundle
+    // Ensure icon is copied to the app bundle
     extraResource: [
-      './public/assets/icon.png',
-      './public/assets/icon.ico',
-      './public/assets/icon.icns'
+      './public/assets/icon.png'
     ]
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({
-      // Windows installer icons (as per Electron Forge docs)
-      setupIcon: './public/assets/icon.ico'
-    }), 
-    new MakerZIP({}, ['darwin']), 
-    new MakerRpm({}), 
-    new MakerDeb({
-      options: {
-        // Linux icon configuration (as per Electron Forge docs)
-        icon: './public/assets/icon.png'
-      }
-    })
+    new MakerZIP({}, ['darwin'])
   ],
   plugins: [
     new VitePlugin({
@@ -47,11 +31,6 @@ const config: ForgeConfig = {
         },
         {
           entry: 'src/preload.ts',
-          config: 'vite.preload.config.ts',
-          target: 'preload'
-        },
-        {
-          entry: 'src/contextmenu-preload.ts',
           config: 'vite.preload.config.ts',
           target: 'preload'
         },

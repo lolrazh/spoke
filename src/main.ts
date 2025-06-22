@@ -1,16 +1,15 @@
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
-import { loadSettings, updateSetting } from './lib/settings';
+
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
 import { startAltListener } from './main/alt-listener';
 
-// Performance for timings
-import { performance } from 'node:perf_hooks';
+
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -23,9 +22,6 @@ if (started) {
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let currentHotkey = '';
-let contextMenuWindow: BrowserWindow | null = null;
-let contextMenuOpen = false;
 let notificationWindow: BrowserWindow | null = null;
 let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
@@ -116,10 +112,7 @@ const createWindow = () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     console.log('Main window shown.');
-    // Only open DevTools on Windows or when explicitly requested (macOS loses transparency with DevTools open)
-    if (process.platform === 'win32' && !app.isPackaged) {
-      mainWindow.webContents.openDevTools({ mode: 'detach' }); 
-    }
+    // Note: DevTools disabled in production to maintain transparency on macOS
   });
 
   // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
@@ -176,22 +169,33 @@ const createTray = () => {
     
     tray.setToolTip('Sonic Flow');
 
-    // Listen for right-click events on the tray icon
-    tray.on('right-click', (event, bounds) => {
-      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
-      // Use the bottom-right corner of the bounds as the anchor
-      const anchorX = bounds.x + bounds.width;
-      const anchorY = bounds.y + bounds.height;
-      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
-      // Show the custom HTML context menu, aligning bottom-right to anchor
-      showContextMenu(anchorX, anchorY);
-    });
+    // Create native context menu
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Home',
+        click: () => {
+          console.log('[Tray Menu] Home clicked');
+          if (homeWindow) {
+            console.log('[Tray Menu] Home window exists, focusing...');
+            homeWindow.focus();
+          } else {
+            console.log('[Tray Menu] Home window is null, creating new window...');
+            createHomeWindow();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Exit',
+        click: () => {
+          console.log('[Tray Menu] Exit clicked');
+          app.quit();
+        }
+      }
+    ]);
 
-    // Optional: Handle left-click if needed (e.g., toggle main window?)
-    // tray.on('click', () => {
-    //   console.log('[Tray Event] Left-click detected.');
-    //   // Example: mainWindow?.show();
-    // });
+    // Set the native context menu
+    tray.setContextMenu(contextMenu);
 
   } catch (error) {
     console.error('Failed to create tray:', error);
@@ -236,192 +240,7 @@ const createNotificationWindow = () => {
   });
 };
 
-// Create the custom context menu window
-const createContextMenuWindow = () => {
-  if (contextMenuWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  contextMenuWindow = new BrowserWindow({
-    width: 140, 
-    height: 100, // Adjusted height
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'contextmenu-preload.js'), 
-      contextIsolation: true, 
-      nodeIntegration: false, 
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  const contextMenuHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; 
-          overflow: hidden;
-        }
-        
-        .menu-items {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
-          padding: 0; 
-        }
-        
-        .menu-item {
-          font-size: 12px;
-          padding: 4px 6px; 
-          margin: 2px 0;
-          cursor: pointer;
-          border-radius: 6px; 
-          text-align: left;
-          color: #ffffff;
-          background-color: transparent;
-          border: none;
-          width: auto; 
-          display: block;
-        }
-        
-        .menu-item:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; 
-        }
-        
-        .separator {
-          height: 1px;
-          background-color: #444444;
-          margin: 4px 0; 
-          width: 100%;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="menu-items">
-          <button id="homeBtn" class="menu-item">Home</button>
-          <div class="separator"></div>
-          <button id="exitBtn" class="menu-item">Exit</button>
-        </div>
-      </div>
-      
-      <script>
-        if (window.contextMenuAPI) {
-          document.getElementById('homeBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-home');
-          });
-          
-          document.getElementById('exitBtn').addEventListener('click', () => {
-            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
-            window.contextMenuAPI.send('menu-exit');
-          });
-        } else {
-          console.error('[Context Menu] contextMenuAPI not found on window object!');
-        }
-      </script>
-    </body>
-    </html>
-  `;
-  
-  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
-  
-  contextMenuWindow.on('blur', () => {
-    hideContextMenu();
-  });
-  
-  contextMenuWindow.on('closed', () => {
-    console.log('Context menu window closed.');
-    contextMenuWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating context menu window.');
-      createContextMenuWindow(); 
-    } else {
-      console.log('Not recreating context menu window because app is quitting.');
-    }
-  });
-};
 
-const showContextMenu = (anchorX?: number, anchorY?: number) => {
-  if (contextMenuOpen || !contextMenuWindow) return;
-  
-  contextMenuOpen = true;
-  const menuSize = contextMenuWindow.getSize();
-  const menuWidth = menuSize[0];
-  const menuHeight = menuSize[1];
-  
-  let positionX: number;
-  let positionY: number;
-  
-  if (anchorX !== undefined && anchorY !== undefined) {
-    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
-    positionX = anchorX - menuWidth;
-    positionY = anchorY - menuHeight;
-    
-    const fineTuneX = 0; 
-    const fineTuneY = 0; 
-    positionX += fineTuneX;
-    positionY += fineTuneY;
-    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
-  } 
-  else if (mainWindow) { 
-    console.log('[showContextMenu] Positioning relative to pill');
-    const pillBounds = mainWindow.getBounds();
-    const currentMenuSize = contextMenuWindow.getSize(); 
-    const currentMenuHeight = currentMenuSize[1];
-    const currentMenuWidth = currentMenuSize[0];
-
-    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
-    const calculatedPosY = pillBounds.y - currentMenuHeight;
-    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
-    positionY = calculatedPosY + upwardAdjustment; 
-    
-    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
-    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
-  } 
-  else {
-    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
-    contextMenuOpen = false; 
-    return; 
-  }
-  
-  contextMenuWindow.setPosition(positionX, positionY);
-  contextMenuWindow.show();
-};
-
-// Hide the context menu
-const hideContextMenu = () => {
-  if (!contextMenuOpen || !contextMenuWindow) return;
-  contextMenuOpen = false;
-  contextMenuWindow.hide();
-};
 
 // Add a handler for insert-text-at-cursor
 ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
@@ -447,24 +266,14 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
       operationSuccess = true; 
       showNotificationPopup('Output copied to clipboard');
     } else {
-      console.log('No Electron window is focused, attempting OS-level paste.');
+      console.log('No Electron window is focused, attempting macOS paste via AppleScript.');
       try {
-        if (process.platform === 'win32') {
-          console.log('Executing paste command via PowerShell');
-          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
-        } else if (process.platform === 'darwin') {
-          console.log('Executing paste command via AppleScript');
-          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
-        } else if (process.platform === 'linux') {
-          console.log('Executing paste command via xdotool');
-          execSync('xdotool key ctrl+v');
-        } else {
-          throw new Error('Unsupported platform for OS-level paste');
-        }
-        console.log('OS paste command executed successfully.');
+        console.log('Executing paste command via AppleScript');
+        execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
+        console.log('macOS paste command executed successfully.');
         operationSuccess = true;
       } catch (err) {
-        console.error('Failed to execute OS paste command:', err);
+        console.error('Failed to execute macOS paste command:', err);
         operationError = 'Unable to paste text. Please make sure a text field is focused.';
         operationSuccess = false;
       }
@@ -513,23 +322,20 @@ app.whenReady().then(() => {
 
   app.commandLine.appendSwitch('disable-http-cache');
   
-  // macOS dock icon setup (optional enhancements)
-  if (process.platform === 'darwin') {
-    try {
-      // Try to set the dock icon explicitly (fallback if app bundle icon fails)
-      const dockIcon = nativeImage.createFromPath(iconPath);
-      if (!dockIcon.isEmpty()) {
-        app.dock.setIcon(dockIcon);
-        console.log('[Main Process] Dock icon set successfully');
-      }
-    } catch (error) {
-      console.warn('[Main Process] Failed to set dock icon:', error.message);
+  // macOS dock icon setup
+  try {
+    // Try to set the dock icon explicitly (fallback if app bundle icon fails)
+    const dockIcon = nativeImage.createFromPath(iconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock.setIcon(dockIcon);
+      console.log('[Main Process] Dock icon set successfully');
     }
+  } catch (error) {
+    console.warn('[Main Process] Failed to set dock icon:', error.message);
   }
   
   createWindow();
   createTray();
-  createContextMenuWindow();
   createHomeWindow();
   createNotificationWindow();
 
@@ -548,10 +354,7 @@ app.whenReady().then(() => {
     else wc?.openDevTools({ mode: 'detach' });
   });
 
-  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
-    console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    showContextMenu(); 
-  });
+
 
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
@@ -560,11 +363,8 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  console.log('[App Event] window-all-closed - Checking platform...');
-  if (process.platform !== 'darwin') {
-    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
-    app.quit();
-  }
+  // On macOS, keep the app running even when all windows are closed
+  console.log('[App Event] window-all-closed - Keeping app running (macOS behavior)');
 });
 
 app.on('activate', () => {
@@ -598,27 +398,7 @@ app.on('will-quit', () => {
 // ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
 // === END IPC Handlers ===
 
-// === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] \'menu-home\' received.');
-  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
-  if (homeWindow) {
-    console.log('[IPC Main] Home window exists, focusing...');
-    homeWindow.focus();
-  } else {
-    console.log('[IPC Main] Home window is null, creating new window...');
-    createHomeWindow();
-  }
-  hideContextMenu();
-});
 
-ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu(); 
-  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
-  app.quit();
-});
-// === END IPC Handlers ===
 
 const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return;

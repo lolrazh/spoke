@@ -6,7 +6,6 @@ declare global {
   interface Window {
     electron: {
       toggleDictation: (callback: () => void) => () => void;
-      showPillContextMenu: () => void;
       insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
       viewLogFile: () => Promise<string>;
       sendNotification: (message: string) => void;
@@ -24,9 +23,6 @@ declare global {
       // ALT key push-to-talk events
       onPTTDown: (cb: () => void) => () => void;
       onPTTUp: (cb: () => void) => () => void;
-    };
-    contextMenuAPI?: {
-      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
     };
   }
 }
