@@ -32,7 +32,7 @@ let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
 const PILL_W = 70;
-const PILL_H = 22;
+const PILL_H = 15;
 const PAD = 12; // 6px padding on each side
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
