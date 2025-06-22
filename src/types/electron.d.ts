@@ -6,6 +6,7 @@ declare global {
   interface Window {
     electron: {
       toggleDictation: (callback: () => void) => () => void;
+      showPillContextMenu: () => void;
       insertTextAtCursor: (text: string) => Promise<{ success: boolean; error?: string }>;
       viewLogFile: () => Promise<string>;
       sendNotification: (message: string) => void;

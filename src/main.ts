@@ -354,7 +354,35 @@ app.whenReady().then(() => {
     else wc?.openDevTools({ mode: 'detach' });
   });
 
-
+  // Handle pill context menu
+  ipcMain.on('show-pill-context-menu', () => {
+    console.log('[IPC Main] Received show-pill-context-menu event');
+    if (mainWindow) {
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: 'Home',
+          click: () => {
+            console.log('[Pill Menu] Home clicked');
+            if (homeWindow) {
+              homeWindow.focus();
+            } else {
+              createHomeWindow();
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          click: () => {
+            console.log('[Pill Menu] Exit clicked');
+            app.quit();
+          }
+        }
+      ]);
+      
+      contextMenu.popup({ window: mainWindow });
+    }
+  });
 
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);

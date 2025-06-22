@@ -711,9 +711,11 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
       console.log('[Mock Electron] toggleDictation called');
       // Call the callback to simulate toggle if needed for testing UI state
       // callback(); 
-      return () => console.log('[Mock Electron] cleanup toggleDictation');
+            return () => console.log('[Mock Electron] cleanup toggleDictation');
     },
-
+    showPillContextMenu: () => {
+      console.log('[Mock Electron] showPillContextMenu called');
+    },
     insertTextAtCursor: async (text: string) => {
       console.log(`[Mock Electron] insertTextAtCursor called with: "${text.substring(0, 50)}..."`);
       // return Promise.resolve(); // Original was Promise<void>
