@@ -65,6 +65,8 @@ const createWindow = () => {
     height: 35,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000', // Fully transparent background
+    hasShadow: false, // Transparent windows ignore shadow anyway
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
@@ -110,8 +112,10 @@ const createWindow = () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     console.log('Main window shown.');
-    // Automatically open DevTools for debugging
-    mainWindow.webContents.openDevTools({ mode: 'detach' }); 
+    // Only open DevTools on Windows or when explicitly requested (macOS loses transparency with DevTools open)
+    if (process.platform === 'win32' && !app.isPackaged) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' }); 
+    }
   });
 
   // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
@@ -531,6 +535,13 @@ app.whenReady().then(() => {
     mainWindow.webContents.send(
       state === "down" ? "ptt-down" : "ptt-up"
     );
+  });
+
+  // Handy shortcut to toggle DevTools without breaking transparency
+  globalShortcut.register('CommandOrControl+Alt+I', () => {
+    const wc = mainWindow?.webContents;
+    if (wc?.isDevToolsOpened()) wc.closeDevTools();
+    else wc?.openDevTools({ mode: 'detach' });
   });
 
   ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
