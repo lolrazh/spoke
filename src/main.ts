@@ -31,10 +31,9 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
-const PILL_SIZE = {
-  COLLAPSED: { width: 45, height: 16 },
-  EXPANDED: { width: 90, height: 37 }
-};
+const PILL_W = 70;
+const PILL_H = 22;
+const PAD = 12; // 6px padding on each side
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -66,12 +65,12 @@ const iconPath = getIconPath();
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
-    width: 70,
-    height: 22,
+    width: PILL_W + PAD,
+    height: PILL_H + PAD,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background
-    hasShadow: false, // Transparent windows ignore shadow anyway
+    hasShadow: false, // <-- KILL the macOS shadow (= white block)
     resizable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
