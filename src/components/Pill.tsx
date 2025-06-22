@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 interface PillProps {
   isListening: boolean;
   isProcessing: boolean;
+  isHovered: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
 }
@@ -10,11 +11,10 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({ 
   isListening, 
   isProcessing, 
+  isHovered,
   onStartDictation, 
   onStopDictation 
 }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  
   // Number of dots/bars to display - consistent across all states
   const VISUALIZATION_COUNT = 7;
   
@@ -63,45 +63,44 @@ const Pill: React.FC<PillProps> = ({
   return (
     <div 
       className={`
-        pill-container 
+        pill-wrapper
         ${isExpanded ? 'expanded' : 'collapsed'}
         ${isListening ? 'listening' : ''}
         ${isProcessing ? 'processing' : ''}
-        flex items-center justify-center
       `}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
     >
-      <div className="pill-content flex items-center justify-center w-full h-full">
-        {/* Dormant state - show smaller dots */}
-        {!isExpanded && (
-          <div className="visualization-container">
-            {renderDots('collapsed')}
-          </div>
-        )}
+      <div className="pill-core">
+        <div className="pill-content flex items-center justify-center w-full h-full">
+          {/* Dormant state - show smaller dots */}
+          {!isExpanded && (
+            <div className="visualization-container">
+              {renderDots('collapsed')}
+            </div>
+          )}
 
-        {/* Hover state - show static dots */}
-        {isHovered && !isListening && !isProcessing && (
-          <div className="visualization-container">
-            {renderDots('static')}
-          </div>
-        )}
-        
-        {/* Active state - show frequency bars */}
-        {isListening && (
-          <div className="visualization-container">
-            {renderFrequencyBars()}
-          </div>
-        )}
-        
-        {/* Loading state - show animated dots */}
-        {isProcessing && !isListening && (
-          <div className="visualization-container">
-            {renderDots('animated')}
-          </div>
-        )}
+          {/* Hover state - show static dots */}
+          {isHovered && !isListening && !isProcessing && (
+            <div className="visualization-container">
+              {renderDots('static')}
+            </div>
+          )}
+          
+          {/* Active state - show frequency bars */}
+          {isListening && (
+            <div className="visualization-container">
+              {renderFrequencyBars()}
+            </div>
+          )}
+          
+          {/* Loading state - show animated dots */}
+          {isProcessing && !isListening && (
+            <div className="visualization-container">
+              {renderDots('animated')}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

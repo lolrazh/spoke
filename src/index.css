@@ -3,61 +3,46 @@
 @tailwind utilities;
 
 @layer components {
-  .pill-container {
+  /* The main container for the app, which also acts as the hover hot-zone */
+  .app-container {
     position: fixed;
-    bottom: -2px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 90px;
-    height: 25px;
-    transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-    transform-origin: center;
-    cursor: pointer;
-    z-index: 1000;
-    will-change: transform;
-  }
-
-  .pill-container::before {
-    content: "";
-    position: absolute;
     inset: 0;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  /* Centering wrapper for the pill */
+  .pill-wrapper {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none; /* Pass clicks through to the app-container */
+  }
+
+  /* The visible pill element that gets scaled and styled */
+  .pill-core {
+    width: 100%;
+    height: 100%;
     border-radius: 14px;
-    background: rgba(18, 18, 18, 0.75);
-    border: 1px solid rgba(160, 160, 160, 0.25);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 6px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(5px);
-    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-  }
-
-  .pill-container:not(.collapsed) {
-    transform: translateX(-50%) scale(1.1);
-  }
-
-  .pill-container:not(.collapsed):hover {
-    transform: translateX(-50%) scale(0.95);
-  }
-
-  .pill-container.collapsed {
-    transform: translateX(-50%) scale(0.7);
-    animation: breathe 4s ease-in-out infinite;
-  }
-
-  .pill-container:active {
-    transform: translateX(-50%) scale(0.95);
-    transition: all 0.1s ease-out;
-  }
-
-  @keyframes breathe {
-    0%, 100% { opacity: 0.85; }
-    50% { opacity: 1; }
-  }
-
-  .pill-container.expanded::before, 
-  .pill-container.listening::before, 
-  .pill-container.processing::before {
-    background: rgba(18, 18, 18, 0.75);
+    background: rgba(18, 18, 18, 0.98);
     border: 1px solid rgba(160, 160, 160, 0.3);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 0 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.03);
+    box-shadow:
+      0 1px 4px rgba(0,0,0,.12),
+      0 0 8px rgba(0,0,0,.10),
+      inset 0 1px 1px rgba(255,255,255,.03);
+    transition: transform 0.25s cubic-bezier(.25,.8,.25,1);
+    transform: scale(0.64); /* Collapsed by default */
+  }
+  
+  /* Scale up the core when the wrapper is expanded */
+  .pill-wrapper.expanded .pill-core {
+    transform: scale(1);
   }
 
   .pill-content {
@@ -68,10 +53,12 @@
     align-items: center;
     color: #A0A0A0;
     position: relative; /* Ensure content is above the pseudo-element */
+    pointer-events: auto; /* Capture clicks on the content */
   }
 
   .pill-icon {
     opacity: 0.9;
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
   }
 
   /* Common container for dots and bars */
@@ -161,7 +148,7 @@
   }
 
   /* Adjust collapsed container to maintain proportions */
-  .pill-container.collapsed .visualization-container {
+  .pill-wrapper.collapsed .visualization-container {
     gap: 3px;
   }
 
@@ -203,14 +190,6 @@
     opacity: 0;
     transition: opacity 300ms;
   }
-
-  .app-container {
-    width: 100%;
-    height: 100vh;
-    background: transparent;
-    overflow: hidden;
-    position: relative;
-  }
 }
 
 /* Make body and html transparent for Electron */
@@ -226,8 +205,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
 }
-
-
 
 @layer base {
   :root {
@@ -284,8 +261,6 @@ body {
     --chart-5: 340 75% 55%;
   }
 }
-
-
 
 @layer base {
   * {

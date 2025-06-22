@@ -66,8 +66,8 @@ const iconPath = getIconPath();
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
-    width: PILL_SIZE.EXPANDED.width,
-    height: PILL_SIZE.EXPANDED.height,
+    width: 70,
+    height: 22,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background

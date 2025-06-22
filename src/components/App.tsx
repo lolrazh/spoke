@@ -10,6 +10,7 @@ import { useTranscription } from '../hooks/useTranscription'; // Adjust path if 
 
 const App: React.FC = () => {
   const trans = useTranscription();
+  const [isHovered, setIsHovered] = useState(false);
 
   // Refs for the Right-Alt key logic
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,10 +96,15 @@ const App: React.FC = () => {
   }, [trans.start, trans.stop]);
 
   return (
-    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
+    <div 
+      className="app-container w-full h-screen bg-transparent overflow-hidden relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <Pill 
         isListening={isListening}
-        isProcessing={isProcessing} 
+        isProcessing={isProcessing}
+        isHovered={isHovered}
         // Connect Pill clicks directly to hook functions
         onStartDictation={trans.start}
         onStopDictation={trans.stop}
