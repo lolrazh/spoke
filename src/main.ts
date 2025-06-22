@@ -31,6 +31,11 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 
+const PILL_SIZE = {
+  COLLAPSED: { width: 45, height: 16 },
+  EXPANDED: { width: 90, height: 28 }
+};
+
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
 const getIconPath = () => {
@@ -61,8 +66,8 @@ const iconPath = getIconPath();
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
-    width: 120,
-    height: 35,
+    width: PILL_SIZE.EXPANDED.width,
+    height: PILL_SIZE.EXPANDED.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background
