@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
-import { startAltListener } from './main/alt-listener';
+import { createFnListener } from './main/fn-listener';
 
 
 
@@ -339,13 +339,9 @@ app.whenReady().then(() => {
   createHomeWindow();
   createNotificationWindow();
 
-  // ✨ ALT key listener for push-to-talk
-  startAltListener(state => {
-    if (!mainWindow) return;
-    mainWindow.webContents.send(
-      state === "down" ? "ptt-down" : "ptt-up"
-    );
-  });
+  if (process.platform === 'darwin') {
+    createFnListener(mainWindow);
+  }
 
   // Handy shortcut to toggle DevTools without breaking transparency
   globalShortcut.register('CommandOrControl+Alt+I', () => {
