@@ -32,7 +32,7 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
-const ISLAND_HIDDEN_Y = -40;          // parked just under notch
+const ISLAND_HIDDEN_Y = -25;          // parked just under notch (adjusted closer)
 const ISLAND_WIDTH    = 240;
 const ISLAND_HEIGHT   = 30;
 const ISLAND_RADIUS   = 6;
@@ -135,9 +135,11 @@ const createWindow = () => {
 
   // Position window centered horizontally and hidden under the notch
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth } = primaryDisplay.workAreaSize;
+  const { width: fullScreenWidth } = primaryDisplay.size; // Use full screen width, not workAreaSize
+  const initialX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+  console.log(`[Window Creation] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Initial X: ${initialX}, Y: ${ISLAND_HIDDEN_Y}`);
   mainWindow.setBounds({
-    x: Math.round((screenWidth - ISLAND_WIDTH) / 2),
+    x: initialX,
     y: ISLAND_HIDDEN_Y,
     width: ISLAND_WIDTH,
     height: ISLAND_HEIGHT,
@@ -400,8 +402,17 @@ app.whenReady().then(() => {
 
   ipcMain.on('island-slide', (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      const b = mainWindow.getBounds();
-      mainWindow.setBounds({ ...b, y });
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: fullScreenWidth } = primaryDisplay.size;
+      // Recalculate X to ensure perfect centering on every slide
+      const centeredX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+      console.log(`[Island Slide] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Centered X: ${centeredX}, Y: ${y}`);
+      mainWindow.setBounds({ 
+        x: centeredX,
+        y: y,
+        width: ISLAND_WIDTH,
+        height: ISLAND_HEIGHT
+      });
     }
   });
 });

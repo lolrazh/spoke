@@ -9,16 +9,16 @@
     inset: 0;
     cursor: pointer;
     pointer-events: auto;
+    /* Turn the main container into a flexbox to enforce centering */
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* Centering wrapper for the pill */
   .pill-wrapper {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 100%;
-    height: 100%;
+    /* No longer needs absolute positioning or transforms. */
+    /* It is now a flex item centered by its parent. */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -27,8 +27,8 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
-    width: 100%;
-    height: 100%;
+    width: 210px;  /* Fixed width smaller than window */
+    height: 28px;  /* Fixed height smaller than window */
     border-radius: 6px;
     background: rgba(0, 0, 0, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.08);

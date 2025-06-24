@@ -46,8 +46,8 @@ const App: React.FC = () => {
   // --- Handle Window Sliding for Dynamic Island Effect ---
   useEffect(() => {
     if (window.electronIsland?.slideTo) {
-      const ISLAND_HIDDEN_Y = -40;
-      const ISLAND_VISIBLE_Y = 10;
+      const ISLAND_HIDDEN_Y = -25;
+      const ISLAND_VISIBLE_Y = 5;  // Closer to menu bar for more authentic feel
       
       const shouldBeVisible = isHovered || isListening || isProcessing;
       const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
