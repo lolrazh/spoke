@@ -22,61 +22,48 @@ use scripting additions
 -- your Mac toggles bit 8 (decimal 256)
 property kCGEventFlagMaskFn : 256
 
-on fnIsDown(flags)
+on fnIsDown()
+  set flags to (current application's CGEventSourceFlagsState(0)) as integer
   return ((flags div kCGEventFlagMaskFn) mod 2) = 1
 end fnIsDown
 
 set wasDown to false
 repeat
-  set currentFlags to (current application's CGEventSourceFlagsState(0)) as integer
-  log ("flags:" & currentFlags)
-
-  set nowDown to fnIsDown(currentFlags)
-
+  set nowDown to fnIsDown()
   if nowDown and (wasDown is false) then
-    do shell script "echo down"
+    log "down"
   else if (not nowDown) and wasDown then
-    do shell script "echo up"
+    log "up"
   end if
   set wasDown to nowDown
   delay 0.016
 end repeat`;
 
 export function createFnListener(win: BrowserWindow) {
-  console.log('[Fn] Starting listener with correct flag (256) and stderr logging...');
+  console.log('[Fn] Starting listener. Reading ptt events from stderr...');
   const child = spawn('osascript', ['-e', fnKeyScript]);
 
-  // Set encoding to handle buffer data correctly.
-  child.stdout.setEncoding('utf8');
+  // We read from stderr because the AppleScript `log` command writes to it.
   child.stderr.setEncoding('utf8');
-
-  child.stdout.on('data', data => {
-    const msg = data.trim();
-    if (msg === 'down') {
-        console.log('[Fn] PTT-DOWN detected via stdout.');
+  child.stderr.on('data', chunk => {
+    // A single chunk can contain multiple lines
+    chunk.split(/\r?\n/).forEach((line: string) => {
+      const msg = line.trim();
+      if (msg === 'down') {
+        console.log('[Fn] PTT-DOWN detected.');
         win.webContents.send('ptt-down');
-    }
-    if (msg === 'up') {
-        console.log('[Fn] PTT-UP detected via stdout.');
+      } else if (msg === 'up') {
+        console.log('[Fn] PTT-UP detected.');
         win.webContents.send('ptt-up');
-    }
-  });
-
-  let lastStderrLine = '';
-  child.stderr.on('data', data => {
-    // osascript 'log' command outputs to stderr.
-    const lines = data.trim().split('\n');
-    const lastLine = lines[lines.length - 1];
-    if (lastLine && lastLine !== lastStderrLine) {
-        console.log(`[fn-listener stderr] ${lastLine}`);
-        lastStderrLine = lastLine;
-    }
+      }
+    });
   });
 
   child.on('error', e => console.error('[fn-listener] spawn error:', e));
 
   child.on('close', (code) => {
-    if (code !== null) { // A null code means the process was killed, which is expected.
+    // A null code means the process was killed, which is expected on app close.
+    if (code !== null) { 
       console.log(`[fn-listener] process exited with code ${code}`);
     }
   });
