@@ -27,6 +27,10 @@ let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 let fnProc: import('child_process').ChildProcessWithoutNullStreams | null = null;
+let fnRestartTimeout: NodeJS.Timeout | null = null;
+let fnPermissionDenied = false;
+let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
+let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
 const PILL_W = 70;
 const PILL_H = 15;
@@ -440,6 +444,12 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+  
+  // Clear restart timeout and kill fn-tap process
+  if (fnRestartTimeout) {
+    clearTimeout(fnRestartTimeout);
+    fnRestartTimeout = null;
+  }
   fnProc?.kill();
 });
 
@@ -602,6 +612,20 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
 function startFnListener(){
     if(process.platform!=='darwin') return;
     
+    // Clear any pending restart timer and reset permission flag
+    if (fnRestartTimeout) {
+      clearTimeout(fnRestartTimeout);
+      fnRestartTimeout = null;
+    }
+    
+    // Reset permission denied flag when explicitly starting listener
+    // (e.g., on app startup or manual restart)
+    fnPermissionDenied = false;
+    
+    // Clear any buffered stdout data from previous process
+    fnStdoutBuffer = '';
+    fnPermissionDialogShown = false;
+    
     // Clean up existing process to prevent orphaned processes
     if (fnProc && !fnProc.killed) {
       console.log('[FnListener] Cleaning up existing fn-tap process before starting new one');
@@ -629,11 +653,35 @@ function startFnListener(){
       fnProc = spawn(helperPath, []);
       
       fnProc.stdout.setEncoding('utf8');
-      fnProc.stdout.on('data', (chunk: string)=>{
-         chunk.trim().split(/\r?\n/).forEach((line: string)=>{
-            if(line==='down') mainWindow?.webContents.send('ptt-down');
-            if(line==='up')   mainWindow?.webContents.send('ptt-up');
-            if(line==='perm-denied'){
+      fnProc.stdout.on('data', (chunk: string) => {
+        // Append chunk to buffer to handle commands split across boundaries
+        fnStdoutBuffer += chunk;
+        
+        // Process complete lines
+        const lines = fnStdoutBuffer.split(/\r?\n/);
+        
+        // Keep the last (potentially incomplete) line in the buffer
+        fnStdoutBuffer = lines.pop() || '';
+        
+        // Process complete lines
+        lines.forEach((line: string) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return; // Skip empty lines
+          
+          console.log(`[FnListener] Received command: "${trimmedLine}"`);
+          
+          if (trimmedLine === 'down') {
+            mainWindow?.webContents.send('ptt-down');
+          } else if (trimmedLine === 'up') {
+            mainWindow?.webContents.send('ptt-up');
+          } else if (trimmedLine === 'perm-denied') {
+            fnPermissionDenied = true;
+            
+            // Debounce permission dialog to prevent multiple simultaneous dialogs
+            if (!fnPermissionDialogShown) {
+              fnPermissionDialogShown = true;
+              console.log('[FnListener] Permission denied detected, showing dialog');
+              
               dialog.showMessageBox({
                 type: 'warning',
                 buttons: ['Open System Settings', 'Cancel'],
@@ -645,9 +693,18 @@ function startFnListener(){
                 if (result.response === 0) {
                   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
                 }
+                // Reset debounce flag after dialog is dismissed (with a small delay to prevent rapid re-triggering)
+                setTimeout(() => {
+                  fnPermissionDialogShown = false;
+                }, 2000);
               });
+            } else {
+              console.log('[FnListener] Permission dialog already shown, ignoring duplicate perm-denied');
             }
-         });
+          } else {
+            console.warn(`[FnListener] Unknown command received: "${trimmedLine}"`);
+          }
+        });
       });
 
       fnProc.stderr?.on('data', (chunk: string) => {
@@ -669,24 +726,16 @@ function startFnListener(){
           showNotificationPopup('Fn key detection unavailable: startup error');
         }
         
-        // Attempt restart after error if not quitting
-        if (!isQuitting) {
-          console.log('[FnListener] Attempting restart in 10s after error...');
-          setTimeout(startFnListener, 10000);
-        }
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('error');
       });
 
       fnProc.on('close', (code, signal) => {
         console.log(`[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`);
         fnProc = null;
         
-        // If the process exits and we're not quitting, it might be because
-        // permissions were denied or some other error occurred.
-        // We can try to restart it after a delay.
-        if (!isQuitting) {
-          console.log('[FnListener] Restarting fn-tap helper in 5s...');
-          setTimeout(startFnListener, 5000);
-        }
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('close');
       });
 
       fnProc.on('exit', (code, signal) => {
@@ -698,10 +747,25 @@ function startFnListener(){
       fnProc = null;
       showNotificationPopup('Fn key detection unavailable: spawn failed');
       
-      // Attempt restart after exception if not quitting
-      if (!isQuitting) {
-        console.log('[FnListener] Attempting restart in 10s after exception...');
-        setTimeout(startFnListener, 10000);
-      }
+      // Schedule restart only if not already scheduled and not quitting
+      scheduleRestart('exception');
     }
+}
+
+function scheduleRestart(reason: string) {
+  // Don't restart if already scheduled, if quitting, or if permissions were denied
+  if (fnRestartTimeout || isQuitting || fnPermissionDenied) {
+    if (fnPermissionDenied) {
+      console.log('[FnListener] Not scheduling restart due to permission denial. User must restart app after granting permissions.');
+    }
+    return;
+  }
+  
+  const delayMs = reason === 'close' ? 5000 : 10000;
+  console.log(`[FnListener] Scheduling restart in ${delayMs/1000}s due to ${reason}...`);
+  
+  fnRestartTimeout = setTimeout(() => {
+    fnRestartTimeout = null;
+    startFnListener();
+  }, delayMs);
 }
