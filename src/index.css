@@ -17,10 +17,10 @@
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-width: 207px;
-    --pill-height: 28px;
-    --pill-resting-height: 4px;
-    --pill-border-radius: 9px;
+    --pill-width: 208px;
+    --pill-height: 30px;
+    --pill-resting-height: 9px;
+    --pill-border-radius: 8px;
     --pill-resting-radius: 5px;
     --pill-background: rgba(0, 0, 0, 0.95);
     --pill-border: 1px solid rgba(255, 255, 255, 0.08);
