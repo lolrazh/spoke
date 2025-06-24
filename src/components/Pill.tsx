@@ -56,16 +56,16 @@ const Pill: React.FC<PillProps> = ({
     }
   };
   
-  // Derive the Dynamic Island states
-  const hidden = !isHovered && !isListening && !isProcessing;
-  const popped = isListening || isProcessing;
+  // Determine the current state - now always visible, just different sizes
+  const isResting = !isHovered && !isListening && !isProcessing;
+  const isExpanded = isHovered || isListening || isProcessing;
   
   return (
     <div 
       className={`
-        pill-wrapper transition-all duration-300
-        ${hidden ? 'translate-y-[-100%] opacity-0 pointer-events-none' : ''}
-        ${popped ? 'translate-y-0 opacity-100 pointer-events-auto' : ''}
+        pill-wrapper transition-all duration-300 ease-out
+        ${isResting ? 'resting-state' : ''}
+        ${isExpanded ? 'expanded-state' : ''}
         ${isListening ? 'listening' : ''}
         ${isProcessing ? 'processing' : ''}
       `}
@@ -74,6 +74,11 @@ const Pill: React.FC<PillProps> = ({
     >
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">
+          {/* Resting state - thin bar with no content */}
+          {isResting && (
+            <div className="resting-indicator" />
+          )}
+          
           {/* Hover state - show static dots */}
           {isHovered && !isListening && !isProcessing && (
             <div className="visualization-container">
