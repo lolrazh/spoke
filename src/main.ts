@@ -567,7 +567,10 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
 
 function startFnListener(){
     if(process.platform!=='darwin') return;
-    const helperPath = path.join(process.resourcesPath, 'fn-tap');
+    const helperPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'fn-tap')
+      : path.join(app.getAppPath(), 'public', 'assets', 'fn-tap');
+      
     fnProc = spawn(helperPath, []);
     fnProc.stdout.setEncoding('utf8');
     fnProc.stdout.on('data', (chunk: string)=>{
