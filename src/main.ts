@@ -1,13 +1,13 @@
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu, shell, dialog } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
+import { spawn } from 'child_process';
 
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
-import { createFnListener } from './main/fn-listener';
 
 
 
@@ -26,6 +26,7 @@ let notificationWindow: BrowserWindow | null = null;
 let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
+let fnProc: import('child_process').ChildProcessWithoutNullStreams | null = null;
 
 const PILL_W = 70;
 const PILL_H = 15;
@@ -338,12 +339,7 @@ app.whenReady().then(() => {
   createTray();
   createHomeWindow();
   createNotificationWindow();
-
-  if (process.platform === 'darwin') {
-    if (mainWindow) {
-      createFnListener(mainWindow);
-    }
-  }
+  startFnListener();
 
   // Handy shortcut to toggle DevTools without breaking transparency
   globalShortcut.register('CommandOrControl+Alt+I', () => {
@@ -389,23 +385,16 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS, keep the app running even when all windows are closed
-  console.log('[App Event] window-all-closed - Keeping app running (macOS behavior)');
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('activate', () => {
-  // On macOS, re-create a window when the dock icon is clicked and no windows are open
+  // On OS X it's common to re-create a window in the app when the
+  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
-  } else {
-    // If windows exist, show the main window or home window
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    } else if (homeWindow && !homeWindow.isDestroyed()) {
-      homeWindow.show();
-    } else {
-      createWindow();
-    }
   }
 });
 
@@ -417,6 +406,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+  fnProc?.kill();
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===
@@ -574,3 +564,40 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
     return { transcript: '', error: error.message || 'Gemini transcription failed in main process.', timings: upstreamTimings || {} };
   }
 });
+
+function startFnListener(){
+    if(process.platform!=='darwin') return;
+    const helperPath = path.join(process.resourcesPath, 'fn-tap');
+    fnProc = spawn(helperPath, []);
+    fnProc.stdout.setEncoding('utf8');
+    fnProc.stdout.on('data', (chunk: string)=>{
+       chunk.trim().split(/\r?\n/).forEach((line: string)=>{
+          if(line==='down') mainWindow?.webContents.send('ptt-down');
+          if(line==='up')   mainWindow?.webContents.send('ptt-up');
+          if(line==='perm-denied'){
+            dialog.showMessageBox({
+              type: 'warning',
+              buttons: ['Open System Settings', 'Cancel'],
+              defaultId: 0,
+              title: 'Permission Required',
+              message: 'Sonic Flow needs Input Monitoring permission to detect the Fn key.',
+              detail: 'Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.'
+            }).then(result => {
+              if (result.response === 0) {
+                shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
+              }
+            });
+          }
+       });
+    });
+
+    fnProc.on('close', (code) => {
+      // If the process exits and we're not quitting, it might be because
+      // permissions were denied or some other error occurred.
+      // We can try to restart it after a delay.
+      if (!isQuitting) {
+        console.log(`fn-tap helper process exited with code ${code}. Restarting in 5s.`);
+        setTimeout(startFnListener, 5000);
+      }
+    });
+}

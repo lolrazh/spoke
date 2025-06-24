@@ -11,7 +11,8 @@ const config: ForgeConfig = {
     icon: './public/assets/icon.png',
     // Ensure icon is copied to the app bundle
     extraResource: [
-      './public/assets/icon.png'
+      './public/assets/icon.png',
+      './public/assets/fn-tap'
     ]
   },
   rebuildConfig: {},

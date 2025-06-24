@@ -10,7 +10,8 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "clean": "rimraf out"
+    "clean": "rimraf out",
+    "postinstall": "bash native/build-helper.sh"
   },
   "keywords": [],
   "author": {
