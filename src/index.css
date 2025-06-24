@@ -25,24 +25,15 @@
     pointer-events: none; /* Pass clicks through to the app-container */
   }
 
-  /* The visible pill element that gets scaled and styled */
+  /* The visible pill element styled as Dynamic Island */
   .pill-core {
     width: 100%;
     height: 100%;
-    border-radius: 14px;
-    background: rgba(18, 18, 18, 0.98);
-    border: 1px solid rgba(160, 160, 160, 0.3);
-    box-shadow:
-      0 1px 4px rgba(0,0,0,.12),
-      0 0 8px rgba(0,0,0,.10),
-      inset 0 1px 1px rgba(255,255,255,.03);
-    transition: transform 0.25s cubic-bezier(.25,.8,.25,1);
-    transform: scale(0.64); /* Collapsed by default */
-  }
-  
-  /* Scale up the core when the wrapper is expanded */
-  .pill-wrapper.expanded .pill-core {
-    transform: scale(1);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    transition: all 0.25s cubic-bezier(.25,.8,.25,1);
   }
 
   .pill-content {
@@ -147,10 +138,7 @@
     box-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
   }
 
-  /* Adjust collapsed container to maintain proportions */
-  .pill-wrapper.collapsed .visualization-container {
-    gap: 3px;
-  }
+
 
   /* Loading spinner */
   .loading-spinner {

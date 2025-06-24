@@ -56,14 +56,16 @@ const Pill: React.FC<PillProps> = ({
     }
   };
   
-  // Determine if the pill should be in the expanded state
-  const isExpanded = isHovered || isListening || isProcessing;
+  // Derive the Dynamic Island states
+  const hidden = !isHovered && !isListening && !isProcessing;
+  const popped = isListening || isProcessing;
   
   return (
     <div 
       className={`
-        pill-wrapper
-        ${isExpanded ? 'expanded' : 'collapsed'}
+        pill-wrapper transition-all duration-300
+        ${hidden ? 'translate-y-[-100%] opacity-0 pointer-events-none' : ''}
+        ${popped ? 'translate-y-0 opacity-100 pointer-events-auto' : ''}
         ${isListening ? 'listening' : ''}
         ${isProcessing ? 'processing' : ''}
       `}
@@ -72,13 +74,6 @@ const Pill: React.FC<PillProps> = ({
     >
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">
-          {/* Dormant state - show smaller dots */}
-          {!isExpanded && (
-            <div className="visualization-container">
-              {renderDots('collapsed')}
-            </div>
-          )}
-
           {/* Hover state - show static dots */}
           {isHovered && !isListening && !isProcessing && (
             <div className="visualization-container">

@@ -51,3 +51,7 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeAllListeners('ptt-up');
   },
 });
+
+contextBridge.exposeInMainWorld('electronIsland', {
+  slideTo: (y: number) => ipcRenderer.send('island-slide', y)
+});

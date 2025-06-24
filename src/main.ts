@@ -32,9 +32,10 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
-const PILL_W = 70;
-const PILL_H = 15;
-const PAD = 12; // 6px padding on each side
+const ISLAND_HIDDEN_Y = -40;          // parked just under notch
+const ISLAND_WIDTH    = 240;
+const ISLAND_HEIGHT   = 30;
+const ISLAND_RADIUS   = 6;
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -66,8 +67,8 @@ const iconPath = getIconPath();
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
-    width: PILL_W + PAD,
-    height: PILL_H + PAD,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background
@@ -132,11 +133,15 @@ const createWindow = () => {
     mainWindow = null; // Ensure reference is cleared
   });
 
-  // Position window at the bottom center of the screen
-  const { width, height } = mainWindow.getBounds();
+  // Position window centered horizontally and hidden under the notch
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
+  const { width: screenWidth } = primaryDisplay.workAreaSize;
+  mainWindow.setBounds({
+    x: Math.round((screenWidth - ISLAND_WIDTH) / 2),
+    y: ISLAND_HIDDEN_Y,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
+  });
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -391,6 +396,13 @@ app.whenReady().then(() => {
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
     showNotificationPopup(message);
+  });
+
+  ipcMain.on('island-slide', (_e, y) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const b = mainWindow.getBounds();
+      mainWindow.setBounds({ ...b, y });
+    }
   });
 });
 

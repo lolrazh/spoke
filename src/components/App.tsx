@@ -43,6 +43,19 @@ const App: React.FC = () => {
     }
   }, [trans.error]);
 
+  // --- Handle Window Sliding for Dynamic Island Effect ---
+  useEffect(() => {
+    if (window.electronIsland?.slideTo) {
+      const ISLAND_HIDDEN_Y = -40;
+      const ISLAND_VISIBLE_Y = 10;
+      
+      const shouldBeVisible = isHovered || isListening || isProcessing;
+      const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+      
+      window.electronIsland.slideTo(targetY);
+    }
+  }, [isHovered, isListening, isProcessing]);
+
   // --- RIGHT ALT key - Hold vs. Tap Logic ---
   useEffect(() => {
     if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
