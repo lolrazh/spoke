@@ -25,6 +25,9 @@ declare global {
       onPTTDown: (cb: () => void) => () => void;
       onPTTUp: (cb: () => void) => () => void;
     };
+    electronIsland: {
+      slideTo: (y: number) => void;
+    };
   }
 }
 

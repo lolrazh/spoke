@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Pill from './Pill';
 // Import the new consolidated hook
 import { useTranscription } from '../hooks/useTranscription'; // Adjust path if needed
+import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from '../constants/window';
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
@@ -42,6 +43,16 @@ const App: React.FC = () => {
       window.electron.sendNotification(trans.error); 
     }
   }, [trans.error]);
+
+  // --- Handle Window Sliding for Dynamic Island Effect ---
+  useEffect(() => {
+    if (window.electronIsland?.slideTo) {
+      const shouldBeVisible = isHovered || isListening || isProcessing;
+      const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+      
+      window.electronIsland.slideTo(targetY);
+    }
+  }, [isHovered, isListening, isProcessing]);
 
   // --- RIGHT ALT key - Hold vs. Tap Logic ---
   useEffect(() => {

@@ -56,14 +56,16 @@ const Pill: React.FC<PillProps> = ({
     }
   };
   
-  // Determine if the pill should be in the expanded state
+  // Determine the current state - now always visible, just different sizes
+  const isResting = !isHovered && !isListening && !isProcessing;
   const isExpanded = isHovered || isListening || isProcessing;
   
   return (
     <div 
       className={`
-        pill-wrapper
-        ${isExpanded ? 'expanded' : 'collapsed'}
+        pill-wrapper transition-all duration-300 ease-out
+        ${isResting ? 'resting-state' : ''}
+        ${isExpanded ? 'expanded-state' : ''}
         ${isListening ? 'listening' : ''}
         ${isProcessing ? 'processing' : ''}
       `}
@@ -72,13 +74,11 @@ const Pill: React.FC<PillProps> = ({
     >
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">
-          {/* Dormant state - show smaller dots */}
-          {!isExpanded && (
-            <div className="visualization-container">
-              {renderDots('collapsed')}
-            </div>
+          {/* Resting state - thin bar with no content */}
+          {isResting && (
+            <div className="resting-indicator" />
           )}
-
+          
           {/* Hover state - show static dots */}
           {isHovered && !isListening && !isProcessing && (
             <div className="visualization-container">

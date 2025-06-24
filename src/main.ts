@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_RADIUS } from './constants/window';
 
 
 
@@ -32,9 +33,7 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
-const PILL_W = 70;
-const PILL_H = 15;
-const PAD = 12; // 6px padding on each side
+
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -66,8 +65,8 @@ const iconPath = getIconPath();
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: any = {
-    width: PILL_W + PAD,
-    height: PILL_H + PAD,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background
@@ -132,11 +131,17 @@ const createWindow = () => {
     mainWindow = null; // Ensure reference is cleared
   });
 
-  // Position window at the bottom center of the screen
-  const { width, height } = mainWindow.getBounds();
+  // Position window centered horizontally and hidden under the notch
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  mainWindow.setPosition(Math.floor((screenWidth - width) / 2), screenHeight - height - 2);
+  const { width: fullScreenWidth } = primaryDisplay.size; // Use full screen width, not workAreaSize
+  const initialX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+  console.log(`[Window Creation] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Initial X: ${initialX}, Y: ${ISLAND_HIDDEN_Y}`);
+  mainWindow.setBounds({
+    x: initialX,
+    y: ISLAND_HIDDEN_Y,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
+  });
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -391,6 +396,22 @@ app.whenReady().then(() => {
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
     console.log(`[IPC Main] Received show-notification request from renderer: ${message}`);
     showNotificationPopup(message);
+  });
+
+  ipcMain.on('island-slide', (_e, y) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: fullScreenWidth } = primaryDisplay.size;
+      // Recalculate X to ensure perfect centering on every slide
+      const centeredX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+      console.log(`[Island Slide] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Centered X: ${centeredX}, Y: ${y}`);
+      mainWindow.setBounds({ 
+        x: centeredX,
+        y: y,
+        width: ISLAND_WIDTH,
+        height: ISLAND_HEIGHT
+      });
+    }
   });
 });
 
