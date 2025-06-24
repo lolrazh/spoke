@@ -567,40 +567,107 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
 
 function startFnListener(){
     if(process.platform!=='darwin') return;
+    
+    // Clean up existing process to prevent orphaned processes
+    if (fnProc && !fnProc.killed) {
+      console.log('[FnListener] Cleaning up existing fn-tap process before starting new one');
+      try {
+        fnProc.kill('SIGTERM');
+      } catch (error) {
+        console.warn('[FnListener] Error killing existing fn-tap process:', error);
+      }
+      fnProc = null;
+    }
+
     const helperPath = app.isPackaged
       ? path.join(process.resourcesPath, 'fn-tap')
       : path.join(app.getAppPath(), 'public', 'assets', 'fn-tap');
+    
+    // Check if the helper binary exists before attempting to spawn
+    if (!fs.existsSync(helperPath)) {
+      console.error(`[FnListener] fn-tap binary not found at path: ${helperPath}`);
+      showNotificationPopup('Fn key detection unavailable: binary missing');
+      return;
+    }
       
-    fnProc = spawn(helperPath, []);
-    fnProc.stdout.setEncoding('utf8');
-    fnProc.stdout.on('data', (chunk: string)=>{
-       chunk.trim().split(/\r?\n/).forEach((line: string)=>{
-          if(line==='down') mainWindow?.webContents.send('ptt-down');
-          if(line==='up')   mainWindow?.webContents.send('ptt-up');
-          if(line==='perm-denied'){
-            dialog.showMessageBox({
-              type: 'warning',
-              buttons: ['Open System Settings', 'Cancel'],
-              defaultId: 0,
-              title: 'Permission Required',
-              message: 'Sonic Flow needs Input Monitoring permission to detect the Fn key.',
-              detail: 'Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.'
-            }).then(result => {
-              if (result.response === 0) {
-                shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
-              }
-            });
-          }
-       });
-    });
+    try {
+      console.log(`[FnListener] Starting fn-tap helper from: ${helperPath}`);
+      fnProc = spawn(helperPath, []);
+      
+      fnProc.stdout.setEncoding('utf8');
+      fnProc.stdout.on('data', (chunk: string)=>{
+         chunk.trim().split(/\r?\n/).forEach((line: string)=>{
+            if(line==='down') mainWindow?.webContents.send('ptt-down');
+            if(line==='up')   mainWindow?.webContents.send('ptt-up');
+            if(line==='perm-denied'){
+              dialog.showMessageBox({
+                type: 'warning',
+                buttons: ['Open System Settings', 'Cancel'],
+                defaultId: 0,
+                title: 'Permission Required',
+                message: 'Sonic Flow needs Input Monitoring permission to detect the Fn key.',
+                detail: 'Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.'
+              }).then(result => {
+                if (result.response === 0) {
+                  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
+                }
+              });
+            }
+         });
+      });
 
-    fnProc.on('close', (code) => {
-      // If the process exits and we're not quitting, it might be because
-      // permissions were denied or some other error occurred.
-      // We can try to restart it after a delay.
+      fnProc.stderr?.on('data', (chunk: string) => {
+        console.error(`[FnListener] fn-tap stderr: ${chunk.toString()}`);
+      });
+
+      fnProc.on('error', (error: Error) => {
+        console.error('[FnListener] Failed to start fn-tap helper process:', error);
+        fnProc = null;
+        
+        if (error.message.includes('ENOENT')) {
+          console.error('[FnListener] fn-tap binary not found or not executable');
+          showNotificationPopup('Fn key detection unavailable: binary not found');
+        } else if (error.message.includes('EACCES')) {
+          console.error('[FnListener] fn-tap binary lacks execution permissions');
+          showNotificationPopup('Fn key detection unavailable: permission denied');
+        } else {
+          console.error('[FnListener] Unknown error starting fn-tap:', error.message);
+          showNotificationPopup('Fn key detection unavailable: startup error');
+        }
+        
+        // Attempt restart after error if not quitting
+        if (!isQuitting) {
+          console.log('[FnListener] Attempting restart in 10s after error...');
+          setTimeout(startFnListener, 10000);
+        }
+      });
+
+      fnProc.on('close', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`);
+        fnProc = null;
+        
+        // If the process exits and we're not quitting, it might be because
+        // permissions were denied or some other error occurred.
+        // We can try to restart it after a delay.
+        if (!isQuitting) {
+          console.log('[FnListener] Restarting fn-tap helper in 5s...');
+          setTimeout(startFnListener, 5000);
+        }
+      });
+
+      fnProc.on('exit', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process exited with code ${code}, signal ${signal}`);
+      });
+
+    } catch (error) {
+      console.error('[FnListener] Exception when spawning fn-tap helper:', error);
+      fnProc = null;
+      showNotificationPopup('Fn key detection unavailable: spawn failed');
+      
+      // Attempt restart after exception if not quitting
       if (!isQuitting) {
-        console.log(`fn-tap helper process exited with code ${code}. Restarting in 5s.`);
-        setTimeout(startFnListener, 5000);
+        console.log('[FnListener] Attempting restart in 10s after exception...');
+        setTimeout(startFnListener, 10000);
       }
-    });
+    }
 }
