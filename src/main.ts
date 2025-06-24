@@ -391,10 +391,44 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+  console.log('[App Event] activate: Dock icon clicked or app activated');
+  
+  // Check if we have any visible windows first
+  const allWindows = BrowserWindow.getAllWindows();
+  const visibleWindows = allWindows.filter(window => window.isVisible());
+  
+  console.log(`[App Event] activate: ${allWindows.length} total windows, ${visibleWindows.length} visible`);
+  
+  if (visibleWindows.length === 0) {
+    // No visible windows - show existing hidden windows or create new ones
+    
+    // First priority: show the home window if it exists but is hidden
+    if (homeWindow && !homeWindow.isDestroyed() && !homeWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden home window');
+      homeWindow.show();
+      homeWindow.focus();
+      return;
+    }
+    
+    // Second priority: show the main window if it exists but is hidden
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden main window');
+      mainWindow.show();
+      return;
+    }
+    
+    // If no windows exist at all, create the main window
+    if (allWindows.length === 0) {
+      console.log('[App Event] activate: No windows exist, creating main window');
+      createWindow();
+    }
+    // If windows exist but are all destroyed/invalid, recreate main window
+    else if (!mainWindow || mainWindow.isDestroyed()) {
+      console.log('[App Event] activate: Main window is destroyed, recreating');
+      createWindow();
+    }
+  } else {
+    console.log('[App Event] activate: Windows already visible, no action needed');
   }
 });
 
