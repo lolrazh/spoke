@@ -117,6 +117,12 @@ const createWindow = () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     console.log('Main window shown.');
+    
+    // Open DevTools automatically in development mode
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+      console.log('DevTools opened in development mode.');
+    }
     // Note: DevTools disabled in production to maintain transparency on macOS
   });
 
