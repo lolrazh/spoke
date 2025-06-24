@@ -1,73 +1,69 @@
 # Code Map for Sonic Flow
 
-This document explains how the pieces of the project fit together. Each section lists important files and describes the processes they participate in so an LLM or developer can jump to the right part of the code base without spending context on unnecessary files.
+This map provides a quick reference for where the main logic lives so you can navigate the codebase efficiently.
 
 ## Root files
 
-- `index.html` – Main HTML wrapper used by Electron. The renderer bundle is injected here when the app starts.
-- `package.json` / `package-lock.json` – Define dependencies and npm scripts. Builds (`npm run build`), lint (`npm run lint`), packaging (`npm run make`) and other commands are declared here.
-- `forge.config.ts` – Electron Forge configuration controlling how distributables are built.
-- `vite.config.ts` – Base Vite configuration shared across processes.
-- `vite.main.config.ts`, `vite.preload.config.ts`, `vite.renderer.config.ts` – Vite presets used to bundle the main process, preload scripts and renderer respectively.
-- `tailwind.config.js` and `postcss.config.js` – Styling pipeline for Tailwind CSS.
-- `.eslintrc.json` – ESLint rules for TypeScript/React code.
-- `tsconfig.json` – Global TypeScript compiler options shared by the entire repo.
+- `index.html` – HTML entry loaded by Electron.
+- `package.json` / `package-lock.json` – Dependencies and npm scripts (build, lint, package).
+- `forge.config.ts` – Electron Forge build settings.
+- `vite.config.ts` – Shared Vite configuration.
+- `vite.main.config.ts`, `vite.preload.config.ts`, `vite.renderer.config.ts` – Vite presets for the main process, preload script and renderer.
+- `tailwind.config.js` / `postcss.config.js` – Tailwind + PostCSS pipeline.
+- `tsconfig.json` – TypeScript options.
+- `native/` – Small C helper (`fn-tap.c`) compiled via `build-helper.sh` to `public/assets/fn-tap`. It detects the Fn key for push‑to‑talk.
 
-## `src/` directory overview
+## `src/` directory
 
-This folder contains all application source code. The logic is split across the Electron main process, preload scripts, the React renderer and several workers.
+All application logic lives here.
 
-### Process entry points
+### Entry points
 
-- `main.ts` – Boots the Electron app. Creates windows (pill, home, notification), registers global shortcuts, and wires up IPC handlers for transcription and text insertion. It orchestrates the overall workflow.
-- `preload.ts` – Runs in the renderer context and exposes a minimal `window.electron` API used by React components. This ensures the renderer cannot access Node APIs directly.
-- `renderer.tsx` – Entrypoint for React. Renders `<App>` and `<HomePage>` via React Router.
-- `index.css` – Global styles including Tailwind utilities.
+- `main.ts` – Starts the Electron app, creates windows, spawns the `fn-tap` helper, handles IPC and routes transcription requests.
+- `preload.ts` – Exposes a safe `window.electron` API to the renderer.
+- `renderer.tsx` – React bootstrap that renders `<App>` and `<HomePage>`.
+- `index.css` – Global styles.
 
 ### Components
 
-These reside in `src/components/` and form the user interface.
+Located under `src/components/`.
 
-- `App.tsx` – Main React component containing the floating "pill" that the user interacts with. It uses the `useTranscription` hook to start and stop recording.
-- `HomePage.tsx` – Dashboard and settings window opened from the native macOS tray menu.
-- `Pill.tsx` – Renders the pill UI. Hover, listening and processing states change the visualization. Clicking toggles transcription. This is the best place to modify pill colors or animations.
+- `App.tsx` – Floating pill UI that toggles recording using `useTranscription`.
+- `HomePage.tsx` – Dashboard and settings window.
+- `Pill.tsx` – Visual pill component responding to hover/listening/processing states.
 
-### Custom hook
+### Hook
 
-- `useTranscription.ts` – Central hook implementing both local and cloud transcription modes. It manages microphone access, starts an `AudioWorklet` to write audio to a shared `RingBuffer`, then either sends data to a local worker or forwards it to the main process for Groq/Gemini transcription. When text is returned it uses the `window.electron` API to insert the transcript at the cursor.
+- `useTranscription.ts` – Central hook. Manages microphone access, spawns an `AudioWorklet` writing into a `RingBuffer`, then dispatches audio to either a local worker or main‑process transcriber. Inserts returned text at the cursor.
 
-### Workers and transcription engines
+### Workers
 
-Workers isolate heavy tasks from the UI.
-
-- `workers/local-worker.ts` – Loads an on‑device ASR model using `@huggingface/transformers`. Reads audio from the shared ring buffer, performs streaming inference and posts partial/final transcripts back to the hook.
-- `workers/groq-transcriber.ts` – Runs in the main process. Accepts audio buffers and calls the Groq API.
-- `workers/gemini-transcriber.ts` – Also in the main process, forwarding audio to the Sonic Flow backend which in turn talks to Google Gemini.
+- `workers/local-worker.ts` – Runs in a worker thread. Loads an on‑device ASR model from HuggingFace and streams partial transcripts back.
+- `workers/groq-transcriber.ts` – Main-process helper that forwards audio to a Cloudflare worker which calls the Groq API.
+- `workers/gemini-transcriber.ts` – Similar helper forwarding audio to the Sonic Flow backend to use Gemini.
 
 ### Audio utilities
 
-- `audio/ring-buffer.ts` – Implements a SharedArrayBuffer backed ring buffer used by the `AudioWorklet` and local worker. This allows audio to flow from the renderer to the worker without copying.
+- `audio/ring-buffer.ts` – SharedArrayBuffer backed ring buffer used by the worklet and local worker.
 
-### Main process helpers
+### Types
 
-- `main/alt-listener.ts` – Listens for the right‑Alt key to provide push‑to‑talk functionality. Sends `ptt-down` / `ptt-up` events via IPC which `useTranscription` consumes.
-
-### Supporting libraries and types
-
-- `types/*.d.ts` – TypeScript definitions for Electron/worker globals.
+- `types/*.d.ts` – Global type declarations for Electron and workers.
 
 ### Public assets
 
-- `public/assets/` – App icons and images bundled with the app.
-- `public/audioworklet-processor.js` – AudioWorklet processor responsible for resampling and writing microphone data into the shared ring buffer.
+- `public/assets/` – Icons and the `fn-tap` binary.
+- `public/audioworklet-processor.js` – Worklet that captures audio and writes it to the ring buffer.
 
 ---
 
-## How the pieces connect
+## How it fits together
 
-1. `App.tsx` calls functions from `useTranscription.ts` when the pill is pressed or when the right‑Alt key state changes (via `alt-listener.ts`).
-2. `useTranscription.ts` starts an `AudioWorklet` and writes samples into a `RingBuffer`. In local mode, `local-worker.ts` reads from this buffer and produces transcripts. In cloud mode the hook stops the worklet, drains the buffer and asks the main process to send the audio to `groq-transcriber.ts` or `gemini-transcriber.ts`.
-3. The main process receives transcripts and uses `insert-text-at-cursor` to paste them into the focused application. Notifications are displayed via the notification window when operations succeed or fail.
-4. The main process handles all transcription routing and text insertion, with user preferences managed directly in the interface components.
+1. `App.tsx` and the Fn helper send toggle/ptt events which `useTranscription.ts` reacts to.
+2. The hook records audio via an `AudioWorklet` into a `RingBuffer`.
+   - In local mode `local-worker.ts` processes the buffer directly.
+   - In cloud mode the main process drains the buffer and forwards it to `groq-transcriber.ts` or `gemini-transcriber.ts`.
+3. Transcripts are inserted into the active application by the main process using `insert-text-at-cursor`.
+4. Windows (pill, home, notifications) and tray/menu are all controlled from `main.ts`.
 
-With this map an agent can immediately identify where specific behaviour lives—for example, to adjust the pill UI open `src/components/Pill.tsx`, while changes to transcription backends happen in `src/workers/`. For a broader project introduction see `README.md`.
+With this overview you can quickly find UI components, transcription engines or main‑process logic without reading every file.
