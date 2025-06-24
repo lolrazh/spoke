@@ -340,7 +340,9 @@ app.whenReady().then(() => {
   createNotificationWindow();
 
   if (process.platform === 'darwin') {
-    createFnListener(mainWindow);
+    if (mainWindow) {
+      createFnListener(mainWindow);
+    }
   }
 
   // Handy shortcut to toggle DevTools without breaking transparency

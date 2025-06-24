@@ -1,48 +1,88 @@
-import { spawn } from "child_process";
-import type { BrowserWindow } from "electron";
+// fn-listener.ts - Comprehensive debugging version
+import { spawn } from 'child_process'
+import type { BrowserWindow } from 'electron'
+import { systemPreferences } from 'electron'
+import * as fs from 'fs'
+import * as path from 'path'
+import * as os from 'os'
 
-const osaRaw = String.raw`
-  use framework "Carbon"
-  use scripting additions      -- required for “do shell script”
+// First, let's try the simplest possible AppleScript that should work
+const simpleTestScript = `use framework "Carbon"
+use scripting additions
+return "test"`;
 
-  property kCGEventFlagMaskSecondaryFn : 4194304 -- 1 << 22
+const FN_MASK = 8388608; // 0x00800000 (NOT 256!)
 
-  on fnIsDown()
-    set flags to (current application's CGEventSourceFlagsState(0)) as integer
-    return ((flags div kCGEventFlagMaskSecondaryFn) mod 2) = 1
-  end fnIsDown
+// The AppleScript to run, using the user-confirmed flag value of 256
+// and adding `log` for unbuffered stderr debugging as requested.
+const fnKeyScript = String.raw`
+use framework "Carbon"
+use scripting additions
 
-  set wasDown to false
-  repeat
-    set nowDown to fnIsDown()
-    if nowDown and (wasDown is false) then
-      do shell script "echo down"
-    else if (not nowDown) and wasDown then
-      do shell script "echo up"
-    end if
-    set wasDown to nowDown
-    delay 0.016
-  end repeat
-`;
+-- your Mac toggles bit 8 (decimal 256)
+property kCGEventFlagMaskFn : 256
 
-// strip the indentation so `use framework` starts in column 1
-const osaScript = osaRaw
-  .replace(/^\s*\n/, "")      // drop first newline
-  .replace(/^\s+/gm, "");     // trim every line’s leading spaces
+on fnIsDown(flags)
+  return ((flags div kCGEventFlagMaskFn) mod 2) = 1
+end fnIsDown
+
+set wasDown to false
+repeat
+  set currentFlags to (current application's CGEventSourceFlagsState(0)) as integer
+  log ("flags:" & currentFlags)
+
+  set nowDown to fnIsDown(currentFlags)
+
+  if nowDown and (wasDown is false) then
+    do shell script "echo down"
+  else if (not nowDown) and wasDown then
+    do shell script "echo up"
+  end if
+  set wasDown to nowDown
+  delay 0.016
+end repeat`;
 
 export function createFnListener(win: BrowserWindow) {
-  console.log("[Fn] listener starting…");
-  const child = spawn("osascript", ["-e", osaScript]);
+  console.log('[Fn] Starting listener with correct flag (256) and stderr logging...');
+  const child = spawn('osascript', ['-e', fnKeyScript]);
 
-  child.stdout.on("data", (d) => {
-    const s = String(d).trim();
-    if (s === "down") win.webContents.send("ptt-down");
-    else if (s === "up") win.webContents.send("ptt-up");
+  // Set encoding to handle buffer data correctly.
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+
+  child.stdout.on('data', data => {
+    const msg = data.trim();
+    if (msg === 'down') {
+        console.log('[Fn] PTT-DOWN detected via stdout.');
+        win.webContents.send('ptt-down');
+    }
+    if (msg === 'up') {
+        console.log('[Fn] PTT-UP detected via stdout.');
+        win.webContents.send('ptt-up');
+    }
   });
 
-  child.stderr.on("data", (d) =>
-    console.error("[Fn] osa-stderr:", String(d).trim())
-  );
-  child.on("error", (e) => console.error("[Fn] spawn error:", e));
-  win.once("closed", () => child.kill());
+  let lastStderrLine = '';
+  child.stderr.on('data', data => {
+    // osascript 'log' command outputs to stderr.
+    const lines = data.trim().split('\n');
+    const lastLine = lines[lines.length - 1];
+    if (lastLine && lastLine !== lastStderrLine) {
+        console.log(`[fn-listener stderr] ${lastLine}`);
+        lastStderrLine = lastLine;
+    }
+  });
+
+  child.on('error', e => console.error('[fn-listener] spawn error:', e));
+
+  child.on('close', (code) => {
+    if (code !== null) { // A null code means the process was killed, which is expected.
+      console.log(`[fn-listener] process exited with code ${code}`);
+    }
+  });
+  
+  win.once('closed', () => {
+    console.log('[Fn] Window closed, killing listener process.');
+    child.kill();
+  });
 }
