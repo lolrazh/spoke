@@ -47,7 +47,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (window.electronIsland?.slideTo) {
       const ISLAND_HIDDEN_Y = -25;
-      const ISLAND_VISIBLE_Y = 5;  // Closer to menu bar for more authentic feel
+      const ISLAND_VISIBLE_Y = 0;  // Let's try to go to the very top.
       
       const shouldBeVisible = isHovered || isListening || isProcessing;
       const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
