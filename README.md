@@ -36,12 +36,12 @@ Sonic Flow offers a range of features to enhance your productivity:
             *   Adjust 'Input sensitivity' for optimal performance.
     *   **Account Tab:**
         *   Manage basic profile information (e.g., Display Name, Email). Further account management features are planned.
-*   **Advanced Automatic Text Insertion:** Transcribed text is automatically pasted at your current cursor location. Sonic Flow uses a robust mechanism that leverages OS-level paste commands (via PowerShell on Windows, AppleScript on macOS, and xdotool on Linux) and intelligently restores your original clipboard content post-insertion. If an Electron window is focused, or if OS-level paste fails, text is copied to the clipboard with a notification.
+*   **Advanced Automatic Text Insertion:** Transcribed text is automatically pasted at your current cursor location. Sonic Flow uses a robust mechanism that leverages macOS AppleScript commands and intelligently restores your original clipboard content post-insertion. If an Electron window is focused, or if paste fails, text is copied to the clipboard with a notification.
 *   **Custom System Notifications:** Receive timely feedback through a custom-designed, non-intrusive notification system. Events include: engine loading status (e.g., 'Engine loading...'), errors during operation, and confirmation messages like 'Output copied to clipboard'.
-*   **NEW Feature: Tray Icon & Context Menu:**
+*   **Native macOS Tray Integration:**
     *   **Convenient Tray Access:**
-        *   Sonic Flow resides in the system tray for unobtrusive access.
-        *   A right-click on the tray icon opens a custom context menu, providing quick options to:
+        *   Sonic Flow resides in the macOS system tray for unobtrusive access.
+        *   A right-click on the tray icon opens a native macOS context menu, providing quick options to:
             *   Open the **Home window** (Dashboard & Settings).
             *   **Exit** the application.
 
@@ -49,12 +49,12 @@ Sonic Flow offers a range of features to enhance your productivity:
 
 Sonic Flow is built with a modern stack of technologies:
 
-*   **Core Framework:** Electron (for cross-platform desktop application development)
+*   **Core Framework:** Electron (for macOS desktop application development)
 *   **Frontend:**
     *   React (with TypeScript): For the main user interface components (Pill UI, Home Window).
     *   Tailwind CSS: For styling the React components.
     *   Framer Motion: For animations within the React components.
-    *   Custom HTML/CSS/JS: Utilized directly within Electron BrowserWindows for lightweight, dynamic UI elements such as the tray context menu and notification pop-ups.
+    *   Custom HTML/CSS/JS: Utilized directly within Electron BrowserWindows for lightweight, dynamic notification pop-ups.
 *   **Build System:** Vite (for fast development and optimized builds)
 *   **AI & Transcription Engine:**
     *   **Local ASR:**
@@ -110,7 +110,7 @@ Sonic Flow uses Electron Forge to package and build distributables for various o
     ```
 
 2.  **Create Distributables (Make):**
-    *   This command creates installable versions of your application (e.g., `.dmg` for macOS, `.exe` for Windows, `.deb`/`.rpm` for Linux).
+    *   This command creates an installable `.zip` package for macOS.
     ```bash
     npm run make
     ```

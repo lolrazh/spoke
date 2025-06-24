@@ -1,16 +1,15 @@
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, dialog, clipboard, shell, session } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu, shell, dialog } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
-import { loadSettings, updateSetting } from './lib/settings';
+import { spawn } from 'child_process';
+
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
-import { startAltListener } from './main/alt-listener';
 
-// Performance for timings
-import { performance } from 'node:perf_hooks';
+
 
 // Add command line switches for WebGPU - KEEP THESE
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -23,13 +22,15 @@ if (started) {
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let currentHotkey = '';
-let contextMenuWindow: BrowserWindow | null = null;
-let contextMenuOpen = false;
 let notificationWindow: BrowserWindow | null = null;
 let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
+let fnProc: import('child_process').ChildProcessWithoutNullStreams | null = null;
+let fnRestartTimeout: NodeJS.Timeout | null = null;
+let fnPermissionDenied = false;
+let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
+let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
 const PILL_W = 70;
 const PILL_H = 15;
@@ -116,10 +117,7 @@ const createWindow = () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     console.log('Main window shown.');
-    // Only open DevTools on Windows or when explicitly requested (macOS loses transparency with DevTools open)
-    if (process.platform === 'win32' && !app.isPackaged) {
-      mainWindow.webContents.openDevTools({ mode: 'detach' }); 
-    }
+    // Note: DevTools disabled in production to maintain transparency on macOS
   });
 
   // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
@@ -176,22 +174,33 @@ const createTray = () => {
     
     tray.setToolTip('Sonic Flow');
 
-    // Listen for right-click events on the tray icon
-    tray.on('right-click', (event, bounds) => {
-      console.log(`[Tray Event] Right-click detected on tray icon at bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
-      // Use the bottom-right corner of the bounds as the anchor
-      const anchorX = bounds.x + bounds.width;
-      const anchorY = bounds.y + bounds.height;
-      console.log(`[Tray Event] Calculated menu anchor: x=${anchorX}, y=${anchorY}`);
-      // Show the custom HTML context menu, aligning bottom-right to anchor
-      showContextMenu(anchorX, anchorY);
-    });
+    // Create native context menu
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Home',
+        click: () => {
+          console.log('[Tray Menu] Home clicked');
+          if (homeWindow) {
+            console.log('[Tray Menu] Home window exists, focusing...');
+            homeWindow.focus();
+          } else {
+            console.log('[Tray Menu] Home window is null, creating new window...');
+            createHomeWindow();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Exit',
+        click: () => {
+          console.log('[Tray Menu] Exit clicked');
+          app.quit();
+        }
+      }
+    ]);
 
-    // Optional: Handle left-click if needed (e.g., toggle main window?)
-    // tray.on('click', () => {
-    //   console.log('[Tray Event] Left-click detected.');
-    //   // Example: mainWindow?.show();
-    // });
+    // Set the native context menu
+    tray.setContextMenu(contextMenu);
 
   } catch (error) {
     console.error('Failed to create tray:', error);
@@ -236,192 +245,7 @@ const createNotificationWindow = () => {
   });
 };
 
-// Create the custom context menu window
-const createContextMenuWindow = () => {
-  if (contextMenuWindow) return;
-  
-  // Create a frameless window that looks like a menu
-  contextMenuWindow = new BrowserWindow({
-    width: 140, 
-    height: 100, // Adjusted height
-    frame: false,
-    transparent: true,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'contextmenu-preload.js'), 
-      contextIsolation: true, 
-      nodeIntegration: false, 
-    },
-    skipTaskbar: true,
-    show: false,
-    alwaysOnTop: true,
-    backgroundColor: '#00000000',
-    hasShadow: true
-  });
-  
-  const contextMenuHtml = `
-    <html>
-    <head>
-      <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background-color: transparent;
-          overflow: hidden;
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-          color: #ffffff;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          overflow: hidden;
-          user-select: none;
-          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .container {
-          background-color: #2c2c2c;
-          border: 1px solid #444444;
-          border-radius: 12px;
-          padding: 4px; 
-          overflow: hidden;
-        }
-        
-        .menu-items {
-          display: flex;
-          flex-direction: column;
-          width: 100%;
-          padding: 0; 
-        }
-        
-        .menu-item {
-          font-size: 12px;
-          padding: 4px 6px; 
-          margin: 2px 0;
-          cursor: pointer;
-          border-radius: 6px; 
-          text-align: left;
-          color: #ffffff;
-          background-color: transparent;
-          border: none;
-          width: auto; 
-          display: block;
-        }
-        
-        .menu-item:hover {
-          background-color: #3c3c3c;
-          border-radius: 6px; 
-        }
-        
-        .separator {
-          height: 1px;
-          background-color: #444444;
-          margin: 4px 0; 
-          width: 100%;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="menu-items">
-          <button id="homeBtn" class="menu-item">Home</button>
-          <div class="separator"></div>
-          <button id="exitBtn" class="menu-item">Exit</button>
-        </div>
-      </div>
-      
-      <script>
-        if (window.contextMenuAPI) {
-          document.getElementById('homeBtn').addEventListener('click', () => {
-            window.contextMenuAPI.send('menu-home');
-          });
-          
-          document.getElementById('exitBtn').addEventListener('click', () => {
-            console.log('[Context Menu] Exit button clicked, sending menu-exit IPC via contextMenuAPI...');
-            window.contextMenuAPI.send('menu-exit');
-          });
-        } else {
-          console.error('[Context Menu] contextMenuAPI not found on window object!');
-        }
-      </script>
-    </body>
-    </html>
-  `;
-  
-  contextMenuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(contextMenuHtml)}`);
-  
-  contextMenuWindow.on('blur', () => {
-    hideContextMenu();
-  });
-  
-  contextMenuWindow.on('closed', () => {
-    console.log('Context menu window closed.');
-    contextMenuWindow = null;
-    if (!isQuitting) {
-      console.log('Recreating context menu window.');
-      createContextMenuWindow(); 
-    } else {
-      console.log('Not recreating context menu window because app is quitting.');
-    }
-  });
-};
 
-const showContextMenu = (anchorX?: number, anchorY?: number) => {
-  if (contextMenuOpen || !contextMenuWindow) return;
-  
-  contextMenuOpen = true;
-  const menuSize = contextMenuWindow.getSize();
-  const menuWidth = menuSize[0];
-  const menuHeight = menuSize[1];
-  
-  let positionX: number;
-  let positionY: number;
-  
-  if (anchorX !== undefined && anchorY !== undefined) {
-    console.log(`[showContextMenu] Positioning relative to anchor: x=${anchorX}, y=${anchorY}`);
-    positionX = anchorX - menuWidth;
-    positionY = anchorY - menuHeight;
-    
-    const fineTuneX = 0; 
-    const fineTuneY = 0; 
-    positionX += fineTuneX;
-    positionY += fineTuneY;
-    console.log(`[showContextMenu] Calculated top-left for anchor: x=${positionX}, y=${positionY}`);
-  } 
-  else if (mainWindow) { 
-    console.log('[showContextMenu] Positioning relative to pill');
-    const pillBounds = mainWindow.getBounds();
-    const currentMenuSize = contextMenuWindow.getSize(); 
-    const currentMenuHeight = currentMenuSize[1];
-    const currentMenuWidth = currentMenuSize[0];
-
-    positionX = Math.floor(pillBounds.x + (pillBounds.width / 2) - (currentMenuWidth / 2));
-    const calculatedPosY = pillBounds.y - currentMenuHeight;
-    const upwardAdjustment = 30; // Adjusted from 40 (downward) to 10 (upward from original calculation)
-    positionY = calculatedPosY + upwardAdjustment; 
-    
-    console.log(`[showContextMenu Debug] pillBounds.y=${pillBounds.y}, currentMenuHeight=${currentMenuHeight}, offset=${upwardAdjustment}, calculated posY=${positionY}`);
-    console.log(`[showContextMenu] Calculated top-left for pill: x=${positionX}, y=${positionY}`);
-  } 
-  else {
-    console.error('[showContextMenu] Cannot position: No anchor coordinates and mainWindow is not available.');
-    contextMenuOpen = false; 
-    return; 
-  }
-  
-  contextMenuWindow.setPosition(positionX, positionY);
-  contextMenuWindow.show();
-};
-
-// Hide the context menu
-const hideContextMenu = () => {
-  if (!contextMenuOpen || !contextMenuWindow) return;
-  contextMenuOpen = false;
-  contextMenuWindow.hide();
-};
 
 // Add a handler for insert-text-at-cursor
 ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEvent, text: string) => {
@@ -447,24 +271,14 @@ ipcMain.handle('insert-text-at-cursor', async (_event: Electron.IpcMainInvokeEve
       operationSuccess = true; 
       showNotificationPopup('Output copied to clipboard');
     } else {
-      console.log('No Electron window is focused, attempting OS-level paste.');
+      console.log('No Electron window is focused, attempting macOS paste via AppleScript.');
       try {
-        if (process.platform === 'win32') {
-          console.log('Executing paste command via PowerShell');
-          execSync('powershell -command "$wshell = New-Object -ComObject wscript.shell; $wshell.SendKeys(\'^v\')"');
-        } else if (process.platform === 'darwin') {
-          console.log('Executing paste command via AppleScript');
-          execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
-        } else if (process.platform === 'linux') {
-          console.log('Executing paste command via xdotool');
-          execSync('xdotool key ctrl+v');
-        } else {
-          throw new Error('Unsupported platform for OS-level paste');
-        }
-        console.log('OS paste command executed successfully.');
+        console.log('Executing paste command via AppleScript');
+        execSync('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
+        console.log('macOS paste command executed successfully.');
         operationSuccess = true;
       } catch (err) {
-        console.error('Failed to execute OS paste command:', err);
+        console.error('Failed to execute macOS paste command:', err);
         operationError = 'Unable to paste text. Please make sure a text field is focused.';
         operationSuccess = false;
       }
@@ -513,33 +327,23 @@ app.whenReady().then(() => {
 
   app.commandLine.appendSwitch('disable-http-cache');
   
-  // macOS dock icon setup (optional enhancements)
-  if (process.platform === 'darwin') {
-    try {
-      // Try to set the dock icon explicitly (fallback if app bundle icon fails)
-      const dockIcon = nativeImage.createFromPath(iconPath);
-      if (!dockIcon.isEmpty()) {
-        app.dock.setIcon(dockIcon);
-        console.log('[Main Process] Dock icon set successfully');
-      }
-    } catch (error) {
-      console.warn('[Main Process] Failed to set dock icon:', error.message);
+  // macOS dock icon setup
+  try {
+    // Try to set the dock icon explicitly (fallback if app bundle icon fails)
+    const dockIcon = nativeImage.createFromPath(iconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock.setIcon(dockIcon);
+      console.log('[Main Process] Dock icon set successfully');
     }
+  } catch (error) {
+    console.warn('[Main Process] Failed to set dock icon:', error.message);
   }
   
   createWindow();
   createTray();
-  createContextMenuWindow();
   createHomeWindow();
   createNotificationWindow();
-
-  // ✨ ALT key listener for push-to-talk
-  startAltListener(state => {
-    if (!mainWindow) return;
-    mainWindow.webContents.send(
-      state === "down" ? "ptt-down" : "ptt-up"
-    );
-  });
+  startFnListener();
 
   // Handy shortcut to toggle DevTools without breaking transparency
   globalShortcut.register('CommandOrControl+Alt+I', () => {
@@ -548,9 +352,34 @@ app.whenReady().then(() => {
     else wc?.openDevTools({ mode: 'detach' });
   });
 
-  ipcMain.on('show-context-menu', (event: Electron.IpcMainEvent) => {
-    console.log(`[IPC Main] Received show-context-menu event from pill.`);
-    showContextMenu(); 
+  // Handle pill context menu
+  ipcMain.on('show-pill-context-menu', () => {
+    console.log('[IPC Main] Received show-pill-context-menu event');
+    if (mainWindow) {
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: 'Home',
+          click: () => {
+            console.log('[Pill Menu] Home clicked');
+            if (homeWindow) {
+              homeWindow.focus();
+            } else {
+              createHomeWindow();
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          click: () => {
+            console.log('[Pill Menu] Exit clicked');
+            app.quit();
+          }
+        }
+      ]);
+      
+      contextMenu.popup({ window: mainWindow });
+    }
   });
 
   ipcMain.on('show-notification', (event: Electron.IpcMainEvent, message: string) => {
@@ -560,26 +389,50 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  console.log('[App Event] window-all-closed - Checking platform...');
   if (process.platform !== 'darwin') {
-    console.log('[App Event] window-all-closed - Platform is not macOS, calling app.quit().');
     app.quit();
   }
 });
 
 app.on('activate', () => {
-  // On macOS, re-create a window when the dock icon is clicked and no windows are open
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    // If windows exist, show the main window or home window
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    } else if (homeWindow && !homeWindow.isDestroyed()) {
+  console.log('[App Event] activate: Dock icon clicked or app activated');
+  
+  // Check if we have any visible windows first
+  const allWindows = BrowserWindow.getAllWindows();
+  const visibleWindows = allWindows.filter(window => window.isVisible());
+  
+  console.log(`[App Event] activate: ${allWindows.length} total windows, ${visibleWindows.length} visible`);
+  
+  if (visibleWindows.length === 0) {
+    // No visible windows - show existing hidden windows or create new ones
+    
+    // First priority: show the home window if it exists but is hidden
+    if (homeWindow && !homeWindow.isDestroyed() && !homeWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden home window');
       homeWindow.show();
-    } else {
+      homeWindow.focus();
+      return;
+    }
+    
+    // Second priority: show the main window if it exists but is hidden
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden main window');
+      mainWindow.show();
+      return;
+    }
+    
+    // If no windows exist at all, create the main window
+    if (allWindows.length === 0) {
+      console.log('[App Event] activate: No windows exist, creating main window');
       createWindow();
     }
+    // If windows exist but are all destroyed/invalid, recreate main window
+    else if (!mainWindow || mainWindow.isDestroyed()) {
+      console.log('[App Event] activate: Main window is destroyed, recreating');
+      createWindow();
+    }
+  } else {
+    console.log('[App Event] activate: Windows already visible, no action needed');
   }
 });
 
@@ -591,6 +444,13 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+  
+  // Clear restart timeout and kill fn-tap process
+  if (fnRestartTimeout) {
+    clearTimeout(fnRestartTimeout);
+    fnRestartTimeout = null;
+  }
+  fnProc?.kill();
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===
@@ -598,27 +458,7 @@ app.on('will-quit', () => {
 // ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
 // === END IPC Handlers ===
 
-// === IPC Handlers for Context Menu (Registered ONCE) ===
-ipcMain.on('menu-home', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] \'menu-home\' received.');
-  console.log('[IPC Main] Current state of homeWindow before check: ' + (homeWindow ? 'Exists' : 'null'));
-  if (homeWindow) {
-    console.log('[IPC Main] Home window exists, focusing...');
-    homeWindow.focus();
-  } else {
-    console.log('[IPC Main] Home window is null, creating new window...');
-    createHomeWindow();
-  }
-  hideContextMenu();
-});
 
-ipcMain.on('menu-exit', (_event: Electron.IpcMainEvent) => {
-  console.log('[IPC Main] Received menu-exit event');
-  hideContextMenu(); 
-  console.log('[IPC Main] Calling app.quit() for graceful shutdown...');
-  app.quit();
-});
-// === END IPC Handlers ===
 
 const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return;
@@ -768,3 +608,164 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
     return { transcript: '', error: error.message || 'Gemini transcription failed in main process.', timings: upstreamTimings || {} };
   }
 });
+
+function startFnListener(){
+    if(process.platform!=='darwin') return;
+    
+    // Clear any pending restart timer and reset permission flag
+    if (fnRestartTimeout) {
+      clearTimeout(fnRestartTimeout);
+      fnRestartTimeout = null;
+    }
+    
+    // Reset permission denied flag when explicitly starting listener
+    // (e.g., on app startup or manual restart)
+    fnPermissionDenied = false;
+    
+    // Clear any buffered stdout data from previous process
+    fnStdoutBuffer = '';
+    fnPermissionDialogShown = false;
+    
+    // Clean up existing process to prevent orphaned processes
+    if (fnProc && !fnProc.killed) {
+      console.log('[FnListener] Cleaning up existing fn-tap process before starting new one');
+      try {
+        fnProc.kill('SIGTERM');
+      } catch (error) {
+        console.warn('[FnListener] Error killing existing fn-tap process:', error);
+      }
+      fnProc = null;
+    }
+
+    const helperPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'fn-tap')
+      : path.join(app.getAppPath(), 'public', 'assets', 'fn-tap');
+    
+    // Check if the helper binary exists before attempting to spawn
+    if (!fs.existsSync(helperPath)) {
+      console.error(`[FnListener] fn-tap binary not found at path: ${helperPath}`);
+      showNotificationPopup('Fn key detection unavailable: binary missing');
+      return;
+    }
+      
+    try {
+      console.log(`[FnListener] Starting fn-tap helper from: ${helperPath}`);
+      fnProc = spawn(helperPath, []);
+      
+      fnProc.stdout.setEncoding('utf8');
+      fnProc.stdout.on('data', (chunk: string) => {
+        // Append chunk to buffer to handle commands split across boundaries
+        fnStdoutBuffer += chunk;
+        
+        // Process complete lines
+        const lines = fnStdoutBuffer.split(/\r?\n/);
+        
+        // Keep the last (potentially incomplete) line in the buffer
+        fnStdoutBuffer = lines.pop() || '';
+        
+        // Process complete lines
+        lines.forEach((line: string) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return; // Skip empty lines
+          
+          console.log(`[FnListener] Received command: "${trimmedLine}"`);
+          
+          if (trimmedLine === 'down') {
+            mainWindow?.webContents.send('ptt-down');
+          } else if (trimmedLine === 'up') {
+            mainWindow?.webContents.send('ptt-up');
+          } else if (trimmedLine === 'perm-denied') {
+            fnPermissionDenied = true;
+            
+            // Debounce permission dialog to prevent multiple simultaneous dialogs
+            if (!fnPermissionDialogShown) {
+              fnPermissionDialogShown = true;
+              console.log('[FnListener] Permission denied detected, showing dialog');
+              
+              dialog.showMessageBox({
+                type: 'warning',
+                buttons: ['Open System Settings', 'Cancel'],
+                defaultId: 0,
+                title: 'Permission Required',
+                message: 'Sonic Flow needs Input Monitoring permission to detect the Fn key.',
+                detail: 'Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.'
+              }).then(result => {
+                if (result.response === 0) {
+                  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
+                }
+                // Reset debounce flag after dialog is dismissed (with a small delay to prevent rapid re-triggering)
+                setTimeout(() => {
+                  fnPermissionDialogShown = false;
+                }, 2000);
+              });
+            } else {
+              console.log('[FnListener] Permission dialog already shown, ignoring duplicate perm-denied');
+            }
+          } else {
+            console.warn(`[FnListener] Unknown command received: "${trimmedLine}"`);
+          }
+        });
+      });
+
+      fnProc.stderr?.on('data', (chunk: string) => {
+        console.error(`[FnListener] fn-tap stderr: ${chunk.toString()}`);
+      });
+
+      fnProc.on('error', (error: Error) => {
+        console.error('[FnListener] Failed to start fn-tap helper process:', error);
+        fnProc = null;
+        
+        if (error.message.includes('ENOENT')) {
+          console.error('[FnListener] fn-tap binary not found or not executable');
+          showNotificationPopup('Fn key detection unavailable: binary not found');
+        } else if (error.message.includes('EACCES')) {
+          console.error('[FnListener] fn-tap binary lacks execution permissions');
+          showNotificationPopup('Fn key detection unavailable: permission denied');
+        } else {
+          console.error('[FnListener] Unknown error starting fn-tap:', error.message);
+          showNotificationPopup('Fn key detection unavailable: startup error');
+        }
+        
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('error');
+      });
+
+      fnProc.on('close', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`);
+        fnProc = null;
+        
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('close');
+      });
+
+      fnProc.on('exit', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process exited with code ${code}, signal ${signal}`);
+      });
+
+    } catch (error) {
+      console.error('[FnListener] Exception when spawning fn-tap helper:', error);
+      fnProc = null;
+      showNotificationPopup('Fn key detection unavailable: spawn failed');
+      
+      // Schedule restart only if not already scheduled and not quitting
+      scheduleRestart('exception');
+    }
+}
+
+function scheduleRestart(reason: string) {
+  // Don't restart if already scheduled, if quitting, or if permissions were denied
+  if (fnRestartTimeout || isQuitting || fnPermissionDenied) {
+    if (fnPermissionDenied) {
+      console.log('[FnListener] Not scheduling restart due to permission denial. User must restart app after granting permissions.');
+    }
+    return;
+  }
+  
+  const delayMs = reason === 'close' ? 5000 : 10000;
+  console.log(`[FnListener] Scheduling restart in ${delayMs/1000}s due to ${reason}...`);
+  
+  fnRestartTimeout = setTimeout(() => {
+    fnRestartTimeout = null;
+    startFnListener();
+  }, delayMs);
+}

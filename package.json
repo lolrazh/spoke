@@ -10,7 +10,8 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "clean": "rimraf out"
+    "clean": "rimraf out",
+    "postinstall": "bash native/build-helper.sh"
   },
   "keywords": [],
   "author": {
@@ -20,9 +21,7 @@
   "license": "Proprietary",
   "devDependencies": {
     "@electron-forge/cli": "^7.7.0",
-    "@electron-forge/maker-deb": "^7.7.0",
-    "@electron-forge/maker-rpm": "^7.7.0",
-    "@electron-forge/maker-squirrel": "^7.8.0",
+
     "@electron-forge/maker-zip": "^7.8.0",
     "@electron-forge/plugin-auto-unpack-natives": "^7.7.0",
     "@electron-forge/plugin-fuses": "^7.7.0",
@@ -49,24 +48,18 @@
   "dependencies": {
     "@huggingface/transformers": "^3.5.0",
     "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
+        "@vitejs/plugin-react": "^4.3.4",
     "electron-squirrel-startup": "^1.0.1",
     "form-data": "^4.0.2",
     "framer-motion": "^12.7.4",
-    "lucide-react": "^0.503.0",
     "onnxruntime-web": "^1.19.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.14.2",
-    "tailwind-merge": "^3.2.0",
+        "react-router-dom": "^6.14.2",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
     "vite-plugin-electron": "^0.29.0"
   },
-  "optionalDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.40.0"
-  },
+
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

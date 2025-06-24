@@ -711,7 +711,7 @@ if (typeof window !== 'undefined' && !(window as any).electron) {
       console.log('[Mock Electron] toggleDictation called');
       // Call the callback to simulate toggle if needed for testing UI state
       // callback(); 
-      return () => console.log('[Mock Electron] cleanup toggleDictation');
+            return () => console.log('[Mock Electron] cleanup toggleDictation');
     },
     showPillContextMenu: () => {
       console.log('[Mock Electron] showPillContextMenu called');

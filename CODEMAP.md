@@ -10,7 +10,6 @@ This document explains how the pieces of the project fit together. Each section 
 - `vite.config.ts` – Base Vite configuration shared across processes.
 - `vite.main.config.ts`, `vite.preload.config.ts`, `vite.renderer.config.ts` – Vite presets used to bundle the main process, preload scripts and renderer respectively.
 - `tailwind.config.js` and `postcss.config.js` – Styling pipeline for Tailwind CSS.
-- `components.json` – shadcn/ui generator configuration mapping alias paths such as `@/components` and `@/lib`.
 - `.eslintrc.json` – ESLint rules for TypeScript/React code.
 - `tsconfig.json` – Global TypeScript compiler options shared by the entire repo.
 
@@ -23,7 +22,6 @@ This folder contains all application source code. The logic is split across the 
 - `main.ts` – Boots the Electron app. Creates windows (pill, home, notification), registers global shortcuts, and wires up IPC handlers for transcription and text insertion. It orchestrates the overall workflow.
 - `preload.ts` – Runs in the renderer context and exposes a minimal `window.electron` API used by React components. This ensures the renderer cannot access Node APIs directly.
 - `renderer.tsx` – Entrypoint for React. Renders `<App>` and `<HomePage>` via React Router.
-- `contextmenu-preload.ts` / `notification-preload.js` – Preload scripts for the custom tray context menu and toast‑style notification window.
 - `index.css` – Global styles including Tailwind utilities.
 
 ### Components
@@ -31,7 +29,7 @@ This folder contains all application source code. The logic is split across the 
 These reside in `src/components/` and form the user interface.
 
 - `App.tsx` – Main React component containing the floating "pill" that the user interacts with. It uses the `useTranscription` hook to start and stop recording.
-- `HomePage.tsx` – Dashboard and settings window opened from the tray menu.
+- `HomePage.tsx` – Dashboard and settings window opened from the native macOS tray menu.
 - `Pill.tsx` – Renders the pill UI. Hover, listening and processing states change the visualization. Clicking toggles transcription. This is the best place to modify pill colors or animations.
 
 ### Custom hook
@@ -56,13 +54,7 @@ Workers isolate heavy tasks from the UI.
 
 ### Supporting libraries and types
 
-- `lib/settings.ts` – Saves and loads user settings (preferred engine, language etc.) from disk.
-- `lib/utils.ts` – Miscellaneous helpers shared across the project.
 - `types/*.d.ts` – TypeScript definitions for Electron/worker globals.
-
-### Cloudflare worker (optional backend)
-
-- `cf-worker/` – A minimal Cloudflare Worker used when deploying a backend to proxy Gemini API requests. Desktop builds ship without it but it illustrates how server traffic can be routed.
 
 ### Public assets
 
@@ -76,6 +68,6 @@ Workers isolate heavy tasks from the UI.
 1. `App.tsx` calls functions from `useTranscription.ts` when the pill is pressed or when the right‑Alt key state changes (via `alt-listener.ts`).
 2. `useTranscription.ts` starts an `AudioWorklet` and writes samples into a `RingBuffer`. In local mode, `local-worker.ts` reads from this buffer and produces transcripts. In cloud mode the hook stops the worklet, drains the buffer and asks the main process to send the audio to `groq-transcriber.ts` or `gemini-transcriber.ts`.
 3. The main process receives transcripts and uses `insert-text-at-cursor` to paste them into the focused application. Notifications are displayed via the notification window when operations succeed or fail.
-4. Settings saved by `lib/settings.ts` allow the user to toggle between local and cloud modes. These options are surfaced in `HomePage.tsx`.
+4. The main process handles all transcription routing and text insertion, with user preferences managed directly in the interface components.
 
 With this map an agent can immediately identify where specific behaviour lives—for example, to adjust the pill UI open `src/components/Pill.tsx`, while changes to transcription backends happen in `src/workers/`. For a broader project introduction see `README.md`.

@@ -25,9 +25,6 @@ declare global {
       onPTTDown: (cb: () => void) => () => void;
       onPTTUp: (cb: () => void) => () => void;
     };
-    contextMenuAPI?: {
-      send: (channel: 'menu-home' | 'menu-hotkey' | 'menu-exit') => void;
-    };
   }
 }
 
