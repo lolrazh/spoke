@@ -15,6 +15,18 @@
     justify-content: center;
   }
 
+  /* CSS variables for pill styling - change these to update all states */
+  .pill-wrapper {
+    --pill-width: 207px;
+    --pill-height: 28px;
+    --pill-resting-height: 4px;
+    --pill-border-radius: 9px;
+    --pill-resting-radius: 5px;
+    --pill-background: rgba(0, 0, 0, 0.95);
+    --pill-border: 1px solid rgba(255, 255, 255, 0.08);
+    --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+
   /* Centering wrapper for the pill */
   .pill-wrapper {
     /* No longer needs absolute positioning or transforms. */
@@ -27,33 +39,20 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
-    width: 210px;  /* Fixed width smaller than window */
-    height: 28px;  /* Fixed height smaller than window */
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    width: var(--pill-width);
+    height: var(--pill-height);
+    border-radius: var(--pill-border-radius);
+    background: var(--pill-background);
+    border: var(--pill-border);
+    box-shadow: var(--pill-shadow);
     transition: all 0.25s cubic-bezier(.25,.8,.25,1);
   }
 
   /* Resting state - thin bar */
   .pill-wrapper.resting-state .pill-core {
-    width: 120px;  /* Narrower width for resting state */
-    height: 4px;   /* Very thin height */
-    border-radius: 2px;  /* Smaller border radius */
-    background: rgba(0, 0, 0, 0.6);  /* More transparent */
-    border: none;  /* No border for minimal look */
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);  /* Subtle shadow */
-  }
-
-  /* Expanded state - full pill appearance */
-  .pill-wrapper.expanded-state .pill-core {
-    width: 210px;
-    height: 28px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    height: var(--pill-resting-height);
+    border-radius: var(--pill-resting-radius);
+    /* All other properties (width, background, border, shadow) inherited from .pill-core */
   }
 
   /* Resting indicator - invisible by default, just for spacing */
