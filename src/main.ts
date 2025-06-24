@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_RADIUS } from './constants/window';
 
 
 
@@ -32,10 +33,7 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
-const ISLAND_HIDDEN_Y = -25;          // parked just under notch (adjusted closer)
-const ISLAND_WIDTH    = 240;
-const ISLAND_HEIGHT   = 30;
-const ISLAND_RADIUS   = 6;
+
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
