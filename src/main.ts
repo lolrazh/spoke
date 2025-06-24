@@ -1,13 +1,13 @@
-import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu } from 'electron';
+import { app, BrowserWindow, Tray, globalShortcut, nativeImage, screen, ipcMain, clipboard, session, Menu, shell, dialog } from 'electron';
 import path from 'node:path';
 import process from 'node:process';
 import started from 'electron-squirrel-startup';
+import { spawn } from 'child_process';
 
 import fs from 'node:fs';
 import { execSync } from 'child_process';
 import { transcribeAudioWithGroq } from './workers/groq-transcriber';
 import { transcribeAudioWithGemini } from './workers/gemini-transcriber';
-import { createFnListener } from './main/fn-listener';
 
 
 
@@ -26,6 +26,11 @@ let notificationWindow: BrowserWindow | null = null;
 let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
+let fnProc: import('child_process').ChildProcessWithoutNullStreams | null = null;
+let fnRestartTimeout: NodeJS.Timeout | null = null;
+let fnPermissionDenied = false;
+let fnStdoutBuffer = ''; // Buffer for incomplete lines from fn-tap stdout
+let fnPermissionDialogShown = false; // Debounce flag for permission dialog
 
 const PILL_W = 70;
 const PILL_H = 15;
@@ -338,12 +343,7 @@ app.whenReady().then(() => {
   createTray();
   createHomeWindow();
   createNotificationWindow();
-
-  if (process.platform === 'darwin') {
-    if (mainWindow) {
-      createFnListener(mainWindow);
-    }
-  }
+  startFnListener();
 
   // Handy shortcut to toggle DevTools without breaking transparency
   globalShortcut.register('CommandOrControl+Alt+I', () => {
@@ -389,23 +389,50 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS, keep the app running even when all windows are closed
-  console.log('[App Event] window-all-closed - Keeping app running (macOS behavior)');
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('activate', () => {
-  // On macOS, re-create a window when the dock icon is clicked and no windows are open
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    // If windows exist, show the main window or home window
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-    } else if (homeWindow && !homeWindow.isDestroyed()) {
+  console.log('[App Event] activate: Dock icon clicked or app activated');
+  
+  // Check if we have any visible windows first
+  const allWindows = BrowserWindow.getAllWindows();
+  const visibleWindows = allWindows.filter(window => window.isVisible());
+  
+  console.log(`[App Event] activate: ${allWindows.length} total windows, ${visibleWindows.length} visible`);
+  
+  if (visibleWindows.length === 0) {
+    // No visible windows - show existing hidden windows or create new ones
+    
+    // First priority: show the home window if it exists but is hidden
+    if (homeWindow && !homeWindow.isDestroyed() && !homeWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden home window');
       homeWindow.show();
-    } else {
+      homeWindow.focus();
+      return;
+    }
+    
+    // Second priority: show the main window if it exists but is hidden
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.log('[App Event] activate: Showing hidden main window');
+      mainWindow.show();
+      return;
+    }
+    
+    // If no windows exist at all, create the main window
+    if (allWindows.length === 0) {
+      console.log('[App Event] activate: No windows exist, creating main window');
       createWindow();
     }
+    // If windows exist but are all destroyed/invalid, recreate main window
+    else if (!mainWindow || mainWindow.isDestroyed()) {
+      console.log('[App Event] activate: Main window is destroyed, recreating');
+      createWindow();
+    }
+  } else {
+    console.log('[App Event] activate: Windows already visible, no action needed');
   }
 });
 
@@ -417,6 +444,13 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   console.log('[MainProcess] App is quitting. Unregistered all shortcuts.');
+  
+  // Clear restart timeout and kill fn-tap process
+  if (fnRestartTimeout) {
+    clearTimeout(fnRestartTimeout);
+    fnRestartTimeout = null;
+  }
+  fnProc?.kill();
 });
 
 // === IPC Handlers for Hotkey Window (Registered ONCE) ===
@@ -574,3 +608,164 @@ ipcMain.handle('transcribe-gemini', async (event, arrayBuffer: ArrayBuffer, mime
     return { transcript: '', error: error.message || 'Gemini transcription failed in main process.', timings: upstreamTimings || {} };
   }
 });
+
+function startFnListener(){
+    if(process.platform!=='darwin') return;
+    
+    // Clear any pending restart timer and reset permission flag
+    if (fnRestartTimeout) {
+      clearTimeout(fnRestartTimeout);
+      fnRestartTimeout = null;
+    }
+    
+    // Reset permission denied flag when explicitly starting listener
+    // (e.g., on app startup or manual restart)
+    fnPermissionDenied = false;
+    
+    // Clear any buffered stdout data from previous process
+    fnStdoutBuffer = '';
+    fnPermissionDialogShown = false;
+    
+    // Clean up existing process to prevent orphaned processes
+    if (fnProc && !fnProc.killed) {
+      console.log('[FnListener] Cleaning up existing fn-tap process before starting new one');
+      try {
+        fnProc.kill('SIGTERM');
+      } catch (error) {
+        console.warn('[FnListener] Error killing existing fn-tap process:', error);
+      }
+      fnProc = null;
+    }
+
+    const helperPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'fn-tap')
+      : path.join(app.getAppPath(), 'public', 'assets', 'fn-tap');
+    
+    // Check if the helper binary exists before attempting to spawn
+    if (!fs.existsSync(helperPath)) {
+      console.error(`[FnListener] fn-tap binary not found at path: ${helperPath}`);
+      showNotificationPopup('Fn key detection unavailable: binary missing');
+      return;
+    }
+      
+    try {
+      console.log(`[FnListener] Starting fn-tap helper from: ${helperPath}`);
+      fnProc = spawn(helperPath, []);
+      
+      fnProc.stdout.setEncoding('utf8');
+      fnProc.stdout.on('data', (chunk: string) => {
+        // Append chunk to buffer to handle commands split across boundaries
+        fnStdoutBuffer += chunk;
+        
+        // Process complete lines
+        const lines = fnStdoutBuffer.split(/\r?\n/);
+        
+        // Keep the last (potentially incomplete) line in the buffer
+        fnStdoutBuffer = lines.pop() || '';
+        
+        // Process complete lines
+        lines.forEach((line: string) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return; // Skip empty lines
+          
+          console.log(`[FnListener] Received command: "${trimmedLine}"`);
+          
+          if (trimmedLine === 'down') {
+            mainWindow?.webContents.send('ptt-down');
+          } else if (trimmedLine === 'up') {
+            mainWindow?.webContents.send('ptt-up');
+          } else if (trimmedLine === 'perm-denied') {
+            fnPermissionDenied = true;
+            
+            // Debounce permission dialog to prevent multiple simultaneous dialogs
+            if (!fnPermissionDialogShown) {
+              fnPermissionDialogShown = true;
+              console.log('[FnListener] Permission denied detected, showing dialog');
+              
+              dialog.showMessageBox({
+                type: 'warning',
+                buttons: ['Open System Settings', 'Cancel'],
+                defaultId: 0,
+                title: 'Permission Required',
+                message: 'Sonic Flow needs Input Monitoring permission to detect the Fn key.',
+                detail: 'Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.'
+              }).then(result => {
+                if (result.response === 0) {
+                  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent');
+                }
+                // Reset debounce flag after dialog is dismissed (with a small delay to prevent rapid re-triggering)
+                setTimeout(() => {
+                  fnPermissionDialogShown = false;
+                }, 2000);
+              });
+            } else {
+              console.log('[FnListener] Permission dialog already shown, ignoring duplicate perm-denied');
+            }
+          } else {
+            console.warn(`[FnListener] Unknown command received: "${trimmedLine}"`);
+          }
+        });
+      });
+
+      fnProc.stderr?.on('data', (chunk: string) => {
+        console.error(`[FnListener] fn-tap stderr: ${chunk.toString()}`);
+      });
+
+      fnProc.on('error', (error: Error) => {
+        console.error('[FnListener] Failed to start fn-tap helper process:', error);
+        fnProc = null;
+        
+        if (error.message.includes('ENOENT')) {
+          console.error('[FnListener] fn-tap binary not found or not executable');
+          showNotificationPopup('Fn key detection unavailable: binary not found');
+        } else if (error.message.includes('EACCES')) {
+          console.error('[FnListener] fn-tap binary lacks execution permissions');
+          showNotificationPopup('Fn key detection unavailable: permission denied');
+        } else {
+          console.error('[FnListener] Unknown error starting fn-tap:', error.message);
+          showNotificationPopup('Fn key detection unavailable: startup error');
+        }
+        
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('error');
+      });
+
+      fnProc.on('close', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`);
+        fnProc = null;
+        
+        // Schedule restart only if not already scheduled and not quitting
+        scheduleRestart('close');
+      });
+
+      fnProc.on('exit', (code, signal) => {
+        console.log(`[FnListener] fn-tap helper process exited with code ${code}, signal ${signal}`);
+      });
+
+    } catch (error) {
+      console.error('[FnListener] Exception when spawning fn-tap helper:', error);
+      fnProc = null;
+      showNotificationPopup('Fn key detection unavailable: spawn failed');
+      
+      // Schedule restart only if not already scheduled and not quitting
+      scheduleRestart('exception');
+    }
+}
+
+function scheduleRestart(reason: string) {
+  // Don't restart if already scheduled, if quitting, or if permissions were denied
+  if (fnRestartTimeout || isQuitting || fnPermissionDenied) {
+    if (fnPermissionDenied) {
+      console.log('[FnListener] Not scheduling restart due to permission denial. User must restart app after granting permissions.');
+    }
+    return;
+  }
+  
+  const delayMs = reason === 'close' ? 5000 : 10000;
+  console.log(`[FnListener] Scheduling restart in ${delayMs/1000}s due to ${reason}...`);
+  
+  fnRestartTimeout = setTimeout(() => {
+    fnRestartTimeout = null;
+    startFnListener();
+  }, delayMs);
+}
