@@ -46,7 +46,6 @@ const Pill: React.FC<PillProps> = ({
     ));
   };
 
-  
   // Handle context menu for pill
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault(); // Prevent default browser context menu

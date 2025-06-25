@@ -1,12 +1,24 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { RingBuffer } from '../audio/ring-buffer'; // Using the imported class
-
-// Constants (can be moved or adjusted)
-const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
-// MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
+import { 
+  TARGET_AUDIO_CONTEXT_RATE, 
+  TARGET_SAMPLE_RATE, 
+  MICROPHONE_PREFERRED_RATE,
+  MAX_RING_BUFFER_SECONDS 
+} from '../config/audio';
+import type { 
+  WorkerOutgoingMessage,
+  InitWorkerMessage,
+  InitializeAsrMessage,
+  StartCaptureMessage,
+  StopCaptureMessage
+} from '../types/worker-messages';
 
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
+
+// Global worklet registry to prevent double registration
+const workletRegistry = new Set<string>();
 
 // REMOVED local RingBuffer interface to use the imported class
 // interface RingBuffer { ... }
@@ -152,7 +164,7 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 48000, // Prefer 48kHz
+              sampleRate: MICROPHONE_PREFERRED_RATE, // Prefer 48kHz
               channelCount: 1,   // Mono audio
               echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
@@ -185,7 +197,7 @@ export function useTranscription(): UseTranscriptionReturn {
       }
 
       if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-        const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+        const sabCapacitySamples = TARGET_SAMPLE_RATE * MAX_RING_BUFFER_SECONDS; // matches RingBuffer
         const pointerSizeBytes = 4; // For one Int32 write index, as per ring-buffer.ts
         const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
         const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
@@ -223,10 +235,11 @@ export function useTranscription(): UseTranscriptionReturn {
 
       // Send INIT message to local worker with SAB
       if (sabRef.current) {
-        localWorkerRef.current.postMessage({ 
+        const initMessage: InitWorkerMessage = { 
             type: 'init', 
             data: { sab: sabRef.current }
-        });
+        };
+        localWorkerRef.current.postMessage(initMessage);
       } else {
         console.error("[useTranscription] Local SAB not ready for init message to worker.");
         setError("Failed to initialize local worker with audio buffer.");
@@ -236,15 +249,17 @@ export function useTranscription(): UseTranscriptionReturn {
       }
       
       // Send message to load local ASR model
-      localWorkerRef.current.postMessage({ type: 'initialize-local-asr' });
+      const asrInitMessage: InitializeAsrMessage = { type: 'initialize-local-asr' };
+      localWorkerRef.current.postMessage(asrInitMessage);
       // `ready` state for local will be set true by worker message 'asr_model_ready'
       setReady(false); // Set to false until local model confirms readiness
       setProcessing(true); // Indicate local model loading
 
       // Add message listener for the local worker
-      const localWorkerListener = (e: MessageEvent) => {
+      const localWorkerListener = (e: MessageEvent<WorkerOutgoingMessage>) => {
         console.log('[useTranscription] Message from local-worker:', e.data);
-        const { status, transcription, error: workerError, delta } = e.data;
+        const message = e.data;
+        const { status } = message;
         switch (status) {
           case 'sab_initialized':
             console.log('[useTranscription] Local worker confirmed SAB init.');
@@ -266,23 +281,27 @@ export function useTranscription(): UseTranscriptionReturn {
             setText(''); // Clear text when new capture starts
             break;
           case 'partial': // Handle partial transcriptions for smoother UI updates
-            if (typeof delta === 'string') {
-              setText(prev => (prev + (prev ? ' ' : '') + delta).trim());
+            if ('delta' in message && typeof message.delta === 'string') {
+              setText(prev => (prev + (prev ? ' ' : '') + message.delta).trim());
             }
             break;
           case 'processing_full_audio': // Local worker processing
             setProcessing(true);
             break;
           case 'completed': // Local transcription complete
-            setText(transcription || '');
-            if (transcription && window.electron?.insertTextAtCursor) {
-              window.electron.insertTextAtCursor(transcription)
-                .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
+            if ('transcription' in message) {
+              setText(message.transcription || '');
+              if (message.transcription && window.electron?.insertTextAtCursor) {
+                window.electron.insertTextAtCursor(message.transcription)
+                  .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
+              }
             }
             setProcessing(false);
             break;
           case 'error':
-            setError(String(workerError || 'Local ASR worker error'));
+            if ('error' in message) {
+              setError(message.error || 'Local ASR worker error');
+            }
             setProcessing(false);
             setReady(false);
             break;
@@ -364,12 +383,21 @@ export function useTranscription(): UseTranscriptionReturn {
 
       const ensureWorkletLoaded = async (workletPath: string) => {
         if (!audioCtxRef.current) throw new Error("AudioContext not initialized for worklet loading.");
+        
+        // Check if worklet already registered
+        if (workletRegistry.has(workletPath)) {
+          console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' already registered, skipping.`);
+          return;
+        }
+        
         try {
           await audioCtxRef.current.audioWorklet.addModule(workletPath);
+          workletRegistry.add(workletPath); // Mark as registered
           console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' added.`);
         } catch (moduleError: any) {
           if (moduleError.name === 'InvalidStateError' || (moduleError.message && (moduleError.message.includes('already been loaded') || moduleError.message.includes('has already been added')))) {
-            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' likely already added.`);
+            workletRegistry.add(workletPath); // Mark as registered even if browser says already loaded
+            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' already loaded by browser.`);
           } else {
             console.error('[useTranscription] Cloud: Error adding AudioWorklet module:', moduleError);
             throw moduleError; 
@@ -383,7 +411,7 @@ export function useTranscription(): UseTranscriptionReturn {
           await ensureAudioContextReady();
 
           if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-            const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+            const sabCapacitySamples = TARGET_SAMPLE_RATE * MAX_RING_BUFFER_SECONDS; // matches RingBuffer
             const pointerSizeBytes = 4; // For one Int32 write index
             const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
             const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
@@ -463,18 +491,25 @@ export function useTranscription(): UseTranscriptionReturn {
           await audioCtxRef.current.resume();
         }
         const workletPath = '/audioworklet-processor.js'; 
-        // Check if module already added, this is tricky as addModule doesn't return status
-        // For simplicity, assuming it might need to be added each time or managed via a flag if errors occur.
-        try {
-          await audioCtxRef.current.audioWorklet.addModule(workletPath);
-        } catch (moduleError) {
-          // Ignore if already added, but log other errors
-          if (!String(moduleError).includes('already been loaded')) {
-            console.error('[useTranscription] Error adding AudioWorklet module:', moduleError);
-            throw moduleError; // Propagate error
-          } else {
-            console.log('[useTranscription] AudioWorklet module likely already added.');
+        
+        // Check if worklet already registered
+        if (!workletRegistry.has(workletPath)) {
+          try {
+            await audioCtxRef.current.audioWorklet.addModule(workletPath);
+            workletRegistry.add(workletPath); // Mark as registered
+            console.log('[useTranscription] Local: AudioWorklet module added.');
+          } catch (moduleError) {
+            // Handle already loaded case
+            if (String(moduleError).includes('already been loaded') || String(moduleError).includes('has already been added')) {
+              workletRegistry.add(workletPath); // Mark as registered even if browser says already loaded
+              console.log('[useTranscription] Local: AudioWorklet module already loaded by browser.');
+            } else {
+              console.error('[useTranscription] Local: Error adding AudioWorklet module:', moduleError);
+              throw moduleError; // Propagate error
+            }
           }
+        } else {
+          console.log('[useTranscription] Local: AudioWorklet module already registered, skipping.');
         }
         
         microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
@@ -484,7 +519,8 @@ export function useTranscription(): UseTranscriptionReturn {
         microphoneSourceRef.current.connect(workletNodeRef.current);
         // DO NOT connect workletNode to destination unless debugging audio passthrough
         
-        localWorkerRef.current.postMessage({ type: 'start-capture' });
+        const startMessage: StartCaptureMessage = { type: 'start-capture' };
+        localWorkerRef.current.postMessage(startMessage);
         setRecording(true);
         console.log('[useTranscription] Local recording started. AudioWorklet connected, worker notified.');
       } catch (err: any) {
@@ -650,10 +686,11 @@ export function useTranscription(): UseTranscriptionReturn {
         workletNodeRef.current = null;
       }
       if (localWorkerRef.current) {
-        localWorkerRef.current.postMessage({ 
+        const stopMessage: StopCaptureMessage = { 
             type: 'stop-capture-and-transcribe',
-            data: { sampleRate: localAudioSampleRateRef.current } 
-        });
+            data: { timestamp: profilingStartTimeRef.current || performance.now() }
+        };
+        localWorkerRef.current.postMessage(stopMessage);
         // setProcessing(true); // Worker will send messages to update processing state
       } else {
         console.error("[useTranscription] Local worker not available to stop capture.");

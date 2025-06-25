@@ -32,7 +32,7 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
         // Indicate that the body is raw PCM data (Float32)
         'Content-Type': 'audio/pcm',
         'X-Audio-Language': inputLanguage,
-        'X-Sample-Rate': '16000',      // Assuming 16kHz from useTranscription
+        'X-Sample-Rate': TARGET_SAMPLE_RATE.toString(), // Use centralized sample rate
         'X-Bit-Depth': '32',         // Float32 is 32-bit
         'X-Channels': '1',           // Mono audio
         // 'X-Audio-Filename' is not strictly needed if not using FormData on worker side for this path

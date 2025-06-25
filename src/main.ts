@@ -361,7 +361,7 @@ app.whenReady().then(() => {
     const wc = mainWindow?.webContents;
     if (wc?.isDevToolsOpened()) wc.closeDevTools();
     else wc?.openDevTools({ mode: 'detach' });
-  });
+    });
 
   // Handle pill context menu
   ipcMain.on('show-pill-context-menu', () => {
@@ -704,6 +704,9 @@ function startFnListener(){
           } else if (trimmedLine === 'perm-denied') {
             fnPermissionDenied = true;
             
+            // Show tray notification immediately
+            showNotificationPopup('Grant Input Monitoring permission → restart');
+            
             // Debounce permission dialog to prevent multiple simultaneous dialogs
             if (!fnPermissionDialogShown) {
               fnPermissionDialogShown = true;
@@ -784,15 +787,23 @@ function scheduleRestart(reason: string) {
   if (fnRestartTimeout || isQuitting || fnPermissionDenied) {
     if (fnPermissionDenied) {
       console.log('[FnListener] Not scheduling restart due to permission denial. User must restart app after granting permissions.');
+      return;
     }
+    console.log(`[FnListener] Not scheduling restart: already scheduled=${!!fnRestartTimeout}, quitting=${isQuitting}`);
     return;
   }
   
+  // Only auto-restart on crashes, not permission denials
   const delayMs = reason === 'close' ? 5000 : 10000;
   console.log(`[FnListener] Scheduling restart in ${delayMs/1000}s due to ${reason}...`);
   
   fnRestartTimeout = setTimeout(() => {
     fnRestartTimeout = null;
-    startFnListener();
+    if (!fnPermissionDenied && !isQuitting) {
+      console.log(`[FnListener] Executing scheduled restart due to ${reason}`);
+      startFnListener();
+    } else {
+      console.log(`[FnListener] Skipping scheduled restart: permissions denied=${fnPermissionDenied}, quitting=${isQuitting}`);
+    }
   }, delayMs);
 }
