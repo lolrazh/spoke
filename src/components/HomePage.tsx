@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useMemo } from "react";
+import { motion } from "framer-motion";
 
 // --- Constants --- //
 
-const VERSION = 'v0.6.9';
+const VERSION = "v0.6.9";
 const AVG_TYPING_WPM = 40;
 const AVG_DICTATION_WPM = 150;
 
 // --- Types --- //
 
-type TabId = 'home' | 'settings' | 'account';
+type TabId = "home" | "settings" | "account";
 
 interface NavItem {
   id: TabId;
@@ -28,30 +28,34 @@ interface StatCardData {
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: { 
+  visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.05 }
-  }
+    transition: { staggerChildren: 0.05 },
+  },
 };
 
 const itemVariants = {
   hidden: { y: 10, opacity: 0 },
-  visible: { 
-    y: 0, 
+  visible: {
+    y: 0,
     opacity: 1,
-    transition: { type: 'spring', stiffness: 300, damping: 24 }
-  }
+    transition: { type: "spring", stiffness: 300, damping: 24 },
+  },
 };
 
 // --- Helper Components --- //
 
-const SidebarButton: React.FC<{ item: NavItem; activeTab: TabId; onClick: (id: TabId) => void }> = React.memo(({ item, activeTab, onClick }) => (
+const SidebarButton: React.FC<{
+  item: NavItem;
+  activeTab: TabId;
+  onClick: (id: TabId) => void;
+}> = React.memo(({ item, activeTab, onClick }) => (
   <motion.button
     key={item.id}
     className={`flex items-center px-4 py-2 my-0.5 mx-2 rounded-md text-sm transition-colors ${
-      activeTab === item.id 
-        ? 'bg-sonic-orange text-white' 
-        : 'text-gray-400 hover:bg-sonic-gray/80 hover:text-white'
+      activeTab === item.id
+        ? "bg-sonic-orange text-white"
+        : "text-gray-400 hover:bg-sonic-gray/80 hover:text-white"
     }`}
     onClick={() => onClick(item.id)}
     whileHover={{ x: 3 }}
@@ -67,9 +71,21 @@ const StatCard: React.FC<{ stat: StatCardData }> = React.memo(({ stat }) => (
     <h3 className="text-gray-400 text-[10px] font-medium mb-1">{stat.title}</h3>
     <div className="flex items-end justify-between">
       <span className="text-lg font-semibold">{stat.value}</span>
-      <div className={`text-[9px] px-1.5 py-0.5 rounded-full flex items-center ${stat.color} bg-opacity-20 text-${stat.color.replace('bg-', '')}`}>
+      <div
+        className={`text-[9px] px-1.5 py-0.5 rounded-full flex items-center ${stat.color} bg-opacity-20 text-${stat.color.replace("bg-", "")}`}
+      >
         <span className="mr-0.5">{stat.change}</span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polyline points="18 15 12 9 6 15"></polyline>
         </svg>
       </div>
@@ -80,52 +96,129 @@ const StatCard: React.FC<{ stat: StatCardData }> = React.memo(({ stat }) => (
 // --- Main Component --- //
 
 const HomePage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabId>('home');
-  const [greeting, setGreeting] = useState<string>('Good morning');
+  const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [greeting, setGreeting] = useState<string>("Good morning");
 
   useEffect(() => {
     const getTimeBasedGreeting = () => {
       const hour = new Date().getHours();
-      if (hour < 12) return 'Good morning';
-      if (hour < 18) return 'Good afternoon';
-      return 'Good evening';
+      if (hour < 12) return "Good morning";
+      if (hour < 18) return "Good afternoon";
+      return "Good evening";
     };
     setGreeting(getTimeBasedGreeting());
   }, []);
 
-  const navItems: NavItem[] = useMemo(() => [
-    { id: 'home', label: 'Home', icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-        <polyline points="9 22 9 12 15 12 15 22"></polyline>
-      </svg>
-    )},
-    { id: 'settings', label: 'Settings', icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-    )},
-    { id: 'account', label: 'Account', icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-        <circle cx="12" cy="7" r="4"></circle>
-      </svg>
-    )}
-  ], []);
+  const navItems: NavItem[] = useMemo(
+    () => [
+      {
+        id: "home",
+        label: "Home",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        ),
+      },
+      {
+        id: "settings",
+        label: "Settings",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        ),
+      },
+      {
+        id: "account",
+        label: "Account",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        ),
+      },
+    ],
+    [],
+  );
 
-  const statCardData: StatCardData[] = useMemo(() => [
-    { title: 'Total Dictations', value: '1,249', change: '+12%', color: 'bg-green-500' },
-    { title: 'Dictation Time', value: '37.2 hrs', change: '+5%', color: 'bg-blue-500' }
-  ], []);
+  const statCardData: StatCardData[] = useMemo(
+    () => [
+      {
+        title: "Total Dictations",
+        value: "1,249",
+        change: "+12%",
+        color: "bg-green-500",
+      },
+      {
+        title: "Dictation Time",
+        value: "37.2 hrs",
+        change: "+5%",
+        color: "bg-blue-500",
+      },
+    ],
+    [],
+  );
 
   // Dummy data for the line chart
-  const chartDataPoints = useMemo(() => [
-    { x: 50, y: 120 }, { x: 100, y: 80 }, { x: 150, y: 100 }, 
-    { x: 200, y: 35 }, { x: 250, y: 60 }, { x: 300, y: 50 }, { x: 350, y: 70 }
-  ], []);
-  const chartPath = useMemo(() => chartDataPoints.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x},${p.y}`).join(' '), [chartDataPoints]);
-  const areaPath = useMemo(() => chartPath + ` L${chartDataPoints[chartDataPoints.length - 1].x},130 L${chartDataPoints[0].x},130 Z`, [chartPath, chartDataPoints]);
+  const chartDataPoints = useMemo(
+    () => [
+      { x: 50, y: 120 },
+      { x: 100, y: 80 },
+      { x: 150, y: 100 },
+      { x: 200, y: 35 },
+      { x: 250, y: 60 },
+      { x: 300, y: 50 },
+      { x: 350, y: 70 },
+    ],
+    [],
+  );
+  const chartPath = useMemo(
+    () =>
+      chartDataPoints
+        .map((p, i) => (i === 0 ? "M" : "L") + `${p.x},${p.y}`)
+        .join(" "),
+    [chartDataPoints],
+  );
+  const areaPath = useMemo(
+    () =>
+      chartPath +
+      ` L${chartDataPoints[chartDataPoints.length - 1].x},130 L${chartDataPoints[0].x},130 Z`,
+    [chartPath, chartDataPoints],
+  );
 
   return (
     <div className="min-h-screen min-w-screen flex flex-col bg-sonic-darker text-white font-sans text-xs">
@@ -135,25 +228,37 @@ const HomePage: React.FC = () => {
         <nav className="w-48 flex flex-col bg-sonic-dark border-r border-sonic-gray/80 py-3 flex-shrink-0">
           {/* Logo/Title */}
           <div className="px-4 mb-5 flex items-center gap-2">
-            <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.7 }}>
-                              <img src="/assets/icon.ico" alt="Sonic Flow Icon" className="w-6 h-6" />
+            <motion.div
+              whileHover={{ rotate: 360 }}
+              transition={{ duration: 0.7 }}
+            >
+              <img
+                src="/assets/icon.ico"
+                alt="Sonic Flow Icon"
+                className="w-6 h-6"
+              />
             </motion.div>
-            <h1 className="text-lg font-medium text-white">
-              Sonic Flow
-            </h1>
+            <h1 className="text-lg font-medium text-white">Sonic Flow</h1>
           </div>
-          
+
           {/* Navigation Items */}
           {navItems.map((item) => (
-            <SidebarButton key={item.id} item={item} activeTab={activeTab} onClick={setActiveTab} />
+            <SidebarButton
+              key={item.id}
+              item={item}
+              activeTab={activeTab}
+              onClick={setActiveTab}
+            />
           ))}
-          
+
           {/* Support Box */}
           <div className="mt-auto px-4 py-2">
             <div className="bg-gradient-to-r from-sonic-dark/80 to-sonic-gray/60 rounded-lg p-3 border border-sonic-gray/60">
               <h3 className="text-[11px] font-medium mb-1">Need help?</h3>
-              <p className="text-[10px] text-gray-400 mb-2">Access our support team and resources</p>
-              <motion.button 
+              <p className="text-[10px] text-gray-400 mb-2">
+                Access our support team and resources
+              </p>
+              <motion.button
                 className="w-full text-[11px] py-1 bg-sonic-orange rounded hover:bg-sonic-light-orange transition-colors"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -161,8 +266,10 @@ const HomePage: React.FC = () => {
                 Contact Support
               </motion.button>
             </div>
-             {/* Version Number */}
-            <span className="block text-center text-[9px] text-gray-500 mt-2">{VERSION}</span>
+            {/* Version Number */}
+            <span className="block text-center text-[9px] text-gray-500 mt-2">
+              {VERSION}
+            </span>
           </div>
         </nav>
 
@@ -179,22 +286,30 @@ const HomePage: React.FC = () => {
               <h2 className="text-lg font-medium">{greeting}, User</h2>
             </motion.div>
 
-            {/* --- Home Tab --- */} 
-            {activeTab === 'home' && (
+            {/* --- Home Tab --- */}
+            {activeTab === "home" && (
               <div className="flex flex-col md:flex-row gap-2.5">
                 {/* Left Column: Usage Stats & Graph */}
                 <div className="space-y-2.5 md:w-8/12">
                   {/* Stat Cards */}
-                  <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <motion.div
+                    variants={itemVariants}
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                  >
                     {statCardData.map((stat) => (
                       <StatCard key={stat.title} stat={stat} />
                     ))}
                   </motion.div>
-                  
+
                   {/* Time Saved Chart */}
-                  <motion.div variants={itemVariants} className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80">
+                  <motion.div
+                    variants={itemVariants}
+                    className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80"
+                  >
                     <div className="flex justify-between items-center mb-2.5">
-                      <h3 className="text-xs font-medium">Time Saved with Dictation</h3>
+                      <h3 className="text-xs font-medium">
+                        Time Saved with Dictation
+                      </h3>
                       <select className="bg-sonic-darker text-[10px] px-1.5 py-0.5 rounded border border-sonic-gray/80 outline-none focus:ring-1 focus:ring-sonic-orange">
                         <option>Last 7 days</option>
                         <option>Last 30 days</option>
@@ -203,176 +318,404 @@ const HomePage: React.FC = () => {
                     </div>
                     <div className="h-40 relative pl-5">
                       <div className="absolute inset-0 grid grid-cols-7 grid-rows-5 pointer-events-none">
-                        {Array(35).fill(0).map((_, i) => (
-                          <div key={i} className="border-r border-t border-sonic-gray/20 first:border-l"></div>
-                        ))}
+                        {Array(35)
+                          .fill(0)
+                          .map((_, i) => (
+                            <div
+                              key={i}
+                              className="border-r border-t border-sonic-gray/20 first:border-l"
+                            ></div>
+                          ))}
                       </div>
                       <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[9px] text-gray-500 py-1 pointer-events-none">
-                        <span>5h</span> <span>4h</span> <span>3h</span> <span>2h</span> <span>1h</span> <span>0h</span>
+                        <span>5h</span> <span>4h</span> <span>3h</span>{" "}
+                        <span>2h</span> <span>1h</span> <span>0h</span>
                       </div>
-                      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 400 150" preserveAspectRatio="none">
+                      <svg
+                        className="absolute inset-0 h-full w-full"
+                        viewBox="0 0 400 150"
+                        preserveAspectRatio="none"
+                      >
                         <defs>
-                          <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="rgba(160, 160, 160, 0.4)" />
-                            <stop offset="100%" stopColor="rgba(160, 160, 160, 0)" />
+                          <linearGradient
+                            id="gradient"
+                            x1="0%"
+                            y1="0%"
+                            x2="0%"
+                            y2="100%"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="rgba(160, 160, 160, 0.4)"
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="rgba(160, 160, 160, 0)"
+                            />
                           </linearGradient>
                         </defs>
-                        <motion.path 
+                        <motion.path
                           d={chartPath}
-                          stroke="#A0A0A0" 
-                          strokeWidth="2" 
-                          fill="none" 
+                          stroke="#A0A0A0"
+                          strokeWidth="2"
+                          fill="none"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           initial={{ pathLength: 0 }}
                           animate={{ pathLength: 1 }}
                           transition={{ duration: 0.5, ease: "easeInOut" }}
                         />
-                        <motion.path 
-                          d={areaPath} 
-                          fill="url(#gradient)" 
+                        <motion.path
+                          d={areaPath}
+                          fill="url(#gradient)"
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 0.4 }}
                           transition={{ duration: 0.5, delay: 0.2 }}
                         />
                         {chartDataPoints.map((point, index) => (
-                          <motion.circle 
+                          <motion.circle
                             key={index}
-                            cx={point.x} cy={point.y} r="3" 
-                            fill="#A0A0A0" stroke="#121212" strokeWidth="1.5"
+                            cx={point.x}
+                            cy={point.y}
+                            r="3"
+                            fill="#A0A0A0"
+                            stroke="#121212"
+                            strokeWidth="1.5"
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 * index }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 300,
+                              damping: 15,
+                              delay: 0.1 * index,
+                            }}
                           />
                         ))}
                       </svg>
                       <div className="absolute top-1 right-1 bg-sonic-dark/70 p-1 rounded border border-sonic-gray/50">
-                        <div className="text-[9px] text-gray-400">Efficiency</div>
-                        <div className="text-sm font-bold text-sonic-light-orange">+47%</div>
+                        <div className="text-[9px] text-gray-400">
+                          Efficiency
+                        </div>
+                        <div className="text-sm font-bold text-sonic-light-orange">
+                          +47%
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-between mt-1 text-[9px] text-gray-500 pl-5">
-                      <span>Mon</span> <span>Tue</span> <span>Wed</span> <span>Thu</span> <span>Fri</span> <span>Sat</span> <span>Sun</span>
+                      <span>Mon</span> <span>Tue</span> <span>Wed</span>{" "}
+                      <span>Thu</span> <span>Fri</span> <span>Sat</span>{" "}
+                      <span>Sun</span>
                     </div>
                     <div className="mt-2 p-1.5 bg-sonic-darker rounded border border-sonic-gray/30">
                       <div className="flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                        <span className="text-[10px] text-gray-400">Based on avg. typing ({AVG_TYPING_WPM} WPM) vs. dictation ({AVG_DICTATION_WPM} WPM)</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="12" y1="8" x2="12" y2="12"></line>
+                          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        <span className="text-[10px] text-gray-400">
+                          Based on avg. typing ({AVG_TYPING_WPM} WPM) vs.
+                          dictation ({AVG_DICTATION_WPM} WPM)
+                        </span>
                       </div>
                     </div>
                   </motion.div>
                 </div>
-                
+
                 {/* Right Column: Plan Section */}
-                <motion.div variants={itemVariants} className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80 md:w-4/12 h-fit">
+                <motion.div
+                  variants={itemVariants}
+                  className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80 md:w-4/12 h-fit"
+                >
                   <div className="flex justify-between items-start mb-2.5">
                     <div>
                       <h3 className="text-sm font-medium mb-0.5">Pro Plan</h3>
-                      <p className="text-gray-400 text-[10px]">Renews on Oct 12, 2025</p>
+                      <p className="text-gray-400 text-[10px]">
+                        Renews on Oct 12, 2025
+                      </p>
                     </div>
-                    <span className="bg-sonic-orange bg-opacity-20 text-sonic-light-orange px-1.5 py-0.5 rounded-full text-[9px] font-medium">Active</span>
+                    <span className="bg-sonic-orange bg-opacity-20 text-sonic-light-orange px-1.5 py-0.5 rounded-full text-[9px] font-medium">
+                      Active
+                    </span>
                   </div>
                   <div className="space-y-1.5 mb-2.5">
                     <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">Usage</div>
+                      <div className="text-[10px] text-gray-400 mb-0.5">
+                        Usage
+                      </div>
                       <div className="text-xs font-medium">Unlimited</div>
                     </div>
                     <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">Next Payment</div>
+                      <div className="text-[10px] text-gray-400 mb-0.5">
+                        Next Payment
+                      </div>
                       <div className="text-xs font-medium">$12.99</div>
                     </div>
                     <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">Payment Method</div>
+                      <div className="text-[10px] text-gray-400 mb-0.5">
+                        Payment Method
+                      </div>
                       <div className="text-xs font-medium flex items-center">
                         <span className="mr-1">•••• 4242</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect
+                            x="1"
+                            y="4"
+                            width="22"
+                            height="16"
+                            rx="2"
+                            ry="2"
+                          ></rect>
+                          <line x1="1" y1="10" x2="23" y2="10"></line>
+                        </svg>
                       </div>
                     </div>
                   </div>
                   <div className="pt-2 border-t border-sonic-gray/60">
-                    <h4 className="text-[10px] font-medium mb-1">Plan Benefits</h4>
+                    <h4 className="text-[10px] font-medium mb-1">
+                      Plan Benefits
+                    </h4>
                     <ul className="space-y-0.5 mb-2.5">
-                      <li className="flex items-center text-[10px]"><svg className="text-green-500 mr-1 w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Unlimited dictation time</li>
-                      <li className="flex items-center text-[10px]"><svg className="text-green-500 mr-1 w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Custom shortcuts</li>
-                      <li className="flex items-center text-[10px]"><svg className="text-green-500 mr-1 w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>Priority support</li>
+                      <li className="flex items-center text-[10px]">
+                        <svg
+                          className="text-green-500 mr-1 w-2.5 h-2.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        Unlimited dictation time
+                      </li>
+                      <li className="flex items-center text-[10px]">
+                        <svg
+                          className="text-green-500 mr-1 w-2.5 h-2.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        Custom shortcuts
+                      </li>
+                      <li className="flex items-center text-[10px]">
+                        <svg
+                          className="text-green-500 mr-1 w-2.5 h-2.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        Priority support
+                      </li>
                     </ul>
                   </div>
                   <div className="flex gap-1.5">
-                    <motion.button className="flex-1 px-2 py-1 bg-sonic-orange rounded text-[10px] font-medium hover:bg-sonic-light-orange transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Manage Plan</motion.button>
-                    <motion.button className="flex-1 px-2 py-1 bg-sonic-gray/80 rounded text-[10px] font-medium hover:bg-sonic-gray/70 transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Billing History</motion.button>
+                    <motion.button
+                      className="flex-1 px-2 py-1 bg-sonic-orange rounded text-[10px] font-medium hover:bg-sonic-light-orange transition-colors"
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      Manage Plan
+                    </motion.button>
+                    <motion.button
+                      className="flex-1 px-2 py-1 bg-sonic-gray/80 rounded text-[10px] font-medium hover:bg-sonic-gray/70 transition-colors"
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      Billing History
+                    </motion.button>
                   </div>
                 </motion.div>
               </div>
             )}
-            
-            {/* --- Settings Tab --- */} 
-            {activeTab === 'settings' && (
+
+            {/* --- Settings Tab --- */}
+            {activeTab === "settings" && (
               <div className="space-y-3 max-w-xl">
-                <motion.div variants={itemVariants} className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80">
-                  <h3 className="text-base font-medium mb-3">Application Settings</h3>
+                <motion.div
+                  variants={itemVariants}
+                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
+                >
+                  <h3 className="text-base font-medium mb-3">
+                    Application Settings
+                  </h3>
                   <div className="space-y-3">
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label htmlFor="launchStartupToggle" className="text-xs font-medium cursor-pointer">Launch on startup</label>
+                        <label
+                          htmlFor="launchStartupToggle"
+                          className="text-xs font-medium cursor-pointer"
+                        >
+                          Launch on startup
+                        </label>
                         {/* Implement actual toggle logic here if needed */}
                         <div className="w-9 h-4.5 bg-sonic-gray rounded-full relative cursor-pointer">
-                          <motion.div 
+                          <motion.div
                             id="launchStartupToggle"
                             className="absolute left-0.5 top-0.5 w-3.5 h-3.5 bg-sonic-orange rounded-full"
-                            layout transition={{ type: "spring", stiffness: 700, damping: 30 }}
+                            layout
+                            transition={{
+                              type: "spring",
+                              stiffness: 700,
+                              damping: 30,
+                            }}
                           />
                         </div>
                       </div>
-                      <p className="text-[11px] text-gray-400">Automatically start Sonic Flow when you log in.</p>
+                      <p className="text-[11px] text-gray-400">
+                        Automatically start Sonic Flow when you log in.
+                      </p>
                     </div>
                     <div>
-                      <label htmlFor="languageSelect" className="text-xs font-medium block mb-1">Recognition language</label>
-                      <select id="languageSelect" className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange">
-                        <option>English (US)</option> <option>English (UK)</option> <option>Spanish</option> <option>French</option> <option>German</option>
+                      <label
+                        htmlFor="languageSelect"
+                        className="text-xs font-medium block mb-1"
+                      >
+                        Recognition language
+                      </label>
+                      <select
+                        id="languageSelect"
+                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
+                      >
+                        <option>English (US)</option>{" "}
+                        <option>English (UK)</option> <option>Spanish</option>{" "}
+                        <option>French</option> <option>German</option>
                       </select>
                     </div>
                   </div>
                 </motion.div>
-                <motion.div variants={itemVariants} className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80">
-                  <h3 className="text-base font-medium mb-3">Microphone Setup</h3>
+                <motion.div
+                  variants={itemVariants}
+                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
+                >
+                  <h3 className="text-base font-medium mb-3">
+                    Microphone Setup
+                  </h3>
                   <div className="space-y-3">
                     <div>
-                      <label htmlFor="micSelect" className="text-xs font-medium block mb-1">Input device</label>
-                      <select id="micSelect" className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange">
-                        <option>Default Microphone</option> <option>Headset Microphone</option>
+                      <label
+                        htmlFor="micSelect"
+                        className="text-xs font-medium block mb-1"
+                      >
+                        Input device
+                      </label>
+                      <select
+                        id="micSelect"
+                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
+                      >
+                        <option>Default Microphone</option>{" "}
+                        <option>Headset Microphone</option>
                       </select>
                     </div>
                     <div>
-                      <label htmlFor="micSensitivity" className="text-xs font-medium block mb-1">Input sensitivity</label>
-                      <input id="micSensitivity" type="range" min="0" max="100" defaultValue="70" className="w-full h-1.5 bg-sonic-darker rounded-lg appearance-none cursor-pointer accent-sonic-orange"/>
+                      <label
+                        htmlFor="micSensitivity"
+                        className="text-xs font-medium block mb-1"
+                      >
+                        Input sensitivity
+                      </label>
+                      <input
+                        id="micSensitivity"
+                        type="range"
+                        min="0"
+                        max="100"
+                        defaultValue="70"
+                        className="w-full h-1.5 bg-sonic-darker rounded-lg appearance-none cursor-pointer accent-sonic-orange"
+                      />
                     </div>
                   </div>
                 </motion.div>
               </div>
             )}
-            
-            {/* --- Account Tab --- */} 
-            {activeTab === 'account' && (
+
+            {/* --- Account Tab --- */}
+            {activeTab === "account" && (
               <div className="space-y-3 max-w-xl">
-                <motion.div variants={itemVariants} className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80">
+                <motion.div
+                  variants={itemVariants}
+                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
+                >
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-sonic-orange rounded-full flex items-center justify-center text-base font-bold flex-shrink-0">JS</div>
+                    <div className="w-12 h-12 bg-sonic-orange rounded-full flex items-center justify-center text-base font-bold flex-shrink-0">
+                      JS
+                    </div>
                     <div>
-                      <h3 className="text-base font-medium truncate">John Smith</h3>
-                      <p className="text-[11px] text-gray-400 truncate">john.smith@example.com</p>
+                      <h3 className="text-base font-medium truncate">
+                        John Smith
+                      </h3>
+                      <p className="text-[11px] text-gray-400 truncate">
+                        john.smith@example.com
+                      </p>
                     </div>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label htmlFor="displayNameInput" className="text-xs font-medium block mb-1">Display name</label>
-                      <input id="displayNameInput" type="text" value="John Smith" className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"/>
+                      <label
+                        htmlFor="displayNameInput"
+                        className="text-xs font-medium block mb-1"
+                      >
+                        Display name
+                      </label>
+                      <input
+                        id="displayNameInput"
+                        type="text"
+                        value="John Smith"
+                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
+                      />
                     </div>
                     <div>
-                      <label htmlFor="emailInput" className="text-xs font-medium block mb-1">Email address</label>
-                      <input id="emailInput" type="email" value="john.smith@example.com" className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"/>
+                      <label
+                        htmlFor="emailInput"
+                        className="text-xs font-medium block mb-1"
+                      >
+                        Email address
+                      </label>
+                      <input
+                        id="emailInput"
+                        type="email"
+                        value="john.smith@example.com"
+                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
+                      />
                     </div>
                     <div className="pt-1.5">
-                      <motion.button className="px-3 py-1.5 bg-sonic-orange rounded text-xs font-medium hover:bg-sonic-light-orange transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Update Profile</motion.button>
+                      <motion.button
+                        className="px-3 py-1.5 bg-sonic-orange rounded text-xs font-medium hover:bg-sonic-light-orange transition-colors"
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                      >
+                        Update Profile
+                      </motion.button>
                     </div>
                   </div>
                 </motion.div>

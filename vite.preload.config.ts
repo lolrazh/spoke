@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite';
-import path from 'node:path';
+import { defineConfig } from "vite";
+import path from "node:path";
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -7,16 +7,16 @@ export default defineConfig({
     lib: {
       // Specify multiple entry points for preload scripts
       entry: {
-        preload: path.resolve(__dirname, 'src/preload.ts'),
+        preload: path.resolve(__dirname, "src/preload.ts"),
       },
       // Output format will be CommonJS as required by Electron preload scripts
-      formats: ['cjs'],
+      formats: ["cjs"],
     },
     // Configure Rollup options for CommonJS output
     rollupOptions: {
       output: {
         // Ensure output filenames match the entry point names
-        entryFileNames: '[name].js',
+        entryFileNames: "[name].js",
       },
     },
     // Ensure the output directory is cleared before building

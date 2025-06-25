@@ -6,24 +6,24 @@
 // === OUTGOING MESSAGES (Hook → Worker) ===
 
 export interface InitWorkerMessage {
-  type: 'init';
+  type: "init";
   data: { sab: SharedArrayBuffer };
 }
 
 export interface InitializeAsrMessage {
-  type: 'initialize-local-asr';
+  type: "initialize-local-asr";
 }
 
 export interface StartCaptureMessage {
-  type: 'start-capture';
+  type: "start-capture";
 }
 
 export interface StopCaptureMessage {
-  type: 'stop-capture-and-transcribe';
+  type: "stop-capture-and-transcribe";
   data?: { timestamp: number }; // Optional timing data
 }
 
-export type WorkerIncomingMessage = 
+export type WorkerIncomingMessage =
   | InitWorkerMessage
   | InitializeAsrMessage
   | StartCaptureMessage
@@ -32,19 +32,19 @@ export type WorkerIncomingMessage =
 // === INCOMING MESSAGES (Worker → Hook) ===
 
 export interface SabInitializedMessage {
-  status: 'sab_initialized';
+  status: "sab_initialized";
 }
 
 export interface ModelLoadingMessage {
-  status: 'asr_model_loading';
+  status: "asr_model_loading";
 }
 
 export interface ModelReadyMessage {
-  status: 'asr_model_ready';
+  status: "asr_model_ready";
 }
 
 export interface ModelProgressMessage {
-  status: 'model_progress';
+  status: "model_progress";
   progress?: number;
   loaded?: number;
   total?: number;
@@ -54,30 +54,30 @@ export interface ModelProgressMessage {
 }
 
 export interface CaptureStartedMessage {
-  status: 'capture_started';
+  status: "capture_started";
 }
 
 export interface PartialTranscriptionMessage {
-  status: 'partial';
+  status: "partial";
   delta: string;
 }
 
 export interface ProcessingFullAudioMessage {
-  status: 'processing_full_audio';
+  status: "processing_full_audio";
 }
 
 export interface CompletedTranscriptionMessage {
-  status: 'completed';
+  status: "completed";
   transcription: string;
   timings?: Record<string, number>;
 }
 
 export interface WorkerErrorMessage {
-  status: 'error';
+  status: "error";
   error: string;
 }
 
-export type WorkerOutgoingMessage = 
+export type WorkerOutgoingMessage =
   | SabInitializedMessage
   | ModelLoadingMessage
   | ModelReadyMessage
@@ -90,21 +90,29 @@ export type WorkerOutgoingMessage =
 
 // === UTILITY TYPES ===
 
-export type WorkerMessageStatus = WorkerOutgoingMessage['status'];
+export type WorkerMessageStatus = WorkerOutgoingMessage["status"];
 
 // Type guard functions for runtime type checking
-export function isPartialMessage(msg: WorkerOutgoingMessage): msg is PartialTranscriptionMessage {
-  return msg.status === 'partial';
+export function isPartialMessage(
+  msg: WorkerOutgoingMessage,
+): msg is PartialTranscriptionMessage {
+  return msg.status === "partial";
 }
 
-export function isCompletedMessage(msg: WorkerOutgoingMessage): msg is CompletedTranscriptionMessage {
-  return msg.status === 'completed';
+export function isCompletedMessage(
+  msg: WorkerOutgoingMessage,
+): msg is CompletedTranscriptionMessage {
+  return msg.status === "completed";
 }
 
-export function isErrorMessage(msg: WorkerOutgoingMessage): msg is WorkerErrorMessage {
-  return msg.status === 'error';
+export function isErrorMessage(
+  msg: WorkerOutgoingMessage,
+): msg is WorkerErrorMessage {
+  return msg.status === "error";
 }
 
-export function isModelReadyMessage(msg: WorkerOutgoingMessage): msg is ModelReadyMessage {
-  return msg.status === 'asr_model_ready';
-} 
+export function isModelReadyMessage(
+  msg: WorkerOutgoingMessage,
+): msg is ModelReadyMessage {
+  return msg.status === "asr_model_ready";
+}

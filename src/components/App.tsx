@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Pill from './Pill';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import Pill from "./Pill";
 // Import the new consolidated hook
-import { useTranscription } from '../hooks/useTranscription'; // Adjust path if needed
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from '../constants/window';
+import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
+import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
@@ -24,23 +24,25 @@ const App: React.FC = () => {
     latestTransRef.current = trans;
   }, [trans]);
 
-  // --- Map hook state to Pill props --- 
-  const isListening = trans.recording; 
+  // --- Map hook state to Pill props ---
+  const isListening = trans.recording;
   // Show processing during model load AND transcription
-  const isProcessing = !trans.ready || trans.processing; 
+  const isProcessing = !trans.ready || trans.processing;
 
   // --- Handle Transcription Results ---
   useEffect(() => {
     if (trans.text && !trans.recording && !trans.processing) {
-      console.log(`[App] Final accumulated transcription state: "${trans.text}"`);
+      console.log(
+        `[App] Final accumulated transcription state: "${trans.text}"`,
+      );
     }
   }, [trans.text, trans.recording, trans.processing]);
 
-  // --- Handle Errors from Hook --- 
+  // --- Handle Errors from Hook ---
   useEffect(() => {
     if (trans.error && window.electron) {
-      console.error('[App] Transcription Hook Error:', trans.error);
-      window.electron.sendNotification(trans.error); 
+      console.error("[App] Transcription Hook Error:", trans.error);
+      window.electron.sendNotification(trans.error);
     }
   }, [trans.error]);
 
@@ -49,7 +51,7 @@ const App: React.FC = () => {
     if (window.electronIsland?.slideTo) {
       const shouldBeVisible = isHovered || isListening || isProcessing;
       const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-      
+
       window.electronIsland.slideTo(targetY);
     }
   }, [isHovered, isListening, isProcessing]);
@@ -61,7 +63,7 @@ const App: React.FC = () => {
     const HOLD_DURATION_MS = 180; // ms
 
     const handleRightAltDown = () => {
-      isLongPressRef.current = false; 
+      isLongPressRef.current = false;
       // Clear any existing timer from a potentially missed 'up' event
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
@@ -69,7 +71,7 @@ const App: React.FC = () => {
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
         if (!latestTransRef.current.recording) {
-          latestTransRef.current.start(); 
+          latestTransRef.current.start();
         }
       }, HOLD_DURATION_MS);
     };
@@ -91,7 +93,7 @@ const App: React.FC = () => {
           latestTransRef.current.start();
         }
       }
-      isLongPressRef.current = false; 
+      isLongPressRef.current = false;
     };
 
     const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
@@ -107,10 +109,8 @@ const App: React.FC = () => {
   }, [trans.start, trans.stop]);
 
   return (
-    <div 
-      className="app-container w-full h-screen bg-transparent overflow-hidden relative"
-    >
-      <Pill 
+    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
+      <Pill
         isListening={isListening}
         isProcessing={isProcessing}
         isHovered={isHovered}
@@ -123,4 +123,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App; 
+export default App;

@@ -1,7 +1,7 @@
 // This file will contain the RingBuffer implementation
 // using SharedArrayBuffer and Atomics.
 
-console.log("RingBuffer file loaded (placeholder)"); 
+console.log("RingBuffer file loaded (placeholder)");
 
 const MAX_RING_SECONDS = 10; // NEW - Target buffer duration
 
@@ -12,7 +12,7 @@ const RING_BUFFER_SAMPLE_CAPACITY = SAMPLE_RATE_16K * MAX_RING_SECONDS; // Use 1
 // Helper function to calculate byte length needed for RingBuffer
 // Includes space for the atomic write index (Int32 = 4 bytes)
 function getByteLength(capacity: number): number {
-  return (capacity * Float32Array.BYTES_PER_ELEMENT) + 4;
+  return capacity * Float32Array.BYTES_PER_ELEMENT + 4;
 }
 
 const RING_BUFFER_SIZE_BYTES = getByteLength(RING_BUFFER_SAMPLE_CAPACITY);
@@ -43,7 +43,7 @@ export class RingBuffer {
     if (sab) {
       if (sab.byteLength !== RING_BUFFER_SIZE_BYTES) {
         throw new Error(
-          `Provided SharedArrayBuffer has incorrect size. Expected ${RING_BUFFER_SIZE_BYTES}, got ${sab.byteLength}`
+          `Provided SharedArrayBuffer has incorrect size. Expected ${RING_BUFFER_SIZE_BYTES}, got ${sab.byteLength}`,
         );
       }
       this.sab = sab;
@@ -73,7 +73,9 @@ export class RingBuffer {
   write(frames: Float32Array): number {
     const availableWrite = this.capacity - this.availableRead();
     if (frames.length > availableWrite) {
-      console.warn(`RingBuffer overflow: Tried to write ${frames.length}, but only ${availableWrite} available.`);
+      console.warn(
+        `RingBuffer overflow: Tried to write ${frames.length}, but only ${availableWrite} available.`,
+      );
       // Optional: Could drop frames or overwrite oldest, for now just log.
       return 0; // Indicate nothing was written to prevent partial writes easily
     }
@@ -113,7 +115,7 @@ export class RingBuffer {
     return framesToCopy;
   }
 
- /**
+  /**
    * Read available audio frames for the consumer.
    * Updates the internal read pointer.
    * @param targetBuffer Optional buffer to write into. If not provided, a new Float32Array is returned.
@@ -125,21 +127,27 @@ export class RingBuffer {
       return targetBuffer ? null : new Float32Array(0); // Return empty if nothing to read
     }
 
-    const framesToRead = targetBuffer ? Math.min(available, targetBuffer.length) : available;
+    const framesToRead = targetBuffer
+      ? Math.min(available, targetBuffer.length)
+      : available;
     let result: Float32Array;
 
     if (targetBuffer) {
-      result = targetBuffer.length >= framesToRead ? targetBuffer.subarray(0, framesToRead) : targetBuffer; // Use subarray if target is larger
+      result =
+        targetBuffer.length >= framesToRead
+          ? targetBuffer.subarray(0, framesToRead)
+          : targetBuffer; // Use subarray if target is larger
     } else {
       result = new Float32Array(framesToRead);
     }
-
 
     // Check for wrap-around during read
     const spaceToEnd = this.capacity - this.readIndex;
     if (framesToRead <= spaceToEnd) {
       // No wrap-around
-      result.set(this.buffer.subarray(this.readIndex, this.readIndex + framesToRead));
+      result.set(
+        this.buffer.subarray(this.readIndex, this.readIndex + framesToRead),
+      );
     } else {
       // Wraps around
       const firstChunk = this.buffer.subarray(this.readIndex, this.capacity);
@@ -150,7 +158,7 @@ export class RingBuffer {
 
     // Update the read index
     this.readIndex = (this.readIndex + framesToRead) % this.capacity;
-     // console.log(`Read ${framesToRead} frames. New read index: ${this.readIndex}`);
+    // console.log(`Read ${framesToRead} frames. New read index: ${this.readIndex}`);
 
     return targetBuffer ? null : result; // Return the new array only if no target was given
   }
@@ -191,7 +199,7 @@ export class RingBuffer {
    * Static helper to calculate byte length based on sample capacity.
    */
   static getByteLength(capacity: number): number {
-    return (capacity * Float32Array.BYTES_PER_ELEMENT) + 4;
+    return capacity * Float32Array.BYTES_PER_ELEMENT + 4;
   }
 }
 
@@ -199,5 +207,5 @@ export class RingBuffer {
 export const Constants = {
   MAX_RING_SECONDS, // Export MAX_RING_SECONDS
   RING_BUFFER_SAMPLE_CAPACITY,
-  RING_BUFFER_SIZE_BYTES
-}; 
+  RING_BUFFER_SIZE_BYTES,
+};

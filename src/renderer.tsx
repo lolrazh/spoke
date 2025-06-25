@@ -1,18 +1,18 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './components/App';
-import HomePage from './components/HomePage';
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import './index.css';
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "./components/App";
+import HomePage from "./components/HomePage";
+import { HashRouter, Routes, Route } from "react-router-dom";
+import "./index.css";
 
 // Create root element
-const rootElement = document.getElementById('root');
+const rootElement = document.getElementById("root");
 
 if (!rootElement) {
-  const root = document.createElement('div');
-  root.id = 'root';
+  const root = document.createElement("div");
+  root.id = "root";
   document.body.appendChild(root);
-  
+
   const reactRoot = createRoot(root);
   reactRoot.render(
     <HashRouter>
@@ -20,7 +20,7 @@ if (!rootElement) {
         <Route path="/" element={<App />} />
         <Route path="/home" element={<HomePage />} />
       </Routes>
-    </HashRouter>
+    </HashRouter>,
   );
 } else {
   const reactRoot = createRoot(rootElement);
@@ -30,8 +30,8 @@ if (!rootElement) {
         <Route path="/" element={<App />} />
         <Route path="/home" element={<HomePage />} />
       </Routes>
-    </HashRouter>
+    </HashRouter>,
   );
 }
 
-console.log('🎤 Sonic Flow is running'); 
+console.log("🎤 Sonic Flow is running");

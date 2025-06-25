@@ -1,5 +1,5 @@
 // import Groq from 'groq-sdk'; // No longer using SDK directly
-import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
+import { Blob } from "node:buffer"; // For creating a Blob from ArrayBuffer
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.
 // Logging for API key status can be removed.
@@ -10,61 +10,85 @@ import { Blob } from 'node:buffer'; // For creating a Blob from ArrayBuffer
  * @param inputLanguage The language of the audio (e.g., "en").
  * @returns Promise that resolves with the transcription text.
  */
-export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLanguage: string = "en"): Promise<{ text: string, timings: Record<string, number> }> {
-  const workerUrl = 'https://api.sonicflow.app/groq';
+export async function transcribeAudioWithGroq(
+  audioData: ArrayBuffer,
+  inputLanguage: string = "en",
+): Promise<{ text: string; timings: Record<string, number> }> {
+  const workerUrl = "https://api.sonicflow.app/groq";
 
   // For performance.now() in Node.js environment
-  const { performance } = require('node:perf_hooks');
+  const { performance } = require("node:perf_hooks");
 
   try {
     if (audioData.byteLength === 0) {
-      console.error('[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.');
-      throw new Error('Audio data (ArrayBuffer) is empty.');
+      console.error("[GroqTranscriber-CFW]	Audio data (ArrayBuffer) is empty.");
+      throw new Error("Audio data (ArrayBuffer) is empty.");
     }
 
     // Sending raw PCM Float32 ArrayBuffer directly
-    console.log(`[GroqTranscriber-CFW]	Sending raw PCM F32 (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`);
-    
+    console.log(
+      `[GroqTranscriber-CFW]	Sending raw PCM F32 (${audioData.byteLength} bytes) to CF Worker: ${workerUrl}`,
+    );
+
     const main_helper_fetch_start_time = performance.now();
     const response = await fetch(workerUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
         // Indicate that the body is raw PCM data (Float32)
-        'Content-Type': 'audio/pcm',
-        'X-Audio-Language': inputLanguage,
-        'X-Sample-Rate': TARGET_SAMPLE_RATE.toString(), // Use centralized sample rate
-        'X-Bit-Depth': '32',         // Float32 is 32-bit
-        'X-Channels': '1',           // Mono audio
+        "Content-Type": "audio/pcm",
+        "X-Audio-Language": inputLanguage,
+        "X-Sample-Rate": TARGET_SAMPLE_RATE.toString(), // Use centralized sample rate
+        "X-Bit-Depth": "32", // Float32 is 32-bit
+        "X-Channels": "1", // Mono audio
         // 'X-Audio-Filename' is not strictly needed if not using FormData on worker side for this path
       },
-      body: audioData // Send raw ArrayBuffer
+      body: audioData, // Send raw ArrayBuffer
     });
     const main_helper_fetch_end_time = performance.now();
-    const main_fetch_gross_duration = main_helper_fetch_end_time - main_helper_fetch_start_time;
+    const main_fetch_gross_duration =
+      main_helper_fetch_end_time - main_helper_fetch_start_time;
 
-    console.log(`[GroqTranscriber-CFW]	CF Worker call completed in ${main_fetch_gross_duration.toFixed(2)} ms (gross duration).`);
+    console.log(
+      `[GroqTranscriber-CFW]	CF Worker call completed in ${main_fetch_gross_duration.toFixed(2)} ms (gross duration).`,
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[GroqTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`);
-      throw new Error(`Transcription failed: ${response.status} - ${errorText}`);
+      console.error(
+        `[GroqTranscriber-CFW]	Error from CF Worker: ${response.status} - ${errorText}`,
+      );
+      throw new Error(
+        `Transcription failed: ${response.status} - ${errorText}`,
+      );
     }
 
     const workerJsonResponse = await response.json();
-    
-    if (!workerJsonResponse || typeof workerJsonResponse.text !== 'string') {
-      console.error('[GroqTranscriber-CFW]	Unexpected response format from CF Worker (text missing):', workerJsonResponse);
-      throw new Error('Unexpected response format from transcription service via CF Worker (text missing).');
+
+    if (!workerJsonResponse || typeof workerJsonResponse.text !== "string") {
+      console.error(
+        "[GroqTranscriber-CFW]	Unexpected response format from CF Worker (text missing):",
+        workerJsonResponse,
+      );
+      throw new Error(
+        "Unexpected response format from transcription service via CF Worker (text missing).",
+      );
     }
 
     const workerReportedTimings = workerJsonResponse.timings || {};
-    const workerTotalDuration = workerReportedTimings.worker_total_duration || 0;
-    
-    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
-    const effectiveWorkerTotal = workerTotalDuration > 0 ? workerTotalDuration :
-                                 ((workerReportedTimings.worker_pcm_to_wav || 0) + (workerReportedTimings.worker_stt_api_call || 0));
+    const workerTotalDuration =
+      workerReportedTimings.worker_total_duration || 0;
 
-    const main_net_exclusive_overhead = Math.max(0, main_fetch_gross_duration - effectiveWorkerTotal);
+    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
+    const effectiveWorkerTotal =
+      workerTotalDuration > 0
+        ? workerTotalDuration
+        : (workerReportedTimings.worker_pcm_to_wav || 0) +
+          (workerReportedTimings.worker_stt_api_call || 0);
+
+    const main_net_exclusive_overhead = Math.max(
+      0,
+      main_fetch_gross_duration - effectiveWorkerTotal,
+    );
 
     const finalTimingsToReturn = {
       main_net: main_net_exclusive_overhead,
@@ -72,19 +96,28 @@ export async function transcribeAudioWithGroq(audioData: ArrayBuffer, inputLangu
       worker_stt_api_call: workerReportedTimings.worker_stt_api_call, // Directly use the key from worker
     };
     // Remove undefined pcm_to_wav if not applicable (worker might not send it if input was not PCM)
-    if (finalTimingsToReturn.worker_pcm_to_wav === undefined) delete finalTimingsToReturn.worker_pcm_to_wav;
+    if (finalTimingsToReturn.worker_pcm_to_wav === undefined)
+      delete finalTimingsToReturn.worker_pcm_to_wav;
 
-    console.log('[GroqTranscriber-CFW] Processed timings. main_net_exclusive:', main_net_exclusive_overhead, 'finalTimingsToReturn:', finalTimingsToReturn);
+    console.log(
+      "[GroqTranscriber-CFW] Processed timings. main_net_exclusive:",
+      main_net_exclusive_overhead,
+      "finalTimingsToReturn:",
+      finalTimingsToReturn,
+    );
     return { text: workerJsonResponse.text, timings: finalTimingsToReturn };
-
   } catch (error) {
-    console.error('[GroqTranscriber-CFW]	Error during transcription via CF Worker:', error);
+    console.error(
+      "[GroqTranscriber-CFW]	Error during transcription via CF Worker:",
+      error,
+    );
     // To provide more context, we check if it's a FetchError or similar network issue
-    if (error instanceof Error && error.message.includes('fetch')) { // Basic check for fetch related errors
-        throw new Error(`Network error during transcription: ${error.message}`);
+    if (error instanceof Error && error.message.includes("fetch")) {
+      // Basic check for fetch related errors
+      throw new Error(`Network error during transcription: ${error.message}`);
     }
     throw error; // Re-throw other errors
   }
 }
 
-// Removed createFileObject, initializeTempDir, and cleanupAllTempAudioFiles as they are no longer needed. 
+// Removed createFileObject, initializeTempDir, and cleanupAllTempAudioFiles as they are no longer needed.

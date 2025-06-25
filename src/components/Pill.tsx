@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 
 interface PillProps {
   isListening: boolean;
@@ -9,39 +9,43 @@ interface PillProps {
   onHoverChange: (hovered: boolean) => void;
 }
 
-const Pill: React.FC<PillProps> = ({ 
-  isListening, 
-  isProcessing, 
+const Pill: React.FC<PillProps> = ({
+  isListening,
+  isProcessing,
   isHovered,
-  onStartDictation, 
+  onStartDictation,
   onStopDictation,
-  onHoverChange
+  onHoverChange,
 }) => {
   // Number of dots/bars to display - consistent across all states
   const VISUALIZATION_COUNT = 7;
-  
+
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = () => {
     // Create bars with consistent count
     return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`bar-${index}`} 
+      <div
+        key={`bar-${index}`}
         className="waveform-bar"
-        style={{ 
+        style={{
           animationDelay: `${index * 0.1}s`,
-          height: `${3 + Math.random() * 5}px`
+          height: `${3 + Math.random() * 5}px`,
         }}
       />
     ));
   };
 
   // Unified function to render dots with different styles
-  const renderDots = (type: 'static' | 'animated' | 'collapsed') => {
+  const renderDots = (type: "static" | "animated" | "collapsed") => {
     return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div 
-        key={`dot-${type}-${index}`} 
+      <div
+        key={`dot-${type}-${index}`}
         className={`dot ${type}`}
-        style={type === 'animated' ? { animationDelay: `${index * 0.12}s` } : undefined}
+        style={
+          type === "animated"
+            ? { animationDelay: `${index * 0.12}s` }
+            : undefined
+        }
       />
     ));
   };
@@ -49,26 +53,26 @@ const Pill: React.FC<PillProps> = ({
   // Handle context menu for pill
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault(); // Prevent default browser context menu
-    console.log('[Pill] Context menu requested');
+    console.log("[Pill] Context menu requested");
     if (window.electron?.showPillContextMenu) {
       window.electron.showPillContextMenu();
     } else {
-      console.warn('[Pill] window.electron.showPillContextMenu not available');
+      console.warn("[Pill] window.electron.showPillContextMenu not available");
     }
   };
-  
+
   // Determine the current state - now always visible, just different sizes
   const isResting = !isHovered && !isListening && !isProcessing;
   const isExpanded = isHovered || isListening || isProcessing;
-  
+
   return (
-    <div 
+    <div
       className={`
         pill-wrapper transition-all duration-300 ease-out
-        ${isResting ? 'resting-state' : ''}
-        ${isExpanded ? 'expanded-state' : ''}
-        ${isListening ? 'listening' : ''}
-        ${isProcessing ? 'processing' : ''}
+        ${isResting ? "resting-state" : ""}
+        ${isExpanded ? "expanded-state" : ""}
+        ${isListening ? "listening" : ""}
+        ${isProcessing ? "processing" : ""}
       `}
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
@@ -78,28 +82,26 @@ const Pill: React.FC<PillProps> = ({
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">
           {/* Resting state - thin bar with no content */}
-          {isResting && (
-            <div className="resting-indicator" />
-          )}
-          
+          {isResting && <div className="resting-indicator" />}
+
           {/* Hover state - show static dots */}
           {isHovered && !isListening && !isProcessing && (
             <div className="visualization-container">
-              {renderDots('static')}
+              {renderDots("static")}
             </div>
           )}
-          
+
           {/* Active state - show frequency bars */}
           {isListening && (
             <div className="visualization-container">
               {renderFrequencyBars()}
             </div>
           )}
-          
+
           {/* Loading state - show animated dots */}
           {isProcessing && !isListening && (
             <div className="visualization-container">
-              {renderDots('animated')}
+              {renderDots("animated")}
             </div>
           )}
         </div>
@@ -108,4 +110,4 @@ const Pill: React.FC<PillProps> = ({
   );
 };
 
-export default Pill; 
+export default Pill;
