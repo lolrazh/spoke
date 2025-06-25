@@ -50,7 +50,7 @@ export interface ModelProgressMessage {
   total?: number;
   file?: string;
   // Progress callback from Transformers.js can include additional fields
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface CaptureStartedMessage {

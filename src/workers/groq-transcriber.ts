@@ -1,5 +1,10 @@
 // import Groq from 'groq-sdk'; // No longer using SDK directly
-import { Blob } from "node:buffer"; // For creating a Blob from ArrayBuffer
+// Removed unused Blob import
+
+// Import the required constant from config
+import { TARGET_SAMPLE_RATE } from "../config/audio";
+// For performance.now() in Node.js environment
+import { performance } from "node:perf_hooks";
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.
 // Logging for API key status can be removed.
@@ -12,12 +17,9 @@ import { Blob } from "node:buffer"; // For creating a Blob from ArrayBuffer
  */
 export async function transcribeAudioWithGroq(
   audioData: ArrayBuffer,
-  inputLanguage: string = "en",
+  inputLanguage = "en",
 ): Promise<{ text: string; timings: Record<string, number> }> {
   const workerUrl = "https://api.sonicflow.app/groq";
-
-  // For performance.now() in Node.js environment
-  const { performance } = require("node:perf_hooks");
 
   try {
     if (audioData.byteLength === 0) {

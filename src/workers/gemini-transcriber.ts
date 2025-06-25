@@ -112,10 +112,10 @@ export async function transcribeAudioWithGemini(
       text: workerJsonResponse.text.trim(),
       timings: finalTimingsToReturn,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(
       "[GeminiTranscriber-CFW]	Error during transcription via CF Worker:",
-      err?.message || err,
+      (err as Error)?.message || err,
     );
     // Propagate the error; specific error construction can be done here if needed
     throw err;

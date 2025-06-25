@@ -3,27 +3,18 @@ console.log("[LocalWorker] Worker file starting to load...");
 import {
   pipeline,
   env,
-  // @ts-ignore Progress type might be nested or different now
-  Progress,
 } from "@huggingface/transformers";
-import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
+import { RingBuffer } from "../audio/ring-buffer";
 import {
   TARGET_SAMPLE_RATE,
   INITIAL_BUFFER_SIZE,
   BUFFER_GROWTH_SIZE,
-} from "../config/audio.js";
+} from "../config/audio";
 import type {
-  WorkerIncomingMessage,
-  WorkerOutgoingMessage,
-  SabInitializedMessage,
   ModelLoadingMessage,
   ModelReadyMessage,
-  WorkerErrorMessage,
-  CaptureStartedMessage,
   PartialTranscriptionMessage,
-  ProcessingFullAudioMessage,
-  CompletedTranscriptionMessage,
-} from "../types/worker-messages.js";
+} from "../types/worker-messages";
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -33,16 +24,16 @@ env.useBrowserCache = true;
 console.log("[LocalWorker] Transformers environment configured");
 
 // Enable WASM SIMD and Threading
-const wasmConfig = (env.backends as any)["wasm"]; // Cast env.backends to any before accessing 'wasm'
+const wasmConfig = (env.backends as Record<string, unknown>)["wasm"]; // Better typing than any
 if (wasmConfig) {
   console.log(
     "[LocalWorker] Configuring WASM backend for SIMD and Threading...",
   );
-  wasmConfig.simd = true;
-  wasmConfig.numThreads = navigator.hardwareConcurrency || 4;
-  wasmConfig.proxy = true; // Required for multi-threading in a worker
+  (wasmConfig as any).simd = true;
+  (wasmConfig as any).numThreads = navigator.hardwareConcurrency || 4;
+  (wasmConfig as any).proxy = true; // Required for multi-threading in a worker
   console.log(
-    `[LocalWorker] WASM backend configured: SIMD=${wasmConfig.simd}, Threads=${wasmConfig.numThreads}, Proxy=${wasmConfig.proxy}`,
+    `[LocalWorker] WASM backend configured: SIMD=${(wasmConfig as any).simd}, Threads=${(wasmConfig as any).numThreads}, Proxy=${(wasmConfig as any).proxy}`,
   );
 } else {
   console.warn(
@@ -72,7 +63,7 @@ const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
 
 console.log("[LocalWorker] using WASM backend with streaming capability.");
 
-let asr: any | null = null;
+let asr: any = null;
 let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
 let ringBuffer: RingBuffer | null = null;
 
@@ -84,8 +75,9 @@ let ringBuffer: RingBuffer | null = null;
 const PULL_LOOP_INTERVAL_MS = 100; // Check for new audio frequently (Changed from 50 to 100)
 
 // --- Buffer Size Constants (from moonshine-worker.ts) ---
-const INITIAL_BUFFER_SECONDS = 30;
-const BUFFER_GROWTH_SECONDS = 30;
+// Removed unused constants
+// const INITIAL_BUFFER_SECONDS = 30;
+// const BUFFER_GROWTH_SECONDS = 30;
 
 // --- Streaming State Variables (from moonshine-worker.ts / sequential buffering) ---
 let preallocated16kBuffer: Float32Array | null = null;
@@ -104,7 +96,8 @@ const PARTIAL_INTERVAL_S = 10; // Emit partial result every 10 seconds
 let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
 let lastPartialText = ""; // Store the cumulative text sent so far (for diffing)
 
-const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
+// Removed unused constant
+// const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
 
 // --- REMOVED Text Diffing Helper Functions (overlapLen, mergeWithOverlap) ---
 
@@ -127,7 +120,7 @@ function diffAndSend(textNow: string, tag: "partial") {
 
   let prefixBoundary = i;
   if (i > 0 && i < textNow.length) {
-    const prevCharText = textNow[i - 1];
+    // Removed unused variable prevCharText
     const nextCharText = textNow[i];
     const prevCharLast = i > 0 ? lastPartialText[i - 1] : null;
 
@@ -229,8 +222,8 @@ async function maybeEmitPartial() {
     try {
       // console.log(`[LocalWorker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
       // const tPartialStart = performance.now();
-      // @ts-ignore
-      const result = await asr(sliceToProcess); // No explicit prompt
+      // Using type assertion as asr pipeline has dynamic return types
+      const result = await (asr as any)(sliceToProcess); // No explicit prompt
       // const tPartialEnd = performance.now();
       const currentFullTextForThisSlice = (result as any).text?.trim() ?? "";
       // console.log(`[LocalWorker] Partial ASR completed. Full Text for this slice: "${currentFullTextForThisSlice}"`);
@@ -327,9 +320,9 @@ self.addEventListener("message", async (e) => {
       `[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`,
     );
     try {
-      // @ts-ignore - Transformers.js pipeline options are flexible - This comment might be slightly misplaced for the fix
+      // Using any type for pipeline options as transformers.js has flexible types
       asr = await pipeline("automatic-speech-recognition", MODEL_ID, {
-        progress_callback: (p: Progress | null) =>
+        progress_callback: (p: any) =>
           p && self.postMessage({ ...p, status: "model_progress" }),
         device: device,
         dtype: dtypeConfig,
@@ -501,8 +494,8 @@ self.addEventListener("message", async (e) => {
       processingPartial = true;
       const tFinalStart = performance.now();
       try {
-        // @ts-ignore - Transformers.js pipeline options are flexible
-        const result = await asr(finalSlice); // No explicit prompt
+        // Using type assertion as asr pipeline has dynamic return types
+        const result = await (asr as any)(finalSlice); // No explicit prompt
 
         finalPipelineTime = performance.now() - tFinalStart;
         console.log(

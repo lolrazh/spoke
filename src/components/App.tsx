@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Pill from "./Pill";
 // Import the new consolidated hook
 import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed

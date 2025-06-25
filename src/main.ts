@@ -15,17 +15,15 @@ import {
 import path from "node:path";
 import process from "node:process";
 import started from "electron-squirrel-startup";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 
 import fs from "node:fs";
-import { execSync } from "child_process";
 import { transcribeAudioWithGroq } from "./workers/groq-transcriber";
 import { transcribeAudioWithGemini } from "./workers/gemini-transcriber";
 import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
-  ISLAND_RADIUS,
 } from "./constants/window";
 
 // Add command line switches for WebGPU - KEEP THESE
@@ -79,7 +77,7 @@ const iconPath = getIconPath();
 
 const createWindow = () => {
   // Create the browser window.
-  const windowOptions: any = {
+  const windowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ISLAND_WIDTH,
     height: ISLAND_HEIGHT,
     frame: false,
@@ -701,11 +699,11 @@ ipcMain.handle(
         Object.keys(disjointTimingsFromHelper),
       );
       return { transcript: text, timings: disjointTimingsFromHelper };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-groq handler:", error);
       return {
         transcript: "",
-        error: error.message || "Groq transcription failed in main process.",
+        error: (error as Error).message || "Groq transcription failed in main process.",
         timings: upstreamTimings || {},
       };
     }
@@ -742,11 +740,11 @@ ipcMain.handle(
         Object.keys(disjointTimingsFromHelper),
       );
       return { transcript: text, timings: disjointTimingsFromHelper };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-gemini handler:", error);
       return {
         transcript: "",
-        error: error.message || "Gemini transcription failed in main process.",
+        error: (error as Error).message || "Gemini transcription failed in main process.",
         timings: upstreamTimings || {},
       };
     }

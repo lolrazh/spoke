@@ -466,12 +466,13 @@ export function useTranscription(): UseTranscriptionReturn {
           console.log(
             `[useTranscription] Cloud: AudioWorklet module '${workletPath}' added.`,
           );
-        } catch (moduleError: any) {
+        } catch (moduleError: unknown) {
+          const error = moduleError as Error;
           if (
-            moduleError.name === "InvalidStateError" ||
-            (moduleError.message &&
-              (moduleError.message.includes("already been loaded") ||
-                moduleError.message.includes("has already been added")))
+            error.name === "InvalidStateError" ||
+            (error.message &&
+              (error.message.includes("already been loaded") ||
+                error.message.includes("has already been added")))
           ) {
             workletRegistry.add(workletPath); // Mark as registered even if browser says already loaded
             console.log(
@@ -587,12 +588,12 @@ export function useTranscription(): UseTranscriptionReturn {
           console.log(
             "[useTranscription] Cloud AudioWorklet recording started.",
           );
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(
             "[useTranscription] Error starting cloud AudioWorklet recording:",
             err,
           );
-          setError(`Failed to start cloud recording (worklet): ${err.message}`);
+          setError(`Failed to start cloud recording (worklet): ${(err as Error).message}`);
           setRecording(false);
           setProcessing(false);
         }
@@ -672,12 +673,12 @@ export function useTranscription(): UseTranscriptionReturn {
         console.log(
           "[useTranscription] Local recording started. AudioWorklet connected, worker notified.",
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(
           "[useTranscription] Error starting local recording or AudioWorklet:",
           err,
         );
-        setError(`Failed to start local recording: ${err.message}`);
+        setError(`Failed to start local recording: ${(err as Error).message}`);
         setRecording(false);
       }
     }
@@ -863,12 +864,12 @@ export function useTranscription(): UseTranscriptionReturn {
                 ),
               );
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(
             "[useTranscription] Error during cloud AudioWorklet transcription or IPC:",
             err,
           );
-          setError(err.message || "Cloud transcription (worklet) failed.");
+          setError((err as Error).message || "Cloud transcription (worklet) failed.");
         } finally {
           setProcessing(false);
         }
@@ -960,10 +961,8 @@ if (typeof window !== "undefined" && !(window as any).electron) {
     "[useTranscription] Mocking window.electron API for development/testing.",
   );
   (window as any).electron = {
-    toggleDictation: (callback: () => void) => {
+    toggleDictation: () => {
       console.log("[Mock Electron] toggleDictation called");
-      // Call the callback to simulate toggle if needed for testing UI state
-      // callback();
       return () => console.log("[Mock Electron] cleanup toggleDictation");
     },
     showPillContextMenu: () => {
