@@ -18,9 +18,7 @@ contextBridge.exposeInMainWorld('electron', {
     };
   },
 
-  showPillContextMenu: () => {
-    ipcRenderer.send('show-pill-context-menu');
-  },
+
   insertTextAtCursor: (text: string) => {
     return ipcRenderer.invoke('insert-text-at-cursor', text);
   },

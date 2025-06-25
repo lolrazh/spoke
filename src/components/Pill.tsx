@@ -46,17 +46,7 @@ const Pill: React.FC<PillProps> = ({
     ));
   };
 
-  
-  // Handle context menu for pill
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent default browser context menu
-    console.log('[Pill] Context menu requested');
-    if (window.electron?.showPillContextMenu) {
-      window.electron.showPillContextMenu();
-    } else {
-      console.warn('[Pill] window.electron.showPillContextMenu not available');
-    }
-  };
+
   
   // Determine the current state - now always visible, just different sizes
   const isResting = !isHovered && !isListening && !isProcessing;
@@ -72,7 +62,7 @@ const Pill: React.FC<PillProps> = ({
         ${isProcessing ? 'processing' : ''}
       `}
       onClick={isListening ? onStopDictation : onStartDictation}
-      onContextMenu={handleContextMenu}
+
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
     >
