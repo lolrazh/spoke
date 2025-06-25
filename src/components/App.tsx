@@ -109,8 +109,6 @@ const App: React.FC = () => {
   return (
     <div 
       className="app-container w-full h-screen bg-transparent overflow-hidden relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <Pill 
         isListening={isListening}
@@ -119,6 +117,7 @@ const App: React.FC = () => {
         // Connect Pill clicks directly to hook functions
         onStartDictation={trans.start}
         onStopDictation={trans.stop}
+        onHoverChange={setIsHovered}
       />
     </div>
   );

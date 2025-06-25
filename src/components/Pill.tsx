@@ -6,6 +6,7 @@ interface PillProps {
   isHovered: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
+  onHoverChange: (hovered: boolean) => void;
 }
 
 const Pill: React.FC<PillProps> = ({ 
@@ -13,7 +14,8 @@ const Pill: React.FC<PillProps> = ({
   isProcessing, 
   isHovered,
   onStartDictation, 
-  onStopDictation 
+  onStopDictation,
+  onHoverChange
 }) => {
   // Number of dots/bars to display - consistent across all states
   const VISUALIZATION_COUNT = 7;
@@ -71,6 +73,8 @@ const Pill: React.FC<PillProps> = ({
       `}
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
     >
       <div className="pill-core">
         <div className="pill-content flex items-center justify-center w-full h-full">

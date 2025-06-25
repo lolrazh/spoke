@@ -7,7 +7,7 @@
   .app-container {
     position: fixed;
     inset: 0;
-    cursor: pointer;
+    cursor: default; /* arrow cursor outside the pill */
     pointer-events: auto;
     /* Turn the main container into a flexbox to enforce centering */
     display: flex;
@@ -34,7 +34,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    pointer-events: none; /* Pass clicks through to the app-container */
+    pointer-events: auto; /* Pill now captures its own events */
+    cursor: pointer; /* Hand cursor when hovering over the pill */
   }
 
   /* The visible pill element styled as Dynamic Island */
