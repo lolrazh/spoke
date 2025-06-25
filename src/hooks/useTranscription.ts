@@ -8,6 +8,9 @@ const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
 
+// Global worklet registry to prevent double registration
+const workletRegistry = new Set<string>();
+
 // REMOVED local RingBuffer interface to use the imported class
 // interface RingBuffer { ... }
 
@@ -364,12 +367,21 @@ export function useTranscription(): UseTranscriptionReturn {
 
       const ensureWorkletLoaded = async (workletPath: string) => {
         if (!audioCtxRef.current) throw new Error("AudioContext not initialized for worklet loading.");
+        
+        // Check if worklet already registered
+        if (workletRegistry.has(workletPath)) {
+          console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' already registered, skipping.`);
+          return;
+        }
+        
         try {
           await audioCtxRef.current.audioWorklet.addModule(workletPath);
+          workletRegistry.add(workletPath); // Mark as registered
           console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' added.`);
         } catch (moduleError: any) {
           if (moduleError.name === 'InvalidStateError' || (moduleError.message && (moduleError.message.includes('already been loaded') || moduleError.message.includes('has already been added')))) {
-            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' likely already added.`);
+            workletRegistry.add(workletPath); // Mark as registered even if browser says already loaded
+            console.log(`[useTranscription] Cloud: AudioWorklet module '${workletPath}' already loaded by browser.`);
           } else {
             console.error('[useTranscription] Cloud: Error adding AudioWorklet module:', moduleError);
             throw moduleError; 
@@ -463,18 +475,25 @@ export function useTranscription(): UseTranscriptionReturn {
           await audioCtxRef.current.resume();
         }
         const workletPath = '/audioworklet-processor.js'; 
-        // Check if module already added, this is tricky as addModule doesn't return status
-        // For simplicity, assuming it might need to be added each time or managed via a flag if errors occur.
-        try {
-          await audioCtxRef.current.audioWorklet.addModule(workletPath);
-        } catch (moduleError) {
-          // Ignore if already added, but log other errors
-          if (!String(moduleError).includes('already been loaded')) {
-            console.error('[useTranscription] Error adding AudioWorklet module:', moduleError);
-            throw moduleError; // Propagate error
-          } else {
-            console.log('[useTranscription] AudioWorklet module likely already added.');
+        
+        // Check if worklet already registered
+        if (!workletRegistry.has(workletPath)) {
+          try {
+            await audioCtxRef.current.audioWorklet.addModule(workletPath);
+            workletRegistry.add(workletPath); // Mark as registered
+            console.log('[useTranscription] Local: AudioWorklet module added.');
+          } catch (moduleError) {
+            // Handle already loaded case
+            if (String(moduleError).includes('already been loaded') || String(moduleError).includes('has already been added')) {
+              workletRegistry.add(workletPath); // Mark as registered even if browser says already loaded
+              console.log('[useTranscription] Local: AudioWorklet module already loaded by browser.');
+            } else {
+              console.error('[useTranscription] Local: Error adding AudioWorklet module:', moduleError);
+              throw moduleError; // Propagate error
+            }
           }
+        } else {
+          console.log('[useTranscription] Local: AudioWorklet module already registered, skipping.');
         }
         
         microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
