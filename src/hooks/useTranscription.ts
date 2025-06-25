@@ -1,9 +1,11 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { RingBuffer } from '../audio/ring-buffer'; // Using the imported class
-
-// Constants (can be moved or adjusted)
-const TARGET_AUDIO_CONTEXT_RATE = 16000; // Use 16kHz for AudioContext
-// MAX_SAMPLES calculation might not be needed here anymore if worker handles clipping
+import { 
+  TARGET_AUDIO_CONTEXT_RATE, 
+  TARGET_SAMPLE_RATE, 
+  MICROPHONE_PREFERRED_RATE,
+  MAX_RING_BUFFER_SECONDS 
+} from '../config/audio';
 
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
@@ -155,7 +157,7 @@ export function useTranscription(): UseTranscriptionReturn {
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              sampleRate: 48000, // Prefer 48kHz
+              sampleRate: MICROPHONE_PREFERRED_RATE, // Prefer 48kHz
               channelCount: 1,   // Mono audio
               echoCancellation: false, 
               noiseSuppression: false, // Lower CPU, ASR models often handle noise
@@ -188,7 +190,7 @@ export function useTranscription(): UseTranscriptionReturn {
       }
 
       if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-        const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+        const sabCapacitySamples = TARGET_SAMPLE_RATE * MAX_RING_BUFFER_SECONDS; // matches RingBuffer
         const pointerSizeBytes = 4; // For one Int32 write index, as per ring-buffer.ts
         const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
         const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
@@ -395,7 +397,7 @@ export function useTranscription(): UseTranscriptionReturn {
           await ensureAudioContextReady();
 
           if (!sabRef.current && typeof SharedArrayBuffer !== 'undefined') {
-            const sabCapacitySamples = 16000 * 10; // 10 seconds at 16kHz, matches RingBuffer
+            const sabCapacitySamples = TARGET_SAMPLE_RATE * MAX_RING_BUFFER_SECONDS; // matches RingBuffer
             const pointerSizeBytes = 4; // For one Int32 write index
             const bufferSizeBytes = sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
             const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;

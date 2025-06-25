@@ -7,6 +7,11 @@ import {
     Progress
 } from "@huggingface/transformers";
 import { RingBuffer } from "../audio/ring-buffer.js"; // Changed .ts to .js
+import { 
+  TARGET_SAMPLE_RATE, 
+  INITIAL_BUFFER_SIZE, 
+  BUFFER_GROWTH_SIZE 
+} from '../config/audio.js';
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -50,8 +55,6 @@ let asr: any | null = null;
 let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
 let ringBuffer: RingBuffer | null = null;
 
-const TARGET_SAMPLE_RATE = 16000; // Already 16k
-
 // --- REMOVED Streaming Config ---
 // const CHUNK_S = 4;
 // const STRIDE_S = 2;
@@ -61,9 +64,7 @@ const PULL_LOOP_INTERVAL_MS = 100; // Check for new audio frequently (Changed fr
 
 // --- Buffer Size Constants (from moonshine-worker.ts) ---
 const INITIAL_BUFFER_SECONDS = 30; 
-const INITIAL_BUFFER_SIZE = TARGET_SAMPLE_RATE * INITIAL_BUFFER_SECONDS;
-const BUFFER_GROWTH_SECONDS = 30; 
-const BUFFER_GROWTH_SIZE = TARGET_SAMPLE_RATE * BUFFER_GROWTH_SECONDS;
+const BUFFER_GROWTH_SECONDS = 30;
 
 // --- Streaming State Variables (from moonshine-worker.ts / sequential buffering) ---
 let preallocated16kBuffer: Float32Array | null = null;
