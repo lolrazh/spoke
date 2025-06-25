@@ -593,7 +593,9 @@ export function useTranscription(): UseTranscriptionReturn {
             "[useTranscription] Error starting cloud AudioWorklet recording:",
             err,
           );
-          setError(`Failed to start cloud recording (worklet): ${(err as Error).message}`);
+          setError(
+            `Failed to start cloud recording (worklet): ${(err as Error).message}`,
+          );
           setRecording(false);
           setProcessing(false);
         }
@@ -869,7 +871,9 @@ export function useTranscription(): UseTranscriptionReturn {
             "[useTranscription] Error during cloud AudioWorklet transcription or IPC:",
             err,
           );
-          setError((err as Error).message || "Cloud transcription (worklet) failed.");
+          setError(
+            (err as Error).message || "Cloud transcription (worklet) failed.",
+          );
         } finally {
           setProcessing(false);
         }
@@ -960,7 +964,7 @@ if (typeof window !== "undefined" && !window.electron) {
   console.log(
     "[useTranscription] Mocking window.electron API for development/testing.",
   );
-  (window as Window & { electron: Window['electron'] }).electron = {
+  (window as Window & { electron: Window["electron"] }).electron = {
     toggleDictation: () => {
       console.log("[Mock Electron] toggleDictation called");
       return () => console.log("[Mock Electron] cleanup toggleDictation");

@@ -1,9 +1,6 @@
 console.log("[LocalWorker] Worker file starting to load...");
 
-import {
-  pipeline,
-  env,
-} from "@huggingface/transformers";
+import { pipeline, env } from "@huggingface/transformers";
 import { RingBuffer } from "../audio/ring-buffer";
 import {
   TARGET_SAMPLE_RATE,
@@ -32,7 +29,9 @@ interface WasmBackendConfig {
 }
 
 // Enable WASM SIMD and Threading
-const wasmConfig = (env.backends as Record<string, unknown>)["wasm"] as WasmBackendConfig | undefined;
+const wasmConfig = (env.backends as Record<string, unknown>)["wasm"] as
+  | WasmBackendConfig
+  | undefined;
 if (wasmConfig) {
   console.log(
     "[LocalWorker] Configuring WASM backend for SIMD and Threading...",
@@ -232,7 +231,9 @@ async function maybeEmitPartial() {
       // console.log(`[LocalWorker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
       // const tPartialStart = performance.now();
       // Using type assertion as asr pipeline has dynamic return types
-      const result = await (asr as (input: Float32Array) => Promise<{ text?: string }>)(sliceToProcess); // No explicit prompt
+      const result = await (
+        asr as (input: Float32Array) => Promise<{ text?: string }>
+      )(sliceToProcess); // No explicit prompt
       // const tPartialEnd = performance.now();
       const currentFullTextForThisSlice = result.text?.trim() ?? "";
       // console.log(`[LocalWorker] Partial ASR completed. Full Text for this slice: "${currentFullTextForThisSlice}"`);
@@ -332,7 +333,11 @@ self.addEventListener("message", async (e) => {
       // Using type assertion for pipeline options as transformers.js has flexible types
       asr = await pipeline("automatic-speech-recognition", MODEL_ID, {
         progress_callback: (p: unknown) =>
-          p && self.postMessage({ ...p as Record<string, unknown>, status: "model_progress" }),
+          p &&
+          self.postMessage({
+            ...(p as Record<string, unknown>),
+            status: "model_progress",
+          }),
         device: device,
         dtype: dtypeConfig,
         // REMOVED: chunk_length_s: CHUNK_S,
@@ -504,7 +509,9 @@ self.addEventListener("message", async (e) => {
       const tFinalStart = performance.now();
       try {
         // Using type assertion as asr pipeline has dynamic return types
-        const result = await (asr as (input: Float32Array) => Promise<{ text?: string }>)(finalSlice); // No explicit prompt
+        const result = await (
+          asr as (input: Float32Array) => Promise<{ text?: string }>
+        )(finalSlice); // No explicit prompt
 
         finalPipelineTime = performance.now() - tFinalStart;
         console.log(

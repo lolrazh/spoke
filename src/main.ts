@@ -703,7 +703,9 @@ ipcMain.handle(
       console.error("[MainIPC] Error in transcribe-groq handler:", error);
       return {
         transcript: "",
-        error: (error as Error).message || "Groq transcription failed in main process.",
+        error:
+          (error as Error).message ||
+          "Groq transcription failed in main process.",
         timings: upstreamTimings || {},
       };
     }
@@ -744,7 +746,9 @@ ipcMain.handle(
       console.error("[MainIPC] Error in transcribe-gemini handler:", error);
       return {
         transcript: "",
-        error: (error as Error).message || "Gemini transcription failed in main process.",
+        error:
+          (error as Error).message ||
+          "Gemini transcription failed in main process.",
         timings: upstreamTimings || {},
       };
     }
