@@ -956,11 +956,11 @@ export function useTranscription(): UseTranscriptionReturn {
 
 // Mock for environments where window.electron might not be fully defined (e.g. web testing)
 // This should align with the interface Window.electron expected by the hook.
-if (typeof window !== "undefined" && !(window as any).electron) {
+if (typeof window !== "undefined" && !window.electron) {
   console.log(
     "[useTranscription] Mocking window.electron API for development/testing.",
   );
-  (window as any).electron = {
+  (window as Window & { electron: Window['electron'] }).electron = {
     toggleDictation: () => {
       console.log("[Mock Electron] toggleDictation called");
       return () => console.log("[Mock Electron] cleanup toggleDictation");
@@ -1035,6 +1035,16 @@ if (typeof window !== "undefined" && !(window as any).electron) {
           });
         }, 500),
       );
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    onPTTDown: (cb: () => void) => {
+      console.log("[Mock Electron] onPTTDown called");
+      return () => console.log("[Mock Electron] cleanup onPTTDown");
+    },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    onPTTUp: (cb: () => void) => {
+      console.log("[Mock Electron] onPTTUp called");
+      return () => console.log("[Mock Electron] cleanup onPTTUp");
     },
   };
 }

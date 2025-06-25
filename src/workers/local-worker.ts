@@ -23,17 +23,25 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 console.log("[LocalWorker] Transformers environment configured");
 
+// Define WASM backend configuration type
+interface WasmBackendConfig {
+  simd?: boolean;
+  numThreads?: number;
+  proxy?: boolean;
+  [key: string]: unknown;
+}
+
 // Enable WASM SIMD and Threading
-const wasmConfig = (env.backends as Record<string, unknown>)["wasm"]; // Better typing than any
+const wasmConfig = (env.backends as Record<string, unknown>)["wasm"] as WasmBackendConfig | undefined;
 if (wasmConfig) {
   console.log(
     "[LocalWorker] Configuring WASM backend for SIMD and Threading...",
   );
-  (wasmConfig as any).simd = true;
-  (wasmConfig as any).numThreads = navigator.hardwareConcurrency || 4;
-  (wasmConfig as any).proxy = true; // Required for multi-threading in a worker
+  wasmConfig.simd = true;
+  wasmConfig.numThreads = navigator.hardwareConcurrency || 4;
+  wasmConfig.proxy = true; // Required for multi-threading in a worker
   console.log(
-    `[LocalWorker] WASM backend configured: SIMD=${(wasmConfig as any).simd}, Threads=${(wasmConfig as any).numThreads}, Proxy=${(wasmConfig as any).proxy}`,
+    `[LocalWorker] WASM backend configured: SIMD=${wasmConfig.simd}, Threads=${wasmConfig.numThreads}, Proxy=${wasmConfig.proxy}`,
   );
 } else {
   console.warn(
@@ -63,7 +71,8 @@ const dtypeConfig = DEVICE_DTYPE_CONFIGS[device];
 
 console.log("[LocalWorker] using WASM backend with streaming capability.");
 
-let asr: any = null;
+// Use unknown type instead of any, we'll cast when needed
+let asr: unknown = null;
 let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
 let ringBuffer: RingBuffer | null = null;
 
@@ -223,9 +232,9 @@ async function maybeEmitPartial() {
       // console.log(`[LocalWorker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
       // const tPartialStart = performance.now();
       // Using type assertion as asr pipeline has dynamic return types
-      const result = await (asr as any)(sliceToProcess); // No explicit prompt
+      const result = await (asr as (input: Float32Array) => Promise<{ text?: string }>)(sliceToProcess); // No explicit prompt
       // const tPartialEnd = performance.now();
-      const currentFullTextForThisSlice = (result as any).text?.trim() ?? "";
+      const currentFullTextForThisSlice = result.text?.trim() ?? "";
       // console.log(`[LocalWorker] Partial ASR completed. Full Text for this slice: "${currentFullTextForThisSlice}"`);
 
       // Use diffAndSend for partial delta. The text to compare against is `lastPartialText`.
@@ -320,15 +329,15 @@ self.addEventListener("message", async (e) => {
       `[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`,
     );
     try {
-      // Using any type for pipeline options as transformers.js has flexible types
+      // Using type assertion for pipeline options as transformers.js has flexible types
       asr = await pipeline("automatic-speech-recognition", MODEL_ID, {
-        progress_callback: (p: any) =>
-          p && self.postMessage({ ...p, status: "model_progress" }),
+        progress_callback: (p: unknown) =>
+          p && self.postMessage({ ...p as Record<string, unknown>, status: "model_progress" }),
         device: device,
         dtype: dtypeConfig,
         // REMOVED: chunk_length_s: CHUNK_S,
         // REMOVED: stride_length_s: [STRIDE_S, STRIDE_S],
-      } as any);
+      });
       console.log(
         "[LocalWorker] ASR Streaming Pipeline initialized successfully.",
       );
@@ -495,7 +504,7 @@ self.addEventListener("message", async (e) => {
       const tFinalStart = performance.now();
       try {
         // Using type assertion as asr pipeline has dynamic return types
-        const result = await (asr as any)(finalSlice); // No explicit prompt
+        const result = await (asr as (input: Float32Array) => Promise<{ text?: string }>)(finalSlice); // No explicit prompt
 
         finalPipelineTime = performance.now() - tFinalStart;
         console.log(
