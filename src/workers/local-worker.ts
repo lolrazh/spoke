@@ -12,6 +12,18 @@ import {
   INITIAL_BUFFER_SIZE, 
   BUFFER_GROWTH_SIZE 
 } from '../config/audio.js';
+import type { 
+  WorkerIncomingMessage, 
+  WorkerOutgoingMessage,
+  SabInitializedMessage,
+  ModelLoadingMessage,
+  ModelReadyMessage,
+  WorkerErrorMessage,
+  CaptureStartedMessage,
+  PartialTranscriptionMessage,
+  ProcessingFullAudioMessage,
+  CompletedTranscriptionMessage
+} from '../types/worker-messages.js';
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -117,7 +129,8 @@ function diffAndSend(textNow: string, tag: 'partial') {
   // console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
 
   if (delta) {
-    self.postMessage({ status: tag, delta }); // Send delta for 'partial'
+    const message: PartialTranscriptionMessage = { status: tag, delta };
+    self.postMessage(message);
     lastPartialText = textNow; // Update history for next partial
   }
 }
@@ -251,7 +264,8 @@ self.addEventListener("message", async (e) => {
     if (type === "initialize-local-asr") {
         if (asr) {
             console.log("[LocalWorker] ASR pipeline already initialized.");
-            self.postMessage({ status: "asr_model_ready" });
+            const readyMessage: ModelReadyMessage = { status: "asr_model_ready" };
+            self.postMessage(readyMessage);
             return;
         }
         if (modelInitializationInProgress) {
@@ -259,7 +273,8 @@ self.addEventListener("message", async (e) => {
             return;
         }
         modelInitializationInProgress = true;
-        self.postMessage({ status: "asr_model_loading" });
+        const loadingMessage: ModelLoadingMessage = { status: "asr_model_loading" };
+        self.postMessage(loadingMessage);
         console.log(`[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`);
         try {
             // @ts-ignore - Transformers.js pipeline options are flexible - This comment might be slightly misplaced for the fix

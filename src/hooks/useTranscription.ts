@@ -6,6 +6,13 @@ import {
   MICROPHONE_PREFERRED_RATE,
   MAX_RING_BUFFER_SECONDS 
 } from '../config/audio';
+import type { 
+  WorkerOutgoingMessage,
+  InitWorkerMessage,
+  InitializeAsrMessage,
+  StartCaptureMessage,
+  StopCaptureMessage
+} from '../types/worker-messages';
 
 // Define CloudEngine type first
 type CloudEngine = 'groq' | 'gemini';
@@ -228,10 +235,11 @@ export function useTranscription(): UseTranscriptionReturn {
 
       // Send INIT message to local worker with SAB
       if (sabRef.current) {
-        localWorkerRef.current.postMessage({ 
+        const initMessage: InitWorkerMessage = { 
             type: 'init', 
             data: { sab: sabRef.current }
-        });
+        };
+        localWorkerRef.current.postMessage(initMessage);
       } else {
         console.error("[useTranscription] Local SAB not ready for init message to worker.");
         setError("Failed to initialize local worker with audio buffer.");
@@ -241,15 +249,17 @@ export function useTranscription(): UseTranscriptionReturn {
       }
       
       // Send message to load local ASR model
-      localWorkerRef.current.postMessage({ type: 'initialize-local-asr' });
+      const asrInitMessage: InitializeAsrMessage = { type: 'initialize-local-asr' };
+      localWorkerRef.current.postMessage(asrInitMessage);
       // `ready` state for local will be set true by worker message 'asr_model_ready'
       setReady(false); // Set to false until local model confirms readiness
       setProcessing(true); // Indicate local model loading
 
       // Add message listener for the local worker
-      const localWorkerListener = (e: MessageEvent) => {
+      const localWorkerListener = (e: MessageEvent<WorkerOutgoingMessage>) => {
         console.log('[useTranscription] Message from local-worker:', e.data);
-        const { status, transcription, error: workerError, delta } = e.data;
+        const message = e.data;
+        const { status } = message;
         switch (status) {
           case 'sab_initialized':
             console.log('[useTranscription] Local worker confirmed SAB init.');
@@ -271,23 +281,27 @@ export function useTranscription(): UseTranscriptionReturn {
             setText(''); // Clear text when new capture starts
             break;
           case 'partial': // Handle partial transcriptions for smoother UI updates
-            if (typeof delta === 'string') {
-              setText(prev => (prev + (prev ? ' ' : '') + delta).trim());
+            if ('delta' in message && typeof message.delta === 'string') {
+              setText(prev => (prev + (prev ? ' ' : '') + message.delta).trim());
             }
             break;
           case 'processing_full_audio': // Local worker processing
             setProcessing(true);
             break;
           case 'completed': // Local transcription complete
-            setText(transcription || '');
-            if (transcription && window.electron?.insertTextAtCursor) {
-              window.electron.insertTextAtCursor(transcription)
-                .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
+            if ('transcription' in message) {
+              setText(message.transcription || '');
+              if (message.transcription && window.electron?.insertTextAtCursor) {
+                window.electron.insertTextAtCursor(message.transcription)
+                  .catch(err => console.error('[useTranscription] Error inserting local transcript:', err));
+              }
             }
             setProcessing(false);
             break;
           case 'error':
-            setError(String(workerError || 'Local ASR worker error'));
+            if ('error' in message) {
+              setError(message.error || 'Local ASR worker error');
+            }
             setProcessing(false);
             setReady(false);
             break;
@@ -505,7 +519,8 @@ export function useTranscription(): UseTranscriptionReturn {
         microphoneSourceRef.current.connect(workletNodeRef.current);
         // DO NOT connect workletNode to destination unless debugging audio passthrough
         
-        localWorkerRef.current.postMessage({ type: 'start-capture' });
+        const startMessage: StartCaptureMessage = { type: 'start-capture' };
+        localWorkerRef.current.postMessage(startMessage);
         setRecording(true);
         console.log('[useTranscription] Local recording started. AudioWorklet connected, worker notified.');
       } catch (err: any) {
@@ -671,10 +686,11 @@ export function useTranscription(): UseTranscriptionReturn {
         workletNodeRef.current = null;
       }
       if (localWorkerRef.current) {
-        localWorkerRef.current.postMessage({ 
+        const stopMessage: StopCaptureMessage = { 
             type: 'stop-capture-and-transcribe',
-            data: { sampleRate: localAudioSampleRateRef.current } 
-        });
+            data: { timestamp: profilingStartTimeRef.current || performance.now() }
+        };
+        localWorkerRef.current.postMessage(stopMessage);
         // setProcessing(true); // Worker will send messages to update processing state
       } else {
         console.error("[useTranscription] Local worker not available to stop capture.");
