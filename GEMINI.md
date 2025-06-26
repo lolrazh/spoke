@@ -4,7 +4,7 @@ This document provides a quick overview of the `sonic-flow` project to help Gemi
 
 ## Project Overview
 
-`sonic-flow` is a lightweight AI dictation application built with Electron, React, and TypeScript. It uses various AI backends for transcription, including local models via ONNX runtime and remote APIs.
+`sonic-flow` is a lightweight AI dictation application built specifically for macOS with Electron, React, and TypeScript. It uses various AI backends for transcription, including local models via ONNX runtime and remote APIs.
 
 ## How it fits together
 

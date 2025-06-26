@@ -2,7 +2,6 @@ import {
   app,
   BrowserWindow,
   Tray,
-  globalShortcut,
   nativeImage,
   screen,
   ipcMain,
@@ -14,7 +13,6 @@ import {
 } from "electron";
 import path from "node:path";
 import process from "node:process";
-import started from "electron-squirrel-startup";
 import { spawn, execSync } from "child_process";
 
 import fs from "node:fs";
@@ -26,14 +24,9 @@ import {
   ISLAND_HEIGHT,
 } from "./constants/window";
 
-// Add command line switches for WebGPU - KEEP THESE
+// Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
-  app.quit();
-}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -46,7 +39,7 @@ let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
 let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
-let fnPermissionDialogShown = false; // Debounce flag for permission dialog
+let fnPermissionDialogShown = false;
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -99,7 +92,6 @@ const createWindow = () => {
   };
 
   // Try to set the icon, but don't crash if it fails
-  // Use PNG for all platforms - it works better at runtime
   const windowIconPath = iconPath;
 
   try {
@@ -396,13 +388,6 @@ app.whenReady().then(() => {
   createNotificationWindow();
   startFnListener();
 
-  // Handy shortcut to toggle DevTools without breaking transparency
-  globalShortcut.register("CommandOrControl+Alt+I", () => {
-    const wc = mainWindow?.webContents;
-    if (wc?.isDevToolsOpened()) wc.closeDevTools();
-    else wc?.openDevTools({ mode: "detach" });
-  });
-
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");
@@ -463,9 +448,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  // On macOS, keep app running in dock even when all windows are closed
 });
 
 app.on("activate", () => {
@@ -522,8 +505,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
-  console.log("[MainProcess] App is quitting. Unregistered all shortcuts.");
+  console.log("[MainProcess] App is quitting.");
 
   // Clear restart timeout and kill fn-tap process
   if (fnRestartTimeout) {
@@ -533,10 +515,7 @@ app.on("will-quit", () => {
   fnProc?.kill();
 });
 
-// === IPC Handlers for Hotkey Window (Registered ONCE) ===
-// ipcMain.on('save-hotkey', (_event: Electron.IpcMainEvent, hotkey: string) => { ... });
-// ipcMain.on('cancel-hotkey', (_event: Electron.IpcMainEvent) => { ... });
-// === END IPC Handlers ===
+
 
 const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return;
@@ -756,8 +735,6 @@ ipcMain.handle(
 );
 
 function startFnListener() {
-  if (process.platform !== "darwin") return;
-
   // Clear any pending restart timer and reset permission flag
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);

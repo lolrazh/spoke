@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const trans = useTranscription();
   const [isHovered, setIsHovered] = useState(false);
 
-  // Refs for the Right-Alt key logic
+  // Refs for the Function key logic
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef<boolean>(false);
   // Ref to always hold the latest trans object for use in callbacks
@@ -56,13 +56,13 @@ const App: React.FC = () => {
     }
   }, [isHovered, isListening, isProcessing]);
 
-  // --- RIGHT ALT key - Hold vs. Tap Logic ---
+  // --- Function key - Hold vs. Tap Logic ---
   useEffect(() => {
     if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
 
     const HOLD_DURATION_MS = 180; // ms
 
-    const handleRightAltDown = () => {
+    const handleFunctionKeyDown = () => {
       isLongPressRef.current = false;
       // Clear any existing timer from a potentially missed 'up' event
       if (pressTimerRef.current) {
@@ -76,7 +76,7 @@ const App: React.FC = () => {
       }, HOLD_DURATION_MS);
     };
 
-    const handleRightAltUp = () => {
+    const handleFunctionKeyUp = () => {
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
@@ -96,8 +96,8 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const unsubscribePTTDown = window.electron.onPTTDown(handleRightAltDown);
-    const unsubscribePTTUp = window.electron.onPTTUp(handleRightAltUp);
+    const unsubscribePTTDown = window.electron.onPTTDown(handleFunctionKeyDown);
+    const unsubscribePTTUp = window.electron.onPTTUp(handleFunctionKeyUp);
 
     return () => {
       if (pressTimerRef.current) {

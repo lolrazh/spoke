@@ -23,7 +23,7 @@ declare global {
         transfer?: Transferable[],
         upstreamTimings?: Record<string, number>,
       ) => Promise<{ text: string; timings?: Record<string, number> }>;
-      // ALT key push-to-talk events
+      // Function key push-to-talk events
       onPTTDown: (cb: () => void) => () => void;
       onPTTUp: (cb: () => void) => () => void;
     };

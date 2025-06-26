@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld("electron", {
       transfer,
       upstreamTimings,
     ),
-  // ALT key push-to-talk events
+  // Function key push-to-talk events
   onPTTDown: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-down");
     ipcRenderer.on("ptt-down", cb);

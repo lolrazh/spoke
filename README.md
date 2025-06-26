@@ -1,8 +1,8 @@
 # Sonic Flow
 
-**Sonic Flow: A Lightweight, AI-Powered Dictation App**
+**Sonic Flow: A Lightweight, AI-Powered Dictation App for macOS**
 
-Sonic Flow is a desktop application designed to transform your voice into text seamlessly. It listens to your speech and inserts the transcribed text directly at your cursor's position in any application. Experience the convenience of hands-free typing with support for both privacy-focused local, on-device transcription and highly accurate cloud-based transcription.
+Sonic Flow is a macOS desktop application designed to transform your voice into text seamlessly. It listens to your speech and inserts the transcribed text directly at your cursor's position in any application. Experience the convenience of hands-free typing with support for both privacy-focused local, on-device transcription and highly accurate cloud-based transcription.
 
 ## Features
 
@@ -20,7 +20,7 @@ Sonic Flow offers a range of features to enhance your productivity:
     - Supports multiple leading AI providers: **Groq API** and **Google Gemini API**.
     - Allows users to select their preferred cloud transcription engine through the Settings in the Home window.
     - Requires an active internet connection.
-- **Global Hotkey:** Toggle dictation on or off from any application using a configurable system-wide hotkey. The application provides an error notification if the hotkey registration fails (e.g., due to system conflicts or permissions).
+- **Function Key Control:** Toggle dictation on or off from any application using the Function (Fn) key. The app automatically detects Function key presses and provides permission prompts for Input Monitoring access when needed.
 - **Minimalist "Pill" UI:** A discreet, always-on-top UI element allows for quick interaction (start/stop dictation) and provides visual feedback on the app's status (idle, listening, processing).
 - **Home Window (Dashboard & Settings):** Accessible from the tray icon's context menu, the Home window provides a central hub for insights and customization:
   - **Dashboard Tab:**
@@ -106,7 +106,7 @@ To get Sonic Flow running on your local machine for development:
 
 ## Building the Application
 
-Sonic Flow uses Electron Forge to package and build distributables for various operating systems.
+Sonic Flow uses Electron Forge to package and build distributables for macOS.
 
 1.  **Package the Application:**
     - This command bundles your application code.
@@ -122,7 +122,7 @@ Sonic Flow uses Electron Forge to package and build distributables for various o
     ```
     The generated installers and packaged application files will be located in the `out` directory.
 
-For more details on specific build targets or configurations, refer to the `forge.config.ts` file and the official Electron Forge documentation.
+For more details on build configuration, refer to the `forge.config.ts` file.
 
 ## Project Structure
 
