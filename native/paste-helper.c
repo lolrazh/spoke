@@ -1,7 +1,8 @@
 #include <ApplicationServices/ApplicationServices.h>
+#include <stdio.h>  // For logging
+#include <unistd.h> // For usleep
 
-// Asks for Accessibility permissions on first run.
-// Exits if permission is not granted, so the paste doesn't silently fail.
+// Asks for Accessibility permissions and provides explicit logging.
 static void requireAX(void) {
     CFDictionaryRef opts = CFDictionaryCreate(
         kCFAllocatorDefault,
@@ -10,41 +11,41 @@ static void requireAX(void) {
         1, &kCFCopyStringDictionaryKeyCallBacks,
            &kCFTypeDictionaryValueCallBacks);
 
-    if (!AXIsProcessTrustedWithOptions(opts)) {
-        exit(1); // Bail, so Electron sees a non-zero exit code.
-    }
+    bool isTrusted = AXIsProcessTrustedWithOptions(opts);
     CFRelease(opts);
+
+    if (!isTrusted) {
+        // This will now appear in our Electron logs.
+        fprintf(stderr, "[AX] Accessibility permissions are NOT granted. Prompt should be showing.\n");
+        exit(1);
+    }
+    // And so will this.
+    fprintf(stdout, "[AX] Accessibility permissions are granted.\n");
 }
 
-// Sends a robust, correct 4-event sequence for Command-V.
+// Sends a robust, correct 4-event sequence for Command-V with delays.
 static void cmdV(void) {
     CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
 
-    // Key Codes
     const CGKeyCode kVK_COMMAND = 0x37;
     const CGKeyCode kVK_V = 0x09;
 
-    // 1. Command Down
     CGEventRef cmdDown = CGEventCreateKeyboardEvent(src, kVK_COMMAND, true);
-
-    // 2. V Down (with Command flag)
     CGEventRef vDown   = CGEventCreateKeyboardEvent(src, kVK_V, true);
     CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
-
-    // 3. V Up (with Command flag)
     CGEventRef vUp     = CGEventCreateKeyboardEvent(src, kVK_V, false);
     CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
-
-    // 4. Command Up
     CGEventRef cmdUp   = CGEventCreateKeyboardEvent(src, kVK_COMMAND, false);
 
-    // Post all four events
+    // Post all four events with small delays between them.
     CGEventPost(kCGHIDEventTap, cmdDown);
+    usleep(10000); // 10ms
     CGEventPost(kCGHIDEventTap, vDown);
+    usleep(10000);
     CGEventPost(kCGHIDEventTap, vUp);
+    usleep(10000);
     CGEventPost(kCGHIDEventTap, cmdUp);
 
-    // Clean up
     CFRelease(cmdDown);
     CFRelease(vDown);
     CFRelease(vUp);

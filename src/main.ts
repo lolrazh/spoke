@@ -308,7 +308,15 @@ ipcMain.handle(
       }
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
-      execFile(helperPath, (error) => {
+      execFile(helperPath, (error, stdout, stderr) => {
+        // Log output from the helper process for diagnostics
+        if (stdout) {
+          console.log(`[PasteHelper stdout]: ${stdout.trim()}`);
+        }
+        if (stderr) {
+          console.error(`[PasteHelper stderr]: ${stderr.trim()}`);
+        }
+
         if (error) {
           console.error("[PasteHelper] Error executing paste-helper:", error);
           // This can happen if Accessibility permission is not granted.
