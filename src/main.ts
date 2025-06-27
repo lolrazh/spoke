@@ -81,6 +81,8 @@ const createWindow = () => {
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
+    focusable: false, // <-- Keeps the previous app front-most
+    acceptFirstMouse: true, // <-- Allows first click to pass through to the webview
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
