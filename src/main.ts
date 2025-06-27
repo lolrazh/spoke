@@ -286,18 +286,6 @@ ipcMain.handle(
       console.log("=== TEXT INSERTION PROCESS START ===");
       console.log("Received text:", text);
 
-      const activeWindow = BrowserWindow.getFocusedWindow();
-      const wasElectronWindowFocused = !!activeWindow;
-
-      if (wasElectronWindowFocused) {
-        console.log(
-          "Electron window is focused. Skipping OS paste attempt. Copying to clipboard.",
-        );
-        clipboard.writeText(text);
-        showNotificationPopup("Output copied to clipboard");
-        return { success: true };
-      }
-
       const originalClipboardText = clipboard.readText();
       console.log("Original clipboard text stored.");
 
@@ -323,10 +311,12 @@ ipcMain.handle(
       execFile(helperPath, (error) => {
         if (error) {
           console.error("[PasteHelper] Error executing paste-helper:", error);
-          // This can happen if Input Monitoring permission is not granted.
-          // The fn-tap listener should have already prompted for it.
+          // This can happen if Accessibility permission is not granted.
+          // The helper will prompt for it on the first run.
           // As a fallback, we leave the transcribed text in the clipboard.
-          showNotificationPopup("Paste failed. Text copied to clipboard.");
+          showNotificationPopup(
+            "Paste failed. Grant Accessibility permission. Text copied.",
+          );
         } else {
           console.log("[PasteHelper] paste-helper executed successfully.");
           // If successful, restore the original clipboard content after a short delay.

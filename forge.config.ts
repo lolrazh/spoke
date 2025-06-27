@@ -10,7 +10,7 @@ const config: ForgeConfig = {
     // macOS app icon
     icon: "./public/assets/icon.png",
     // Ensure icon is copied to the app bundle
-    extraResource: ["./public/assets/icon.png", "./public/assets/fn-tap"],
+    extraResource: ["./public/assets/icon.png", "./public/assets/fn-tap", "./public/assets/paste-helper"],
   },
   rebuildConfig: {},
   makers: [new MakerZIP({}, ["darwin"])],
