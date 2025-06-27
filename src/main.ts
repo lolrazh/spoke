@@ -13,7 +13,7 @@ import {
 } from "electron";
 import path from "node:path";
 import process from "node:process";
-import { spawn, execSync } from "child_process";
+import { spawn, execFile } from "child_process";
 
 import fs from "node:fs";
 import { transcribeAudioWithGroq } from "./workers/groq-transcriber";
@@ -280,70 +280,69 @@ const createNotificationWindow = () => {
 ipcMain.handle(
   "insert-text-at-cursor",
   async (_event: Electron.IpcMainInvokeEvent, text: string) => {
-    let originalClipboardText: string | undefined = undefined;
     try {
       console.log("=== TEXT INSERTION PROCESS START ===");
       console.log("Received text:", text);
 
-      originalClipboardText = clipboard.readText();
+      const activeWindow = BrowserWindow.getFocusedWindow();
+      const wasElectronWindowFocused = !!activeWindow;
+
+      if (wasElectronWindowFocused) {
+        console.log(
+          "Electron window is focused. Skipping OS paste attempt. Copying to clipboard.",
+        );
+        clipboard.writeText(text);
+        showNotificationPopup("Output copied to clipboard");
+        return { success: true };
+      }
+
+      const originalClipboardText = clipboard.readText();
       console.log("Original clipboard text stored.");
 
       const trimmedText = text.trimStart();
       clipboard.writeText(trimmedText);
-      console.log("Transcription text copied to clipboard");
+      console.log("Transcription text copied to clipboard for pasting.");
 
-      const activeWindow = BrowserWindow.getFocusedWindow();
-      let operationSuccess = false;
-      let operationError: string | null = null;
-      const wasElectronWindowFocused = !!activeWindow;
+      const helperPath = app.isPackaged
+        ? path.join(process.resourcesPath, "paste-helper")
+        : path.join(app.getAppPath(), "public", "assets", "paste-helper");
 
-      if (wasElectronWindowFocused) {
-        console.log("Electron window is focused. Skipping OS paste attempt.");
-        operationSuccess = true;
-        showNotificationPopup("Output copied to clipboard");
-      } else {
-        console.log(
-          "No Electron window is focused, attempting macOS paste via AppleScript.",
+      if (!fs.existsSync(helperPath)) {
+        console.error(
+          `[PasteHelper] paste-helper binary not found at path: ${helperPath}`,
         );
-        try {
-          console.log("Executing paste command via AppleScript");
-          execSync(
-            'osascript -e \'tell application "System Events" to keystroke "v" using command down\'',
-          );
-          console.log("macOS paste command executed successfully.");
-          operationSuccess = true;
-        } catch (err) {
-          console.error("Failed to execute macOS paste command:", err);
-          operationError =
-            "Unable to paste text. Please make sure a text field is focused.";
-          operationSuccess = false;
-        }
+        showNotificationPopup(
+          "Paste unavailable: binary missing. Copied to clipboard.",
+        );
+        return { success: false, error: "Paste helper binary not found." };
+      }
 
-        if (operationSuccess) {
-          clipboard.writeText(originalClipboardText);
-          console.log(
-            "Original clipboard text restored after successful OS paste.",
-          );
+      console.log(`[PasteHelper] Executing from: ${helperPath}`);
+      execFile(helperPath, (error) => {
+        if (error) {
+          console.error("[PasteHelper] Error executing paste-helper:", error);
+          // This can happen if Input Monitoring permission is not granted.
+          // The fn-tap listener should have already prompted for it.
+          // As a fallback, we leave the transcribed text in the clipboard.
+          showNotificationPopup("Paste failed. Text copied to clipboard.");
         } else {
-          console.log(
-            "OS paste failed. Transcription text remains in clipboard.",
-          );
-          showNotificationPopup("Output copied to clipboard");
+          console.log("[PasteHelper] paste-helper executed successfully.");
+          // If successful, restore the original clipboard content after a short delay.
+          setTimeout(() => {
+            console.log("[PasteHelper] Restoring original clipboard content.");
+            clipboard.writeText(originalClipboardText);
+          }, 300);
         }
-      }
-
-      if (!operationSuccess && !wasElectronWindowFocused) {
-        console.log("=== TEXT INSERTION PROCESS FAILED (OS Paste Error) ===");
-        return { success: false, error: operationError };
-      }
+      });
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
       return { success: true };
     } catch (error) {
       console.error("=== TEXT INSERTION PROCESS FAILED (Exception) ===");
       console.error("Error during text insertion:", error);
-      showNotificationPopup("Output copied to clipboard (error)");
-      console.log("Transcription text remains in clipboard due to error.");
+      // In case of any other error, leave the transcribed text in the clipboard.
+      clipboard.writeText(text);
+      showNotificationPopup("Error. Text copied to clipboard.");
       return {
         success: false,
         error:
@@ -514,8 +513,6 @@ app.on("will-quit", () => {
   }
   fnProc?.kill();
 });
-
-
 
 const showNotificationPopup = (message: string, durationMs = 2000) => {
   if (!mainWindow) return;
