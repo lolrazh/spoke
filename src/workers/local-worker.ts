@@ -284,12 +284,19 @@ async function startPullLoop() {
 
     // 🔼 NEW: iterate over new audio since last check
     while (nextDecodeStart16k + FRAME_SAMPLES <= current16kWriteOffset) {
-      const frame = preallocated16kBuffer!.subarray(
+      if (!preallocated16kBuffer) break; // Safeguard to exit inner loop if buffer is gone
+      const frame = preallocated16kBuffer.subarray(
         nextDecodeStart16k,
         nextDecodeStart16k + FRAME_SAMPLES,
       );
 
-      const isSpeech = await vadDetect(frame);
+      let isSpeech: boolean;
+      try {
+        isSpeech = await vadDetect(frame);
+      } catch (err) {
+        console.error("[LocalWorker] VAD detection failed, assuming speech.", err);
+        isSpeech = true; // Fail-open: assume it's speech to avoid dropping audio
+      }
 
       if (isSpeech) {
         wasSpeech = true;
@@ -303,8 +310,9 @@ async function startPullLoop() {
 
         // NEW rule: only cut when     (slice ≥ 6 s)  AND  (600 ms silence)
         if (oldEnough && longSilence) {
+          if (!preallocated16kBuffer) break; // Safeguard
           console.log("[VAD] slice", sliceStart16k, "→", nextDecodeStart16k);
-          const slice = preallocated16kBuffer!.subarray(
+          const slice = preallocated16kBuffer.subarray(
             sliceStart16k,
             nextDecodeStart16k,
           );
@@ -547,11 +555,15 @@ self.addEventListener("message", async (e) => {
     }
 
     if (current16kWriteOffset > sliceStart16k) {
-      const tail = preallocated16kBuffer!.subarray(
-        sliceStart16k,
-        current16kWriteOffset,
-      );
-      await transcribeSlice(tail);
+      if (!preallocated16kBuffer) {
+        console.error("[LocalWorker] Buffer became null unexpectedly before flushing tail.");
+      } else {
+        const tail = preallocated16kBuffer.subarray(
+          sliceStart16k,
+          current16kWriteOffset,
+        );
+        await transcribeSlice(tail);
+      }
     }
 
     const tPaste = performance.now();
