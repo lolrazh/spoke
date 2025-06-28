@@ -236,6 +236,8 @@ function pullAndProcessAudio() {
 
 async function transcribeSlice(slice: Float32Array) {
   if (!asr || slice.length === 0) return;
+  if (processingPartial) return;
+  processingPartial = true;
   try {
     const { text = "" } = await (asr as any)(slice);
     diffAndSend(
@@ -245,6 +247,7 @@ async function transcribeSlice(slice: Float32Array) {
   } catch (err) {
     console.error("[LocalWorker] VAD slice ASR error:", err);
   }
+  processingPartial = false;
 }
 
 function vadDetect(frame: Float32Array): Promise<boolean> {
@@ -305,7 +308,7 @@ async function startPullLoop() {
             sliceStart16k,
             nextDecodeStart16k,
           );
-          await transcribeSlice(slice);
+          transcribeSlice(slice);
           sliceStart16k = nextDecodeStart16k;
           wasSpeech = false;
           silenceSince = 0;
