@@ -12,6 +12,34 @@ import type {
   ModelReadyMessage,
   PartialTranscriptionMessage,
 } from "../types/worker-messages";
+import { AutoModel, Tensor } from "@huggingface/transformers";
+
+// 🔼 ADD — Silero VAD config
+const VAD_MODEL_ID = "onnx-community/silero-vad";
+const VAD_FRAME_S = 0.128;
+const MIN_SILENCE_S = 0.6;
+const SPEECH_TH = 0.6; 
+const EXIT_TH = 0.25; 
+
+// ─── slice-age gate ────────────────────────────────────────
+const MIN_SLICE_S = 4; // don't even *look* for silence
+const MIN_SLICE_SAMPLES = MIN_SLICE_S * TARGET_SAMPLE_RATE;
+
+// 🔼 ADD — globals used by VAD
+let vad: (x: {
+  input: Tensor;
+  sr: Tensor;
+  state: Tensor;
+}) => Promise<{ stateN: Tensor; output: Tensor }> | null = null;
+
+const srTensor = new Tensor("int64", [TARGET_SAMPLE_RATE], []);
+let vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
+  2,
+  1,
+  128,
+]);
+let wasSpeech = false;
+let silenceSince = 0; // #samples accumulated since last speech frame
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -75,45 +103,17 @@ let asr: unknown = null;
 let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
 let ringBuffer: RingBuffer | null = null;
 
-// --- REMOVED Streaming Config ---
-// const CHUNK_S = 4;
-// const STRIDE_S = 2;
-// const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
-// const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
 const PULL_LOOP_INTERVAL_MS = 100; // Check for new audio frequently (Changed from 50 to 100)
 
-// --- Buffer Size Constants (from moonshine-worker.ts) ---
-// Removed unused constants
-// const INITIAL_BUFFER_SECONDS = 30;
-// const BUFFER_GROWTH_SECONDS = 30;
-
-// --- Streaming State Variables (from moonshine-worker.ts / sequential buffering) ---
 let preallocated16kBuffer: Float32Array | null = null;
 let current16kWriteOffset = 0;
-// let emittedSamples = 0; // REMOVED - Replaced by nextDecodeStart16k
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls
 
-// --- REMOVED Local Agreement State ---
-// let confirmedTranscriptSoFar: string = "";
-// let previousChunkDelta: string = "";
-// const OL_MIN_CHARS_FOR_LA = 3;
-
-// --- Sequential Buffering State (from old-code.md / merge-plan) ---
-const PARTIAL_INTERVAL_S = 10; // Emit partial result every 10 seconds
 let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
 let lastPartialText = ""; // Store the cumulative text sent so far (for diffing)
+let sliceStart16k = 0; // beginning of the *current* slice
 
-// Removed unused constant
-// const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
-
-// --- REMOVED Text Diffing Helper Functions (overlapLen, mergeWithOverlap) ---
-
-// --- REMOVED resampleTo16kHz (it's now in audio/resample.ts and used in AudioWorklet) ---
-
-// --- REMOVED Local Agreement Helper (longestCommonPrefix) ---
-
-// --- NEW diffAndSend function (from old-code.md) ---
 function diffAndSend(textNow: string, tag: "partial") {
   textNow = textNow.trim(); // Ensure consistent trimming
   let i = 0;
@@ -139,16 +139,12 @@ function diffAndSend(textNow: string, tag: "partial") {
 
   const delta = textNow.slice(prefixBoundary).trimStart();
 
-  // console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
-
   if (delta) {
     const message: PartialTranscriptionMessage = { status: tag, delta };
     self.postMessage(message);
     lastPartialText = textNow; // Update history for next partial
   }
 }
-
-// --- Streaming Helper Functions (adapted from moonshine-worker.ts) ---
 
 // Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
 function pullAndProcessAudio() {
@@ -208,76 +204,97 @@ function pullAndProcessAudio() {
   current16kWriteOffset += samplesToRead;
 }
 
-// --- DELETED processAvailableAudio() ---
-
-// --- NEW maybeEmitPartial function (from old-code.md, adapted) ---
-async function maybeEmitPartial() {
-  if (processingPartial || !preallocated16kBuffer || !asr || !recording) return;
-
-  const buffered16kSamples = current16kWriteOffset - nextDecodeStart16k;
-  const bufferedSeconds = buffered16kSamples / TARGET_SAMPLE_RATE; // Use TARGET_SAMPLE_RATE
-
-  if (bufferedSeconds >= PARTIAL_INTERVAL_S) {
-    // console.log(`[LocalWorker] Buffer has >= ${PARTIAL_INTERVAL_S}s (${bufferedSeconds.toFixed(2)}s) of new audio. Processing partial...`);
-    processingPartial = true;
-
-    const sliceToProcess = preallocated16kBuffer.subarray(
-      nextDecodeStart16k,
-      current16kWriteOffset,
+async function transcribeSlice(slice: Float32Array) {
+  if (!asr || slice.length === 0) return;
+  if (processingPartial) return;
+  processingPartial = true;
+  try {
+    const { text = "" } = await (asr as any)(slice);
+    diffAndSend(
+      lastPartialText + (lastPartialText && text ? " " : "") + text,
+      "partial",
     );
-    const sliceEndIndexInFullBuffer = current16kWriteOffset; // Store end index in the main buffer
-
-    try {
-      // console.log(`[LocalWorker] Calling ASR pipeline for partial result (samples: ${sliceToProcess.length})...`);
-      // const tPartialStart = performance.now();
-      // Using type assertion as asr pipeline has dynamic return types
-      const result = await (
-        asr as (input: Float32Array) => Promise<{ text?: string }>
-      )(sliceToProcess); // No explicit prompt
-      // const tPartialEnd = performance.now();
-      const currentFullTextForThisSlice = result.text?.trim() ?? "";
-      // console.log(`[LocalWorker] Partial ASR completed. Full Text for this slice: "${currentFullTextForThisSlice}"`);
-
-      // Use diffAndSend for partial delta. The text to compare against is `lastPartialText`.
-      // The new "full" text is the concatenation of previous confirmed text and the new segment's text.
-      diffAndSend(
-        lastPartialText +
-          (lastPartialText ? " " : "") +
-          currentFullTextForThisSlice,
-        "partial",
-      );
-
-      // IMPORTANT: Move the start cursor *after* successful processing
-      nextDecodeStart16k = sliceEndIndexInFullBuffer;
-    } catch (err) {
-      console.error("[LocalWorker] Partial decode error:", err);
-      // Optionally send an error back to UI if partials fail consistently
-    } finally {
-      processingPartial = false;
-    }
+  } catch (err) {
+    console.error("[LocalWorker] VAD slice ASR error:", err);
   }
+  processingPartial = false;
 }
+
+function vadDetect(frame: Float32Array): Promise<boolean> {
+  if (!vad) return Promise.resolve(true); // fail-open: treat as speech
+  const input = new Tensor("float32", frame, [1, frame.length]);
+
+  return limitVad(() =>
+    vad!({ input, sr: srTensor, state: vadState }).then(({ stateN, output }) => {
+      vadState = stateN;
+      const probability = output.data[0] as number;
+      return probability;
+    }),
+  );
+}
+
+const limitVad = (() => {
+  // simple serialized queue
+  let chain: Promise<any> = Promise.resolve(false);
+  return (fn: () => Promise<number>) =>
+    (chain = chain.then(() => fn())).then((p) => {
+      const isSpeech = p > SPEECH_TH || (wasSpeech && p >= EXIT_TH);
+      return isSpeech;
+    });
+})();
 
 // Main loop for pulling and processing audio during streaming
 async function startPullLoop() {
-  console.log("[LocalWorker] Starting streaming pull loop...");
+  console.log("[LocalWorker] Starting streaming pull loop with VAD...");
+  const FRAME_SAMPLES = 512; // 16 kHz * 0.032 s
+  const SILENCE_SAMPLES = MIN_SILENCE_S * TARGET_SAMPLE_RATE;
+
   while (recording) {
-    if (!ringBuffer) {
-      console.error(
-        "[LocalWorker] RingBuffer lost during pull loop. Stopping.",
+    pullAndProcessAudio(); // still fills preallocated16kBuffer
+
+    // 🔼 NEW: iterate over new audio since last check
+    while (nextDecodeStart16k + FRAME_SAMPLES <= current16kWriteOffset) {
+      if (!preallocated16kBuffer) break; // Safeguard to exit inner loop if buffer is gone
+      const frame = preallocated16kBuffer.subarray(
+        nextDecodeStart16k,
+        nextDecodeStart16k + FRAME_SAMPLES,
       );
-      self.postMessage({
-        status: "error",
-        error: "RingBuffer not available during streaming.",
-      });
-      recording = false;
-      break;
+
+      let isSpeech: boolean;
+      try {
+        isSpeech = await vadDetect(frame);
+      } catch (err) {
+        console.error("[LocalWorker] VAD detection failed, assuming speech.", err);
+        isSpeech = true; // Fail-open: assume it's speech to avoid dropping audio
+      }
+
+      if (isSpeech) {
+        wasSpeech = true;
+        silenceSince = 0;
+      } else {
+        if (wasSpeech) silenceSince += FRAME_SAMPLES;
+
+        const sliceSamples = nextDecodeStart16k - sliceStart16k;
+        const oldEnough = sliceSamples >= MIN_SLICE_SAMPLES;
+        const longSilence = silenceSince >= SILENCE_SAMPLES;
+
+        // NEW rule: only cut when     (slice ≥ 6 s)  AND  (600 ms silence)
+        if (oldEnough && longSilence) {
+          if (!preallocated16kBuffer) break; // Safeguard
+          const slice = preallocated16kBuffer.subarray(
+            sliceStart16k,
+            nextDecodeStart16k,
+          );
+          transcribeSlice(slice);
+          sliceStart16k = nextDecodeStart16k;
+          wasSpeech = false;
+          silenceSince = 0;
+        }
+      }
+      nextDecodeStart16k += FRAME_SAMPLES; // slide window
     }
 
-    pullAndProcessAudio();
-    await maybeEmitPartial(); // MODIFIED: Call new function
-
-    await new Promise((resolve) => setTimeout(resolve, PULL_LOOP_INTERVAL_MS));
+    await new Promise((r) => setTimeout(r, PULL_LOOP_INTERVAL_MS));
   }
   console.log("[LocalWorker] Streaming pull loop stopped.");
 }
@@ -340,9 +357,14 @@ self.addEventListener("message", async (e) => {
           }),
         device: device,
         dtype: dtypeConfig,
-        // REMOVED: chunk_length_s: CHUNK_S,
-        // REMOVED: stride_length_s: [STRIDE_S, STRIDE_S],
       });
+
+      vad = (await AutoModel.from_pretrained(VAD_MODEL_ID, {
+        config: { model_type: "custom" } as any,
+        dtype: "fp32", // tiny model; fp32 is fine
+      })) as typeof vad;
+      console.log("[LocalWorker] Silero VAD loaded.");
+
       console.log(
         "[LocalWorker] ASR Streaming Pipeline initialized successfully.",
       );
@@ -404,12 +426,17 @@ self.addEventListener("message", async (e) => {
       return;
     }
 
-    // emittedSamples = 0; // REMOVED
     processingPartial = false;
-    // REMOVED: confirmedTranscriptSoFar = "";
-    // REMOVED: previousChunkDelta = "";
     nextDecodeStart16k = 0; // Reset for sequential buffer
     lastPartialText = ""; // Reset for sequential buffer
+    sliceStart16k = 0;
+    wasSpeech = false;
+    silenceSince = 0;
+    vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
+      2,
+      1,
+      128,
+    ]);
 
     ringBuffer.reset();
     self.postMessage({ status: "capture_started" }); // Signal that capture/streaming has begun
@@ -420,6 +447,7 @@ self.addEventListener("message", async (e) => {
   }
 
   if (type === "stop-capture-and-transcribe") {
+    const tDictationEnd = performance.now();
     // Now acts as "flush"
     if (!recording && !processingPartial && preallocated16kBuffer === null) {
       console.warn(
@@ -490,83 +518,42 @@ self.addEventListener("message", async (e) => {
       );
     }
 
-    let finalUserTextSegment = ""; // Renamed from finalUserText to avoid confusion
-    let finalPipelineTime = 0;
-
-    // Process the remaining audio segment that hasn't been covered by `nextDecodeStart16k`
-    const remainingAudioLength = current16kWriteOffset - nextDecodeStart16k;
-
-    if (remainingAudioLength > 0) {
-      const finalSlice = preallocated16kBuffer.subarray(
-        nextDecodeStart16k,
-        current16kWriteOffset,
-      );
-      console.log(
-        `[LocalWorker] Processing final audio segment. Slice from ${nextDecodeStart16k} to ${current16kWriteOffset} (Length: ${finalSlice.length}).`,
-      );
-
-      processingPartial = true;
-      const tFinalStart = performance.now();
-      try {
-        // Using type assertion as asr pipeline has dynamic return types
-        const result = await (
-          asr as (input: Float32Array) => Promise<{ text?: string }>
-        )(finalSlice); // No explicit prompt
-
-        finalPipelineTime = performance.now() - tFinalStart;
-        console.log(
-          `[LocalWorker] Final ASR pipeline completed in ${finalPipelineTime.toFixed(2)} ms.`,
+    if (current16kWriteOffset > sliceStart16k) {
+      if (!preallocated16kBuffer) {
+        console.error("[LocalWorker] Buffer became null unexpectedly before flushing tail.");
+      } else {
+        const tail = preallocated16kBuffer.subarray(
+          sliceStart16k,
+          current16kWriteOffset,
         );
-
-        finalUserTextSegment = (result.text || "").trim(); // Store only the segment from the final ASR call
-        if (finalUserTextSegment) {
-          console.log(
-            `[LocalWorker] Text from final ASR segment: "${finalUserTextSegment}"`,
-          );
-        } else {
-          console.log(
-            `[LocalWorker] No additional text from final ASR segment.`,
-          );
-        }
-      } catch (err) {
-        console.error(
-          `[LocalWorker] Final ASR Error after ${finalPipelineTime.toFixed(2)}ms:`,
-          String(err),
-        );
-        self.postMessage({
-          status: "error",
-          error: `Final ASR Error: ${String(err)}`,
-        });
-      } finally {
-        processingPartial = false;
+        await transcribeSlice(tail);
       }
-    } else {
-      console.log(
-        "[LocalWorker] No remaining audio data to process in final flush beyond what was streamed.",
-      );
     }
 
-    // Construct final text using lastPartialText and the segment from the final ASR output
-    const absoluteFinalText = (
-      lastPartialText +
-      (lastPartialText && finalUserTextSegment ? " " : "") +
-      finalUserTextSegment
-    ).trim();
+    const tPaste = performance.now();
+    const dictationToPasteMs = tPaste - tDictationEnd;
     console.log(
-      `[LocalWorker] Sending final 'completed' message. Transcription: "${absoluteFinalText}"`,
+      `[LocalWorker] Sending final 'completed' message. Transcription: "${lastPartialText}"`,
     );
 
     self.postMessage({
       status: "completed",
-      transcription: absoluteFinalText,
-      timings: { total_asr_time_final_segment: finalPipelineTime },
+      transcription: lastPartialText,
+      timings: { dictation_to_paste_ms: dictationToPasteMs },
     });
 
     // Reset state for next recording
-    // emittedSamples = 0; // REMOVED
     current16kWriteOffset = 0;
     nextDecodeStart16k = 0;
     lastPartialText = "";
+    sliceStart16k = 0;
+    wasSpeech = false;
+    silenceSince = 0;
+    vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
+      2,
+      1,
+      128,
+    ]);
     if (preallocated16kBuffer) {
       preallocated16kBuffer.fill(0);
       preallocated16kBuffer = null;
