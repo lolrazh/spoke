@@ -1,0 +1,60 @@
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+.vite/
+
+# Lockfiles
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+.vscode/
+repomix-output.xml
+
+# Config files that are not core to the logic
+forge.config.ts
+postcss.config.js
+tailwind.config.js
+vite.main.config.ts
+vite.preload.config.ts
+vite.renderer.config.ts
+.eslintrc.json
+tsconfig.json
+.prettierrc
+.prettierignore
+.gitignore
+forge.env.d.ts
+
+# Documentation
+README.md
+
+# Native code
+native/
+
+# Assets
+public/assets/
+*.ico
+*.png
+
+# Config files that are not core to the logic
+forge.config.ts
+postcss.config.js
+tailwind.config.js
+vite.main.config.ts
+vite.preload.config.ts
+vite.renderer.config.ts
+.eslintrc.json 
+
+# repomix
+.repomixignore
+repomix.config.json
+repomix-output.xml
