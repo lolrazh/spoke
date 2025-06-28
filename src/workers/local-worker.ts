@@ -17,12 +17,12 @@ import { AutoModel, Tensor } from "@huggingface/transformers";
 // 🔼 ADD — Silero VAD config
 const VAD_MODEL_ID = "onnx-community/silero-vad";
 const VAD_FRAME_S = 0.032; // WAS 0.2 -> 0.032 seconds (512 / 16 000)
-const MIN_SILENCE_S = 0.8; // ≥ 600 ms = pause
-const SPEECH_TH = 0.7; // prob > 0.6 ⇒ speech
-const EXIT_TH = 0.35; // when inside speech
+const MIN_SILENCE_S = 0.6; // ≥ 600 ms = pause
+const SPEECH_TH = 0.6; // prob > 0.6 ⇒ speech
+const EXIT_TH = 0.25; // when inside speech
 
 // ─── slice-age gate ────────────────────────────────────────
-const MIN_SLICE_S = 6; // don't even *look* for silence
+const MIN_SLICE_S = 4; // don't even *look* for silence
 const MIN_SLICE_SAMPLES = MIN_SLICE_S * TARGET_SAMPLE_RATE;
 
 // 🔼 ADD — globals used by VAD
@@ -166,9 +166,6 @@ function diffAndSend(textNow: string, tag: "partial") {
   }
 
   const delta = textNow.slice(prefixBoundary).trimStart();
-  console.log("[UI-delta]", delta);
-
-  // console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
 
   if (delta) {
     const message: PartialTranscriptionMessage = { status: tag, delta };
@@ -258,7 +255,6 @@ function vadDetect(frame: Float32Array): Promise<boolean> {
     vad!({ input, sr: srTensor, state: vadState }).then(({ stateN, output }) => {
       vadState = stateN;
       const probability = output.data[0] as number;
-      console.log(`[VAD] p=${probability.toFixed(2)} speech=${probability > SPEECH_TH}`);
       return probability;
     }),
   );
@@ -476,6 +472,7 @@ self.addEventListener("message", async (e) => {
   }
 
   if (type === "stop-capture-and-transcribe") {
+    const tDictationEnd = performance.now();
     // Now acts as "flush"
     if (!recording && !processingPartial && preallocated16kBuffer === null) {
       console.warn(
@@ -554,6 +551,8 @@ self.addEventListener("message", async (e) => {
       await transcribeSlice(tail);
     }
 
+    const tPaste = performance.now();
+    const dictationToPasteMs = tPaste - tDictationEnd;
     console.log(
       `[LocalWorker] Sending final 'completed' message. Transcription: "${lastPartialText}"`,
     );
@@ -561,6 +560,7 @@ self.addEventListener("message", async (e) => {
     self.postMessage({
       status: "completed",
       transcription: lastPartialText,
+      timings: { dictation_to_paste_ms: dictationToPasteMs },
     });
 
     // Reset state for next recording
