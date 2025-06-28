@@ -16,10 +16,10 @@ import { AutoModel, Tensor } from "@huggingface/transformers";
 
 // 🔼 ADD — Silero VAD config
 const VAD_MODEL_ID = "onnx-community/silero-vad";
-const VAD_FRAME_S = 0.128; // WAS 0.2 -> 0.032 seconds (512 / 16 000)
-const MIN_SILENCE_S = 0.6; // ≥ 600 ms = pause
-const SPEECH_TH = 0.6; // prob > 0.6 ⇒ speech
-const EXIT_TH = 0.25; // when inside speech
+const VAD_FRAME_S = 0.128;
+const MIN_SILENCE_S = 0.6;
+const SPEECH_TH = 0.6; 
+const EXIT_TH = 0.25; 
 
 // ─── slice-age gate ────────────────────────────────────────
 const MIN_SLICE_S = 4; // don't even *look* for silence
