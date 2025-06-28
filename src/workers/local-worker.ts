@@ -162,6 +162,7 @@ function diffAndSend(textNow: string, tag: "partial") {
   }
 
   const delta = textNow.slice(prefixBoundary).trimStart();
+  console.log("[UI-delta]", delta);
 
   // console.log(`[Worker Diff] Prev: "${lastPartialText}" | Now: "${textNow}" | LCP: ${i} | Adj Boundary: ${prefixBoundary} | Delta: "${delta}"`);
 
@@ -253,7 +254,7 @@ function vadDetect(frame: Float32Array): Promise<boolean> {
     vad!({ input, sr: srTensor, state: vadState }).then(({ stateN, output }) => {
       vadState = stateN;
       const probability = output.data[0] as number;
-      // console.log(`[LocalWorker] Silero VAD prob: ${probability.toFixed(2)} (speech=${probability > SPEECH_TH})`);
+      console.log(`[VAD] p=${probability.toFixed(2)} speech=${probability > SPEECH_TH}`);
       return probability;
     }),
   );
@@ -293,6 +294,7 @@ async function startPullLoop() {
       } else {
         if (wasSpeech) silenceSince += FRAME_SAMPLES;
         if (silenceSince >= SILENCE_SAMPLES) {
+          console.log("[VAD] slice", sliceStart16k, "→", nextDecodeStart16k);
           // 🔼 CUT here: slice from sliceStart → now
           const slice = preallocated16kBuffer!.subarray(
             sliceStart16k,
