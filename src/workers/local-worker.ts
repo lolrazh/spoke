@@ -21,6 +21,10 @@ const MIN_SILENCE_S = 0.8; // ≥ 600 ms = pause
 const SPEECH_TH = 0.7; // prob > 0.6 ⇒ speech
 const EXIT_TH = 0.35; // when inside speech
 
+// ─── slice-age gate ────────────────────────────────────────
+const MIN_SLICE_S = 6; // don't even *look* for silence
+const MIN_SLICE_SAMPLES = MIN_SLICE_S * TARGET_SAMPLE_RATE;
+
 // 🔼 ADD — globals used by VAD
 let vad: (x: {
   input: Tensor;
@@ -293,15 +297,20 @@ async function startPullLoop() {
         silenceSince = 0;
       } else {
         if (wasSpeech) silenceSince += FRAME_SAMPLES;
-        if (silenceSince >= SILENCE_SAMPLES) {
+
+        const sliceSamples = nextDecodeStart16k - sliceStart16k;
+        const oldEnough = sliceSamples >= MIN_SLICE_SAMPLES;
+        const longSilence = silenceSince >= SILENCE_SAMPLES;
+
+        // NEW rule: only cut when     (slice ≥ 6 s)  AND  (600 ms silence)
+        if (oldEnough && longSilence) {
           console.log("[VAD] slice", sliceStart16k, "→", nextDecodeStart16k);
-          // 🔼 CUT here: slice from sliceStart → now
           const slice = preallocated16kBuffer!.subarray(
             sliceStart16k,
-            nextDecodeStart16k, // end right before this frame
+            nextDecodeStart16k,
           );
-          await transcribeSlice(slice); // see helper below
-          sliceStart16k = nextDecodeStart16k; // new slice begins
+          await transcribeSlice(slice);
+          sliceStart16k = nextDecodeStart16k;
           wasSpeech = false;
           silenceSince = 0;
         }
