@@ -9,8 +9,8 @@ export const MICROPHONE_PREFERRED_RATE = 48000; // Preferred microphone capture 
 
 // Buffer and timing constants
 export const MAX_RING_BUFFER_SECONDS = 10; // Maximum ring buffer duration
-export const INITIAL_BUFFER_SECONDS = 1; // Initial buffer size for workers
-export const BUFFER_GROWTH_SECONDS = 1; // Buffer growth increment
+export const INITIAL_BUFFER_SECONDS = 8; // Initial buffer size for workers
+export const BUFFER_GROWTH_SECONDS = 8; // Buffer growth increment
 
 // Calculated values
 export const RING_BUFFER_SAMPLE_CAPACITY =
