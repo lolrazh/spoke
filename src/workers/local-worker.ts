@@ -103,45 +103,17 @@ let asr: unknown = null;
 let modelInitializationInProgress = false; // Replaces part of 'busy' for clarity
 let ringBuffer: RingBuffer | null = null;
 
-// --- REMOVED Streaming Config ---
-// const CHUNK_S = 4;
-// const STRIDE_S = 2;
-// const CHUNK_SAMPLES = CHUNK_S * TARGET_SAMPLE_RATE;
-// const STRIDE_SAMPLES = STRIDE_S * TARGET_SAMPLE_RATE;
 const PULL_LOOP_INTERVAL_MS = 100; // Check for new audio frequently (Changed from 50 to 100)
 
-// --- Buffer Size Constants (from moonshine-worker.ts) ---
-// Removed unused constants
-// const INITIAL_BUFFER_SECONDS = 30;
-// const BUFFER_GROWTH_SECONDS = 30;
-
-// --- Streaming State Variables (from moonshine-worker.ts / sequential buffering) ---
 let preallocated16kBuffer: Float32Array | null = null;
 let current16kWriteOffset = 0;
-// let emittedSamples = 0; // REMOVED - Replaced by nextDecodeStart16k
 let recording = false; // Controls the background pull loop
 let processingPartial = false; // Flag to prevent concurrent partial ASR calls
 
-// --- REMOVED Local Agreement State ---
-// let confirmedTranscriptSoFar: string = "";
-// let previousChunkDelta: string = "";
-// const OL_MIN_CHARS_FOR_LA = 3;
-
-// --- Sequential Buffering State (from old-code.md / merge-plan) ---
 let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocated16kBuffer
 let lastPartialText = ""; // Store the cumulative text sent so far (for diffing)
 let sliceStart16k = 0; // beginning of the *current* slice
 
-// Removed unused constant
-// const MAX_PROMPT_TOKENS = 200; // Remains for potential future use, currently disabled in refinement stage
-
-// --- REMOVED Text Diffing Helper Functions (overlapLen, mergeWithOverlap) ---
-
-// --- REMOVED resampleTo16kHz (it's now in audio/resample.ts and used in AudioWorklet) ---
-
-// --- REMOVED Local Agreement Helper (longestCommonPrefix) ---
-
-// --- NEW diffAndSend function (from old-code.md) ---
 function diffAndSend(textNow: string, tag: "partial") {
   textNow = textNow.trim(); // Ensure consistent trimming
   let i = 0;
@@ -173,8 +145,6 @@ function diffAndSend(textNow: string, tag: "partial") {
     lastPartialText = textNow; // Update history for next partial
   }
 }
-
-// --- Streaming Helper Functions (adapted from moonshine-worker.ts) ---
 
 // Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
 function pullAndProcessAudio() {
@@ -311,7 +281,6 @@ async function startPullLoop() {
         // NEW rule: only cut when     (slice ≥ 6 s)  AND  (600 ms silence)
         if (oldEnough && longSilence) {
           if (!preallocated16kBuffer) break; // Safeguard
-          console.log("[VAD] slice", sliceStart16k, "→", nextDecodeStart16k);
           const slice = preallocated16kBuffer.subarray(
             sliceStart16k,
             nextDecodeStart16k,
@@ -388,8 +357,6 @@ self.addEventListener("message", async (e) => {
           }),
         device: device,
         dtype: dtypeConfig,
-        // REMOVED: chunk_length_s: CHUNK_S,
-        // REMOVED: stride_length_s: [STRIDE_S, STRIDE_S],
       });
 
       vad = (await AutoModel.from_pretrained(VAD_MODEL_ID, {
@@ -459,10 +426,7 @@ self.addEventListener("message", async (e) => {
       return;
     }
 
-    // emittedSamples = 0; // REMOVED
     processingPartial = false;
-    // REMOVED: confirmedTranscriptSoFar = "";
-    // REMOVED: previousChunkDelta = "";
     nextDecodeStart16k = 0; // Reset for sequential buffer
     lastPartialText = ""; // Reset for sequential buffer
     sliceStart16k = 0;
@@ -579,7 +543,6 @@ self.addEventListener("message", async (e) => {
     });
 
     // Reset state for next recording
-    // emittedSamples = 0; // REMOVED
     current16kWriteOffset = 0;
     nextDecodeStart16k = 0;
     lastPartialText = "";
