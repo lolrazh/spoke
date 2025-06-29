@@ -78,11 +78,12 @@ const createWindow = () => {
     backgroundColor: "#00000000", // Fully transparent background
     hasShadow: false, // <-- KILL the macOS shadow (= white block)
     resizable: false,
-    skipTaskbar: true,
+    skipTaskbar: false,
     alwaysOnTop: true,
     show: false,
     focusable: false, // <-- Keeps the previous app front-most
     acceptFirstMouse: true, // <-- Allows first click to pass through to the webview
+    hiddenInMissionControl: true, // <-- Hides from exposé
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -121,6 +122,12 @@ const createWindow = () => {
     }
   } catch (error) {
     console.warn(`Failed to set window icon: ${error.message}`);
+  }
+
+  // Set window behaviors for macOS
+  if (process.platform === 'darwin') {
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setVisibleOnAllWorkspaces(true);
   }
 
   // Show window inactive only when it's ready to prevent focus stealing
@@ -247,7 +254,7 @@ const createTray = () => {
 const createNotificationWindow = () => {
   if (notificationWindow) return;
 
-  notificationWindow = new BrowserWindow({
+  const windowOptions: Electron.BrowserWindowConstructorOptions = {
     width: 180,
     height: 40,
     frame: false,
@@ -266,7 +273,13 @@ const createNotificationWindow = () => {
     },
     backgroundColor: "#00000000",
     hasShadow: false,
-  });
+  };
+
+  if (process.platform === "darwin") {
+    windowOptions.type = "toolbar";
+  }
+
+  notificationWindow = new BrowserWindow(windowOptions);
 
   notificationWindow.on("closed", () => {
     console.log("Notification window closed.");
