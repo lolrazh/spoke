@@ -625,6 +625,8 @@ const createHomeWindow = () => {
     height: newHeight,
     minWidth: newWidth,
     minHeight: newHeight,
+    frame: false,
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
     show: false,
     title: "Sonic Flow Home",
     webPreferences: {

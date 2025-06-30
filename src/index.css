@@ -207,6 +207,22 @@
     opacity: 0;
     transition: opacity 300ms;
   }
+
+  /* Draggable header for frameless window */
+  .header-bar {
+    -webkit-app-region: drag;
+  }
+
+  /* Make sure interactive elements within the header are not draggable */
+  .header-bar button,
+  .header-bar input,
+  .header-bar a,
+  .header-bar [role="button"],
+  .header-bar select,
+  .header-bar textarea,
+  .header-bar .non-draggable {
+    -webkit-app-region: no-drag;
+  }
 }
 
 /* Make body and html transparent for Electron */

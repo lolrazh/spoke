@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 
 // --- Constants --- //
 
@@ -26,7 +26,7 @@ interface StatCardData {
 
 // --- Animation Variants --- //
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -34,7 +34,7 @@ const containerVariants = {
   },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { y: 10, opacity: 0 },
   visible: {
     y: 0,
@@ -221,7 +221,7 @@ const HomePage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen min-w-screen flex flex-col bg-sonic-darker text-white font-sans text-xs">
+    <div className="header-bar min-h-screen min-w-screen flex flex-col bg-sonic-darker text-white font-sans text-xs">
       {/* Main layout container */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
