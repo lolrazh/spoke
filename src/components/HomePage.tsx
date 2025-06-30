@@ -227,7 +227,7 @@ const HomePage: React.FC = () => {
         {/* Sidebar */}
         <nav className="w-48 flex flex-col bg-sonic-dark border-r border-sonic-gray/80 py-3 flex-shrink-0">
           {/* Logo/Title */}
-          <div className="px-4 mb-5 flex items-center gap-2">
+          <div className="px-5 mt-8 mb-5 flex items-center gap-2">
             <motion.div
               whileHover={{ rotate: 360 }}
               transition={{ duration: 0.7 }}
