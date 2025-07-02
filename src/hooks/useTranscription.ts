@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { RingBuffer } from "../audio/ring-buffer"; // Using the imported class
+import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import {
   TARGET_AUDIO_CONTEXT_RATE,
   TARGET_SAMPLE_RATE,
@@ -419,6 +420,7 @@ export function useTranscription(): UseTranscriptionReturn {
       return;
     }
 
+    playToggleOn();
     setError(null);
     setText("");
     // setRecording(true) moved into mode-specific logic after async ops
@@ -694,6 +696,7 @@ export function useTranscription(): UseTranscriptionReturn {
       console.warn("[useTranscription] Not recording, cannot stop.");
       return;
     }
+    playToggleOff();
     setRecording(false); // Set recording false immediately
 
     if (currentMode === "cloud") {
