@@ -88,8 +88,8 @@ type DtypeConfig = Record<
 // Define dtype configurations based on device with explicit typing (Updated from moonshine-worker)
 const DEVICE_DTYPE_CONFIGS: Record<string, DtypeConfig> = {
   wasm: {
-    encoder_model: "fp32", // from moonshine-worker
-    decoder_model_merged: "fp32", // from moonshine-worker
+    encoder_model: "q8", // from moonshine-worker
+    decoder_model_merged: "q8", // from moonshine-worker
   },
 };
 
