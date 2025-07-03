@@ -355,6 +355,12 @@ self.addEventListener("message", async (e) => {
             ...(p as Record<string, unknown>),
             status: "model_progress",
           }),
+        session_options: {
+          graphOptimizationLevel: "all",
+          enableCpuMemArena: true,
+          executionMode: "parallel",
+          intraOpNumThreads: wasmConfig?.numThreads,
+        },
         device: device,
         dtype: dtypeConfig,
       });
