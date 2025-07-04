@@ -197,7 +197,10 @@ function pullAndProcessAudio() {
 async function initializeVadWorker(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      vadWorker = new Worker(new URL('./vad-worker.ts', import.meta.url), { type: 'module' });
+      vadWorker = new Worker(new URL('./vad-worker.ts', import.meta.url), { 
+        type: 'module',
+        name: 'vad-worker'
+      });
       
       vadWorker.onmessage = (event) => {
         const message: VadWorkerResponse = event.data;
@@ -215,15 +218,16 @@ async function initializeVadWorker(): Promise<void> {
             break;
           }
             
-          case 'vad_result':
+          case 'vad_result': {
             const pending = pendingVadResults.get(message.frameId);
             if (pending) {
               pendingVadResults.delete(message.frameId);
               pending.resolve(message.isSpeech);
             }
             break;
+          }
             
-          case 'vad_error':
+          case 'vad_error': {
             console.error("[LocalWorker] VAD worker error:", message.error);
             if (message.frameId !== undefined) {
               const pending = pendingVadResults.get(message.frameId);
@@ -233,6 +237,7 @@ async function initializeVadWorker(): Promise<void> {
               }
             }
             break;
+          }
         }
       };
       
@@ -300,19 +305,21 @@ function vadDetect(frame: Float32Array): Promise<boolean> {
 // Main loop for pulling and processing audio during streaming
 async function startPullLoop() {
   console.log("[LocalWorker] Starting streaming pull loop with VAD...");
-  const FRAME_SAMPLES = 512; // 16 kHz * 0.032 s
-  const SILENCE_SAMPLES = MIN_SILENCE_S * TARGET_SAMPLE_RATE;
+  const FRAME_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * 0.03125); // 16 kHz * 0.03125 s = 500 samples (Silero VAD chunk size)
+  const SILENCE_SAMPLES = Math.floor(MIN_SILENCE_S * TARGET_SAMPLE_RATE);
 
   while (recording) {
     pullAndProcessAudio(); // still fills preallocated16kBuffer
 
     // 🔼 NEW: iterate over new audio since last check
     while (nextDecodeStart16k + FRAME_SAMPLES <= current16kWriteOffset) {
-      if (!preallocated16kBuffer) break; // Safeguard to exit inner loop if buffer is gone
-      const frame = preallocated16kBuffer.subarray(
-        nextDecodeStart16k,
-        nextDecodeStart16k + FRAME_SAMPLES,
-      );
+      if (!preallocated16kBuffer || !recording) break; // Safeguard to exit inner loop if buffer is gone or recording stopped
+      
+      // Ensure we don't exceed buffer bounds
+      const endIdx = Math.min(nextDecodeStart16k + FRAME_SAMPLES, current16kWriteOffset);
+      if (endIdx <= nextDecodeStart16k) break;
+      
+      const frame = preallocated16kBuffer.subarray(nextDecodeStart16k, endIdx);
 
       let isSpeech: boolean;
       try {
@@ -628,13 +635,22 @@ self.addEventListener("message", async (e) => {
 
 // Cleanup function
 function cleanup() {
+  // Stop recording first to prevent new VAD requests
+  recording = false;
+  
+  // Clear any pending VAD requests with rejection to prevent memory leaks
+  for (const [frameId, { reject }] of pendingVadResults.entries()) {
+    reject(new Error("Worker cleanup in progress"));
+  }
+  pendingVadResults.clear();
+  nextFrameId = 0;
+  
+  // Terminate VAD worker
   if (vadWorker) {
     vadWorker.terminate();
     vadWorker = null;
     vadInitialized = false;
   }
-  pendingVadResults.clear();
-  recording = false;
 }
 
 self.onerror = (event) => {
