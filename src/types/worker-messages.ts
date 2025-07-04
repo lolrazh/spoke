@@ -147,11 +147,9 @@ export interface VadErrorMessage {
   error: string;
 }
 
-export type VadWorkerMessage = 
-  | VadInitMessage 
-  | VadDetectMessage;
+export type VadWorkerMessage = VadInitMessage | VadDetectMessage;
 
-export type VadWorkerResponse = 
-  | VadInitializedMessage 
-  | VadResultMessage 
+export type VadWorkerResponse =
+  | VadInitializedMessage
+  | VadResultMessage
   | VadErrorMessage;

@@ -125,8 +125,8 @@ const createWindow = () => {
   }
 
   // Set window behaviors for macOS
-  if (process.platform === 'darwin') {
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+  if (process.platform === "darwin") {
+    mainWindow.setAlwaysOnTop(true, "screen-saver");
     mainWindow.setVisibleOnAllWorkspaces(true);
   }
 

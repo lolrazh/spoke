@@ -28,7 +28,10 @@ let vadInitialized = false;
 let wasSpeech = false;
 let silenceSince = 0; // #samples accumulated since last speech frame
 let nextFrameId = 0;
-const pendingVadResults = new Map<number, { resolve: (isSpeech: boolean) => void; reject: (error: Error) => void }>();
+const pendingVadResults = new Map<
+  number,
+  { resolve: (isSpeech: boolean) => void; reject: (error: Error) => void }
+>();
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -197,28 +200,33 @@ function pullAndProcessAudio() {
 async function initializeVadWorker(): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      vadWorker = new Worker(new URL('./vad-worker.ts', import.meta.url), { 
-        type: 'module',
-        name: 'vad-worker'
+      vadWorker = new Worker(new URL("./vad-worker.ts", import.meta.url), {
+        type: "module",
+        name: "vad-worker",
       });
-      
+
       vadWorker.onmessage = (event) => {
         const message: VadWorkerResponse = event.data;
-        
+
         switch (message.type) {
-          case 'vad_initialized': {
+          case "vad_initialized": {
             if (message.success) {
               vadInitialized = true;
               console.log("[LocalWorker] VAD worker initialized successfully");
               resolve();
             } else {
-              console.error("[LocalWorker] VAD worker initialization failed:", message.error);
-              reject(new Error(message.error || "VAD worker initialization failed"));
+              console.error(
+                "[LocalWorker] VAD worker initialization failed:",
+                message.error,
+              );
+              reject(
+                new Error(message.error || "VAD worker initialization failed"),
+              );
             }
             break;
           }
-            
-          case 'vad_result': {
+
+          case "vad_result": {
             const pending = pendingVadResults.get(message.frameId);
             if (pending) {
               pendingVadResults.delete(message.frameId);
@@ -226,8 +234,8 @@ async function initializeVadWorker(): Promise<void> {
             }
             break;
           }
-            
-          case 'vad_error': {
+
+          case "vad_error": {
             console.error("[LocalWorker] VAD worker error:", message.error);
             if (message.frameId !== undefined) {
               const pending = pendingVadResults.get(message.frameId);
@@ -240,16 +248,15 @@ async function initializeVadWorker(): Promise<void> {
           }
         }
       };
-      
+
       vadWorker.onerror = (error) => {
         console.error("[LocalWorker] VAD worker error:", error);
         reject(error);
       };
-      
+
       // Send initialization message
-      const initMessage: VadWorkerMessage = { type: 'vad_init' };
+      const initMessage: VadWorkerMessage = { type: "vad_init" };
       vadWorker.postMessage(initMessage);
-      
     } catch (error) {
       console.error("[LocalWorker] Failed to create VAD worker:", error);
       reject(error);
@@ -278,19 +285,19 @@ function vadDetect(frame: Float32Array): Promise<boolean> {
   if (!vadWorker || !vadInitialized) {
     return Promise.resolve(true); // fail-open: treat as speech
   }
-  
+
   return new Promise((resolve, reject) => {
     const frameId = nextFrameId++;
     pendingVadResults.set(frameId, { resolve, reject });
-    
+
     const message: VadWorkerMessage = {
-      type: 'vad_detect',
+      type: "vad_detect",
       frameId,
-      audioFrame: frame
+      audioFrame: frame,
     };
-    
+
     vadWorker.postMessage(message);
-    
+
     // Add timeout to prevent hanging
     setTimeout(() => {
       if (pendingVadResults.has(frameId)) {
@@ -314,18 +321,24 @@ async function startPullLoop() {
     // 🔼 NEW: iterate over new audio since last check
     while (nextDecodeStart16k + FRAME_SAMPLES <= current16kWriteOffset) {
       if (!preallocated16kBuffer || !recording) break; // Safeguard to exit inner loop if buffer is gone or recording stopped
-      
+
       // Ensure we don't exceed buffer bounds
-      const endIdx = Math.min(nextDecodeStart16k + FRAME_SAMPLES, current16kWriteOffset);
+      const endIdx = Math.min(
+        nextDecodeStart16k + FRAME_SAMPLES,
+        current16kWriteOffset,
+      );
       if (endIdx <= nextDecodeStart16k) break;
-      
+
       const frame = preallocated16kBuffer.subarray(nextDecodeStart16k, endIdx);
 
       let isSpeech: boolean;
       try {
         isSpeech = await vadDetect(frame);
       } catch (err) {
-        console.error("[LocalWorker] VAD detection failed, assuming speech.", err);
+        console.error(
+          "[LocalWorker] VAD detection failed, assuming speech.",
+          err,
+        );
         isSpeech = true; // Fail-open: assume it's speech to avoid dropping audio
       }
 
@@ -420,7 +433,8 @@ self.addEventListener("message", async (e) => {
           graphOptimizationLevel: "all",
           enableCpuMemArena: true,
           executionMode: "parallel",
-          intraOpNumThreads: wasmConfig?.numThreads || navigator.hardwareConcurrency || 4,
+          intraOpNumThreads:
+            wasmConfig?.numThreads || navigator.hardwareConcurrency || 4,
         },
         device: device,
         dtype: dtypeConfig,
@@ -451,7 +465,9 @@ self.addEventListener("message", async (e) => {
         "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
         vadError,
       );
-      console.warn("[LocalWorker] VAD detection will fail-open (treat all audio as speech)");
+      console.warn(
+        "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
+      );
     });
 
     return;
@@ -587,7 +603,9 @@ self.addEventListener("message", async (e) => {
 
     if (current16kWriteOffset > sliceStart16k) {
       if (!preallocated16kBuffer) {
-        console.error("[LocalWorker] Buffer became null unexpectedly before flushing tail.");
+        console.error(
+          "[LocalWorker] Buffer became null unexpectedly before flushing tail.",
+        );
       } else {
         const tail = preallocated16kBuffer.subarray(
           sliceStart16k,
@@ -616,11 +634,11 @@ self.addEventListener("message", async (e) => {
     sliceStart16k = 0;
     wasSpeech = false;
     silenceSince = 0;
-    
+
     // Clear pending VAD results
     pendingVadResults.clear();
     nextFrameId = 0;
-    
+
     if (preallocated16kBuffer) {
       preallocated16kBuffer.fill(0);
       preallocated16kBuffer = null;
@@ -645,14 +663,14 @@ self.addEventListener("message", async (e) => {
 function cleanup() {
   // Stop recording first to prevent new VAD requests
   recording = false;
-  
+
   // Clear any pending VAD requests with rejection to prevent memory leaks
   for (const [frameId, { reject }] of pendingVadResults.entries()) {
     reject(new Error("Worker cleanup in progress"));
   }
   pendingVadResults.clear();
   nextFrameId = 0;
-  
+
   // Terminate VAD worker
   if (vadWorker) {
     vadWorker.terminate();

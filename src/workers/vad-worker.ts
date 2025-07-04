@@ -15,14 +15,20 @@ const SPEECH_TH = 0.6;
 const EXIT_TH = 0.25;
 
 // VAD state
-let vad: ((x: {
-  input: Tensor;
-  sr: Tensor;
-  state: Tensor;
-}) => Promise<{ stateN: Tensor; output: Tensor }>) | null = null;
+let vad:
+  | ((x: {
+      input: Tensor;
+      sr: Tensor;
+      state: Tensor;
+    }) => Promise<{ stateN: Tensor; output: Tensor }>)
+  | null = null;
 
 const srTensor = new Tensor("int64", [TARGET_SAMPLE_RATE], []);
-let vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [2, 1, 128]);
+let vadState = new Tensor(
+  "float32",
+  new Float32Array(2 * 1 * 128),
+  [2, 1, 128],
+);
 let wasSpeech = false;
 
 console.log("[VadWorker] Imports completed successfully");
@@ -31,12 +37,12 @@ console.log("[VadWorker] Imports completed successfully");
 async function initializeVad(): Promise<void> {
   try {
     console.log("[VadWorker] Initializing Silero VAD model...");
-    
+
     vad = (await AutoModel.from_pretrained(VAD_MODEL_ID, {
       config: { model_type: "custom" } as any,
       dtype: "fp32", // tiny model; fp32 is fine
     })) as typeof vad;
-    
+
     console.log("[VadWorker] Silero VAD loaded successfully.");
   } catch (error) {
     console.error("[VadWorker] Failed to initialize VAD model:", error);
@@ -45,22 +51,29 @@ async function initializeVad(): Promise<void> {
 }
 
 // Perform VAD detection on audio frame
-async function detectSpeech(frame: Float32Array): Promise<{ isSpeech: boolean; probability: number }> {
+async function detectSpeech(
+  frame: Float32Array,
+): Promise<{ isSpeech: boolean; probability: number }> {
   if (!vad) {
     throw new Error("VAD model not initialized");
   }
 
   const input = new Tensor("float32", frame, [1, frame.length]);
-  
+
   try {
-    const { stateN, output } = await vad({ input, sr: srTensor, state: vadState });
+    const { stateN, output } = await vad({
+      input,
+      sr: srTensor,
+      state: vadState,
+    });
     vadState = stateN;
     const probability = output.data[0] as number;
-    
+
     // Apply hysteresis for speech detection
-    const isSpeech = probability > SPEECH_TH || (wasSpeech && probability >= EXIT_TH);
+    const isSpeech =
+      probability > SPEECH_TH || (wasSpeech && probability >= EXIT_TH);
     wasSpeech = isSpeech;
-    
+
     return { isSpeech, probability };
   } catch (error) {
     console.error("[VadWorker] VAD detection error:", error);
@@ -77,7 +90,7 @@ self.addEventListener("message", async (e) => {
       case "vad_init": {
         console.log("[VadWorker] Received initialization request");
         await initializeVad();
-        
+
         const response: VadInitializedMessage = {
           type: "vad_initialized",
           success: true,
@@ -88,13 +101,13 @@ self.addEventListener("message", async (e) => {
 
       case "vad_detect": {
         const { frameId, audioFrame } = message;
-        
+
         if (!vad) {
           throw new Error("VAD model not initialized. Call vad_init first.");
         }
 
         const { isSpeech, probability } = await detectSpeech(audioFrame);
-        
+
         const response: VadResultMessage = {
           type: "vad_result",
           frameId,
@@ -106,11 +119,14 @@ self.addEventListener("message", async (e) => {
       }
 
       default:
-        console.warn("[VadWorker] Unknown message type:", (message as any).type);
+        console.warn(
+          "[VadWorker] Unknown message type:",
+          (message as any).type,
+        );
     }
   } catch (error) {
     console.error("[VadWorker] Error processing message:", error);
-    
+
     const errorResponse: VadErrorMessage = {
       type: "vad_error",
       frameId: "frameId" in message ? message.frameId : undefined,
@@ -139,4 +155,4 @@ self.onunhandledrejection = (event) => {
   self.postMessage(errorResponse);
 };
 
-console.log("[VadWorker] VAD worker loaded and ready for messages"); 
+console.log("[VadWorker] VAD worker loaded and ready for messages");

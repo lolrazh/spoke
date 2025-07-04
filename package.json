@@ -49,7 +49,6 @@
     "@huggingface/transformers": "^3.5.0",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
-
     "form-data": "^4.0.2",
     "framer-motion": "^12.7.4",
     "onnxruntime-web": "^1.19.0",
