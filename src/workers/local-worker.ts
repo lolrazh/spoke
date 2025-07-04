@@ -11,35 +11,24 @@ import type {
   ModelLoadingMessage,
   ModelReadyMessage,
   PartialTranscriptionMessage,
+  VadWorkerMessage,
+  VadWorkerResponse,
 } from "../types/worker-messages";
-import { AutoModel, Tensor } from "@huggingface/transformers";
 
-// 🔼 ADD — Silero VAD config
-const VAD_MODEL_ID = "onnx-community/silero-vad";
-const VAD_FRAME_S = 0.128;
+// VAD configuration
 const MIN_SILENCE_S = 0.6;
-const SPEECH_TH = 0.6; 
-const EXIT_TH = 0.25; 
 
 // ─── slice-age gate ────────────────────────────────────────
 const MIN_SLICE_S = 4; // don't even *look* for silence
 const MIN_SLICE_SAMPLES = MIN_SLICE_S * TARGET_SAMPLE_RATE;
 
-// 🔼 ADD — globals used by VAD
-let vad: (x: {
-  input: Tensor;
-  sr: Tensor;
-  state: Tensor;
-}) => Promise<{ stateN: Tensor; output: Tensor }> | null = null;
-
-const srTensor = new Tensor("int64", [TARGET_SAMPLE_RATE], []);
-let vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
-  2,
-  1,
-  128,
-]);
+// VAD worker and state management
+let vadWorker: Worker | null = null;
+let vadInitialized = false;
 let wasSpeech = false;
 let silenceSince = 0; // #samples accumulated since last speech frame
+let nextFrameId = 0;
+const pendingVadResults = new Map<number, { resolve: (isSpeech: boolean) => void; reject: (error: Error) => void }>();
 
 console.log("[LocalWorker] Imports completed successfully");
 
@@ -204,6 +193,65 @@ function pullAndProcessAudio() {
   current16kWriteOffset += samplesToRead;
 }
 
+// Initialize VAD worker
+async function initializeVadWorker(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      vadWorker = new Worker(new URL('./vad-worker.ts', import.meta.url), { type: 'module' });
+      
+      vadWorker.onmessage = (event) => {
+        const message: VadWorkerResponse = event.data;
+        
+        switch (message.type) {
+          case 'vad_initialized': {
+            if (message.success) {
+              vadInitialized = true;
+              console.log("[LocalWorker] VAD worker initialized successfully");
+              resolve();
+            } else {
+              console.error("[LocalWorker] VAD worker initialization failed:", message.error);
+              reject(new Error(message.error || "VAD worker initialization failed"));
+            }
+            break;
+          }
+            
+          case 'vad_result':
+            const pending = pendingVadResults.get(message.frameId);
+            if (pending) {
+              pendingVadResults.delete(message.frameId);
+              pending.resolve(message.isSpeech);
+            }
+            break;
+            
+          case 'vad_error':
+            console.error("[LocalWorker] VAD worker error:", message.error);
+            if (message.frameId !== undefined) {
+              const pending = pendingVadResults.get(message.frameId);
+              if (pending) {
+                pendingVadResults.delete(message.frameId);
+                pending.reject(new Error(message.error));
+              }
+            }
+            break;
+        }
+      };
+      
+      vadWorker.onerror = (error) => {
+        console.error("[LocalWorker] VAD worker error:", error);
+        reject(error);
+      };
+      
+      // Send initialization message
+      const initMessage: VadWorkerMessage = { type: 'vad_init' };
+      vadWorker.postMessage(initMessage);
+      
+    } catch (error) {
+      console.error("[LocalWorker] Failed to create VAD worker:", error);
+      reject(error);
+    }
+  });
+}
+
 async function transcribeSlice(slice: Float32Array) {
   if (!asr || slice.length === 0) return;
   if (processingPartial) return;
@@ -220,28 +268,34 @@ async function transcribeSlice(slice: Float32Array) {
   processingPartial = false;
 }
 
+// VAD detection using dedicated worker
 function vadDetect(frame: Float32Array): Promise<boolean> {
-  if (!vad) return Promise.resolve(true); // fail-open: treat as speech
-  const input = new Tensor("float32", frame, [1, frame.length]);
-
-  return limitVad(() =>
-    vad!({ input, sr: srTensor, state: vadState }).then(({ stateN, output }) => {
-      vadState = stateN;
-      const probability = output.data[0] as number;
-      return probability;
-    }),
-  );
+  if (!vadWorker || !vadInitialized) {
+    return Promise.resolve(true); // fail-open: treat as speech
+  }
+  
+  return new Promise((resolve, reject) => {
+    const frameId = nextFrameId++;
+    pendingVadResults.set(frameId, { resolve, reject });
+    
+    const message: VadWorkerMessage = {
+      type: 'vad_detect',
+      frameId,
+      audioFrame: frame
+    };
+    
+    vadWorker.postMessage(message);
+    
+    // Add timeout to prevent hanging
+    setTimeout(() => {
+      if (pendingVadResults.has(frameId)) {
+        pendingVadResults.delete(frameId);
+        console.warn("[LocalWorker] VAD detection timeout for frame", frameId);
+        resolve(true); // fail-open: assume speech
+      }
+    }, 1000); // 1 second timeout
+  });
 }
-
-const limitVad = (() => {
-  // simple serialized queue
-  let chain: Promise<any> = Promise.resolve(false);
-  return (fn: () => Promise<number>) =>
-    (chain = chain.then(() => fn())).then((p) => {
-      const isSpeech = p > SPEECH_TH || (wasSpeech && p >= EXIT_TH);
-      return isSpeech;
-    });
-})();
 
 // Main loop for pulling and processing audio during streaming
 async function startPullLoop() {
@@ -365,11 +419,8 @@ self.addEventListener("message", async (e) => {
         dtype: dtypeConfig,
       });
 
-      vad = (await AutoModel.from_pretrained(VAD_MODEL_ID, {
-        config: { model_type: "custom" } as any,
-        dtype: "fp32", // tiny model; fp32 is fine
-      })) as typeof vad;
-      console.log("[LocalWorker] Silero VAD loaded.");
+      // Initialize VAD worker in parallel with ASR
+      await initializeVadWorker();
 
       console.log(
         "[LocalWorker] ASR Streaming Pipeline initialized successfully.",
@@ -438,11 +489,6 @@ self.addEventListener("message", async (e) => {
     sliceStart16k = 0;
     wasSpeech = false;
     silenceSince = 0;
-    vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
-      2,
-      1,
-      128,
-    ]);
 
     ringBuffer.reset();
     self.postMessage({ status: "capture_started" }); // Signal that capture/streaming has begun
@@ -555,11 +601,11 @@ self.addEventListener("message", async (e) => {
     sliceStart16k = 0;
     wasSpeech = false;
     silenceSince = 0;
-    vadState = new Tensor("float32", new Float32Array(2 * 1 * 128), [
-      2,
-      1,
-      128,
-    ]);
+    
+    // Clear pending VAD results
+    pendingVadResults.clear();
+    nextFrameId = 0;
+    
     if (preallocated16kBuffer) {
       preallocated16kBuffer.fill(0);
       preallocated16kBuffer = null;
@@ -580,8 +626,20 @@ self.addEventListener("message", async (e) => {
   }
 });
 
+// Cleanup function
+function cleanup() {
+  if (vadWorker) {
+    vadWorker.terminate();
+    vadWorker = null;
+    vadInitialized = false;
+  }
+  pendingVadResults.clear();
+  recording = false;
+}
+
 self.onerror = (event) => {
   console.error("[LocalWorker] Unhandled error in worker:", event);
+  cleanup();
   self.postMessage({
     status: "error",
     error: "An unexpected error occurred in the worker.",
@@ -590,6 +648,7 @@ self.onerror = (event) => {
 
 self.onunhandledrejection = (event) => {
   console.error("[LocalWorker] Unhandled promise rejection in worker:", event);
+  cleanup();
   self.postMessage({
     status: "error",
     error: "An unexpected promise rejection occurred in the worker.",
