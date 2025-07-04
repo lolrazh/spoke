@@ -116,3 +116,42 @@ export function isModelReadyMessage(
 ): msg is ModelReadyMessage {
   return msg.status === "asr_model_ready";
 }
+
+// VAD Worker Messages
+export interface VadInitMessage {
+  type: "vad_init";
+}
+
+export interface VadInitializedMessage {
+  type: "vad_initialized";
+  success: boolean;
+  error?: string;
+}
+
+export interface VadDetectMessage {
+  type: "vad_detect";
+  frameId: number;
+  audioFrame: Float32Array;
+}
+
+export interface VadResultMessage {
+  type: "vad_result";
+  frameId: number;
+  isSpeech: boolean;
+  probability: number;
+}
+
+export interface VadErrorMessage {
+  type: "vad_error";
+  frameId?: number;
+  error: string;
+}
+
+export type VadWorkerMessage = 
+  | VadInitMessage 
+  | VadDetectMessage;
+
+export type VadWorkerResponse = 
+  | VadInitializedMessage 
+  | VadResultMessage 
+  | VadErrorMessage;
