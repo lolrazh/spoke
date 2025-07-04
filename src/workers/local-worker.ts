@@ -420,14 +420,11 @@ self.addEventListener("message", async (e) => {
           graphOptimizationLevel: "all",
           enableCpuMemArena: true,
           executionMode: "parallel",
-          intraOpNumThreads: wasmConfig?.numThreads,
+          intraOpNumThreads: wasmConfig?.numThreads || navigator.hardwareConcurrency || 4,
         },
         device: device,
         dtype: dtypeConfig,
       });
-
-      // Initialize VAD worker in parallel with ASR
-      await initializeVadWorker();
 
       console.log(
         "[LocalWorker] ASR Streaming Pipeline initialized successfully.",
@@ -446,6 +443,17 @@ self.addEventListener("message", async (e) => {
     } finally {
       modelInitializationInProgress = false;
     }
+
+    // Initialize VAD worker independently (non-blocking for ASR)
+    // This runs after ASR is ready to avoid blocking ASR initialization
+    initializeVadWorker().catch((vadError) => {
+      console.warn(
+        "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
+        vadError,
+      );
+      console.warn("[LocalWorker] VAD detection will fail-open (treat all audio as speech)");
+    });
+
     return;
   }
 
