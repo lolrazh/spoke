@@ -7,8 +7,8 @@ import toggleOffUrl from "/assets/sonic-flow-toggle-off.wav?url";
 const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);
 
-audioOn.volume = 0.2;
-audioOff.volume = 0.1;
+audioOn.volume = 0.25;
+audioOff.volume = 0.2;
 
 // prep — reduce latency between .play() call and first sample
 [audioOn, audioOff].forEach((a) => {
@@ -24,5 +24,5 @@ function play(el: HTMLAudioElement) {
   el.play().catch(() => {});
 }
 
-export const playToggleOn = () => setTimeout(() => play(audioOn), 60);
+export const playToggleOn = () => setTimeout(() => play(audioOn), 25);
 export const playToggleOff = () => setTimeout(() => play(audioOff), 100);

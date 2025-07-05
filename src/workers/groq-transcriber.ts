@@ -77,33 +77,26 @@ export async function transcribeAudioWithGroq(
     }
 
     const workerReportedTimings = workerJsonResponse.timings || {};
-    const workerTotalDuration =
-      workerReportedTimings.worker_total_duration || 0;
+    const workerTotalDuration = workerReportedTimings.worker_total || 0;
 
-    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
-    const effectiveWorkerTotal =
-      workerTotalDuration > 0
-        ? workerTotalDuration
-        : (workerReportedTimings.worker_pcm_to_wav || 0) +
-          (workerReportedTimings.worker_stt_api_call || 0);
-
-    const main_net_exclusive_overhead = Math.max(
+    const edgeOverhead = Math.max(
       0,
-      main_fetch_gross_duration - effectiveWorkerTotal,
+      main_fetch_gross_duration - workerTotalDuration,
     );
 
-    const finalTimingsToReturn = {
-      main_net: main_net_exclusive_overhead,
-      worker_pcm_to_wav: workerReportedTimings.worker_pcm_to_wav,
-      worker_stt_api_call: workerReportedTimings.worker_stt_api_call, // Directly use the key from worker
+    const finalTimingsToReturn: Record<string, number> = {
+      edge_overhead: edgeOverhead,
     };
-    // Remove undefined pcm_to_wav if not applicable (worker might not send it if input was not PCM)
-    if (finalTimingsToReturn.worker_pcm_to_wav === undefined)
-      delete finalTimingsToReturn.worker_pcm_to_wav;
+
+    for (const [key, value] of Object.entries(workerReportedTimings)) {
+      if (typeof value === "number") {
+        finalTimingsToReturn[`worker_${key}`] = value;
+      }
+    }
 
     console.log(
-      "[GroqTranscriber-CFW] Processed timings. main_net_exclusive:",
-      main_net_exclusive_overhead,
+      "[GroqTranscriber-CFW] Processed timings. edge_overhead:",
+      edgeOverhead,
       "finalTimingsToReturn:",
       finalTimingsToReturn,
     );

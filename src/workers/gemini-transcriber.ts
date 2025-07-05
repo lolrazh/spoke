@@ -82,29 +82,26 @@ export async function transcribeAudioWithGemini(
     }
 
     const workerReportedTimings = workerJsonResponse.timings || {};
-    const workerTotalDuration =
-      workerReportedTimings.worker_total_duration || 0;
+    const workerTotalDuration = workerReportedTimings.worker_total || 0;
 
-    // Calculate effectiveWorkerTotal using the new worker_stt_api_call key
-    // Gemini path in worker does not have pcm_to_wav, so only stt_api_call contributes if worker_total_duration is missing.
-    const effectiveWorkerTotal =
-      workerTotalDuration > 0
-        ? workerTotalDuration
-        : workerReportedTimings.worker_stt_api_call || 0;
-
-    const main_net_exclusive_overhead = Math.max(
+    const edgeOverhead = Math.max(
       0,
-      main_fetch_gross_duration - effectiveWorkerTotal,
+      main_fetch_gross_duration - workerTotalDuration,
     );
 
-    const finalTimingsToReturn = {
-      main_net: main_net_exclusive_overhead,
-      worker_stt_api_call: workerReportedTimings.worker_stt_api_call, // Directly use the key from worker
+    const finalTimingsToReturn: Record<string, number> = {
+      edge_overhead: edgeOverhead,
     };
 
+    for (const [key, value] of Object.entries(workerReportedTimings)) {
+      if (typeof value === "number") {
+        finalTimingsToReturn[`worker_${key}`] = value;
+      }
+    }
+
     console.log(
-      "[GeminiTranscriber-CFW] Processed timings. main_net_exclusive:",
-      main_net_exclusive_overhead,
+      "[GeminiTranscriber-CFW] Processed timings. edge_overhead:",
+      edgeOverhead,
       "finalTimingsToReturn:",
       finalTimingsToReturn,
     );
