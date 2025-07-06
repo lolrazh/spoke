@@ -153,3 +153,12 @@ export type VadWorkerResponse =
   | VadInitializedMessage
   | VadResultMessage
   | VadErrorMessage;
+
+export interface TranscriptionResult {
+  text: string;
+  timings: Record<string, number>;
+}
+
+// =================================================================================================
+// >> MAIN-TO-WORKER MESSAGES
+// =================================================================================================

@@ -295,6 +295,13 @@ const createNotificationWindow = () => {
 ipcMain.handle(
   "insert-text-at-cursor",
   async (_event: Electron.IpcMainInvokeEvent, text: string) => {
+    if (!text) {
+      console.warn(
+        "[PasteHelper] Received empty text. Aborting insertion.",
+      );
+      return { success: false, error: "Cannot insert empty text." };
+    }
+
     try {
       console.log("=== TEXT INSERTION PROCESS START ===");
       console.log("Received text:", text);
@@ -675,7 +682,7 @@ ipcMain.handle(
         "[MainIPC] Audio buffer is empty or null for Groq transcription.",
       );
       return {
-        transcript: "",
+        text: "",
         error: "Audio buffer is empty.",
         timings: upstreamTimings || {},
       };
@@ -689,11 +696,11 @@ ipcMain.handle(
         `[MainIPC] Groq transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { transcript: text, timings: disjointTimingsFromHelper };
+      return { text, timings: disjointTimingsFromHelper };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-groq handler:", error);
       return {
-        transcript: "",
+        text: "",
         error:
           (error as Error).message ||
           "Groq transcription failed in main process.",
@@ -718,7 +725,7 @@ ipcMain.handle(
         "[MainIPC] Audio buffer is empty or null for Gemini transcription.",
       );
       return {
-        transcript: "",
+        text: "",
         error: "Audio buffer is empty.",
         timings: upstreamTimings || {},
       };
@@ -732,11 +739,11 @@ ipcMain.handle(
         `[MainIPC] Gemini transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { transcript: text, timings: disjointTimingsFromHelper };
+      return { text, timings: disjointTimingsFromHelper };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-gemini handler:", error);
       return {
-        transcript: "",
+        text: "",
         error:
           (error as Error).message ||
           "Gemini transcription failed in main process.",
