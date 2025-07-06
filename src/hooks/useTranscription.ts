@@ -753,6 +753,7 @@ export function useTranscription(): UseTranscriptionReturn {
           let transcript = "";
           let timingsFromMain: Record<string, number> = {};
 
+          mark("ipc_start");
           if (cloudEngine === "groq") {
             if (!window.electron?.transcribeGroq) {
               throw new Error(
@@ -769,45 +770,42 @@ export function useTranscription(): UseTranscriptionReturn {
               `[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`,
             );
 
-            mark("ipc_start");
-            const groqResult = await window.electron.transcribeGroq(
+            const result = await window.electron.transcribeGroq(
               pcmF32ArrayBuffer,
               [pcmF32ArrayBuffer],
-              ts, // Pass renderer ts object (contains drain_start, drain_end, trim_start, trim_end, ipc_start)
+              ts,
             );
-            mark("ipc_end");
-
-            transcript = groqResult.transcript;
-            timingsFromMain = groqResult.timings || {}; // { main_net, worker_pcm_to_wav, worker_stt_api_call }
-          } else {
-            // Gemini
-            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+            transcript = result.text;
+            timingsFromMain = result.timings || {};
+          } else if (cloudEngine === "gemini") {
             if (!window.electron?.transcribeGemini) {
               throw new Error(
                 "Gemini transcription service (window.electron.transcribeGemini) is not available.",
               );
             }
+            mark("wav_encode_start");
+            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_SAMPLE_RATE);
+            mark("wav_encode_end");
+
             console.log(
               `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
             );
-
-            mark("ipc_start");
-            const geminiFullResult = await window.electron.transcribeGemini(
+            const result = await window.electron.transcribeGemini(
               wavBuf,
               "audio/wav",
               [wavBuf],
-              ts, // Pass renderer ts object
+              ts,
             );
-            mark("ipc_end");
-            transcript = geminiFullResult.text;
-            timingsFromMain = geminiFullResult.timings || {}; // { main_net, worker_stt_api_call }
+            transcript = result.text;
+            timingsFromMain = result.timings || {};
           }
+          mark("ipc_end");
 
-          // --- TIMING CALCULATION & LOGGING (New Disjoint Logic) ---
-          const drain_duration = ts["drain_end"] - ts["drain_start"];
-          const trim_duration = ts["trim_end"] - ts["trim_start"];
+          // Calculate disjoint timings
+          const drain_duration = ts.drain_end - ts.drain_start;
+          const trim_duration = ts.trim_end - ts.trim_start;
           const ipc_full_round_trip_by_renderer =
-            ts["ipc_end"] - ts["ipc_start"];
+            ts.ipc_end - ts.ipc_start;
 
           // Sum of disjoint parts received from main process
           // Ensure all expected keys from timingsFromMain are numbers and sum them up
@@ -993,24 +991,23 @@ if (typeof window !== "undefined" && !window.electron) {
       audioBuffer: ArrayBuffer,
       transferList?: Transferable[],
       upstreamTimings?: Record<string, number>,
-    ): Promise<{ transcript: string; timings: Record<string, number> }> => {
+    ): Promise<{ text: string; timings: Record<string, number> }> => {
       console.warn(
         `[Mock Electron] transcribeGroq called with ArrayBuffer (length: ${audioBuffer.byteLength}). Upstream timings:`,
         upstreamTimings,
       );
-      // Simulate some main/worker timings for the mock
+      // const cloudEngine = 'groq'; // This would need to be available in this scope or passed
       const mockMainTimings = {
         main_pack: Math.random() * 10,
         main_to_worker: Math.random() * 50,
-        worker_pcm_to_wav: Math.random() * 5,
-        worker_groq_api: Math.random() * 500,
+        worker_groq_api: Math.random() * 600,
         worker_to_main: Math.random() * 50,
         main_to_renderer: Math.random() * 1,
       };
       return new Promise((resolve) =>
         setTimeout(() => {
           resolve({
-            transcript: "Mocked Groq transcript from window.electron mock.",
+            text: "Mocked Groq transcript from window.electron mock.",
             timings: mockMainTimings,
           });
         }, 500),

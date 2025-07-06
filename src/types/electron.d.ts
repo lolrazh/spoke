@@ -16,7 +16,7 @@ declare global {
         audioBuffer: ArrayBuffer,
         transferList?: Transferable[],
         upstreamTimings?: Record<string, number>,
-      ) => Promise<{ transcript: string; timings: Record<string, number> }>;
+      ) => Promise<{ text: string; timings: Record<string, number> }>;
       transcribeGemini: (
         buf: ArrayBuffer,
         mimeType: string,
