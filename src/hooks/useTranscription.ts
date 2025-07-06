@@ -754,7 +754,29 @@ export function useTranscription(): UseTranscriptionReturn {
           let timingsFromMain: Record<string, number> = {};
 
           mark("ipc_start");
-          if (cloudEngine === "groq") {
+          if (cloudEngine === "gemini") {
+            if (!window.electron?.transcribeGemini) {
+              throw new Error(
+                "Gemini transcription service (window.electron.transcribeGemini) is not available.",
+              );
+            }
+            mark("wav_encode_start");
+            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+            mark("wav_encode_end");
+
+            console.log(
+              `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
+            );
+            const result = await window.electron.transcribeGemini(
+              wavBuf,
+              "audio/wav",
+              [wavBuf],
+              ts,
+            );
+            transcript = result.text;
+            timingsFromMain = result.timings || {};
+          } else {
+            // Fallback to Groq
             if (!window.electron?.transcribeGroq) {
               throw new Error(
                 "Groq transcription service (window.electron.transcribeGroq) is not available.",
@@ -773,27 +795,6 @@ export function useTranscription(): UseTranscriptionReturn {
             const result = await window.electron.transcribeGroq(
               pcmF32ArrayBuffer,
               [pcmF32ArrayBuffer],
-              ts,
-            );
-            transcript = result.text;
-            timingsFromMain = result.timings || {};
-          } else if (cloudEngine === "gemini") {
-            if (!window.electron?.transcribeGemini) {
-              throw new Error(
-                "Gemini transcription service (window.electron.transcribeGemini) is not available.",
-              );
-            }
-            mark("wav_encode_start");
-            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_SAMPLE_RATE);
-            mark("wav_encode_end");
-
-            console.log(
-              `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
-            );
-            const result = await window.electron.transcribeGemini(
-              wavBuf,
-              "audio/wav",
-              [wavBuf],
               ts,
             );
             transcript = result.text;
