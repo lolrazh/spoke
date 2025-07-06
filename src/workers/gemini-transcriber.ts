@@ -38,9 +38,20 @@ export async function transcribeAudioWithGemini(
   try {
     const main_helper_fetch_start_time = performance.now();
 
-    // tiny client-side payload: inlineData JSON + base64 WAV
-    const wav = encodeWAV(new Float32Array(audioData), TARGET_SAMPLE_RATE);
-    const b64 = Buffer.from(wav).toString("base64");
+    // If caller already handed us a WAV, skip re-encoding.
+    let wavBuffer: ArrayBuffer;
+    if (mimeType === "audio/wav") {
+      wavBuffer = audioData; // already WAV
+    } else {
+      if (audioData.byteLength % 4 !== 0) {
+        throw new RangeError(
+          "PCM ArrayBuffer length must be a multiple of 4 bytes",
+        );
+      }
+      wavBuffer = encodeWAV(new Float32Array(audioData), TARGET_SAMPLE_RATE);
+    }
+
+    const b64 = Buffer.from(wavBuffer).toString("base64");
 
     const geminiJson = {
       contents: [
