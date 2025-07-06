@@ -26,6 +26,9 @@ export function encodeWAV(samples: Float32Array, sampleRate = 16_000): ArrayBuff
 
   // PCM payload
   const out = new DataView(buf, 44);
-  samples.forEach((s, i) => out.setInt16(i * 2, Math.max(-1, Math.min(1, s)) * 0x7fff, true));
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    out.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
   return buf;
 } 
