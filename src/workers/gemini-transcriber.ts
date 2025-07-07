@@ -6,11 +6,32 @@
 
 // The arrayBufferToBase64 helper is also not needed here anymore, as the worker handles it.
 
-import { performance } from "node:perf_hooks"; // ESM style import
+import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
 import { encodeWAV } from "../utils/wav";
 import { TARGET_SAMPLE_RATE } from "../config/audio";
-import { timedFetch, TimingInfo } from "../utils/timed-fetch";
+import got, { HTTPAlias } from "got";
+
+export interface GotTimingPhases {
+  wait?: number;
+  dns?: number;
+  tcp?: number;
+  tls?: number;
+  request?: number;
+  firstByte?: number;
+  download?: number;
+  total?: number;
+}
+export interface TimingInfo {
+  client_phases: GotTimingPhases;
+  client_protocol?: HTTPAlias;
+  server_rewrite_ms?: number;
+  server_request_body_read_ms?: number;
+  server_upstream_ttfb_ms?: number;
+  server_upstream_body_download_ms?: number;
+  server_worker_total_ms?: number;
+  edge_protocol?: string;
+}
 
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
@@ -22,14 +43,10 @@ import { timedFetch, TimingInfo } from "../utils/timed-fetch";
 export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
   mimeType: string,
-  prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.",
+  prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq."
 ): Promise<{ text: string; timings: TimingInfo }> {
-  // upstream Gemini endpoint lives under /gemini/…
   const workerUrl =
     "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent";
-
-  // API Key check is now done in the worker, not here.
-  // if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY missing'); // Removed
 
   if (audioData.byteLength === 0) {
     console.error("[GeminiTranscriber] Audio data (ArrayBuffer) is empty.");
@@ -37,16 +54,13 @@ export async function transcribeAudioWithGemini(
   }
 
   try {
-    const main_helper_fetch_start_time = performance.now();
-
-    // If caller already handed us a WAV, skip re-encoding.
     let wavBuffer: ArrayBuffer;
     if (mimeType === "audio/wav") {
-      wavBuffer = audioData; // already WAV
+      wavBuffer = audioData;
     } else {
       if (audioData.byteLength % 4 !== 0) {
         throw new RangeError(
-          "PCM ArrayBuffer length must be a multiple of 4 bytes",
+          "PCM ArrayBuffer length must be a multiple of 4 bytes"
         );
       }
       wavBuffer = encodeWAV(new Float32Array(audioData), TARGET_SAMPLE_RATE);
@@ -64,43 +78,74 @@ export async function transcribeAudioWithGemini(
       ],
     };
 
-    console.log(
-      `[GeminiTranscriber] Sending audio (${audioData.byteLength} bytes) to API.`,
-    );
-
-    const { response, timings } = await timedFetch(workerUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiJson),
+    const response = await got.post(workerUrl, {
+      json: geminiJson,
+      http2: true,
+      timings: true,
+      throwHttpErrors: false,
     });
 
     console.log(
-      `[GeminiTranscriber] API call completed in ${timings.total_duration_ms.toFixed(
-        2,
-      )} ms.`,
+      `[GeminiTranscriber] API call completed in ${response.timings.phases.total.toFixed(
+        2
+      )} ms.`
     );
 
-    if (!response.ok) {
-      const errorText = await response.text();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      const errorText = response.body;
       console.error(
-        `[GeminiTranscriber] Error from API: ${response.status} - ${errorText}`,
+        `[GeminiTranscriber] Error from API: ${response.statusCode} - ${errorText}`
       );
-      // Ensure the error thrown matches the expected structure if specific error handling is in place upstream
       throw new Error(
-        `Gemini transcription failed: ${response.status} - ${errorText}`,
+        `Gemini transcription failed: ${response.statusCode} - ${errorText}`
       );
     }
 
-    const result = await response.json();
+    const result = JSON.parse(response.body);
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    const timings: TimingInfo = {
+      client_phases: response.timings.phases,
+      client_protocol: response.httpVersion,
+      edge_protocol: response.headers["cf-edge-proto"] as string | undefined,
+    };
+
+    const serverTimingHeader = response.headers["server-timing"];
+    if (typeof serverTimingHeader === "string") {
+      serverTimingHeader.split(",").forEach((metric) => {
+        const parts = metric.trim().split(";");
+        const name = parts[0];
+        const durPart = parts.find((p) => p.startsWith("dur="));
+        if (durPart) {
+          const duration = parseFloat(durPart.split("=")[1]);
+          switch (name) {
+            case "rewrite":
+              timings.server_rewrite_ms = duration;
+              break;
+            case "request-body-read":
+              timings.server_request_body_read_ms = duration;
+              break;
+            case "upstream-ttfb":
+              timings.server_upstream_ttfb_ms = duration;
+              break;
+            case "upstream-body-download":
+              timings.server_upstream_body_download_ms = duration;
+              break;
+            case "worker-total":
+              timings.server_worker_total_ms = duration;
+              break;
+          }
+        }
+      });
+    }
 
     if (typeof text !== "string") {
       console.error(
         "[GeminiTranscriber] Unexpected response format from API (text missing):",
-        result,
+        result
       );
       throw new Error(
-        "Unexpected response format from Gemini service (text missing).",
+        "Unexpected response format from Gemini service (text missing)."
       );
     }
 
@@ -111,9 +156,8 @@ export async function transcribeAudioWithGemini(
   } catch (err: unknown) {
     console.error(
       "[GeminiTranscriber] Error during transcription:",
-      (err as Error)?.message || err,
+      (err as Error)?.message || err
     );
-    // Propagate the error; specific error construction can be done here if needed
     throw err;
   }
 }

@@ -14,7 +14,6 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
-import { TimingInfo } from "../utils/timed-fetch";
 
 // Define CloudEngine type first
 type CloudEngine = "groq" | "gemini";
@@ -764,60 +763,39 @@ export function useTranscription(): UseTranscriptionReturn {
             }
             mark("ipc_end");
 
-            const detailedTimings = timingsFromMain as unknown as TimingInfo;
+            // Loosely typed to handle timings from main process IPC
+            const detailedTimings = timingsFromMain as any;
+
+            const fmt = (n?: number) =>
+              n === undefined || n === null ? "N/A" : `${n.toFixed(2)} ms`;
 
             const rendererProcessing = {
-              "Audio Concat": `${(ts.concat_end - ts.concat_start).toFixed(
-                2,
-              )} ms`,
-              "Audio Trim": `${(ts.trim_end - ts.trim_start).toFixed(2)} ms`,
-              "IPC Roundtrip": `${(ts.ipc_end - ts.ipc_start).toFixed(2)} ms`,
+              "Audio Concat": fmt(ts.concat_end - ts.concat_start),
+              "Audio Trim": fmt(ts.trim_end - ts.trim_start),
+              "IPC Roundtrip": fmt(ts.ipc_end - ts.ipc_start),
             };
 
+            const clientPhases = detailedTimings.client_phases || {};
             const clientNetwork = {
-              Total: detailedTimings.total_duration_ms
-                ? `${detailedTimings.total_duration_ms.toFixed(2)} ms`
-                : "N/A",
+              Total: fmt(clientPhases.total),
               Protocol: detailedTimings.client_protocol || "unknown",
-              DNS: detailedTimings.dns_lookup_ms
-                ? `${detailedTimings.dns_lookup_ms.toFixed(2)} ms`
-                : "N/A",
-              TCP: detailedTimings.tcp_connect_ms
-                ? `${detailedTimings.tcp_connect_ms.toFixed(2)} ms`
-                : "N/A",
-              TLS: detailedTimings.tls_handshake_ms
-                ? `${detailedTimings.tls_handshake_ms.toFixed(2)} ms`
-                : "N/A",
-              TTFB: detailedTimings.time_to_first_byte_ms
-                ? `${detailedTimings.time_to_first_byte_ms.toFixed(2)} ms`
-                : "N/A",
-              Download: detailedTimings.content_download_ms
-                ? `${detailedTimings.content_download_ms.toFixed(2)} ms`
-                : "N/A",
+              DNS: fmt(clientPhases.dns),
+              TCP: fmt(clientPhases.tcp),
+              TLS: fmt(clientPhases.tls),
+              "Request (Upload)": fmt(clientPhases.request),
+              "TTFB (First Byte)": fmt(clientPhases.firstByte),
+              Download: fmt(clientPhases.download),
             };
 
             const serverProcessing = {
-              "Worker Total": detailedTimings.server_worker_total_ms
-                ? `${detailedTimings.server_worker_total_ms.toFixed(2)} ms`
-                : "N/A",
+              "Worker Total": fmt(detailedTimings.server_worker_total_ms),
               "Edge Protocol": detailedTimings.edge_protocol || "unknown",
-              Rewrite: detailedTimings.server_rewrite_ms
-                ? `${detailedTimings.server_rewrite_ms.toFixed(2)} ms`
-                : "N/A",
-              "Body Read": detailedTimings.server_request_body_read_ms
-                ? `${detailedTimings.server_request_body_read_ms.toFixed(
-                    2,
-                  )} ms`
-                : "N/A",
-              "Upstream TTFB": detailedTimings.server_upstream_ttfb_ms
-                ? `${detailedTimings.server_upstream_ttfb_ms.toFixed(2)} ms`
-                : "N/A",
-              "Upstream Download":
+              Rewrite: fmt(detailedTimings.server_rewrite_ms),
+              "Body Read": fmt(detailedTimings.server_request_body_read_ms),
+              "Upstream TTFB": fmt(detailedTimings.server_upstream_ttfb_ms),
+              "Upstream Download": fmt(
                 detailedTimings.server_upstream_body_download_ms
-                  ? `${detailedTimings.server_upstream_body_download_ms.toFixed(
-                      2,
-                    )} ms`
-                  : "N/A",
+              ),
             };
 
             console.log(
