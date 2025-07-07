@@ -78,51 +78,62 @@ export async function transcribeAudioWithGemini(
       ],
     };
 
-    const promise = got.post(workerUrl, {
-      json: geminiJson,
-      http2: true,
-      throwHttpErrors: false,
-    });
-
     let timings: TimingInfo = { client_phases: {} };
 
-    // Capture timings from the 'response' event
-    promise.on("response", (response) => {
-      timings.client_phases = response.timings.phases;
-      timings.client_protocol = response.httpVersion;
-      timings.edge_protocol = response.headers["cf-edge-proto"] as
-        | string
-        | undefined;
+    const promise = new Promise<import("got").Response<string>>(
+      (resolve, reject) => {
+        const req = got.post(workerUrl, {
+          json: geminiJson,
+          http2: true,
+          throwHttpErrors: false,
+        });
 
-      const serverTimingHeader = response.headers["server-timing"];
-      if (typeof serverTimingHeader === "string") {
-        serverTimingHeader.split(",").forEach((metric) => {
-          const parts = metric.trim().split(";");
-          const name = parts[0];
-          const durPart = parts.find((p) => p.startsWith("dur="));
-          if (durPart) {
-            const duration = parseFloat(durPart.split("=")[1]);
-            switch (name) {
-              case "rewrite":
-                timings.server_rewrite_ms = duration;
-                break;
-              case "request-body-read":
-                timings.server_request_body_read_ms = duration;
-                break;
-              case "upstream-ttfb":
-                timings.server_upstream_ttfb_ms = duration;
-                break;
-              case "upstream-body-download":
-                timings.server_upstream_body_download_ms = duration;
-                break;
-              case "worker-total":
-                timings.server_worker_total_ms = duration;
-                break;
-            }
+        req.on("response", (response) => {
+          timings.client_phases = response.timings.phases;
+          timings.client_protocol = response.httpVersion;
+          timings.edge_protocol = response.headers["cf-edge-proto"] as
+            | string
+            | undefined;
+
+          const serverTimingHeader = response.headers["server-timing"];
+          if (typeof serverTimingHeader === "string") {
+            serverTimingHeader.split(",").forEach((metric) => {
+              const parts = metric.trim().split(";");
+              const name = parts[0];
+              const durPart = parts.find((p) => p.startsWith("dur="));
+              if (durPart) {
+                const value = durPart.split("=")[1];
+                if (value) {
+                  const duration = parseFloat(value);
+                  switch (name) {
+                    case "rewrite":
+                      timings.server_rewrite_ms = duration;
+                      break;
+                    case "request-body-read":
+                      timings.server_request_body_read_ms = duration;
+                      break;
+                    case "upstream-ttfb":
+                      timings.server_upstream_ttfb_ms = duration;
+                      break;
+                    case "upstream-body-download":
+                      timings.server_upstream_body_download_ms = duration;
+                      break;
+                    case "worker-total":
+                      timings.server_worker_total_ms = duration;
+                      break;
+                  }
+                }
+              }
+            });
           }
         });
+
+        req.then(
+          (response) => resolve(response as import("got").Response<string>),
+          reject
+        );
       }
-    });
+    );
 
     const response = await promise;
 
