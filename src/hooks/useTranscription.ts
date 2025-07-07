@@ -137,6 +137,55 @@ function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
   return buffer;
 }
 
+type PipelineStage = { name: string; ms: number };
+
+function collectPipeline(
+  audio: { concat: number; trim: number },
+  ipc: number,
+  client: any, // from got.Response['timings']['phases']
+  worker: any // from our custom TimingInfo
+): PipelineStage[] {
+  const s: PipelineStage[] = [];
+
+  s.push({ name: "audio-concat", ms: audio.concat });
+  s.push({ name: "audio-trim", ms: audio.trim });
+  s.push({ name: "ipc-renderer→main", ms: ipc });
+
+  // client (Node) phases – guard for undefined on subsequent H2 requests
+  const c = client || {};
+  if (c.dns != null) s.push({ name: "dns", ms: c.dns });
+  if (c.tcp != null) s.push({ name: "tcp", ms: c.tcp });
+  if (c.tls != null) s.push({ name: "tls", ms: c.tls });
+  if (c.request != null) s.push({ name: "upload", ms: c.request });
+  if (c.firstByte != null) s.push({ name: "ttfb", ms: c.firstByte });
+  if (c.download != null) s.push({ name: "download", ms: c.download });
+
+  // server timing coming back from Worker
+  const w = worker || {};
+  const rewrite = w.server_rewrite_ms || 0;
+  const bodyRead = w.server_request_body_read_ms || 0;
+  const upstreamTtfb = w.server_upstream_ttfb_ms || 0;
+  const upstreamDownload = w.server_upstream_body_download_ms || 0;
+  const workerTotal = w.server_worker_total_ms || 0;
+
+  if (w.server_rewrite_ms) s.push({ name: "cf-rewrite", ms: rewrite });
+  if (w.server_request_body_read_ms)
+    s.push({ name: "cf-body-read", ms: bodyRead });
+  if (w.server_upstream_ttfb_ms)
+    s.push({ name: "upstream-ttfb", ms: upstreamTtfb });
+  if (w.server_upstream_body_download_ms)
+    s.push({ name: "upstream-download", ms: upstreamDownload });
+
+  // Calculate misc worker time
+  const workerMisc =
+    workerTotal - (rewrite + bodyRead + upstreamTtfb + upstreamDownload);
+  if (workerMisc > 0.01) {
+    s.push({ name: "worker-misc", ms: workerMisc });
+  }
+
+  return s;
+}
+
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
@@ -766,51 +815,24 @@ export function useTranscription(): UseTranscriptionReturn {
             // Loosely typed to handle timings from main process IPC
             const detailedTimings = timingsFromMain as any;
 
-            const fmt = (n?: number) =>
-              n === undefined || n === null ? "N/A" : `${n.toFixed(2)} ms`;
-
-            const rendererProcessing = {
-              "Audio Concat": fmt(ts.concat_end - ts.concat_start),
-              "Audio Trim": fmt(ts.trim_end - ts.trim_start),
-              "IPC Roundtrip": fmt(ts.ipc_end - ts.ipc_start),
-            };
-
-            const clientPhases = detailedTimings.client_phases || {};
-            const clientNetwork = {
-              Total: fmt(clientPhases.total),
-              Protocol: detailedTimings.client_protocol || "unknown",
-              DNS: fmt(clientPhases.dns),
-              TCP: fmt(clientPhases.tcp),
-              TLS: fmt(clientPhases.tls),
-              "Request (Upload)": fmt(clientPhases.request),
-              "TTFB (First Byte)": fmt(clientPhases.firstByte),
-              Download: fmt(clientPhases.download),
-            };
-
-            const serverProcessing = {
-              "Worker Total": fmt(detailedTimings.server_worker_total_ms),
-              "Edge Protocol": detailedTimings.edge_protocol || "unknown",
-              Rewrite: fmt(detailedTimings.server_rewrite_ms),
-              "Body Read": fmt(detailedTimings.server_request_body_read_ms),
-              "Upstream TTFB": fmt(detailedTimings.server_upstream_ttfb_ms),
-              "Upstream Download": fmt(
-                detailedTimings.server_upstream_body_download_ms
-              ),
-            };
+            const pipelineStages = collectPipeline(
+              {
+                concat: ts.concat_end - ts.concat_start,
+                trim: ts.trim_end - ts.trim_start,
+              },
+              ts.ipc_end - ts.ipc_start,
+              detailedTimings.client_phases,
+              detailedTimings
+            );
 
             console.log(
-              `[useTranscription] Timings for ${cloudEngine}:`,
+              `[useTranscription] Timings for ${cloudEngine}:`
             );
-            console.log("--- Renderer Processing ---");
-            console.table(rendererProcessing);
-            console.log("--- Client Network ---");
-            console.table(clientNetwork);
-            console.log("--- Cloudflare Worker ---");
-            console.table(serverProcessing);
+            console.table(pipelineStages);
 
             if (profilingStartTimeRef.current) {
               console.log(
-                `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
+                `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`
               );
               profilingStartTimeRef.current = null;
             }
