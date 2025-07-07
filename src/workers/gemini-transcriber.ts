@@ -24,7 +24,7 @@ export interface GotTimingPhases {
 }
 export interface TimingInfo {
   client_phases: GotTimingPhases;
-  client_protocol?: HTTPAlias;
+  client_protocol?: string;
   server_rewrite_ms?: number;
   server_request_body_read_ms?: number;
   server_upstream_ttfb_ms?: number;
@@ -78,17 +78,58 @@ export async function transcribeAudioWithGemini(
       ],
     };
 
-    const response = await got.post(workerUrl, {
+    const promise = got.post(workerUrl, {
       json: geminiJson,
       http2: true,
-      timings: true,
       throwHttpErrors: false,
     });
 
+    let timings: TimingInfo = { client_phases: {} };
+
+    // Capture timings from the 'response' event
+    promise.on("response", (response) => {
+      timings.client_phases = response.timings.phases;
+      timings.client_protocol = response.httpVersion;
+      timings.edge_protocol = response.headers["cf-edge-proto"] as
+        | string
+        | undefined;
+
+      const serverTimingHeader = response.headers["server-timing"];
+      if (typeof serverTimingHeader === "string") {
+        serverTimingHeader.split(",").forEach((metric) => {
+          const parts = metric.trim().split(";");
+          const name = parts[0];
+          const durPart = parts.find((p) => p.startsWith("dur="));
+          if (durPart) {
+            const duration = parseFloat(durPart.split("=")[1]);
+            switch (name) {
+              case "rewrite":
+                timings.server_rewrite_ms = duration;
+                break;
+              case "request-body-read":
+                timings.server_request_body_read_ms = duration;
+                break;
+              case "upstream-ttfb":
+                timings.server_upstream_ttfb_ms = duration;
+                break;
+              case "upstream-body-download":
+                timings.server_upstream_body_download_ms = duration;
+                break;
+              case "worker-total":
+                timings.server_worker_total_ms = duration;
+                break;
+            }
+          }
+        });
+      }
+    });
+
+    const response = await promise;
+
     console.log(
-      `[GeminiTranscriber] API call completed in ${response.timings.phases.total.toFixed(
-        2
-      )} ms.`
+      `[GeminiTranscriber] API call completed in ${
+        timings.client_phases.total?.toFixed(2) ?? "N/A"
+      } ms.`
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -103,41 +144,6 @@ export async function transcribeAudioWithGemini(
 
     const result = JSON.parse(response.body);
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    const timings: TimingInfo = {
-      client_phases: response.timings.phases,
-      client_protocol: response.httpVersion,
-      edge_protocol: response.headers["cf-edge-proto"] as string | undefined,
-    };
-
-    const serverTimingHeader = response.headers["server-timing"];
-    if (typeof serverTimingHeader === "string") {
-      serverTimingHeader.split(",").forEach((metric) => {
-        const parts = metric.trim().split(";");
-        const name = parts[0];
-        const durPart = parts.find((p) => p.startsWith("dur="));
-        if (durPart) {
-          const duration = parseFloat(durPart.split("=")[1]);
-          switch (name) {
-            case "rewrite":
-              timings.server_rewrite_ms = duration;
-              break;
-            case "request-body-read":
-              timings.server_request_body_read_ms = duration;
-              break;
-            case "upstream-ttfb":
-              timings.server_upstream_ttfb_ms = duration;
-              break;
-            case "upstream-body-download":
-              timings.server_upstream_body_download_ms = duration;
-              break;
-            case "worker-total":
-              timings.server_worker_total_ms = duration;
-              break;
-          }
-        }
-      });
-    }
 
     if (typeof text !== "string") {
       console.error(
