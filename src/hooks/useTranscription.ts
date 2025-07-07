@@ -141,14 +141,8 @@ type PipelineStage = { name: string; ms: number };
 
 function collectPipeline(
   audio: { concat: number; trim: number },
-  ipcTimings: {
-    ipc_to_main?: number;
-    main_total?: number;
-    main_done?: number;
-    ipc_to_render?: number;
-  },
-  client: any, // from got.Response['timings']['phases']
-  worker: any // from our custom TimingInfo
+  roundTrip: number,
+  timingsFromMain: any
 ): PipelineStage[] {
   const s: PipelineStage[] = [];
 
@@ -156,55 +150,38 @@ function collectPipeline(
   s.push({ name: "audio-trim", ms: audio.trim });
 
   // IPC breakdown
-  if (ipcTimings.ipc_to_main != null)
-    s.push({ name: "ipc-to-main", ms: ipcTimings.ipc_to_main });
-  if (ipcTimings.main_total != null)
-    s.push({ name: "main-process", ms: ipcTimings.main_total });
-  if (ipcTimings.ipc_to_render != null)
-    s.push({ name: "ipc-to-render", ms: ipcTimings.ipc_to_render });
+  const ipcToMain = timingsFromMain.ipc_to_main || 0;
+  const mainProcess = timingsFromMain.main_total || 0;
+  // This is now a valid calculation since all timings are durations
+  // relative to the start of the renderer's measurement.
+  const ipcToRender = roundTrip - ipcToMain;
+  // We use ipcToMain here because it includes the main_process time in its measurement.
+  // The actual time to return is the remainder.
 
-  // client (Node) phases – guard for undefined on subsequent H2 requests
-  const c = client || {};
-  if (c.dns != null) s.push({ name: "dns", ms: c.dns });
-  if (c.tcp != null) s.push({ name: "tcp", ms: c.tcp });
-  if (c.tls != null) s.push({ name: "tls", ms: c.tls });
-  if (c.request != null) s.push({ name: "upload", ms: c.request });
-  if (c.firstByte != null) s.push({ name: "ttfb", ms: c.firstByte });
-  if (c.download != null) s.push({ name: "download", ms: c.download });
+  s.push({ name: "ipc-to-main", ms: ipcToMain - mainProcess });
+  s.push({ name: "main-process-total", ms: mainProcess });
 
-  // server timing coming back from Worker
-  const w = worker || {};
-  const edgeIn = w.server_edge_in_ms || 0;
-  const workerCore = w.server_worker_core_ms || 0;
-  const rewrite = w.server_rewrite_ms || 0;
-  const bodyRead = w.server_request_body_read_ms || 0;
-  const upstreamTtfb = w.server_upstream_ttfb_ms || 0;
-  const upstreamDownload = w.server_upstream_body_download_ms || 0;
-  const workerTotal = w.server_worker_total_ms || 0;
+  // Client network phases from got
+  const client = timingsFromMain.client_phases || {};
+  const clientTtfb = client.firstByte || 0;
+  const upstreamTtfb = timingsFromMain.server_upstream_ttfb_ms || 0;
+  const edgeTravel = clientTtfb > upstreamTtfb ? clientTtfb - upstreamTtfb : 0;
 
-  if (w.server_edge_in_ms) s.push({ name: "cf-edge-in", ms: edgeIn });
-  if (w.server_worker_core_ms)
-    s.push({ name: "cf-worker-core", ms: workerCore });
-  if (w.server_rewrite_ms) s.push({ name: "cf-rewrite", ms: rewrite });
-  if (w.server_request_body_read_ms)
-    s.push({ name: "cf-body-read", ms: bodyRead });
-  if (w.server_upstream_ttfb_ms)
-    s.push({ name: "upstream-ttfb", ms: upstreamTtfb });
-  if (w.server_upstream_body_download_ms)
-    s.push({ name: "upstream-download", ms: upstreamDownload });
+  if (client.request) s.push({ name: "main-upload", ms: client.request });
+  if (edgeTravel) s.push({ name: "edge-travel", ms: edgeTravel });
 
-  // Calculate misc worker time
-  const workerMisc =
-    workerTotal -
-    (edgeIn +
-      workerCore +
-      rewrite +
-      bodyRead +
-      upstreamTtfb +
-      upstreamDownload);
-  if (workerMisc > 0.01) {
-    s.push({ name: "worker-misc", ms: workerMisc });
-  }
+  // Worker phases
+  const workerTotal = timingsFromMain.server_worker_total_ms || 0;
+  if (workerTotal) s.push({ name: "worker-total", ms: workerTotal });
+
+  if (upstreamTtfb) s.push({ name: "upstream-ttfb", ms: upstreamTtfb });
+  if (client.download) s.push({ name: "download", ms: client.download });
+
+  if (ipcToRender > 0) s.push({ name: "ipc-to-render", ms: ipcToRender });
+
+  // Calculate and add the total
+  const total = s.reduce((acc, stage) => acc + stage.ms, 0);
+  s.push({ name: "total", ms: total });
 
   return s;
 }
@@ -835,26 +812,17 @@ export function useTranscription(): UseTranscriptionReturn {
             }
             mark("ipc_end");
 
+            const roundTrip = performance.now() - ts.ipc_start;
+
             // Loosely typed to handle timings from main process IPC
             const detailedTimings = timingsFromMain as any;
-
-            // Calculate the final part of the IPC journey
-            const ipc_to_render = detailedTimings.main_done
-              ? ts.ipc_end - detailedTimings.main_done
-              : undefined;
 
             const pipelineStages = collectPipeline(
               {
                 concat: ts.concat_end - ts.concat_start,
                 trim: ts.trim_end - ts.trim_start,
               },
-              {
-                ipc_to_main: detailedTimings.ipc_to_main,
-                main_total: detailedTimings.main_total,
-                main_done: detailedTimings.main_done,
-                ipc_to_render: ipc_to_render,
-              },
-              detailedTimings.client_phases,
+              roundTrip,
               detailedTimings
             );
 

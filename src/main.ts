@@ -689,7 +689,6 @@ ipcMain.handle(
         timings: {
           ...upstreamTimings,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     }
@@ -708,7 +707,6 @@ ipcMain.handle(
         timings: {
           ...disjointTimingsFromHelper,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     } catch (error: unknown) {
@@ -722,7 +720,6 @@ ipcMain.handle(
         timings: {
           ...upstreamTimings,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     }
@@ -751,7 +748,6 @@ ipcMain.handle(
         timings: {
           ...upstreamTimings,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     }
@@ -770,7 +766,6 @@ ipcMain.handle(
         timings: {
           ...disjointTimingsFromHelper,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     } catch (error: unknown) {
@@ -784,7 +779,6 @@ ipcMain.handle(
         timings: {
           ...upstreamTimings,
           main_total: t1 - t0,
-          main_done: t1,
         },
       };
     }
