@@ -142,26 +142,29 @@ type PipelineStage = { name: string; ms: number };
 function collectPipeline(
   audio: { concat: number; trim: number },
   roundTrip: number,
-  timingsFromMain: any
+  timingsFromMain: any,
 ): PipelineStage[] {
   const s: PipelineStage[] = [];
 
   s.push({ name: "audio-concat", ms: audio.concat });
   s.push({ name: "audio-trim", ms: audio.trim });
 
-  // IPC breakdown
-  const ipcToMain = timingsFromMain.ipc_to_main || 0;
+  // The total time spent in the main process, including its own async tasks like network calls.
   const mainProcess = timingsFromMain.main_total || 0;
-  // This is now a valid calculation since all timings are durations
-  // relative to the start of the renderer's measurement.
-  const ipcToRender = roundTrip - ipcToMain;
-  // We use ipcToMain here because it includes the main_process time in its measurement.
-  // The actual time to return is the remainder.
 
-  s.push({ name: "ipc-to-main", ms: ipcToMain - mainProcess });
+  // The total IPC time is the roundTrip minus the time spent working in the main process.
+  // This can only be negative if there is significant clock skew or measurement error.
+  const totalIpcTime = Math.max(0, roundTrip - mainProcess);
+
+  // We cannot measure the one-way IPC latency with a single `invoke` call.
+  // As a reasonable estimate, we assume the journey to and from main is symmetric.
+  const ipcToMain = totalIpcTime / 2;
+  const ipcToRender = totalIpcTime / 2;
+
+  s.push({ name: "ipc-to-main", ms: ipcToMain });
   s.push({ name: "main-process-total", ms: mainProcess });
 
-  // Client network phases from got
+  // Client network phases from got (these are sub-timings within main-process-total)
   const client = timingsFromMain.client_phases || {};
   const clientTtfb = client.firstByte || 0;
   const upstreamTtfb = timingsFromMain.server_upstream_ttfb_ms || 0;
@@ -170,16 +173,16 @@ function collectPipeline(
   if (client.request) s.push({ name: "main-upload", ms: client.request });
   if (edgeTravel) s.push({ name: "edge-travel", ms: edgeTravel });
 
-  // Worker phases
+  // Worker phases (also sub-timings within main-process-total)
   const workerTotal = timingsFromMain.server_worker_total_ms || 0;
   if (workerTotal) s.push({ name: "worker-total", ms: workerTotal });
 
   if (upstreamTtfb) s.push({ name: "upstream-ttfb", ms: upstreamTtfb });
   if (client.download) s.push({ name: "download", ms: client.download });
 
-  if (ipcToRender > 0) s.push({ name: "ipc-to-render", ms: ipcToRender });
+  s.push({ name: "ipc-to-render", ms: ipcToRender });
 
-  // Calculate and add the total
+  // Calculate and add the total for verification.
   const total = s.reduce((acc, stage) => acc + stage.ms, 0);
   s.push({ name: "total", ms: total });
 
