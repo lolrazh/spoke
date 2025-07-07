@@ -143,6 +143,7 @@ function collectPipeline(
   audio: { concat: number; trim: number },
   roundTrip: number,
   timingsFromMain: any,
+  measuredTotal: number,
 ): PipelineStage[] {
   const s: PipelineStage[] = [];
 
@@ -182,9 +183,22 @@ function collectPipeline(
 
   s.push({ name: "ipc-to-render", ms: ipcToRender });
 
-  // Calculate and add the total for verification.
-  const total = s.reduce((acc, stage) => acc + stage.ms, 0);
-  s.push({ name: "total", ms: total });
+  // The sum of the identified parts.
+  const sumOfParts =
+    audio.concat + audio.trim + ipcToMain + mainProcess + ipcToRender;
+
+  // The unaccounted time is the difference between the separately measured total
+  // and the sum of the parts we've identified. This is great for debugging.
+  const unaccounted = measuredTotal - sumOfParts;
+  if (unaccounted > 1) {
+    s.push({ name: "unaccounted-renderer", ms: unaccounted });
+  }
+
+  // The sum of the identified parts for verification.
+  s.push({ name: "total-calculated", ms: sumOfParts });
+
+  // The actual measured wall-clock time.
+  s.push({ name: "total-measured", ms: measuredTotal });
 
   return s;
 }
@@ -718,6 +732,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
       (async () => {
         setProcessing(true);
+        const totalProcessingStart = performance.now();
         // --- TIMING START ---
         const ts: Record<string, number> = {};
         const mark = (label: string) => (ts[label] = performance.now());
@@ -815,7 +830,8 @@ export function useTranscription(): UseTranscriptionReturn {
             }
             mark("ipc_end");
 
-            const roundTrip = performance.now() - ts.ipc_start;
+            const roundTrip = ts.ipc_end - ts.ipc_start;
+            const measuredTotal = performance.now() - totalProcessingStart;
 
             // Loosely typed to handle timings from main process IPC
             const detailedTimings = timingsFromMain as any;
@@ -826,7 +842,8 @@ export function useTranscription(): UseTranscriptionReturn {
                 trim: ts.trim_end - ts.trim_start,
               },
               roundTrip,
-              detailedTimings
+              detailedTimings,
+              measuredTotal,
             );
 
             console.log(
