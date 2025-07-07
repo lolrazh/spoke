@@ -677,14 +677,20 @@ ipcMain.handle(
     upstreamTimings?: Record<string, number>,
   ) => {
     console.log("[MainIPC] Received transcribe-groq request.");
+    const t0 = performance.now();
     if (!audioBuffer || audioBuffer.byteLength === 0) {
       console.error(
         "[MainIPC] Audio buffer is empty or null for Groq transcription.",
       );
+      const t1 = performance.now();
       return {
         text: "",
         error: "Audio buffer is empty.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
       };
     }
 
@@ -692,19 +698,32 @@ ipcMain.handle(
       const { text, timings: disjointTimingsFromHelper } =
         await transcribeAudioWithGroq(audioBuffer);
 
+      const t1 = performance.now();
       console.log(
         `[MainIPC] Groq transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { text, timings: disjointTimingsFromHelper };
+      return {
+        text,
+        timings: {
+          ...disjointTimingsFromHelper,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
+      };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-groq handler:", error);
+      const t1 = performance.now();
       return {
         text: "",
         error:
           (error as Error).message ||
           "Groq transcription failed in main process.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
       };
     }
   },
@@ -720,14 +739,20 @@ ipcMain.handle(
     upstreamTimings?: Record<string, number>,
   ) => {
     console.log("[MainIPC] Received transcribe-gemini request.");
+    const t0 = performance.now();
     if (!arrayBuffer || !arrayBuffer.byteLength) {
       console.error(
         "[MainIPC] Audio buffer is empty or null for Gemini transcription.",
       );
+      const t1 = performance.now();
       return {
         text: "",
         error: "Audio buffer is empty.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
       };
     }
 
@@ -735,19 +760,32 @@ ipcMain.handle(
       const { text, timings: disjointTimingsFromHelper } =
         await transcribeAudioWithGemini(arrayBuffer, mimeType);
 
+      const t1 = performance.now();
       console.log(
         `[MainIPC] Gemini transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { text, timings: disjointTimingsFromHelper };
+      return {
+        text,
+        timings: {
+          ...disjointTimingsFromHelper,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
+      };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-gemini handler:", error);
+      const t1 = performance.now();
       return {
         text: "",
         error:
           (error as Error).message ||
           "Gemini transcription failed in main process.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+          main_done: t1,
+        },
       };
     }
   },

@@ -1,6 +1,6 @@
 // A generic handler to add timing and proxy the request
 async function handleRequest(req, env, target) {
-  const marks = { worker_start: performance.now() };
+  const marks = { 'edge-to-worker-in': performance.now() };
   const mark = (name) => (marks[name] = performance.now());
 
   const url = new URL(req.url);
@@ -41,8 +41,14 @@ async function handleRequest(req, env, target) {
   mark('upstream-body-received');
 
   // Build Server-Timing header
+  const worker_core_processing_duration =
+    marks['upstream-fetch-start'] - marks['rewrite'];
+
   const serverTimings = [
-    `rewrite;dur=${(marks['rewrite'] - marks['worker_start']).toFixed(2)}`,
+    `edge-in;dur=${(marks['rewrite'] - marks['edge-to-worker-in']).toFixed(
+      2
+    )}`,
+    `worker-core;dur=${worker_core_processing_duration.toFixed(2)}`,
     `request-body-read;dur=${(
       marks['request-body-read'] - marks['rewrite']
     ).toFixed(2)}`,
@@ -51,9 +57,6 @@ async function handleRequest(req, env, target) {
     ).toFixed(2)}`,
     `upstream-body-download;dur=${(
       marks['upstream-body-received'] - marks['upstream-headers-received']
-    ).toFixed(2)}`,
-    `worker-total;dur=${(
-      marks['upstream-body-received'] - marks['worker_start']
     ).toFixed(2)}`,
   ];
 
@@ -77,6 +80,13 @@ async function handleRequest(req, env, target) {
       exposeHeaders.join(', ')
     );
   }
+
+  mark('worker-to-edge-out');
+  const worker_total_duration =
+    marks['worker-to-edge-out'] - marks['edge-to-worker-in'];
+  serverTimings.push(`worker-total;dur=${worker_total_duration.toFixed(2)}`);
+  // Update the header with the final total duration
+  responseHeaders.set('Server-Timing', serverTimings.join(', '));
 
   return new Response(upstreamBody, {
     status: upstreamResponse.status,

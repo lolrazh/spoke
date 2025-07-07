@@ -141,7 +141,12 @@ type PipelineStage = { name: string; ms: number };
 
 function collectPipeline(
   audio: { concat: number; trim: number },
-  ipc: number,
+  ipcTimings: {
+    ipc_to_main?: number;
+    main_total?: number;
+    main_done?: number;
+    ipc_to_render?: number;
+  },
   client: any, // from got.Response['timings']['phases']
   worker: any // from our custom TimingInfo
 ): PipelineStage[] {
@@ -149,7 +154,14 @@ function collectPipeline(
 
   s.push({ name: "audio-concat", ms: audio.concat });
   s.push({ name: "audio-trim", ms: audio.trim });
-  s.push({ name: "ipc-renderer→main", ms: ipc });
+
+  // IPC breakdown
+  if (ipcTimings.ipc_to_main != null)
+    s.push({ name: "ipc-to-main", ms: ipcTimings.ipc_to_main });
+  if (ipcTimings.main_total != null)
+    s.push({ name: "main-process", ms: ipcTimings.main_total });
+  if (ipcTimings.ipc_to_render != null)
+    s.push({ name: "ipc-to-render", ms: ipcTimings.ipc_to_render });
 
   // client (Node) phases – guard for undefined on subsequent H2 requests
   const c = client || {};
@@ -162,12 +174,17 @@ function collectPipeline(
 
   // server timing coming back from Worker
   const w = worker || {};
+  const edgeIn = w.server_edge_in_ms || 0;
+  const workerCore = w.server_worker_core_ms || 0;
   const rewrite = w.server_rewrite_ms || 0;
   const bodyRead = w.server_request_body_read_ms || 0;
   const upstreamTtfb = w.server_upstream_ttfb_ms || 0;
   const upstreamDownload = w.server_upstream_body_download_ms || 0;
   const workerTotal = w.server_worker_total_ms || 0;
 
+  if (w.server_edge_in_ms) s.push({ name: "cf-edge-in", ms: edgeIn });
+  if (w.server_worker_core_ms)
+    s.push({ name: "cf-worker-core", ms: workerCore });
   if (w.server_rewrite_ms) s.push({ name: "cf-rewrite", ms: rewrite });
   if (w.server_request_body_read_ms)
     s.push({ name: "cf-body-read", ms: bodyRead });
@@ -178,7 +195,13 @@ function collectPipeline(
 
   // Calculate misc worker time
   const workerMisc =
-    workerTotal - (rewrite + bodyRead + upstreamTtfb + upstreamDownload);
+    workerTotal -
+    (edgeIn +
+      workerCore +
+      rewrite +
+      bodyRead +
+      upstreamTtfb +
+      upstreamDownload);
   if (workerMisc > 0.01) {
     s.push({ name: "worker-misc", ms: workerMisc });
   }
@@ -815,12 +838,22 @@ export function useTranscription(): UseTranscriptionReturn {
             // Loosely typed to handle timings from main process IPC
             const detailedTimings = timingsFromMain as any;
 
+            // Calculate the final part of the IPC journey
+            const ipc_to_render = detailedTimings.main_done
+              ? ts.ipc_end - detailedTimings.main_done
+              : undefined;
+
             const pipelineStages = collectPipeline(
               {
                 concat: ts.concat_end - ts.concat_start,
                 trim: ts.trim_end - ts.trim_start,
               },
-              ts.ipc_end - ts.ipc_start,
+              {
+                ipc_to_main: detailedTimings.ipc_to_main,
+                main_total: detailedTimings.main_total,
+                main_done: detailedTimings.main_done,
+                ipc_to_render: ipc_to_render,
+              },
               detailedTimings.client_phases,
               detailedTimings
             );
