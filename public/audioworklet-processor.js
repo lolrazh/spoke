@@ -18,37 +18,43 @@ if (typeof AudioWorkletProcessor === "undefined") {
  * and writes them into a RingBuffer residing in a SharedArrayBuffer.
  */
 class CaptureProcessor extends AudioWorkletProcessor {
-  ringBuffer = null; // Use instance property instead of private field for JS
+  ringBuffer = null; // For local mode (SAB)
+  frames = []; // For cloud mode (in-memory)
+  isCloudMode = false;
 
   constructor(options) {
-    // Remove TS parameter type
     super(options);
 
-    const processorOptions = options?.processorOptions; // Easier access
+    const processorOptions = options?.processorOptions;
 
-    if (!processorOptions?.sab) {
-      console.error(
-        "CaptureProcessor: SharedArrayBuffer not provided in processorOptions.sab",
-      );
-      return;
+    if (processorOptions?.sab) {
+      // LOCAL MODE: SAB provided, use RingBuffer
+      this.isCloudMode = false;
+      try {
+        this.ringBuffer = new RingBuffer(processorOptions.sab);
+        console.log("CaptureProcessor: RingBuffer initialized for LOCAL mode.");
+      } catch (error) {
+        console.error(
+          "CaptureProcessor: Failed to initialize RingBuffer for LOCAL mode:",
+          error,
+        );
+        this.ringBuffer = null;
+      }
+    } else {
+      // CLOUD MODE: No SAB, accumulate frames in memory
+      this.isCloudMode = true;
+      console.log("CaptureProcessor: Initialized for CLOUD mode.");
     }
 
-    try {
-      // Directly use processorOptions.sab
-      this.ringBuffer = new RingBuffer(processorOptions.sab);
-      console.log("CaptureProcessor: RingBuffer initialized successfully.");
-    } catch (error) {
-      console.error(
-        "CaptureProcessor: Failed to initialize RingBuffer:",
-        error,
-      );
-      this.ringBuffer = null;
-    }
-
-    // Optional: Listen for messages from the main thread
+    // Listen for messages from the main thread
     this.port.onmessage = (event) => {
-      console.log("CaptureProcessor received message:", event.data);
-      // Handle messages if needed, e.g., event.data.command === 'reset' -> this.ringBuffer?.reset();
+      // In cloud mode, the main thread can request the collected audio frames
+      if (this.isCloudMode && event.data.type === "flush") {
+        this.port.postMessage({ type: "frames", frames: this.frames });
+        this.frames = []; // Reset frames for the next recording
+      } else {
+        console.log("CaptureProcessor received message:", event.data);
+      }
     };
   }
 
@@ -56,34 +62,26 @@ class CaptureProcessor extends AudioWorkletProcessor {
    * Called by the audio engine with new audio blocks.
    */
   process(inputs, outputs, parameters) {
-    // Remove TS parameter types
-    // Check if the ring buffer was initialized successfully
-    if (!this.ringBuffer) {
-      // console.warn('CaptureProcessor: RingBuffer not available, dropping audio.');
-      return true; // Keep alive
-    }
-
     // Get the first channel of the first input (mono audio)
     const inputChannelData = inputs[0]?.[0];
 
-    // Basic sanity check
     if (!inputChannelData || inputChannelData.length === 0) {
-      // console.log('CaptureProcessor: No input data received.');
-      return true; // Keep alive
+      return true; // Keep alive, no data to process
     }
 
-    // Write the ORIGINAL inputChannelData to the ring buffer
-    // (assuming AudioContext has already resampled it to its own rate, e.g., 16kHz)
-    if (inputChannelData.length > 0) {
-      // Check if there's data to write
-      const written = this.ringBuffer.write(inputChannelData);
-      if (written < inputChannelData.length) {
-        // Logging handled in RingBuffer
-        // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
+    if (this.isCloudMode) {
+      // CLOUD MODE: Push a copy of the audio data into our frames array
+      this.frames.push(new Float32Array(inputChannelData));
+    } else {
+      // LOCAL MODE: Write to the RingBuffer if it's available
+      if (this.ringBuffer) {
+        const written = this.ringBuffer.write(inputChannelData);
+        if (written < inputChannelData.length) {
+          // This warning can be noisy, uncomment if needed for debugging
+          // console.warn(`CaptureProcessor: Wrote only ${written}/${inputChannelData.length} frames`);
+        }
       }
-    } /* else if (inputChannelData.length > 0) { // This condition is now part of the if above
-        // console.warn('CaptureProcessor: Resampling resulted in empty audio data, nothing to write.');
-    } */
+    }
 
     // Return true to keep the processor node alive
     return true;

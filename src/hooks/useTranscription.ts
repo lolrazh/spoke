@@ -60,6 +60,21 @@ function trimSilence(f32: Float32Array, thresh = 0.005): Float32Array {
   return f32.subarray(l, r + 1);
 }
 
+// NEW HELPER for Option B: Concatenate Float32Array chunks
+function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
+  if (!arrays || arrays.length === 0) {
+    return new Float32Array(0);
+  }
+  const totalLength = arrays.reduce((acc, val) => acc + val.length, 0);
+  const result = new Float32Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -149,7 +164,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [currentMode, setCurrentMode] = useState<"local" | "cloud">("cloud"); // Default to local mode
-  const [cloudEngine, setCloudEngine] = useState<CloudEngine>("gemini");
+  const [cloudEngine, setCloudEngine] = useState<CloudEngine>("groq");
 
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
@@ -495,100 +510,37 @@ export function useTranscription(): UseTranscriptionReturn {
           setProcessing(true);
           await ensureAudioContextReady();
 
-          if (!sabRef.current && typeof SharedArrayBuffer !== "undefined") {
-            const sabCapacitySamples =
-              TARGET_SAMPLE_RATE * MAX_RING_BUFFER_SECONDS; // matches RingBuffer
-            const pointerSizeBytes = 4; // For one Int32 write index
-            const bufferSizeBytes =
-              sabCapacitySamples * Float32Array.BYTES_PER_ELEMENT;
-            const totalSabSizeBytes = pointerSizeBytes + bufferSizeBytes;
-            try {
-              sabRef.current = new SharedArrayBuffer(totalSabSizeBytes);
-              console.log(
-                `[useTranscription] Cloud: SharedArrayBuffer created (${sabRef.current.byteLength} bytes).`,
-              );
-              ringBufferRef.current = new RingBuffer(sabRef.current);
-              console.log(
-                "[useTranscription] RingBuffer instance created for cloud mode.",
-              );
-            } catch (e) {
-              console.error(
-                "[useTranscription] Cloud: Failed to create SharedArrayBuffer or RingBuffer:",
-                e,
-              );
-              setError("Failed to initialize audio buffer for cloud.");
-              sabRef.current = null;
-              ringBufferRef.current = null;
-              setRecording(false);
-              setProcessing(false);
-              return;
-            }
-          } else if (
-            !sabRef.current &&
-            typeof SharedArrayBuffer === "undefined"
-          ) {
-            console.error(
-              "[useTranscription] Cloud: SharedArrayBuffer is not supported.",
-            );
-            setError("SharedArrayBuffer not supported for cloud recording.");
-            setRecording(false);
-            setProcessing(false);
-            return;
-          }
-
-          // If SAB exists but RingBuffer was not created (e.g. race condition or mode switch)
-          if (sabRef.current && !ringBufferRef.current) {
-            try {
-              ringBufferRef.current = new RingBuffer(sabRef.current);
-              console.log(
-                "[useTranscription] Cloud: RingBuffer instance re-created/validated.",
-              );
-            } catch (e) {
-              console.error(
-                "[useTranscription] Cloud: Failed to create RingBuffer for existing SAB:",
-                e,
-              );
-              setError("Failed to initialize RingBuffer for cloud recording.");
-              setRecording(false);
-              setProcessing(false);
-              return;
-            }
-          }
+          // CLOUD MODE - NO SAB/RingBuffer NEEDED FOR WORKLET
+          // We will accumulate audio in the worklet itself.
+          // The SAB/RingBuffer logic is now removed from this path.
 
           await ensureWorkletLoaded("/audioworklet-processor.js");
 
-          if (
-            !audioCtxRef.current ||
-            !streamRef.current ||
-            !sabRef.current ||
-            !ringBufferRef.current
-          ) {
+          if (!audioCtxRef.current || !streamRef.current) {
             throw new Error(
-              "Audio context, stream, SAB, or RingBuffer not available for cloud worklet setup.",
+              "Audio context or stream not available for cloud worklet setup.",
             );
           }
 
           microphoneSourceRef.current?.disconnect();
           workletNodeRef.current?.disconnect();
 
-          // Reset RingBuffer before starting a new recording session
-          ringBufferRef.current.reset();
-
           microphoneSourceRef.current =
             audioCtxRef.current.createMediaStreamSource(streamRef.current);
+          
+          // For cloud mode, we initialize the worklet WITHOUT the SAB.
+          // This triggers the in-memory frame collection logic.
           workletNodeRef.current = new AudioWorkletNode(
             audioCtxRef.current,
             "capture-processor",
-            {
-              processorOptions: { sab: sabRef.current },
-            },
           );
+
           microphoneSourceRef.current.connect(workletNodeRef.current);
 
           setRecording(true);
           setProcessing(false);
           console.log(
-            "[useTranscription] Cloud AudioWorklet recording started.",
+            "[useTranscription] Cloud AudioWorklet recording started (in-memory accumulation).",
           );
         } catch (err: unknown) {
           console.error(
@@ -703,18 +655,13 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(
         "[useTranscription] Stopping cloud AudioWorklet recording...",
       );
-      microphoneSourceRef.current?.disconnect();
-      microphoneSourceRef.current = null;
-      workletNodeRef.current?.disconnect();
-      workletNodeRef.current = null;
-
-      if (!ringBufferRef.current) {
+      
+      if (!workletNodeRef.current) {
         console.error(
-          "[useTranscription] Cloud stop: RingBuffer not available. Ensure it's initialized.",
+          "[useTranscription] Cloud stop: WorkletNode not available. Cannot flush audio.",
         );
-        setError("Failed to process audio: RingBuffer instance missing.");
-        // setProcessing(false); // Will be handled by finally if an async op was started
-        return;
+        setError("Failed to process audio: Audio worklet missing.");
+        return; // Early exit
       }
 
       (async () => {
@@ -723,164 +670,179 @@ export function useTranscription(): UseTranscriptionReturn {
         const ts: Record<string, number> = {};
         const mark = (label: string) => (ts[label] = performance.now());
         // --- TIMING END ---
-        try {
-          mark("drain_start");
-          const pcmF32 = await drainSabToFloat32(ringBufferRef.current);
-          mark("drain_end");
 
-          if (pcmF32.length === 0) {
-            console.warn(
-              "[useTranscription] No audio data from RingBuffer or data was all silence. Not sending.",
-            );
-            setText("");
-            setProcessing(false);
-            return;
-          }
+        // Listen for the response from the worklet
+        workletNodeRef.current.port.onmessage = async (event) => {
+          if (event.data.type !== "frames") return;
+          
+          mark("frames_received");
+          const { frames } = event.data;
 
-          mark("trim_start");
-          const trimmedPcmF32 = trimSilence(pcmF32);
-          mark("trim_end");
+          // Disconnect nodes now that we have the data
+          microphoneSourceRef.current?.disconnect();
+          microphoneSourceRef.current = null;
+          workletNodeRef.current?.disconnect();
+          workletNodeRef.current = null;
+          
+          try {
+            mark("concat_start");
+            const pcmF32 = concatenateFloat32Arrays(frames);
+            mark("concat_end");
 
-          if (trimmedPcmF32.length === 0) {
-            console.warn(
-              "[useTranscription] Audio is all silence after trimming. Not sending.",
-            );
-            setText("");
-            setProcessing(false);
-            return;
-          }
-
-          let transcript = "";
-          let timingsFromMain: Record<string, number> = {};
-
-          mark("ipc_start");
-          if (cloudEngine === "gemini") {
-            if (!window.electron?.transcribeGemini) {
-              throw new Error(
-                "Gemini transcription service (window.electron.transcribeGemini) is not available.",
+            if (pcmF32.length === 0) {
+              console.warn(
+                "[useTranscription] No audio data from Worklet. Not sending.",
               );
+              setText("");
+              setProcessing(false);
+              return;
             }
-            mark("wav_encode_start");
-            const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
-            mark("wav_encode_end");
 
-            console.log(
-              `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
-            );
-            const result = await window.electron.transcribeGemini(
-              wavBuf,
-              "audio/wav",
-              [wavBuf],
-              ts,
-            );
-            transcript = result.text;
-            timingsFromMain = result.timings || {};
-          } else {
-            // Fallback to Groq
-            if (!window.electron?.transcribeGroq) {
-              throw new Error(
-                "Groq transcription service (window.electron.transcribeGroq) is not available.",
+            mark("trim_start");
+            const trimmedPcmF32 = trimSilence(pcmF32);
+            mark("trim_end");
+
+            if (trimmedPcmF32.length === 0) {
+              console.warn(
+                "[useTranscription] Audio is all silence after trimming. Not sending.",
               );
+              setText("");
+              setProcessing(false);
+              return;
             }
-            const pcmF32ArrayBuffer = (
-              trimmedPcmF32.buffer as ArrayBuffer
-            ).slice(
-              trimmedPcmF32.byteOffset,
-              trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength,
-            );
-            console.log(
-              `[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`,
-            );
 
-            const result = await window.electron.transcribeGroq(
-              pcmF32ArrayBuffer,
-              [pcmF32ArrayBuffer],
-              ts,
-            );
-            transcript = result.text;
-            timingsFromMain = result.timings || {};
-          }
-          mark("ipc_end");
+            let transcript = "";
+            let timingsFromMain: Record<string, number> = {};
 
-          // Calculate disjoint timings
-          const drain_duration = ts.drain_end - ts.drain_start;
-          const trim_duration = ts.trim_end - ts.trim_start;
-          const ipc_full_round_trip_by_renderer =
-            ts.ipc_end - ts.ipc_start;
+            mark("ipc_start");
+            if (cloudEngine === "gemini") {
+              if (!window.electron?.transcribeGemini) {
+                throw new Error(
+                  "Gemini transcription service (window.electron.transcribeGemini) is not available.",
+                );
+              }
+              mark("wav_encode_start");
+              const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+              mark("wav_encode_end");
 
-          // Sum of disjoint parts received from main process
-          // Ensure all expected keys from timingsFromMain are numbers and sum them up
-          const sum_of_disjoint_parts_from_main = Object.values(
-            timingsFromMain,
-          ).reduce(
-            (sum, value) => sum + (typeof value === "number" ? value : 0),
-            0,
-          );
-
-          const ipc_renderer_exclusive_overhead = Math.max(
-            0,
-            ipc_full_round_trip_by_renderer - sum_of_disjoint_parts_from_main,
-          );
-
-          const allDisjointTimings: Record<string, number> = {
-            drain: drain_duration,
-            trim: trim_duration,
-            ipc_overhead: ipc_renderer_exclusive_overhead, // Exclusive IPC overhead
-            // Spread timings received from main, which are already disjoint parts like main_net, worker_pcm_to_wav, worker_stt_api_call
-            ...timingsFromMain,
-          };
-
-          // Calculate total_end_to_end by summing all disjoint parts
-          allDisjointTimings.total_end_to_end = Object.values(
-            allDisjointTimings,
-          ).reduce(
-            (sum, value) => sum + (typeof value === "number" ? value : 0),
-            0,
-          );
-
-          console.log(
-            `[useTranscription] Timings for ${cloudEngine} (disjoint):`,
-          );
-          console.table(allDisjointTimings);
-
-          // Original profiling log (can be updated or removed)
-          if (profilingStartTimeRef.current) {
-            // const endTime = performance.now();
-            // const durationTotalActual = endTime - profilingStartTimeRef.current;
-            console.log(
-              `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
-            );
-            console.log(
-              `[useTranscription]   Summed E2E from table: ${allDisjointTimings.total_end_to_end.toFixed(2)} ms`,
-            );
-            // console.log(`[useTranscription]   Actual Wall Clock E2E (stop() to result): ${durationTotalActual.toFixed(2)} ms`);
-            profilingStartTimeRef.current = null;
-          }
-
-          setText(transcript);
-          if (transcript && window.electron.insertTextAtCursor) {
-            window.electron
-              .insertTextAtCursor(transcript)
-              .catch((err) =>
-                console.error(
-                  `[useTranscription] Error inserting ${cloudEngine} text:`,
-                  err,
-                ),
+              console.log(
+                `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
               );
+              const result = await window.electron.transcribeGemini(
+                wavBuf,
+                "audio/wav",
+                [wavBuf],
+                ts,
+              );
+              transcript = result.text;
+              timingsFromMain = result.timings || {};
+            } else {
+              // Fallback to Groq
+              if (!window.electron?.transcribeGroq) {
+                throw new Error(
+                  "Groq transcription service (window.electron.transcribeGroq) is not available.",
+                );
+              }
+              const pcmF32ArrayBuffer = (
+                trimmedPcmF32.buffer as ArrayBuffer
+              ).slice(
+                trimmedPcmF32.byteOffset,
+                trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength,
+              );
+              console.log(
+                `[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`,
+              );
+
+              const result = await window.electron.transcribeGroq(
+                pcmF32ArrayBuffer,
+                [pcmF32ArrayBuffer],
+                ts,
+              );
+              transcript = result.text;
+              timingsFromMain = result.timings || {};
+            }
+            mark("ipc_end");
+
+            // Calculate disjoint timings
+            const concat_duration = ts.concat_end - ts.concat_start;
+            const trim_duration = ts.trim_end - ts.trim_start;
+            const ipc_full_round_trip_by_renderer =
+              ts.ipc_end - ts.ipc_start;
+
+            // Sum of disjoint parts received from main process
+            // Ensure all expected keys from timingsFromMain are numbers and sum them up
+            const sum_of_disjoint_parts_from_main = Object.values(
+              timingsFromMain,
+            ).reduce(
+              (sum, value) => sum + (typeof value === "number" ? value : 0),
+              0,
+            );
+
+            const ipc_renderer_exclusive_overhead = Math.max(
+              0,
+              ipc_full_round_trip_by_renderer - sum_of_disjoint_parts_from_main,
+            );
+
+            const allDisjointTimings: Record<string, number> = {
+              concat: concat_duration,
+              trim: trim_duration,
+              ipc_overhead: ipc_renderer_exclusive_overhead, // Exclusive IPC overhead
+              // Spread timings received from main, which are already disjoint parts like main_net, worker_pcm_to_wav, worker_stt_api_call
+              ...timingsFromMain,
+            };
+
+            // Calculate total_end_to_end by summing all disjoint parts
+            allDisjointTimings.total_end_to_end = Object.values(
+              allDisjointTimings,
+            ).reduce(
+              (sum, value) => sum + (typeof value === "number" ? value : 0),
+              0,
+            );
+
+            console.log(
+              `[useTranscription] Timings for ${cloudEngine} (disjoint):`,
+            );
+            console.table(allDisjointTimings);
+
+            if (profilingStartTimeRef.current) {
+              console.log(
+                `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
+              );
+              console.log(
+                `[useTranscription]   Summed E2E from table: ${allDisjointTimings.total_end_to_end.toFixed(2)} ms`,
+              );
+              profilingStartTimeRef.current = null;
+            }
+
+            setText(transcript);
+            if (transcript && window.electron.insertTextAtCursor) {
+              window.electron
+                .insertTextAtCursor(transcript)
+                .catch((err) =>
+                  console.error(
+                    `[useTranscription] Error inserting ${cloudEngine} text:`,
+                    err,
+                  ),
+                );
+            }
+          } catch (err: unknown) {
+            console.error(
+              "[useTranscription] Error during cloud AudioWorklet transcription or IPC:",
+              err,
+            );
+            setError(
+              (err as Error).message || "Cloud transcription (worklet) failed.",
+            );
+          } finally {
+            setProcessing(false);
           }
-        } catch (err: unknown) {
-          console.error(
-            "[useTranscription] Error during cloud AudioWorklet transcription or IPC:",
-            err,
-          );
-          setError(
-            (err as Error).message || "Cloud transcription (worklet) failed.",
-          );
-        } finally {
-          setProcessing(false);
-        }
+        };
+
+        // Trigger the worklet to send back the audio frames
+        mark("flush_sent");
+        workletNodeRef.current.port.postMessage({ type: "flush" });
+
       })();
-      // Old MediaRecorder logic for cloud stop is now removed.
     } else {
       // currentMode === 'local'
       // Existing local mode stop logic
