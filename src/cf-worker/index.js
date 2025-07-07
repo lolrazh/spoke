@@ -1,39 +1,102 @@
-export default {
-    async fetch(req, env) {
-      const url = new URL(req.url);
-  
-      /* -------------- Groq ---------------- */
-      if (url.pathname.startsWith('/groq/')) {
-        url.hostname  = 'api.groq.com';
-        url.pathname  = url.pathname.replace(/^\/groq/, '');
-  
-        // clone original headers so multipart/form-data survives
-        const h = new Headers(req.headers);
-        h.delete('host');                          // Groq sets its own
-        h.set('authorization', `Bearer ${env.GROQ_API_KEY}`);
-  
-        const body = req.body ? await req.arrayBuffer() : undefined;
-        return fetch(url.toString(), { method: req.method, headers: h, body });
-      }
-  
-      /* -------------- Gemini -------------- */
-      if (url.pathname.startsWith('/gemini/')) {
-        if (!env.GEMINI_API_KEY) {
-          return new Response('GEMINI_API_KEY not set', { status: 500 });
-        }
-  
-        url.hostname  = 'generativelanguage.googleapis.com';
-        url.pathname  = url.pathname.replace(/^\/gemini/, '');
-  
-        // absolutely NO cookies / auth / referer etc.
-        const h = new Headers();
-        h.set('content-type', 'application/json');
-        h.set('x-goog-api-key', env.GEMINI_API_KEY);
-  
-        const body = req.body ? await req.arrayBuffer() : undefined;
-        return fetch(url.toString(), { method: req.method, headers: h, body });
-      }
-  
-      return new Response('Not Found', { status: 404 });
+// A generic handler to add timing and proxy the request
+async function handleRequest(req, env, target) {
+  const marks = { worker_start: performance.now() };
+  const mark = (name) => (marks[name] = performance.now());
+
+  const url = new URL(req.url);
+  let upstreamHeaders = new Headers(req.headers); // Start by cloning
+  let upstreamUrl = url;
+
+  // Rewrite URL and set auth headers based on the target
+  if (target === 'groq') {
+    upstreamUrl.hostname = 'api.groq.com';
+    upstreamUrl.pathname = upstreamUrl.pathname.replace(/^\/groq/, '');
+    upstreamHeaders.set('authorization', `Bearer ${env.GROQ_API_KEY}`);
+    upstreamHeaders.delete('host');
+  } else if (target === 'gemini') {
+    if (!env.GEMINI_API_KEY) {
+      return new Response('GEMINI_API_KEY not set', { status: 500 });
     }
+    upstreamUrl.hostname = 'generativelanguage.googleapis.com';
+    upstreamUrl.pathname = upstreamUrl.pathname.replace(/^\/gemini/, '');
+    // For Gemini, we create fresh headers, ignoring incoming ones.
+    upstreamHeaders = new Headers();
+    upstreamHeaders.set('content-type', 'application/json');
+    upstreamHeaders.set('x-goog-api-key', env.GEMINI_API_KEY);
   }
+  mark('rewrite');
+
+  const body = req.body ? await req.arrayBuffer() : undefined;
+  mark('request-body-read');
+
+  mark('upstream-fetch-start');
+  const upstreamResponse = await fetch(upstreamUrl.toString(), {
+    method: req.method,
+    headers: upstreamHeaders,
+    body: body,
+  });
+  mark('upstream-headers-received');
+
+  const upstreamBody = await upstreamResponse.arrayBuffer();
+  mark('upstream-body-received');
+
+  // Build Server-Timing header
+  const serverTimings = [
+    `rewrite;dur=${(marks['rewrite'] - marks['worker_start']).toFixed(2)}`,
+    `request-body-read;dur=${(
+      marks['request-body-read'] - marks['rewrite']
+    ).toFixed(2)}`,
+    `upstream-ttfb;dur=${(
+      marks['upstream-headers-received'] - marks['upstream-fetch-start']
+    ).toFixed(2)}`,
+    `upstream-body-download;dur=${(
+      marks['upstream-body-received'] - marks['upstream-headers-received']
+    ).toFixed(2)}`,
+    `worker-total;dur=${(
+      marks['upstream-body-received'] - marks['worker_start']
+    ).toFixed(2)}`,
+  ];
+
+  const responseHeaders = new Headers(upstreamResponse.headers);
+  responseHeaders.set('Server-Timing', serverTimings.join(', '));
+  responseHeaders.set('CF-Edge-Proto', req.cf?.httpProtocol || 'unknown');
+
+  // Expose headers to the browser. This is important for CORS.
+  const exposeHeaders = ['Server-Timing', 'CF-Edge-Proto'];
+  const acExposeHeaders = responseHeaders.get(
+    'Access-Control-Expose-Headers'
+  );
+  if (acExposeHeaders) {
+    responseHeaders.set(
+      'Access-Control-Expose-Headers',
+      `${acExposeHeaders}, ${exposeHeaders.join(', ')}`
+    );
+  } else {
+    responseHeaders.set(
+      'Access-Control-Expose-Headers',
+      exposeHeaders.join(', ')
+    );
+  }
+
+  return new Response(upstreamBody, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: responseHeaders,
+  });
+}
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+
+    if (url.pathname.startsWith('/groq/')) {
+      return handleRequest(req, env, 'groq');
+    }
+
+    if (url.pathname.startsWith('/gemini/')) {
+      return handleRequest(req, env, 'gemini');
+    }
+
+    return new Response('Not Found', { status: 404 });
+  },
+};

@@ -10,6 +10,7 @@ import { performance } from "node:perf_hooks"; // ESM style import
 import { Buffer } from "node:buffer";
 import { encodeWAV } from "../utils/wav";
 import { TARGET_SAMPLE_RATE } from "../config/audio";
+import { timedFetch, TimingInfo } from "../utils/timed-fetch";
 
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
@@ -22,7 +23,7 @@ export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
   mimeType: string,
   prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.",
-): Promise<{ text: string; timings: Record<string, number> }> {
+): Promise<{ text: string; timings: TimingInfo }> {
   // upstream Gemini endpoint lives under /gemini/…
   const workerUrl =
     "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent";
@@ -67,18 +68,16 @@ export async function transcribeAudioWithGemini(
       `[GeminiTranscriber] Sending audio (${audioData.byteLength} bytes) to API.`,
     );
 
-    const response = await fetch(workerUrl, {
+    const { response, timings } = await timedFetch(workerUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(geminiJson),
     });
 
-    const main_helper_fetch_end_time = performance.now();
-    const main_fetch_gross_duration =
-      main_helper_fetch_end_time - main_helper_fetch_start_time;
-
     console.log(
-      `[GeminiTranscriber] API call completed in ${main_fetch_gross_duration.toFixed(2)} ms.`,
+      `[GeminiTranscriber] API call completed in ${timings.total_duration_ms.toFixed(
+        2,
+      )} ms.`,
     );
 
     if (!response.ok) {
@@ -107,7 +106,7 @@ export async function transcribeAudioWithGemini(
 
     return {
       text: text.trim(),
-      timings: { total_duration: main_fetch_gross_duration },
+      timings,
     };
   } catch (err: unknown) {
     console.error(

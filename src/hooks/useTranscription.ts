@@ -14,6 +14,7 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
+import { TimingInfo } from "../utils/timed-fetch";
 
 // Define CloudEngine type first
 type CloudEngine = "groq" | "gemini";
@@ -763,53 +764,75 @@ export function useTranscription(): UseTranscriptionReturn {
             }
             mark("ipc_end");
 
-            // Calculate disjoint timings
-            const concat_duration = ts.concat_end - ts.concat_start;
-            const trim_duration = ts.trim_end - ts.trim_start;
-            const ipc_full_round_trip_by_renderer =
-              ts.ipc_end - ts.ipc_start;
+            const detailedTimings = timingsFromMain as unknown as TimingInfo;
 
-            // Sum of disjoint parts received from main process
-            // Ensure all expected keys from timingsFromMain are numbers and sum them up
-            const sum_of_disjoint_parts_from_main = Object.values(
-              timingsFromMain,
-            ).reduce(
-              (sum, value) => sum + (typeof value === "number" ? value : 0),
-              0,
-            );
-
-            const ipc_renderer_exclusive_overhead = Math.max(
-              0,
-              ipc_full_round_trip_by_renderer - sum_of_disjoint_parts_from_main,
-            );
-
-            const allDisjointTimings: Record<string, number> = {
-              concat: concat_duration,
-              trim: trim_duration,
-              ipc_overhead: ipc_renderer_exclusive_overhead, // Exclusive IPC overhead
-              // Spread timings received from main, which are already disjoint parts like main_net, worker_pcm_to_wav, worker_stt_api_call
-              ...timingsFromMain,
+            const rendererProcessing = {
+              "Audio Concat": `${(ts.concat_end - ts.concat_start).toFixed(
+                2,
+              )} ms`,
+              "Audio Trim": `${(ts.trim_end - ts.trim_start).toFixed(2)} ms`,
+              "IPC Roundtrip": `${(ts.ipc_end - ts.ipc_start).toFixed(2)} ms`,
             };
 
-            // Calculate total_end_to_end by summing all disjoint parts
-            allDisjointTimings.total_end_to_end = Object.values(
-              allDisjointTimings,
-            ).reduce(
-              (sum, value) => sum + (typeof value === "number" ? value : 0),
-              0,
-            );
+            const clientNetwork = {
+              Total: detailedTimings.total_duration_ms
+                ? `${detailedTimings.total_duration_ms.toFixed(2)} ms`
+                : "N/A",
+              Protocol: detailedTimings.client_protocol || "unknown",
+              DNS: detailedTimings.dns_lookup_ms
+                ? `${detailedTimings.dns_lookup_ms.toFixed(2)} ms`
+                : "N/A",
+              TCP: detailedTimings.tcp_connect_ms
+                ? `${detailedTimings.tcp_connect_ms.toFixed(2)} ms`
+                : "N/A",
+              TLS: detailedTimings.tls_handshake_ms
+                ? `${detailedTimings.tls_handshake_ms.toFixed(2)} ms`
+                : "N/A",
+              TTFB: detailedTimings.time_to_first_byte_ms
+                ? `${detailedTimings.time_to_first_byte_ms.toFixed(2)} ms`
+                : "N/A",
+              Download: detailedTimings.content_download_ms
+                ? `${detailedTimings.content_download_ms.toFixed(2)} ms`
+                : "N/A",
+            };
+
+            const serverProcessing = {
+              "Worker Total": detailedTimings.server_worker_total_ms
+                ? `${detailedTimings.server_worker_total_ms.toFixed(2)} ms`
+                : "N/A",
+              "Edge Protocol": detailedTimings.edge_protocol || "unknown",
+              Rewrite: detailedTimings.server_rewrite_ms
+                ? `${detailedTimings.server_rewrite_ms.toFixed(2)} ms`
+                : "N/A",
+              "Body Read": detailedTimings.server_request_body_read_ms
+                ? `${detailedTimings.server_request_body_read_ms.toFixed(
+                    2,
+                  )} ms`
+                : "N/A",
+              "Upstream TTFB": detailedTimings.server_upstream_ttfb_ms
+                ? `${detailedTimings.server_upstream_ttfb_ms.toFixed(2)} ms`
+                : "N/A",
+              "Upstream Download":
+                detailedTimings.server_upstream_body_download_ms
+                  ? `${detailedTimings.server_upstream_body_download_ms.toFixed(
+                      2,
+                    )} ms`
+                  : "N/A",
+            };
 
             console.log(
-              `[useTranscription] Timings for ${cloudEngine} (disjoint):`,
+              `[useTranscription] Timings for ${cloudEngine}:`,
             );
-            console.table(allDisjointTimings);
+            console.log("--- Renderer Processing ---");
+            console.table(rendererProcessing);
+            console.log("--- Client Network ---");
+            console.table(clientNetwork);
+            console.log("--- Cloudflare Worker ---");
+            console.table(serverProcessing);
 
             if (profilingStartTimeRef.current) {
               console.log(
                 `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
-              );
-              console.log(
-                `[useTranscription]   Summed E2E from table: ${allDisjointTimings.total_end_to_end.toFixed(2)} ms`,
               );
               profilingStartTimeRef.current = null;
             }
