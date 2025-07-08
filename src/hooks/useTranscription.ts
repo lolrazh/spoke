@@ -439,6 +439,7 @@ export function useTranscription(): UseTranscriptionReturn {
         "[useTranscription] Connection likely cold, sending warm-up request.",
       );
       window.electron.warmUpConnection(cloudEngine);
+      lastApiCallTimestampRef.current = now;
     } else {
       console.log(
         "[useTranscription] Connection likely warm, skipping warm-up request.",
@@ -770,6 +771,7 @@ export function useTranscription(): UseTranscriptionReturn {
                 [wavBuffer],
                 ts,
               );
+              lastApiCallTimestampRef.current = Date.now();
               transcript = result.text;
               timingsFromMain = result.timings || {};
             } else {
@@ -820,6 +822,7 @@ export function useTranscription(): UseTranscriptionReturn {
                 [wavBuffer],
                 ts,
               );
+              lastApiCallTimestampRef.current = Date.now();
               transcript = result.text;
               timingsFromMain = result.timings || {};
             }
