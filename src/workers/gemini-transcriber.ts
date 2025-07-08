@@ -8,8 +8,6 @@
 
 import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
-import { encodeWAV } from "../utils/wav";
-import { TARGET_SAMPLE_RATE } from "../config/audio";
 import got, { HTTPAlias } from "got";
 import { PassThrough } from "stream";
 import https from "https";

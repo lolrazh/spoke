@@ -8,7 +8,6 @@ import { performance } from "node:perf_hooks";
 import https from "https";
 import { encodeWAV } from "../utils/wav";
 import got, { HTTPAlias } from "got";
-import FormData from "form-data";
 import { PassThrough } from "stream";
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.

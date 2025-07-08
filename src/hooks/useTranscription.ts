@@ -14,8 +14,10 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
-import { concatenateFloat32Arrays, trimSilence } from "../utils/audio";
-import { encodeWAV } from "../utils/wav";
+import {
+  concatenateFloat32Arrays,
+  trimSilence,
+} from "../utils/audio";
 
 // Define CloudEngine type first
 type CloudEngine = "groq" | "gemini";
