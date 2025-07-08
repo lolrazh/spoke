@@ -20,7 +20,6 @@ yarn-error.log*
 .vscode/
 
 .eslintrc.json
-tsconfig.json
 .prettierrc
 .prettierignore
 .gitignore

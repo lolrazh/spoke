@@ -33,32 +33,45 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.send("show-notification", message);
   },
   // Method for Groq transcription
-  transcribeGroq: (
+  transcribeGroq: async (
     audioBuffer: ArrayBuffer,
     transferList?: Transferable[],
     upstreamTimings?: Record<string, number>,
   ) => {
-    return ipcRenderer.invoke(
+    const t0 = performance.now();
+    const res = await ipcRenderer.invoke(
       "transcribe-groq",
       audioBuffer,
       transferList,
       upstreamTimings,
     );
+    if (res.timings) {
+      res.timings.ipc_roundtrip = performance.now() - t0;
+    }
+    return res;
   },
   // Method for Gemini transcription
-  transcribeGemini: (
-    buf: ArrayBuffer,
+  transcribeGemini: async (
+    audioBuffer: ArrayBuffer,
     mimeType: string,
-    transfer?: Transferable[],
+    transferList?: Transferable[],
     upstreamTimings?: Record<string, number>,
-  ) =>
-    ipcRenderer.invoke(
+  ) => {
+    const t0 = performance.now();
+    const res = await ipcRenderer.invoke(
       "transcribe-gemini",
-      buf,
+      audioBuffer,
       mimeType,
-      transfer,
+      transferList,
       upstreamTimings,
-    ),
+    );
+    if (res.timings) {
+      res.timings.ipc_roundtrip = performance.now() - t0;
+    }
+    return res;
+  },
+  warmUpConnection: (engine: "groq" | "gemini") =>
+    ipcRenderer.send("warm-up-connection", engine),
   // Function key push-to-talk events
   onPTTDown: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-down");

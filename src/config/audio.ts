@@ -5,7 +5,7 @@
 
 // Primary sample rates
 export const TARGET_SAMPLE_RATE = 16000; // Primary rate for STT processing and AudioContext
-export const MICROPHONE_PREFERRED_RATE = 48000; // Preferred microphone capture rate
+export const MICROPHONE_PREFERRED_RATE = 16000; // Preferred microphone capture rate
 
 // Buffer and timing constants
 export const MAX_RING_BUFFER_SECONDS = 10; // Maximum ring buffer duration

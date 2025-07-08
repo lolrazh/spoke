@@ -16,8 +16,14 @@ import process from "node:process";
 import { spawn, execFile } from "child_process";
 
 import fs from "node:fs";
-import { transcribeAudioWithGroq } from "./workers/groq-transcriber";
-import { transcribeAudioWithGemini } from "./workers/gemini-transcriber";
+import {
+  transcribeAudioWithGroq,
+  warmUpGroqConnection,
+} from "./workers/groq-transcriber";
+import {
+  transcribeAudioWithGemini,
+  warmUpGeminiConnection,
+} from "./workers/gemini-transcriber";
 import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
@@ -296,9 +302,7 @@ ipcMain.handle(
   "insert-text-at-cursor",
   async (_event: Electron.IpcMainInvokeEvent, text: string) => {
     if (!text) {
-      console.warn(
-        "[PasteHelper] Received empty text. Aborting insertion.",
-      );
+      console.warn("[PasteHelper] Received empty text. Aborting insertion.");
       return { success: false, error: "Cannot insert empty text." };
     }
 
@@ -673,38 +677,55 @@ ipcMain.handle(
   async (
     event,
     audioBuffer: ArrayBuffer,
-    transferListAudio: Transferable[] | undefined,
+    transferList: Transferable[] | undefined, // Renamed for clarity
     upstreamTimings?: Record<string, number>,
   ) => {
     console.log("[MainIPC] Received transcribe-groq request.");
+    const t0 = performance.now();
     if (!audioBuffer || audioBuffer.byteLength === 0) {
       console.error(
         "[MainIPC] Audio buffer is empty or null for Groq transcription.",
       );
+      const t1 = performance.now();
       return {
         text: "",
         error: "Audio buffer is empty.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+        },
       };
     }
 
     try {
+      // The audioBuffer is now expected to be a WAV file buffer
       const { text, timings: disjointTimingsFromHelper } =
         await transcribeAudioWithGroq(audioBuffer);
 
+      const t1 = performance.now();
       console.log(
         `[MainIPC] Groq transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { text, timings: disjointTimingsFromHelper };
+      return {
+        text,
+        timings: {
+          ...disjointTimingsFromHelper,
+          main_total: t1 - t0,
+        },
+      };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-groq handler:", error);
+      const t1 = performance.now();
       return {
         text: "",
         error:
           (error as Error).message ||
           "Groq transcription failed in main process.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+        },
       };
     }
   },
@@ -720,14 +741,19 @@ ipcMain.handle(
     upstreamTimings?: Record<string, number>,
   ) => {
     console.log("[MainIPC] Received transcribe-gemini request.");
+    const t0 = performance.now();
     if (!arrayBuffer || !arrayBuffer.byteLength) {
       console.error(
         "[MainIPC] Audio buffer is empty or null for Gemini transcription.",
       );
+      const t1 = performance.now();
       return {
         text: "",
         error: "Audio buffer is empty.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+        },
       };
     }
 
@@ -735,23 +761,43 @@ ipcMain.handle(
       const { text, timings: disjointTimingsFromHelper } =
         await transcribeAudioWithGemini(arrayBuffer, mimeType);
 
+      const t1 = performance.now();
       console.log(
         `[MainIPC] Gemini transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
         Object.keys(disjointTimingsFromHelper),
       );
-      return { text, timings: disjointTimingsFromHelper };
+      return {
+        text,
+        timings: {
+          ...disjointTimingsFromHelper,
+          main_total: t1 - t0,
+        },
+      };
     } catch (error: unknown) {
       console.error("[MainIPC] Error in transcribe-gemini handler:", error);
+      const t1 = performance.now();
       return {
         text: "",
         error:
           (error as Error).message ||
           "Gemini transcription failed in main process.",
-        timings: upstreamTimings || {},
+        timings: {
+          ...upstreamTimings,
+          main_total: t1 - t0,
+        },
       };
     }
   },
 );
+
+ipcMain.on("warm-up-connection", (event, engine: "groq" | "gemini") => {
+  console.log(`[MainIPC] Received warm-up request for ${engine}.`);
+  if (engine === "gemini") {
+    warmUpGeminiConnection();
+  } else {
+    warmUpGroqConnection();
+  }
+});
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag

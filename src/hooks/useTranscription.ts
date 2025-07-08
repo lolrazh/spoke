@@ -14,66 +14,16 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
+import {
+  concatenateFloat32Arrays,
+  trimSilence,
+} from "../utils/audio";
 
 // Define CloudEngine type first
 type CloudEngine = "groq" | "gemini";
 
 // Global worklet registry to prevent double registration
 const workletRegistry = new Set<string>();
-
-// REMOVED local RingBuffer interface to use the imported class
-// interface RingBuffer { ... }
-
-// NEW util: pulls everything that has been written to the SAB
-async function drainSabToFloat32(
-  ring: RingBuffer | null,
-): Promise<Float32Array> {
-  if (!ring) {
-    console.error("[drainSabToFloat32] RingBuffer instance is null!");
-    return new Float32Array(0);
-  }
-  const total = ring.availableRead();
-  if (total === 0) {
-    console.log("[drainSabToFloat32] No data available to read.");
-    return new Float32Array(0);
-  }
-  const buf = new Float32Array(total);
-  ring.read(buf); // The imported RingBuffer.read(targetBuffer) fills buf and returns null.
-  // The buf itself is modified.
-  return buf;
-}
-
-// NEW util: trims silence from audio data
-function trimSilence(f32: Float32Array, thresh = 0.005): Float32Array {
-  if (f32.length === 0) return f32;
-  let l = 0,
-    r = f32.length - 1;
-  while (l < f32.length && Math.abs(f32[l]) < thresh) l++;
-
-  if (l === f32.length) {
-    // All samples are below threshold
-    console.log("[trimSilence] Audio is all silence.");
-    return new Float32Array(0);
-  }
-
-  while (r > l && Math.abs(f32[r]) < thresh) r--;
-  return f32.subarray(l, r + 1);
-}
-
-// NEW HELPER for Option B: Concatenate Float32Array chunks
-function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
-  if (!arrays || arrays.length === 0) {
-    return new Float32Array(0);
-  }
-  const totalLength = arrays.reduce((acc, val) => acc + val.length, 0);
-  const result = new Float32Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -91,55 +41,76 @@ export interface UseTranscriptionReturn {
   setTimings?: (timings: Record<string, number>) => void; // Optional: if you want to pass it to UI
 }
 
-// Helper function to encode Float32Array to WAV ArrayBuffer
-function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
-  const numChannels = 1;
-  const bitsPerSample = 16; // 16-bit PCM
-  const bytesPerSample = bitsPerSample / 8;
+type PipelineStage = { name: string; ms: number };
 
-  const dataSize = samples.length * numChannels * bytesPerSample;
-  const fileSize = 44 + dataSize; // 44 bytes for header
+function collectPipeline(
+  audio: { concat: number; trim: number },
+  roundTrip: number,
+  timingsFromMain: any,
+  measuredTotal: number,
+): PipelineStage[] {
+  const s: PipelineStage[] = [];
 
-  const buffer = new ArrayBuffer(fileSize);
-  const view = new DataView(buffer);
+  s.push({ name: "audio-concat", ms: audio.concat });
+  s.push({ name: "audio-trim", ms: audio.trim });
 
-  function writeString(offset: number, str: string) {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
+  // The total time spent in the main process, including its own async tasks like network calls.
+  const mainProcess = timingsFromMain.main_total || 0;
+
+  // The total IPC time is the roundTrip minus the time spent working in the main process.
+  // This can only be negative if there is significant clock skew or measurement error.
+  const totalIpcTime = Math.max(0, roundTrip - mainProcess);
+
+  // We cannot measure the one-way IPC latency with a single `invoke` call.
+  // As a reasonable estimate, we assume the journey to and from main is symmetric.
+  const ipcToMain = totalIpcTime / 2;
+  const ipcToRender = totalIpcTime / 2;
+
+  s.push({ name: "ipc-to-main", ms: ipcToMain });
+  s.push({ name: "main-process-total", ms: mainProcess });
+
+  // Client network phases from got (these are sub-timings within main-process-total)
+  const client = timingsFromMain.client_phases || {};
+  const clientTtfb = client.firstByte || 0;
+  const upstreamTtfb = timingsFromMain.server_upstream_ttfb_ms || 0;
+  const edgeTravel = clientTtfb > upstreamTtfb ? clientTtfb - upstreamTtfb : 0;
+
+  if (client.request) s.push({ name: "main-upload", ms: client.request });
+  if (edgeTravel) s.push({ name: "edge-travel", ms: edgeTravel });
+
+  // Worker phases (also sub-timings within main-process-total)
+  const workerTotal = timingsFromMain.server_worker_total_ms || 0;
+  if (workerTotal) s.push({ name: "worker-total", ms: workerTotal });
+
+  if (upstreamTtfb) s.push({ name: "upstream-ttfb", ms: upstreamTtfb });
+  if (client.download) s.push({ name: "download", ms: client.download });
+
+  s.push({ name: "ipc-to-render", ms: ipcToRender });
+
+  // The sum of the identified parts.
+  const sumOfParts =
+    audio.concat + audio.trim + ipcToMain + mainProcess + ipcToRender;
+
+  // The unaccounted time is the difference between the separately measured total
+  // and the sum of the parts we've identified. This is great for debugging.
+  const unaccounted = measuredTotal - sumOfParts;
+  if (unaccounted > 1) {
+    s.push({ name: "unaccounted-renderer", ms: unaccounted });
   }
 
-  // RIFF header
-  writeString(0, "RIFF");
-  view.setUint32(4, fileSize - 8, true); // fileSize - 8
-  writeString(8, "WAVE");
+  // The sum of the identified parts for verification.
+  s.push({ name: "total-calculated", ms: sumOfParts });
 
-  // fmt chunk
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byteRate
-  view.setUint16(32, numChannels * bytesPerSample, true); // blockAlign
-  view.setUint16(34, bitsPerSample, true);
+  // The actual measured wall-clock time.
+  s.push({ name: "total-measured", ms: measuredTotal });
 
-  // data chunk
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  // Write PCM samples
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i])); // Clamp to [-1, 1]
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true); // Convert to 16-bit signed int
-  }
-  return buffer;
+  return s;
 }
 
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
+  const wavEncoderWorkerRef = useRef<Worker | null>(null);
   // These refs are now potentially shared or re-initialized for cloud AudioWorklet path
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -166,10 +137,25 @@ export function useTranscription(): UseTranscriptionReturn {
   const [currentMode, setCurrentMode] = useState<"local" | "cloud">("cloud"); // Default to local mode
   const [cloudEngine, setCloudEngine] = useState<CloudEngine>("groq");
 
+  // New function to lazily initialize the WAV encoder worker
+  const ensureWavEncoderWorker = () => {
+    if (!wavEncoderWorkerRef.current) {
+      console.log(
+        "[useTranscription] Cloud mode: Lazily initializing WAV encoder worker...",
+      );
+      wavEncoderWorkerRef.current = new Worker(
+        new URL("../workers/wav-encoder.ts", import.meta.url),
+        { type: "module" },
+      );
+    }
+    return wavEncoderWorkerRef.current;
+  };
+
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
   const textRef = useRef(text);
+  const lastApiCallTimestampRef = useRef<number>(0);
 
   // Update refs whenever state changes
   useEffect(() => {
@@ -409,6 +395,70 @@ export function useTranscription(): UseTranscriptionReturn {
     }
   }, [currentMode]);
 
+  // --- Effects for Cloud WAV Encoder WORKER setup (only if mode is cloud) --
+  useEffect(() => {
+    // This effect now only handles cleanup.
+    // If we switch away from cloud mode, terminate any existing worker.
+    if (currentMode !== "cloud" && wavEncoderWorkerRef.current) {
+      console.log(
+        "[useTranscription] Switched away from cloud mode. Terminating WAV encoder worker.",
+      );
+      wavEncoderWorkerRef.current.terminate();
+      wavEncoderWorkerRef.current = null;
+    }
+
+    // On unmount, ensure the worker is terminated.
+    return () => {
+      if (wavEncoderWorkerRef.current) {
+        console.log(
+          "[useTranscription] Terminating WAV encoder worker on unmount.",
+        );
+        wavEncoderWorkerRef.current.terminate();
+        wavEncoderWorkerRef.current = null;
+      }
+    };
+  }, [currentMode]);
+
+  // Helper function for worker communication with timeout
+  const getWavFromWorkerWithTimeout = (
+    worker: Worker,
+    audioData: Float32Array,
+    timeout = 3000,
+  ): Promise<{ wavBuffer: ArrayBuffer }> => {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        reject(new Error("WAV encoder worker timed out."));
+      }, timeout);
+
+      const onMessage = (event: MessageEvent<{ wavBuffer: ArrayBuffer }>) => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        resolve(event.data);
+      };
+
+      const onError = (error: ErrorEvent) => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        reject(error);
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("error", onError);
+      };
+
+      worker.addEventListener("message", onMessage);
+      worker.addEventListener("error", onError);
+      worker.postMessage({
+        audioData: audioData,
+        sampleRate: TARGET_AUDIO_CONTEXT_RATE,
+      });
+    });
+  };
+
   // --- 4️⃣ Public API ---
   const start = useCallback(async () => {
     console.log(`[useTranscription] start() called. Mode: ${currentMode}`);
@@ -438,6 +488,21 @@ export function useTranscription(): UseTranscriptionReturn {
     playToggleOn();
     setError(null);
     setText("");
+
+    // --- Pre-warm the connection (if necessary) ---
+    const now = Date.now();
+    if (now - lastApiCallTimestampRef.current > 25000) {
+      console.log(
+        "[useTranscription] Connection likely cold, sending warm-up request.",
+      );
+      window.electron.warmUpConnection(cloudEngine);
+      lastApiCallTimestampRef.current = now;
+    } else {
+      console.log(
+        "[useTranscription] Connection likely warm, skipping warm-up request.",
+      );
+    }
+
     // setRecording(true) moved into mode-specific logic after async ops
 
     if (currentMode === "cloud") {
@@ -527,7 +592,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
           microphoneSourceRef.current =
             audioCtxRef.current.createMediaStreamSource(streamRef.current);
-          
+
           // For cloud mode, we initialize the worklet WITHOUT the SAB.
           // This triggers the in-memory frame collection logic.
           workletNodeRef.current = new AudioWorkletNode(
@@ -655,7 +720,7 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(
         "[useTranscription] Stopping cloud AudioWorklet recording...",
       );
-      
+
       if (!workletNodeRef.current) {
         console.error(
           "[useTranscription] Cloud stop: WorkletNode not available. Cannot flush audio.",
@@ -666,6 +731,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
       (async () => {
         setProcessing(true);
+        const totalProcessingStart = performance.now();
         // --- TIMING START ---
         const ts: Record<string, number> = {};
         const mark = (label: string) => (ts[label] = performance.now());
@@ -674,7 +740,7 @@ export function useTranscription(): UseTranscriptionReturn {
         // Listen for the response from the worklet
         workletNodeRef.current.port.onmessage = async (event) => {
           if (event.data.type !== "frames") return;
-          
+
           mark("frames_received");
           const { frames } = event.data;
 
@@ -683,7 +749,7 @@ export function useTranscription(): UseTranscriptionReturn {
           microphoneSourceRef.current = null;
           workletNodeRef.current?.disconnect();
           workletNodeRef.current = null;
-          
+
           try {
             mark("concat_start");
             const pcmF32 = concatenateFloat32Arrays(frames);
@@ -721,19 +787,30 @@ export function useTranscription(): UseTranscriptionReturn {
                   "Gemini transcription service (window.electron.transcribeGemini) is not available.",
                 );
               }
+
+              const worker = ensureWavEncoderWorker();
+              if (!worker) {
+                throw new Error("WAV encoder worker could not be initialized.");
+              }
+
               mark("wav_encode_start");
-              const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+              const wavResult = await getWavFromWorkerWithTimeout(
+                worker,
+                trimmedPcmF32,
+              );
               mark("wav_encode_end");
 
+              const { wavBuffer } = wavResult;
               console.log(
-                `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
+                `[useTranscription] Sending WAV (${wavBuffer.byteLength} bytes) to Gemini...`,
               );
               const result = await window.electron.transcribeGemini(
-                wavBuf,
+                wavBuffer,
                 "audio/wav",
-                [wavBuf],
+                [wavBuffer],
                 ts,
               );
+              lastApiCallTimestampRef.current = Date.now();
               transcript = result.text;
               timingsFromMain = result.timings || {};
             } else {
@@ -743,73 +820,57 @@ export function useTranscription(): UseTranscriptionReturn {
                   "Groq transcription service (window.electron.transcribeGroq) is not available.",
                 );
               }
-              const pcmF32ArrayBuffer = (
-                trimmedPcmF32.buffer as ArrayBuffer
-              ).slice(
-                trimmedPcmF32.byteOffset,
-                trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength,
+
+              const worker = ensureWavEncoderWorker();
+              if (!worker) {
+                throw new Error("WAV encoder worker could not be initialized.");
+              }
+
+              mark("wav_encode_start");
+              const wavResult = await getWavFromWorkerWithTimeout(
+                worker,
+                trimmedPcmF32,
               );
+              mark("wav_encode_end");
+
+              const { wavBuffer } = wavResult;
               console.log(
-                `[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`,
+                `[useTranscription] Sending WAV (${wavBuffer.byteLength} bytes) to Groq...`,
               );
 
               const result = await window.electron.transcribeGroq(
-                pcmF32ArrayBuffer,
-                [pcmF32ArrayBuffer],
+                wavBuffer,
+                [wavBuffer],
                 ts,
               );
+              lastApiCallTimestampRef.current = Date.now();
               transcript = result.text;
               timingsFromMain = result.timings || {};
             }
             mark("ipc_end");
 
-            // Calculate disjoint timings
-            const concat_duration = ts.concat_end - ts.concat_start;
-            const trim_duration = ts.trim_end - ts.trim_start;
-            const ipc_full_round_trip_by_renderer =
-              ts.ipc_end - ts.ipc_start;
+            const roundTrip = ts.ipc_end - ts.ipc_start;
+            const measuredTotal = performance.now() - totalProcessingStart;
 
-            // Sum of disjoint parts received from main process
-            // Ensure all expected keys from timingsFromMain are numbers and sum them up
-            const sum_of_disjoint_parts_from_main = Object.values(
-              timingsFromMain,
-            ).reduce(
-              (sum, value) => sum + (typeof value === "number" ? value : 0),
-              0,
+            // Loosely typed to handle timings from main process IPC
+            const detailedTimings = timingsFromMain as any;
+
+            const pipelineStages = collectPipeline(
+              {
+                concat: ts.concat_end - ts.concat_start,
+                trim: ts.trim_end - ts.trim_start,
+              },
+              roundTrip,
+              detailedTimings,
+              measuredTotal,
             );
 
-            const ipc_renderer_exclusive_overhead = Math.max(
-              0,
-              ipc_full_round_trip_by_renderer - sum_of_disjoint_parts_from_main,
-            );
-
-            const allDisjointTimings: Record<string, number> = {
-              concat: concat_duration,
-              trim: trim_duration,
-              ipc_overhead: ipc_renderer_exclusive_overhead, // Exclusive IPC overhead
-              // Spread timings received from main, which are already disjoint parts like main_net, worker_pcm_to_wav, worker_stt_api_call
-              ...timingsFromMain,
-            };
-
-            // Calculate total_end_to_end by summing all disjoint parts
-            allDisjointTimings.total_end_to_end = Object.values(
-              allDisjointTimings,
-            ).reduce(
-              (sum, value) => sum + (typeof value === "number" ? value : 0),
-              0,
-            );
-
-            console.log(
-              `[useTranscription] Timings for ${cloudEngine} (disjoint):`,
-            );
-            console.table(allDisjointTimings);
+            console.log(`[useTranscription] Timings for ${cloudEngine}:`);
+            console.table(pipelineStages);
 
             if (profilingStartTimeRef.current) {
               console.log(
                 `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
-              );
-              console.log(
-                `[useTranscription]   Summed E2E from table: ${allDisjointTimings.total_end_to_end.toFixed(2)} ms`,
               );
               profilingStartTimeRef.current = null;
             }
@@ -841,7 +902,6 @@ export function useTranscription(): UseTranscriptionReturn {
         // Trigger the worklet to send back the audio frames
         mark("flush_sent");
         workletNodeRef.current.port.postMessage({ type: "flush" });
-
       })();
     } else {
       // currentMode === 'local'
@@ -1002,6 +1062,9 @@ if (typeof window !== "undefined" && !window.electron) {
           });
         }, 500),
       );
+    },
+    warmUpConnection: (engine: "groq" | "gemini") => {
+      console.log(`[Mock Electron] warmUpConnection called for ${engine}`);
     },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     onPTTDown: (cb: () => void) => {
