@@ -621,11 +621,6 @@ self.addEventListener("message", async (e) => {
     // `busy` is replaced by more specific flags
     mark("final_flush_ms", performance.now() - tFlushStart);
 
-    // --- TIMING CONSOLE LOGS ---
-    console.log("[LocalWorker] Final transcription timing breakdown:");
-    console.table(timings);
-    // --- TIMING CONSOLE LOGS END ---
-
     console.log(
       `[LocalWorker] Sending final 'completed' message. Transcription: "${lastPartialText}"`,
     );
