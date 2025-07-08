@@ -142,6 +142,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
   const textRef = useRef(text);
+  const lastApiCallTimestampRef = useRef<number>(0);
 
   // Update refs whenever state changes
   useEffect(() => {
@@ -433,6 +434,20 @@ export function useTranscription(): UseTranscriptionReturn {
     playToggleOn();
     setError(null);
     setText("");
+
+    // --- Pre-warm the connection (if necessary) ---
+    const now = Date.now();
+    if (now - lastApiCallTimestampRef.current > 25000) {
+      console.log(
+        "[useTranscription] Connection likely cold, sending warm-up request.",
+      );
+      window.electron.warmUpConnection(cloudEngine);
+    } else {
+      console.log(
+        "[useTranscription] Connection likely warm, skipping warm-up request.",
+      );
+    }
+
     // setRecording(true) moved into mode-specific logic after async ops
 
     if (currentMode === "cloud") {
@@ -1029,6 +1044,9 @@ if (typeof window !== "undefined" && !window.electron) {
           });
         }, 500),
       );
+    },
+    warmUpConnection: (engine: "groq" | "gemini") => {
+      console.log(`[Mock Electron] warmUpConnection called for ${engine}`);
     },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     onPTTDown: (cb: () => void) => {

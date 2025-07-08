@@ -52,17 +52,17 @@ contextBridge.exposeInMainWorld("electron", {
   },
   // Method for Gemini transcription
   transcribeGemini: async (
-    buf: ArrayBuffer,
+    audioBuffer: ArrayBuffer,
     mimeType: string,
-    transfer?: Transferable[],
+    transferList?: Transferable[],
     upstreamTimings?: Record<string, number>,
   ) => {
     const t0 = performance.now();
     const res = await ipcRenderer.invoke(
       "transcribe-gemini",
-      buf,
+      audioBuffer,
       mimeType,
-      transfer,
+      transferList,
       upstreamTimings,
     );
     if (res.timings) {
@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld("electron", {
     }
     return res;
   },
+  warmUpConnection: (engine: "groq" | "gemini") =>
+    ipcRenderer.send("warm-up-connection", engine),
   // Function key push-to-talk events
   onPTTDown: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-down");

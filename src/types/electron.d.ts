@@ -20,9 +20,10 @@ declare global {
       transcribeGemini: (
         buf: ArrayBuffer,
         mimeType: string,
-        transfer?: Transferable[],
+        transferList?: Transferable[],
         upstreamTimings?: Record<string, number>,
       ) => Promise<{ text: string; timings?: Record<string, number> }>;
+      warmUpConnection: (engine: "groq" | "gemini") => void;
       // Function key push-to-talk events
       onPTTDown: (cb: () => void) => () => void;
       onPTTUp: (cb: () => void) => () => void;

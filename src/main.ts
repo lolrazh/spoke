@@ -16,8 +16,8 @@ import process from "node:process";
 import { spawn, execFile } from "child_process";
 
 import fs from "node:fs";
-import { transcribeAudioWithGroq } from "./workers/groq-transcriber";
-import { transcribeAudioWithGemini } from "./workers/gemini-transcriber";
+import { transcribeAudioWithGroq, warmUpGroqConnection } from "./workers/groq-transcriber";
+import { transcribeAudioWithGemini, warmUpGeminiConnection } from "./workers/gemini-transcriber";
 import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
@@ -785,6 +785,15 @@ ipcMain.handle(
     }
   },
 );
+
+ipcMain.on("warm-up-connection", (event, engine: "groq" | "gemini") => {
+  console.log(`[MainIPC] Received warm-up request for ${engine}.`);
+  if (engine === "gemini") {
+    warmUpGeminiConnection();
+  } else {
+    warmUpGroqConnection();
+  }
+});
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag

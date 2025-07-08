@@ -40,6 +40,21 @@ const keepAliveAgent = new https.Agent({
   keepAliveMsecs: 30000,
 });
 
+export async function warmUpGroqConnection(): Promise<void> {
+  const workerUrl =
+    "https://api.sonicflow.app/groq/openai/v1/audio/transcriptions";
+  try {
+    console.log("[GroqTranscriber] Warming up connection...");
+    await got.head(workerUrl, {
+      agent: { https: keepAliveAgent },
+      http2: true,
+    });
+    console.log("[GroqTranscriber] Connection warmed up successfully.");
+  } catch (error) {
+    console.error("[GroqTranscriber] Error warming up connection:", error);
+  }
+}
+
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Groq API.
  * @param audioData The audio data as an ArrayBuffer.

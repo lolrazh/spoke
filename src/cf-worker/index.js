@@ -105,6 +105,17 @@ export default {
       return handleRequest(req, env, 'gemini');
     }
 
+    // Handle OPTIONS requests for CORS preflight
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*', // Be more specific in production
+          'Access-Control-Allow-Methods': 'POST, GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        },
+      });
+    }
+
     return new Response('Not Found', { status: 404 });
   },
 };

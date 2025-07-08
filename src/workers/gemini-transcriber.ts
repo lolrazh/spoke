@@ -40,6 +40,21 @@ const keepAliveAgent = new https.Agent({
   keepAliveMsecs: 30000,
 });
 
+export async function warmUpGeminiConnection(): Promise<void> {
+  const workerUrl =
+    "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent";
+  try {
+    console.log("[GeminiTranscriber] Warming up connection...");
+    await got.head(workerUrl, {
+      agent: { https: keepAliveAgent },
+      http2: true,
+    });
+    console.log("[GeminiTranscriber] Connection warmed up successfully.");
+  } catch (error) {
+    console.error("[GeminiTranscriber] Error warming up connection:", error);
+  }
+}
+
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
  *
