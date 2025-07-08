@@ -476,7 +476,17 @@ self.addEventListener("message", async (e) => {
         }),
         (async () => {
           const tVadInitStart = performance.now();
-          await initializeVadWorker();
+          try {
+            await initializeVadWorker();
+          } catch (vadError) {
+            console.warn(
+              "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
+              vadError,
+            );
+            console.warn(
+              "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
+            );
+          }
           mark("vad_init_ms", performance.now() - tVadInitStart);
         })(),
       ]);
