@@ -8,6 +8,7 @@ import { performance } from "node:perf_hooks";
 import { encodeWAV } from "../utils/wav";
 import got, { HTTPAlias } from "got";
 import FormData from "form-data";
+import { PassThrough } from "stream";
 
 // API key is no longer handled here; it's in the Cloudflare worker environment.
 // Logging for API key status can be removed.
@@ -53,23 +54,45 @@ export async function transcribeAudioWithGroq(
     }
 
     const nodeBuffer = Buffer.from(audioData);
+    const passThrough = new PassThrough();
 
-    const form = new FormData();
-    form.append("file", nodeBuffer, {
-      filename: "audio.wav",
-      contentType: "audio/wav",
-    });
-    form.append("model", "distil-whisper-large-v3-en");
-    form.append("language", inputLanguage);
-    form.append("response_format", "json");
-    form.append("temperature", "0.0");
+    const boundary = `----WebKitFormBoundary${Math.random().toString(16).slice(2)}`;
+    const contentType = `multipart/form-data; boundary=${boundary}`;
+
+    passThrough.write(`--${boundary}\r\n`);
+    passThrough.write('Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n');
+    passThrough.write('Content-Type: audio/wav\r\n\r\n');
+    passThrough.write(nodeBuffer);
+    passThrough.write('\r\n');
+
+    passThrough.write(`--${boundary}\r\n`);
+    passThrough.write('Content-Disposition: form-data; name="model"\r\n\r\n');
+    passThrough.write('distil-whisper-large-v3-en\r\n');
+
+    passThrough.write(`--${boundary}\r\n`);
+    passThrough.write('Content-Disposition: form-data; name="language"\r\n\r\n');
+    passThrough.write(`${inputLanguage}\r\n`);
+
+    passThrough.write(`--${boundary}\r\n`);
+    passThrough.write('Content-Disposition: form-data; name="response_format"\r\n\r\n');
+    passThrough.write('json\r\n');
+
+    passThrough.write(`--${boundary}\r\n`);
+    passThrough.write('Content-Disposition: form-data; name="temperature"\r\n\r\n');
+    passThrough.write('0.0\r\n');
+
+    passThrough.write(`--${boundary}--\r\n`);
+    passThrough.end();
 
     let timings: TimingInfo = { client_phases: {} };
 
     const promise = new Promise<import("got").Response<string>>(
       (resolve, reject) => {
         const req = got.post(workerUrl, {
-          body: form,
+          body: passThrough,
+          headers: {
+            'Content-Type': contentType,
+          },
           http2: true,
           throwHttpErrors: false,
         });

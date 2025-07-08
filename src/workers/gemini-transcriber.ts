@@ -11,6 +11,7 @@ import { Buffer } from "node:buffer";
 import { encodeWAV } from "../utils/wav";
 import { TARGET_SAMPLE_RATE } from "../config/audio";
 import got, { HTTPAlias } from "got";
+import { PassThrough } from "stream";
 
 export interface GotTimingPhases {
   wait?: number;
@@ -66,12 +67,19 @@ export async function transcribeAudioWithGemini(
       ],
     };
 
+    const passThrough = new PassThrough();
+    passThrough.write(JSON.stringify(geminiJson));
+    passThrough.end();
+
     let timings: TimingInfo = { client_phases: {} };
 
     const promise = new Promise<import("got").Response<string>>(
       (resolve, reject) => {
         const req = got.post(workerUrl, {
-          json: geminiJson,
+          body: passThrough,
+          headers: {
+            'Content-Type': 'application/json',
+          },
           http2: true,
           throwHttpErrors: false,
         });

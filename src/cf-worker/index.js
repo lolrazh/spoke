@@ -26,14 +26,15 @@ async function handleRequest(req, env, target) {
   }
   mark('rewrite');
 
-  const body = req.body ? await req.arrayBuffer() : undefined;
-  mark('request-body-read');
+  // Stream the body directly instead of buffering
+  const body = req.body;
 
   mark('upstream-fetch-start');
   const upstreamResponse = await fetch(upstreamUrl.toString(), {
     method: req.method,
     headers: upstreamHeaders,
     body: body,
+    duplex: 'half', // Required for streaming request bodies
   });
   mark('upstream-headers-received');
 
@@ -49,9 +50,6 @@ async function handleRequest(req, env, target) {
       2
     )}`,
     `worker-core;dur=${worker_core_processing_duration.toFixed(2)}`,
-    `request-body-read;dur=${(
-      marks['request-body-read'] - marks['rewrite']
-    ).toFixed(2)}`,
     `upstream-ttfb;dur=${(
       marks['upstream-headers-received'] - marks['upstream-fetch-start']
     ).toFixed(2)}`,
