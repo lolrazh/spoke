@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld("electron", {
       upstreamTimings,
     );
     if (res.timings) {
-      res.timings.ipc_to_main = performance.now() - t0;
+      res.timings.ipc_roundtrip = performance.now() - t0;
     }
     return res;
   },
@@ -66,7 +66,7 @@ contextBridge.exposeInMainWorld("electron", {
       upstreamTimings,
     );
     if (res.timings) {
-      res.timings.ipc_to_main = performance.now() - t0;
+      res.timings.ipc_roundtrip = performance.now() - t0;
     }
     return res;
   },
