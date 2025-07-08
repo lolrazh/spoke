@@ -12,6 +12,7 @@ import { encodeWAV } from "../utils/wav";
 import { TARGET_SAMPLE_RATE } from "../config/audio";
 import got, { HTTPAlias } from "got";
 import { PassThrough } from "stream";
+import https from "https";
 
 export interface GotTimingPhases {
   wait?: number;
@@ -33,6 +34,10 @@ export interface TimingInfo {
   server_worker_total_ms?: number;
   edge_protocol?: string;
 }
+
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+});
 
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Gemini API.
@@ -79,6 +84,9 @@ export async function transcribeAudioWithGemini(
           body: passThrough,
           headers: {
             'Content-Type': 'application/json',
+          },
+          agent: {
+            https: keepAliveAgent,
           },
           http2: true,
           throwHttpErrors: false,

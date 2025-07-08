@@ -5,6 +5,7 @@
 import { TARGET_SAMPLE_RATE } from "../config/audio";
 // For performance.now() in Node.js environment
 import { performance } from "node:perf_hooks";
+import https from "https";
 import { encodeWAV } from "../utils/wav";
 import got, { HTTPAlias } from "got";
 import FormData from "form-data";
@@ -33,6 +34,10 @@ export interface TimingInfo {
   server_worker_total_ms?: number;
   edge_protocol?: string;
 }
+
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+});
 
 /**
  * Transcribes audio by sending it to a Cloudflare worker, which then calls the Groq API.
@@ -92,6 +97,9 @@ export async function transcribeAudioWithGroq(
           body: passThrough,
           headers: {
             'Content-Type': contentType,
+          },
+          agent: {
+            https: keepAliveAgent,
           },
           http2: true,
           throwHttpErrors: false,
