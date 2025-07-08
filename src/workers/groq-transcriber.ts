@@ -90,7 +90,7 @@ export async function transcribeAudioWithGroq(
 
     passThrough.write(`--${boundary}\r\n`);
     passThrough.write('Content-Disposition: form-data; name="model"\r\n\r\n');
-    passThrough.write("distil-whisper-large-v3-en\r\n");
+    passThrough.write("whisper-large-v3-turbo\r\n");
 
     passThrough.write(`--${boundary}\r\n`);
     passThrough.write(

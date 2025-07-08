@@ -135,6 +135,20 @@ export function useTranscription(): UseTranscriptionReturn {
   const [currentMode, setCurrentMode] = useState<"local" | "cloud">("cloud"); // Default to local mode
   const [cloudEngine, setCloudEngine] = useState<CloudEngine>("groq");
 
+  // New function to lazily initialize the WAV encoder worker
+  const ensureWavEncoderWorker = () => {
+    if (!wavEncoderWorkerRef.current) {
+      console.log(
+        "[useTranscription] Cloud mode: Lazily initializing WAV encoder worker...",
+      );
+      wavEncoderWorkerRef.current = new Worker(
+        new URL("../workers/wav-encoder.ts", import.meta.url),
+        { type: "module" },
+      );
+    }
+    return wavEncoderWorkerRef.current;
+  };
+
   // Refs to track the latest state for potential callbacks
   const readyRef = useRef(ready);
   const processingRef = useRef(processing);
@@ -381,26 +395,67 @@ export function useTranscription(): UseTranscriptionReturn {
 
   // --- Effects for Cloud WAV Encoder WORKER setup (only if mode is cloud) --
   useEffect(() => {
-    if (currentMode === "cloud" && !wavEncoderWorkerRef.current) {
+    // This effect now only handles cleanup.
+    // If we switch away from cloud mode, terminate any existing worker.
+    if (currentMode !== "cloud" && wavEncoderWorkerRef.current) {
       console.log(
-        "[useTranscription] Cloud mode: Initializing WAV encoder worker...",
-      );
-      wavEncoderWorkerRef.current = new Worker(
-        new URL("../workers/wav-encoder.ts", import.meta.url),
-        { type: "module" },
-      );
-    } else if (currentMode !== "cloud" && wavEncoderWorkerRef.current) {
-      console.log(
-        "[useTranscription] Switched to Local mode. Terminating WAV encoder worker.",
+        "[useTranscription] Switched away from cloud mode. Terminating WAV encoder worker.",
       );
       wavEncoderWorkerRef.current.terminate();
       wavEncoderWorkerRef.current = null;
     }
 
+    // On unmount, ensure the worker is terminated.
     return () => {
-      wavEncoderWorkerRef.current?.terminate();
+      if (wavEncoderWorkerRef.current) {
+        console.log(
+          "[useTranscription] Terminating WAV encoder worker on unmount.",
+        );
+        wavEncoderWorkerRef.current.terminate();
+        wavEncoderWorkerRef.current = null;
+      }
     };
   }, [currentMode]);
+
+  // Helper function for worker communication with timeout
+  const getWavFromWorkerWithTimeout = (
+    worker: Worker,
+    audioData: Float32Array,
+    timeout = 3000,
+  ): Promise<{ wavBuffer: ArrayBuffer }> => {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        reject(new Error("WAV encoder worker timed out."));
+      }, timeout);
+
+      const onMessage = (event: MessageEvent<{ wavBuffer: ArrayBuffer }>) => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        resolve(event.data);
+      };
+
+      const onError = (error: ErrorEvent) => {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+        cleanup();
+        reject(error);
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("error", onError);
+      };
+
+      worker.addEventListener("message", onMessage);
+      worker.addEventListener("error", onError);
+      worker.postMessage({
+        audioData: audioData,
+        sampleRate: TARGET_AUDIO_CONTEXT_RATE,
+      });
+    });
+  };
 
   // --- 4️⃣ Public API ---
   const start = useCallback(async () => {
@@ -731,33 +786,15 @@ export function useTranscription(): UseTranscriptionReturn {
                 );
               }
 
-              if (!wavEncoderWorkerRef.current) {
-                throw new Error("WAV encoder worker is not initialized.");
+              const worker = ensureWavEncoderWorker();
+              if (!worker) {
+                throw new Error("WAV encoder worker could not be initialized.");
               }
 
               mark("wav_encode_start");
-              const wavResult = await new Promise<{ wavBuffer: ArrayBuffer }>(
-                (resolve, reject) => {
-                  const worker = wavEncoderWorkerRef.current!;
-                  const onMessage = (
-                    event: MessageEvent<{ wavBuffer: ArrayBuffer }>,
-                  ) => {
-                    worker.removeEventListener("message", onMessage);
-                    worker.removeEventListener("error", onError);
-                    resolve(event.data);
-                  };
-                  const onError = (error: ErrorEvent) => {
-                    worker.removeEventListener("message", onMessage);
-                    worker.removeEventListener("error", onError);
-                    reject(error);
-                  };
-                  worker.addEventListener("message", onMessage);
-                  worker.addEventListener("error", onError);
-                  worker.postMessage({
-                    audioData: trimmedPcmF32,
-                    sampleRate: TARGET_AUDIO_CONTEXT_RATE,
-                  });
-                },
+              const wavResult = await getWavFromWorkerWithTimeout(
+                worker,
+                trimmedPcmF32,
               );
               mark("wav_encode_end");
 
@@ -782,33 +819,15 @@ export function useTranscription(): UseTranscriptionReturn {
                 );
               }
 
-              if (!wavEncoderWorkerRef.current) {
-                throw new Error("WAV encoder worker is not initialized.");
+              const worker = ensureWavEncoderWorker();
+              if (!worker) {
+                throw new Error("WAV encoder worker could not be initialized.");
               }
 
               mark("wav_encode_start");
-              const wavResult = await new Promise<{ wavBuffer: ArrayBuffer }>(
-                (resolve, reject) => {
-                  const worker = wavEncoderWorkerRef.current!;
-                  const onMessage = (
-                    event: MessageEvent<{ wavBuffer: ArrayBuffer }>,
-                  ) => {
-                    worker.removeEventListener("message", onMessage);
-                    worker.removeEventListener("error", onError);
-                    resolve(event.data);
-                  };
-                  const onError = (error: ErrorEvent) => {
-                    worker.removeEventListener("message", onMessage);
-                    worker.removeEventListener("error", onError);
-                    reject(error);
-                  };
-                  worker.addEventListener("message", onMessage);
-                  worker.addEventListener("error", onError);
-                  worker.postMessage({
-                    audioData: trimmedPcmF32,
-                    sampleRate: TARGET_AUDIO_CONTEXT_RATE,
-                  });
-                },
+              const wavResult = await getWavFromWorkerWithTimeout(
+                worker,
+                trimmedPcmF32,
               );
               mark("wav_encode_end");
 
