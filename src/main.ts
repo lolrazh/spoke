@@ -16,8 +16,14 @@ import process from "node:process";
 import { spawn, execFile } from "child_process";
 
 import fs from "node:fs";
-import { transcribeAudioWithGroq, warmUpGroqConnection } from "./workers/groq-transcriber";
-import { transcribeAudioWithGemini, warmUpGeminiConnection } from "./workers/gemini-transcriber";
+import {
+  transcribeAudioWithGroq,
+  warmUpGroqConnection,
+} from "./workers/groq-transcriber";
+import {
+  transcribeAudioWithGemini,
+  warmUpGeminiConnection,
+} from "./workers/gemini-transcriber";
 import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
@@ -296,9 +302,7 @@ ipcMain.handle(
   "insert-text-at-cursor",
   async (_event: Electron.IpcMainInvokeEvent, text: string) => {
     if (!text) {
-      console.warn(
-        "[PasteHelper] Received empty text. Aborting insertion.",
-      );
+      console.warn("[PasteHelper] Received empty text. Aborting insertion.");
       return { success: false, error: "Cannot insert empty text." };
     }
 

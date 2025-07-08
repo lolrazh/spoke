@@ -65,7 +65,7 @@ export async function warmUpGeminiConnection(): Promise<void> {
 export async function transcribeAudioWithGemini(
   audioData: ArrayBuffer,
   mimeType: string,
-  prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq."
+  prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.",
 ): Promise<{ text: string; timings: TimingInfo }> {
   const workerUrl =
     "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent";
@@ -99,7 +99,7 @@ export async function transcribeAudioWithGemini(
         const req = got.post(workerUrl, {
           body: passThrough,
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           agent: {
             https: keepAliveAgent,
@@ -150,9 +150,9 @@ export async function transcribeAudioWithGemini(
 
         req.then(
           (response) => resolve(response as import("got").Response<string>),
-          reject
+          reject,
         );
-      }
+      },
     );
 
     const response = await promise;
@@ -160,16 +160,16 @@ export async function transcribeAudioWithGemini(
     console.log(
       `[GeminiTranscriber] API call completed in ${
         timings.client_phases.total?.toFixed(2) ?? "N/A"
-      } ms.`
+      } ms.`,
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       const errorText = response.body;
       console.error(
-        `[GeminiTranscriber] Error from API: ${response.statusCode} - ${errorText}`
+        `[GeminiTranscriber] Error from API: ${response.statusCode} - ${errorText}`,
       );
       throw new Error(
-        `Gemini transcription failed: ${response.statusCode} - ${errorText}`
+        `Gemini transcription failed: ${response.statusCode} - ${errorText}`,
       );
     }
 
@@ -179,10 +179,10 @@ export async function transcribeAudioWithGemini(
     if (typeof text !== "string") {
       console.error(
         "[GeminiTranscriber] Unexpected response format from API (text missing):",
-        result
+        result,
       );
       throw new Error(
-        "Unexpected response format from Gemini service (text missing)."
+        "Unexpected response format from Gemini service (text missing).",
       );
     }
 
@@ -193,7 +193,7 @@ export async function transcribeAudioWithGemini(
   } catch (err: unknown) {
     console.error(
       "[GeminiTranscriber] Error during transcription:",
-      (err as Error)?.message || err
+      (err as Error)?.message || err,
     );
     throw err;
   }

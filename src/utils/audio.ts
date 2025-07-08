@@ -27,4 +27,4 @@ export function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
     offset += arr.length;
   }
   return result;
-} 
+}

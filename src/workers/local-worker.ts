@@ -272,28 +272,28 @@ async function transcribeSlice(slice: Float32Array) {
   if (!asr || slice.length === 0) return;
   if (processingPartial) return;
   processingPartial = true;
-  
+
   // Profiling start
   const tSliceStart = performance.now();
-  
+
   try {
     const tAsrStart = performance.now();
     const { text = "" } = await (asr as any)(slice);
     const tAsrEnd = performance.now();
-    
+
     // Calculate timings
     const asrDuration = tAsrEnd - tAsrStart;
     const totalSliceDuration = tAsrEnd - tSliceStart;
-    
+
     // Log profiling info
     console.log(`[LocalWorker] Slice transcription timings:`);
     console.table({
       asr_inference: asrDuration,
       total_slice_duration: totalSliceDuration,
       slice_length_samples: slice.length,
-      slice_length_seconds: (slice.length / TARGET_SAMPLE_RATE).toFixed(3)
+      slice_length_seconds: (slice.length / TARGET_SAMPLE_RATE).toFixed(3),
     });
-    
+
     diffAndSend(
       lastPartialText + (lastPartialText && text ? " " : "") + text,
       "partial",
@@ -557,9 +557,9 @@ self.addEventListener("message", async (e) => {
     const tDictationEnd = performance.now();
     const timings: Record<string, number> = {};
     const mark = (label: string) => (timings[label] = performance.now());
-    
+
     mark("stop_start");
-    
+
     // Now acts as "flush"
     if (!recording && !processingPartial && preallocated16kBuffer === null) {
       console.warn(
@@ -651,19 +651,21 @@ self.addEventListener("message", async (e) => {
     mark("final_transcribe_end");
 
     const tPaste = performance.now();
-    
+
     // Calculate timing breakdowns
     const timingBreakdown = {
-      wait_processing: timings.wait_processing_end - timings.wait_processing_start,
+      wait_processing:
+        timings.wait_processing_end - timings.wait_processing_start,
       final_pull: timings.final_pull_end - timings.final_pull_start,
-      final_transcribe: timings.final_transcribe_end - timings.final_transcribe_start,
+      final_transcribe:
+        timings.final_transcribe_end - timings.final_transcribe_start,
       total_stop_duration: tPaste - timings.stop_start,
-      dictation_to_paste_ms: tPaste - tDictationEnd
+      dictation_to_paste_ms: tPaste - tDictationEnd,
     };
-    
+
     console.log("[LocalWorker] Final transcription timing breakdown:");
     console.table(timingBreakdown);
-    
+
     console.log(
       `[LocalWorker] Sending final 'completed' message. Transcription: "${lastPartialText}"`,
     );

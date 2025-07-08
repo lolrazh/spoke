@@ -63,7 +63,7 @@ export async function warmUpGroqConnection(): Promise<void> {
  */
 export async function transcribeAudioWithGroq(
   audioData: ArrayBuffer,
-  inputLanguage = "en"
+  inputLanguage = "en",
 ): Promise<{ text: string; timings: TimingInfo }> {
   const workerUrl =
     "https://api.sonicflow.app/groq/openai/v1/audio/transcriptions";
@@ -81,26 +81,34 @@ export async function transcribeAudioWithGroq(
     const contentType = `multipart/form-data; boundary=${boundary}`;
 
     passThrough.write(`--${boundary}\r\n`);
-    passThrough.write('Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n');
-    passThrough.write('Content-Type: audio/wav\r\n\r\n');
+    passThrough.write(
+      'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n',
+    );
+    passThrough.write("Content-Type: audio/wav\r\n\r\n");
     passThrough.write(nodeBuffer);
-    passThrough.write('\r\n');
+    passThrough.write("\r\n");
 
     passThrough.write(`--${boundary}\r\n`);
     passThrough.write('Content-Disposition: form-data; name="model"\r\n\r\n');
-    passThrough.write('distil-whisper-large-v3-en\r\n');
+    passThrough.write("distil-whisper-large-v3-en\r\n");
 
     passThrough.write(`--${boundary}\r\n`);
-    passThrough.write('Content-Disposition: form-data; name="language"\r\n\r\n');
+    passThrough.write(
+      'Content-Disposition: form-data; name="language"\r\n\r\n',
+    );
     passThrough.write(`${inputLanguage}\r\n`);
 
     passThrough.write(`--${boundary}\r\n`);
-    passThrough.write('Content-Disposition: form-data; name="response_format"\r\n\r\n');
-    passThrough.write('json\r\n');
+    passThrough.write(
+      'Content-Disposition: form-data; name="response_format"\r\n\r\n',
+    );
+    passThrough.write("json\r\n");
 
     passThrough.write(`--${boundary}\r\n`);
-    passThrough.write('Content-Disposition: form-data; name="temperature"\r\n\r\n');
-    passThrough.write('0.0\r\n');
+    passThrough.write(
+      'Content-Disposition: form-data; name="temperature"\r\n\r\n',
+    );
+    passThrough.write("0.0\r\n");
 
     passThrough.write(`--${boundary}--\r\n`);
     passThrough.end();
@@ -112,7 +120,7 @@ export async function transcribeAudioWithGroq(
         const req = got.post(workerUrl, {
           body: passThrough,
           headers: {
-            'Content-Type': contentType,
+            "Content-Type": contentType,
           },
           agent: {
             https: keepAliveAgent,
@@ -163,9 +171,9 @@ export async function transcribeAudioWithGroq(
 
         req.then(
           (response) => resolve(response as import("got").Response<string>),
-          reject
+          reject,
         );
-      }
+      },
     );
 
     const response = await promise;
@@ -173,15 +181,15 @@ export async function transcribeAudioWithGroq(
     console.log(
       `[GroqTranscriber] API call completed in ${
         timings.client_phases.total?.toFixed(2) ?? "N/A"
-      } ms.`
+      } ms.`,
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       console.error(
-        `[GroqTranscriber] Error from API: ${response.statusCode} - ${response.body}`
+        `[GroqTranscriber] Error from API: ${response.statusCode} - ${response.body}`,
       );
       throw new Error(
-        `Transcription failed: ${response.statusCode} - ${response.body}`
+        `Transcription failed: ${response.statusCode} - ${response.body}`,
       );
     }
 
@@ -190,11 +198,9 @@ export async function transcribeAudioWithGroq(
     if (!result || typeof result.text !== "string") {
       console.error(
         "[GroqTranscriber] Unexpected response format from API (text missing):",
-        result
+        result,
       );
-      throw new Error(
-        "Unexpected response format from transcription service."
-      );
+      throw new Error("Unexpected response format from transcription service.");
     }
 
     return { text: result.text, timings };

@@ -14,10 +14,7 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
-import {
-  concatenateFloat32Arrays,
-  trimSilence,
-} from "../utils/audio";
+import { concatenateFloat32Arrays, trimSilence } from "../utils/audio";
 import { encodeWAV } from "../utils/wav";
 
 // Define CloudEngine type first
@@ -537,7 +534,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
           microphoneSourceRef.current =
             audioCtxRef.current.createMediaStreamSource(streamRef.current);
-          
+
           // For cloud mode, we initialize the worklet WITHOUT the SAB.
           // This triggers the in-memory frame collection logic.
           workletNodeRef.current = new AudioWorkletNode(
@@ -665,7 +662,7 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(
         "[useTranscription] Stopping cloud AudioWorklet recording...",
       );
-      
+
       if (!workletNodeRef.current) {
         console.error(
           "[useTranscription] Cloud stop: WorkletNode not available. Cannot flush audio.",
@@ -685,7 +682,7 @@ export function useTranscription(): UseTranscriptionReturn {
         // Listen for the response from the worklet
         workletNodeRef.current.port.onmessage = async (event) => {
           if (event.data.type !== "frames") return;
-          
+
           mark("frames_received");
           const { frames } = event.data;
 
@@ -694,7 +691,7 @@ export function useTranscription(): UseTranscriptionReturn {
           microphoneSourceRef.current = null;
           workletNodeRef.current?.disconnect();
           workletNodeRef.current = null;
-          
+
           try {
             mark("concat_start");
             const pcmF32 = concatenateFloat32Arrays(frames);
@@ -844,14 +841,12 @@ export function useTranscription(): UseTranscriptionReturn {
               measuredTotal,
             );
 
-            console.log(
-              `[useTranscription] Timings for ${cloudEngine}:`
-            );
+            console.log(`[useTranscription] Timings for ${cloudEngine}:`);
             console.table(pipelineStages);
 
             if (profilingStartTimeRef.current) {
               console.log(
-                `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`
+                `[useTranscription] Profiling: Cloud Worklet - ${cloudEngine} transcript received.`,
               );
               profilingStartTimeRef.current = null;
             }
@@ -883,7 +878,6 @@ export function useTranscription(): UseTranscriptionReturn {
         // Trigger the worklet to send back the audio frames
         mark("flush_sent");
         workletNodeRef.current.port.postMessage({ type: "flush" });
-
       })();
     } else {
       // currentMode === 'local'
