@@ -107,9 +107,28 @@ function collectPipeline(
   return s;
 }
 
+function collectLocalPipeline(
+  uiTotalTime: number,
+  workerTimings: Record<string, number>,
+): PipelineStage[] {
+  const s: PipelineStage[] = [];
+
+  const asrInferenceTime = workerTimings.total_asr_inference_ms || 0;
+  const overhead = uiTotalTime - asrInferenceTime;
+
+  s.push({ name: "total-measured-e2e", ms: uiTotalTime });
+  s.push({ name: "├─ asr-inference", ms: asrInferenceTime });
+  s.push({ name: "└─ overhead", ms: overhead });
+
+  return s;
+}
+
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
+  const localTimingRef = useRef<{ stopTime: number | null }>({
+    stopTime: null,
+  });
   const wavEncoderWorkerRef = useRef<Worker | null>(null);
   // These refs are now potentially shared or re-initialized for cloud AudioWorklet path
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -134,7 +153,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const [ready, setReady] = useState(false); // General readiness. Mic access is a key part.
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [currentMode, setCurrentMode] = useState<"local" | "cloud">("cloud"); // Default to local mode
+  const [currentMode, setCurrentMode] = useState<"local" | "cloud">("local"); // Default to local mode
   const [cloudEngine, setCloudEngine] = useState<CloudEngine>("groq");
 
   // New function to lazily initialize the WAV encoder worker
@@ -332,6 +351,19 @@ export function useTranscription(): UseTranscriptionReturn {
           case "completed": // Local transcription complete
             if ("transcription" in message) {
               setText(message.transcription || "");
+
+              if (localTimingRef.current.stopTime && message.timings) {
+                const uiTotalTime =
+                  performance.now() - localTimingRef.current.stopTime;
+                const pipelineStages = collectLocalPipeline(
+                  uiTotalTime,
+                  message.timings,
+                );
+                console.log("[useTranscription] Timings for local mode:");
+                console.table(pipelineStages);
+                localTimingRef.current.stopTime = null; // Reset for next run
+              }
+
               if (
                 message.transcription &&
                 window.electron?.insertTextAtCursor
@@ -489,23 +521,23 @@ export function useTranscription(): UseTranscriptionReturn {
     setError(null);
     setText("");
 
-    // --- Pre-warm the connection (if necessary) ---
-    const now = Date.now();
-    if (now - lastApiCallTimestampRef.current > 25000) {
-      console.log(
-        "[useTranscription] Connection likely cold, sending warm-up request.",
-      );
-      window.electron.warmUpConnection(cloudEngine);
-      lastApiCallTimestampRef.current = now;
-    } else {
-      console.log(
-        "[useTranscription] Connection likely warm, skipping warm-up request.",
-      );
-    }
-
     // setRecording(true) moved into mode-specific logic after async ops
 
     if (currentMode === "cloud") {
+      // --- Pre-warm the connection (if necessary) ---
+      const now = Date.now();
+      if (now - lastApiCallTimestampRef.current > 25000) {
+        console.log(
+          "[useTranscription] Connection likely cold, sending warm-up request.",
+        );
+        window.electron.warmUpConnection(cloudEngine);
+        lastApiCallTimestampRef.current = now;
+      } else {
+        console.log(
+          "[useTranscription] Connection likely warm, skipping warm-up request.",
+        );
+      }
+
       console.log(
         "[useTranscription] Starting cloud recording with AudioWorklet...",
       );
@@ -909,6 +941,9 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(
         "[useTranscription] Stopping local recording. Disconnecting AudioWorklet, notifying worker.",
       );
+
+      localTimingRef.current.stopTime = performance.now();
+
       if (microphoneSourceRef.current) {
         microphoneSourceRef.current.disconnect();
         microphoneSourceRef.current = null;

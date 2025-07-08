@@ -110,6 +110,20 @@ let nextDecodeStart16k = 0; // Start index for the next ASR slice in preallocate
 let lastPartialText = ""; // Store the cumulative text sent so far (for diffing)
 let sliceStart16k = 0; // beginning of the *current* slice
 
+// --- TIMING ---
+const timings = {
+  total_asr_inference_ms: 0,
+  total_vad_processing_ms: 0,
+  total_audio_pull_ms: 0,
+  model_load_ms: 0,
+  vad_init_ms: 0,
+  final_flush_ms: 0,
+};
+const mark = (name: keyof typeof timings, duration: number) => {
+  timings[name] += duration;
+};
+// --- TIMING END ---
+
 function diffAndSend(textNow: string, tag: "partial") {
   textNow = textNow.trim(); // Ensure consistent trimming
   let i = 0;
@@ -144,6 +158,7 @@ function diffAndSend(textNow: string, tag: "partial") {
 
 // Pulls audio from RingBuffer into preallocated16kBuffer and resizes if necessary
 function pullAndProcessAudio() {
+  const t0 = performance.now();
   if (!ringBuffer || !preallocated16kBuffer) {
     console.warn(
       "[LocalWorker Pull] RingBuffer or preallocated16kBuffer not ready.",
@@ -198,6 +213,7 @@ function pullAndProcessAudio() {
   // ringBuffer.read expects a buffer to fill and returns null if successful.
   ringBuffer.read(targetView);
   current16kWriteOffset += samplesToRead;
+  mark("total_audio_pull_ms", performance.now() - t0);
 }
 
 // Initialize VAD worker
@@ -274,25 +290,20 @@ async function transcribeSlice(slice: Float32Array) {
   processingPartial = true;
 
   // Profiling start
-  const tSliceStart = performance.now();
+  const tAsrStart = performance.now();
 
   try {
-    const tAsrStart = performance.now();
     const { text = "" } = await (asr as any)(slice);
-    const tAsrEnd = performance.now();
-
-    // Calculate timings
-    const asrDuration = tAsrEnd - tAsrStart;
-    const totalSliceDuration = tAsrEnd - tSliceStart;
+    mark("total_asr_inference_ms", performance.now() - tAsrStart);
 
     // Log profiling info
-    console.log(`[LocalWorker] Slice transcription timings:`);
-    console.table({
-      asr_inference: asrDuration,
-      total_slice_duration: totalSliceDuration,
-      slice_length_samples: slice.length,
-      slice_length_seconds: (slice.length / TARGET_SAMPLE_RATE).toFixed(3),
-    });
+    // console.log(`[LocalWorker] Slice transcription timings:`);
+    // console.table({
+    //   asr_inference: asrDuration,
+    //   total_slice_duration: totalSliceDuration,
+    //   slice_length_samples: slice.length,
+    //   slice_length_seconds: (slice.length / TARGET_SAMPLE_RATE).toFixed(3),
+    // });
 
     diffAndSend(
       lastPartialText + (lastPartialText && text ? " " : "") + text,
@@ -306,30 +317,41 @@ async function transcribeSlice(slice: Float32Array) {
 
 // VAD detection using dedicated worker
 function vadDetect(frame: Float32Array): Promise<boolean> {
-  if (!vadWorker || !vadInitialized) {
-    return Promise.resolve(true); // fail-open: treat as speech
-  }
-
   return new Promise((resolve, reject) => {
+    if (!vadWorker || !vadInitialized) {
+      console.warn("[LocalWorker] VAD not ready, assuming speech.");
+      resolve(true); // Fail-open
+      return;
+    }
+    const tVadStart = performance.now();
     const frameId = nextFrameId++;
-    pendingVadResults.set(frameId, { resolve, reject });
 
-    const message: VadWorkerMessage = {
-      type: "vad_detect",
-      frameId,
-      audioFrame: frame,
-    };
-
-    vadWorker.postMessage(message);
-
-    // Add timeout to prevent hanging
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (pendingVadResults.has(frameId)) {
         pendingVadResults.delete(frameId);
-        console.warn("[LocalWorker] VAD detection timeout for frame", frameId);
-        resolve(true); // fail-open: assume speech
+        console.warn(
+          `[LocalWorker] VAD detection timeout for frame ${frameId}. Assuming speech.`,
+        );
+        mark("total_vad_processing_ms", performance.now() - tVadStart);
+        resolve(true); // Fail-open
       }
-    }, 1000); // 1 second timeout
+    }, 1000); // 1-second timeout
+
+    pendingVadResults.set(frameId, {
+      resolve: (isSpeech) => {
+        clearTimeout(timeoutId);
+        mark("total_vad_processing_ms", performance.now() - tVadStart);
+        resolve(isSpeech);
+      },
+      reject: (err) => {
+        clearTimeout(timeoutId);
+        mark("total_vad_processing_ms", performance.now() - tVadStart);
+        reject(err);
+      },
+    });
+
+    const message: VadWorkerMessage = { type: "vad_frame", frame, frameId };
+    vadWorker.postMessage(message);
   });
 }
 
@@ -397,8 +419,9 @@ async function startPullLoop() {
   console.log("[LocalWorker] Streaming pull loop stopped.");
 }
 
+// Main message handler for the worker
 self.addEventListener("message", async (e) => {
-  const { type, data } = e.data ?? {};
+  const { type, data } = e.data;
 
   if (type === "init") {
     if (data?.sab) {
@@ -428,72 +451,58 @@ self.addEventListener("message", async (e) => {
   }
 
   if (type === "initialize-local-asr") {
-    if (asr) {
-      console.log("[LocalWorker] ASR pipeline already initialized.");
-      const readyMessage: ModelReadyMessage = { status: "asr_model_ready" };
-      self.postMessage(readyMessage);
-      return;
-    }
-    if (modelInitializationInProgress) {
-      console.warn("[LocalWorker] Already busy initializing ASR pipeline.");
-      return;
-    }
-    modelInitializationInProgress = true;
-    const loadingMessage: ModelLoadingMessage = { status: "asr_model_loading" };
-    self.postMessage(loadingMessage);
-    console.log(
-      `[LocalWorker] Received 'initialize-local-asr'. Initializing pipeline with model: ${MODEL_ID}`,
-    );
-    try {
-      // Using type assertion for pipeline options as transformers.js has flexible types
-      asr = await pipeline("automatic-speech-recognition", MODEL_ID, {
-        progress_callback: (p: unknown) =>
-          p &&
-          self.postMessage({
-            ...(p as Record<string, unknown>),
-            status: "model_progress",
-          }),
-        session_options: {
-          graphOptimizationLevel: "all",
-          enableCpuMemArena: true,
-          executionMode: "parallel",
-          intraOpNumThreads:
-            wasmConfig?.numThreads || navigator.hardwareConcurrency || 4,
-        },
-        device: device,
-        dtype: dtypeConfig,
-      });
-
+    if (modelInitializationInProgress || asr) {
       console.log(
-        "[LocalWorker] ASR Streaming Pipeline initialized successfully.",
+        "[LocalWorker] ASR initialization already in progress or completed.",
       );
+      return;
+    }
+    console.log("[LocalWorker] Starting ASR model initialization...");
+    modelInitializationInProgress = true;
+    self.postMessage({ status: "asr_model_loading" });
+
+    const t0 = performance.now();
+    try {
+      [asr] = await Promise.all([
+        pipeline("automatic-speech-recognition", MODEL_ID, {
+          dtype: dtypeConfig,
+          device,
+          progress_callback: (progress: any) => {
+            self.postMessage({
+              status: "model_progress",
+              progress: progress,
+            });
+          },
+        }),
+        (async () => {
+          const tVadInitStart = performance.now();
+          try {
+            await initializeVadWorker();
+          } catch (vadError) {
+            console.warn(
+              "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
+              vadError,
+            );
+            console.warn(
+              "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
+            );
+          }
+          mark("vad_init_ms", performance.now() - tVadInitStart);
+        })(),
+      ]);
+      mark("model_load_ms", performance.now() - t0 - timings.vad_init_ms);
+
       self.postMessage({ status: "asr_model_ready" });
-    } catch (pipelineError) {
-      console.error(
-        "[LocalWorker] ASR Pipeline initialization failed:",
-        pipelineError,
-      );
+      console.log("[LocalWorker] ASR model ready.");
+    } catch (err) {
+      console.error("[LocalWorker] ASR initialization error:", err);
       self.postMessage({
         status: "error",
-        error: "Worker failed to initialize ASR pipeline.",
+        error: `ASR initialization failed: ${(err as Error).message}`,
       });
-      asr = null;
     } finally {
       modelInitializationInProgress = false;
     }
-
-    // Initialize VAD worker independently (non-blocking for ASR)
-    // This runs after ASR is ready to avoid blocking ASR initialization
-    initializeVadWorker().catch((vadError) => {
-      console.warn(
-        "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
-        vadError,
-      );
-      console.warn(
-        "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
-      );
-    });
-
     return;
   }
 
@@ -555,30 +564,17 @@ self.addEventListener("message", async (e) => {
 
   if (type === "stop-capture-and-transcribe") {
     const tDictationEnd = performance.now();
-    const timings: Record<string, number> = {};
-    const mark = (label: string) => (timings[label] = performance.now());
+    // Note: 'timestamp' from UI is wall-clock time, not monotonic performance.now()
+    // For simplicity, we start our own timer here.
+    const tFlushStart = performance.now();
 
-    mark("stop_start");
-
-    // Now acts as "flush"
-    if (!recording && !processingPartial && preallocated16kBuffer === null) {
-      console.warn(
-        "[LocalWorker] Flush requested but not recording, not processing, and no buffer. Likely already flushed or never started.",
-      );
-      self.postMessage({
-        status: "completed",
-        transcription: lastPartialText || "",
-      }); // Send last known text
-      return;
-    }
-
+    // To be safe, capture if recording was active when stop was called
     const wasRecording = recording;
     console.log(
       "[LocalWorker] Flush requested. Stopping pull loop and processing remaining audio.",
     );
     recording = false; // Signal the pull loop to stop
 
-    mark("wait_processing_start");
     // Wait briefly for any ongoing partial processing from the loop to finish
     // This loop ensures that `processAvailableAudio` completes its current execution if it was mid-way.
     let waitCount = 0;
@@ -598,7 +594,6 @@ self.addEventListener("message", async (e) => {
       );
       processingPartial = false; // Force it if stuck
     }
-    mark("wait_processing_end");
 
     self.postMessage({ status: "processing_full_audio" }); // Indicate final processing
 
@@ -621,7 +616,6 @@ self.addEventListener("message", async (e) => {
       return;
     }
 
-    mark("final_pull_start");
     // Perform one final pull from the RingBuffer if it was recording
     if (wasRecording && ringBuffer) {
       console.log(
@@ -632,9 +626,7 @@ self.addEventListener("message", async (e) => {
         `[LocalWorker] Final pull complete. Current 16k offset: ${current16kWriteOffset}`,
       );
     }
-    mark("final_pull_end");
 
-    mark("final_transcribe_start");
     if (current16kWriteOffset > sliceStart16k) {
       if (!preallocated16kBuffer) {
         console.error(
@@ -648,23 +640,10 @@ self.addEventListener("message", async (e) => {
         await transcribeSlice(tail);
       }
     }
-    mark("final_transcribe_end");
 
-    const tPaste = performance.now();
-
-    // Calculate timing breakdowns
-    const timingBreakdown = {
-      wait_processing:
-        timings.wait_processing_end - timings.wait_processing_start,
-      final_pull: timings.final_pull_end - timings.final_pull_start,
-      final_transcribe:
-        timings.final_transcribe_end - timings.final_transcribe_start,
-      total_stop_duration: tPaste - timings.stop_start,
-      dictation_to_paste_ms: tPaste - tDictationEnd,
-    };
-
-    console.log("[LocalWorker] Final transcription timing breakdown:");
-    console.table(timingBreakdown);
+    // `processingPartial` should be false here
+    // `busy` is replaced by more specific flags
+    mark("final_flush_ms", performance.now() - tFlushStart);
 
     console.log(
       `[LocalWorker] Sending final 'completed' message. Transcription: "${lastPartialText}"`,
@@ -673,27 +652,11 @@ self.addEventListener("message", async (e) => {
     self.postMessage({
       status: "completed",
       transcription: lastPartialText,
-      timings: timingBreakdown,
+      timings: timings,
     });
 
     // Reset state for next recording
-    current16kWriteOffset = 0;
-    nextDecodeStart16k = 0;
-    lastPartialText = "";
-    sliceStart16k = 0;
-    wasSpeech = false;
-    silenceSince = 0;
-
-    // Clear pending VAD results
-    pendingVadResults.clear();
-    nextFrameId = 0;
-
-    if (preallocated16kBuffer) {
-      preallocated16kBuffer.fill(0);
-      preallocated16kBuffer = null;
-    }
-    // `recording` is already false
-    // `processingPartial` should be false here
+    cleanup();
     return;
   }
 

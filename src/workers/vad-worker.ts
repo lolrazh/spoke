@@ -99,14 +99,14 @@ self.addEventListener("message", async (e) => {
         break;
       }
 
-      case "vad_detect": {
-        const { frameId, audioFrame } = message;
+      case "vad_frame": {
+        const { frameId, frame } = message;
 
         if (!vad) {
           throw new Error("VAD model not initialized. Call vad_init first.");
         }
 
-        const { isSpeech, probability } = await detectSpeech(audioFrame);
+        const { isSpeech, probability } = await detectSpeech(frame);
 
         const response: VadResultMessage = {
           type: "vad_result",

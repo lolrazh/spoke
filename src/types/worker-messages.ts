@@ -128,10 +128,10 @@ export interface VadInitializedMessage {
   error?: string;
 }
 
-export interface VadDetectMessage {
-  type: "vad_detect";
+export interface VadFrameMessage {
+  type: "vad_frame";
   frameId: number;
-  audioFrame: Float32Array;
+  frame: Float32Array;
 }
 
 export interface VadResultMessage {
@@ -147,7 +147,7 @@ export interface VadErrorMessage {
   error: string;
 }
 
-export type VadWorkerMessage = VadInitMessage | VadDetectMessage;
+export type VadWorkerMessage = VadInitMessage | VadFrameMessage;
 
 export type VadWorkerResponse =
   | VadInitializedMessage
