@@ -717,20 +717,45 @@ export function useTranscription(): UseTranscriptionReturn {
                   "Gemini transcription service (window.electron.transcribeGemini) is not available.",
                 );
               }
+
+              if (!wavEncoderWorkerRef.current) {
+                throw new Error("WAV encoder worker is not initialized.");
+              }
+
               mark("wav_encode_start");
-              const wavBuf = encodeWAV(
-                trimmedPcmF32,
-                TARGET_AUDIO_CONTEXT_RATE,
+              const wavResult = await new Promise<{ wavBuffer: ArrayBuffer }>(
+                (resolve, reject) => {
+                  const worker = wavEncoderWorkerRef.current!;
+                  const onMessage = (
+                    event: MessageEvent<{ wavBuffer: ArrayBuffer }>,
+                  ) => {
+                    worker.removeEventListener("message", onMessage);
+                    worker.removeEventListener("error", onError);
+                    resolve(event.data);
+                  };
+                  const onError = (error: ErrorEvent) => {
+                    worker.removeEventListener("message", onMessage);
+                    worker.removeEventListener("error", onError);
+                    reject(error);
+                  };
+                  worker.addEventListener("message", onMessage);
+                  worker.addEventListener("error", onError);
+                  worker.postMessage({
+                    audioData: trimmedPcmF32,
+                    sampleRate: TARGET_AUDIO_CONTEXT_RATE,
+                  });
+                },
               );
               mark("wav_encode_end");
 
+              const { wavBuffer } = wavResult;
               console.log(
-                `[useTranscription] Sending WAV (${wavBuf.byteLength} bytes) to Gemini...`,
+                `[useTranscription] Sending WAV (${wavBuffer.byteLength} bytes) to Gemini...`,
               );
               const result = await window.electron.transcribeGemini(
-                wavBuf,
+                wavBuffer,
                 "audio/wav",
-                [wavBuf],
+                [wavBuffer],
                 ts,
               );
               transcript = result.text;
