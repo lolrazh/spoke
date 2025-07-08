@@ -37,6 +37,7 @@ export interface TimingInfo {
 
 const keepAliveAgent = new https.Agent({
   keepAlive: true,
+  keepAliveMsecs: 30000,
 });
 
 /**
