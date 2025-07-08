@@ -14,66 +14,17 @@ import type {
   StartCaptureMessage,
   StopCaptureMessage,
 } from "../types/worker-messages";
+import {
+  concatenateFloat32Arrays,
+  trimSilence,
+} from "../utils/audio";
+import { encodeWAV } from "../utils/wav";
 
 // Define CloudEngine type first
 type CloudEngine = "groq" | "gemini";
 
 // Global worklet registry to prevent double registration
 const workletRegistry = new Set<string>();
-
-// REMOVED local RingBuffer interface to use the imported class
-// interface RingBuffer { ... }
-
-// NEW util: pulls everything that has been written to the SAB
-async function drainSabToFloat32(
-  ring: RingBuffer | null,
-): Promise<Float32Array> {
-  if (!ring) {
-    console.error("[drainSabToFloat32] RingBuffer instance is null!");
-    return new Float32Array(0);
-  }
-  const total = ring.availableRead();
-  if (total === 0) {
-    console.log("[drainSabToFloat32] No data available to read.");
-    return new Float32Array(0);
-  }
-  const buf = new Float32Array(total);
-  ring.read(buf); // The imported RingBuffer.read(targetBuffer) fills buf and returns null.
-  // The buf itself is modified.
-  return buf;
-}
-
-// NEW util: trims silence from audio data
-function trimSilence(f32: Float32Array, thresh = 0.005): Float32Array {
-  if (f32.length === 0) return f32;
-  let l = 0,
-    r = f32.length - 1;
-  while (l < f32.length && Math.abs(f32[l]) < thresh) l++;
-
-  if (l === f32.length) {
-    // All samples are below threshold
-    console.log("[trimSilence] Audio is all silence.");
-    return new Float32Array(0);
-  }
-
-  while (r > l && Math.abs(f32[r]) < thresh) r--;
-  return f32.subarray(l, r + 1);
-}
-
-// NEW HELPER for Option B: Concatenate Float32Array chunks
-function concatenateFloat32Arrays(arrays: Float32Array[]): Float32Array {
-  if (!arrays || arrays.length === 0) {
-    return new Float32Array(0);
-  }
-  const totalLength = arrays.reduce((acc, val) => acc + val.length, 0);
-  const result = new Float32Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -89,52 +40,6 @@ export interface UseTranscriptionReturn {
   cloudEngine: CloudEngine;
   setCloudEngine: (engine: CloudEngine) => void;
   setTimings?: (timings: Record<string, number>) => void; // Optional: if you want to pass it to UI
-}
-
-// Helper function to encode Float32Array to WAV ArrayBuffer
-function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
-  const numChannels = 1;
-  const bitsPerSample = 16; // 16-bit PCM
-  const bytesPerSample = bitsPerSample / 8;
-
-  const dataSize = samples.length * numChannels * bytesPerSample;
-  const fileSize = 44 + dataSize; // 44 bytes for header
-
-  const buffer = new ArrayBuffer(fileSize);
-  const view = new DataView(buffer);
-
-  function writeString(offset: number, str: string) {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  }
-
-  // RIFF header
-  writeString(0, "RIFF");
-  view.setUint32(4, fileSize - 8, true); // fileSize - 8
-  writeString(8, "WAVE");
-
-  // fmt chunk
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // byteRate
-  view.setUint16(32, numChannels * bytesPerSample, true); // blockAlign
-  view.setUint16(34, bitsPerSample, true);
-
-  // data chunk
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  // Write PCM samples
-  let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i])); // Clamp to [-1, 1]
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true); // Convert to 16-bit signed int
-  }
-  return buffer;
 }
 
 type PipelineStage = { name: string; ms: number };
@@ -206,6 +111,7 @@ function collectPipeline(
 export function useTranscription(): UseTranscriptionReturn {
   // --- Refs for local ASR (AudioWorklet, SAB, local-worker) --
   const localWorkerRef = useRef<Worker | null>(null);
+  const wavEncoderWorkerRef = useRef<Worker | null>(null);
   // These refs are now potentially shared or re-initialized for cloud AudioWorklet path
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -473,6 +379,29 @@ export function useTranscription(): UseTranscriptionReturn {
       setReady(streamRef.current ? true : false); // Cloud ready if mic is available
       setProcessing(false);
     }
+  }, [currentMode]);
+
+  // --- Effects for Cloud WAV Encoder WORKER setup (only if mode is cloud) --
+  useEffect(() => {
+    if (currentMode === "cloud" && !wavEncoderWorkerRef.current) {
+      console.log(
+        "[useTranscription] Cloud mode: Initializing WAV encoder worker...",
+      );
+      wavEncoderWorkerRef.current = new Worker(
+        new URL("../workers/wav-encoder.ts", import.meta.url),
+        { type: "module" },
+      );
+    } else if (currentMode !== "cloud" && wavEncoderWorkerRef.current) {
+      console.log(
+        "[useTranscription] Switched to Local mode. Terminating WAV encoder worker.",
+      );
+      wavEncoderWorkerRef.current.terminate();
+      wavEncoderWorkerRef.current = null;
+    }
+
+    return () => {
+      wavEncoderWorkerRef.current?.terminate();
+    };
   }, [currentMode]);
 
   // --- 4️⃣ Public API ---
@@ -789,7 +718,10 @@ export function useTranscription(): UseTranscriptionReturn {
                 );
               }
               mark("wav_encode_start");
-              const wavBuf = encodeWAV(trimmedPcmF32, TARGET_AUDIO_CONTEXT_RATE);
+              const wavBuf = encodeWAV(
+                trimmedPcmF32,
+                TARGET_AUDIO_CONTEXT_RATE,
+              );
               mark("wav_encode_end");
 
               console.log(
@@ -810,19 +742,45 @@ export function useTranscription(): UseTranscriptionReturn {
                   "Groq transcription service (window.electron.transcribeGroq) is not available.",
                 );
               }
-              const pcmF32ArrayBuffer = (
-                trimmedPcmF32.buffer as ArrayBuffer
-              ).slice(
-                trimmedPcmF32.byteOffset,
-                trimmedPcmF32.byteOffset + trimmedPcmF32.byteLength,
+
+              if (!wavEncoderWorkerRef.current) {
+                throw new Error("WAV encoder worker is not initialized.");
+              }
+
+              mark("wav_encode_start");
+              const wavResult = await new Promise<{ wavBuffer: ArrayBuffer }>(
+                (resolve, reject) => {
+                  const worker = wavEncoderWorkerRef.current!;
+                  const onMessage = (
+                    event: MessageEvent<{ wavBuffer: ArrayBuffer }>,
+                  ) => {
+                    worker.removeEventListener("message", onMessage);
+                    worker.removeEventListener("error", onError);
+                    resolve(event.data);
+                  };
+                  const onError = (error: ErrorEvent) => {
+                    worker.removeEventListener("message", onMessage);
+                    worker.removeEventListener("error", onError);
+                    reject(error);
+                  };
+                  worker.addEventListener("message", onMessage);
+                  worker.addEventListener("error", onError);
+                  worker.postMessage({
+                    audioData: trimmedPcmF32,
+                    sampleRate: TARGET_AUDIO_CONTEXT_RATE,
+                  });
+                },
               );
+              mark("wav_encode_end");
+
+              const { wavBuffer } = wavResult;
               console.log(
-                `[useTranscription] Sending raw PCM F32 (${pcmF32ArrayBuffer.byteLength} bytes) to Groq...`,
+                `[useTranscription] Sending WAV (${wavBuffer.byteLength} bytes) to Groq...`,
               );
 
               const result = await window.electron.transcribeGroq(
-                pcmF32ArrayBuffer,
-                [pcmF32ArrayBuffer],
+                wavBuffer,
+                [wavBuffer],
                 ts,
               );
               transcript = result.text;

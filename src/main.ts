@@ -673,7 +673,7 @@ ipcMain.handle(
   async (
     event,
     audioBuffer: ArrayBuffer,
-    transferListAudio: Transferable[] | undefined,
+    transferList: Transferable[] | undefined, // Renamed for clarity
     upstreamTimings?: Record<string, number>,
   ) => {
     console.log("[MainIPC] Received transcribe-groq request.");
@@ -694,6 +694,7 @@ ipcMain.handle(
     }
 
     try {
+      // The audioBuffer is now expected to be a WAV file buffer
       const { text, timings: disjointTimingsFromHelper } =
         await transcribeAudioWithGroq(audioBuffer);
 

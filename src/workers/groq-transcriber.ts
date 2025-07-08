@@ -52,8 +52,7 @@ export async function transcribeAudioWithGroq(
       throw new Error("Audio data is empty.");
     }
 
-    const wavBuf = encodeWAV(new Float32Array(audioData), TARGET_SAMPLE_RATE);
-    const nodeBuffer = Buffer.from(wavBuf);
+    const nodeBuffer = Buffer.from(audioData);
 
     const form = new FormData();
     form.append("file", nodeBuffer, {
