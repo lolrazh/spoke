@@ -325,12 +325,26 @@ function vadDetect(frame: Float32Array): Promise<boolean> {
     }
     const tVadStart = performance.now();
     const frameId = nextFrameId++;
+
+    const timeoutId = setTimeout(() => {
+      if (pendingVadResults.has(frameId)) {
+        pendingVadResults.delete(frameId);
+        console.warn(
+          `[LocalWorker] VAD detection timeout for frame ${frameId}. Assuming speech.`,
+        );
+        mark("total_vad_processing_ms", performance.now() - tVadStart);
+        resolve(true); // Fail-open
+      }
+    }, 1000); // 1-second timeout
+
     pendingVadResults.set(frameId, {
       resolve: (isSpeech) => {
+        clearTimeout(timeoutId);
         mark("total_vad_processing_ms", performance.now() - tVadStart);
         resolve(isSpeech);
       },
       reject: (err) => {
+        clearTimeout(timeoutId);
         mark("total_vad_processing_ms", performance.now() - tVadStart);
         reject(err);
       },
