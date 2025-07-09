@@ -264,6 +264,9 @@ async function initializeVadWorker(): Promise<void> {
                 pending.reject(new Error(message.error));
               }
             }
+            // --- new: automatic restart ---
+            console.error("[LocalWorker] VAD crashed, restarting...", message.error);
+            restartVadWorker();
             break;
           }
         }
@@ -282,6 +285,27 @@ async function initializeVadWorker(): Promise<void> {
       reject(error);
     }
   });
+}
+
+async function restartVadWorker(): Promise<void> {
+  if (vadWorker) {
+    vadWorker.terminate();
+    vadWorker = null;
+  }
+  vadInitialized = false;
+  // Clear any pending requests that might be left over
+  for (const { reject } of pendingVadResults.values()) {
+    reject(new Error("VAD worker restarted"));
+  }
+  pendingVadResults.clear();
+
+  console.log("[LocalWorker] Attempting to restart VAD worker...");
+  try {
+    await initializeVadWorker();
+    console.log("[LocalWorker] VAD worker restarted successfully.");
+  } catch (error) {
+    console.error("[LocalWorker] Failed to restart VAD worker:", error);
+  }
 }
 
 async function transcribeSlice(slice: Float32Array) {
@@ -360,6 +384,7 @@ async function startPullLoop() {
   console.log("[LocalWorker] Starting streaming pull loop with VAD...");
   const FRAME_SAMPLES = Math.floor(TARGET_SAMPLE_RATE * 0.03125); // 16 kHz * 0.03125 s = 500 samples (Silero VAD chunk size)
   const SILENCE_SAMPLES = Math.floor(MIN_SILENCE_S * TARGET_SAMPLE_RATE);
+  const MAX_INFLIGHT_VAD = 4;
 
   while (recording) {
     pullAndProcessAudio(); // still fills preallocated16kBuffer
@@ -367,6 +392,13 @@ async function startPullLoop() {
     // 🔼 NEW: iterate over new audio since last check
     while (nextDecodeStart16k + FRAME_SAMPLES <= current16kWriteOffset) {
       if (!preallocated16kBuffer || !recording) break; // Safeguard to exit inner loop if buffer is gone or recording stopped
+
+      // --- new: back-pressure mechanism ---
+      if (pendingVadResults.size > MAX_INFLIGHT_VAD) {
+        // Skip this frame: treat as “speech” so you don't cut the slice.
+        nextDecodeStart16k += FRAME_SAMPLES;
+        continue;
+      }
 
       // Ensure we don't exceed buffer bounds
       const endIdx = Math.min(

@@ -66,8 +66,13 @@ async function detectSpeech(
       sr: srTensor,
       state: vadState,
     });
-    vadState = stateN;
+
+    // --- new: manual memory management ----
+    input.dispose?.();
+    vadState.dispose?.(); // release previous state
+    vadState = stateN; // but keep the new one
     const probability = output.data[0] as number;
+    output.dispose?.();
 
     // Apply hysteresis for speech detection
     const isSpeech =
@@ -76,6 +81,7 @@ async function detectSpeech(
 
     return { isSpeech, probability };
   } catch (error) {
+    input.dispose?.();
     console.error("[VadWorker] VAD detection error:", error);
     throw error;
   }
