@@ -463,34 +463,18 @@ self.addEventListener("message", async (e) => {
 
     const t0 = performance.now();
     try {
-      [asr] = await Promise.all([
-        pipeline("automatic-speech-recognition", MODEL_ID, {
-          dtype: dtypeConfig,
-          device,
-          progress_callback: (progress: any) => {
-            self.postMessage({
-              status: "model_progress",
-              progress: progress,
-            });
-          },
-        }),
-        (async () => {
-          const tVadInitStart = performance.now();
-          try {
-            await initializeVadWorker();
-          } catch (vadError) {
-            console.warn(
-              "[LocalWorker] VAD worker initialization failed, but ASR is still functional:",
-              vadError,
-            );
-            console.warn(
-              "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
-            );
-          }
-          mark("vad_init_ms", performance.now() - tVadInitStart);
-        })(),
-      ]);
-      mark("model_load_ms", performance.now() - t0 - timings.vad_init_ms);
+      // VAD initialization is now handled by 'start-capture'
+      asr = await pipeline("automatic-speech-recognition", MODEL_ID, {
+        dtype: dtypeConfig,
+        device,
+        progress_callback: (progress: any) => {
+          self.postMessage({
+            status: "model_progress",
+            progress: progress,
+          });
+        },
+      });
+      mark("model_load_ms", performance.now() - t0);
 
       self.postMessage({ status: "asr_model_ready" });
       console.log("[LocalWorker] ASR model ready.");
@@ -528,6 +512,24 @@ self.addEventListener("message", async (e) => {
     }
     console.log("[LocalWorker] Starting audio capture for streaming...");
 
+    // Ensure VAD is ready before capture starts
+    if (!vadWorker) {
+      try {
+        console.log("[LocalWorker] Initializing VAD worker for new session...");
+        const tVadInitStart = performance.now();
+        await initializeVadWorker();
+        mark("vad_init_ms", performance.now() - tVadInitStart); // Track this timing
+      } catch (vadError) {
+        console.warn(
+          "[LocalWorker] VAD worker initialization failed, ASR will still function:",
+          vadError,
+        );
+        console.warn(
+          "[LocalWorker] VAD detection will fail-open (treat all audio as speech)",
+        );
+      }
+    }
+
     try {
       preallocated16kBuffer = new Float32Array(INITIAL_BUFFER_SIZE);
       current16kWriteOffset = 0;
@@ -563,7 +565,6 @@ self.addEventListener("message", async (e) => {
   }
 
   if (type === "stop-capture-and-transcribe") {
-    const tDictationEnd = performance.now();
     // Note: 'timestamp' from UI is wall-clock time, not monotonic performance.now()
     // For simplicity, we start our own timer here.
     const tFlushStart = performance.now();
