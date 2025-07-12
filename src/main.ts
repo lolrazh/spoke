@@ -16,14 +16,7 @@ import process from "node:process";
 import { spawn, execFile } from "child_process";
 
 import fs from "node:fs";
-import {
-  transcribeAudioWithGroq,
-  warmUpGroqConnection,
-} from "./workers/groq-transcriber";
-import {
-  transcribeAudioWithGemini,
-  warmUpGeminiConnection,
-} from "./workers/gemini-transcriber";
+
 import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
@@ -377,15 +370,26 @@ ipcMain.handle(
 );
 
 app.whenReady().then(() => {
+  const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp = [
+      "default-src 'self'",
+      "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
+      `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self' data:",
+    ].join("; ");
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp",
+        "Content-Security-Policy": csp,
       },
     });
   });
@@ -672,132 +676,7 @@ const createHomeWindow = () => {
   });
 };
 
-ipcMain.handle(
-  "transcribe-groq",
-  async (
-    event,
-    audioBuffer: ArrayBuffer,
-    transferList: Transferable[] | undefined, // Renamed for clarity
-    upstreamTimings?: Record<string, number>,
-  ) => {
-    console.log("[MainIPC] Received transcribe-groq request.");
-    const t0 = performance.now();
-    if (!audioBuffer || audioBuffer.byteLength === 0) {
-      console.error(
-        "[MainIPC] Audio buffer is empty or null for Groq transcription.",
-      );
-      const t1 = performance.now();
-      return {
-        text: "",
-        error: "Audio buffer is empty.",
-        timings: {
-          ...upstreamTimings,
-          main_total: t1 - t0,
-        },
-      };
-    }
 
-    try {
-      // The audioBuffer is now expected to be a WAV file buffer
-      const { text, timings: disjointTimingsFromHelper } =
-        await transcribeAudioWithGroq(audioBuffer);
-
-      const t1 = performance.now();
-      console.log(
-        `[MainIPC] Groq transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
-        Object.keys(disjointTimingsFromHelper),
-      );
-      return {
-        text,
-        timings: {
-          ...disjointTimingsFromHelper,
-          main_total: t1 - t0,
-        },
-      };
-    } catch (error: unknown) {
-      console.error("[MainIPC] Error in transcribe-groq handler:", error);
-      const t1 = performance.now();
-      return {
-        text: "",
-        error:
-          (error as Error).message ||
-          "Groq transcription failed in main process.",
-        timings: {
-          ...upstreamTimings,
-          main_total: t1 - t0,
-        },
-      };
-    }
-  },
-);
-
-ipcMain.handle(
-  "transcribe-gemini",
-  async (
-    event,
-    arrayBuffer: ArrayBuffer,
-    mimeType: string,
-    transferListAudio: Transferable[] | undefined,
-    upstreamTimings?: Record<string, number>,
-  ) => {
-    console.log("[MainIPC] Received transcribe-gemini request.");
-    const t0 = performance.now();
-    if (!arrayBuffer || !arrayBuffer.byteLength) {
-      console.error(
-        "[MainIPC] Audio buffer is empty or null for Gemini transcription.",
-      );
-      const t1 = performance.now();
-      return {
-        text: "",
-        error: "Audio buffer is empty.",
-        timings: {
-          ...upstreamTimings,
-          main_total: t1 - t0,
-        },
-      };
-    }
-
-    try {
-      const { text, timings: disjointTimingsFromHelper } =
-        await transcribeAudioWithGemini(arrayBuffer, mimeType);
-
-      const t1 = performance.now();
-      console.log(
-        `[MainIPC] Gemini transcription successful: "${text.substring(0, 30)}..." Returning timings from helper:`,
-        Object.keys(disjointTimingsFromHelper),
-      );
-      return {
-        text,
-        timings: {
-          ...disjointTimingsFromHelper,
-          main_total: t1 - t0,
-        },
-      };
-    } catch (error: unknown) {
-      console.error("[MainIPC] Error in transcribe-gemini handler:", error);
-      const t1 = performance.now();
-      return {
-        text: "",
-        error:
-          (error as Error).message ||
-          "Gemini transcription failed in main process.",
-        timings: {
-          ...upstreamTimings,
-          main_total: t1 - t0,
-        },
-      };
-    }
-  },
-);
-
-ipcMain.on("warm-up-connection", (event, engine: "groq" | "gemini") => {
-  console.log(`[MainIPC] Received warm-up request for ${engine}.`);
-  if (engine === "gemini") {
-    warmUpGeminiConnection();
-  } else {
-    warmUpGroqConnection();
-  }
-});
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag
