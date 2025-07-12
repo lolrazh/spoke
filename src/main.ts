@@ -312,7 +312,7 @@ ipcMain.handle(
 
       const helperPath = app.isPackaged
         ? path.join(process.resourcesPath, "paste-helper")
-        : path.join(app.getAppPath(), "public", "assets", "paste-helper");
+        : path.join(app.getAppPath(), "native", "bin", "paste-helper");
 
       if (!fs.existsSync(helperPath)) {
         console.error(
@@ -711,7 +711,7 @@ function startFnListener() {
 
   const helperPath = app.isPackaged
     ? path.join(process.resourcesPath, "fn-tap")
-    : path.join(app.getAppPath(), "public", "assets", "fn-tap");
+    : path.join(app.getAppPath(), "native", "bin", "fn-tap");
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
