@@ -370,23 +370,26 @@ ipcMain.handle(
 );
 
 app.whenReady().then(() => {
+  const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp = [
+      "default-src 'self'",
+      "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
+      `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self' data:",
+    ].join("; ");
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp",
-        "Content-Security-Policy": [
-          "default-src 'self'",
-          "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
-          "script-src 'self' 'unsafe-eval'",
-          "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data:",
-          "font-src 'self' data:",
-        ].join("; "),
+        "Content-Security-Policy": csp,
       },
     });
   });
