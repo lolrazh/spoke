@@ -3,9 +3,7 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld("electron", {
+contextBridge.exposeInMainWorld("app", {
   toggleDictation: (callback: () => void) => {
     // Remove any existing listeners to prevent duplicates
     ipcRenderer.removeAllListeners("toggle-dictation");
@@ -17,34 +15,35 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.removeAllListeners("toggle-dictation");
     };
   },
+  viewLogFile: () => ipcRenderer.invoke("view-log-file"),
+});
 
-  showPillContextMenu: () => {
-    ipcRenderer.send("show-pill-context-menu");
-  },
-  insertTextAtCursor: (text: string) => {
-    return ipcRenderer.invoke("insert-text-at-cursor", text);
-  },
-  // Method to view the log file
-  viewLogFile: () => {
-    return ipcRenderer.invoke("view-log-file");
-  },
-  // Add a method for the renderer to request a notification
-  sendNotification: (message: string) => {
-    ipcRenderer.send("show-notification", message);
-  },
-  // Function key push-to-talk events
-  onPTTDown: (cb: () => void) => {
+contextBridge.exposeInMainWorld("contextMenu", {
+  showPill: () => ipcRenderer.send("show-pill-context-menu"),
+});
+
+contextBridge.exposeInMainWorld("clipboard", {
+  insertText: (text: string) =>
+    ipcRenderer.invoke("insert-text-at-cursor", text),
+});
+
+contextBridge.exposeInMainWorld("notifications", {
+  send: (message: string) => ipcRenderer.send("show-notification", message),
+});
+
+contextBridge.exposeInMainWorld("ptt", {
+  onDown: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-down");
     ipcRenderer.on("ptt-down", cb);
     return () => ipcRenderer.removeAllListeners("ptt-down");
   },
-  onPTTUp: (cb: () => void) => {
+  onUp: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-up");
     ipcRenderer.on("ptt-up", cb);
     return () => ipcRenderer.removeAllListeners("ptt-up");
   },
 });
 
-contextBridge.exposeInMainWorld("electronIsland", {
+contextBridge.exposeInMainWorld("island", {
   slideTo: (y: number) => ipcRenderer.send("island-slide", y),
 });

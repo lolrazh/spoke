@@ -12,10 +12,9 @@ import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 const App: React.FC = () => {
   const trans = useTranscription();
   const [isHovered, setIsHovered] = useState(false);
-
-  // Refs for the Function key logic
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPressRef = useRef<boolean>(false);
+  const [isPTTActive, setIsPTTActive] = useState(false);
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
   // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
 
@@ -40,66 +39,77 @@ const App: React.FC = () => {
 
   // --- Handle Errors from Hook ---
   useEffect(() => {
-    if (trans.error && window.electron) {
-      console.error("[App] Transcription Hook Error:", trans.error);
-      window.electron.sendNotification(trans.error);
+    if (trans.error) {
+      // Use the new notifications API
+      window.notifications.send(trans.error);
     }
   }, [trans.error]);
 
-  // --- Handle Window Sliding for Dynamic Island Effect ---
+  // Island slide-in/out effect
   useEffect(() => {
-    if (window.electronIsland?.slideTo) {
-      const shouldBeVisible = isHovered || isListening || isProcessing;
-      const targetY = shouldBeVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-
-      window.electronIsland.slideTo(targetY);
+    // Use the new island API
+    if (window.island?.slideTo) {
+      const targetY = isListening ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+      console.log(`[App] Sliding to ${targetY}`);
+      window.island.slideTo(targetY);
     }
-  }, [isHovered, isListening, isProcessing]);
+  }, [isListening]);
 
-  // --- Function key - Hold vs. Tap Logic ---
+  // Set up global PTT hotkey listeners
   useEffect(() => {
-    if (!window.electron?.onPTTDown || !window.electron?.onPTTUp) return;
+    // Use the new PTT API
+    if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
-    const HOLD_DURATION_MS = 180; // ms
+    const HOLD_DURATION_MS = 180;
 
     const handleFunctionKeyDown = () => {
-      isLongPressRef.current = false;
-      // Clear any existing timer from a potentially missed 'up' event
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-      }
-      pressTimerRef.current = setTimeout(() => {
-        isLongPressRef.current = true;
-        if (!latestTransRef.current.recording) {
-          latestTransRef.current.start();
+      console.log("[PTT] Key down event received in renderer");
+      if (!isPTTActive) {
+        setIsPTTActive(true);
+        isLongPressRef.current = false;
+        // Clear any existing timer from a potentially missed 'up' event
+        if (pressTimerRef.current) {
+          clearTimeout(pressTimerRef.current);
         }
-      }, HOLD_DURATION_MS);
+        pressTimerRef.current = setTimeout(() => {
+          isLongPressRef.current = true;
+          if (!trans.recording) {
+            trans.start();
+          }
+        }, HOLD_DURATION_MS);
+      }
     };
 
     const handleFunctionKeyUp = () => {
+      console.log("[PTT] Key up event received in renderer");
+      setIsPTTActive(false);
+
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
 
       if (isLongPressRef.current) {
-        if (latestTransRef.current.recording) {
-          latestTransRef.current.stop();
+        if (trans.recording) {
+          trans.stop();
         }
       } else {
-        if (latestTransRef.current.recording) {
-          latestTransRef.current.stop();
+        // Toggle behavior for short press
+        if (trans.recording) {
+          trans.stop();
         } else {
-          latestTransRef.current.start();
+          trans.start();
         }
       }
       isLongPressRef.current = false;
     };
 
-    const unsubscribePTTDown = window.electron.onPTTDown(handleFunctionKeyDown);
-    const unsubscribePTTUp = window.electron.onPTTUp(handleFunctionKeyUp);
+    console.log("[PTT] Setting up PTT listeners");
+    const unsubscribePTTDown = window.ptt.onDown(handleFunctionKeyDown);
+    const unsubscribePTTUp = window.ptt.onUp(handleFunctionKeyUp);
 
     return () => {
+      console.log("[PTT] Cleaning up PTT listeners");
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }

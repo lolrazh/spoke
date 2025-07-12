@@ -4,31 +4,26 @@
 
 declare global {
   interface Window {
-    electron: {
+    app: {
       toggleDictation: (callback: () => void) => () => void;
-      showPillContextMenu: () => void;
-      insertTextAtCursor: (
+      viewLogFile: () => Promise<string>;
+    };
+    contextMenu: {
+      showPill: () => void;
+    };
+    clipboard: {
+      insertText: (
         text: string,
       ) => Promise<{ success: boolean; error?: string }>;
-      viewLogFile: () => Promise<string>;
-      sendNotification: (message: string) => void;
-      transcribeGroq: (
-        audioBuffer: ArrayBuffer,
-        transferList?: Transferable[],
-        upstreamTimings?: Record<string, number>,
-      ) => Promise<{ text: string; timings: Record<string, number> }>;
-      transcribeGemini: (
-        buf: ArrayBuffer,
-        mimeType: string,
-        transferList?: Transferable[],
-        upstreamTimings?: Record<string, number>,
-      ) => Promise<{ text: string; timings?: Record<string, number> }>;
-      warmUpConnection: (engine: "groq" | "gemini") => void;
-      // Function key push-to-talk events
-      onPTTDown: (cb: () => void) => () => void;
-      onPTTUp: (cb: () => void) => () => void;
     };
-    electronIsland: {
+    notifications: {
+      send: (message: string) => void;
+    };
+    ptt: {
+      onDown: (cb: () => void) => () => void;
+      onUp: (cb: () => void) => () => void;
+    };
+    island: {
       slideTo: (y: number) => void;
     };
   }

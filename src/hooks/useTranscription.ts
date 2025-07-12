@@ -135,7 +135,9 @@ export function useTranscription(): UseTranscriptionReturn {
 
       const result = await response.json();
       setText(result.text);
-      window.electron.insertTextAtCursor(result.text);
+      if (result.text) {
+        window.clipboard.insertText(result.text);
+      }
 
     } catch (err) {
       setError((err as Error).message);

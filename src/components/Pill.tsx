@@ -51,13 +51,13 @@ const Pill: React.FC<PillProps> = ({
   };
 
   // Handle context menu for pill
-  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent default browser context menu
-    console.log("[Pill] Context menu requested");
-    if (window.electron?.showPillContextMenu) {
-      window.electron.showPillContextMenu();
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Use the exposed context menu API
+    if (window.contextMenu?.showPill) {
+      window.contextMenu.showPill();
     } else {
-      console.warn("[Pill] window.electron.showPillContextMenu not available");
+      console.warn("[Pill] window.contextMenu.showPill not available");
     }
   };
 
