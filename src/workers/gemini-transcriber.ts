@@ -66,7 +66,7 @@ export async function transcribeAudioWithGemini(
   prompt = "You are part of the world's best dictation app, Sonic Flow. Transcribe the audio as accurately as possible. If you detect an enumerated list (e.g., 'item one, item two, item three' or 'firstly, secondly, thirdly'), please format it as a numbered list (e.g., 1. Item one 2. Item two 3. Item three). Remove filler words. Your vocabulary includes: Sandheep Rajkumar, Supabase, Groq.",
 ): Promise<{ text: string; timings: TimingInfo }> {
   const workerUrl =
-    "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent";
+    "https://api.sonicflow.app/gemini/v1beta/models/gemini-2.0-flash-lite:generateContent";
 
   if (audioData.byteLength === 0) {
     console.error("[GeminiTranscriber] Audio data (ArrayBuffer) is empty.");
