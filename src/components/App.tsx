@@ -63,42 +63,44 @@ const App: React.FC = () => {
     const HOLD_DURATION_MS = 180;
 
     const handleFunctionKeyDown = () => {
-      console.log("[PTT] Key down event received in renderer");
-      if (!isPTTActive) {
-        setIsPTTActive(true);
-        isLongPressRef.current = false;
-        // Clear any existing timer from a potentially missed 'up' event
-        if (pressTimerRef.current) {
-          clearTimeout(pressTimerRef.current);
-        }
-        pressTimerRef.current = setTimeout(() => {
-          isLongPressRef.current = true;
-          if (!trans.recording) {
-            trans.start();
-          }
-        }, HOLD_DURATION_MS);
+      // Always clear the previous timer on a new key down event.
+      // This correctly handles keyboard repeats.
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
       }
+
+      // Don't start a new timer if PTT is already active from a long press.
+      if (latestTransRef.current.recording) {
+        return;
+      }
+
+      isLongPressRef.current = false;
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        // Use the ref to ensure we have the latest `start` function.
+        if (!latestTransRef.current.recording) {
+          latestTransRef.current.start();
+        }
+      }, HOLD_DURATION_MS);
     };
 
     const handleFunctionKeyUp = () => {
-      console.log("[PTT] Key up event received in renderer");
-      setIsPTTActive(false);
-
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
 
+      // Use the ref to ensure we have the latest functions and state.
       if (isLongPressRef.current) {
-        if (trans.recording) {
-          trans.stop();
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
         }
       } else {
         // Toggle behavior for short press
-        if (trans.recording) {
-          trans.stop();
+        if (latestTransRef.current.recording) {
+          latestTransRef.current.stop();
         } else {
-          trans.start();
+          latestTransRef.current.start();
         }
       }
       isLongPressRef.current = false;
@@ -116,7 +118,7 @@ const App: React.FC = () => {
       unsubscribePTTDown();
       unsubscribePTTUp();
     };
-  }, [trans.start, trans.stop]);
+  }, []); // Removed dependencies as we are now using a ref
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
