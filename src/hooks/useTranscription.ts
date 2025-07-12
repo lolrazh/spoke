@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import { TARGET_AUDIO_CONTEXT_RATE, MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import { pcm16ToWav } from "../utils/pcm16-to-wav";
 
 // Global worklet registry to prevent double registration
 const workletRegistry = new Set<string>();
@@ -113,10 +114,14 @@ export function useTranscription(): UseTranscriptionReturn {
         offset += chunk.length;
       }
       
-      const audioBlob = new Blob([concatenated.buffer], { type: 'audio/l16; rate=16000; channels=1' });
+      const wavBlob = pcm16ToWav(concatenated);
 
       const formData = new FormData();
-      formData.append("file", audioBlob, "audio.raw");
+      formData.append("file", wavBlob, "audio.wav");
+      formData.append("model", "distil-whisper-large-v3-en");
+      formData.append("language", "en");
+      formData.append("response_format", "json");
+      formData.append("temperature", "0");
 
       const response = await fetch("https://api.sonicflow.app", {
         method: 'POST',
