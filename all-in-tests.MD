@@ -1,0 +1,6 @@
+- [ ] Functional: A 30-second dictation correctly transcribes and pastes the text.
+- [ ] Latency: Measure the E2E time from stop() being called to text being pasted. Run 3 times for a 60s clip; the average should be under 1.8s.
+- [ ] Network: In DevTools, confirm the fetch request body is streaming during recording, not sent in one blob at the end.
+- [ ] Memory: With Activity Monitor / Task Manager, confirm the app's memory footprint does not grow significantly during a long (3-minute) recording. It should stay well under 300MB.
+- [ ] Build: The final packaged application size (.dmg, .exe) should be significantly smaller (~40-70MB less) without the bundled models.
+- [ ] Error Handling: Test what happens if the network connection is lost or the API key is invalid. The app should handle the error gracefully.
