@@ -1,45 +1,57 @@
 // workers/gate.js
+
+// Define reusable CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*", // Allow any origin
+  "Access-Control-Allow-Methods": "POST, OPTIONS", // Allow POST and OPTIONS methods
+  "Access-Control-Allow-Headers": "Content-Type, X-Mode", // Allow these headers
+};
+
+
 export default {
   async fetch(req, env) {
+    // Handle CORS preflight requests (OPTIONS method)
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204, // No Content
+        headers: corsHeaders,
+      });
+    }
+
+
     if (req.method !== 'POST') {
       return new Response('Method Not Allowed. Please use POST.', { status: 405 });
     }
 
-    // Read the entire raw Int16 audio stream into a single ArrayBuffer.
-    const pcm_s16le = await req.arrayBuffer();
-
-    // Create a FormData object to send to Groq's API.
-    const form = new FormData();
-    // Groq expects a file, so we wrap our raw PCM data in a Blob and give it a filename.
-    // The content type 'audio/l16' with params might be more accurate, but 'audio/wav' is broadly accepted.
-    form.append('file', new Blob([pcm_s16le], { type: 'audio/wav' }), 'audio.wav');
-    form.append('model', 'whisper-large-v3-turbo');
-    form.append('language', 'en'); // Or make this configurable via a header.
-    form.append('response_format', 'json');
-    form.append('temperature', '0');
-
-    // Make the API call to Groq.
+    // The client now sends FormData directly, so we can pass the request body through.
     const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${env.GROQ_API_KEY}`,
+        'Content-Type': req.headers.get('Content-Type'),
       },
-      body: form
+      body: req.body
     });
 
     // Handle non-successful responses from Groq.
     if (!groqResponse.ok) {
       const errorText = await groqResponse.text();
-      return new Response(`Groq API Error: ${errorText}`, { status: groqResponse.status });
+      return new Response(`Groq API Error: ${errorText}`, { 
+        status: groqResponse.status,
+        headers: corsHeaders // Add CORS headers to the error response
+      });
     }
 
     const { text } = await groqResponse.json();
 
     
 
-    // Return the transcription text as a JSON object.
+    // Return the transcription text as a JSON object, now with CORS headers
     return new Response(JSON.stringify({ text }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      },
     });
   }
 };

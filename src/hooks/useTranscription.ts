@@ -21,8 +21,7 @@ export function useTranscription(): UseTranscriptionReturn {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null);
-  const fetchPromiseRef = useRef<Promise<Response> | null>(null);
+  const audioChunksRef = useRef<Int16Array[]>([]);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -64,20 +63,9 @@ export function useTranscription(): UseTranscriptionReturn {
     setError(null);
     setText("");
     setRecording(true);
+    audioChunksRef.current = [];
 
     try {
-      const transformStream = new TransformStream();
-      writerRef.current = transformStream.writable.getWriter();
-
-      fetchPromiseRef.current = fetch("https://api.sonicflow.app", {
-        method: 'POST',
-        headers: {
-          "Content-Type": "application/octet-stream",
-        },
-        body: transformStream.readable,
-        duplex: 'half',
-      });
-
       if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
         audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
       }
@@ -95,9 +83,7 @@ export function useTranscription(): UseTranscriptionReturn {
       workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, "capture-processor");
 
       workletNodeRef.current.port.onmessage = (event) => {
-        if (writerRef.current) {
-          writerRef.current.write(new Uint8Array(event.data));
-        }
+        audioChunksRef.current.push(new Int16Array(event.data));
       };
 
       microphoneSourceRef.current.connect(workletNodeRef.current);
@@ -116,28 +102,41 @@ export function useTranscription(): UseTranscriptionReturn {
     setProcessing(true);
 
     try {
-      if (writerRef.current) {
-        await writerRef.current.close();
+      microphoneSourceRef.current?.disconnect();
+      workletNodeRef.current?.disconnect();
+
+      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
+      const concatenated = new Int16Array(totalLength);
+      let offset = 0;
+      for (const chunk of audioChunksRef.current) {
+        concatenated.set(chunk, offset);
+        offset += chunk.length;
+      }
+      
+      const audioBlob = new Blob([concatenated.buffer], { type: 'audio/l16; rate=16000; channels=1' });
+
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.raw");
+
+      const response = await fetch("https://api.sonicflow.app", {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${errorText}`);
       }
 
-      if (fetchPromiseRef.current) {
-        const response = await fetchPromiseRef.current;
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Server error: ${errorText}`);
-        }
-        const result = await response.json();
-        setText(result.text);
-        window.electron.insertTextAtCursor(result.text);
-      }
+      const result = await response.json();
+      setText(result.text);
+      window.electron.insertTextAtCursor(result.text);
+
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setProcessing(false);
-      microphoneSourceRef.current?.disconnect();
-      workletNodeRef.current?.disconnect();
-      writerRef.current = null;
-      fetchPromiseRef.current = null;
+      audioChunksRef.current = [];
     }
   }, [recording]);
 
