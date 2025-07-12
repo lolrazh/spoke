@@ -379,7 +379,14 @@ app.whenReady().then(() => {
         ...details.responseHeaders,
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp",
-        "Content-Security-Policy": ["connect-src 'self' https://api.sonicflow.app"],
+        "Content-Security-Policy": [
+          "default-src 'self'",
+          "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
+          "script-src 'self' 'unsafe-eval'",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data:",
+          "font-src 'self' data:",
+        ].join("; "),
       },
     });
   });
