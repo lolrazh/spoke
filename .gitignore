@@ -97,3 +97,5 @@ dist/
 .repomixignore
 repomix.config.json
 repomix-output.xml
+
+public/assets/icon.iconset
