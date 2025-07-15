@@ -6,17 +6,20 @@ import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
-// Placeholder transcription text (would be replaced with actual API call result)
-// const PLACEHOLDER_TEXT = "This is a sample transcription. It will be inserted at your cursor position.";
+// Define the type for our new "notification play" state
+type NotificationPlay = {
+  text: string;
+  phase: "shrinking" | "showing";
+};
 
 const App: React.FC = () => {
   const trans = useTranscription();
   const [isHovered, setIsHovered] = useState(false);
-  const [isPTTActive, setIsPTTActive] = useState(false);
+  const [notificationPlay, setNotificationPlay] =
+    useState<NotificationPlay | null>(null);
+  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
-  const [notification, setNotification] = useState<string | null>(null);
-  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
 
@@ -47,22 +50,28 @@ const App: React.FC = () => {
     }
   }, [trans.error]);
 
-  // --- Global Notification Listener ---
+  // --- Global Notification Listener (The "Director") ---
   useEffect(() => {
     const cleanup = window.notifications.on((message: string) => {
-      console.log(`[App] Received notification: "${message}"`);
-      setNotification(message);
-
-      // Clear any existing timer
+      console.log(`[App] Kicking off notification play: "${message}"`);
+      // Always clear any previous play's timers
       if (notificationTimerRef.current) {
         clearTimeout(notificationTimerRef.current);
       }
 
-      // Set a timer to clear the notification
+      // Act I: Take a breath
+      setNotificationPlay({ text: message, phase: "shrinking" });
+
+      // Act II: Deliver the line (after a short delay for the shrink animation)
       notificationTimerRef.current = setTimeout(() => {
-        setNotification(null);
-        notificationTimerRef.current = null;
-      }, 2200); // 2.2 seconds
+        setNotificationPlay({ text: message, phase: "showing" });
+
+        // Act III: End the play (after the notification has been visible)
+        notificationTimerRef.current = setTimeout(() => {
+          setNotificationPlay(null);
+          notificationTimerRef.current = null;
+        }, 2200); // Notification visibility duration
+      }, 250); // Delay to allow the pill to shrink first
     });
 
     return () => {
@@ -75,14 +84,16 @@ const App: React.FC = () => {
   }, []); // Empty dependency array means this runs once on mount
 
   // --- Derived State for Pill Visibility ---
-  const isPillVisible = isListening || !!notification;
+  const isPillVisible = isListening || !!notificationPlay;
 
   // Island slide-in/out effect
   useEffect(() => {
     // Use the new island API
     if (window.island?.slideTo) {
       const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-      console.log(`[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notification})`);
+      console.log(
+        `[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notificationPlay})`,
+      );
       window.island.slideTo(targetY);
     }
   }, [isPillVisible]);
@@ -158,7 +169,7 @@ const App: React.FC = () => {
         isListening={isListening}
         isProcessing={isProcessing}
         isHovered={isHovered}
-        notificationText={notification}
+        notificationPlay={notificationPlay}
         // Connect Pill clicks directly to hook functions
         onStartDictation={trans.start}
         onStopDictation={trans.stop}

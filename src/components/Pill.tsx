@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// Update the type for our new "notification play" prop
+type NotificationPlay = {
+  text: string;
+  phase: "shrinking" | "showing";
+} | null;
+
 interface PillProps {
   isListening: boolean;
   isProcessing: boolean;
   isHovered: boolean;
-  notificationText: string | null;
+  notificationPlay: NotificationPlay;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
@@ -15,46 +21,60 @@ const Pill: React.FC<PillProps> = ({
   isListening,
   isProcessing,
   isHovered,
-  notificationText,
+  notificationPlay,
   onStartDictation,
   onStopDictation,
   onHoverChange,
 }) => {
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
-  const PILL_RESTING_WIDTH = 70; // Keep in sync with CSS
+  const PILL_RESTING_HEIGHT = 9; // Keep in sync with CSS
+  const PILL_EXPANDED_HEIGHT = 30; // Keep in sync with CSS
   const PILL_EXPANDED_WIDTH = 207; // Keep in sync with CSS
 
   // --- Animation Variants ---
   const spring = { type: "spring" as const, stiffness: 480, damping: 40 };
 
-  // --- Dynamic Width Calculation (Estimation Method) ---
-  const calculateWidth = (text: string | null): number => {
-    if (!text) {
-      // When there's no notification, use the standard expanded width.
-      return PILL_EXPANDED_WIDTH;
+  // --- Dynamic Style Calculation ---
+  const getPillStyles = () => {
+    // A notification play takes absolute priority.
+    if (notificationPlay) {
+      if (notificationPlay.phase === "shrinking") {
+        return {
+          height: PILL_RESTING_HEIGHT,
+          width: PILL_EXPANDED_WIDTH, // Start at normal width before shrinking text appears
+        };
+      }
+      // Phase is 'showing'
+      const basePadding = 40;
+      const charWidth = 8;
+      const maxWidth = 560;
+      const calculatedWidth = basePadding + notificationPlay.text.length * charWidth;
+      return {
+        height: PILL_EXPANDED_HEIGHT,
+        width: Math.max(
+          PILL_EXPANDED_WIDTH,
+          Math.min(calculatedWidth, maxWidth),
+        ),
+      };
     }
-    // When there IS a notification, estimate width based on text length.
-    const basePadding = 40; // 20px on each side
-    const charWidth = 8; // A more generous average width per character
-    const maxWidth = 560;
-    const calculatedWidth = basePadding + text.length * charWidth;
 
-    // Ensure the pill is at least its standard width and not over the max width.
-    return Math.max(
-      PILL_EXPANDED_WIDTH,
-      Math.min(calculatedWidth, maxWidth),
-    );
+    // Default behavior when no notification is playing.
+    const isExpanded = isListening || isProcessing || isHovered;
+    return {
+      height: isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT,
+      width: PILL_EXPANDED_WIDTH,
+    };
   };
 
-  // --- Resize Effect ---
-  // When the notification text changes, calculate the new width and tell the main process.
-  useEffect(() => {
-    const newWidth = calculateWidth(notificationText);
-    window.electron.resizePill(newWidth);
-  }, [notificationText]);
+  const pillStyles = getPillStyles();
+  const isShowingNotification = notificationPlay?.phase === "showing";
 
-  const isShowingNotification = !!notificationText;
+  // --- Resize Effect ---
+  // When the calculated styles change, tell the main process.
+  useEffect(() => {
+    window.electron.resizePill(pillStyles.width);
+  }, [pillStyles.width]);
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = () => {
@@ -97,20 +117,14 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
-  // Determine the current state - now always visible, just different sizes
-  const isResting =
-    !isHovered && !isListening && !isProcessing && !isShowingNotification;
-  const isExpanded =
-    isHovered || isListening || isProcessing || isShowingNotification;
+  // The 'resting' state is now determined by the calculated height.
+  const isResting = pillStyles.height === PILL_RESTING_HEIGHT;
 
   return (
     <div
       className={`
         pill-wrapper transition-all duration-300 ease-out
         ${isResting ? "resting-state" : ""}
-        ${isExpanded ? "expanded-state" : ""}
-        ${isListening ? "listening" : ""}
-        ${isProcessing ? "processing" : ""}
       `}
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
@@ -120,7 +134,7 @@ const Pill: React.FC<PillProps> = ({
       <motion.div
         className="pill-core"
         initial={false}
-        animate={{ width: calculateWidth(notificationText) }}
+        animate={pillStyles}
         transition={spring}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
@@ -134,7 +148,7 @@ const Pill: React.FC<PillProps> = ({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                {notificationText}
+                {notificationPlay.text}
               </motion.span>
             ) : (
               <motion.div
@@ -145,21 +159,13 @@ const Pill: React.FC<PillProps> = ({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                {/* 
-                  We now render the content of the visualizer directly inside a motion.div 
-                  that has the .visualization-container class, preserving the original layout.
-                */}
-                {isResting && <div className="resting-indicator" />}
-
-                {isHovered && !isListening && !isProcessing && (
+                {/* Visuals for non-notification states */}
+                {!isResting && isListening && <>{renderFrequencyBars()}</>}
+                {!isResting && isProcessing && <>{renderDots("animated")}</>}
+                {!isResting && isHovered && !isListening && !isProcessing && (
                   <>{renderDots("static")}</>
                 )}
-
-                {isListening && <>{renderFrequencyBars()}</>}
-
-                {isProcessing && !isListening && (
-                  <>{renderDots("animated")}</>
-                )}
+                {isResting && <div className="resting-indicator" />}
               </motion.div>
             )}
           </AnimatePresence>
