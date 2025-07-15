@@ -31,15 +31,18 @@ const Pill: React.FC<PillProps> = ({
   // --- Dynamic Width Calculation ---
   const calculateWidth = (text: string | null): number => {
     if (!text) {
-      return isHovered || isListening || isProcessing
-        ? PILL_EXPANDED_WIDTH
-        : PILL_RESTING_WIDTH;
+      // When there's no notification, the pill should be its standard expanded width.
+      return PILL_EXPANDED_WIDTH;
     }
-    // Simple calculation: base padding + characters * average width
+    // When there IS a notification, calculate width based on text length.
     const basePadding = 40; // 20px on each side
     const charWidth = 7.5; // Estimated average character width
     const maxWidth = 560;
-    return Math.min(basePadding + text.length * charWidth, maxWidth);
+    // Ensure the notification pill is at least as wide as the standard pill
+    return Math.max(
+      PILL_EXPANDED_WIDTH,
+      Math.min(basePadding + text.length * charWidth, maxWidth),
+    );
   };
 
   const isShowingNotification = !!notificationText;
@@ -86,8 +89,10 @@ const Pill: React.FC<PillProps> = ({
   };
 
   // Determine the current state - now always visible, just different sizes
-  const isResting = !isHovered && !isListening && !isProcessing;
-  const isExpanded = isHovered || isListening || isProcessing;
+  const isResting =
+    !isHovered && !isListening && !isProcessing && !isShowingNotification;
+  const isExpanded =
+    isHovered || isListening || isProcessing || isShowingNotification;
 
   return (
     <div
