@@ -75,9 +75,9 @@
   }
 
   .notification-text {
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 500;
+    color: #c0c0c0; /* Match the color of the dots/bars */
+    font-size: 12px; /* Reduce font size slightly */
+    font-weight: 400; /* Use normal font weight */
     white-space: nowrap;
     padding: 0 20px;
   }

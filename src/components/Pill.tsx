@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useLayoutEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface PillProps {
@@ -20,6 +20,14 @@ const Pill: React.FC<PillProps> = ({
   onStopDictation,
   onHoverChange,
 }) => {
+  // --- Refs ---
+  const notificationSpanRef = useRef<HTMLSpanElement>(null);
+
+  // --- State ---
+  const [notificationWidth, setNotificationWidth] = useState<number | null>(
+    null,
+  );
+
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
   const PILL_RESTING_WIDTH = 70; // Keep in sync with CSS
@@ -28,20 +36,29 @@ const Pill: React.FC<PillProps> = ({
   // --- Animation Variants ---
   const spring = { type: "spring" as const, stiffness: 480, damping: 40 };
 
+  // --- Text Measurement ---
+  useLayoutEffect(() => {
+    // Measure the actual rendered span element after it appears
+    if (notificationSpanRef.current) {
+      setNotificationWidth(notificationSpanRef.current.offsetWidth);
+    } else {
+      setNotificationWidth(null);
+    }
+  }, [notificationText]); // Re-measure when the text content changes
+
   // --- Dynamic Width Calculation ---
   const calculateWidth = (text: string | null): number => {
-    if (!text) {
+    if (!text || !notificationWidth) {
       // When there's no notification, the pill should be its standard expanded width.
       return PILL_EXPANDED_WIDTH;
     }
-    // When there IS a notification, calculate width based on text length.
+    // When there IS a notification, use the measured width.
     const basePadding = 40; // 20px on each side
-    const charWidth = 7.5; // Estimated average character width
     const maxWidth = 560;
     // Ensure the notification pill is at least as wide as the standard pill
     return Math.max(
       PILL_EXPANDED_WIDTH,
-      Math.min(basePadding + text.length * charWidth, maxWidth),
+      Math.min(notificationWidth + basePadding, maxWidth),
     );
   };
 
@@ -119,6 +136,7 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
+                ref={notificationSpanRef} // Get a reference to the rendered span
                 className="notification-text"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
