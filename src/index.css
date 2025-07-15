@@ -17,19 +17,15 @@
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-width: 207px;
-    --pill-height: 30px;
-    --pill-resting-height: 9px;
+    --pill-width: var(--pill-expanded-width);
+    --pill-height: var(--pill-expanded-height);
+    --pill-resting-height: var(--pill-resting-height);
     --pill-border-radius: 8px;
     --pill-resting-radius: 5px;
     --pill-background: rgba(0, 0, 0, 0.95);
     --pill-border: 1px solid rgba(255, 255, 255, 0.08);
     --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  }
 
-  /* Centering wrapper for the pill */
-  .pill-wrapper {
-    /* No longer needs absolute positioning or transforms. */
     /* It is now a flex item centered by its parent. */
     display: flex;
     align-items: center;
@@ -251,6 +247,10 @@ body {
 
 @layer base {
   :root {
+    --pill-expanded-width: 207px;
+    --pill-expanded-height: 30px;
+    --pill-resting-height: 9px;
+
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;

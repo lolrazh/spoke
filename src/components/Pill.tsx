@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useLayoutEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Update the type for our new "notification play" prop
@@ -17,6 +17,13 @@ interface PillProps {
   onHoverChange: (hovered: boolean) => void;
 }
 
+// Helper function to read CSS variables from the DOM
+const getCssVar = (name: string): number => {
+  if (typeof window === "undefined") return 0;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name);
+  return parseInt(value, 10) || 0;
+};
+
 const Pill: React.FC<PillProps> = ({
   isListening,
   isProcessing,
@@ -26,73 +33,84 @@ const Pill: React.FC<PillProps> = ({
   onStopDictation,
   onHoverChange,
 }) => {
+  // --- Refs ---
+  const textRef = useRef<HTMLSpanElement>(null);
+  const lastSentWidthRef = useRef<number | null>(null);
+
+  // --- Read constants from CSS ---
+  const PILL_EXPANDED_WIDTH = useMemo(() => getCssVar("--pill-expanded-width"), []);
+  const PILL_EXPANDED_HEIGHT = useMemo(() => getCssVar("--pill-expanded-height"), []);
+  const PILL_RESTING_HEIGHT = useMemo(() => getCssVar("--pill-resting-height"), []);
+
+  // --- State ---
+  const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
+
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
-  const PILL_RESTING_HEIGHT = 9; // Keep in sync with CSS
-  const PILL_EXPANDED_HEIGHT = 30; // Keep in sync with CSS
-  const PILL_EXPANDED_WIDTH = 207; // Keep in sync with CSS
+  const NOTIFICATION_MAX_WIDTH = 560;
+  const NOTIFICATION_PADDING = 40;
 
   // --- Animation Variants ---
   const transition = {
-    duration: 0.3, // Faster animation
+    duration: 0.3,
     ease: "easeInOut" as const,
-  }; // Use a tween for smoother easing
+  };
 
-  // --- Dynamic Style Calculation ---
-  const getPillStyles = () => {
-    // A notification play takes absolute priority.
-    if (notificationPlay) {
-      if (notificationPlay.phase === "shrinking") {
-        return {
-          height: PILL_RESTING_HEIGHT,
-          width: PILL_EXPANDED_WIDTH, // Start at normal width before shrinking text appears
-        };
-      }
-      // Phase is 'showing'
-      const basePadding = 40;
-      const charWidth = 8;
-      const maxWidth = 560;
-      const calculatedWidth = basePadding + notificationPlay.text.length * charWidth;
-      return {
-        height: PILL_EXPANDED_HEIGHT,
-        width: Math.max(
-          PILL_EXPANDED_WIDTH,
-          Math.min(calculatedWidth, maxWidth),
-        ),
-      };
+  // --- Core Sizing and Resize Logic ---
+  useLayoutEffect(() => {
+    let targetWidth = PILL_EXPANDED_WIDTH;
+
+    if (notificationPlay?.phase === "showing" && textRef.current) {
+      const measuredWidth = textRef.current.offsetWidth + NOTIFICATION_PADDING;
+      targetWidth = Math.max(
+        PILL_EXPANDED_WIDTH,
+        Math.min(measuredWidth, NOTIFICATION_MAX_WIDTH),
+      );
+    }
+    
+    // On initial mount, pillWidth can be 0, so we initialize it
+    if (pillWidth === 0 && PILL_EXPANDED_WIDTH > 0) {
+      setPillWidth(PILL_EXPANDED_WIDTH);
     }
 
-    // Default behavior when no notification is playing.
-    const isExpanded = isListening || isProcessing || isHovered;
-    return {
-      height: isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT,
-      width: PILL_EXPANDED_WIDTH,
-    };
+    setPillWidth(targetWidth);
+
+    // Only send resize command if the width actually changes
+    if (lastSentWidthRef.current !== targetWidth) {
+      window.electron.resizePill(targetWidth);
+      lastSentWidthRef.current = targetWidth;
+    }
+  }, [notificationPlay, PILL_EXPANDED_WIDTH]); // Re-run if the CSS var changes
+
+  // --- Height Calculation ---
+  const getPillHeight = () => {
+    if (notificationPlay?.phase === "shrinking") {
+      return PILL_RESTING_HEIGHT;
+    }
+    const isExpanded = isListening || isProcessing || isHovered || !!notificationPlay;
+    return isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT;
   };
 
-  const pillStyles = getPillStyles();
+  const pillHeight = getPillHeight();
   const isShowingNotification = notificationPlay?.phase === "showing";
-
-  // --- Resize Effect ---
-  // When the calculated styles change, tell the main process.
-  useEffect(() => {
-    window.electron.resizePill(pillStyles.width);
-  }, [pillStyles.width]);
+  const isResting = pillHeight === PILL_RESTING_HEIGHT;
 
   // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = () => {
-    // Create bars with consistent count
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div
-        key={`bar-${index}`}
-        className="waveform-bar"
-        style={{
-          animationDelay: `${index * 0.1}s`,
-          height: `${3 + Math.random() * 5}px`,
-        }}
-      />
-    ));
-  };
+  const renderFrequencyBars = useMemo(
+    () =>
+      // Create bars with consistent count
+      Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+        <div
+          key={`bar-${index}`}
+          className="waveform-bar"
+          style={{
+            animationDelay: `${index * 0.1}s`,
+            height: `${3 + Math.random() * 5}px`,
+          }}
+        />
+      )),
+    [], // Empty dependency array means this runs only once
+  );
 
   // Unified function to render dots with different styles
   const renderDots = (type: "static" | "animated" | "collapsed") => {
@@ -120,9 +138,6 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
-  // The 'resting' state is now determined by the calculated height.
-  const isResting = pillStyles.height === PILL_RESTING_HEIGHT;
-
   return (
     <div
       className={`
@@ -137,7 +152,7 @@ const Pill: React.FC<PillProps> = ({
       <motion.div
         className="pill-core"
         initial={false}
-        animate={pillStyles}
+        animate={{ width: pillWidth, height: pillHeight }}
         transition={transition}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
@@ -145,6 +160,7 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
+                ref={textRef}
                 className="notification-text"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -163,7 +179,7 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: 0.15 }}
               >
                 {/* Visuals for non-notification states */}
-                {!isResting && isListening && <>{renderFrequencyBars()}</>}
+                {!isResting && isListening && <>{renderFrequencyBars}</>}
                 {!isResting && isProcessing && <>{renderDots("animated")}</>}
                 {!isResting && isHovered && !isListening && !isProcessing && (
                   <>{renderDots("static")}</>
