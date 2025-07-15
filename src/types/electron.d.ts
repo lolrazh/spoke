@@ -27,6 +27,9 @@ declare global {
     island: {
       slideTo: (y: number) => void;
     };
+    electron: {
+      resizePill: (width: number) => void;
+    };
   }
 }
 

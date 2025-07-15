@@ -140,6 +140,7 @@ export function useTranscription(): UseTranscriptionReturn {
       setText(result.text);
       if (result.text) {
         window.clipboard.insertText(result.text);
+        window.notifications.send("Text pasted."); // Send success notification
       }
 
     } catch (err) {
@@ -147,10 +148,6 @@ export function useTranscription(): UseTranscriptionReturn {
     } finally {
       setProcessing(false);
       audioChunksRef.current = [];
-      // Test notification to confirm the UI fix
-      window.notifications.send(
-        "Dictation complete! This is a test of the new, longer notification.",
-      );
     }
   }, [recording]);
 

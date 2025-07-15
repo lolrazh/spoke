@@ -413,6 +413,26 @@ app.whenReady().then(() => {
     },
   );
 
+  ipcMain.on("pill-resize", (_e, width: number) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const { y, height } = mainWindow.getBounds();
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: fullScreenWidth } = primaryDisplay.size;
+    const newX = Math.round((fullScreenWidth - width) / 2);
+
+    console.log(
+      `[Pill Resize] New Width: ${width}, Centered X: ${newX}, Y: ${y}`,
+    );
+
+    mainWindow.setBounds({ x: newX, y, width, height }, true); // animate = true
+
+    // On macOS, invalidate the shadow to prevent visual artifacts after resizing
+    if (process.platform === "darwin") {
+      mainWindow.invalidateShadow();
+    }
+  });
+
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const primaryDisplay = screen.getPrimaryDisplay();

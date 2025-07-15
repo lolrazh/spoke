@@ -54,3 +54,7 @@ contextBridge.exposeInMainWorld("ptt", {
 contextBridge.exposeInMainWorld("island", {
   slideTo: (y: number) => ipcRenderer.send("island-slide", y),
 });
+
+contextBridge.exposeInMainWorld("electron", {
+  resizePill: (width: number) => ipcRenderer.send("pill-resize", width),
+});
