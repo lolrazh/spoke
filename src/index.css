@@ -46,7 +46,7 @@
     background: var(--pill-background);
     border: var(--pill-border);
     box-shadow: var(--pill-shadow);
-    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    /* Let framer-motion handle all transitions */
   }
 
   /* Resting state - thin bar */

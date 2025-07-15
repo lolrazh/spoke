@@ -71,7 +71,7 @@ const App: React.FC = () => {
           setNotificationPlay(null);
           notificationTimerRef.current = null;
         }, 2200); // Notification visibility duration
-      }, 250); // Delay to allow the pill to shrink first
+      }, 300); // Synchronize with the new faster animation duration
     });
 
     return () => {

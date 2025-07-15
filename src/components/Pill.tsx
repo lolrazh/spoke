@@ -33,7 +33,10 @@ const Pill: React.FC<PillProps> = ({
   const PILL_EXPANDED_WIDTH = 207; // Keep in sync with CSS
 
   // --- Animation Variants ---
-  const spring = { type: "spring" as const, stiffness: 480, damping: 40 };
+  const transition = {
+    duration: 0.3, // Faster animation
+    ease: "easeInOut" as const,
+  }; // Use a tween for smoother easing
 
   // --- Dynamic Style Calculation ---
   const getPillStyles = () => {
@@ -135,7 +138,7 @@ const Pill: React.FC<PillProps> = ({
         className="pill-core"
         initial={false}
         animate={pillStyles}
-        transition={spring}
+        transition={transition}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
