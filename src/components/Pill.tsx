@@ -110,48 +110,41 @@ const Pill: React.FC<PillProps> = ({
         transition={spring}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
-          <AnimatePresence>
+          <AnimatePresence mode="wait">
             {isShowingNotification ? (
               <motion.span
                 key="notification"
                 className="notification-text"
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
               >
                 {notificationText}
               </motion.span>
             ) : (
               <motion.div
                 key="visualizer"
-                className="visualization-wrapper"
+                className="visualization-container"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
               >
-                {/* Resting state - thin bar with no content */}
+                {/* 
+                  We now render the content of the visualizer directly inside a motion.div 
+                  that has the .visualization-container class, preserving the original layout.
+                */}
                 {isResting && <div className="resting-indicator" />}
 
-                {/* Hover state - show static dots */}
                 {isHovered && !isListening && !isProcessing && (
-                  <div className="visualization-container">
-                    {renderDots("static")}
-                  </div>
+                  <>{renderDots("static")}</>
                 )}
 
-                {/* Active state - show frequency bars */}
-                {isListening && (
-                  <div className="visualization-container">
-                    {renderFrequencyBars()}
-                  </div>
-                )}
+                {isListening && <>{renderFrequencyBars()}</>}
 
-                {/* Loading state - show animated dots */}
                 {isProcessing && !isListening && (
-                  <div className="visualization-container">
-                    {renderDots("animated")}
-                  </div>
+                  <>{renderDots("animated")}</>
                 )}
               </motion.div>
             )}
