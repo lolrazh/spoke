@@ -74,7 +74,10 @@ export function useTranscription(): UseTranscriptionReturn {
         await audioCtxRef.current.resume();
       }
 
-      const workletPath = "/audioworklet-processor.js";
+      const workletPath = new URL(
+        "../../public/audioworklet-processor.js",
+        import.meta.url,
+      ).toString();
       if (!workletRegistry.has(workletPath)) {
         await audioCtxRef.current.audioWorklet.addModule(workletPath);
         workletRegistry.add(workletPath);
@@ -144,6 +147,10 @@ export function useTranscription(): UseTranscriptionReturn {
     } finally {
       setProcessing(false);
       audioChunksRef.current = [];
+      // Test notification to confirm the UI fix
+      window.notifications.send(
+        "Dictation complete! This is a test of the new, longer notification.",
+      );
     }
   }, [recording]);
 

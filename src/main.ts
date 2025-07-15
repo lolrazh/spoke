@@ -559,11 +559,20 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
     notificationTimeout = null;
   }
 
+  // ①  Compute width from the text itself
+  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const textWidth = Math.min(                         // guard rails
+    560,                                              //  ❬max❭ px
+    Math.max(180, safeMessage.length * 7 + 40),       //  ❬min❭ / padding
+  );
+  
+  notificationWindow.setSize(textWidth, 40, false); // Set width, height is flexible
+
   const pillBounds = mainWindow.getBounds();
-  const notificationSize = notificationWindow.getSize();
-  const notificationHeight = notificationSize[1];
+  const notificationWidth = notificationWindow.getSize()[0]; // Use the new width
+  const notificationHeight = 40; // Initial height, will grow with content
   const posX = Math.floor(
-    pillBounds.x + pillBounds.width / 2 - notificationSize[0] / 2,
+    pillBounds.x + pillBounds.width / 2 - notificationWidth / 2,
   );
   const gap = -5;
   const posY = pillBounds.y - notificationHeight - gap;
@@ -573,16 +582,36 @@ const showNotificationPopup = (message: string, durationMs = 2000) => {
   );
   notificationWindow.setPosition(posX, posY);
 
-  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const dynamicNotificationHtml = `
     <html>
     <head>
       <style>
-        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; }
+        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; height: auto; }
         body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
-        .container { background-color: rgba(44, 44, 44, 0.95); border: 1px solid rgba(80, 80, 80, 0.8); border-radius: 12px; padding: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .container { 
+          background-color: rgba(44, 44, 44, 0.95); 
+          border: 1px solid rgba(80, 80, 80, 0.8); 
+          border-radius: 12px; 
+          padding: 4px 8px; /* Adjusted padding */
+          overflow: hidden; 
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); 
+          opacity: 0; 
+          transition: opacity 0.3s ease-in-out; 
+          /* let it grow */
+          max-width: 560px;
+          min-width: 180px;
+          width: max-content;   /* key line – take as much as we need */
+          height: auto;
+        }
         .container.visible { opacity: 1; }
-        .message { font-size: 13px; padding: 6px 10px; text-align: center; white-space: nowrap; }
+        .message { 
+          font-size: 12px; 
+          line-height: 1.25; 
+          padding: 6px 10px; 
+          text-align: center; 
+          white-space: pre-wrap; /* allow wrapping instead of clipping */
+          word-break: break-word;
+        }
       </style>
     </head>
     <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
