@@ -18,6 +18,7 @@ declare global {
     };
     notifications: {
       send: (message: string) => void;
+      on: (callback: (message: string) => void) => () => void;
     };
     ptt: {
       onDown: (cb: () => void) => () => void;

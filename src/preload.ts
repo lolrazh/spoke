@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld("clipboard", {
 
 contextBridge.exposeInMainWorld("notifications", {
   send: (message: string) => ipcRenderer.send("show-notification", message),
+  on: (callback: (message: string) => void) => {
+    ipcRenderer.on("notify", (_event, message) => callback(message));
+
+    return () => {
+      ipcRenderer.removeAllListeners("notify");
+    };
+  },
 });
 
 contextBridge.exposeInMainWorld("ptt", {

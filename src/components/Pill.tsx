@@ -1,9 +1,11 @@
 import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface PillProps {
   isListening: boolean;
   isProcessing: boolean;
   isHovered: boolean;
+  notificationText: string | null;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
@@ -13,12 +15,34 @@ const Pill: React.FC<PillProps> = ({
   isListening,
   isProcessing,
   isHovered,
+  notificationText,
   onStartDictation,
   onStopDictation,
   onHoverChange,
 }) => {
-  // Number of dots/bars to display - consistent across all states
+  // --- Constants ---
   const VISUALIZATION_COUNT = 7;
+  const PILL_RESTING_WIDTH = 70; // Keep in sync with CSS
+  const PILL_EXPANDED_WIDTH = 207; // Keep in sync with CSS
+
+  // --- Animation Variants ---
+  const spring = { type: "spring" as const, stiffness: 480, damping: 40 };
+
+  // --- Dynamic Width Calculation ---
+  const calculateWidth = (text: string | null): number => {
+    if (!text) {
+      return isHovered || isListening || isProcessing
+        ? PILL_EXPANDED_WIDTH
+        : PILL_RESTING_WIDTH;
+    }
+    // Simple calculation: base padding + characters * average width
+    const basePadding = 40; // 20px on each side
+    const charWidth = 7.5; // Estimated average character width
+    const maxWidth = 560;
+    return Math.min(basePadding + text.length * charWidth, maxWidth);
+  };
+
+  const isShowingNotification = !!notificationText;
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = () => {
@@ -79,33 +103,61 @@ const Pill: React.FC<PillProps> = ({
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
     >
-      <div className="pill-core">
+      <motion.div
+        className="pill-core"
+        initial={false}
+        animate={{ width: calculateWidth(notificationText) }}
+        transition={spring}
+      >
         <div className="pill-content flex items-center justify-center w-full h-full">
-          {/* Resting state - thin bar with no content */}
-          {isResting && <div className="resting-indicator" />}
+          <AnimatePresence>
+            {isShowingNotification ? (
+              <motion.span
+                key="notification"
+                className="notification-text"
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.2 }}
+              >
+                {notificationText}
+              </motion.span>
+            ) : (
+              <motion.div
+                key="visualizer"
+                className="visualization-wrapper"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {/* Resting state - thin bar with no content */}
+                {isResting && <div className="resting-indicator" />}
 
-          {/* Hover state - show static dots */}
-          {isHovered && !isListening && !isProcessing && (
-            <div className="visualization-container">
-              {renderDots("static")}
-            </div>
-          )}
+                {/* Hover state - show static dots */}
+                {isHovered && !isListening && !isProcessing && (
+                  <div className="visualization-container">
+                    {renderDots("static")}
+                  </div>
+                )}
 
-          {/* Active state - show frequency bars */}
-          {isListening && (
-            <div className="visualization-container">
-              {renderFrequencyBars()}
-            </div>
-          )}
+                {/* Active state - show frequency bars */}
+                {isListening && (
+                  <div className="visualization-container">
+                    {renderFrequencyBars()}
+                  </div>
+                )}
 
-          {/* Loading state - show animated dots */}
-          {isProcessing && !isListening && (
-            <div className="visualization-container">
-              {renderDots("animated")}
-            </div>
-          )}
+                {/* Loading state - show animated dots */}
+                {isProcessing && !isListening && (
+                  <div className="visualization-container">
+                    {renderDots("animated")}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

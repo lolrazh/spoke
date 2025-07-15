@@ -15,6 +15,8 @@ const App: React.FC = () => {
   const [isPTTActive, setIsPTTActive] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
 
@@ -45,15 +47,45 @@ const App: React.FC = () => {
     }
   }, [trans.error]);
 
+  // --- Global Notification Listener ---
+  useEffect(() => {
+    const cleanup = window.notifications.on((message: string) => {
+      console.log(`[App] Received notification: "${message}"`);
+      setNotification(message);
+
+      // Clear any existing timer
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+
+      // Set a timer to clear the notification
+      notificationTimerRef.current = setTimeout(() => {
+        setNotification(null);
+        notificationTimerRef.current = null;
+      }, 2200); // 2.2 seconds
+    });
+
+    return () => {
+      // Cleanup the listener and the timer when the component unmounts
+      cleanup();
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+    };
+  }, []); // Empty dependency array means this runs once on mount
+
+  // --- Derived State for Pill Visibility ---
+  const isPillVisible = isListening || !!notification;
+
   // Island slide-in/out effect
   useEffect(() => {
     // Use the new island API
     if (window.island?.slideTo) {
-      const targetY = isListening ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-      console.log(`[App] Sliding to ${targetY}`);
+      const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+      console.log(`[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notification})`);
       window.island.slideTo(targetY);
     }
-  }, [isListening]);
+  }, [isPillVisible]);
 
   // Set up global PTT hotkey listeners
   useEffect(() => {
@@ -126,6 +158,7 @@ const App: React.FC = () => {
         isListening={isListening}
         isProcessing={isProcessing}
         isHovered={isHovered}
+        notificationText={notification}
         // Connect Pill clicks directly to hook functions
         onStartDictation={trans.start}
         onStopDictation={trans.stop}
