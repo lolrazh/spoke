@@ -17,9 +17,6 @@
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-width: var(--pill-expanded-width);
-    --pill-height: var(--pill-expanded-height);
-    --pill-resting-height: var(--pill-resting-height);
     --pill-border-radius: 8px;
     --pill-resting-radius: 5px;
     --pill-background: rgba(0, 0, 0, 0.95);
