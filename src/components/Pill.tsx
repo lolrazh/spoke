@@ -174,10 +174,7 @@ const Pill: React.FC<PillProps> = ({
 
   return (
     <div
-      className={`
-        pill-wrapper transition-all duration-300 ease-out
-        ${isResting ? "resting-state" : ""}
-      `}
+      className="pill-wrapper"
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
       onMouseEnter={() => onHoverChange(true)}

@@ -43,13 +43,6 @@
     overflow: hidden;
   }
 
-  /* Resting state - thin bar */
-  .pill-wrapper.resting-state .pill-core {
-    height: var(--pill-resting-height);
-    border-radius: var(--pill-resting-radius);
-    /* All other properties (width, background, border, shadow) inherited from .pill-core */
-  }
-
   /* Resting indicator - invisible by default, just for spacing */
   .resting-indicator {
     width: 0;
