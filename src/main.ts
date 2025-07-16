@@ -327,7 +327,10 @@ ipcMain.handle(
       console.error("Error during text insertion:", error);
       // In case of any other error, leave the transcribed text in the clipboard.
       clipboard.writeText(text);
-      mainWindow?.webContents.send("notify", "Error. Text copied to clipboard.");
+      mainWindow?.webContents.send(
+        "notify",
+        "Error. Text copied to clipboard.",
+      );
       return {
         success: false,
         error:
@@ -615,8 +618,6 @@ const createHomeWindow = () => {
     console.log("[Home Window Event] homeWindow variable set to null.");
   });
 };
-
-
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag

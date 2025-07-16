@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, useReducer, useLayoutEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useReducer,
+  useLayoutEffect,
+} from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
@@ -6,20 +13,20 @@ import { TOKENS } from "../config/uiTokens";
 
 // Pill State Machine Types
 export type PillStateType =
-  | 'IDLE'
-  | 'LISTENING'
-  | 'PROCESSING'
-  | 'NOTIFICATION'
-  | 'HOVER_PREVIEW';
+  | "IDLE"
+  | "LISTENING"
+  | "PROCESSING"
+  | "NOTIFICATION"
+  | "HOVER_PREVIEW";
 
 export type PillEvent =
-  | { type: 'PTT_START' }
-  | { type: 'PTT_STOP' }
-  | { type: 'NOTIFY'; msg: string }
-  | { type: 'ANIM_DONE' }
-  | { type: 'HOVER_ENTER' }
-  | { type: 'HOVER_LEAVE' }
-  | { type: 'PROCESSING_COMPLETE' };
+  | { type: "PTT_START" }
+  | { type: "PTT_STOP" }
+  | { type: "NOTIFY"; msg: string }
+  | { type: "ANIM_DONE" }
+  | { type: "HOVER_ENTER" }
+  | { type: "HOVER_LEAVE" }
+  | { type: "PROCESSING_COMPLETE" };
 
 export interface PillMachineState {
   state: PillStateType;
@@ -30,31 +37,58 @@ export interface PillMachineState {
 }
 
 // Reducer function for pill machine
-const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineState => {
+const pillReducer = (
+  state: PillMachineState,
+  event: PillEvent,
+): PillMachineState => {
   switch (state.state) {
-    case 'IDLE':
-      if (event.type === 'PTT_START') return { ...state, state: 'LISTENING' };
-      if (event.type === 'NOTIFY') return { state: 'NOTIFICATION', context: { ...state.context, notifMsg: event.msg } };
-      if (event.type === 'HOVER_ENTER') return { ...state, state: 'HOVER_PREVIEW' };
+    case "IDLE":
+      if (event.type === "PTT_START") return { ...state, state: "LISTENING" };
+      if (event.type === "NOTIFY")
+        return {
+          state: "NOTIFICATION",
+          context: { ...state.context, notifMsg: event.msg },
+        };
+      if (event.type === "HOVER_ENTER")
+        return { ...state, state: "HOVER_PREVIEW" };
       return state;
-    case 'LISTENING':
-      if (event.type === 'PTT_STOP') return { ...state, state: 'PROCESSING' };
-      if (event.type === 'NOTIFY') return { ...state, context: { ...state.context, pendingNotif: event.msg } };
+    case "LISTENING":
+      if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
+      if (event.type === "NOTIFY")
+        return {
+          ...state,
+          context: { ...state.context, pendingNotif: event.msg },
+        };
       return state;
-    case 'PROCESSING':
-      if (event.type === 'PROCESSING_COMPLETE') {
+    case "PROCESSING":
+      if (event.type === "PROCESSING_COMPLETE") {
         if (state.context.pendingNotif) {
-          return { state: 'NOTIFICATION', context: { notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
+          return {
+            state: "NOTIFICATION",
+            context: {
+              notifMsg: state.context.pendingNotif,
+              pendingNotif: undefined,
+            },
+          };
         }
-        return { ...state, state: 'IDLE' };
+        return { ...state, state: "IDLE" };
       }
       return state;
-    case 'NOTIFICATION':
-      if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
-      if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined } };
+    case "NOTIFICATION":
+      if (event.type === "PTT_START")
+        return {
+          state: "LISTENING",
+          context: { ...state.context, pendingNotif: state.context.notifMsg },
+        };
+      if (event.type === "ANIM_DONE")
+        return {
+          ...state,
+          state: "IDLE",
+          context: { ...state.context, notifMsg: undefined },
+        };
       return state;
-    case 'HOVER_PREVIEW':
-      if (event.type === 'HOVER_LEAVE') return { ...state, state: 'IDLE' };
+    case "HOVER_PREVIEW":
+      if (event.type === "HOVER_LEAVE") return { ...state, state: "IDLE" };
       return state;
     default:
       return state;
@@ -78,14 +112,20 @@ type PillMetrics = {
 };
 
 const usePillMachine = () => {
-  const [machine, dispatch] = useReducer((state: PillMachineState, event: PillEvent) => {
-    console.log(`[Reducer] Dispatching ${event.type}`);
-    return pillReducer(state, event);
-  }, { state: 'IDLE', context: {} });
+  const [machine, dispatch] = useReducer(
+    (state: PillMachineState, event: PillEvent) => {
+      console.log(`[Reducer] Dispatching ${event.type}`);
+      return pillReducer(state, event);
+    },
+    { state: "IDLE", context: {} },
+  );
   return { state: machine.state, context: machine.context, dispatch };
 };
 
-const debounce = <T extends (...args: any[]) => void>(func: T, delay: number) => {
+const debounce = <T extends (...args: any[]) => void>(
+  func: T,
+  delay: number,
+) => {
   let timeoutId: NodeJS.Timeout | null = null;
   return (...args: Parameters<T>) => {
     if (timeoutId) {
@@ -108,9 +148,12 @@ const App: React.FC = () => {
   const isLongPressRef = useRef(false);
   const latestTransRef = useRef(trans);
   const [trace, setTrace] = useState<string[]>([]);
-  
+
   const pushTrace = (msg: string) => {
-    setTrace(t => [`${performance.now().toFixed(0)}: ${msg}`, ...t.slice(0, 15)]);
+    setTrace((t) => [
+      `${performance.now().toFixed(0)}: ${msg}`,
+      ...t.slice(0, 15),
+    ]);
   };
 
   useEffect(() => {
@@ -122,12 +165,16 @@ const App: React.FC = () => {
     latestTransRef.current = trans;
   }, [trans]);
 
-  const { state: pillState, context: pillContext, dispatch: pillDispatch } = usePillMachine();
+  const {
+    state: pillState,
+    context: pillContext,
+    dispatch: pillDispatch,
+  } = usePillMachine();
 
   useEffect(() => {
     if (trans.text && !trans.recording && !trans.processing) {
       pushTrace(`Transcription complete: "${trans.text}" `);
-      pillDispatch({ type: 'PROCESSING_COMPLETE' });
+      pillDispatch({ type: "PROCESSING_COMPLETE" });
     }
   }, [trans.text, trans.recording, trans.processing]);
 
@@ -141,7 +188,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const cleanup = window.notifications.on((message: string) => {
       pushTrace(`Notify: "${message}" `);
-      pillDispatch({ type: 'NOTIFY', msg: message });
+      pillDispatch({ type: "NOTIFY", msg: message });
     });
     return cleanup;
   }, []);
@@ -150,21 +197,21 @@ const App: React.FC = () => {
     debounce((y: number) => {
       window.island?.slideTo(y);
     }, 100),
-    []
+    [],
   );
 
   useEffect(() => {
-    const isPillVisible = pillState !== 'IDLE';
+    const isPillVisible = pillState !== "IDLE";
     const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
     slideToDebounced(targetY);
   }, [pillState, slideToDebounced]);
 
   // Notification duration for NOTIFICATION
   useEffect(() => {
-    if (pillState === 'NOTIFICATION' && pillContext.notifMsg) {
+    if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
       const duration = calculateNotificationDuration(pillContext.notifMsg);
       const timeout = setTimeout(() => {
-        pillDispatch({ type: 'ANIM_DONE' });
+        pillDispatch({ type: "ANIM_DONE" });
       }, duration);
       return () => clearTimeout(timeout);
     }
@@ -204,7 +251,7 @@ const App: React.FC = () => {
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
-        pillDispatch({ type: 'PTT_START' });
+        pillDispatch({ type: "PTT_START" });
         if (!latestTransRef.current.recording) {
           latestTransRef.current.start();
         }
@@ -221,17 +268,17 @@ const App: React.FC = () => {
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
           pushTrace(`PTT long press stop`);
-          pillDispatch({ type: 'PTT_STOP' });
+          pillDispatch({ type: "PTT_STOP" });
         }
       } else {
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
           pushTrace(`PTT short press stop`);
-          pillDispatch({ type: 'PTT_STOP' });
+          pillDispatch({ type: "PTT_STOP" });
         } else {
           latestTransRef.current.start();
           pushTrace(`PTT short press start`);
-          pillDispatch({ type: 'PTT_START' });
+          pillDispatch({ type: "PTT_START" });
         }
       }
       isLongPressRef.current = false;
@@ -253,16 +300,18 @@ const App: React.FC = () => {
         pillContext={pillContext}
         notifWidth={notifWidth}
         onStartDictation={() => {
-          pillDispatch({ type: 'PTT_START' });
+          pillDispatch({ type: "PTT_START" });
           trans.start();
         }}
         onStopDictation={() => {
-          pillDispatch({ type: 'PTT_STOP' });
+          pillDispatch({ type: "PTT_STOP" });
           trans.stop();
         }}
-        onHoverChange={(h) => pillDispatch({ type: h ? 'HOVER_ENTER' : 'HOVER_LEAVE' })}
+        onHoverChange={(h) =>
+          pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" })
+        }
         onMetrics={handlePillMetrics}
-        onAnimDone={() => pillDispatch({ type: 'ANIM_DONE' })}
+        onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
       />
       <span
         id="pill-ghost-measure"
@@ -291,11 +340,15 @@ const App: React.FC = () => {
             {debugInfo.pillRect?.height.toFixed(2)}
           </p>
           <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
-          <p>Notif Words: {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ?? "N/A"}</p>
+          <p>
+            Notif Words:{" "}
+            {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ??
+              "N/A"}
+          </p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
-          <div style={{ marginTop: '10px', borderTop: '1px solid white' }}>
+          <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>
-            <ul style={{ listStyle: 'none', padding: 0 }}>
+            <ul style={{ listStyle: "none", padding: 0 }}>
               {trace.map((entry, index) => (
                 <li key={index}>{entry}</li>
               ))}

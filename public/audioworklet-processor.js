@@ -24,7 +24,7 @@ class CaptureProcessor extends AudioWorkletProcessor {
       const sample = Math.max(-1, Math.min(1, inputChannelData[i]));
 
       // Convert the Float32 sample to a 16-bit integer.
-      this.pcm16[this.idx++] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      this.pcm16[this.idx++] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
 
       // When the buffer is full, send it to the main thread.
       if (this.idx === 960) {
@@ -39,4 +39,4 @@ class CaptureProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('capture-processor', CaptureProcessor);
+registerProcessor("capture-processor", CaptureProcessor);

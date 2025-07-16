@@ -17,11 +17,11 @@ type PillMetrics = {
 };
 
 // Use PillStateType from App.tsx
-import type { PillStateType, PillMachineState } from './App';
+import type { PillStateType, PillMachineState } from "./App";
 
 interface PillProps {
   pillState: PillStateType;
-  pillContext: PillMachineState['context'];
+  pillContext: PillMachineState["context"];
   notifWidth: number | null;
   onStartDictation: () => void;
   onStopDictation: () => void;
@@ -33,7 +33,9 @@ interface PillProps {
 // Helper function to read CSS variables from the DOM, with a fallback
 const getCssVar = (name: string, fallback: number): number => {
   if (typeof window === "undefined") return fallback;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const value = getComputedStyle(document.documentElement).getPropertyValue(
+    name,
+  );
   const parsedValue = parseInt(value, 10);
   return isNaN(parsedValue) ? fallback : parsedValue;
 };
@@ -64,14 +66,16 @@ const Pill: React.FC<PillProps> = ({
     });
   }, [pillState, pillContext, onMetrics]);
 
-  const isShowingNotification = pillState === 'NOTIFICATION';
-  const isListening = pillState === 'LISTENING';
-  const isResting = pillState === 'IDLE';
-  const isProcessing = pillState === 'PROCESSING';
-  const isHovered = pillState === 'HOVER_PREVIEW';
+  const isShowingNotification = pillState === "NOTIFICATION";
+  const isListening = pillState === "LISTENING";
+  const isResting = pillState === "IDLE";
+  const isProcessing = pillState === "PROCESSING";
+  const isHovered = pillState === "HOVER_PREVIEW";
 
   useEffect(() => {
-    console.log(`[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`);
+    console.log(
+      `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`,
+    );
   }, [pillState, isResting, isListening, isProcessing, isHovered]);
 
   // Generate frequency bars for the waveform (active state)
@@ -123,13 +127,13 @@ const Pill: React.FC<PillProps> = ({
   // We'll drive width/height via explicit animate prop (overrides variants.width)
   const animateForState = (() => {
     switch (pillState) {
-      case 'IDLE':
+      case "IDLE":
         return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_RESTING_H };
-      case 'HOVER_PREVIEW':
-      case 'LISTENING':
-      case 'PROCESSING':
+      case "HOVER_PREVIEW":
+      case "LISTENING":
+      case "PROCESSING":
         return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_BASE_H };
-      case 'NOTIFICATION':
+      case "NOTIFICATION":
         return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
       default:
         return {};
@@ -152,7 +156,7 @@ const Pill: React.FC<PillProps> = ({
         animate={animateForState}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
-          if (pillState !== 'NOTIFICATION') {
+          if (pillState !== "NOTIFICATION") {
             onAnimDone();
           }
         }}
@@ -180,12 +184,10 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: 0.15 }}
               >
                 {/* Visuals for non-notification states */}
-                {pillState === 'LISTENING' && <>{renderFrequencyBars}</>}
-                {pillState === 'PROCESSING' && <>{renderDots("animated")}</>}
-                {pillState === 'HOVER_PREVIEW' && <>{renderDots("static")}</>}
-                {pillState === 'IDLE' && (
-                  <div className="resting-indicator" />
-                )}
+                {pillState === "LISTENING" && <>{renderFrequencyBars}</>}
+                {pillState === "PROCESSING" && <>{renderDots("animated")}</>}
+                {pillState === "HOVER_PREVIEW" && <>{renderDots("static")}</>}
+                {pillState === "IDLE" && <div className="resting-indicator" />}
               </motion.div>
             )}
           </AnimatePresence>

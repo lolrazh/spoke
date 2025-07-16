@@ -1,1 +1,1 @@
-export const PILL_ANIMATION_DURATION = 300; // in milliseconds 
+export const PILL_ANIMATION_DURATION = 300; // in milliseconds

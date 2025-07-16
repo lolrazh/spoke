@@ -14,14 +14,7 @@ export default defineConfig({
     },
     // Configure Rollup options for CommonJS output
     rollupOptions: {
-      external: [
-        "electron",
-        "path",
-        "process",
-        "child_process",
-        "fs",
-        "ws",
-      ],
+      external: ["electron", "path", "process", "child_process", "fs", "ws"],
       output: {
         // Ensure output filenames match the entry point names
         entryFileNames: "[name].js",
