@@ -222,12 +222,12 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    window.ptt.onDown(handleFunctionKeyDown);
-    window.ptt.onUp(handleFunctionKeyUp);
+    const cleanupOnDown = window.ptt.onDown(handleFunctionKeyDown);
+    const cleanupOnUp = window.ptt.onUp(handleFunctionKeyUp);
 
     return () => {
-      window.ptt.onDown(handleFunctionKeyDown, true);
-      window.ptt.onUp(handleFunctionKeyUp, true);
+      cleanupOnDown();
+      cleanupOnUp();
     };
   }, []);
 
