@@ -63,9 +63,9 @@ const Pill: React.FC<PillProps> = ({
     });
   }, [pillState, pillContext, onMetrics]);
 
-  const isShowingNotification = pillState === 'NOTIF_SHOW';
+  const isShowingNotification = pillState === 'NOTIFICATION';
   const isListening = pillState === 'LISTENING';
-  const isResting = pillState === 'IDLE' || pillState === 'IDLE_TRANSITION' || pillState === 'NOTIF_SHRINK';
+  const isResting = pillState === 'IDLE';
   const isProcessing = pillState === 'PROCESSING';
   const isHovered = pillState === 'HOVER_PREVIEW';
 
@@ -127,13 +127,13 @@ const Pill: React.FC<PillProps> = ({
       <motion.div
         ref={pillCoreRef}
         className="pill-core"
+        layout
+        initial={false}
         variants={pillVariants}
         animate={pillState}
-        initial="IDLE"
-        custom={{ notifWidth: pillContext.notifWidth }}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
-          if (pillState === 'NOTIF_SHRINK' || pillState === 'IDLE_TRANSITION') {
+          if (pillState !== 'NOTIFICATION') {
             onAnimDone();
           }
         }}
@@ -164,9 +164,7 @@ const Pill: React.FC<PillProps> = ({
                 {pillState === 'LISTENING' && <>{renderFrequencyBars}</>}
                 {pillState === 'PROCESSING' && <>{renderDots("animated")}</>}
                 {pillState === 'HOVER_PREVIEW' && <>{renderDots("static")}</>}
-                {(pillState === 'IDLE' ||
-                  pillState === 'IDLE_TRANSITION' ||
-                  pillState === 'NOTIF_SHRINK') && (
+                {pillState === 'IDLE' && (
                   <div className="resting-indicator" />
                 )}
               </motion.div>

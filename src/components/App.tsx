@@ -3,22 +3,19 @@ import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
-import { useGhostMeasure } from "../hooks/useGhostMeasure";
 
 // Pill State Machine Types
 export type PillStateType =
   | 'IDLE'
   | 'LISTENING'
   | 'PROCESSING'
-  | 'NOTIF_SHRINK'
-  | 'NOTIF_SHOW'
+  | 'NOTIFICATION'
   | 'HOVER_PREVIEW';
 
 export type PillEvent =
   | { type: 'PTT_START' }
   | { type: 'PTT_STOP' }
   | { type: 'NOTIFY'; msg: string }
-  | { type: 'MEASURED'; w: number }
   | { type: 'ANIM_DONE' }
   | { type: 'HOVER_ENTER' }
   | { type: 'HOVER_LEAVE' }
@@ -28,7 +25,6 @@ export interface PillMachineState {
   state: PillStateType;
   context: {
     pendingNotif?: string;
-    notifWidth?: number;
     notifMsg?: string;
   };
 }
@@ -38,7 +34,7 @@ const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineStat
   switch (state.state) {
     case 'IDLE':
       if (event.type === 'PTT_START') return { ...state, state: 'LISTENING' };
-      if (event.type === 'NOTIFY') return { state: 'NOTIF_SHRINK', context: { ...state.context, notifMsg: event.msg } };
+      if (event.type === 'NOTIFY') return { state: 'NOTIFICATION', context: { ...state.context, notifMsg: event.msg } };
       if (event.type === 'HOVER_ENTER') return { ...state, state: 'HOVER_PREVIEW' };
       return state;
     case 'LISTENING':
@@ -48,20 +44,14 @@ const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineStat
     case 'PROCESSING':
       if (event.type === 'PROCESSING_COMPLETE') {
         if (state.context.pendingNotif) {
-          return { state: 'NOTIF_SHRINK', context: { notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
+          return { state: 'NOTIFICATION', context: { notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
         }
         return { ...state, state: 'IDLE' };
       }
       return state;
-    case 'NOTIF_SHRINK':
+    case 'NOTIFICATION':
       if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
-      if (event.type === 'MEASURED') {
-        return { state: 'NOTIF_SHOW', context: { ...state.context, notifWidth: event.w } };
-      }
-      return state;
-    case 'NOTIF_SHOW':
-      if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
-      if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined, notifWidth: undefined } };
+      if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined } };
       return state;
     case 'HOVER_PREVIEW':
       if (event.type === 'HOVER_LEAVE') return { ...state, state: 'IDLE' };
@@ -85,26 +75,6 @@ type PillMetrics = {
   pillRect: DOMRect | null;
   notificationText: string | null;
   devicePixelRatio: number;
-};
-
-const NotificationWidthMeasurer: React.FC<{
-  text: string;
-  onMeasured: (width: number) => void;
-}> = ({ text, onMeasured }) => {
-  const measuredWidth = useGhostMeasure(text);
-
-  useEffect(() => {
-    if (measuredWidth > 0) {
-      const paddedWidth = measuredWidth + TOKENS.NOTIF_PAD_X;
-      const clampedWidth = Math.max(
-        TOKENS.PILL_BASE_W,
-        Math.min(paddedWidth, TOKENS.PILL_MAX_W)
-      );
-      setTimeout(() => onMeasured(clampedWidth), 50);
-    }
-  }, [measuredWidth, onMeasured]);
-
-  return null;
 };
 
 const usePillMachine = () => {
@@ -187,9 +157,9 @@ const App: React.FC = () => {
     slideToDebounced(targetY);
   }, [pillState, slideToDebounced]);
 
-  // Notification duration for NOTIF_SHOW
+  // Notification duration for NOTIFICATION
   useEffect(() => {
-    if (pillState === 'NOTIF_SHOW' && pillContext.notifMsg) {
+    if (pillState === 'NOTIFICATION' && pillContext.notifMsg) {
       const duration = calculateNotificationDuration(pillContext.notifMsg);
       const timeout = setTimeout(() => {
         pillDispatch({ type: 'ANIM_DONE' });
@@ -252,35 +222,29 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const unsubscribePTTDown = window.ptt.onDown(handleFunctionKeyDown);
-    const unsubscribePTTUp = window.ptt.onUp(handleFunctionKeyUp);
+    window.ptt.onDown(handleFunctionKeyDown);
+    window.ptt.onUp(handleFunctionKeyUp);
 
     return () => {
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-      }
-      unsubscribePTTDown();
-      unsubscribePTTUp();
+      window.ptt.onDown(handleFunctionKeyDown, true);
+      window.ptt.onUp(handleFunctionKeyUp, true);
     };
   }, []);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
-      {pillState === 'NOTIF_SHRINK' && pillContext.notifMsg && (
-        <NotificationWidthMeasurer
-          text={pillContext.notifMsg}
-          onMeasured={(w) => pillDispatch({ type: 'MEASURED', w })}
-        />
-      )}
       <Pill
         pillState={pillState}
         pillContext={pillContext}
-        onStartDictation={trans.start}
-        onStopDictation={trans.stop}
-        onHoverChange={(hovered) => {
-          setIsHovered(hovered);
-          pillDispatch(hovered ? { type: 'HOVER_ENTER' } : { type: 'HOVER_LEAVE' });
+        onStartDictation={() => {
+          pillDispatch({ type: 'PTT_START' });
+          trans.start();
         }}
+        onStopDictation={() => {
+          pillDispatch({ type: 'PTT_STOP' });
+          trans.stop();
+        }}
+        onHoverChange={(h) => pillDispatch({ type: h ? 'HOVER_ENTER' : 'HOVER_LEAVE' })}
         onMetrics={handlePillMetrics}
         onAnimDone={() => pillDispatch({ type: 'ANIM_DONE' })}
       />

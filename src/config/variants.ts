@@ -9,8 +9,8 @@ const PILL_RESTING_HEIGHT = TOKENS.PILL_RESTING_H;
 export const pillVariants: Variants = {
   // Resting, thin bar
   IDLE: {
-    width: PILL_EXPANDED_WIDTH,
-    height: PILL_RESTING_HEIGHT,
+    width: TOKENS.PILL_BASE_W,
+    height: TOKENS.PILL_RESTING_H,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
   // A temporary resting state to pause before notifications
@@ -21,32 +21,25 @@ export const pillVariants: Variants = {
   },
   // When hovered in idle state
   HOVER_PREVIEW: {
-    width: PILL_EXPANDED_WIDTH,
-    height: PILL_EXPANDED_HEIGHT,
-    transition: { type: 'spring', stiffness: 400, damping: 30 },
+    width: TOKENS.PILL_BASE_W,
+    height: TOKENS.PILL_BASE_H,
+    transition: { type: 'spring', stiffness: 400, damping: 25, mass: 0.9 },
   },
   // Dictation active
   LISTENING: {
-    width: PILL_EXPANDED_WIDTH,
-    height: PILL_EXPANDED_HEIGHT,
-    transition: { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 },
+    width: TOKENS.PILL_BASE_W,
+    height: TOKENS.PILL_BASE_H,
+    transition: { type: 'spring', stiffness: 400, damping: 25, mass: 0.9 },
   },
   // Processing transcription
   PROCESSING: {
-    width: PILL_EXPANDED_WIDTH,
-    height: PILL_EXPANDED_HEIGHT,
+    width: TOKENS.PILL_BASE_W,
+    height: TOKENS.PILL_BASE_H,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
-  // Shrinking before showing notification
-  NOTIF_SHRINK: {
-    width: PILL_EXPANDED_WIDTH,
-    height: PILL_RESTING_HEIGHT,
-    transition: { ease: 'easeIn', duration: 0.2 },
+  NOTIFICATION: {
+    width: 'auto',
+    height: TOKENS.PILL_BASE_H,
+    transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
-  // Expanded to show notification text
-  NOTIF_SHOW: (custom: { notifWidth?: number }) => ({
-    width: custom.notifWidth || PILL_EXPANDED_WIDTH,
-    height: PILL_EXPANDED_HEIGHT,
-    transition: { ease: 'easeOut', duration: 0.25 },
-  }),
 }; 
