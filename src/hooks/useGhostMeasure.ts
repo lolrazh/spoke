@@ -1,35 +1,35 @@
-import { useState, useLayoutEffect } from "react";
+import { useState, useLayoutEffect } from 'react';
 
 /**
- * Measures the width of a text string by rendering it into an off-screen "ghost" element.
- * It uses a ResizeObserver to respond to any size changes, for instance, from web font loading.
- *
+ * A hook that measures the width of a piece of text by rendering it into a hidden "ghost" element.
+ * It uses a ResizeObserver to reliably report the width, even accounting for font loads.
  * @param text The text to measure.
- * @returns The measured width of the text in pixels.
+ * @returns The measured width in pixels.
  */
 export function useGhostMeasure(text: string): number {
   const [width, setWidth] = useState(0);
 
   useLayoutEffect(() => {
-    const el = document.getElementById("pill-ghost-measure") as HTMLSpanElement | null;
-    if (!el) return;
+    const ghostElement = document.getElementById('pill-ghost-measure');
+    if (!ghostElement) return;
 
     // Set the text content of the ghost element.
-    el.textContent = text || "";
+    ghostElement.textContent = text || '';
 
-    // Use a ResizeObserver to get the most accurate, up-to-date width.
-    const observer = new ResizeObserver(([entry]) => {
-      // We use Math.ceil to avoid fractional pixels, which can cause jitter.
+    // Use ResizeObserver to listen for size changes. This is more reliable than a one-time read,
+    // as it accounts for things like web font loading that can change the element's size.
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      // We use contentRect.width which is the width of the content, excluding padding.
       setWidth(Math.ceil(entry.contentRect.width));
     });
 
-    observer.observe(el);
+    resizeObserver.observe(ghostElement);
 
-    // Also, set the initial width immediately without waiting for the observer.
-    setWidth(Math.ceil(el.offsetWidth));
+    // Also set the initial width immediately.
+    setWidth(Math.ceil(ghostElement.offsetWidth));
 
-    // Cleanup function to disconnect the observer when the component unmounts or text changes.
-    return () => observer.disconnect();
+    // Cleanup by disconnecting the observer when the component unmounts or text changes.
+    return () => resizeObserver.disconnect();
   }, [text]);
 
   return width;

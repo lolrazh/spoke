@@ -2,7 +2,6 @@ import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
-import { useGhostMeasure } from "../hooks/useGhostMeasure";
 import { pillVariants } from "../config/variants";
 
 // Update the type for our new "notification play" prop
@@ -19,8 +18,7 @@ type PillMetrics = {
 };
 
 // Use PillStateType from App.tsx
-import type { PillStateType } from './App';
-import type { PillMachineState } from './App';
+import type { PillStateType, PillMachineState } from './App';
 
 interface PillProps {
   pillState: PillStateType;
@@ -52,59 +50,6 @@ const Pill: React.FC<PillProps> = ({
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
 
-  // --- Ghost Measurement ---
-  const ghostWidth = useGhostMeasure(pillContext.notifMsg ?? "");
-
-  // --- Read constants from CSS with fallbacks from tokens ---
-  const PILL_EXPANDED_WIDTH = useMemo(
-    () => getCssVar("--pill-expanded-width", TOKENS.PILL_BASE_W),
-    [],
-  );
-  const PILL_EXPANDED_HEIGHT = useMemo(
-    () => getCssVar("--pill-expanded-height", TOKENS.PILL_BASE_H),
-    [],
-  );
-  const PILL_RESTING_HEIGHT = useMemo(
-    () => getCssVar("--pill-resting-height", TOKENS.PILL_RESTING_H),
-    [],
-  );
-
-  // --- Height Calculation ---
-  const pillHeight = useMemo(() => {
-    switch (pillState) {
-      case 'IDLE':
-      case 'NOTIF_SHRINK':
-        return PILL_RESTING_HEIGHT;
-      default:
-        return PILL_EXPANDED_HEIGHT;
-    }
-  }, [pillState, PILL_EXPANDED_HEIGHT, PILL_RESTING_HEIGHT]);
-
-  useEffect(() => {
-    console.log(`[Pill] pillHeight changed to: ${pillHeight}`);
-  }, [pillHeight]);
-
-  // --- Constants ---
-  const VISUALIZATION_COUNT = 7;
-
-  // --- Animation Variants ---
-  const transition = {
-    duration: PILL_ANIMATION_DURATION / 1000, // Convert ms to seconds for Framer Motion
-    ease: "easeInOut" as const,
-  };
-
-  // --- Target Width Calculation ---
-  const targetWidth = useMemo(() => {
-    if (pillState === 'NOTIF_SHOW' && pillContext.notifWidth) {
-      return pillContext.notifWidth;
-    }
-    return PILL_EXPANDED_WIDTH;
-  }, [pillState, pillContext, PILL_EXPANDED_WIDTH]);
-
-  useEffect(() => {
-    console.log(`[Pill] targetWidth changed to: ${targetWidth} (ghostWidth: ${ghostWidth})`);
-  }, [targetWidth, ghostWidth]);
-
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
     if (!onMetrics) return;
@@ -120,7 +65,7 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = pillState === 'NOTIF_SHOW';
   const isListening = pillState === 'LISTENING';
-  const isResting = pillHeight === PILL_RESTING_HEIGHT;
+  const isResting = pillState === 'IDLE' || pillState === 'IDLE_TRANSITION' || pillState === 'NOTIF_SHRINK';
   const isProcessing = pillState === 'PROCESSING';
   const isHovered = pillState === 'HOVER_PREVIEW';
 
@@ -132,7 +77,7 @@ const Pill: React.FC<PillProps> = ({
   const renderFrequencyBars = useMemo(
     () =>
       // Create bars with consistent count
-      Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+      Array.from({ length: 7 }).map((_, index) => (
         <div
           key={`bar-${index}`}
           className="waveform-bar"
@@ -147,7 +92,7 @@ const Pill: React.FC<PillProps> = ({
 
   // Unified function to render dots with different styles
   const renderDots = (type: "static" | "animated" | "collapsed") => {
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+    return Array.from({ length: 7 }).map((_, index) => (
       <div
         key={`dot-${type}-${index}`}
         className={`dot ${type}`}
