@@ -40,6 +40,7 @@
     border: var(--pill-border);
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
+    overflow: hidden;
   }
 
   /* Resting state - thin bar */

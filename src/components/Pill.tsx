@@ -185,7 +185,7 @@ const Pill: React.FC<PillProps> = ({
     >
       <motion.div
         ref={pillCoreRef}
-        className="pill-core"
+        className="pill-core overflow-hidden" // <-- Add overflow-hidden utility class
         layout // <-- The magic prop for declarative layout animation
         initial={false}
         style={{
