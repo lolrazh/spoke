@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
 import { useGhostMeasure } from "../hooks/useGhostMeasure";
+import { pillVariants } from "../config/variants";
 
 // Update the type for our new "notification play" prop
 type NotificationPlay = {
@@ -115,16 +116,11 @@ const Pill: React.FC<PillProps> = ({
       notificationText: pillContext.notifMsg ?? null,
       devicePixelRatio: window.devicePixelRatio,
     });
-  }, [
-    targetWidth, // Use targetWidth instead of pillWidth
-    pillContext,
-    onMetrics,
-    pillHeight,
-  ]);
+  }, [pillState, pillContext, onMetrics]);
 
   const isShowingNotification = pillState === 'NOTIF_SHOW';
-  const isResting = pillHeight === PILL_RESTING_HEIGHT;
   const isListening = pillState === 'LISTENING';
+  const isResting = pillHeight === PILL_RESTING_HEIGHT;
   const isProcessing = pillState === 'PROCESSING';
   const isHovered = pillState === 'HOVER_PREVIEW';
 
@@ -185,14 +181,11 @@ const Pill: React.FC<PillProps> = ({
     >
       <motion.div
         ref={pillCoreRef}
-        className="pill-core overflow-hidden"
-        layout
-        initial={false}
-        style={{
-          width: targetWidth,
-          height: pillHeight,
-        }}
-        transition={transition}
+        className="pill-core"
+        variants={pillVariants}
+        animate={pillState}
+        initial="IDLE"
+        custom={{ notifWidth: pillContext.notifWidth }}
         onAnimationComplete={onAnimDone}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
@@ -218,12 +211,12 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: 0.15 }}
               >
                 {/* Visuals for non-notification states */}
-                {isListening && <>{renderFrequencyBars}</>}
-                {isProcessing && <>{renderDots("animated")}</>}
-                {isHovered && !isListening && !isProcessing && (
-                  <>{renderDots("static")}</>
+                {pillState === 'LISTENING' && <>{renderFrequencyBars}</>}
+                {pillState === 'PROCESSING' && <>{renderDots("animated")}</>}
+                {pillState === 'HOVER_PREVIEW' && <>{renderDots("static")}</>}
+                {(pillState === 'IDLE' || pillState === 'NOTIF_SHRINK') && (
+                  <div className="resting-indicator" />
                 )}
-                {isResting && <div className="resting-indicator" />}
               </motion.div>
             )}
           </AnimatePresence>

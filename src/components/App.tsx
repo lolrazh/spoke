@@ -4,6 +4,7 @@ import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
+import { TOKENS } from "../config/uiTokens";
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
@@ -62,9 +63,12 @@ const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineStat
       }
       return state;
     case 'NOTIF_SHRINK':
+      if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
+      if (event.type === 'MEASURED') return { ...state, context: { ...state.context, notifWidth: event.w } };
       if (event.type === 'ANIM_DONE') return { state: 'NOTIF_SHOW', context: { ...state.context } };
       return state;
     case 'NOTIF_SHOW':
+      if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
       if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined, notifWidth: undefined } };
       return state;
     case 'HOVER_PREVIEW':
@@ -77,7 +81,10 @@ const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineStat
 
 // Custom hook for pill machine
 const usePillMachine = () => {
-  const [machine, dispatch] = useReducer(pillReducer, { state: 'IDLE', context: {} });
+  const [machine, dispatch] = useReducer((state: PillMachineState, event: PillEvent) => {
+    console.log(`[Reducer] Dispatching ${event.type}`);
+    return pillReducer(state, event);
+  }, { state: 'IDLE', context: {} });
   return { state: machine.state, context: machine.context, dispatch };
 };
 
@@ -185,6 +192,44 @@ const App: React.FC = () => {
       window.island.slideTo(targetY);
     }
   }, [pillState]);
+
+  // Measurement effect for NOTIF_SHRINK
+  useEffect(() => {
+    if (pillState === 'NOTIF_SHRINK' && pillContext.notifMsg) {
+      const measure = () => {
+        const ghost = document.getElementById('pill-ghost-measure');
+        if (ghost) {
+          ghost.textContent = pillContext.notifMsg;
+          const w = ghost.offsetWidth + TOKENS.NOTIF_PAD_X;
+          const clampedW = Math.max(100, Math.min(w, TOKENS.PILL_MAX_W));
+          pillDispatch({ type: 'MEASURED', w: clampedW });
+          console.log(`[App] Measured width: ${clampedW}`);
+        }
+      };
+      requestAnimationFrame(measure);
+    }
+  }, [pillState, pillContext.notifMsg]);
+
+  // Fallback ANIM_DONE for NOTIF_SHRINK and NOTIF_SHOW
+  useEffect(() => {
+    if (pillState === 'NOTIF_SHRINK' || pillState === 'NOTIF_SHOW') {
+      const timeout = setTimeout(() => {
+        pillDispatch({ type: 'ANIM_DONE' });
+      }, PILL_ANIMATION_DURATION + 100); // Slight buffer
+      return () => clearTimeout(timeout);
+    }
+  }, [pillState]);
+
+  // Notification duration for NOTIF_SHOW
+  useEffect(() => {
+    if (pillState === 'NOTIF_SHOW' && pillContext.notifMsg) {
+      const duration = calculateNotificationDuration(pillContext.notifMsg);
+      const timeout = setTimeout(() => {
+        pillDispatch({ type: 'ANIM_DONE' });
+      }, duration);
+      return () => clearTimeout(timeout);
+    }
+  }, [pillState, pillContext.notifMsg]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
