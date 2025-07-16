@@ -131,7 +131,12 @@ const Pill: React.FC<PillProps> = ({
         animate={pillState}
         initial="IDLE"
         custom={{ notifWidth: pillContext.notifWidth }}
-        onAnimationComplete={onAnimDone}
+        onAnimationComplete={() => {
+          // Only advance the FSM when the *shrink back to idle* finishes
+          if (pillState === 'NOTIF_SHRINK' || pillState === 'IDLE_TRANSITION') {
+            onAnimDone();
+          }
+        }}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
