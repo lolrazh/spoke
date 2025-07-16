@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useRef, useMemo } from "react";
+import React, { useLayoutEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
@@ -48,7 +48,6 @@ const Pill: React.FC<PillProps> = ({
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
-  const lastSentWidthRef = useRef<number | null>(null);
 
   // --- Ghost Measurement ---
   const ghostWidth = useGhostMeasure(notificationPlay?.text ?? "");
@@ -68,7 +67,7 @@ const Pill: React.FC<PillProps> = ({
   );
 
   // --- State ---
-  const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
+  // const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
 
   // --- Height Calculation ---
   const pillHeight = useMemo(() => {
@@ -96,31 +95,18 @@ const Pill: React.FC<PillProps> = ({
     ease: "easeInOut" as const,
   };
 
-  // --- Core Sizing and Resize Logic ---
-  useLayoutEffect(() => {
-    const targetWidth = (() => {
-      if (!notificationPlay) {
-        return PILL_EXPANDED_WIDTH;
-      }
-      // When shrinking, we want the base width, not the measured width.
-      if (notificationPlay.phase === "shrinking") {
-        return PILL_EXPANDED_WIDTH;
-      }
-      // Otherwise, calculate the width based on the ghost measurement.
-      const rawWidth = ghostWidth + TOKENS.NOTIF_PAD_X;
-      // Allow shrinking, but clamp to a new minimum width to prevent collapse.
-      const MIN_PILL_W = 100;
-      return Math.max(MIN_PILL_W, Math.min(rawWidth, TOKENS.PILL_MAX_W));
-    })();
-
-    setPillWidth(targetWidth);
-
-    // Only send resize command if the width has meaningfully changed.
-    if (lastSentWidthRef.current !== targetWidth) {
-      window.electron.resizePill(targetWidth, pillHeight);
-      lastSentWidthRef.current = targetWidth;
+  // --- Target Width Calculation ---
+  const targetWidth = useMemo(() => {
+    if (!notificationPlay) {
+      return PILL_EXPANDED_WIDTH;
     }
-  }, [ghostWidth, notificationPlay, PILL_EXPANDED_WIDTH, pillHeight]);
+    if (notificationPlay.phase === "shrinking") {
+      return PILL_EXPANDED_WIDTH;
+    }
+    const rawWidth = ghostWidth + TOKENS.NOTIF_PAD_X;
+    const MIN_PILL_W = 100;
+    return Math.max(MIN_PILL_W, Math.min(rawWidth, TOKENS.PILL_MAX_W));
+  }, [ghostWidth, notificationPlay, PILL_EXPANDED_WIDTH]);
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -134,11 +120,10 @@ const Pill: React.FC<PillProps> = ({
       devicePixelRatio: window.devicePixelRatio,
     });
   }, [
-    pillWidth,
+    targetWidth, // Use targetWidth instead of pillWidth
     notificationPlay,
     onMetrics,
     pillHeight,
-    // Note: pillHeight is derived and will trigger a re-render anyway
   ]);
 
   const isShowingNotification = notificationPlay?.phase === "showing";
@@ -201,8 +186,12 @@ const Pill: React.FC<PillProps> = ({
       <motion.div
         ref={pillCoreRef}
         className="pill-core"
+        layout // <-- The magic prop for declarative layout animation
         initial={false}
-        animate={{ width: pillWidth, height: pillHeight }}
+        style={{
+          width: targetWidth,
+          height: pillHeight,
+        }}
         transition={transition}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
