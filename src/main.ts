@@ -21,6 +21,7 @@ import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
+  ISLAND_VISIBLE_Y,
 } from "./constants/window";
 
 // Add command line switches for WebGPU (currently disabled)
@@ -37,6 +38,13 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false;
+
+function logBounds(tag: string) {
+  if (!mainWindow) return;
+  const b = mainWindow.getBounds();
+  const [cw, ch] = mainWindow.getContentSize();
+  console.log(`[${tag}] bounds=%o content=%o`, b, { w: cw, h: ch });
+}
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -159,6 +167,7 @@ const createWindow = () => {
     width: ISLAND_WIDTH,
     height: ISLAND_HEIGHT,
   });
+  logBounds("createWindow");
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -413,23 +422,60 @@ app.whenReady().then(() => {
     },
   );
 
-  ipcMain.on("pill-resize", (_e, width: number) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
+  ipcMain.on("pill-resize", (event, { width, height }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth } = primaryDisplay.size;
+      const x = Math.round((screenWidth - width) / 2);
 
-    const { y, height } = mainWindow.getBounds();
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: fullScreenWidth } = primaryDisplay.size;
-    const newX = Math.round((fullScreenWidth - width) / 2);
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          x: x,
+          y: currentBounds.y,
+          width: Math.round(width),
+          height: Math.round(height),
+        },
+        false,
+      ); // animate: false
 
-    console.log(
-      `[Pill Resize] New Width: ${width}, Centered X: ${newX}, Y: ${y}`,
-    );
+      if (process.platform === "darwin") {
+        mainWindow.invalidateShadow();
+      }
+      logBounds("pill-resize");
+    }
+  });
 
-    mainWindow.setBounds({ x: newX, y, width, height }, true); // animate = true
+  ipcMain.on("pill-show", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          y: ISLAND_VISIBLE_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
+      logBounds("pill-show");
+      mainWindow.focus();
+    }
+  });
 
-    // On macOS, invalidate the shadow to prevent visual artifacts after resizing
-    if (process.platform === "darwin") {
-      mainWindow.invalidateShadow();
+  ipcMain.on("pill-hide", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          y: ISLAND_HIDDEN_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
+      logBounds("pill-hide");
     }
   });
 

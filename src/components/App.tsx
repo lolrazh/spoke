@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Pill from "./Pill";
 // Import the new consolidated hook
 import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
@@ -28,7 +28,16 @@ const calculateNotificationDuration = (text: string): number => {
   return Math.max(MIN_VIEW_TIME_MS, readingTime + EXTRA_VIEW_TIME_MS);
 };
 
+// Define the type for the metrics callback
+type PillMetrics = {
+  pillRect: DOMRect | null;
+  notificationText: string | null;
+  devicePixelRatio: number;
+};
+
 const App: React.FC = () => {
+  const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
   const trans = useTranscription();
   const [isHovered, setIsHovered] = useState(false);
   const [notificationPlay, setNotificationPlay] =
@@ -38,6 +47,12 @@ const App: React.FC = () => {
   const isLongPressRef = useRef(false);
   // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
+
+  // --- Show/Hide Debug HUD ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setShowDebug(params.has("debugPill"));
+  }, []);
 
   // --- Update latestTransRef whenever trans changes ---
   useEffect(() => {
@@ -120,6 +135,10 @@ const App: React.FC = () => {
     }
   }, [isPillVisible]);
 
+  const handlePillMetrics = useCallback((metrics: PillMetrics) => {
+    setDebugInfo(metrics);
+  }, []); // Empty dependency array ensures the function is not recreated on re-renders
+
   // Set up global PTT hotkey listeners
   useEffect(() => {
     // Use the new PTT API
@@ -196,7 +215,38 @@ const App: React.FC = () => {
         onStartDictation={trans.start}
         onStopDictation={trans.stop}
         onHoverChange={setIsHovered}
+        onMetrics={handlePillMetrics}
       />
+      <span
+        id="pill-ghost-measure"
+        className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
+      />
+      {showDebug && debugInfo && (
+        <div
+          className="debug-hud"
+          style={{
+            position: "fixed",
+            top: "50px",
+            left: "10px",
+            background: "rgba(0,0,0,0.7)",
+            color: "white",
+            padding: "8px",
+            borderRadius: "4px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            pointerEvents: "none",
+            zIndex: 9999,
+          }}
+        >
+          <p>
+            Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
+            {debugInfo.pillRect?.height.toFixed(2)}
+          </p>
+          <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
+          <p>Notif Words: {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ?? "N/A"}</p>
+          <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
+        </div>
+      )}
     </div>
   );
 };
