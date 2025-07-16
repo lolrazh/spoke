@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useMemo } from "react";
+import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
@@ -66,9 +66,6 @@ const Pill: React.FC<PillProps> = ({
     [],
   );
 
-  // --- State ---
-  // const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
-
   // --- Height Calculation ---
   const pillHeight = useMemo(() => {
     if (notificationPlay?.phase === "shrinking") {
@@ -85,6 +82,10 @@ const Pill: React.FC<PillProps> = ({
     PILL_EXPANDED_HEIGHT,
     PILL_RESTING_HEIGHT,
   ]);
+
+  useEffect(() => {
+    console.log(`[Pill] pillHeight changed to: ${pillHeight}`);
+  }, [pillHeight]);
 
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
@@ -108,6 +109,10 @@ const Pill: React.FC<PillProps> = ({
     return Math.max(MIN_PILL_W, Math.min(rawWidth, TOKENS.PILL_MAX_W));
   }, [ghostWidth, notificationPlay, PILL_EXPANDED_WIDTH]);
 
+  useEffect(() => {
+    console.log(`[Pill] targetWidth changed to: ${targetWidth} (ghostWidth: ${ghostWidth})`);
+  }, [targetWidth, ghostWidth]);
+
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
     if (!onMetrics) return;
@@ -128,6 +133,10 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = notificationPlay?.phase === "showing";
   const isResting = pillHeight === PILL_RESTING_HEIGHT;
+
+  useEffect(() => {
+    console.log(`[Pill] State: isShowingNotification=${isShowingNotification}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`);
+  }, [isShowingNotification, isResting, isListening, isProcessing, isHovered]);
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = useMemo(

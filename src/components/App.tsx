@@ -40,13 +40,17 @@ const App: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const trans = useTranscription();
   const [isHovered, setIsHovered] = useState(false);
-  const [notificationPlay, setNotificationPlay] =
-    useState<NotificationPlay | null>(null);
+  const [notificationPlay, setNotificationPlay] = useState<NotificationPlay | null>(null);
   const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
+
+  const [trace, setTrace] = useState<string[]>([]);
+  const pushTrace = (msg: string) => {
+    setTrace(t => [`${performance.now().toFixed(0)}: ${msg}`, ...t.slice(0, 15)]);
+  };
 
   // --- Show/Hide Debug HUD ---
   useEffect(() => {
@@ -70,6 +74,7 @@ const App: React.FC = () => {
       console.log(
         `[App] Final accumulated transcription state: "${trans.text}"`,
       );
+      pushTrace(`Transcription complete: "${trans.text}" `);
     }
   }, [trans.text, trans.recording, trans.processing]);
 
@@ -78,13 +83,15 @@ const App: React.FC = () => {
     if (trans.error) {
       // Use the new notifications API
       window.notifications.send(trans.error);
+      pushTrace(`Error: ${trans.error}`);
     }
   }, [trans.error]);
 
   // --- Global Notification Listener (The "Director") ---
   useEffect(() => {
     const cleanup = window.notifications.on((message: string) => {
-      console.log(`[App] Kicking off notification play: "${message}"`);
+      console.log(`[App] Kicking off notification play: "${message}" `);
+      pushTrace(`Notify: "${message}" `);
       // Always clear any previous play's timers
       if (notificationTimerRef.current) {
         clearTimeout(notificationTimerRef.current);
@@ -92,10 +99,12 @@ const App: React.FC = () => {
 
       // Act I: Take a breath
       setNotificationPlay({ text: message, phase: "shrinking" });
+      pushTrace(`Notification phase: shrinking`);
 
       // Act II: Deliver the line (after a short delay for the shrink animation)
       notificationTimerRef.current = setTimeout(() => {
         setNotificationPlay({ text: message, phase: "showing" });
+        pushTrace(`Notification phase: showing`);
 
         // Act III: End the play (after the notification has been visible)
         const notificationDuration = calculateNotificationDuration(message);
@@ -106,6 +115,7 @@ const App: React.FC = () => {
         );
         notificationTimerRef.current = setTimeout(() => {
           setNotificationPlay(null);
+          pushTrace(`Notification ended`);
           notificationTimerRef.current = null;
         }, notificationDuration); // Notification visibility duration
       }, PILL_ANIMATION_DURATION); // Synchronize with the new faster animation duration
@@ -131,6 +141,7 @@ const App: React.FC = () => {
       console.log(
         `[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notificationPlay})`,
       );
+      pushTrace(`Sliding island to Y: ${targetY}`);
       window.island.slideTo(targetY);
     }
   }, [isPillVisible]);
@@ -147,6 +158,7 @@ const App: React.FC = () => {
     const HOLD_DURATION_MS = 180;
 
     const handleFunctionKeyDown = () => {
+      pushTrace(`PTT down`);
       // Always clear the previous timer on a new key down event.
       // This correctly handles keyboard repeats.
       if (pressTimerRef.current) {
@@ -161,6 +173,7 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
+        pushTrace(`PTT long press start`);
         // Use the ref to ensure we have the latest `start` function.
         if (!latestTransRef.current.recording) {
           latestTransRef.current.start();
@@ -169,6 +182,7 @@ const App: React.FC = () => {
     };
 
     const handleFunctionKeyUp = () => {
+      pushTrace(`PTT up`);
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
@@ -178,13 +192,16 @@ const App: React.FC = () => {
       if (isLongPressRef.current) {
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
+          pushTrace(`PTT long press stop`);
         }
       } else {
         // Toggle behavior for short press
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
+          pushTrace(`PTT short press stop`);
         } else {
           latestTransRef.current.start();
+          pushTrace(`PTT short press start`);
         }
       }
       isLongPressRef.current = false;
@@ -245,6 +262,14 @@ const App: React.FC = () => {
           <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
           <p>Notif Words: {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ?? "N/A"}</p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
+          <div style={{ marginTop: '10px', borderTop: '1px solid white' }}>
+            <p>Trace (last 15 events):</p>
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {trace.map((entry, index) => (
+                <li key={index}>{entry}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </div>
