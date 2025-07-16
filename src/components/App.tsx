@@ -115,6 +115,18 @@ const usePillMachine = () => {
   return { state: machine.state, context: machine.context, dispatch };
 };
 
+const debounce = <T extends (...args: any[]) => void>(func: T, delay: number) => {
+  let timeoutId: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
+};
+
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -162,14 +174,20 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
-  useEffect(() => {
-    if (window.island?.slideTo) {
-      const isPillVisible = pillState !== 'IDLE';
-      const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-      window.island.slideTo(targetY);
-    }
-  }, [pillState]);
+  const slideToDebounced = useCallback(
+    debounce((y: number) => {
+      window.island?.slideTo(y);
+    }, 100),
+    []
+  );
 
+  useEffect(() => {
+    const isPillVisible = pillState !== 'IDLE';
+    const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+    slideToDebounced(targetY);
+  }, [pillState, slideToDebounced]);
+
+  // Notification duration for NOTIF_SHOW
   useEffect(() => {
     if (pillState === 'NOTIF_SHOW' && pillContext.notifMsg) {
       const duration = calculateNotificationDuration(pillContext.notifMsg);
