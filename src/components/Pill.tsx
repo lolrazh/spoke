@@ -1,12 +1,20 @@
 import React, { useState, useLayoutEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
+import { TOKENS } from "../config/uiTokens";
 
 // Update the type for our new "notification play" prop
 type NotificationPlay = {
   text: string;
   phase: "shrinking" | "showing";
 } | null;
+
+// Re-using the type from App.tsx to ensure consistency
+type PillMetrics = {
+  pillRect: DOMRect | null;
+  notificationText: string | null;
+  devicePixelRatio: number;
+};
 
 interface PillProps {
   isListening: boolean;
@@ -16,13 +24,15 @@ interface PillProps {
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
+  onMetrics: (metrics: PillMetrics) => void;
 }
 
-// Helper function to read CSS variables from the DOM
-const getCssVar = (name: string): number => {
-  if (typeof window === "undefined") return 0;
+// Helper function to read CSS variables from the DOM, with a fallback
+const getCssVar = (name: string, fallback: number): number => {
+  if (typeof window === "undefined") return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-  return parseInt(value, 10) || 0;
+  const parsedValue = parseInt(value, 10);
+  return isNaN(parsedValue) ? fallback : parsedValue;
 };
 
 const Pill: React.FC<PillProps> = ({
@@ -33,23 +43,32 @@ const Pill: React.FC<PillProps> = ({
   onStartDictation,
   onStopDictation,
   onHoverChange,
+  onMetrics,
 }) => {
   // --- Refs ---
+  const pillCoreRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const lastSentWidthRef = useRef<number | null>(null);
 
-  // --- Read constants from CSS ---
-  const PILL_EXPANDED_WIDTH = useMemo(() => getCssVar("--pill-expanded-width"), []);
-  const PILL_EXPANDED_HEIGHT = useMemo(() => getCssVar("--pill-expanded-height"), []);
-  const PILL_RESTING_HEIGHT = useMemo(() => getCssVar("--pill-resting-height"), []);
+  // --- Read constants from CSS with fallbacks from tokens ---
+  const PILL_EXPANDED_WIDTH = useMemo(
+    () => getCssVar("--pill-expanded-width", TOKENS.PILL_BASE_W),
+    [],
+  );
+  const PILL_EXPANDED_HEIGHT = useMemo(
+    () => getCssVar("--pill-expanded-height", TOKENS.PILL_BASE_H),
+    [],
+  );
+  const PILL_RESTING_HEIGHT = useMemo(
+    () => getCssVar("--pill-resting-height", TOKENS.PILL_RESTING_H),
+    [],
+  );
 
   // --- State ---
   const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
 
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
-  const NOTIFICATION_MAX_WIDTH = 560;
-  const NOTIFICATION_PADDING = 40;
 
   // --- Animation Variants ---
   const transition = {
@@ -62,10 +81,11 @@ const Pill: React.FC<PillProps> = ({
     let targetWidth = PILL_EXPANDED_WIDTH;
 
     if (notificationPlay?.phase === "showing" && textRef.current) {
-      const measuredWidth = textRef.current.offsetWidth + NOTIFICATION_PADDING;
+      const measuredWidth =
+        textRef.current.offsetWidth + TOKENS.NOTIF_PAD_X;
       targetWidth = Math.max(
         PILL_EXPANDED_WIDTH,
-        Math.min(measuredWidth, NOTIFICATION_MAX_WIDTH),
+        Math.min(measuredWidth, TOKENS.PILL_MAX_W),
       );
     }
     
@@ -82,6 +102,24 @@ const Pill: React.FC<PillProps> = ({
       lastSentWidthRef.current = targetWidth;
     }
   }, [notificationPlay, PILL_EXPANDED_WIDTH]); // Re-run if the CSS var changes
+
+  // --- Metrics Reporting ---
+  useLayoutEffect(() => {
+    if (!onMetrics) return;
+
+    const pillRect = pillCoreRef.current?.getBoundingClientRect() ?? null;
+
+    onMetrics({
+      pillRect,
+      notificationText: notificationPlay?.text ?? null,
+      devicePixelRatio: window.devicePixelRatio,
+    });
+  }, [
+    pillWidth,
+    notificationPlay,
+    onMetrics,
+    // Note: pillHeight is derived and will trigger a re-render anyway
+  ]);
 
   // --- Height Calculation ---
   const getPillHeight = () => {
@@ -151,6 +189,7 @@ const Pill: React.FC<PillProps> = ({
       onMouseLeave={() => onHoverChange(false)}
     >
       <motion.div
+        ref={pillCoreRef}
         className="pill-core"
         initial={false}
         animate={{ width: pillWidth, height: pillHeight }}
