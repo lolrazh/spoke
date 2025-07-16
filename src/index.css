@@ -33,21 +33,14 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
-    width: var(--pill-width);
-    height: var(--pill-height);
+    width: auto; /* fallback; actual size driven by Framer */
+    height: auto; /* fallback */
     border-radius: var(--pill-border-radius);
     background: var(--pill-background);
     border: var(--pill-border);
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
     overflow: hidden;
-  }
-
-  /* Resting state - thin bar */
-  .pill-wrapper.resting-state .pill-core {
-    height: var(--pill-resting-height);
-    border-radius: var(--pill-resting-radius);
-    /* All other properties (width, background, border, shadow) inherited from .pill-core */
   }
 
   /* Resting indicator - invisible by default, just for spacing */
@@ -69,10 +62,11 @@
   }
 
   .notification-text {
-    color: #c0c0c0; /* Match the color of the dots/bars */
-    font-size: 12px; /* Reduce font size slightly */
-    font-weight: 400; /* Use normal font weight */
-    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
+    color: #c0c0c0;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     padding: 0 20px;
   }
 

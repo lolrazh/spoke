@@ -1,167 +1,210 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useReducer, useLayoutEffect } from "react";
 import Pill from "./Pill";
-// Import the new consolidated hook
-import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
+import { useTranscription } from "../hooks/useTranscription";
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
-import { PILL_ANIMATION_DURATION } from "../constants/animations";
-// Remove old audio import
-// import { startRecording, stopRecording } from '../lib/audio';
+import { TOKENS } from "../config/uiTokens";
 
-// Define the type for our new "notification play" state
-type NotificationPlay = {
-  text: string;
-  phase: "shrinking" | "showing";
+// Pill State Machine Types
+export type PillStateType =
+  | 'IDLE'
+  | 'LISTENING'
+  | 'PROCESSING'
+  | 'NOTIFICATION'
+  | 'HOVER_PREVIEW';
+
+export type PillEvent =
+  | { type: 'PTT_START' }
+  | { type: 'PTT_STOP' }
+  | { type: 'NOTIFY'; msg: string }
+  | { type: 'ANIM_DONE' }
+  | { type: 'HOVER_ENTER' }
+  | { type: 'HOVER_LEAVE' }
+  | { type: 'PROCESSING_COMPLETE' };
+
+export interface PillMachineState {
+  state: PillStateType;
+  context: {
+    pendingNotif?: string;
+    notifMsg?: string;
+  };
+}
+
+// Reducer function for pill machine
+const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineState => {
+  switch (state.state) {
+    case 'IDLE':
+      if (event.type === 'PTT_START') return { ...state, state: 'LISTENING' };
+      if (event.type === 'NOTIFY') return { state: 'NOTIFICATION', context: { ...state.context, notifMsg: event.msg } };
+      if (event.type === 'HOVER_ENTER') return { ...state, state: 'HOVER_PREVIEW' };
+      return state;
+    case 'LISTENING':
+      if (event.type === 'PTT_STOP') return { ...state, state: 'PROCESSING' };
+      if (event.type === 'NOTIFY') return { ...state, context: { ...state.context, pendingNotif: event.msg } };
+      return state;
+    case 'PROCESSING':
+      if (event.type === 'PROCESSING_COMPLETE') {
+        if (state.context.pendingNotif) {
+          return { state: 'NOTIFICATION', context: { notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
+        }
+        return { ...state, state: 'IDLE' };
+      }
+      return state;
+    case 'NOTIFICATION':
+      if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
+      if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined } };
+      return state;
+    case 'HOVER_PREVIEW':
+      if (event.type === 'HOVER_LEAVE') return { ...state, state: 'IDLE' };
+      return state;
+    default:
+      return state;
+  }
 };
 
-const WORDS_PER_MINUTE = 200;
-const MIN_VIEW_TIME_MS = 2000; // 2 seconds minimum
-const EXTRA_VIEW_TIME_MS = 500; // 0.5 seconds buffer
+const WORDS_PER_MINUTE = 180;
+const MIN_VIEW_TIME_MS = 2500;
+const EXTRA_VIEW_TIME_MS = 1000;
 
-/**
- * Calculates how long a notification should be visible based on its word count.
- * @param text The notification text.
- * @returns The visibility duration in milliseconds.
- */
 const calculateNotificationDuration = (text: string): number => {
   const wordCount = text.trim().split(/\s+/).length;
-  const readingTime = (wordCount / WORDS_PER_MINUTE) * 60 * 1000; // in ms
+  const readingTime = (wordCount / WORDS_PER_MINUTE) * 60 * 1000;
   return Math.max(MIN_VIEW_TIME_MS, readingTime + EXTRA_VIEW_TIME_MS);
 };
 
-// Define the type for the metrics callback
 type PillMetrics = {
   pillRect: DOMRect | null;
   notificationText: string | null;
   devicePixelRatio: number;
 };
 
+const usePillMachine = () => {
+  const [machine, dispatch] = useReducer((state: PillMachineState, event: PillEvent) => {
+    console.log(`[Reducer] Dispatching ${event.type}`);
+    return pillReducer(state, event);
+  }, { state: 'IDLE', context: {} });
+  return { state: machine.state, context: machine.context, dispatch };
+};
+
+const debounce = <T extends (...args: any[]) => void>(func: T, delay: number) => {
+  let timeoutId: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
+};
+
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const trans = useTranscription();
-  const [isHovered, setIsHovered] = useState(false);
-  const [notificationPlay, setNotificationPlay] =
-    useState<NotificationPlay | null>(null);
-  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Width for notification (measured offscreen)
+  const [notifWidth, setNotifWidth] = useState<number | null>(null);
+  const ghostRef = useRef<HTMLSpanElement | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
-  // Ref to always hold the latest trans object for use in callbacks
   const latestTransRef = useRef(trans);
+  const [trace, setTrace] = useState<string[]>([]);
+  
+  const pushTrace = (msg: string) => {
+    setTrace(t => [`${performance.now().toFixed(0)}: ${msg}`, ...t.slice(0, 15)]);
+  };
 
-  // --- Show/Hide Debug HUD ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setShowDebug(params.has("debugPill"));
   }, []);
 
-  // --- Update latestTransRef whenever trans changes ---
   useEffect(() => {
     latestTransRef.current = trans;
   }, [trans]);
 
-  // --- Map hook state to Pill props ---
-  const isListening = trans.recording;
-  // Show processing during model load AND transcription
-  const isProcessing = !trans.ready || trans.processing;
+  const { state: pillState, context: pillContext, dispatch: pillDispatch } = usePillMachine();
 
-  // --- Handle Transcription Results ---
   useEffect(() => {
     if (trans.text && !trans.recording && !trans.processing) {
-      console.log(
-        `[App] Final accumulated transcription state: "${trans.text}"`,
-      );
+      pushTrace(`Transcription complete: "${trans.text}" `);
+      pillDispatch({ type: 'PROCESSING_COMPLETE' });
     }
   }, [trans.text, trans.recording, trans.processing]);
 
-  // --- Handle Errors from Hook ---
   useEffect(() => {
     if (trans.error) {
-      // Use the new notifications API
       window.notifications.send(trans.error);
+      pushTrace(`Error: ${trans.error}`);
     }
   }, [trans.error]);
 
-  // --- Global Notification Listener (The "Director") ---
   useEffect(() => {
     const cleanup = window.notifications.on((message: string) => {
-      console.log(`[App] Kicking off notification play: "${message}"`);
-      // Always clear any previous play's timers
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-
-      // Act I: Take a breath
-      setNotificationPlay({ text: message, phase: "shrinking" });
-
-      // Act II: Deliver the line (after a short delay for the shrink animation)
-      notificationTimerRef.current = setTimeout(() => {
-        setNotificationPlay({ text: message, phase: "showing" });
-
-        // Act III: End the play (after the notification has been visible)
-        const notificationDuration = calculateNotificationDuration(message);
-        console.log(
-          `[App] Notification: "${message}" (${
-            message.trim().split(/\s+/).length
-          } words). Showing for ${notificationDuration}ms.`,
-        );
-        notificationTimerRef.current = setTimeout(() => {
-          setNotificationPlay(null);
-          notificationTimerRef.current = null;
-        }, notificationDuration); // Notification visibility duration
-      }, PILL_ANIMATION_DURATION); // Synchronize with the new faster animation duration
+      pushTrace(`Notify: "${message}" `);
+      pillDispatch({ type: 'NOTIFY', msg: message });
     });
+    return cleanup;
+  }, []);
 
-    return () => {
-      // Cleanup the listener and the timer when the component unmounts
-      cleanup();
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-    };
-  }, []); // Empty dependency array means this runs once on mount
+  const slideToDebounced = useCallback(
+    debounce((y: number) => {
+      window.island?.slideTo(y);
+    }, 100),
+    []
+  );
 
-  // --- Derived State for Pill Visibility ---
-  const isPillVisible = isListening || !!notificationPlay;
-
-  // Island slide-in/out effect
   useEffect(() => {
-    // Use the new island API
-    if (window.island?.slideTo) {
-      const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-      console.log(
-        `[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notificationPlay})`,
-      );
-      window.island.slideTo(targetY);
+    const isPillVisible = pillState !== 'IDLE';
+    const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
+    slideToDebounced(targetY);
+  }, [pillState, slideToDebounced]);
+
+  // Notification duration for NOTIFICATION
+  useEffect(() => {
+    if (pillState === 'NOTIFICATION' && pillContext.notifMsg) {
+      const duration = calculateNotificationDuration(pillContext.notifMsg);
+      const timeout = setTimeout(() => {
+        pillDispatch({ type: 'ANIM_DONE' });
+      }, duration);
+      return () => clearTimeout(timeout);
     }
-  }, [isPillVisible]);
+  }, [pillState, pillContext.notifMsg]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
-  }, []); // Empty dependency array ensures the function is not recreated on re-renders
+  }, []);
 
-  // Set up global PTT hotkey listeners
+  // Measure notification width whenever notif message changes
+  useLayoutEffect(() => {
+    if (!ghostRef.current) return;
+    const el = ghostRef.current;
+    const msg = pillContext.notifMsg ?? "";
+    el.textContent = msg;
+    // Force layout
+    const rect = el.getBoundingClientRect();
+    // Add same horizontal padding used in visible notification-text class (20px left/right)
+    const pad = 40; // px total
+    setNotifWidth(Math.ceil(rect.width + pad));
+  }, [pillContext.notifMsg]);
+
   useEffect(() => {
-    // Use the new PTT API
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
     const HOLD_DURATION_MS = 180;
 
     const handleFunctionKeyDown = () => {
-      // Always clear the previous timer on a new key down event.
-      // This correctly handles keyboard repeats.
+      pushTrace(`PTT down`);
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }
-
-      // Don't start a new timer if PTT is already active from a long press.
       if (latestTransRef.current.recording) {
         return;
       }
-
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
-        // Use the ref to ensure we have the latest `start` function.
+        pushTrace(`PTT long press start`);
+        pillDispatch({ type: 'PTT_START' });
         if (!latestTransRef.current.recording) {
           latestTransRef.current.start();
         }
@@ -169,57 +212,62 @@ const App: React.FC = () => {
     };
 
     const handleFunctionKeyUp = () => {
+      pushTrace(`PTT up`);
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-
-      // Use the ref to ensure we have the latest functions and state.
       if (isLongPressRef.current) {
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
+          pushTrace(`PTT long press stop`);
+          pillDispatch({ type: 'PTT_STOP' });
         }
       } else {
-        // Toggle behavior for short press
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
+          pushTrace(`PTT short press stop`);
+          pillDispatch({ type: 'PTT_STOP' });
         } else {
           latestTransRef.current.start();
+          pushTrace(`PTT short press start`);
+          pillDispatch({ type: 'PTT_START' });
         }
       }
       isLongPressRef.current = false;
     };
 
-    console.log("[PTT] Setting up PTT listeners");
-    const unsubscribePTTDown = window.ptt.onDown(handleFunctionKeyDown);
-    const unsubscribePTTUp = window.ptt.onUp(handleFunctionKeyUp);
+    const cleanupOnDown = window.ptt.onDown(handleFunctionKeyDown);
+    const cleanupOnUp = window.ptt.onUp(handleFunctionKeyUp);
 
     return () => {
-      console.log("[PTT] Cleaning up PTT listeners");
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-      }
-      unsubscribePTTDown();
-      unsubscribePTTUp();
+      cleanupOnDown();
+      cleanupOnUp();
     };
-  }, []); // Removed dependencies as we are now using a ref
+  }, []);
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill
-        isListening={isListening}
-        isProcessing={isProcessing}
-        isHovered={isHovered}
-        notificationPlay={notificationPlay}
-        // Connect Pill clicks directly to hook functions
-        onStartDictation={trans.start}
-        onStopDictation={trans.stop}
-        onHoverChange={setIsHovered}
+        pillState={pillState}
+        pillContext={pillContext}
+        notifWidth={notifWidth}
+        onStartDictation={() => {
+          pillDispatch({ type: 'PTT_START' });
+          trans.start();
+        }}
+        onStopDictation={() => {
+          pillDispatch({ type: 'PTT_STOP' });
+          trans.stop();
+        }}
+        onHoverChange={(h) => pillDispatch({ type: h ? 'HOVER_ENTER' : 'HOVER_LEAVE' })}
         onMetrics={handlePillMetrics}
+        onAnimDone={() => pillDispatch({ type: 'ANIM_DONE' })}
       />
       <span
         id="pill-ghost-measure"
         className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
+        ref={ghostRef}
       />
       {showDebug && debugInfo && (
         <div
@@ -245,6 +293,15 @@ const App: React.FC = () => {
           <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
           <p>Notif Words: {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ?? "N/A"}</p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
+          <div style={{ marginTop: '10px', borderTop: '1px solid white' }}>
+            <p>Trace (last 15 events):</p>
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {trace.map((entry, index) => (
+                <li key={index}>{entry}</li>
+              ))}
+            </ul>
+          </div>
+          <p>Pill State: {pillState}</p>
         </div>
       )}
     </div>
