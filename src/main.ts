@@ -436,8 +436,8 @@ app.whenReady().then(() => {
           width: Math.round(width),
           height: Math.round(height),
         },
-        true,
-      ); // animate
+        false,
+      ); // animate: false
 
       if (process.platform === "darwin") {
         mainWindow.invalidateShadow();
@@ -449,12 +449,15 @@ app.whenReady().then(() => {
   ipcMain.on("pill-show", () => {
     if (mainWindow) {
       const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds({
-        y: ISLAND_VISIBLE_Y,
-        height: currentBounds.height,
-        width: currentBounds.width,
-        x: currentBounds.x,
-      });
+      mainWindow.setBounds(
+        {
+          y: ISLAND_VISIBLE_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
       logBounds("pill-show");
       mainWindow.focus();
     }
@@ -463,12 +466,15 @@ app.whenReady().then(() => {
   ipcMain.on("pill-hide", () => {
     if (mainWindow) {
       const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds({
-        y: ISLAND_HIDDEN_Y,
-        height: currentBounds.height,
-        width: currentBounds.width,
-        x: currentBounds.x,
-      });
+      mainWindow.setBounds(
+        {
+          y: ISLAND_HIDDEN_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
       logBounds("pill-hide");
     }
   });
