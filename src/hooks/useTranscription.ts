@@ -140,7 +140,7 @@ export function useTranscription(): UseTranscriptionReturn {
       setText(result.text);
       if (result.text) {
         window.clipboard.insertText(result.text);
-        window.notifications.send("Text has been pasted"); // Send success notification
+        window.notifications.send("Text has been pasted and I am making it longer"); // Send success notification
       }
 
     } catch (err) {

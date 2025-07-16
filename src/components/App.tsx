@@ -217,6 +217,10 @@ const App: React.FC = () => {
         onHoverChange={setIsHovered}
         onMetrics={handlePillMetrics}
       />
+      <span
+        id="pill-ghost-measure"
+        className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
+      />
       {showDebug && debugInfo && (
         <div
           className="debug-hud"

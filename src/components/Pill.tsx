@@ -2,6 +2,7 @@ import React, { useState, useLayoutEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
+import { useGhostMeasure } from "../hooks/useGhostMeasure";
 
 // Update the type for our new "notification play" prop
 type NotificationPlay = {
@@ -47,8 +48,10 @@ const Pill: React.FC<PillProps> = ({
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLSpanElement>(null);
   const lastSentWidthRef = useRef<number | null>(null);
+
+  // --- Ghost Measurement ---
+  const ghostWidth = useGhostMeasure(notificationPlay?.text ?? "");
 
   // --- Read constants from CSS with fallbacks from tokens ---
   const PILL_EXPANDED_WIDTH = useMemo(
@@ -67,6 +70,23 @@ const Pill: React.FC<PillProps> = ({
   // --- State ---
   const [pillWidth, setPillWidth] = useState(PILL_EXPANDED_WIDTH); // Default width
 
+  // --- Height Calculation ---
+  const pillHeight = useMemo(() => {
+    if (notificationPlay?.phase === "shrinking") {
+      return PILL_RESTING_HEIGHT;
+    }
+    const isExpanded =
+      isListening || isProcessing || isHovered || !!notificationPlay;
+    return isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT;
+  }, [
+    notificationPlay,
+    isListening,
+    isProcessing,
+    isHovered,
+    PILL_EXPANDED_HEIGHT,
+    PILL_RESTING_HEIGHT,
+  ]);
+
   // --- Constants ---
   const VISUALIZATION_COUNT = 7;
 
@@ -78,30 +98,29 @@ const Pill: React.FC<PillProps> = ({
 
   // --- Core Sizing and Resize Logic ---
   useLayoutEffect(() => {
-    let targetWidth = PILL_EXPANDED_WIDTH;
-
-    if (notificationPlay?.phase === "showing" && textRef.current) {
-      const measuredWidth =
-        textRef.current.offsetWidth + TOKENS.NOTIF_PAD_X;
-      targetWidth = Math.max(
-        PILL_EXPANDED_WIDTH,
-        Math.min(measuredWidth, TOKENS.PILL_MAX_W),
-      );
-    }
-    
-    // On initial mount, pillWidth can be 0, so we initialize it
-    if (pillWidth === 0 && PILL_EXPANDED_WIDTH > 0) {
-      setPillWidth(PILL_EXPANDED_WIDTH);
-    }
+    const targetWidth = (() => {
+      if (!notificationPlay) {
+        return PILL_EXPANDED_WIDTH;
+      }
+      // When shrinking, we want the base width, not the measured width.
+      if (notificationPlay.phase === "shrinking") {
+        return PILL_EXPANDED_WIDTH;
+      }
+      // Otherwise, calculate the width based on the ghost measurement.
+      const rawWidth = ghostWidth + TOKENS.NOTIF_PAD_X;
+      // Allow shrinking, but clamp to a new minimum width to prevent collapse.
+      const MIN_PILL_W = 100;
+      return Math.max(MIN_PILL_W, Math.min(rawWidth, TOKENS.PILL_MAX_W));
+    })();
 
     setPillWidth(targetWidth);
 
-    // Only send resize command if the width actually changes
+    // Only send resize command if the width has meaningfully changed.
     if (lastSentWidthRef.current !== targetWidth) {
-      window.electron.resizePill(targetWidth);
+      window.electron.resizePill(targetWidth, pillHeight);
       lastSentWidthRef.current = targetWidth;
     }
-  }, [notificationPlay, PILL_EXPANDED_WIDTH]); // Re-run if the CSS var changes
+  }, [ghostWidth, notificationPlay, PILL_EXPANDED_WIDTH, pillHeight]);
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -118,19 +137,10 @@ const Pill: React.FC<PillProps> = ({
     pillWidth,
     notificationPlay,
     onMetrics,
+    pillHeight,
     // Note: pillHeight is derived and will trigger a re-render anyway
   ]);
 
-  // --- Height Calculation ---
-  const getPillHeight = () => {
-    if (notificationPlay?.phase === "shrinking") {
-      return PILL_RESTING_HEIGHT;
-    }
-    const isExpanded = isListening || isProcessing || isHovered || !!notificationPlay;
-    return isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT;
-  };
-
-  const pillHeight = getPillHeight();
   const isShowingNotification = notificationPlay?.phase === "showing";
   const isResting = pillHeight === PILL_RESTING_HEIGHT;
 
@@ -200,7 +210,8 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
-                ref={textRef}
+                // The textRef is no longer needed for measurement.
+                // We keep it on the span in case we need it for other things later.
                 className="notification-text"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

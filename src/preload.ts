@@ -56,5 +56,6 @@ contextBridge.exposeInMainWorld("island", {
 });
 
 contextBridge.exposeInMainWorld("electron", {
-  resizePill: (width: number) => ipcRenderer.send("pill-resize", width),
+  resizePill: (width: number, height: number) =>
+    ipcRenderer.send("pill-resize", { width, height }),
 });
