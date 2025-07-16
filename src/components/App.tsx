@@ -19,6 +19,7 @@ export type PillStateType =
   | 'IDLE'
   | 'LISTENING'
   | 'PROCESSING'
+  | 'IDLE_TRANSITION' // <-- New state for the pause
   | 'NOTIF_SHRINK'
   | 'NOTIF_SHOW'
   | 'HOVER_PREVIEW';
@@ -29,6 +30,7 @@ export type PillEvent =
   | { type: 'NOTIFY'; msg: string }
   | { type: 'MEASURED'; w: number }
   | { type: 'ANIM_DONE' }
+  | { type: 'PAUSE_COMPLETE' } // <-- New event for after the pause
   | { type: 'HOVER_ENTER' }
   | { type: 'HOVER_LEAVE' }
   | { type: 'PROCESSING_COMPLETE' };
@@ -56,16 +58,30 @@ const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineStat
       return state;
     case 'PROCESSING':
       if (event.type === 'PROCESSING_COMPLETE') {
-        if (state.context.pendingNotif) {
-          return { state: 'NOTIF_SHRINK', context: { ...state.context, notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
+        // Instead of IDLE, go to our new pause state
+        return { state: 'IDLE_TRANSITION', context: { ...state.context } };
+      }
+      return state;
+    // New state to handle the post-dictation pause
+    case 'IDLE_TRANSITION':
+      if (event.type === 'PAUSE_COMPLETE') {
+        const { pendingNotif } = state.context;
+        if (pendingNotif) {
+          return { state: 'NOTIF_SHRINK', context: { notifMsg: pendingNotif } };
         }
         return { ...state, state: 'IDLE' };
       }
+      if (event.type === 'NOTIFY') {
+        return { ...state, context: { ...state.context, pendingNotif: event.msg } };
+      }
+      if (event.type === 'PTT_START') return { ...state, state: 'LISTENING' };
       return state;
     case 'NOTIF_SHRINK':
       if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
-      if (event.type === 'MEASURED') return { ...state, context: { ...state.context, notifWidth: event.w } };
-      if (event.type === 'ANIM_DONE') return { state: 'NOTIF_SHOW', context: { ...state.context } };
+      // The MEASURED event is now the trigger to move to the next state.
+      if (event.type === 'MEASURED') {
+        return { state: 'NOTIF_SHOW', context: { ...state.context, notifWidth: event.w } };
+      }
       return state;
     case 'NOTIF_SHOW':
       if (event.type === 'PTT_START') return { state: 'LISTENING', context: { ...state.context, pendingNotif: state.context.notifMsg } };
@@ -209,6 +225,16 @@ const App: React.FC = () => {
       requestAnimationFrame(measure);
     }
   }, [pillState, pillContext.notifMsg]);
+
+  // Pause effect for IDLE_TRANSITION
+  useEffect(() => {
+    if (pillState === 'IDLE_TRANSITION') {
+      const timeout = setTimeout(() => {
+        pillDispatch({ type: 'PAUSE_COMPLETE' });
+      }, 400); // The "breath" duration
+      return () => clearTimeout(timeout);
+    }
+  }, [pillState]);
 
   // Fallback ANIM_DONE for NOTIF_SHRINK and NOTIF_SHOW
   useEffect(() => {

@@ -13,6 +13,12 @@ export const pillVariants: Variants = {
     height: PILL_RESTING_HEIGHT,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
+  // A temporary resting state to pause before notifications
+  IDLE_TRANSITION: {
+    width: PILL_EXPANDED_WIDTH,
+    height: PILL_RESTING_HEIGHT,
+    transition: { type: 'spring', stiffness: 400, damping: 30 },
+  },
   // When hovered in idle state
   HOVER_PREVIEW: {
     width: PILL_EXPANDED_WIDTH,

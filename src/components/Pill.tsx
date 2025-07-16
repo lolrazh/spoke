@@ -214,7 +214,9 @@ const Pill: React.FC<PillProps> = ({
                 {pillState === 'LISTENING' && <>{renderFrequencyBars}</>}
                 {pillState === 'PROCESSING' && <>{renderDots("animated")}</>}
                 {pillState === 'HOVER_PREVIEW' && <>{renderDots("static")}</>}
-                {(pillState === 'IDLE' || pillState === 'NOTIF_SHRINK') && (
+                {(pillState === 'IDLE' ||
+                  pillState === 'IDLE_TRANSITION' ||
+                  pillState === 'NOTIF_SHRINK') && (
                   <div className="resting-indicator" />
                 )}
               </motion.div>
