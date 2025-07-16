@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useReducer } from "react";
+import React, { useState, useEffect, useRef, useCallback, useReducer, useLayoutEffect } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
@@ -101,7 +101,9 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const trans = useTranscription();
-  const [isHovered, setIsHovered] = useState(false);
+  // Width for notification (measured offscreen)
+  const [notifWidth, setNotifWidth] = useState<number | null>(null);
+  const ghostRef = useRef<HTMLSpanElement | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const latestTransRef = useRef(trans);
@@ -172,6 +174,19 @@ const App: React.FC = () => {
     setDebugInfo(metrics);
   }, []);
 
+  // Measure notification width whenever notif message changes
+  useLayoutEffect(() => {
+    if (!ghostRef.current) return;
+    const el = ghostRef.current;
+    const msg = pillContext.notifMsg ?? "";
+    el.textContent = msg;
+    // Force layout
+    const rect = el.getBoundingClientRect();
+    // Add same horizontal padding used in visible notification-text class (20px left/right)
+    const pad = 40; // px total
+    setNotifWidth(Math.ceil(rect.width + pad));
+  }, [pillContext.notifMsg]);
+
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
@@ -236,6 +251,7 @@ const App: React.FC = () => {
       <Pill
         pillState={pillState}
         pillContext={pillContext}
+        notifWidth={notifWidth}
         onStartDictation={() => {
           pillDispatch({ type: 'PTT_START' });
           trans.start();
@@ -251,6 +267,7 @@ const App: React.FC = () => {
       <span
         id="pill-ghost-measure"
         className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
+        ref={ghostRef}
       />
       {showDebug && debugInfo && (
         <div

@@ -9,8 +9,6 @@ const PILL_RESTING_HEIGHT = TOKENS.PILL_RESTING_H;
 export const pillVariants: Variants = {
   // Resting, thin bar
   IDLE: {
-    width: TOKENS.PILL_BASE_W,
-    height: TOKENS.PILL_RESTING_H,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
   // A temporary resting state to pause before notifications
@@ -21,25 +19,17 @@ export const pillVariants: Variants = {
   },
   // When hovered in idle state
   HOVER_PREVIEW: {
-    width: TOKENS.PILL_BASE_W,
-    height: TOKENS.PILL_BASE_H,
     transition: { type: 'spring', stiffness: 400, damping: 25, mass: 0.9 },
   },
   // Dictation active
   LISTENING: {
-    width: TOKENS.PILL_BASE_W,
-    height: TOKENS.PILL_BASE_H,
     transition: { type: 'spring', stiffness: 400, damping: 25, mass: 0.9 },
   },
   // Processing transcription
   PROCESSING: {
-    width: TOKENS.PILL_BASE_W,
-    height: TOKENS.PILL_BASE_H,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
   NOTIFICATION: {
-    width: 'auto',
-    height: TOKENS.PILL_BASE_H,
     transition: { type: 'spring', stiffness: 400, damping: 30 },
   },
 }; 

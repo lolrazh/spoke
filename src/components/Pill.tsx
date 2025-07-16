@@ -2,7 +2,6 @@ import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
-import { pillVariants } from "../config/variants";
 
 // Update the type for our new "notification play" prop
 type NotificationPlay = {
@@ -23,6 +22,7 @@ import type { PillStateType, PillMachineState } from './App';
 interface PillProps {
   pillState: PillStateType;
   pillContext: PillMachineState['context'];
+  notifWidth: number | null;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
@@ -46,6 +46,7 @@ const Pill: React.FC<PillProps> = ({
   onHoverChange,
   onMetrics,
   onAnimDone,
+  notifWidth,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -116,6 +117,25 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
+  // Build dynamic animation target
+  const notificationTargetWidth = notifWidth ?? TOKENS.PILL_BASE_W; // fallback
+
+  // We'll drive width/height via explicit animate prop (overrides variants.width)
+  const animateForState = (() => {
+    switch (pillState) {
+      case 'IDLE':
+        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_RESTING_H };
+      case 'HOVER_PREVIEW':
+      case 'LISTENING':
+      case 'PROCESSING':
+        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_BASE_H };
+      case 'NOTIFICATION':
+        return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
+      default:
+        return {};
+    }
+  })();
+
   return (
     <div
       className="pill-wrapper"
@@ -129,8 +149,7 @@ const Pill: React.FC<PillProps> = ({
         className="pill-core"
         layout
         initial={false}
-        variants={pillVariants}
-        animate={pillState}
+        animate={animateForState}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
           if (pillState !== 'NOTIFICATION') {

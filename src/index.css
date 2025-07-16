@@ -33,8 +33,8 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
-    width: var(--pill-width);
-    height: var(--pill-height);
+    width: auto; /* fallback; actual size driven by Framer */
+    height: auto; /* fallback */
     border-radius: var(--pill-border-radius);
     background: var(--pill-background);
     border: var(--pill-border);
