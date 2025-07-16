@@ -423,7 +423,7 @@ app.whenReady().then(() => {
   );
 
   ipcMain.on("pill-resize", (event, { width, height }) => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth } = primaryDisplay.size;
       const x = Math.round((screenWidth - width) / 2);
@@ -447,7 +447,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on("pill-show", () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const currentBounds = mainWindow.getBounds();
       mainWindow.setBounds(
         {
@@ -464,7 +464,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on("pill-hide", () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const currentBounds = mainWindow.getBounds();
       mainWindow.setBounds(
         {
