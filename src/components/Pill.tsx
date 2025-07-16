@@ -1,5 +1,6 @@
 import React, { useState, useLayoutEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { PILL_ANIMATION_DURATION } from "../constants/animations";
 
 // Update the type for our new "notification play" prop
 type NotificationPlay = {
@@ -52,7 +53,7 @@ const Pill: React.FC<PillProps> = ({
 
   // --- Animation Variants ---
   const transition = {
-    duration: 0.3,
+    duration: PILL_ANIMATION_DURATION / 1000, // Convert ms to seconds for Framer Motion
     ease: "easeInOut" as const,
   };
 

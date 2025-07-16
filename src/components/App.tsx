@@ -3,6 +3,7 @@ import Pill from "./Pill";
 // Import the new consolidated hook
 import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
+import { PILL_ANIMATION_DURATION } from "../constants/animations";
 // Remove old audio import
 // import { startRecording, stopRecording } from '../lib/audio';
 
@@ -10,6 +11,21 @@ import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 type NotificationPlay = {
   text: string;
   phase: "shrinking" | "showing";
+};
+
+const WORDS_PER_MINUTE = 200;
+const MIN_VIEW_TIME_MS = 2000; // 2 seconds minimum
+const EXTRA_VIEW_TIME_MS = 500; // 0.5 seconds buffer
+
+/**
+ * Calculates how long a notification should be visible based on its word count.
+ * @param text The notification text.
+ * @returns The visibility duration in milliseconds.
+ */
+const calculateNotificationDuration = (text: string): number => {
+  const wordCount = text.trim().split(/\s+/).length;
+  const readingTime = (wordCount / WORDS_PER_MINUTE) * 60 * 1000; // in ms
+  return Math.max(MIN_VIEW_TIME_MS, readingTime + EXTRA_VIEW_TIME_MS);
 };
 
 const App: React.FC = () => {
@@ -67,11 +83,17 @@ const App: React.FC = () => {
         setNotificationPlay({ text: message, phase: "showing" });
 
         // Act III: End the play (after the notification has been visible)
+        const notificationDuration = calculateNotificationDuration(message);
+        console.log(
+          `[App] Notification: "${message}" (${
+            message.trim().split(/\s+/).length
+          } words). Showing for ${notificationDuration}ms.`,
+        );
         notificationTimerRef.current = setTimeout(() => {
           setNotificationPlay(null);
           notificationTimerRef.current = null;
-        }, 2200); // Notification visibility duration
-      }, 300); // Synchronize with the new faster animation duration
+        }, notificationDuration); // Notification visibility duration
+      }, PILL_ANIMATION_DURATION); // Synchronize with the new faster animation duration
     });
 
     return () => {
