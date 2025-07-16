@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import Pill from "./Pill";
 // Import the new consolidated hook
 import { useTranscription } from "../hooks/useTranscription"; // Adjust path if needed
@@ -11,6 +11,74 @@ import { PILL_ANIMATION_DURATION } from "../constants/animations";
 type NotificationPlay = {
   text: string;
   phase: "shrinking" | "showing";
+};
+
+// Pill State Machine Types
+export type PillStateType =
+  | 'IDLE'
+  | 'LISTENING'
+  | 'PROCESSING'
+  | 'NOTIF_SHRINK'
+  | 'NOTIF_SHOW'
+  | 'HOVER_PREVIEW';
+
+export type PillEvent =
+  | { type: 'PTT_START' }
+  | { type: 'PTT_STOP' }
+  | { type: 'NOTIFY'; msg: string }
+  | { type: 'MEASURED'; w: number }
+  | { type: 'ANIM_DONE' }
+  | { type: 'HOVER_ENTER' }
+  | { type: 'HOVER_LEAVE' }
+  | { type: 'PROCESSING_COMPLETE' };
+
+export interface PillMachineState {
+  state: PillStateType;
+  context: {
+    pendingNotif?: string;
+    notifWidth?: number;
+    notifMsg?: string;
+  };
+}
+
+// Reducer function for pill machine
+const pillReducer = (state: PillMachineState, event: PillEvent): PillMachineState => {
+  switch (state.state) {
+    case 'IDLE':
+      if (event.type === 'PTT_START') return { ...state, state: 'LISTENING' };
+      if (event.type === 'NOTIFY') return { state: 'NOTIF_SHRINK', context: { ...state.context, notifMsg: event.msg } };
+      if (event.type === 'HOVER_ENTER') return { ...state, state: 'HOVER_PREVIEW' };
+      return state;
+    case 'LISTENING':
+      if (event.type === 'PTT_STOP') return { ...state, state: 'PROCESSING' };
+      if (event.type === 'NOTIFY') return { ...state, context: { ...state.context, pendingNotif: event.msg } };
+      return state;
+    case 'PROCESSING':
+      if (event.type === 'PROCESSING_COMPLETE') {
+        if (state.context.pendingNotif) {
+          return { state: 'NOTIF_SHRINK', context: { ...state.context, notifMsg: state.context.pendingNotif, pendingNotif: undefined } };
+        }
+        return { ...state, state: 'IDLE' };
+      }
+      return state;
+    case 'NOTIF_SHRINK':
+      if (event.type === 'ANIM_DONE') return { state: 'NOTIF_SHOW', context: { ...state.context } };
+      return state;
+    case 'NOTIF_SHOW':
+      if (event.type === 'ANIM_DONE') return { ...state, state: 'IDLE', context: { ...state.context, notifMsg: undefined, notifWidth: undefined } };
+      return state;
+    case 'HOVER_PREVIEW':
+      if (event.type === 'HOVER_LEAVE') return { ...state, state: 'IDLE' };
+      return state;
+    default:
+      return state;
+  }
+};
+
+// Custom hook for pill machine
+const usePillMachine = () => {
+  const [machine, dispatch] = useReducer(pillReducer, { state: 'IDLE', context: {} });
+  return { state: machine.state, context: machine.context, dispatch };
 };
 
 const WORDS_PER_MINUTE = 200;
@@ -63,6 +131,8 @@ const App: React.FC = () => {
     latestTransRef.current = trans;
   }, [trans]);
 
+  const { state: pillState, context: pillContext, dispatch: pillDispatch } = usePillMachine();
+
   // --- Map hook state to Pill props ---
   const isListening = trans.recording;
   // Show processing during model load AND transcription
@@ -75,6 +145,7 @@ const App: React.FC = () => {
         `[App] Final accumulated transcription state: "${trans.text}"`,
       );
       pushTrace(`Transcription complete: "${trans.text}" `);
+      pillDispatch({ type: 'PROCESSING_COMPLETE' });
     }
   }, [trans.text, trans.recording, trans.processing]);
 
@@ -92,59 +163,28 @@ const App: React.FC = () => {
     const cleanup = window.notifications.on((message: string) => {
       console.log(`[App] Kicking off notification play: "${message}" `);
       pushTrace(`Notify: "${message}" `);
-      // Always clear any previous play's timers
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-
-      // Act I: Take a breath
-      setNotificationPlay({ text: message, phase: "shrinking" });
-      pushTrace(`Notification phase: shrinking`);
-
-      // Act II: Deliver the line (after a short delay for the shrink animation)
-      notificationTimerRef.current = setTimeout(() => {
-        setNotificationPlay({ text: message, phase: "showing" });
-        pushTrace(`Notification phase: showing`);
-
-        // Act III: End the play (after the notification has been visible)
-        const notificationDuration = calculateNotificationDuration(message);
-        console.log(
-          `[App] Notification: "${message}" (${
-            message.trim().split(/\s+/).length
-          } words). Showing for ${notificationDuration}ms.`,
-        );
-        notificationTimerRef.current = setTimeout(() => {
-          setNotificationPlay(null);
-          pushTrace(`Notification ended`);
-          notificationTimerRef.current = null;
-        }, notificationDuration); // Notification visibility duration
-      }, PILL_ANIMATION_DURATION); // Synchronize with the new faster animation duration
+      pillDispatch({ type: 'NOTIFY', msg: message });
     });
 
-    return () => {
-      // Cleanup the listener and the timer when the component unmounts
-      cleanup();
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-    };
-  }, []); // Empty dependency array means this runs once on mount
+    return cleanup;
+  }, []);
 
   // --- Derived State for Pill Visibility ---
-  const isPillVisible = isListening || !!notificationPlay;
+  const isPillVisible = pillState !== 'IDLE';
 
   // Island slide-in/out effect
   useEffect(() => {
     // Use the new island API
     if (window.island?.slideTo) {
+      const isPillVisible = pillState !== 'IDLE';
       const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
       console.log(
-        `[App] Sliding to ${targetY} (isListening: ${isListening}, hasNotification: ${!!notificationPlay})`,
+        `[App] Sliding to ${targetY} (pillState: ${pillState})`,
       );
       pushTrace(`Sliding island to Y: ${targetY}`);
       window.island.slideTo(targetY);
     }
-  }, [isPillVisible]);
+  }, [pillState]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
@@ -174,7 +214,7 @@ const App: React.FC = () => {
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
-        // Use the ref to ensure we have the latest `start` function.
+        pillDispatch({ type: 'PTT_START' });
         if (!latestTransRef.current.recording) {
           latestTransRef.current.start();
         }
@@ -193,15 +233,18 @@ const App: React.FC = () => {
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
           pushTrace(`PTT long press stop`);
+          pillDispatch({ type: 'PTT_STOP' });
         }
       } else {
         // Toggle behavior for short press
         if (latestTransRef.current.recording) {
           latestTransRef.current.stop();
           pushTrace(`PTT short press stop`);
+          pillDispatch({ type: 'PTT_STOP' });
         } else {
           latestTransRef.current.start();
           pushTrace(`PTT short press start`);
+          pillDispatch({ type: 'PTT_START' });
         }
       }
       isLongPressRef.current = false;
@@ -224,15 +267,16 @@ const App: React.FC = () => {
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill
-        isListening={isListening}
-        isProcessing={isProcessing}
-        isHovered={isHovered}
-        notificationPlay={notificationPlay}
-        // Connect Pill clicks directly to hook functions
+        pillState={pillState}
+        pillContext={pillContext}
         onStartDictation={trans.start}
         onStopDictation={trans.stop}
-        onHoverChange={setIsHovered}
+        onHoverChange={(hovered) => {
+          setIsHovered(hovered);
+          pillDispatch(hovered ? { type: 'HOVER_ENTER' } : { type: 'HOVER_LEAVE' });
+        }}
         onMetrics={handlePillMetrics}
+        onAnimDone={() => pillDispatch({ type: 'ANIM_DONE' })}
       />
       <span
         id="pill-ghost-measure"
@@ -270,6 +314,7 @@ const App: React.FC = () => {
               ))}
             </ul>
           </div>
+          <p>Pill State: {pillState}</p>
         </div>
       )}
     </div>

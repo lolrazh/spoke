@@ -17,15 +17,18 @@ type PillMetrics = {
   devicePixelRatio: number;
 };
 
+// Use PillStateType from App.tsx
+import type { PillStateType } from './App';
+import type { PillMachineState } from './App';
+
 interface PillProps {
-  isListening: boolean;
-  isProcessing: boolean;
-  isHovered: boolean;
-  notificationPlay: NotificationPlay;
+  pillState: PillStateType;
+  pillContext: PillMachineState['context'];
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
+  onAnimDone: () => void;
 }
 
 // Helper function to read CSS variables from the DOM, with a fallback
@@ -37,20 +40,19 @@ const getCssVar = (name: string, fallback: number): number => {
 };
 
 const Pill: React.FC<PillProps> = ({
-  isListening,
-  isProcessing,
-  isHovered,
-  notificationPlay,
+  pillState,
+  pillContext,
   onStartDictation,
   onStopDictation,
   onHoverChange,
   onMetrics,
+  onAnimDone,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
 
   // --- Ghost Measurement ---
-  const ghostWidth = useGhostMeasure(notificationPlay?.text ?? "");
+  const ghostWidth = useGhostMeasure(pillContext.notifMsg ?? "");
 
   // --- Read constants from CSS with fallbacks from tokens ---
   const PILL_EXPANDED_WIDTH = useMemo(
@@ -68,20 +70,14 @@ const Pill: React.FC<PillProps> = ({
 
   // --- Height Calculation ---
   const pillHeight = useMemo(() => {
-    if (notificationPlay?.phase === "shrinking") {
-      return PILL_RESTING_HEIGHT;
+    switch (pillState) {
+      case 'IDLE':
+      case 'NOTIF_SHRINK':
+        return PILL_RESTING_HEIGHT;
+      default:
+        return PILL_EXPANDED_HEIGHT;
     }
-    const isExpanded =
-      isListening || isProcessing || isHovered || !!notificationPlay;
-    return isExpanded ? PILL_EXPANDED_HEIGHT : PILL_RESTING_HEIGHT;
-  }, [
-    notificationPlay,
-    isListening,
-    isProcessing,
-    isHovered,
-    PILL_EXPANDED_HEIGHT,
-    PILL_RESTING_HEIGHT,
-  ]);
+  }, [pillState, PILL_EXPANDED_HEIGHT, PILL_RESTING_HEIGHT]);
 
   useEffect(() => {
     console.log(`[Pill] pillHeight changed to: ${pillHeight}`);
@@ -98,16 +94,11 @@ const Pill: React.FC<PillProps> = ({
 
   // --- Target Width Calculation ---
   const targetWidth = useMemo(() => {
-    if (!notificationPlay) {
-      return PILL_EXPANDED_WIDTH;
+    if (pillState === 'NOTIF_SHOW' && pillContext.notifWidth) {
+      return pillContext.notifWidth;
     }
-    if (notificationPlay.phase === "shrinking") {
-      return PILL_EXPANDED_WIDTH;
-    }
-    const rawWidth = ghostWidth + TOKENS.NOTIF_PAD_X;
-    const MIN_PILL_W = 100;
-    return Math.max(MIN_PILL_W, Math.min(rawWidth, TOKENS.PILL_MAX_W));
-  }, [ghostWidth, notificationPlay, PILL_EXPANDED_WIDTH]);
+    return PILL_EXPANDED_WIDTH;
+  }, [pillState, pillContext, PILL_EXPANDED_WIDTH]);
 
   useEffect(() => {
     console.log(`[Pill] targetWidth changed to: ${targetWidth} (ghostWidth: ${ghostWidth})`);
@@ -121,22 +112,25 @@ const Pill: React.FC<PillProps> = ({
 
     onMetrics({
       pillRect,
-      notificationText: notificationPlay?.text ?? null,
+      notificationText: pillContext.notifMsg ?? null,
       devicePixelRatio: window.devicePixelRatio,
     });
   }, [
     targetWidth, // Use targetWidth instead of pillWidth
-    notificationPlay,
+    pillContext,
     onMetrics,
     pillHeight,
   ]);
 
-  const isShowingNotification = notificationPlay?.phase === "showing";
+  const isShowingNotification = pillState === 'NOTIF_SHOW';
   const isResting = pillHeight === PILL_RESTING_HEIGHT;
+  const isListening = pillState === 'LISTENING';
+  const isProcessing = pillState === 'PROCESSING';
+  const isHovered = pillState === 'HOVER_PREVIEW';
 
   useEffect(() => {
-    console.log(`[Pill] State: isShowingNotification=${isShowingNotification}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`);
-  }, [isShowingNotification, isResting, isListening, isProcessing, isHovered]);
+    console.log(`[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`);
+  }, [pillState, isResting, isListening, isProcessing, isHovered]);
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = useMemo(
@@ -191,29 +185,28 @@ const Pill: React.FC<PillProps> = ({
     >
       <motion.div
         ref={pillCoreRef}
-        className="pill-core overflow-hidden" // <-- Add overflow-hidden utility class
-        layout // <-- The magic prop for declarative layout animation
+        className="pill-core overflow-hidden"
+        layout
         initial={false}
         style={{
           width: targetWidth,
           height: pillHeight,
         }}
         transition={transition}
+        onAnimationComplete={onAnimDone}
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
             {isShowingNotification ? (
               <motion.span
                 key="notification"
-                // The textRef is no longer needed for measurement.
-                // We keep it on the span in case we need it for other things later.
                 className="notification-text"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                {notificationPlay.text}
+                {pillContext.notifMsg}
               </motion.span>
             ) : (
               <motion.div
@@ -225,9 +218,9 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: 0.15 }}
               >
                 {/* Visuals for non-notification states */}
-                {!isResting && isListening && <>{renderFrequencyBars}</>}
-                {!isResting && isProcessing && <>{renderDots("animated")}</>}
-                {!isResting && isHovered && !isListening && !isProcessing && (
+                {isListening && <>{renderFrequencyBars}</>}
+                {isProcessing && <>{renderDots("animated")}</>}
+                {isHovered && !isListening && !isProcessing && (
                   <>{renderDots("static")}</>
                 )}
                 {isResting && <div className="resting-indicator" />}
