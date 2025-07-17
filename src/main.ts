@@ -171,7 +171,7 @@ const getIconPath = () => {
 
 const getTrayIconPath = () => {
   const possiblePaths = [
-    path.join(__dirname, "assets", "TrayTemplate.png"), // Vite build location
+    path.join(__dirname, "assets", "TrayTemplate.png"), // Vite build location (base 16x16)
     path.join(__dirname, "..", "assets", "TrayTemplate.png"), // Alternative location
     path.join(process.resourcesPath, "TrayTemplate.png"), // extraResource location
     path.join(__dirname, "..", "..", "public", "assets", "TrayTemplate.png"), // Source location
@@ -181,6 +181,14 @@ const getTrayIconPath = () => {
     try {
       if (fs.existsSync(trayPath)) {
         console.log(`[Main Process] Found tray icon at: ${trayPath}`);
+        
+        // Also check if @2x version exists in the same directory for high-DPI
+        const trayDir = path.dirname(trayPath);
+        const tray2xPath = path.join(trayDir, "TrayTemplate@2x.png");
+        if (fs.existsSync(tray2xPath)) {
+          console.log(`[Main Process] Found high-DPI tray icon at: ${tray2xPath}`);
+        }
+        
         return trayPath;
       }
     } catch (error) {
@@ -427,9 +435,9 @@ const createTray = () => {
       return;
     }
 
-    // Load the tray template icon
+    // Load the tray template icon (Electron will auto-detect @2x version)
     const trayIconPath = getTrayIconPath();
-    console.log(`[Tray] Attempting to load icon from: ${trayIconPath}`);
+    console.log(`[Tray] Attempting to load tray template from: ${trayIconPath}`);
     
     let icon = nativeImage.createFromPath(trayIconPath);
 
@@ -440,20 +448,12 @@ const createTray = () => {
       icon = nativeImage.createEmpty(); // Fallback to empty
     } else {
       console.log(`[Tray] Successfully loaded tray icon from path: ${trayIconPath}`);
+      const iconSize = icon.getSize();
+      console.log(`[Tray] Loaded icon size: ${iconSize.width}x${iconSize.height} (should be 16x16 for base)`);
       
-      // Resize to proper tray icon dimensions (16x16 for 1x, 32x32 for 2x)
-      // The 1024x1024 icon is too large for tray use
-      const originalSize = icon.getSize();
-      console.log(`[Tray] Original icon size: ${originalSize.width}x${originalSize.height}`);
-      
-      if (originalSize.width > 32 || originalSize.height > 32) {
-        icon = icon.resize({ width: 16, height: 16 });
-        console.log("[Tray] Resized icon to 16x16 for tray use");
-      }
-      
-      // Mark as template for proper macOS tinting
+      // Mark as template for proper macOS automatic tinting (light/dark mode)
       icon.setTemplateImage(true);
-      console.log("[Tray] Icon marked as template");
+      console.log("[Tray] Icon marked as template for automatic macOS tinting");
     }
 
     console.log("[Tray] Creating Tray instance...");
