@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld("clipboard", {
 
 contextBridge.exposeInMainWorld("notifications", {
   send: (message: string) => ipcRenderer.send("show-notification", message),
+  on: (callback: (message: string) => void) => {
+    ipcRenderer.on("notify", (_event, message) => callback(message));
+
+    return () => {
+      ipcRenderer.removeAllListeners("notify");
+    };
+  },
 });
 
 contextBridge.exposeInMainWorld("ptt", {
@@ -46,4 +53,11 @@ contextBridge.exposeInMainWorld("ptt", {
 
 contextBridge.exposeInMainWorld("island", {
   slideTo: (y: number) => ipcRenderer.send("island-slide", y),
+});
+
+contextBridge.exposeInMainWorld("electron", {
+  resizePill: (width: number, height: number) =>
+    ipcRenderer.send("pill-resize", { width, height }),
+  setClickThrough: (clickThrough: boolean) =>
+    ipcRenderer.send("set-click-through", clickThrough),
 });

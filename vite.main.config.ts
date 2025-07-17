@@ -10,13 +10,6 @@ export default defineConfig({
   ssr: {
     // Mark 'ws' as external so it's not bundled into the main process output.
     // Electron will load it using Node's native require.
-    external: [
-      "ws",
-      "electron",
-      "path",
-      "process",
-      "child_process",
-      "fs",
-    ],
+    external: ["ws", "electron", "path", "process", "child_process", "fs"],
   },
 });

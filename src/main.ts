@@ -21,6 +21,7 @@ import {
   ISLAND_HIDDEN_Y,
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
+  ISLAND_VISIBLE_Y,
 } from "./constants/window";
 
 // Add command line switches for WebGPU (currently disabled)
@@ -29,8 +30,6 @@ import {
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let notificationWindow: BrowserWindow | null = null;
-let notificationTimeout: NodeJS.Timeout | null = null;
 let isQuitting = false;
 let homeWindow: BrowserWindow | null = null;
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
@@ -39,6 +38,13 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false;
+
+function logBounds(tag: string) {
+  if (!mainWindow) return;
+  const b = mainWindow.getBounds();
+  const [cw, ch] = mainWindow.getContentSize();
+  console.log(`[${tag}] bounds=%o content=%o`, b, { w: cw, h: ch });
+}
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
 // Try multiple possible locations for the icon
@@ -161,6 +167,7 @@ const createWindow = () => {
     width: ISLAND_WIDTH,
     height: ISLAND_HEIGHT,
   });
+  logBounds("createWindow");
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -174,8 +181,8 @@ const createWindow = () => {
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Make window click-through except for the pill UI
-  mainWindow.setIgnoreMouseEvents(false);
+  // Make window click-through by default - clicks pass through to underlying windows
+  mainWindow.setIgnoreMouseEvents(true);
 
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler(
@@ -249,47 +256,6 @@ const createTray = () => {
   }
 };
 
-// Create the notification window (similar to context menu)
-const createNotificationWindow = () => {
-  if (notificationWindow) return;
-
-  const windowOptions: Electron.BrowserWindowConstructorOptions = {
-    width: 180,
-    height: 40,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    minimizable: false,
-    maximizable: false,
-    focusable: false, // Changed back to false since we don't need interaction
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: undefined,
-    },
-    backgroundColor: "#00000000",
-    hasShadow: false,
-  };
-
-  if (process.platform === "darwin") {
-    windowOptions.type = "toolbar";
-  }
-
-  notificationWindow = new BrowserWindow(windowOptions);
-
-  notificationWindow.on("closed", () => {
-    console.log("Notification window closed.");
-    notificationWindow = null;
-    if (notificationTimeout) {
-      clearTimeout(notificationTimeout);
-      notificationTimeout = null;
-    }
-  });
-};
-
 // Add a handler for insert-text-at-cursor
 ipcMain.handle(
   "insert-text-at-cursor",
@@ -318,7 +284,8 @@ ipcMain.handle(
         console.error(
           `[PasteHelper] paste-helper binary not found at path: ${helperPath}`,
         );
-        showNotificationPopup(
+        mainWindow?.webContents.send(
+          "notify",
           "Paste unavailable: binary missing. Copied to clipboard.",
         );
         return { success: false, error: "Paste helper binary not found." };
@@ -339,7 +306,8 @@ ipcMain.handle(
           // This can happen if Accessibility permission is not granted.
           // The helper will prompt for it on the first run.
           // As a fallback, we leave the transcribed text in the clipboard.
-          showNotificationPopup(
+          mainWindow?.webContents.send(
+            "notify",
             "Paste failed. Grant Accessibility permission. Text copied.",
           );
         } else {
@@ -359,7 +327,10 @@ ipcMain.handle(
       console.error("Error during text insertion:", error);
       // In case of any other error, leave the transcribed text in the clipboard.
       clipboard.writeText(text);
-      showNotificationPopup("Error. Text copied to clipboard.");
+      mainWindow?.webContents.send(
+        "notify",
+        "Error. Text copied to clipboard.",
+      );
       return {
         success: false,
         error:
@@ -412,7 +383,6 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   createHomeWindow();
-  createNotificationWindow();
   startFnListener();
 
   // Handle pill context menu
@@ -449,11 +419,75 @@ app.whenReady().then(() => {
     "show-notification",
     (event: Electron.IpcMainEvent, message: string) => {
       console.log(
-        `[IPC Main] Received show-notification request from renderer: ${message}`,
+        `[IPC Main] Received show-notification request, forwarding to renderer: ${message}`,
       );
-      showNotificationPopup(message);
+      mainWindow?.webContents.send("notify", message);
     },
   );
+
+  ipcMain.on("pill-resize", (event, { width, height }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenWidth } = primaryDisplay.size;
+      const x = Math.round((screenWidth - width) / 2);
+
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          x: x,
+          y: currentBounds.y,
+          width: Math.round(width),
+          height: Math.round(height),
+        },
+        false,
+      ); // animate: false
+
+      if (process.platform === "darwin") {
+        mainWindow.invalidateShadow();
+      }
+      logBounds("pill-resize");
+    }
+  });
+
+  // Handle dynamic click-through control
+  ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+    }
+  });
+
+  ipcMain.on("pill-show", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          y: ISLAND_VISIBLE_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
+      logBounds("pill-show");
+      mainWindow.focus();
+    }
+  });
+
+  ipcMain.on("pill-hide", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentBounds = mainWindow.getBounds();
+      mainWindow.setBounds(
+        {
+          y: ISLAND_HIDDEN_Y,
+          height: currentBounds.height,
+          width: currentBounds.width,
+          x: currentBounds.x,
+        },
+        false,
+      );
+      logBounds("pill-hide");
+    }
+  });
 
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -542,119 +576,6 @@ app.on("will-quit", () => {
   fnProc?.kill();
 });
 
-const showNotificationPopup = (message: string, durationMs = 2000) => {
-  if (!mainWindow) return;
-
-  if (!notificationWindow) {
-    console.log("Notification window not found, creating...");
-    createNotificationWindow();
-    if (!notificationWindow) {
-      console.error("Failed to create notification window.");
-      return;
-    }
-  }
-
-  if (notificationTimeout) {
-    clearTimeout(notificationTimeout);
-    notificationTimeout = null;
-  }
-
-  // ①  Compute width from the text itself
-  const safeMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const textWidth = Math.min(                         // guard rails
-    560,                                              //  ❬max❭ px
-    Math.max(180, safeMessage.length * 7 + 40),       //  ❬min❭ / padding
-  );
-  
-  notificationWindow.setSize(textWidth, 40, false); // Set width, height is flexible
-
-  const pillBounds = mainWindow.getBounds();
-  const notificationWidth = notificationWindow.getSize()[0]; // Use the new width
-  const notificationHeight = 40; // Initial height, will grow with content
-  const posX = Math.floor(
-    pillBounds.x + pillBounds.width / 2 - notificationWidth / 2,
-  );
-  const gap = -5;
-  const posY = pillBounds.y - notificationHeight - gap;
-
-  console.log(
-    `Positioning notification at x=${posX}, y=${posY} (using gap=${gap})`,
-  );
-  notificationWindow.setPosition(posX, posY);
-
-  const dynamicNotificationHtml = `
-    <html>
-    <head>
-      <style>
-        html, body { margin: 0; padding: 0; background-color: transparent; overflow: hidden; height: auto; }
-        body { color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; user-select: none; }
-        .container { 
-          background-color: rgba(44, 44, 44, 0.95); 
-          border: 1px solid rgba(80, 80, 80, 0.8); 
-          border-radius: 12px; 
-          padding: 4px 8px; /* Adjusted padding */
-          overflow: hidden; 
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); 
-          opacity: 0; 
-          transition: opacity 0.3s ease-in-out; 
-          /* let it grow */
-          max-width: 560px;
-          min-width: 180px;
-          width: max-content;   /* key line – take as much as we need */
-          height: auto;
-        }
-        .container.visible { opacity: 1; }
-        .message { 
-          font-size: 12px; 
-          line-height: 1.25; 
-          padding: 6px 10px; 
-          text-align: center; 
-          white-space: pre-wrap; /* allow wrapping instead of clipping */
-          word-break: break-word;
-        }
-      </style>
-    </head>
-    <body> <div class="container"> <div class="message">${safeMessage}</div> </div> </body>
-    </html>
-  `;
-
-  notificationWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(dynamicNotificationHtml)}`,
-  );
-  console.log(
-    `Loading dynamic HTML into notification window with message: "${safeMessage}"`,
-  );
-
-  notificationWindow.webContents.once("did-finish-load", () => {
-    console.log(
-      "Notification window finished loading dynamic HTML. Adding visible class.",
-    );
-    notificationWindow.webContents.executeJavaScript(
-      'document.querySelector(".container").classList.add("visible")',
-      true,
-    );
-    notificationWindow.showInactive();
-  });
-
-  notificationTimeout = setTimeout(() => {
-    if (notificationWindow && !notificationWindow.isDestroyed()) {
-      console.log(
-        "Hiding notification window after timeout (removing visible class).",
-      );
-      notificationWindow.webContents.executeJavaScript(
-        'document.querySelector(".container").classList.remove("visible")',
-        true,
-      );
-      setTimeout(() => {
-        if (notificationWindow && !notificationWindow.isDestroyed()) {
-          notificationWindow.hide();
-        }
-      }, 300);
-    }
-    notificationTimeout = null;
-  }, durationMs);
-};
-
 const createHomeWindow = () => {
   if (homeWindow) {
     homeWindow.focus();
@@ -705,8 +626,6 @@ const createHomeWindow = () => {
   });
 };
 
-
-
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag
   if (fnRestartTimeout) {
@@ -747,7 +666,10 @@ function startFnListener() {
     console.error(
       `[FnListener] fn-tap binary not found at path: ${helperPath}`,
     );
-    showNotificationPopup("Fn key detection unavailable: binary missing");
+    mainWindow?.webContents.send(
+      "notify",
+      "Fn key detection unavailable: binary missing",
+    );
     return;
   }
 
@@ -781,7 +703,10 @@ function startFnListener() {
           fnPermissionDenied = true;
 
           // Show tray notification immediately
-          showNotificationPopup("Grant Input Monitoring permission → restart");
+          mainWindow?.webContents.send(
+            "notify",
+            "Grant Input Monitoring permission → restart",
+          );
 
           // Debounce permission dialog to prevent multiple simultaneous dialogs
           if (!fnPermissionDialogShown) {
@@ -838,10 +763,14 @@ function startFnListener() {
 
       if (error.message.includes("ENOENT")) {
         console.error("[FnListener] fn-tap binary not found or not executable");
-        showNotificationPopup("Fn key detection unavailable: binary not found");
+        mainWindow?.webContents.send(
+          "notify",
+          "Fn key detection unavailable: binary not found",
+        );
       } else if (error.message.includes("EACCES")) {
         console.error("[FnListener] fn-tap binary lacks execution permissions");
-        showNotificationPopup(
+        mainWindow?.webContents.send(
+          "notify",
           "Fn key detection unavailable: permission denied",
         );
       } else {
@@ -849,7 +778,10 @@ function startFnListener() {
           "[FnListener] Unknown error starting fn-tap:",
           error.message,
         );
-        showNotificationPopup("Fn key detection unavailable: startup error");
+        mainWindow?.webContents.send(
+          "notify",
+          "Fn key detection unavailable: startup error",
+        );
       }
 
       // Schedule restart only if not already scheduled and not quitting
@@ -874,7 +806,10 @@ function startFnListener() {
   } catch (error) {
     console.error("[FnListener] Exception when spawning fn-tap helper:", error);
     fnProc = null;
-    showNotificationPopup("Fn key detection unavailable: spawn failed");
+    mainWindow?.webContents.send(
+      "notify",
+      "Fn key detection unavailable: spawn failed",
+    );
 
     // Schedule restart only if not already scheduled and not quitting
     scheduleRestart("exception");

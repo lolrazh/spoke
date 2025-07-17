@@ -17,19 +17,12 @@
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-width: 207px;
-    --pill-height: 30px;
-    --pill-resting-height: 9px;
     --pill-border-radius: 8px;
     --pill-resting-radius: 5px;
     --pill-background: rgba(0, 0, 0, 0.95);
     --pill-border: 1px solid rgba(255, 255, 255, 0.08);
     --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  }
 
-  /* Centering wrapper for the pill */
-  .pill-wrapper {
-    /* No longer needs absolute positioning or transforms. */
     /* It is now a flex item centered by its parent. */
     display: flex;
     align-items: center;
@@ -40,20 +33,14 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
-    width: var(--pill-width);
-    height: var(--pill-height);
+    width: auto; /* fallback; actual size driven by Framer */
+    height: auto; /* fallback */
     border-radius: var(--pill-border-radius);
     background: var(--pill-background);
     border: var(--pill-border);
     box-shadow: var(--pill-shadow);
-    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-  }
-
-  /* Resting state - thin bar */
-  .pill-wrapper.resting-state .pill-core {
-    height: var(--pill-resting-height);
-    border-radius: var(--pill-resting-radius);
-    /* All other properties (width, background, border, shadow) inherited from .pill-core */
+    /* Let framer-motion handle all transitions */
+    overflow: hidden;
   }
 
   /* Resting indicator - invisible by default, just for spacing */
@@ -72,6 +59,38 @@
     color: #a0a0a0;
     position: relative; /* Ensure content is above the pseudo-element */
     pointer-events: auto; /* Capture clicks on the content */
+  }
+
+  .notification-text {
+    font-family: "Inter", sans-serif;
+    color: #c0c0c0;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    padding: 0 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+
+  /* Add a subtle fade effect for long text */
+  .notification-text::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 12px;
+    bottom: 0;
+    width: 12px;
+    background: linear-gradient(to right, transparent, var(--pill-background));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  /* Show fade when text is truncated */
+  .notification-text.truncated::after {
+    opacity: 1;
   }
 
   .pill-icon {
@@ -243,6 +262,10 @@ body {
 
 @layer base {
   :root {
+    --pill-expanded-width: 207px;
+    --pill-expanded-height: 30px;
+    --pill-resting-height: 9px;
+
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;

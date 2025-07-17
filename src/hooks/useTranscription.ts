@@ -1,6 +1,9 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
-import { TARGET_AUDIO_CONTEXT_RATE, MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import {
+  TARGET_AUDIO_CONTEXT_RATE,
+  MICROPHONE_PREFERRED_RATE,
+} from "../config/audio";
 import { pcm16ToWav } from "../utils/pcm16-to-wav";
 
 // Global worklet registry to prevent double registration
@@ -68,7 +71,9 @@ export function useTranscription(): UseTranscriptionReturn {
 
     try {
       if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
-        audioCtxRef.current = new AudioContext({ sampleRate: TARGET_AUDIO_CONTEXT_RATE });
+        audioCtxRef.current = new AudioContext({
+          sampleRate: TARGET_AUDIO_CONTEXT_RATE,
+        });
       }
       if (audioCtxRef.current.state === "suspended") {
         await audioCtxRef.current.resume();
@@ -83,15 +88,19 @@ export function useTranscription(): UseTranscriptionReturn {
         workletRegistry.add(workletPath);
       }
 
-      microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(streamRef.current);
-      workletNodeRef.current = new AudioWorkletNode(audioCtxRef.current, "capture-processor");
+      microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(
+        streamRef.current,
+      );
+      workletNodeRef.current = new AudioWorkletNode(
+        audioCtxRef.current,
+        "capture-processor",
+      );
 
       workletNodeRef.current.port.onmessage = (event) => {
         audioChunksRef.current.push(new Int16Array(event.data));
       };
 
       microphoneSourceRef.current.connect(workletNodeRef.current);
-
     } catch (err) {
       setError((err as Error).message);
       setRecording(false);
@@ -109,14 +118,17 @@ export function useTranscription(): UseTranscriptionReturn {
       microphoneSourceRef.current?.disconnect();
       workletNodeRef.current?.disconnect();
 
-      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
+      const totalLength = audioChunksRef.current.reduce(
+        (acc, chunk) => acc + chunk.length,
+        0,
+      );
       const concatenated = new Int16Array(totalLength);
       let offset = 0;
       for (const chunk of audioChunksRef.current) {
         concatenated.set(chunk, offset);
         offset += chunk.length;
       }
-      
+
       const wavBlob = pcm16ToWav(concatenated);
 
       const formData = new FormData();
@@ -127,7 +139,7 @@ export function useTranscription(): UseTranscriptionReturn {
       formData.append("temperature", "0");
 
       const response = await fetch("https://api.sonicflow.app", {
-        method: 'POST',
+        method: "POST",
         body: formData,
       });
 
@@ -141,16 +153,11 @@ export function useTranscription(): UseTranscriptionReturn {
       if (result.text) {
         window.clipboard.insertText(result.text);
       }
-
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setProcessing(false);
       audioChunksRef.current = [];
-      // Test notification to confirm the UI fix
-      window.notifications.send(
-        "Dictation complete! This is a test of the new, longer notification.",
-      );
     }
   }, [recording]);
 

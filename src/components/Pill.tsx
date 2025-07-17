@@ -1,43 +1,101 @@
-import React from "react";
+import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { TOKENS } from "../config/uiTokens";
+
+type PillMetrics = {
+  pillRect: DOMRect | null;
+  notificationText: string | null;
+  devicePixelRatio: number;
+};
+
+// Use PillStateType from App.tsx
+import type { PillStateType, PillMachineState } from "./App";
 
 interface PillProps {
-  isListening: boolean;
-  isProcessing: boolean;
-  isHovered: boolean;
+  pillState: PillStateType;
+  pillContext: PillMachineState["context"];
+  notifWidth: number | null;
+  isTextTruncated: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
+  onMetrics: (metrics: PillMetrics) => void;
+  onAnimDone: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
 }
 
+// Helper function to read CSS variables from the DOM, with a fallback
+const getCssVar = (name: string, fallback: number): number => {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(
+    name,
+  );
+  const parsedValue = parseInt(value, 10);
+  return isNaN(parsedValue) ? fallback : parsedValue;
+};
+
 const Pill: React.FC<PillProps> = ({
-  isListening,
-  isProcessing,
-  isHovered,
+  pillState,
+  pillContext,
   onStartDictation,
   onStopDictation,
   onHoverChange,
+  onMetrics,
+  onAnimDone,
+  notifWidth,
+  isTextTruncated,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
-  // Number of dots/bars to display - consistent across all states
-  const VISUALIZATION_COUNT = 7;
+  // --- Refs ---
+  const pillCoreRef = useRef<HTMLDivElement>(null);
+
+  // --- Metrics Reporting ---
+  useLayoutEffect(() => {
+    if (!onMetrics) return;
+
+    const pillRect = pillCoreRef.current?.getBoundingClientRect() ?? null;
+
+    onMetrics({
+      pillRect,
+      notificationText: pillContext.notifMsg ?? null,
+      devicePixelRatio: window.devicePixelRatio,
+    });
+  }, [pillState, pillContext, onMetrics]);
+
+  const isShowingNotification = pillState === "NOTIFICATION";
+  const isListening = pillState === "LISTENING";
+  const isResting = pillState === "IDLE";
+  const isProcessing = pillState === "PROCESSING";
+  const isHovered = pillState === "HOVER_PREVIEW";
+
+  useEffect(() => {
+    console.log(
+      `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`,
+    );
+  }, [pillState, isResting, isListening, isProcessing, isHovered]);
 
   // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = () => {
-    // Create bars with consistent count
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
-      <div
-        key={`bar-${index}`}
-        className="waveform-bar"
-        style={{
-          animationDelay: `${index * 0.1}s`,
-          height: `${3 + Math.random() * 5}px`,
-        }}
-      />
-    ));
-  };
+  const renderFrequencyBars = useMemo(
+    () =>
+      // Create bars with consistent count
+      Array.from({ length: 7 }).map((_, index) => (
+        <div
+          key={`bar-${index}`}
+          className="waveform-bar"
+          style={{
+            animationDelay: `${index * 0.1}s`,
+            height: `${3 + Math.random() * 5}px`,
+          }}
+        />
+      )),
+    [], // Empty dependency array means this runs only once
+  );
 
   // Unified function to render dots with different styles
   const renderDots = (type: "static" | "animated" | "collapsed") => {
-    return Array.from({ length: VISUALIZATION_COUNT }).map((_, index) => (
+    return Array.from({ length: 7 }).map((_, index) => (
       <div
         key={`dot-${type}-${index}`}
         className={`dot ${type}`}
@@ -61,51 +119,84 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
-  // Determine the current state - now always visible, just different sizes
-  const isResting = !isHovered && !isListening && !isProcessing;
-  const isExpanded = isHovered || isListening || isProcessing;
+  // Build dynamic animation target
+  const notificationTargetWidth = notifWidth ?? TOKENS.PILL_BASE_W; // fallback
+
+  // We'll drive width/height via explicit animate prop (overrides variants.width)
+  const animateForState = (() => {
+    switch (pillState) {
+      case "IDLE":
+        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_RESTING_H };
+      case "HOVER_PREVIEW":
+      case "LISTENING":
+      case "PROCESSING":
+        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_BASE_H };
+      case "NOTIFICATION":
+        return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
+      default:
+        return {};
+    }
+  })();
 
   return (
     <div
-      className={`
-        pill-wrapper transition-all duration-300 ease-out
-        ${isResting ? "resting-state" : ""}
-        ${isExpanded ? "expanded-state" : ""}
-        ${isListening ? "listening" : ""}
-        ${isProcessing ? "processing" : ""}
-      `}
+      className="pill-wrapper"
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
+      onMouseEnter={() => {
+        onHoverChange(true);
+        onMouseEnter();
+      }}
+      onMouseLeave={() => {
+        onHoverChange(false);
+        onMouseLeave();
+      }}
     >
-      <div className="pill-core">
+      <motion.div
+        ref={pillCoreRef}
+        className="pill-core"
+        layout
+        initial={false}
+        animate={animateForState}
+        onAnimationComplete={() => {
+          // Only advance the FSM when the *shrink back to idle* finishes
+          if (pillState !== "NOTIFICATION") {
+            onAnimDone();
+          }
+        }}
+      >
         <div className="pill-content flex items-center justify-center w-full h-full">
-          {/* Resting state - thin bar with no content */}
-          {isResting && <div className="resting-indicator" />}
-
-          {/* Hover state - show static dots */}
-          {isHovered && !isListening && !isProcessing && (
-            <div className="visualization-container">
-              {renderDots("static")}
-            </div>
-          )}
-
-          {/* Active state - show frequency bars */}
-          {isListening && (
-            <div className="visualization-container">
-              {renderFrequencyBars()}
-            </div>
-          )}
-
-          {/* Loading state - show animated dots */}
-          {isProcessing && !isListening && (
-            <div className="visualization-container">
-              {renderDots("animated")}
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {isShowingNotification ? (
+              <motion.span
+                key="notification"
+                className={`notification-text ${isTextTruncated ? 'truncated' : ''}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {pillContext.notifMsg}
+              </motion.span>
+            ) : (
+              <motion.div
+                key="visualizer"
+                className="visualization-container"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {/* Visuals for non-notification states */}
+                {pillState === "LISTENING" && <>{renderFrequencyBars}</>}
+                {pillState === "PROCESSING" && <>{renderDots("animated")}</>}
+                {pillState === "HOVER_PREVIEW" && <>{renderDots("static")}</>}
+                {pillState === "IDLE" && <div className="resting-indicator" />}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

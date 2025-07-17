@@ -18,6 +18,7 @@ declare global {
     };
     notifications: {
       send: (message: string) => void;
+      on: (callback: (message: string) => void) => () => void;
     };
     ptt: {
       onDown: (cb: () => void) => () => void;
@@ -25,6 +26,10 @@ declare global {
     };
     island: {
       slideTo: (y: number) => void;
+    };
+    electron: {
+      resizePill: (width: number, height: number) => void;
+      setClickThrough: (clickThrough: boolean) => void;
     };
   }
 }
