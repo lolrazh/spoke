@@ -67,7 +67,7 @@
     font-size: 12px;
     font-weight: 500;
     letter-spacing: -0.01em;
-    padding: 0 20px;
+    padding: 0 12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -79,7 +79,7 @@
     content: '';
     position: absolute;
     top: 0;
-    right: 20px;
+    right: 12px;
     bottom: 0;
     width: 12px;
     background: linear-gradient(to right, transparent, var(--pill-background));
