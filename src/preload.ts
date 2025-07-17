@@ -51,6 +51,25 @@ contextBridge.exposeInMainWorld("ptt", {
   },
 });
 
+// Microphone device management bridge
+type MicDevice = { id: string; label: string };
+
+contextBridge.exposeInMainWorld("mic", {
+  /** Send the current discovered set of microphone devices to main. */
+  updateDevices: (devices: MicDevice[], selectedId?: string) => {
+    ipcRenderer.send("mic:devices-update", { devices, selectedId });
+  },
+  /** Ask main to change the selected microphone (persist + broadcast). */
+  select: (id: string) => ipcRenderer.invoke("mic:select", { id }),
+  /** Subscribe to selection changes coming from main. */
+  onSelectedChanged: (
+    cb: (payload: { id: string }) => void,
+  ) => {
+    ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
+    return () => ipcRenderer.removeAllListeners("mic:selected-changed");
+  },
+});
+
 contextBridge.exposeInMainWorld("island", {
   slideTo: (y: number) => ipcRenderer.send("island-slide", y),
 });

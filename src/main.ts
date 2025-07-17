@@ -71,6 +71,29 @@ const getIconPath = () => {
   return possiblePaths[0]; // fallback
 };
 
+const getTrayIconPath = () => {
+  const possiblePaths = [
+    path.join(__dirname, "assets", "TrayTemplate.png"), // Vite build location
+    path.join(__dirname, "..", "assets", "TrayTemplate.png"), // Alternative location
+    path.join(process.resourcesPath, "TrayTemplate.png"), // extraResource location
+    path.join(__dirname, "..", "..", "public", "assets", "TrayTemplate.png"), // Source location
+  ];
+
+  for (const trayPath of possiblePaths) {
+    try {
+      if (fs.existsSync(trayPath)) {
+        console.log(`[Main Process] Found tray icon at: ${trayPath}`);
+        return trayPath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+
+  console.warn("[Main Process] No tray icon found in any expected location");
+  return possiblePaths[0]; // fallback
+};
+
 const iconPath = getIconPath();
 
 const createWindow = () => {
@@ -199,34 +222,61 @@ const createWindow = () => {
 
 const createTray = () => {
   try {
+    console.log("[Tray] Starting tray creation...");
+    
     // Check if tray already exists
     if (tray) {
+      console.log("[Tray] Tray already exists, skipping creation");
       return;
     }
 
-    // Load the icon from the assets folder
-    const icon = nativeImage.createFromPath(iconPath);
+    // Load the tray template icon
+    const trayIconPath = getTrayIconPath();
+    console.log(`[Tray] Attempting to load icon from: ${trayIconPath}`);
+    
+    let icon = nativeImage.createFromPath(trayIconPath);
 
     if (icon.isEmpty()) {
       console.error(
-        `Failed to load tray icon from path: ${iconPath}. Using empty icon.`,
+        `[Tray] Failed to load tray icon from path: ${trayIconPath}. Using empty icon.`,
       );
-      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+      icon = nativeImage.createEmpty(); // Fallback to empty
     } else {
-      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
-      tray = new Tray(icon);
+      console.log(`[Tray] Successfully loaded tray icon from path: ${trayIconPath}`);
+      // Mark as template for proper macOS tinting
+      icon.setTemplateImage(true);
+      console.log("[Tray] Icon marked as template");
     }
 
+    console.log("[Tray] Creating Tray instance...");
+    tray = new Tray(icon);
+    console.log("[Tray] Tray instance created successfully");
+    
     tray.setToolTip("Sonic Flow");
+    
+    // Force tray to be visible (macOS sometimes hides it)
+    if (process.platform === "darwin") {
+      tray.setIgnoreDoubleClickEvents(false);
+      // Try to force display the tray
+      setTimeout(() => {
+        if (tray && !tray.isDestroyed()) {
+          console.log("[Tray] Forcing tray visibility on macOS");
+          tray.setToolTip("Sonic Flow - AI Dictation");
+        }
+      }, 100);
+    }
+    
+    console.log("[Tray] Tooltip set");
 
-    // Create native context menu
+    // Create enhanced native context menu with macOS conventions
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: "Home",
+        label: "Open Sonic Flow Home",
         click: () => {
-          console.log("[Tray Menu] Home clicked");
+          console.log("[Tray Menu] Open Sonic Flow Home clicked");
           if (homeWindow) {
             console.log("[Tray Menu] Home window exists, focusing...");
+            homeWindow.show();
             homeWindow.focus();
           } else {
             console.log(
@@ -236,22 +286,67 @@ const createTray = () => {
           }
         },
       },
+      {
+        label: "Select Microphone",
+        submenu: [
+          {
+            label: "No microphones detected",
+            enabled: false,
+          },
+        ],
+      },
       { type: "separator" },
       {
-        label: "Exit",
+        label: "Send Feedback…",
         click: () => {
-          console.log("[Tray Menu] Exit clicked");
+          console.log("[Tray Menu] Send Feedback clicked");
+          // Open default email client with pre-filled feedback email
+          const feedbackEmail = encodeURI(
+            `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+          );
+          shell.openExternal(feedbackEmail);
+        },
+      },
+      {
+        label: "About Sonic Flow",
+        click: () => {
+          console.log("[Tray Menu] About Sonic Flow clicked");
+          // Use native macOS about panel
+          app.setAboutPanelOptions({
+            applicationName: "Sonic Flow",
+            applicationVersion: app.getVersion(),
+            credits: "A lightweight AI dictation tool for macOS.",
+            authors: ["Sandheep Rajkumar"],
+          });
+          app.showAboutPanel();
+        },
+      },
+      { type: "separator" },
+      {
+        label: "Quit Sonic Flow",
+        click: () => {
+          console.log("[Tray Menu] Quit Sonic Flow clicked");
+          isQuitting = true;
           app.quit();
         },
       },
     ]);
 
     // Set the native context menu
+    console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
+    console.log("[Tray] ✅ Tray created successfully with enhanced menu!");
   } catch (error) {
-    console.error("Failed to create tray:", error);
+    console.error("[Tray] ❌ Failed to create tray:", error);
+    console.error("[Tray] Error stack:", error.stack);
     // Ensure tray is null if creation fails
-    if (tray) tray.destroy();
+    if (tray) {
+      try {
+        tray.destroy();
+      } catch (destroyError) {
+        console.error("[Tray] Failed to destroy tray:", destroyError);
+      }
+    }
     tray = null;
   }
 };
