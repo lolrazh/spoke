@@ -152,9 +152,6 @@ export function useTranscription(): UseTranscriptionReturn {
       setText(result.text);
       if (result.text) {
         window.clipboard.insertText(result.text);
-        window.notifications.send(
-          "Text copied to clipboard",
-        ); // Send success notification
       }
     } catch (err) {
       setError((err as Error).message);
