@@ -778,7 +778,13 @@ app.whenReady().then(() => {
 
   ipcMain.handle("mic:select", (_event, payload: { id: string }) => {
     console.log("[IPC] Received microphone selection:", payload.id);
-    selectMicDevice(payload.id);
+    try {
+      selectMicDevice(payload.id);
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to select microphone:", error);
+      return { ok: false };
+    }
   });
 });
 
