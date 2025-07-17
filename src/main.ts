@@ -44,7 +44,9 @@ let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false;
 
 // Microphone management state
-let micDevices: MicDevice[] = [];
+let micDevices: MicDevice[] = [
+  { id: "default", label: "System Default" } // Always available fallback
+];
 let micPreferences: MicPreferences = {};
 const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
 
@@ -90,11 +92,17 @@ function saveMicPreferences(prefs: MicPreferences): void {
 
 function updateMicDevices(devices: MicDevice[]): void {
   console.log("[MicMgmt] Updating device list:", devices);
-  micDevices = devices;
+  
+  // Always ensure "System Default" is first, then add other devices
+  const defaultDevice = { id: "default", label: "System Default" };
+  const otherDevices = devices.filter(d => d.id !== "default");
+  micDevices = [defaultDevice, ...otherDevices];
+  
+  console.log("[MicMgmt] Final device list with default:", micDevices);
   
   // Validate current selection still exists
   if (micPreferences.selectedMicId && 
-      !devices.find(d => d.id === micPreferences.selectedMicId)) {
+      !micDevices.find(d => d.id === micPreferences.selectedMicId)) {
     console.log("[MicMgmt] Selected device no longer available, resetting to default");
     micPreferences.selectedMicId = "default";
     saveMicPreferences(micPreferences);
