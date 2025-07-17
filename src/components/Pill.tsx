@@ -23,6 +23,7 @@ interface PillProps {
   pillState: PillStateType;
   pillContext: PillMachineState["context"];
   notifWidth: number | null;
+  isTextTruncated: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
@@ -49,6 +50,7 @@ const Pill: React.FC<PillProps> = ({
   onMetrics,
   onAnimDone,
   notifWidth,
+  isTextTruncated,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -166,7 +168,7 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
-                className="notification-text"
+                className={`notification-text ${isTextTruncated ? 'truncated' : ''}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

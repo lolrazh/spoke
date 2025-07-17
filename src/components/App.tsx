@@ -143,6 +143,7 @@ const App: React.FC = () => {
   const trans = useTranscription();
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
+  const [isTextTruncated, setIsTextTruncated] = useState(false);
   const ghostRef = useRef<HTMLSpanElement | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
@@ -231,7 +232,14 @@ const App: React.FC = () => {
     const rect = el.getBoundingClientRect();
     // Add same horizontal padding used in visible notification-text class (20px left/right)
     const pad = 40; // px total
-    setNotifWidth(Math.ceil(rect.width + pad));
+    const measuredWidth = Math.ceil(rect.width + pad);
+    // Clamp to maximum width to prevent overly wide notifications
+    const clampedWidth = Math.min(measuredWidth, TOKENS.PILL_MAX_W);
+    // Check if text will be truncated
+    const isTruncated = measuredWidth > TOKENS.PILL_MAX_W;
+    
+    setNotifWidth(clampedWidth);
+    setIsTextTruncated(isTruncated);
   }, [pillContext.notifMsg]);
 
   useEffect(() => {
@@ -299,6 +307,7 @@ const App: React.FC = () => {
         pillState={pillState}
         pillContext={pillContext}
         notifWidth={notifWidth}
+        isTextTruncated={isTextTruncated}
         onStartDictation={() => {
           pillDispatch({ type: "PTT_START" });
           trans.start();
