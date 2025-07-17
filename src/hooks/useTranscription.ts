@@ -34,35 +34,36 @@ export function useTranscription(): UseTranscriptionReturn {
   const [error, setError] = useState<string | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
+  // Device enumeration function
+  const enumerateAndSendDevices = useCallback(async () => {
+    try {
+      // Request permission first to get device labels
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices
+        .filter(device => device.kind === 'audioinput')
+        .map(device => ({
+          id: device.deviceId,
+          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
+        }));
+      
+      console.log("[useTranscription] Found audio input devices:", audioInputs);
+      
+      // Send to main process with a small delay to ensure tray is ready
+      setTimeout(() => {
+        if (window.mic?.updateDevices) {
+          console.log("[useTranscription] Sending devices to main process:", audioInputs);
+          window.mic.updateDevices(audioInputs, selectedMicId);
+        }
+      }, 500);
+    } catch (err) {
+      console.error("[useTranscription] Failed to enumerate devices:", err);
+    }
+  }, [selectedMicId]);
+
   // Enumerate and send available microphones to main process
   useEffect(() => {
-    const enumerateAndSendDevices = async () => {
-      try {
-        // Request permission first to get device labels
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices
-          .filter(device => device.kind === 'audioinput')
-          .map(device => ({
-            id: device.deviceId,
-            label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
-          }));
-        
-        console.log("[useTranscription] Found audio input devices:", audioInputs);
-        
-        // Send to main process with a small delay to ensure tray is ready
-        setTimeout(() => {
-          if (window.mic?.updateDevices) {
-            console.log("[useTranscription] Sending devices to main process:", audioInputs);
-            window.mic.updateDevices(audioInputs, selectedMicId);
-          }
-        }, 500);
-      } catch (err) {
-        console.error("[useTranscription] Failed to enumerate devices:", err);
-      }
-    };
-    
     enumerateAndSendDevices();
     
     // Listen for device changes (plug/unplug)
@@ -79,7 +80,7 @@ export function useTranscription(): UseTranscriptionReturn {
     return () => {
       navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
-  }, []);
+  }, [enumerateAndSendDevices]);
 
   // Listen for microphone selection changes from main process
   useEffect(() => {
@@ -92,6 +93,18 @@ export function useTranscription(): UseTranscriptionReturn {
     
     return unsubscribe;
   }, []);
+
+  // Listen for refresh requests from main process
+  useEffect(() => {
+    if (!window.mic?.onRefreshRequest) return;
+    
+    const unsubscribe = window.mic.onRefreshRequest(() => {
+      console.log("[useTranscription] ✅ Refresh devices requested from main process - executing refresh...");
+      enumerateAndSendDevices();
+    });
+    
+    return unsubscribe;
+  }, [enumerateAndSendDevices]);
 
   // Initialize microphone stream when selected device changes
   useEffect(() => {

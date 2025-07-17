@@ -319,6 +319,7 @@ const createWindow = () => {
 };
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
+  console.log("[Tray Menu] Building tray menu with", micDevices.length, "devices");
   const selectedMicId = micPreferences.selectedMicId || "default";
   
   // Build microphone submenu
@@ -482,6 +483,16 @@ const createTray = () => {
     console.log("[Tray] Building context menu...");
     const menuTemplate = buildTrayMenu();
     const contextMenu = Menu.buildFromTemplate(menuTemplate);
+    
+    // Add event listener for when tray menu is about to open
+    tray.on('click', () => {
+      console.log("[Tray] 🎯 Tray menu opening - requesting device refresh");
+      // Send refresh request to renderer processes before showing menu
+      BrowserWindow.getAllWindows().forEach(window => {
+        console.log("[Tray] Sending mic:refresh-devices to window:", window.id);
+        window.webContents.send("mic:refresh-devices");
+      });
+    });
     
     // Set the native context menu
     console.log("[Tray] Setting context menu...");

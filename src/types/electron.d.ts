@@ -35,6 +35,7 @@ declare global {
       updateDevices: (devices: Array<{ id: string; label: string }>, selectedId?: string) => void;
       select: (id: string) => Promise<{ ok: boolean }>;
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
+      onRefreshRequest: (cb: () => void) => () => void;
     };
   }
 }

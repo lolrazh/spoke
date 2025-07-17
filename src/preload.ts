@@ -68,6 +68,11 @@ contextBridge.exposeInMainWorld("mic", {
     ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
     return () => ipcRenderer.removeAllListeners("mic:selected-changed");
   },
+  /** Subscribe to refresh device requests from main. */
+  onRefreshRequest: (cb: () => void) => {
+    ipcRenderer.on("mic:refresh-devices", cb);
+    return () => ipcRenderer.removeAllListeners("mic:refresh-devices");
+  },
 });
 
 contextBridge.exposeInMainWorld("island", {
