@@ -76,7 +76,7 @@
 
   /* Add a subtle fade effect for long text */
   .notification-text::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     right: 12px;

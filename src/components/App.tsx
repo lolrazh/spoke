@@ -238,7 +238,7 @@ const App: React.FC = () => {
     const clampedWidth = Math.min(measuredWidth, TOKENS.PILL_MAX_W);
     // Check if text will be truncated
     const isTruncated = measuredWidth > TOKENS.PILL_MAX_W;
-    
+
     setNotifWidth(clampedWidth);
     setIsTextTruncated(isTruncated);
   }, [pillContext.notifMsg]);
@@ -351,7 +351,9 @@ const App: React.FC = () => {
             Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
             {debugInfo.pillRect?.height.toFixed(2)}
           </p>
-          <p>Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars</p>
+          <p>
+            Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
+          </p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>

@@ -170,7 +170,7 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
-                className={`notification-text ${isTextTruncated ? 'truncated' : ''}`}
+                className={`notification-text ${isTextTruncated ? "truncated" : ""}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
