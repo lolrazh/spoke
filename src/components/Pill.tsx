@@ -29,6 +29,8 @@ interface PillProps {
   onHoverChange: (hovered: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
   onAnimDone: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
 }
 
 // Helper function to read CSS variables from the DOM, with a fallback
@@ -51,6 +53,8 @@ const Pill: React.FC<PillProps> = ({
   onAnimDone,
   notifWidth,
   isTextTruncated,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -147,8 +151,14 @@ const Pill: React.FC<PillProps> = ({
       className="pill-wrapper"
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
+      onMouseEnter={() => {
+        onHoverChange(true);
+        onMouseEnter();
+      }}
+      onMouseLeave={() => {
+        onHoverChange(false);
+        onMouseLeave();
+      }}
     >
       <motion.div
         ref={pillCoreRef}

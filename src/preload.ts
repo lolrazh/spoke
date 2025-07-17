@@ -58,4 +58,6 @@ contextBridge.exposeInMainWorld("island", {
 contextBridge.exposeInMainWorld("electron", {
   resizePill: (width: number, height: number) =>
     ipcRenderer.send("pill-resize", { width, height }),
+  setClickThrough: (clickThrough: boolean) =>
+    ipcRenderer.send("set-click-through", clickThrough),
 });

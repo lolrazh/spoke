@@ -449,6 +449,13 @@ app.whenReady().then(() => {
     }
   });
 
+  // Handle dynamic click-through control
+  ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+    }
+  });
+
   ipcMain.on("pill-show", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const currentBounds = mainWindow.getBounds();

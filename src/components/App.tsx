@@ -222,6 +222,15 @@ const App: React.FC = () => {
     setDebugInfo(metrics);
   }, []);
 
+  // Handle mouse enter/leave for click-through control
+  const handleMouseEnter = useCallback(() => {
+    window.electron?.setClickThrough(false);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    window.electron?.setClickThrough(true);
+  }, []);
+
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
     if (!ghostRef.current) return;
@@ -321,6 +330,8 @@ const App: React.FC = () => {
         }
         onMetrics={handlePillMetrics}
         onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       />
       <span
         id="pill-ghost-measure"
