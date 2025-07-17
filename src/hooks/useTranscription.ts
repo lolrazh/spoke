@@ -153,7 +153,7 @@ export function useTranscription(): UseTranscriptionReturn {
       if (result.text) {
         window.clipboard.insertText(result.text);
         window.notifications.send(
-          "Text copied to clipboard",
+          "This is a really, really, really long notification test message",
         ); // Send success notification
       }
     } catch (err) {

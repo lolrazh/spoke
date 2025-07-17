@@ -231,8 +231,8 @@ const App: React.FC = () => {
     el.textContent = msg;
     // Force layout
     const rect = el.getBoundingClientRect();
-    // Add same horizontal padding used in visible notification-text class (20px left/right)
-    const pad = 40; // px total
+    // Add same horizontal padding used in visible notification-text class (12px left/right)
+    const pad = 24; // px total
     const measuredWidth = Math.ceil(rect.width + pad);
     // Clamp to maximum width to prevent overly wide notifications
     const clampedWidth = Math.min(measuredWidth, TOKENS.PILL_MAX_W);
