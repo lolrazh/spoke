@@ -11,7 +11,10 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: join(__dirname, "public/assets/icon.*"),
+          src: [
+            join(__dirname, "public/assets/icon.*"),
+            join(__dirname, "public/assets/TrayTemplate.*"),
+          ],
           dest: "assets", // copies icon files to dist/assets/
         },
       ],

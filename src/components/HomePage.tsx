@@ -233,9 +233,9 @@ const HomePage: React.FC = () => {
               transition={{ duration: 0.7 }}
             >
               <img
-                src="/assets/icon.ico"
+                src="/assets/TrayTemplate.png"
                 alt="Sonic Flow Icon"
-                className="w-6 h-6"
+                className="w-6 h-6 brightness-0 invert"
               />
             </motion.div>
             <h1 className="text-lg font-medium text-white">Sonic Flow</h1>
