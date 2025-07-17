@@ -51,10 +51,13 @@ export function useTranscription(): UseTranscriptionReturn {
         
         console.log("[useTranscription] Found audio input devices:", audioInputs);
         
-        // Send to main process
-        if (window.mic?.updateDevices) {
-          window.mic.updateDevices(audioInputs);
-        }
+        // Send to main process with a small delay to ensure tray is ready
+        setTimeout(() => {
+          if (window.mic?.updateDevices) {
+            console.log("[useTranscription] Sending devices to main process:", audioInputs);
+            window.mic.updateDevices(audioInputs, selectedMicId);
+          }
+        }, 500);
       } catch (err) {
         console.error("[useTranscription] Failed to enumerate devices:", err);
       }
@@ -65,7 +68,10 @@ export function useTranscription(): UseTranscriptionReturn {
     // Listen for device changes (plug/unplug)
     const handleDeviceChange = () => {
       console.log("[useTranscription] Device change detected, re-enumerating...");
-      enumerateAndSendDevices();
+      // Add a small delay to let the system settle after device changes
+      setTimeout(() => {
+        enumerateAndSendDevices();
+      }, 200);
     };
     
     navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);

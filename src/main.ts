@@ -140,7 +140,7 @@ function broadcastMicSelection(): void {
   
   // Send to all renderer windows
   BrowserWindow.getAllWindows().forEach(window => {
-    window.webContents.send("mic-selected-changed", selectedId);
+    window.webContents.send("mic:selected-changed", { id: selectedId });
   });
 }
 
@@ -760,14 +760,14 @@ app.whenReady().then(() => {
   });
 
   // Microphone management IPC handlers
-  ipcMain.on("mic-update-devices", (_event, devices: MicDevice[]) => {
-    console.log("[IPC] Received microphone devices update:", devices);
-    updateMicDevices(devices);
+  ipcMain.on("mic:devices-update", (_event, payload: { devices: MicDevice[], selectedId?: string }) => {
+    console.log("[IPC] Received microphone devices update:", payload);
+    updateMicDevices(payload.devices);
   });
 
-  ipcMain.on("mic-select", (_event, deviceId: string) => {
-    console.log("[IPC] Received microphone selection:", deviceId);
-    selectMicDevice(deviceId);
+  ipcMain.handle("mic:select", (_event, payload: { id: string }) => {
+    console.log("[IPC] Received microphone selection:", payload.id);
+    selectMicDevice(payload.id);
   });
 });
 

@@ -32,13 +32,12 @@ export function initMicDevicesBridge(defaultSelected?: string) {
   console.log("[MicDevices] Initializing mic devices bridge...");
   currentSelected = defaultSelected;
   
-  // Initial device enumeration
-  refreshDevices();
+  // Don't do initial device enumeration here - let useTranscription handle it
+  // This avoids the double discovery issue where we send incomplete device info first
   
-  // Listen for device changes
+  // Listen for device changes - but let useTranscription handle the enumeration
   navigator.mediaDevices.addEventListener("devicechange", () => {
-    console.log("[MicDevices] Device change detected, refreshing...");
-    refreshDevices();
+    console.log("[MicDevices] Device change detected, but letting useTranscription handle enumeration");
   });
   
   // Listen for selection change from main
