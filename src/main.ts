@@ -24,6 +24,10 @@ import {
   ISLAND_VISIBLE_Y,
 } from "./constants/window";
 
+// Microphone device management types
+type MicDevice = { id: string; label: string };
+type MicPreferences = { selectedMicId?: string };
+
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -39,11 +43,97 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false;
 
+// Microphone management state
+let micDevices: MicDevice[] = [];
+let micPreferences: MicPreferences = {};
+const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+
 function logBounds(tag: string) {
   if (!mainWindow) return;
   const b = mainWindow.getBounds();
   const [cw, ch] = mainWindow.getContentSize();
   console.log(`[${tag}] bounds=%o content=%o`, b, { w: cw, h: ch });
+}
+
+// Microphone preference management functions
+function loadMicPreferences(): MicPreferences {
+  try {
+    if (fs.existsSync(micPrefsPath)) {
+      const data = fs.readFileSync(micPrefsPath, "utf8");
+      const prefs = JSON.parse(data);
+      console.log("[MicPrefs] Loaded preferences:", prefs);
+      return prefs;
+    }
+  } catch (error) {
+    console.error("[MicPrefs] Failed to load preferences:", error);
+  }
+  
+  const defaultPrefs = { selectedMicId: "default" };
+  console.log("[MicPrefs] Using default preferences:", defaultPrefs);
+  return defaultPrefs;
+}
+
+function saveMicPreferences(prefs: MicPreferences): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(micPrefsPath, JSON.stringify(prefs, null, 2));
+    console.log("[MicPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    console.error("[MicPrefs] Failed to save preferences:", error);
+  }
+}
+
+function updateMicDevices(devices: MicDevice[]): void {
+  console.log("[MicMgmt] Updating device list:", devices);
+  micDevices = devices;
+  
+  // Validate current selection still exists
+  if (micPreferences.selectedMicId && 
+      !devices.find(d => d.id === micPreferences.selectedMicId)) {
+    console.log("[MicMgmt] Selected device no longer available, resetting to default");
+    micPreferences.selectedMicId = "default";
+    saveMicPreferences(micPreferences);
+  }
+  
+  // Rebuild tray menu with new devices
+  rebuildTrayMenu();
+  
+  // Notify renderers of selection change
+  broadcastMicSelection();
+}
+
+function selectMicDevice(deviceId: string): void {
+  console.log("[MicMgmt] Selecting device:", deviceId);
+  
+  // Validate device exists
+  if (deviceId !== "default" && !micDevices.find(d => d.id === deviceId)) {
+    console.error("[MicMgmt] Device not found:", deviceId);
+    return;
+  }
+  
+  micPreferences.selectedMicId = deviceId;
+  saveMicPreferences(micPreferences);
+  
+  // Rebuild tray menu to update checkmarks
+  rebuildTrayMenu();
+  
+  // Notify renderers
+  broadcastMicSelection();
+}
+
+function broadcastMicSelection(): void {
+  const selectedId = micPreferences.selectedMicId || "default";
+  console.log("[MicMgmt] Broadcasting selection:", selectedId);
+  
+  // Send to all renderer windows
+  BrowserWindow.getAllWindows().forEach(window => {
+    window.webContents.send("mic-selected-changed", selectedId);
+  });
 }
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
@@ -220,6 +310,104 @@ const createWindow = () => {
   );
 };
 
+function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
+  const selectedMicId = micPreferences.selectedMicId || "default";
+  
+  // Build microphone submenu
+  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
+  
+  if (micDevices.length === 0) {
+    micSubmenu.push({
+      label: "No microphones detected",
+      enabled: false,
+    });
+  } else {
+    // Add each device as a menu item
+    micDevices.forEach(device => {
+      micSubmenu.push({
+        label: device.label,
+        type: "radio",
+        checked: device.id === selectedMicId,
+        click: () => {
+          console.log(`[Tray Menu] Microphone selected: ${device.label} (${device.id})`);
+          selectMicDevice(device.id);
+        },
+      });
+    });
+  }
+  
+  return [
+    {
+      label: "Open Sonic Flow Home",
+      click: () => {
+        console.log("[Tray Menu] Open Sonic Flow Home clicked");
+        if (homeWindow) {
+          console.log("[Tray Menu] Home window exists, focusing...");
+          homeWindow.show();
+          homeWindow.focus();
+        } else {
+          console.log(
+            "[Tray Menu] Home window is null, creating new window...",
+          );
+          createHomeWindow();
+        }
+      },
+    },
+    {
+      label: "Select Microphone",
+      submenu: micSubmenu,
+    },
+    { type: "separator" },
+    {
+      label: "Send Feedback…",
+      click: () => {
+        console.log("[Tray Menu] Send Feedback clicked");
+        // Open default email client with pre-filled feedback email
+        const feedbackEmail = encodeURI(
+          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+        );
+        shell.openExternal(feedbackEmail);
+      },
+    },
+    {
+      label: "About Sonic Flow",
+      click: () => {
+        console.log("[Tray Menu] About Sonic Flow clicked");
+        // Use native macOS about panel
+        app.setAboutPanelOptions({
+          applicationName: "Sonic Flow",
+          applicationVersion: app.getVersion(),
+          credits: "A lightweight AI dictation tool for macOS.",
+          authors: ["Sandheep Rajkumar"],
+        });
+        app.showAboutPanel();
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit Sonic Flow",
+      click: () => {
+        console.log("[Tray Menu] Quit Sonic Flow clicked");
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ];
+}
+
+function rebuildTrayMenu(): void {
+  if (!tray || tray.isDestroyed()) {
+    console.log("[Tray] Cannot rebuild menu - tray not available");
+    return;
+  }
+  
+  console.log("[Tray] Rebuilding menu with updated microphone list");
+  const menuTemplate = buildTrayMenu();
+  const contextMenu = Menu.buildFromTemplate(menuTemplate);
+  tray.setContextMenu(contextMenu);
+  console.log("[Tray] Menu rebuilt successfully");
+}
+
 const createTray = () => {
   try {
     console.log("[Tray] Starting tray creation...");
@@ -282,70 +470,11 @@ const createTray = () => {
     
     console.log("[Tray] Tooltip set");
 
-    // Create enhanced native context menu with macOS conventions
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: "Open Sonic Flow Home",
-        click: () => {
-          console.log("[Tray Menu] Open Sonic Flow Home clicked");
-          if (homeWindow) {
-            console.log("[Tray Menu] Home window exists, focusing...");
-            homeWindow.show();
-            homeWindow.focus();
-          } else {
-            console.log(
-              "[Tray Menu] Home window is null, creating new window...",
-            );
-            createHomeWindow();
-          }
-        },
-      },
-      {
-        label: "Select Microphone",
-        submenu: [
-          {
-            label: "No microphones detected",
-            enabled: false,
-          },
-        ],
-      },
-      { type: "separator" },
-      {
-        label: "Send Feedback…",
-        click: () => {
-          console.log("[Tray Menu] Send Feedback clicked");
-          // Open default email client with pre-filled feedback email
-          const feedbackEmail = encodeURI(
-            `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
-          );
-          shell.openExternal(feedbackEmail);
-        },
-      },
-      {
-        label: "About Sonic Flow",
-        click: () => {
-          console.log("[Tray Menu] About Sonic Flow clicked");
-          // Use native macOS about panel
-          app.setAboutPanelOptions({
-            applicationName: "Sonic Flow",
-            applicationVersion: app.getVersion(),
-            credits: "A lightweight AI dictation tool for macOS.",
-            authors: ["Sandheep Rajkumar"],
-          });
-          app.showAboutPanel();
-        },
-      },
-      { type: "separator" },
-      {
-        label: "Quit Sonic Flow",
-        click: () => {
-          console.log("[Tray Menu] Quit Sonic Flow clicked");
-          isQuitting = true;
-          app.quit();
-        },
-      },
-    ]);
-
+    // Create enhanced native context menu with dynamic microphone list
+    console.log("[Tray] Building context menu...");
+    const menuTemplate = buildTrayMenu();
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
+    
     // Set the native context menu
     console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
@@ -490,6 +619,12 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  
+  // Initialize microphone preferences
+  console.log("[Main Process] Initializing microphone preferences...");
+  micPreferences = loadMicPreferences();
+  console.log("[Main Process] Microphone preferences loaded:", micPreferences);
+  
   createTray();
   createHomeWindow();
   startFnListener();
@@ -614,6 +749,17 @@ app.whenReady().then(() => {
         height: ISLAND_HEIGHT,
       });
     }
+  });
+
+  // Microphone management IPC handlers
+  ipcMain.on("mic-update-devices", (_event, devices: MicDevice[]) => {
+    console.log("[IPC] Received microphone devices update:", devices);
+    updateMicDevices(devices);
+  });
+
+  ipcMain.on("mic-select", (_event, deviceId: string) => {
+    console.log("[IPC] Received microphone selection:", deviceId);
+    selectMicDevice(deviceId);
   });
 });
 
