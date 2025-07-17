@@ -152,9 +152,6 @@ export function useTranscription(): UseTranscriptionReturn {
       setText(result.text);
       if (result.text) {
         window.clipboard.insertText(result.text);
-        window.notifications.send(
-          "This is a really, really, really long notification test message",
-        ); // Send success notification
       }
     } catch (err) {
       setError((err as Error).message);
