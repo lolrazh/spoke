@@ -12,6 +12,8 @@ const config: ForgeConfig = {
     // Ensure icon is copied to the app bundle
     extraResource: [
       "./public/assets/icon.png",
+      "./public/assets/TrayTemplate.png",
+      "./public/assets/TrayTemplate@2x.png",
       "./native/bin/fn-tap",
       "./native/bin/paste-helper",
     ],

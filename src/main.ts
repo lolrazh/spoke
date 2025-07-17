@@ -24,6 +24,10 @@ import {
   ISLAND_VISIBLE_Y,
 } from "./constants/window";
 
+// Microphone device management types
+type MicDevice = { id: string; label: string };
+type MicPreferences = { selectedMicId?: string };
+
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -39,11 +43,105 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
 let fnPermissionDialogShown = false;
 
+// Microphone management state
+let micDevices: MicDevice[] = [
+  { id: "default", label: "System Default" } // Always available fallback
+];
+let micPreferences: MicPreferences = {};
+const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+
 function logBounds(tag: string) {
   if (!mainWindow) return;
   const b = mainWindow.getBounds();
   const [cw, ch] = mainWindow.getContentSize();
   console.log(`[${tag}] bounds=%o content=%o`, b, { w: cw, h: ch });
+}
+
+// Microphone preference management functions
+function loadMicPreferences(): MicPreferences {
+  try {
+    if (fs.existsSync(micPrefsPath)) {
+      const data = fs.readFileSync(micPrefsPath, "utf8");
+      const prefs = JSON.parse(data);
+      console.log("[MicPrefs] Loaded preferences:", prefs);
+      return prefs;
+    }
+  } catch (error) {
+    console.error("[MicPrefs] Failed to load preferences:", error);
+  }
+  
+  const defaultPrefs = { selectedMicId: "default" };
+  console.log("[MicPrefs] Using default preferences:", defaultPrefs);
+  return defaultPrefs;
+}
+
+function saveMicPreferences(prefs: MicPreferences): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(micPrefsPath, JSON.stringify(prefs, null, 2));
+    console.log("[MicPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    console.error("[MicPrefs] Failed to save preferences:", error);
+  }
+}
+
+function updateMicDevices(devices: MicDevice[]): void {
+  console.log("[MicMgmt] Updating device list:", devices);
+  
+  // Always ensure "System Default" is first, then add other devices
+  const defaultDevice = { id: "default", label: "System Default" };
+  const otherDevices = devices.filter(d => d.id !== "default");
+  micDevices = [defaultDevice, ...otherDevices];
+  
+  console.log("[MicMgmt] Final device list with default:", micDevices);
+  
+  // Validate current selection still exists
+  if (micPreferences.selectedMicId && 
+      !micDevices.find(d => d.id === micPreferences.selectedMicId)) {
+    console.log("[MicMgmt] Selected device no longer available, resetting to default");
+    micPreferences.selectedMicId = "default";
+    saveMicPreferences(micPreferences);
+  }
+  
+  // Rebuild tray menu with new devices
+  rebuildTrayMenu();
+  
+  // Notify renderers of selection change
+  broadcastMicSelection();
+}
+
+function selectMicDevice(deviceId: string): void {
+  console.log("[MicMgmt] Selecting device:", deviceId);
+  
+  // Validate device exists
+  if (deviceId !== "default" && !micDevices.find(d => d.id === deviceId)) {
+    console.error("[MicMgmt] Device not found:", deviceId);
+    return;
+  }
+  
+  micPreferences.selectedMicId = deviceId;
+  saveMicPreferences(micPreferences);
+  
+  // Rebuild tray menu to update checkmarks
+  rebuildTrayMenu();
+  
+  // Notify renderers
+  broadcastMicSelection();
+}
+
+function broadcastMicSelection(): void {
+  const selectedId = micPreferences.selectedMicId || "default";
+  console.log("[MicMgmt] Broadcasting selection:", selectedId);
+  
+  // Send to all renderer windows
+  BrowserWindow.getAllWindows().forEach(window => {
+    window.webContents.send("mic:selected-changed", { id: selectedId });
+  });
 }
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
@@ -68,6 +166,37 @@ const getIconPath = () => {
   }
 
   console.warn("[Main Process] No icon found in any expected location");
+  return possiblePaths[0]; // fallback
+};
+
+const getTrayIconPath = () => {
+  const possiblePaths = [
+    path.join(__dirname, "assets", "TrayTemplate.png"), // Vite build location (base 16x16)
+    path.join(__dirname, "..", "assets", "TrayTemplate.png"), // Alternative location
+    path.join(process.resourcesPath, "TrayTemplate.png"), // extraResource location
+    path.join(__dirname, "..", "..", "public", "assets", "TrayTemplate.png"), // Source location
+  ];
+
+  for (const trayPath of possiblePaths) {
+    try {
+      if (fs.existsSync(trayPath)) {
+        console.log(`[Main Process] Found tray icon at: ${trayPath}`);
+        
+        // Also check if @2x version exists in the same directory for high-DPI
+        const trayDir = path.dirname(trayPath);
+        const tray2xPath = path.join(trayDir, "TrayTemplate@2x.png");
+        if (fs.existsSync(tray2xPath)) {
+          console.log(`[Main Process] Found high-DPI tray icon at: ${tray2xPath}`);
+        }
+        
+        return trayPath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+
+  console.warn("[Main Process] No tray icon found in any expected location");
   return possiblePaths[0]; // fallback
 };
 
@@ -197,61 +326,189 @@ const createWindow = () => {
   );
 };
 
+function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
+  console.log("[Tray Menu] Building tray menu with", micDevices.length, "devices");
+  const selectedMicId = micPreferences.selectedMicId || "default";
+  
+  // Build microphone submenu
+  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
+  
+  if (micDevices.length === 0) {
+    micSubmenu.push({
+      label: "No microphones detected",
+      enabled: false,
+    });
+  } else {
+    // Add each device as a menu item
+    micDevices.forEach(device => {
+      micSubmenu.push({
+        label: device.label,
+        type: "radio",
+        checked: device.id === selectedMicId,
+        click: () => {
+          console.log(`[Tray Menu] Microphone selected: ${device.label} (${device.id})`);
+          selectMicDevice(device.id);
+        },
+      });
+    });
+  }
+  
+  return [
+    {
+      label: "Open Sonic Flow Home",
+      click: () => {
+        console.log("[Tray Menu] Open Sonic Flow Home clicked");
+        if (homeWindow) {
+          console.log("[Tray Menu] Home window exists, focusing...");
+          homeWindow.show();
+          homeWindow.focus();
+        } else {
+          console.log(
+            "[Tray Menu] Home window is null, creating new window...",
+          );
+          createHomeWindow();
+        }
+      },
+    },
+    {
+      label: "Select Microphone",
+      submenu: micSubmenu,
+    },
+    { type: "separator" },
+    {
+      label: "Send Feedback…",
+      click: () => {
+        console.log("[Tray Menu] Send Feedback clicked");
+        // Open default email client with pre-filled feedback email
+        const feedbackEmail = encodeURI(
+          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+        );
+        shell.openExternal(feedbackEmail);
+      },
+    },
+    {
+      label: "About Sonic Flow",
+      click: () => {
+        console.log("[Tray Menu] About Sonic Flow clicked");
+        // Use native macOS about panel
+        app.setAboutPanelOptions({
+          applicationName: "Sonic Flow",
+          applicationVersion: app.getVersion(),
+          credits: "A lightweight AI dictation tool for macOS.",
+          authors: ["Sandheep Rajkumar"],
+        });
+        app.showAboutPanel();
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit Sonic Flow",
+      click: () => {
+        console.log("[Tray Menu] Quit Sonic Flow clicked");
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ];
+}
+
+function rebuildTrayMenu(): void {
+  if (!tray || tray.isDestroyed()) {
+    console.log("[Tray] Cannot rebuild menu - tray not available");
+    return;
+  }
+  
+  console.log("[Tray] Rebuilding menu with updated microphone list");
+  const menuTemplate = buildTrayMenu();
+  const contextMenu = Menu.buildFromTemplate(menuTemplate);
+  tray.setContextMenu(contextMenu);
+  console.log("[Tray] Menu rebuilt successfully");
+}
+
 const createTray = () => {
   try {
+    console.log("[Tray] Starting tray creation...");
+    
     // Check if tray already exists
     if (tray) {
+      console.log("[Tray] Tray already exists, skipping creation");
       return;
     }
 
-    // Load the icon from the assets folder
-    const icon = nativeImage.createFromPath(iconPath);
+    // Load the tray template icon (Electron will auto-detect @2x version)
+    const trayIconPath = getTrayIconPath();
+    console.log(`[Tray] Attempting to load tray template from: ${trayIconPath}`);
+    
+    let icon = nativeImage.createFromPath(trayIconPath);
 
     if (icon.isEmpty()) {
       console.error(
-        `Failed to load tray icon from path: ${iconPath}. Using empty icon.`,
+        `[Tray] Failed to load tray icon from path: ${trayIconPath}. Using empty icon.`,
       );
-      tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+      icon = nativeImage.createEmpty(); // Fallback to empty
     } else {
-      console.log(`Successfully loaded tray icon from path: ${iconPath}`);
-      tray = new Tray(icon);
+      console.log(`[Tray] Successfully loaded tray icon from path: ${trayIconPath}`);
+      const iconSize = icon.getSize();
+      console.log(`[Tray] Loaded icon size: ${iconSize.width}x${iconSize.height} (should be 16x16 for base)`);
+      
+      // Mark as template for proper macOS automatic tinting (light/dark mode)
+      icon.setTemplateImage(true);
+      console.log("[Tray] Icon marked as template for automatic macOS tinting");
     }
 
+    console.log("[Tray] Creating Tray instance...");
+    tray = new Tray(icon);
+    console.log("[Tray] Tray instance created successfully");
+    
+    // Additional debugging for tray visibility
+    console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
+    
     tray.setToolTip("Sonic Flow");
+    
+    // Force tray to be visible (macOS sometimes hides it)
+    if (process.platform === "darwin") {
+      tray.setIgnoreDoubleClickEvents(false);
+      // Try to force display the tray
+      setTimeout(() => {
+        if (tray && !tray.isDestroyed()) {
+          console.log("[Tray] Forcing tray visibility on macOS");
+          tray.setToolTip("Sonic Flow - AI Dictation");
+        }
+      }, 100);
+    }
+    
+    console.log("[Tray] Tooltip set");
 
-    // Create native context menu
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: "Home",
-        click: () => {
-          console.log("[Tray Menu] Home clicked");
-          if (homeWindow) {
-            console.log("[Tray Menu] Home window exists, focusing...");
-            homeWindow.focus();
-          } else {
-            console.log(
-              "[Tray Menu] Home window is null, creating new window...",
-            );
-            createHomeWindow();
-          }
-        },
-      },
-      { type: "separator" },
-      {
-        label: "Exit",
-        click: () => {
-          console.log("[Tray Menu] Exit clicked");
-          app.quit();
-        },
-      },
-    ]);
-
+    // Create enhanced native context menu with dynamic microphone list
+    console.log("[Tray] Building context menu...");
+    const menuTemplate = buildTrayMenu();
+    const contextMenu = Menu.buildFromTemplate(menuTemplate);
+    
+    // Add event listener for when tray menu is about to open
+    tray.on('click', () => {
+      console.log("[Tray] 🎯 Tray menu opening - requesting device refresh");
+      // Send refresh request to renderer processes before showing menu
+      BrowserWindow.getAllWindows().forEach(window => {
+        console.log("[Tray] Sending mic:refresh-devices to window:", window.id);
+        window.webContents.send("mic:refresh-devices");
+      });
+    });
+    
     // Set the native context menu
+    console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
+    console.log("[Tray] ✅ Tray created successfully with enhanced menu!");
   } catch (error) {
-    console.error("Failed to create tray:", error);
+    console.error("[Tray] ❌ Failed to create tray:", error);
+    console.error("[Tray] Error stack:", error.stack);
     // Ensure tray is null if creation fails
-    if (tray) tray.destroy();
+    if (tray) {
+      try {
+        tray.destroy();
+      } catch (destroyError) {
+        console.error("[Tray] Failed to destroy tray:", destroyError);
+      }
+    }
     tray = null;
   }
 };
@@ -381,6 +638,12 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+  
+  // Initialize microphone preferences
+  console.log("[Main Process] Initializing microphone preferences...");
+  micPreferences = loadMicPreferences();
+  console.log("[Main Process] Microphone preferences loaded:", micPreferences);
+  
   createTray();
   createHomeWindow();
   startFnListener();
@@ -504,6 +767,23 @@ app.whenReady().then(() => {
         width: ISLAND_WIDTH,
         height: ISLAND_HEIGHT,
       });
+    }
+  });
+
+  // Microphone management IPC handlers
+  ipcMain.on("mic:devices-update", (_event, payload: { devices: MicDevice[], selectedId?: string }) => {
+    console.log("[IPC] Received microphone devices update:", payload);
+    updateMicDevices(payload.devices);
+  });
+
+  ipcMain.handle("mic:select", (_event, payload: { id: string }) => {
+    console.log("[IPC] Received microphone selection:", payload.id);
+    try {
+      selectMicDevice(payload.id);
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to select microphone:", error);
+      return { ok: false };
     }
   });
 });

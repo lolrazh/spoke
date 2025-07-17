@@ -98,6 +98,8 @@ const StatCard: React.FC<{ stat: StatCardData }> = React.memo(({ stat }) => (
 const HomePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [greeting, setGreeting] = useState<string>("Good morning");
+  const [micDevices, setMicDevices] = useState<{id: string, label: string}[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   useEffect(() => {
     const getTimeBasedGreeting = () => {
@@ -107,6 +109,58 @@ const HomePage: React.FC = () => {
       return "Good evening";
     };
     setGreeting(getTimeBasedGreeting());
+  }, []);
+
+  // Listen for microphone device updates and selection changes
+  useEffect(() => {
+    // Get initial device list and selection
+    const updateDeviceList = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices
+          .filter(device => device.kind === 'audioinput')
+          .map(device => ({
+            id: device.deviceId,
+            label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
+          }));
+        
+        // Always include "System Default" at the top
+        const fullList = [
+          { id: "default", label: "System Default" },
+          ...audioInputs
+        ];
+        
+        setMicDevices(fullList);
+      } catch (err) {
+        console.error("[HomePage] Failed to enumerate devices:", err);
+        // Fallback to just showing System Default
+        setMicDevices([{ id: "default", label: "System Default" }]);
+      }
+    };
+
+    updateDeviceList();
+
+    // Listen for device changes (plug/unplug)
+    const handleDeviceChange = () => {
+      updateDeviceList();
+    };
+
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+
+    // Listen for microphone selection changes from main process
+    let unsubscribe: (() => void) | undefined;
+    if (window.mic?.onSelectedChanged) {
+      unsubscribe = window.mic.onSelectedChanged(({ id }) => {
+        setSelectedMicId(id);
+      });
+    }
+
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const navItems: NavItem[] = useMemo(
@@ -233,9 +287,9 @@ const HomePage: React.FC = () => {
               transition={{ duration: 0.7 }}
             >
               <img
-                src="/assets/icon.ico"
+                src="/assets/TrayTemplate.png"
                 alt="Sonic Flow Icon"
-                className="w-6 h-6"
+                className="w-6 h-6 brightness-0 invert"
               />
             </motion.div>
             <h1 className="text-lg font-medium text-white">Sonic Flow</h1>
@@ -632,10 +686,22 @@ const HomePage: React.FC = () => {
                       </label>
                       <select
                         id="micSelect"
+                        value={selectedMicId}
+                        onChange={(e) => {
+                          const deviceId = e.target.value;
+                          setSelectedMicId(deviceId);
+                          // Send selection to main process
+                          if (window.mic?.select) {
+                            window.mic.select(deviceId);
+                          }
+                        }}
                         className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
                       >
-                        <option>Default Microphone</option>{" "}
-                        <option>Headset Microphone</option>
+                        {micDevices.map((device) => (
+                          <option key={device.id} value={device.id}>
+                            {device.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
