@@ -95,15 +95,8 @@ const pillReducer = (
   }
 };
 
-const WORDS_PER_MINUTE = 180;
-const MIN_VIEW_TIME_MS = 2500;
-const EXTRA_VIEW_TIME_MS = 1000;
-
-const calculateNotificationDuration = (text: string): number => {
-  const wordCount = text.trim().split(/\s+/).length;
-  const readingTime = (wordCount / WORDS_PER_MINUTE) * 60 * 1000;
-  return Math.max(MIN_VIEW_TIME_MS, readingTime + EXTRA_VIEW_TIME_MS);
-};
+// Simple fixed notification duration
+const NOTIFICATION_DURATION_MS = 2000;
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -210,10 +203,9 @@ const App: React.FC = () => {
   // Notification duration for NOTIFICATION
   useEffect(() => {
     if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
-      const duration = calculateNotificationDuration(pillContext.notifMsg);
       const timeout = setTimeout(() => {
         pillDispatch({ type: "ANIM_DONE" });
-      }, duration);
+      }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);
     }
   }, [pillState, pillContext.notifMsg]);
@@ -359,12 +351,7 @@ const App: React.FC = () => {
             Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
             {debugInfo.pillRect?.height.toFixed(2)}
           </p>
-          <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
-          <p>
-            Notif Words:{" "}
-            {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ??
-              "N/A"}
-          </p>
+          <p>Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars</p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>

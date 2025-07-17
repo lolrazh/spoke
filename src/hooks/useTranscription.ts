@@ -153,7 +153,7 @@ export function useTranscription(): UseTranscriptionReturn {
       if (result.text) {
         window.clipboard.insertText(result.text);
         window.notifications.send(
-          "This is a really, really, really long notification message that should definitely exceed the maximum width of 560 pixels and trigger the truncation behavior with ellipsis and fade effect that we just implemented",
+          "Text copied to clipboard",
         ); // Send success notification
       }
     } catch (err) {

@@ -1,15 +1,7 @@
 import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
 
-// Update the type for our new "notification play" prop
-type NotificationPlay = {
-  text: string;
-  phase: "shrinking" | "showing";
-} | null;
-
-// Re-using the type from App.tsx to ensure consistency
 type PillMetrics = {
   pillRect: DOMRect | null;
   notificationText: string | null;
