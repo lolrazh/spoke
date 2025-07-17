@@ -181,8 +181,8 @@ const createWindow = () => {
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Make window click-through except for the pill UI
-  mainWindow.setIgnoreMouseEvents(false);
+  // Make window click-through by default - clicks pass through to underlying windows
+  mainWindow.setIgnoreMouseEvents(true);
 
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler(
@@ -446,6 +446,13 @@ app.whenReady().then(() => {
         mainWindow.invalidateShadow();
       }
       logBounds("pill-resize");
+    }
+  });
+
+  // Handle dynamic click-through control
+  ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
     }
   });
 

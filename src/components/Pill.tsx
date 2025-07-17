@@ -1,15 +1,7 @@
 import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PILL_ANIMATION_DURATION } from "../constants/animations";
 import { TOKENS } from "../config/uiTokens";
 
-// Update the type for our new "notification play" prop
-type NotificationPlay = {
-  text: string;
-  phase: "shrinking" | "showing";
-} | null;
-
-// Re-using the type from App.tsx to ensure consistency
 type PillMetrics = {
   pillRect: DOMRect | null;
   notificationText: string | null;
@@ -23,11 +15,14 @@ interface PillProps {
   pillState: PillStateType;
   pillContext: PillMachineState["context"];
   notifWidth: number | null;
+  isTextTruncated: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovered: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
   onAnimDone: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
 }
 
 // Helper function to read CSS variables from the DOM, with a fallback
@@ -49,6 +44,9 @@ const Pill: React.FC<PillProps> = ({
   onMetrics,
   onAnimDone,
   notifWidth,
+  isTextTruncated,
+  onMouseEnter,
+  onMouseLeave,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -145,8 +143,14 @@ const Pill: React.FC<PillProps> = ({
       className="pill-wrapper"
       onClick={isListening ? onStopDictation : onStartDictation}
       onContextMenu={handleContextMenu}
-      onMouseEnter={() => onHoverChange(true)}
-      onMouseLeave={() => onHoverChange(false)}
+      onMouseEnter={() => {
+        onHoverChange(true);
+        onMouseEnter();
+      }}
+      onMouseLeave={() => {
+        onHoverChange(false);
+        onMouseLeave();
+      }}
     >
       <motion.div
         ref={pillCoreRef}
@@ -166,7 +170,7 @@ const Pill: React.FC<PillProps> = ({
             {isShowingNotification ? (
               <motion.span
                 key="notification"
-                className="notification-text"
+                className={`notification-text ${isTextTruncated ? 'truncated' : ''}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

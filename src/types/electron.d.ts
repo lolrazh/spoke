@@ -28,7 +28,8 @@ declare global {
       slideTo: (y: number) => void;
     };
     electron: {
-      resizePill: (width: number) => void;
+      resizePill: (width: number, height: number) => void;
+      setClickThrough: (clickThrough: boolean) => void;
     };
   }
 }

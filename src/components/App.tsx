@@ -95,15 +95,8 @@ const pillReducer = (
   }
 };
 
-const WORDS_PER_MINUTE = 180;
-const MIN_VIEW_TIME_MS = 2500;
-const EXTRA_VIEW_TIME_MS = 1000;
-
-const calculateNotificationDuration = (text: string): number => {
-  const wordCount = text.trim().split(/\s+/).length;
-  const readingTime = (wordCount / WORDS_PER_MINUTE) * 60 * 1000;
-  return Math.max(MIN_VIEW_TIME_MS, readingTime + EXTRA_VIEW_TIME_MS);
-};
+// Simple fixed notification duration
+const NOTIFICATION_DURATION_MS = 2000;
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -143,6 +136,7 @@ const App: React.FC = () => {
   const trans = useTranscription();
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
+  const [isTextTruncated, setIsTextTruncated] = useState(false);
   const ghostRef = useRef<HTMLSpanElement | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
@@ -209,16 +203,24 @@ const App: React.FC = () => {
   // Notification duration for NOTIFICATION
   useEffect(() => {
     if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
-      const duration = calculateNotificationDuration(pillContext.notifMsg);
       const timeout = setTimeout(() => {
         pillDispatch({ type: "ANIM_DONE" });
-      }, duration);
+      }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);
     }
   }, [pillState, pillContext.notifMsg]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
+  }, []);
+
+  // Handle mouse enter/leave for click-through control
+  const handleMouseEnter = useCallback(() => {
+    window.electron?.setClickThrough(false);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    window.electron?.setClickThrough(true);
   }, []);
 
   // Measure notification width whenever notif message changes
@@ -231,7 +233,14 @@ const App: React.FC = () => {
     const rect = el.getBoundingClientRect();
     // Add same horizontal padding used in visible notification-text class (20px left/right)
     const pad = 40; // px total
-    setNotifWidth(Math.ceil(rect.width + pad));
+    const measuredWidth = Math.ceil(rect.width + pad);
+    // Clamp to maximum width to prevent overly wide notifications
+    const clampedWidth = Math.min(measuredWidth, TOKENS.PILL_MAX_W);
+    // Check if text will be truncated
+    const isTruncated = measuredWidth > TOKENS.PILL_MAX_W;
+    
+    setNotifWidth(clampedWidth);
+    setIsTextTruncated(isTruncated);
   }, [pillContext.notifMsg]);
 
   useEffect(() => {
@@ -299,6 +308,7 @@ const App: React.FC = () => {
         pillState={pillState}
         pillContext={pillContext}
         notifWidth={notifWidth}
+        isTextTruncated={isTextTruncated}
         onStartDictation={() => {
           pillDispatch({ type: "PTT_START" });
           trans.start();
@@ -312,6 +322,8 @@ const App: React.FC = () => {
         }
         onMetrics={handlePillMetrics}
         onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       />
       <span
         id="pill-ghost-measure"
@@ -339,12 +351,7 @@ const App: React.FC = () => {
             Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
             {debugInfo.pillRect?.height.toFixed(2)}
           </p>
-          <p>Notif Chars: {debugInfo.notificationText?.length ?? "N/A"}</p>
-          <p>
-            Notif Words:{" "}
-            {debugInfo.notificationText?.split(/\s+/).filter(Boolean).length ??
-              "N/A"}
-          </p>
+          <p>Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars</p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>

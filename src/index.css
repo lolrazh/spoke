@@ -64,10 +64,33 @@
   .notification-text {
     font-family: "Inter", sans-serif;
     color: #c0c0c0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     letter-spacing: -0.01em;
     padding: 0 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+
+  /* Add a subtle fade effect for long text */
+  .notification-text::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 20px;
+    bottom: 0;
+    width: 12px;
+    background: linear-gradient(to right, transparent, var(--pill-background));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  /* Show fade when text is truncated */
+  .notification-text.truncated::after {
+    opacity: 1;
   }
 
   .pill-icon {
