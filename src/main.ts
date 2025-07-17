@@ -181,8 +181,8 @@ const createWindow = () => {
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Make window click-through except for the pill UI
-  mainWindow.setIgnoreMouseEvents(false);
+  // Make window click-through by default - clicks pass through to underlying windows
+  mainWindow.setIgnoreMouseEvents(true);
 
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler(
