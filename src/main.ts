@@ -243,6 +243,17 @@ const createTray = () => {
       icon = nativeImage.createEmpty(); // Fallback to empty
     } else {
       console.log(`[Tray] Successfully loaded tray icon from path: ${trayIconPath}`);
+      
+      // Resize to proper tray icon dimensions (16x16 for 1x, 32x32 for 2x)
+      // The 1024x1024 icon is too large for tray use
+      const originalSize = icon.getSize();
+      console.log(`[Tray] Original icon size: ${originalSize.width}x${originalSize.height}`);
+      
+      if (originalSize.width > 32 || originalSize.height > 32) {
+        icon = icon.resize({ width: 16, height: 16 });
+        console.log("[Tray] Resized icon to 16x16 for tray use");
+      }
+      
       // Mark as template for proper macOS tinting
       icon.setTemplateImage(true);
       console.log("[Tray] Icon marked as template");
@@ -251,6 +262,9 @@ const createTray = () => {
     console.log("[Tray] Creating Tray instance...");
     tray = new Tray(icon);
     console.log("[Tray] Tray instance created successfully");
+    
+    // Additional debugging for tray visibility
+    console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
     
     tray.setToolTip("Sonic Flow");
     
