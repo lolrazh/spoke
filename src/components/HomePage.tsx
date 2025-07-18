@@ -33,7 +33,7 @@ const Toggle: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
+        <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
       )}
     </div>
     <Switch checked={enabled} onCheckedChange={onChange} />
@@ -51,7 +51,7 @@ const SelectField: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
+        <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
       )}
     </div>
     <div className="ml-4">
@@ -82,7 +82,7 @@ const ActionButton: React.FC<{
       <div className="flex-1">
         <div className="text-xs font-medium text-white">{label}</div>
         {description && (
-          <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
+          <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
         )}
       </div>
       <Button variant={variant} size="sm" onClick={onClick} className="ml-4">
@@ -100,7 +100,7 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
     <div className="border-b-2 border-sonic-gray/40" />
     <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-sonic-darker px-3 text-[10px] font-medium text-gray-400 tracking-wider uppercase">
+      <span className="bg-sonic-darker px-3 text-[10px] font-medium text-gray-300 tracking-wider uppercase">
         {title}
       </span>
     </div>
@@ -275,12 +275,12 @@ const HomePage: React.FC = () => {
               
               <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-sonic-orange rounded-full flex items-center justify-center text-xs font-bold">
+                  <div className="w-8 h-8 bg-gradient-to-t from-sonic-primary to-sonic-light rounded-full flex items-center justify-center text-xs font-bold text-white">
                     JS
                   </div>
                   <div>
                     <h3 className="text-xs font-medium text-white">John Smith</h3>
-                    <p className="text-[10px] text-gray-400">john.smith@example.com</p>
+                    <p className="text-[10px] text-gray-300">john.smith@example.com</p>
                   </div>
                 </div>
                 <Button variant="destructive" size="sm" onClick={handleSignOut}>
@@ -299,7 +299,7 @@ const HomePage: React.FC = () => {
                 alt="Sonic Flow Icon"
                 className="w-4 h-4 brightness-0 invert"
               />
-              <p className="text-[10px] text-gray-500">v0.0.1</p>
+              <p className="text-[10px] text-gray-300/70">v0.0.1</p>
             </motion.footer>
           </motion.div>
         </div>
