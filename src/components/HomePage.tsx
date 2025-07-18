@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, Variants } from "framer-motion";
 import { Switch } from "./ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Button } from "./ui/button";
 
 // --- Animation Variants --- //
@@ -23,8 +29,8 @@ const sectionVariants: Variants = {
 };
 
 // --- Clean Sonic Flow Components --- //
-const Toggle: React.FC<{ 
-  enabled: boolean; 
+const Toggle: React.FC<{
+  enabled: boolean;
   onChange: (enabled: boolean) => void;
   label: string;
   description?: string;
@@ -114,7 +120,9 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   // State
-  const [micDevices, setMicDevices] = useState<{id: string, label: string}[]>([]);
+  const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
+    [],
+  );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
@@ -127,12 +135,12 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices
-          .filter(device => device.kind === 'audioinput')
-          .map(device => ({
+          .filter((device) => device.kind === "audioinput")
+          .map((device) => ({
             id: device.deviceId,
-            label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
+            label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
           }));
-        
+
         setMicDevices(audioInputs);
       } catch (err) {
         console.error("[HomePage] Failed to enumerate devices:", err);
@@ -141,7 +149,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     };
 
     updateDeviceList();
-    navigator.mediaDevices.addEventListener('devicechange', updateDeviceList);
+    navigator.mediaDevices.addEventListener("devicechange", updateDeviceList);
 
     let unsubscribe: (() => void) | undefined;
     if (window.mic?.onSelectedChanged) {
@@ -151,28 +159,36 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     }
 
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', updateDeviceList);
+      navigator.mediaDevices.removeEventListener(
+        "devicechange",
+        updateDeviceList,
+      );
       if (unsubscribe) {
         unsubscribe();
       }
     };
   }, []);
 
-  const languageOptions = useMemo(() => [
-    { value: "en-US", label: "English (US)" },
-    { value: "en-GB", label: "English (UK)" },
-    { value: "es-ES", label: "Spanish" },
-    { value: "fr-FR", label: "French" },
-    { value: "de-DE", label: "German" },
-    { value: "it-IT", label: "Italian" },
-    { value: "pt-BR", label: "Portuguese (Brazil)" },
-  ], []);
+  const languageOptions = useMemo(
+    () => [
+      { value: "en-US", label: "English (US)" },
+      { value: "en-GB", label: "English (UK)" },
+      { value: "es-ES", label: "Spanish" },
+      { value: "fr-FR", label: "French" },
+      { value: "de-DE", label: "German" },
+      { value: "it-IT", label: "Italian" },
+      { value: "pt-BR", label: "Portuguese (Brazil)" },
+    ],
+    [],
+  );
 
-  const micOptions = useMemo(() => 
-    micDevices.map(device => ({
-      value: device.id,
-      label: device.label,
-    })), [micDevices]
+  const micOptions = useMemo(
+    () =>
+      micDevices.map((device) => ({
+        value: device.id,
+        label: device.label,
+      })),
+    [micDevices],
   );
 
   const handleMicChange = (deviceId: string) => {
@@ -182,7 +198,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     }
   };
 
-  const handleOpenKeybindingModal = (type: 'dictation' | 'instruction') => {
+  const handleOpenKeybindingModal = (type: "dictation" | "instruction") => {
     // TODO: Implement modal for keybinding configuration
     console.log(`Opening ${type} keybinding modal`);
   };
@@ -193,7 +209,9 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   };
 
   return (
-    <div className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col relative`}>
+    <div
+      className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col relative`}
+    >
       {/* Vertical version text on bottom-left - only in embedded mode */}
       {embeddedMode && (
         <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-gray-300/50 whitespace-nowrap">
@@ -203,7 +221,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
-        <div 
+        <div
           className="border-b border-sonic-gray/40 bg-sonic-dark flex-shrink-0"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
@@ -223,7 +241,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
             {/* Section 1: Defaults */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Defaults" />
-              
+
               <SelectField
                 label="Microphone"
                 description="Select your preferred input device"
@@ -232,7 +250,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                 options={micOptions}
               />
               <SettingSeparator />
-              
+
               <SelectField
                 label="Language"
                 description="Recognition language for transcription"
@@ -241,18 +259,18 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                 options={languageOptions}
               />
               <SettingSeparator />
-              
+
               <ActionButton
                 label="Keybind"
                 description="Set custom hotkey for voice dictation"
-                onClick={() => handleOpenKeybindingModal('dictation')}
+                onClick={() => handleOpenKeybindingModal("dictation")}
               />
             </motion.div>
 
             {/* Section 2: System */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="System" />
-              
+
               <Toggle
                 label="Show Floating Bar"
                 description="Display the floating dictation pill"
@@ -260,7 +278,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                 onChange={setShowFloatingBar}
               />
               <SettingSeparator />
-              
+
               <Toggle
                 label="Play Sounds"
                 description="Audio feedback for dictation start/stop"
@@ -268,7 +286,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                 onChange={setPlaySounds}
               />
               <SettingSeparator />
-              
+
               <Toggle
                 label="Open at Login"
                 description="Automatically start Sonic Flow when you log in"
@@ -280,15 +298,19 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
-              
+
               <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-gradient-to-t from-sonic-primary to-sonic-light rounded-full flex items-center justify-center text-xs font-bold text-white">
                     JS
                   </div>
                   <div>
-                    <h3 className="text-xs font-medium text-white">John Smith</h3>
-                    <p className="text-[10px] text-gray-300">john.smith@example.com</p>
+                    <h3 className="text-xs font-medium text-white">
+                      John Smith
+                    </h3>
+                    <p className="text-[10px] text-gray-300">
+                      john.smith@example.com
+                    </p>
                   </div>
                 </div>
                 <Button variant="secondary" size="sm" onClick={handleSignOut}>
@@ -299,7 +321,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
             {/* Footer with logo and version - only in standalone mode */}
             {!embeddedMode && (
-              <motion.footer 
+              <motion.footer
                 variants={sectionVariants}
                 className="flex items-center gap-2 pt-6 pb-3"
               >

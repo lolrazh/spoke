@@ -44,7 +44,7 @@ let fnPermissionDialogShown = false;
 
 // Microphone management state
 let micDevices: MicDevice[] = [
-  { id: "default", label: "System Default" } // Always available fallback
+  { id: "default", label: "System Default" }, // Always available fallback
 ];
 let micPreferences: MicPreferences = {};
 const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
@@ -75,7 +75,7 @@ function loadMicPreferences(): MicPreferences {
   } catch (error) {
     console.error("[MicPrefs] Failed to load preferences:", error);
   }
-  
+
   const defaultPrefs = { selectedMicId: "default" };
   console.log("[MicPrefs] Using default preferences:", defaultPrefs);
   return defaultPrefs;
@@ -88,7 +88,7 @@ function saveMicPreferences(prefs: MicPreferences): void {
     if (!fs.existsSync(userDataDir)) {
       fs.mkdirSync(userDataDir, { recursive: true });
     }
-    
+
     fs.writeFileSync(micPrefsPath, JSON.stringify(prefs, null, 2));
     console.log("[MicPrefs] Saved preferences:", prefs);
   } catch (error) {
@@ -98,44 +98,48 @@ function saveMicPreferences(prefs: MicPreferences): void {
 
 function updateMicDevices(devices: MicDevice[]): void {
   console.log("[MicMgmt] Updating device list:", devices);
-  
+
   // Always ensure "System Default" is first, then add other devices
   const defaultDevice = { id: "default", label: "System Default" };
-  const otherDevices = devices.filter(d => d.id !== "default");
+  const otherDevices = devices.filter((d) => d.id !== "default");
   micDevices = [defaultDevice, ...otherDevices];
-  
+
   console.log("[MicMgmt] Final device list with default:", micDevices);
-  
+
   // Validate current selection still exists
-  if (micPreferences.selectedMicId && 
-      !micDevices.find(d => d.id === micPreferences.selectedMicId)) {
-    console.log("[MicMgmt] Selected device no longer available, resetting to default");
+  if (
+    micPreferences.selectedMicId &&
+    !micDevices.find((d) => d.id === micPreferences.selectedMicId)
+  ) {
+    console.log(
+      "[MicMgmt] Selected device no longer available, resetting to default",
+    );
     micPreferences.selectedMicId = "default";
     saveMicPreferences(micPreferences);
   }
-  
+
   // Rebuild tray menu with new devices
   rebuildTrayMenu();
-  
+
   // Notify renderers of selection change
   broadcastMicSelection();
 }
 
 function selectMicDevice(deviceId: string): void {
   console.log("[MicMgmt] Selecting device:", deviceId);
-  
+
   // Validate device exists
-  if (deviceId !== "default" && !micDevices.find(d => d.id === deviceId)) {
+  if (deviceId !== "default" && !micDevices.find((d) => d.id === deviceId)) {
     console.error("[MicMgmt] Device not found:", deviceId);
     return;
   }
-  
+
   micPreferences.selectedMicId = deviceId;
   saveMicPreferences(micPreferences);
-  
+
   // Rebuild tray menu to update checkmarks
   rebuildTrayMenu();
-  
+
   // Notify renderers
   broadcastMicSelection();
 }
@@ -143,9 +147,9 @@ function selectMicDevice(deviceId: string): void {
 function broadcastMicSelection(): void {
   const selectedId = micPreferences.selectedMicId || "default";
   console.log("[MicMgmt] Broadcasting selection:", selectedId);
-  
+
   // Send to all renderer windows
-  BrowserWindow.getAllWindows().forEach(window => {
+  BrowserWindow.getAllWindows().forEach((window) => {
     window.webContents.send("mic:selected-changed", { id: selectedId });
   });
 }
@@ -160,30 +164,44 @@ function clearHideTimer(): void {
 }
 
 function hideFloatingBarWithTimer(minutes: number | null): void {
-  console.log(`[Hide Timer] Hiding floating bar for ${minutes ? minutes + ' minutes' : 'indefinitely'}`);
-  
+  console.log(
+    `[Hide Timer] Hiding floating bar for ${minutes ? minutes + " minutes" : "indefinitely"}`,
+  );
+
   // Clear any existing timer
   clearHideTimer();
-  
+
   // Hide the window
   if (mainWindow) {
     mainWindow.hide();
-    
+
     // Set up timer if duration is specified
     if (minutes !== null) {
-      hideEndTime = Date.now() + (minutes * 60 * 1000);
-      hideTimer = setTimeout(() => {
-        console.log("[Hide Timer] Timer expired, showing floating bar");
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow?.webContents.send("notify", "Floating bar shown automatically");
-        }
-        clearHideTimer();
-      }, minutes * 60 * 1000);
-      
-      mainWindow?.webContents.send("notify", `Floating bar hidden for ${minutes} minutes. Use tray menu to show early.`);
+      hideEndTime = Date.now() + minutes * 60 * 1000;
+      hideTimer = setTimeout(
+        () => {
+          console.log("[Hide Timer] Timer expired, showing floating bar");
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow?.webContents.send(
+              "notify",
+              "Floating bar shown automatically",
+            );
+          }
+          clearHideTimer();
+        },
+        minutes * 60 * 1000,
+      );
+
+      mainWindow?.webContents.send(
+        "notify",
+        `Floating bar hidden for ${minutes} minutes. Use tray menu to show early.`,
+      );
     } else {
-      mainWindow?.webContents.send("notify", "Floating bar hidden indefinitely. Use tray menu to show again.");
+      mainWindow?.webContents.send(
+        "notify",
+        "Floating bar hidden indefinitely. Use tray menu to show again.",
+      );
     }
   }
 }
@@ -194,47 +212,49 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
   }
 
   const isVisible = mainWindow.isVisible();
-  
+
   if (isVisible) {
     // Window is visible - show hide options with timing
-    return [{
-      label: "Hide Floating Bar",
-      submenu: [
-        {
-          label: "For 5 minutes",
-          click: () => {
-            console.log("[Menu] Hide floating bar for 5 minutes");
-            hideFloatingBarWithTimer(5);
+    return [
+      {
+        label: "Hide Floating Bar",
+        submenu: [
+          {
+            label: "For 5 minutes",
+            click: () => {
+              console.log("[Menu] Hide floating bar for 5 minutes");
+              hideFloatingBarWithTimer(5);
+            },
           },
-        },
-        {
-          label: "For 30 minutes", 
-          click: () => {
-            console.log("[Menu] Hide floating bar for 30 minutes");
-            hideFloatingBarWithTimer(30);
+          {
+            label: "For 30 minutes",
+            click: () => {
+              console.log("[Menu] Hide floating bar for 30 minutes");
+              hideFloatingBarWithTimer(30);
+            },
           },
-        },
-        {
-          label: "For 1 hour",
-          click: () => {
-            console.log("[Menu] Hide floating bar for 1 hour");
-            hideFloatingBarWithTimer(60);
+          {
+            label: "For 1 hour",
+            click: () => {
+              console.log("[Menu] Hide floating bar for 1 hour");
+              hideFloatingBarWithTimer(60);
+            },
           },
-        },
-        { type: "separator" },
-        {
-          label: "Indefinitely",
-          click: () => {
-            console.log("[Menu] Hide floating bar indefinitely");
-            hideFloatingBarWithTimer(null);
+          { type: "separator" },
+          {
+            label: "Indefinitely",
+            click: () => {
+              console.log("[Menu] Hide floating bar indefinitely");
+              hideFloatingBarWithTimer(null);
+            },
           },
-        },
-      ],
-    }];
+        ],
+      },
+    ];
   } else {
     // Window is hidden - show option to show it
     let label = "Show Floating Bar";
-    
+
     // If there's an active timer, show remaining time
     if (hideTimer && hideEndTime) {
       const remainingMs = hideEndTime - Date.now();
@@ -243,18 +263,20 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
         label = `Show Floating Bar (${remainingMinutes}m remaining)`;
       }
     }
-    
-    return [{
-      label,
-      click: () => {
-        console.log("[Menu] Show floating bar");
-        clearHideTimer();
-        if (mainWindow) {
-          mainWindow.show();
-          console.log("[Menu] Floating bar shown");
-        }
+
+    return [
+      {
+        label,
+        click: () => {
+          console.log("[Menu] Show floating bar");
+          clearHideTimer();
+          if (mainWindow) {
+            mainWindow.show();
+            console.log("[Menu] Floating bar shown");
+          }
+        },
       },
-    }];
+    ];
   }
 }
 
@@ -295,14 +317,16 @@ const getTrayIconPath = () => {
     try {
       if (fs.existsSync(trayPath)) {
         console.log(`[Main Process] Found tray icon at: ${trayPath}`);
-        
+
         // Also check if @2x version exists in the same directory for high-DPI
         const trayDir = path.dirname(trayPath);
         const tray2xPath = path.join(trayDir, "TrayTemplate@2x.png");
         if (fs.existsSync(tray2xPath)) {
-          console.log(`[Main Process] Found high-DPI tray icon at: ${tray2xPath}`);
+          console.log(
+            `[Main Process] Found high-DPI tray icon at: ${tray2xPath}`,
+          );
         }
-        
+
         return trayPath;
       }
     } catch (error) {
@@ -454,12 +478,16 @@ const createWindow = () => {
 };
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
-  console.log("[Tray Menu] Building tray menu with", micDevices.length, "devices");
+  console.log(
+    "[Tray Menu] Building tray menu with",
+    micDevices.length,
+    "devices",
+  );
   const selectedMicId = micPreferences.selectedMicId || "default";
-  
+
   // Build microphone submenu
   const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-  
+
   if (micDevices.length === 0) {
     micSubmenu.push({
       label: "No microphones detected",
@@ -467,19 +495,21 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     });
   } else {
     // Add each device as a menu item
-    micDevices.forEach(device => {
+    micDevices.forEach((device) => {
       micSubmenu.push({
         label: device.label,
         type: "radio",
         checked: device.id === selectedMicId,
         click: () => {
-          console.log(`[Tray Menu] Microphone selected: ${device.label} (${device.id})`);
+          console.log(
+            `[Tray Menu] Microphone selected: ${device.label} (${device.id})`,
+          );
           selectMicDevice(device.id);
         },
       });
     });
   }
-  
+
   return [
     {
       label: "Open Settings",
@@ -503,7 +533,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         console.log("[Tray Menu] Send Feedback clicked");
         // Open default email client with pre-filled feedback email
         const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
         );
         shell.openExternal(feedbackEmail);
       },
@@ -535,12 +565,16 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 }
 
 function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
-  console.log("[Pill Menu] Building pill context menu with", micDevices.length, "devices");
+  console.log(
+    "[Pill Menu] Building pill context menu with",
+    micDevices.length,
+    "devices",
+  );
   const selectedMicId = micPreferences.selectedMicId || "default";
-  
+
   // Build microphone submenu
   const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-  
+
   if (micDevices.length === 0) {
     micSubmenu.push({
       label: "No microphones detected",
@@ -548,19 +582,21 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
     });
   } else {
     // Add each device as a menu item
-    micDevices.forEach(device => {
+    micDevices.forEach((device) => {
       micSubmenu.push({
         label: device.label,
         type: "radio",
         checked: device.id === selectedMicId,
         click: () => {
-          console.log(`[Pill Menu] Microphone selected: ${device.label} (${device.id})`);
+          console.log(
+            `[Pill Menu] Microphone selected: ${device.label} (${device.id})`,
+          );
           selectMicDevice(device.id);
         },
       });
     });
   }
-  
+
   return [
     {
       label: "Open Settings",
@@ -584,7 +620,10 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
         console.log("[Pill Menu] Copy Last Transcript clicked");
         if (lastTranscript) {
           clipboard.writeText(lastTranscript);
-          mainWindow?.webContents.send("notify", "Transcript copied to clipboard");
+          mainWindow?.webContents.send(
+            "notify",
+            "Transcript copied to clipboard",
+          );
         }
       },
     },
@@ -596,7 +635,7 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
         console.log("[Pill Menu] Send Feedback clicked");
         // Open default email client with pre-filled feedback email
         const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
         );
         shell.openExternal(feedbackEmail);
       },
@@ -623,7 +662,7 @@ function rebuildTrayMenu(): void {
     console.log("[Tray] Cannot rebuild menu - tray not available");
     return;
   }
-  
+
   console.log("[Tray] Rebuilding menu with updated microphone list");
   const menuTemplate = buildTrayMenu();
   const contextMenu = Menu.buildFromTemplate(menuTemplate);
@@ -634,7 +673,7 @@ function rebuildTrayMenu(): void {
 const createTray = () => {
   try {
     console.log("[Tray] Starting tray creation...");
-    
+
     // Check if tray already exists
     if (tray) {
       console.log("[Tray] Tray already exists, skipping creation");
@@ -643,8 +682,10 @@ const createTray = () => {
 
     // Load the tray template icon (Electron will auto-detect @2x version)
     const trayIconPath = getTrayIconPath();
-    console.log(`[Tray] Attempting to load tray template from: ${trayIconPath}`);
-    
+    console.log(
+      `[Tray] Attempting to load tray template from: ${trayIconPath}`,
+    );
+
     let icon = nativeImage.createFromPath(trayIconPath);
 
     if (icon.isEmpty()) {
@@ -653,10 +694,14 @@ const createTray = () => {
       );
       icon = nativeImage.createEmpty(); // Fallback to empty
     } else {
-      console.log(`[Tray] Successfully loaded tray icon from path: ${trayIconPath}`);
+      console.log(
+        `[Tray] Successfully loaded tray icon from path: ${trayIconPath}`,
+      );
       const iconSize = icon.getSize();
-      console.log(`[Tray] Loaded icon size: ${iconSize.width}x${iconSize.height} (should be 16x16 for base)`);
-      
+      console.log(
+        `[Tray] Loaded icon size: ${iconSize.width}x${iconSize.height} (should be 16x16 for base)`,
+      );
+
       // Mark as template for proper macOS automatic tinting (light/dark mode)
       icon.setTemplateImage(true);
       console.log("[Tray] Icon marked as template for automatic macOS tinting");
@@ -665,12 +710,12 @@ const createTray = () => {
     console.log("[Tray] Creating Tray instance...");
     tray = new Tray(icon);
     console.log("[Tray] Tray instance created successfully");
-    
+
     // Additional debugging for tray visibility
     console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
-    
+
     tray.setToolTip("Sonic Flow");
-    
+
     // Force tray to be visible (macOS sometimes hides it)
     if (process.platform === "darwin") {
       tray.setIgnoreDoubleClickEvents(false);
@@ -682,24 +727,24 @@ const createTray = () => {
         }
       }, 100);
     }
-    
+
     console.log("[Tray] Tooltip set");
 
     // Create enhanced native context menu with dynamic microphone list
     console.log("[Tray] Building context menu...");
     const menuTemplate = buildTrayMenu();
     const contextMenu = Menu.buildFromTemplate(menuTemplate);
-    
+
     // Add event listener for when tray menu is about to open
-    tray.on('click', () => {
+    tray.on("click", () => {
       console.log("[Tray] 🎯 Tray menu opening - requesting device refresh");
       // Send refresh request to renderer processes before showing menu
-      BrowserWindow.getAllWindows().forEach(window => {
+      BrowserWindow.getAllWindows().forEach((window) => {
         console.log("[Tray] Sending mic:refresh-devices to window:", window.id);
         window.webContents.send("mic:refresh-devices");
       });
     });
-    
+
     // Set the native context menu
     console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
@@ -844,12 +889,12 @@ app.whenReady().then(() => {
   }
 
   createWindow();
-  
+
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
   micPreferences = loadMicPreferences();
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
-  
+
   createTray();
   startFnListener();
 
@@ -858,8 +903,11 @@ app.whenReady().then(() => {
     console.log("[IPC Main] Received show-pill-context-menu event");
     if (mainWindow) {
       // Send refresh request to renderer processes before showing menu to ensure device list is current
-      BrowserWindow.getAllWindows().forEach(window => {
-        console.log("[Pill Menu] Sending mic:refresh-devices to window:", window.id);
+      BrowserWindow.getAllWindows().forEach((window) => {
+        console.log(
+          "[Pill Menu] Sending mic:refresh-devices to window:",
+          window.id,
+        );
         window.webContents.send("mic:refresh-devices");
       });
 
@@ -970,10 +1018,13 @@ app.whenReady().then(() => {
   });
 
   // Microphone management IPC handlers
-  ipcMain.on("mic:devices-update", (_event, payload: { devices: MicDevice[], selectedId?: string }) => {
-    console.log("[IPC] Received microphone devices update:", payload);
-    updateMicDevices(payload.devices);
-  });
+  ipcMain.on(
+    "mic:devices-update",
+    (_event, payload: { devices: MicDevice[]; selectedId?: string }) => {
+      console.log("[IPC] Received microphone devices update:", payload);
+      updateMicDevices(payload.devices);
+    },
+  );
 
   ipcMain.handle("mic:select", (_event, payload: { id: string }) => {
     console.log("[IPC] Received microphone selection:", payload.id);
@@ -988,7 +1039,10 @@ app.whenReady().then(() => {
 
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {
-    console.log("[IPC] Received transcript update:", text.slice(0, 50) + (text.length > 50 ? "..." : ""));
+    console.log(
+      "[IPC] Received transcript update:",
+      text.slice(0, 50) + (text.length > 50 ? "..." : ""),
+    );
     lastTranscript = text;
   });
 });
@@ -1054,7 +1108,6 @@ app.on("will-quit", () => {
   }
   fnProc?.kill();
 });
-
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag

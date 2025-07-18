@@ -24,27 +24,32 @@ async function refreshDevices() {
     window.mic?.updateDevices(mics, currentSelected);
   } catch (err) {
     console.warn("[MicDevices] enumerateDevices failed", err);
-    window.mic?.updateDevices([{ id: "default", label: "System Default" }], currentSelected);
+    window.mic?.updateDevices(
+      [{ id: "default", label: "System Default" }],
+      currentSelected,
+    );
   }
 }
 
 export function initMicDevicesBridge(defaultSelected?: string) {
   console.log("[MicDevices] Initializing mic devices bridge...");
   currentSelected = defaultSelected;
-  
+
   // Don't do initial device enumeration here - let useTranscription handle it
   // This avoids the double discovery issue where we send incomplete device info first
-  
+
   // Listen for device changes - but let useTranscription handle the enumeration
   navigator.mediaDevices.addEventListener("devicechange", () => {
-    console.log("[MicDevices] Device change detected, but letting useTranscription handle enumeration");
+    console.log(
+      "[MicDevices] Device change detected, but letting useTranscription handle enumeration",
+    );
   });
-  
+
   // Listen for selection change from main
   window.mic?.onSelectedChanged(({ id }) => {
     console.log("[MicDevices] Selection changed to:", id);
     currentSelected = id;
   });
-  
+
   console.log("[MicDevices] ✅ Mic devices bridge initialized");
-} 
+}

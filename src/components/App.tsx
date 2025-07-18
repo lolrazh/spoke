@@ -54,8 +54,7 @@ const pillReducer = (
         };
       if (event.type === "HOVER_ENTER")
         return { ...state, state: "HOVER_PREVIEW" };
-      if (event.type === "EXPAND")
-        return { ...state, state: "EXPANDED" };
+      if (event.type === "EXPAND") return { ...state, state: "EXPANDED" };
       return state;
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
@@ -203,7 +202,7 @@ const App: React.FC = () => {
     };
 
     window.electron?.expandPill?.(handleExpandPill);
-    
+
     // Note: No cleanup needed as this is a one-time setup
   }, []);
 
@@ -220,8 +219,8 @@ const App: React.FC = () => {
 
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      const pillElement = document.querySelector('.pill-core');
-      
+      const pillElement = document.querySelector(".pill-core");
+
       // If click is outside the pill core, collapse
       if (pillElement && !pillElement.contains(target)) {
         pillDispatch({ type: "COLLAPSE" });

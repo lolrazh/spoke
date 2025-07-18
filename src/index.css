@@ -286,7 +286,7 @@ body {
   }
   .dark {
     /* Sonic Flow is inherently dark-themed, so dark mode uses same values */
-    --background: 7 7% 7%; 
+    --background: 7 7% 7%;
     --foreground: 0 0% 80%;
     --border: 0 0% 20%;
     --input: 0 0% 16%;

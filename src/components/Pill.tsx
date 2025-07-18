@@ -153,7 +153,7 @@ const Pill: React.FC<PillProps> = ({
 
   const handleClick = (e: React.MouseEvent) => {
     if (isExpanded) return;
-    
+
     // Clear any existing timeout
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
@@ -175,7 +175,7 @@ const Pill: React.FC<PillProps> = ({
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Clear single click timeout
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
@@ -256,8 +256,17 @@ const Pill: React.FC<PillProps> = ({
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 7L8 3L12 7"/>
+                  <svg
+                    width="16"
+                    height="10"
+                    viewBox="0 0 16 10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 7L8 3L12 7" />
                   </svg>
                 </button>
               </motion.div>
