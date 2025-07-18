@@ -43,6 +43,14 @@
     overflow: hidden;
   }
 
+  /* Expanded state styling - make it look like a proper window */
+  .pill-core.expanded {
+    border-radius: 12px; /* Larger radius for window appearance */
+    background: rgba(20, 20, 30, 0.98); /* More opaque background */
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  }
+
   /* Resting indicator - invisible by default, just for spacing */
   .resting-indicator {
     width: 0;

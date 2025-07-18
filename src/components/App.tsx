@@ -17,7 +17,8 @@ export type PillStateType =
   | "LISTENING"
   | "PROCESSING"
   | "NOTIFICATION"
-  | "HOVER_PREVIEW";
+  | "HOVER_PREVIEW"
+  | "EXPANDED";
 
 export type PillEvent =
   | { type: "PTT_START" }
@@ -26,7 +27,9 @@ export type PillEvent =
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
-  | { type: "PROCESSING_COMPLETE" };
+  | { type: "PROCESSING_COMPLETE" }
+  | { type: "EXPAND" }
+  | { type: "COLLAPSE" };
 
 export interface PillMachineState {
   state: PillStateType;
@@ -51,6 +54,8 @@ const pillReducer = (
         };
       if (event.type === "HOVER_ENTER")
         return { ...state, state: "HOVER_PREVIEW" };
+      if (event.type === "EXPAND")
+        return { ...state, state: "EXPANDED" };
       return state;
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
@@ -89,6 +94,10 @@ const pillReducer = (
       return state;
     case "HOVER_PREVIEW":
       if (event.type === "HOVER_LEAVE") return { ...state, state: "IDLE" };
+      if (event.type === "EXPAND") return { ...state, state: "EXPANDED" };
+      return state;
+    case "EXPANDED":
+      if (event.type === "COLLAPSE") return { ...state, state: "IDLE" };
       return state;
     default:
       return state;
@@ -324,6 +333,8 @@ const App: React.FC = () => {
         onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onExpand={() => pillDispatch({ type: "EXPAND" })}
+        onCollapse={() => pillDispatch({ type: "COLLAPSE" })}
       />
       <span
         id="pill-ghost-measure"

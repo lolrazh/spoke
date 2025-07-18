@@ -108,7 +108,11 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
 );
 
 // --- Main Component --- //
-const HomePage: React.FC = () => {
+interface HomePageProps {
+  embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
+}
+
+const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   // State
   const [micDevices, setMicDevices] = useState<{id: string, label: string}[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
@@ -189,14 +193,16 @@ const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen bg-sonic-darker text-white flex flex-col">
-      {/* Draggable Header */}
-      <div 
-        className="border-b border-sonic-gray/40 bg-sonic-dark flex-shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div className="h-6" />
-      </div>
+    <div className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col`}>
+      {/* Draggable Header - only show in standalone mode */}
+      {!embeddedMode && (
+        <div 
+          className="border-b border-sonic-gray/40 bg-sonic-dark flex-shrink-0"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        >
+          <div className="h-6" />
+        </div>
+      )}
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">

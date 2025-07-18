@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TOKENS } from "../config/uiTokens";
+import HomePage from "./HomePage";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -23,6 +24,8 @@ interface PillProps {
   onAnimDone: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  onExpand: () => void;
+  onCollapse: () => void;
 }
 
 // Helper function to read CSS variables from the DOM, with a fallback
@@ -47,6 +50,8 @@ const Pill: React.FC<PillProps> = ({
   isTextTruncated,
   onMouseEnter,
   onMouseLeave,
+  onExpand,
+  onCollapse,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -69,12 +74,27 @@ const Pill: React.FC<PillProps> = ({
   const isResting = pillState === "IDLE";
   const isProcessing = pillState === "PROCESSING";
   const isHovered = pillState === "HOVER_PREVIEW";
+  const isExpanded = pillState === "EXPANDED";
 
   useEffect(() => {
     console.log(
-      `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}`,
+      `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}, isExpanded=${isExpanded}`,
     );
-  }, [pillState, isResting, isListening, isProcessing, isHovered]);
+  }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
+
+  // Handle escape key to close expanded view
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCollapse();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isExpanded, onCollapse]);
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = useMemo(
@@ -119,6 +139,17 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
+  // Handle double-click to expand/collapse
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isExpanded) {
+      onCollapse();
+    } else {
+      onExpand();
+    }
+  };
+
   // Build dynamic animation target
   const notificationTargetWidth = notifWidth ?? TOKENS.PILL_BASE_W; // fallback
 
@@ -133,6 +164,8 @@ const Pill: React.FC<PillProps> = ({
         return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_BASE_H };
       case "NOTIFICATION":
         return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
+      case "EXPANDED":
+        return { width: 600, height: 680 };
       default:
         return {};
     }
@@ -141,7 +174,8 @@ const Pill: React.FC<PillProps> = ({
   return (
     <div
       className="pill-wrapper"
-      onClick={isListening ? onStopDictation : onStartDictation}
+      onClick={isExpanded ? undefined : (isListening ? onStopDictation : onStartDictation)}
+      onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseEnter={() => {
         onHoverChange(true);
@@ -154,7 +188,7 @@ const Pill: React.FC<PillProps> = ({
     >
       <motion.div
         ref={pillCoreRef}
-        className="pill-core"
+        className={`pill-core ${isExpanded ? "expanded" : ""}`}
         layout
         initial={false}
         animate={animateForState}
@@ -167,7 +201,26 @@ const Pill: React.FC<PillProps> = ({
       >
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
-            {isShowingNotification ? (
+            {isExpanded ? (
+              <motion.div
+                key="home-content"
+                className="w-full h-full relative"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <HomePage embeddedMode={true} />
+                {/* Close button overlay */}
+                <button
+                  className="absolute top-3 right-3 w-6 h-6 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
+                  onClick={onCollapse}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </motion.div>
+            ) : isShowingNotification ? (
               <motion.span
                 key="notification"
                 className={`notification-text ${isTextTruncated ? "truncated" : ""}`}
