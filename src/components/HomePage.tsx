@@ -26,7 +26,7 @@ const Toggle: React.FC<{
   label: string;
   description?: string;
 }> = ({ enabled, onChange, label, description }) => (
-  <div className="flex items-center justify-between py-3">
+  <div className="flex items-center justify-between py-4">
     <div className="flex-1">
       <div className="text-sm font-medium text-white">{label}</div>
       {description && (
@@ -56,7 +56,7 @@ const Select: React.FC<{
   label: string;
   description?: string;
 }> = ({ value, onChange, options, label, description }) => (
-  <div className="flex items-center justify-between py-3">
+  <div className="flex items-center justify-between py-4">
     <div className="flex-1">
       <div className="text-sm font-medium text-white">{label}</div>
       {description && (
@@ -102,7 +102,7 @@ const ActionButton: React.FC<{
   };
 
   return (
-    <div className="flex items-center justify-between py-3">
+    <div className="flex items-center justify-between py-4">
       <div className="flex-1">
         <div className="text-sm font-medium text-white">{label}</div>
         {description && (
@@ -121,23 +121,19 @@ const ActionButton: React.FC<{
   );
 };
 
-const SectionCard: React.FC<{ 
-  children: React.ReactNode;
-  title: string;
-}> = ({ children, title }) => (
-  <motion.section variants={sectionVariants}>
-    <div className="mb-3">
-      <h2 className="text-lg font-medium text-white">{title}</h2>
-    </div>
-    
-    <div className="bg-sonic-dark rounded-lg border border-sonic-gray/40">
-      {children}
-    </div>
-  </motion.section>
+const SettingSeparator: React.FC = () => (
+  <div className="border-b border-sonic-gray/20" />
 );
 
-const Separator: React.FC = () => (
-  <div className="border-b border-sonic-gray/30" />
+const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
+  <div className="relative my-8">
+    <div className="border-b-2 border-sonic-gray/40" />
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span className="bg-sonic-darker px-3 text-xs font-medium text-gray-400 tracking-wider uppercase">
+        {title}
+      </span>
+    </div>
+  </div>
 );
 
 // --- Main Component --- //
@@ -238,106 +234,99 @@ const HomePage: React.FC = () => {
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-lg mx-auto px-4 py-4">
+        <div className="max-w-lg mx-auto px-6 py-6">
           <motion.div
             initial="hidden"
             animate="visible"
             variants={containerVariants}
-            className="space-y-4"
+            className="space-y-0"
           >
-            {/* 1. Preferences */}
-            <SectionCard title="Preferences">
-              <div className="p-4">
-                <Select
-                  label="Microphone"
-                  description="Select your preferred input device"
-                  value={selectedMicId}
-                  onChange={handleMicChange}
-                  options={micOptions}
-                />
-                <Separator />
-                <Select
-                  label="Language"
-                  description="Recognition language for transcription"
-                  value={selectedLanguage}
-                  onChange={setSelectedLanguage}
-                  options={languageOptions}
-                />
-              </div>
-            </SectionCard>
+            {/* Section 1: Defaults */}
+            <motion.div variants={sectionVariants}>
+              <SectionSeparator title="Defaults" />
+              
+              <Select
+                label="Microphone"
+                description="Select your preferred input device"
+                value={selectedMicId}
+                onChange={handleMicChange}
+                options={micOptions}
+              />
+              <SettingSeparator />
+              
+              <Select
+                label="Language"
+                description="Recognition language for transcription"
+                value={selectedLanguage}
+                onChange={setSelectedLanguage}
+                options={languageOptions}
+              />
+              <SettingSeparator />
+              
+              <ActionButton
+                label="Keybind"
+                description="Set custom hotkey for voice dictation"
+                onClick={() => handleOpenKeybindingModal('dictation')}
+              />
+            </motion.div>
 
-            {/* 2. Keybindings */}
-            <SectionCard title="Keybindings">
-              <div className="p-4">
-                <ActionButton
-                  label="Dictation"
-                  description="Set custom hotkey for voice dictation"
-                  onClick={() => handleOpenKeybindingModal('dictation')}
-                />
-                <Separator />
-                <ActionButton
-                  label="Instruction Mode"
-                  description="Set custom hotkey for instruction mode"
-                  onClick={() => handleOpenKeybindingModal('instruction')}
-                />
-              </div>
-            </SectionCard>
+            {/* Section 2: System */}
+            <motion.div variants={sectionVariants}>
+              <SectionSeparator title="System" />
+              
+              <Toggle
+                label="Show Floating Bar"
+                description="Display the floating dictation pill"
+                enabled={showFloatingBar}
+                onChange={setShowFloatingBar}
+              />
+              <SettingSeparator />
+              
+              <Toggle
+                label="Play Sounds"
+                description="Audio feedback for dictation start/stop"
+                enabled={playSounds}
+                onChange={setPlaySounds}
+              />
+              <SettingSeparator />
+              
+              <Toggle
+                label="Open at Login"
+                description="Automatically start Sonic Flow when you log in"
+                enabled={openAtLogin}
+                onChange={setOpenAtLogin}
+              />
+            </motion.div>
 
-            {/* 3. System */}
-            <SectionCard title="System">
-              <div className="p-4">
-                <Toggle
-                  label="Show Floating Bar"
-                  description="Display the floating dictation pill"
-                  enabled={showFloatingBar}
-                  onChange={setShowFloatingBar}
-                />
-                <Separator />
-                <Toggle
-                  label="Play Sounds"
-                  description="Audio feedback for dictation start/stop"
-                  enabled={playSounds}
-                  onChange={setPlaySounds}
-                />
-                <Separator />
-                <Toggle
-                  label="Open at Login"
-                  description="Automatically start Sonic Flow when you log in"
-                  enabled={openAtLogin}
-                  onChange={setOpenAtLogin}
-                />
-              </div>
-            </SectionCard>
-
-            {/* 4. Account */}
-            <SectionCard title="Account">
-              <div className="p-4">
-                <div className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-sonic-orange rounded-full flex items-center justify-center text-sm font-bold">
-                      JS
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-white">John Smith</h3>
-                      <p className="text-xs text-gray-400">john.smith@example.com</p>
-                    </div>
+            {/* Section 3: Account */}
+            <motion.div variants={sectionVariants}>
+              <SectionSeparator title="Account" />
+              
+              <div className="flex items-center justify-between py-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-sonic-orange rounded-full flex items-center justify-center text-sm font-bold">
+                    JS
                   </div>
-                  <motion.button
-                    onClick={handleSignOut}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    Sign Out
-                  </motion.button>
+                  <div>
+                    <h3 className="text-sm font-medium text-white">John Smith</h3>
+                    <p className="text-xs text-gray-400">john.smith@example.com</p>
+                  </div>
                 </div>
+                <motion.button
+                  onClick={handleSignOut}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Sign Out
+                </motion.button>
               </div>
-            </SectionCard>
+            </motion.div>
 
             {/* Footer with logo and version */}
             <motion.footer 
               variants={sectionVariants}
-              className="flex items-center gap-2 pt-4 pb-2"
+              className="flex items-center gap-2 pt-8 pb-4"
             >
               <img
                 src="/assets/TrayTemplate.png"
