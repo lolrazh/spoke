@@ -82,7 +82,7 @@ const Pill: React.FC<PillProps> = ({
     );
   }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
 
-  // Handle escape key and click outside to close expanded view
+  // Handle escape key to close expanded view
   useEffect(() => {
     if (!isExpanded) return;
 
@@ -92,18 +92,8 @@ const Pill: React.FC<PillProps> = ({
       }
     };
 
-    const handleClickOutside = (event: MouseEvent) => {
-      if (pillCoreRef.current && !pillCoreRef.current.contains(event.target as Node)) {
-        onCollapse();
-      }
-    };
-
     document.addEventListener("keydown", handleEscape);
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isExpanded, onCollapse]);
 
   // Cleanup click timeout on unmount
@@ -262,12 +252,12 @@ const Pill: React.FC<PillProps> = ({
                 <HomePage embeddedMode={true} />
                 {/* Collapse chevron at bottom */}
                 <button
-                  className="absolute bottom-3 left-1/2 transform -translate-x-1/2 w-8 h-6 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
+                  className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-10 h-8 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6L6 3L9 6"/>
+                  <svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 7L8 3L12 7"/>
                   </svg>
                 </button>
               </motion.div>

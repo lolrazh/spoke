@@ -207,6 +207,38 @@ const App: React.FC = () => {
     // Note: No cleanup needed as this is a one-time setup
   }, []);
 
+  // Ensure click-through is properly managed based on pill state
+  useEffect(() => {
+    if (pillState === "EXPANDED") {
+      window.electron?.setClickThrough(false);
+    }
+  }, [pillState]);
+
+  // Handle click outside to collapse when expanded (only works when click-through is disabled)
+  useEffect(() => {
+    if (pillState !== "EXPANDED") return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const pillElement = document.querySelector('.pill-core');
+      
+      // If click is outside the pill core, collapse
+      if (pillElement && !pillElement.contains(target)) {
+        pillDispatch({ type: "COLLAPSE" });
+      }
+    };
+
+    // Add listener with a small delay to ensure click-through is disabled first
+    const timeoutId = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [pillState]);
+
   const slideToDebounced = useCallback(
     debounce((y: number) => {
       window.island?.slideTo(y);
@@ -240,8 +272,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    window.electron?.setClickThrough(true);
-  }, []);
+    // Don't enable click-through if pill is expanded
+    if (pillState !== "EXPANDED") {
+      window.electron?.setClickThrough(true);
+    }
+  }, [pillState]);
 
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
