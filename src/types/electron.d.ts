@@ -33,6 +33,7 @@ declare global {
     electron: {
       resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
+      expandPill: (callback: () => void) => void;
     };
     mic: {
       updateDevices: (devices: Array<{ id: string; label: string }>, selectedId?: string) => void;

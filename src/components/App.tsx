@@ -17,7 +17,8 @@ export type PillStateType =
   | "LISTENING"
   | "PROCESSING"
   | "NOTIFICATION"
-  | "HOVER_PREVIEW";
+  | "HOVER_PREVIEW"
+  | "EXPANDED";
 
 export type PillEvent =
   | { type: "PTT_START" }
@@ -26,7 +27,9 @@ export type PillEvent =
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
-  | { type: "PROCESSING_COMPLETE" };
+  | { type: "PROCESSING_COMPLETE" }
+  | { type: "EXPAND" }
+  | { type: "COLLAPSE" };
 
 export interface PillMachineState {
   state: PillStateType;
@@ -51,6 +54,8 @@ const pillReducer = (
         };
       if (event.type === "HOVER_ENTER")
         return { ...state, state: "HOVER_PREVIEW" };
+      if (event.type === "EXPAND")
+        return { ...state, state: "EXPANDED" };
       return state;
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
@@ -89,6 +94,10 @@ const pillReducer = (
       return state;
     case "HOVER_PREVIEW":
       if (event.type === "HOVER_LEAVE") return { ...state, state: "IDLE" };
+      if (event.type === "EXPAND") return { ...state, state: "EXPANDED" };
+      return state;
+    case "EXPANDED":
+      if (event.type === "COLLAPSE") return { ...state, state: "IDLE" };
       return state;
     default:
       return state;
@@ -187,6 +196,49 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Listen for expand pill requests from main process
+  useEffect(() => {
+    const handleExpandPill = () => {
+      pillDispatch({ type: "EXPAND" });
+    };
+
+    window.electron?.expandPill?.(handleExpandPill);
+    
+    // Note: No cleanup needed as this is a one-time setup
+  }, []);
+
+  // Ensure click-through is properly managed based on pill state
+  useEffect(() => {
+    if (pillState === "EXPANDED") {
+      window.electron?.setClickThrough(false);
+    }
+  }, [pillState]);
+
+  // Handle click outside to collapse when expanded (only works when click-through is disabled)
+  useEffect(() => {
+    if (pillState !== "EXPANDED") return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const pillElement = document.querySelector('.pill-core');
+      
+      // If click is outside the pill core, collapse
+      if (pillElement && !pillElement.contains(target)) {
+        pillDispatch({ type: "COLLAPSE" });
+      }
+    };
+
+    // Add listener with a small delay to ensure click-through is disabled first
+    const timeoutId = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+    }, 100);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [pillState]);
+
   const slideToDebounced = useCallback(
     debounce((y: number) => {
       window.island?.slideTo(y);
@@ -220,8 +272,11 @@ const App: React.FC = () => {
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    window.electron?.setClickThrough(true);
-  }, []);
+    // Don't enable click-through if pill is expanded
+    if (pillState !== "EXPANDED") {
+      window.electron?.setClickThrough(true);
+    }
+  }, [pillState]);
 
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
@@ -324,6 +379,8 @@ const App: React.FC = () => {
         onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        onExpand={() => pillDispatch({ type: "EXPAND" })}
+        onCollapse={() => pillDispatch({ type: "COLLAPSE" })}
       />
       <span
         id="pill-ghost-measure"

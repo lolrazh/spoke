@@ -32,4 +32,8 @@ export const pillVariants: Variants = {
   NOTIFICATION: {
     transition: { type: "spring", stiffness: 400, damping: 30 },
   },
+  // Expanded to full home window size
+  EXPANDED: {
+    transition: { type: "spring", stiffness: 200, damping: 25, mass: 1.2 },
+  },
 };
