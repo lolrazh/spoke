@@ -2,40 +2,26 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, Variants } from "framer-motion";
 
 // --- Constants --- //
-
 const VERSION = "v0.6.9";
-const AVG_TYPING_WPM = 40;
-const AVG_DICTATION_WPM = 150;
 
 // --- Types --- //
-
-type TabId = "home" | "settings" | "account";
-
-interface NavItem {
-  id: TabId;
-  label: string;
+interface SettingSection {
+  id: string;
+  title: string;
   icon: React.ReactNode;
 }
 
-interface StatCardData {
-  title: string;
-  value: string;
-  change: string;
-  color: string;
-}
-
 // --- Animation Variants --- //
-
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.05 },
+    transition: { staggerChildren: 0.1 },
   },
 };
 
-const itemVariants: Variants = {
-  hidden: { y: 10, opacity: 0 },
+const sectionVariants: Variants = {
+  hidden: { y: 20, opacity: 0 },
   visible: {
     y: 0,
     opacity: 1,
@@ -44,76 +30,99 @@ const itemVariants: Variants = {
 };
 
 // --- Helper Components --- //
-
-const SidebarButton: React.FC<{
-  item: NavItem;
-  activeTab: TabId;
-  onClick: (id: TabId) => void;
-}> = React.memo(({ item, activeTab, onClick }) => (
-  <motion.button
-    key={item.id}
-    className={`flex items-center px-4 py-2 my-0.5 mx-2 rounded-md text-sm transition-colors ${
-      activeTab === item.id
-        ? "bg-sonic-orange text-white"
-        : "text-gray-400 hover:bg-sonic-gray/80 hover:text-white"
-    }`}
-    onClick={() => onClick(item.id)}
-    whileHover={{ x: 3 }}
-    whileTap={{ scale: 0.97 }}
-  >
-    <span className="mr-2.5">{item.icon}</span>
-    {item.label}
-  </motion.button>
-));
-
-const StatCard: React.FC<{ stat: StatCardData }> = React.memo(({ stat }) => (
-  <div className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80 hover:border-sonic-gray/70 transition-all">
-    <h3 className="text-gray-400 text-[10px] font-medium mb-1">{stat.title}</h3>
-    <div className="flex items-end justify-between">
-      <span className="text-lg font-semibold">{stat.value}</span>
-      <div
-        className={`text-[9px] px-1.5 py-0.5 rounded-full flex items-center ${stat.color} bg-opacity-20 text-${stat.color.replace("bg-", "")}`}
-      >
-        <span className="mr-0.5">{stat.change}</span>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="9"
-          height="9"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="18 15 12 9 6 15"></polyline>
-        </svg>
-      </div>
+const Toggle: React.FC<{ 
+  enabled: boolean; 
+  onChange: (enabled: boolean) => void;
+  label: string;
+  description?: string;
+}> = ({ enabled, onChange, label, description }) => (
+  <div className="flex items-center justify-between">
+    <div className="flex-1">
+      <div className="text-sm font-medium text-white">{label}</div>
+      {description && (
+        <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+      )}
     </div>
+    <motion.button
+      className={`relative w-11 h-6 rounded-full transition-colors ${
+        enabled ? "bg-sonic-orange" : "bg-sonic-gray/60"
+      }`}
+      onClick={() => onChange(!enabled)}
+      whileTap={{ scale: 0.95 }}
+    >
+      <motion.div
+        className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm"
+        animate={{ x: enabled ? 22 : 2 }}
+        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+      />
+    </motion.button>
   </div>
-));
+);
+
+const Select: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  label: string;
+  description?: string;
+}> = ({ value, onChange, options, label, description }) => (
+  <div>
+    <div className="text-sm font-medium text-white mb-1">{label}</div>
+    {description && (
+      <div className="text-xs text-gray-400 mb-2">{description}</div>
+    )}
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-sonic-darker border border-sonic-gray/60 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-sonic-orange focus:ring-2 focus:ring-sonic-orange/20 transition-colors"
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  </div>
+);
+
+const ActionButton: React.FC<{
+  onClick: () => void;
+  label: string;
+  description?: string;
+  variant?: "primary" | "secondary";
+}> = ({ onClick, label, description, variant = "secondary" }) => (
+  <div>
+    <div className="text-sm font-medium text-white mb-1">{label}</div>
+    {description && (
+      <div className="text-xs text-gray-400 mb-2">{description}</div>
+    )}
+    <motion.button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+        variant === "primary"
+          ? "bg-sonic-orange text-white hover:bg-sonic-light-orange"
+          : "bg-sonic-gray/60 text-white hover:bg-sonic-gray/80"
+      }`}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      {label}
+    </motion.button>
+  </div>
+);
 
 // --- Main Component --- //
-
 const HomePage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabId>("home");
-  const [greeting, setGreeting] = useState<string>("Good morning");
+  // State
   const [micDevices, setMicDevices] = useState<{id: string, label: string}[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
-
-  useEffect(() => {
-    const getTimeBasedGreeting = () => {
-      const hour = new Date().getHours();
-      if (hour < 12) return "Good morning";
-      if (hour < 18) return "Good afternoon";
-      return "Good evening";
-    };
-    setGreeting(getTimeBasedGreeting());
-  }, []);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
+  const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
+  const [playSounds, setPlaySounds] = useState<boolean>(true);
+  const [openAtLogin, setOpenAtLogin] = useState<boolean>(false);
 
   // Listen for microphone device updates and selection changes
   useEffect(() => {
-    // Get initial device list and selection
     const updateDeviceList = async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -124,7 +133,6 @@ const HomePage: React.FC = () => {
             label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
           }));
         
-        // Always include "System Default" at the top
         const fullList = [
           { id: "default", label: "System Default" },
           ...audioInputs
@@ -133,21 +141,13 @@ const HomePage: React.FC = () => {
         setMicDevices(fullList);
       } catch (err) {
         console.error("[HomePage] Failed to enumerate devices:", err);
-        // Fallback to just showing System Default
         setMicDevices([{ id: "default", label: "System Default" }]);
       }
     };
 
     updateDeviceList();
+    navigator.mediaDevices.addEventListener('devicechange', updateDeviceList);
 
-    // Listen for device changes (plug/unplug)
-    const handleDeviceChange = () => {
-      updateDeviceList();
-    };
-
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
-
-    // Listen for microphone selection changes from main process
     let unsubscribe: (() => void) | undefined;
     if (window.mic?.onSelectedChanged) {
       unsubscribe = window.mic.onSelectedChanged(({ id }) => {
@@ -156,132 +156,93 @@ const HomePage: React.FC = () => {
     }
 
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      navigator.mediaDevices.removeEventListener('devicechange', updateDeviceList);
       if (unsubscribe) {
         unsubscribe();
       }
     };
   }, []);
 
-  const navItems: NavItem[] = useMemo(
-    () => [
-      {
-        id: "home",
-        label: "Home",
-        icon: (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
-        ),
-      },
-      {
-        id: "settings",
-        label: "Settings",
-        icon: (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        ),
-      },
-      {
-        id: "account",
-        label: "Account",
-        icon: (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-        ),
-      },
-    ],
-    [],
+  const sections: SettingSection[] = useMemo(() => [
+    {
+      id: "preferences",
+      title: "Preferences",
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+        </svg>
+      ),
+    },
+    {
+      id: "keybindings",
+      title: "Keybindings",
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+        </svg>
+      ),
+    },
+    {
+      id: "system",
+      title: "System",
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+    },
+    {
+      id: "account",
+      title: "Account",
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      ),
+    },
+  ], []);
+
+  const languageOptions = useMemo(() => [
+    { value: "en-US", label: "English (US)" },
+    { value: "en-GB", label: "English (UK)" },
+    { value: "es-ES", label: "Spanish" },
+    { value: "fr-FR", label: "French" },
+    { value: "de-DE", label: "German" },
+    { value: "it-IT", label: "Italian" },
+    { value: "pt-BR", label: "Portuguese (Brazil)" },
+  ], []);
+
+  const micOptions = useMemo(() => 
+    micDevices.map(device => ({
+      value: device.id,
+      label: device.label,
+    })), [micDevices]
   );
 
-  const statCardData: StatCardData[] = useMemo(
-    () => [
-      {
-        title: "Total Dictations",
-        value: "1,249",
-        change: "+12%",
-        color: "bg-green-500",
-      },
-      {
-        title: "Dictation Time",
-        value: "37.2 hrs",
-        change: "+5%",
-        color: "bg-blue-500",
-      },
-    ],
-    [],
-  );
+  const handleMicChange = (deviceId: string) => {
+    setSelectedMicId(deviceId);
+    if (window.mic?.select) {
+      window.mic.select(deviceId);
+    }
+  };
 
-  // Dummy data for the line chart
-  const chartDataPoints = useMemo(
-    () => [
-      { x: 50, y: 120 },
-      { x: 100, y: 80 },
-      { x: 150, y: 100 },
-      { x: 200, y: 35 },
-      { x: 250, y: 60 },
-      { x: 300, y: 50 },
-      { x: 350, y: 70 },
-    ],
-    [],
-  );
-  const chartPath = useMemo(
-    () =>
-      chartDataPoints
-        .map((p, i) => (i === 0 ? "M" : "L") + `${p.x},${p.y}`)
-        .join(" "),
-    [chartDataPoints],
-  );
-  const areaPath = useMemo(
-    () =>
-      chartPath +
-      ` L${chartDataPoints[chartDataPoints.length - 1].x},130 L${chartDataPoints[0].x},130 Z`,
-    [chartPath, chartDataPoints],
-  );
+  const handleOpenKeybindingModal = (type: 'dictation' | 'instruction') => {
+    // TODO: Implement modal for keybinding configuration
+    console.log(`Opening ${type} keybinding modal`);
+  };
+
+  const handleSignOut = () => {
+    // TODO: Implement sign out functionality
+    console.log("Signing out");
+  };
 
   return (
-    <div className="header-bar min-h-screen min-w-screen flex flex-col bg-sonic-darker text-white font-sans text-xs">
-      {/* Main layout container */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <nav className="w-48 flex flex-col bg-sonic-dark border-r border-sonic-gray/80 py-3 flex-shrink-0">
-          {/* Logo/Title */}
-          <div className="px-5 mt-8 mb-5 flex items-center gap-2">
+    <div className="min-h-screen bg-sonic-darker text-white">
+      {/* Header */}
+      <div className="border-b border-sonic-gray/20">
+        <div className="max-w-2xl mx-auto px-6 py-6">
+          <div className="flex items-center gap-3">
             <motion.div
               whileHover={{ rotate: 360 }}
               transition={{ duration: 0.7 }}
@@ -289,506 +250,152 @@ const HomePage: React.FC = () => {
               <img
                 src="/assets/TrayTemplate@2x.png"
                 alt="Sonic Flow Icon"
-                className="w-6 h-6 brightness-0 invert"
+                className="w-8 h-8 brightness-0 invert"
               />
             </motion.div>
-            <h1 className="text-lg font-medium text-white">sonic flow</h1>
-          </div>
-
-          {/* Navigation Items */}
-          {navItems.map((item) => (
-            <SidebarButton
-              key={item.id}
-              item={item}
-              activeTab={activeTab}
-              onClick={setActiveTab}
-            />
-          ))}
-
-          {/* Support Box */}
-          <div className="mt-auto px-4 py-2">
-            <div className="bg-gradient-to-r from-sonic-dark/80 to-sonic-gray/60 rounded-lg p-3 border border-sonic-gray/60">
-              <h3 className="text-[11px] font-medium mb-1">Need help?</h3>
-              <p className="text-[10px] text-gray-400 mb-2">
-                Access our support team and resources
-              </p>
-              <motion.button
-                className="w-full text-[11px] py-1 bg-sonic-orange rounded hover:bg-sonic-light-orange transition-colors"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-              >
-                Contact Support
-              </motion.button>
+            <div>
+              <h1 className="text-2xl font-semibold text-white">sonic flow</h1>
+              <p className="text-sm text-gray-400">Settings</p>
             </div>
-            {/* Version Number */}
-            <span className="block text-center text-[9px] text-gray-500 mt-2">
-              {VERSION}
-            </span>
           </div>
-        </nav>
+        </div>
+      </div>
 
-        {/* Main content area */}
-        <main className="flex-1 p-4 overflow-y-auto bg-sonic-darker">
-          <motion.div
-            key={activeTab}
-            initial="hidden"
-            animate="visible"
-            variants={containerVariants}
-            className="max-w-4xl mx-auto"
-          >
-            <motion.div variants={itemVariants} className="mb-3">
-              <h2 className="text-lg font-medium">{greeting}, User</h2>
-            </motion.div>
+      {/* Main Content */}
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+          className="space-y-8"
+        >
+          {/* 1. Preferences */}
+          <motion.section variants={sectionVariants}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-sonic-orange/20 rounded-lg text-sonic-orange">
+                {sections[0].icon}
+              </div>
+              <h2 className="text-xl font-semibold">Preferences</h2>
+            </div>
+            
+            <div className="bg-sonic-dark/60 rounded-xl p-6 space-y-6">
+              <Select
+                label="Microphone"
+                description="Select your preferred input device"
+                value={selectedMicId}
+                onChange={handleMicChange}
+                options={micOptions}
+              />
+              
+              <Select
+                label="Language"
+                description="Recognition language for transcription"
+                value={selectedLanguage}
+                onChange={setSelectedLanguage}
+                options={languageOptions}
+              />
+            </div>
+          </motion.section>
 
-            {/* --- Home Tab --- */}
-            {activeTab === "home" && (
-              <div className="flex flex-col md:flex-row gap-2.5">
-                {/* Left Column: Usage Stats & Graph */}
-                <div className="space-y-2.5 md:w-8/12">
-                  {/* Stat Cards */}
-                  <motion.div
-                    variants={itemVariants}
-                    className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                  >
-                    {statCardData.map((stat) => (
-                      <StatCard key={stat.title} stat={stat} />
-                    ))}
-                  </motion.div>
+          {/* 2. Keybindings */}
+          <motion.section variants={sectionVariants}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-sonic-orange/20 rounded-lg text-sonic-orange">
+                {sections[1].icon}
+              </div>
+              <h2 className="text-xl font-semibold">Keybindings</h2>
+            </div>
+            
+            <div className="bg-sonic-dark/60 rounded-xl p-6 space-y-6">
+              <ActionButton
+                label="Configure Dictation"
+                description="Set custom hotkey for voice dictation"
+                onClick={() => handleOpenKeybindingModal('dictation')}
+              />
+              
+              <ActionButton
+                label="Configure Instruction Mode"
+                description="Set custom hotkey for instruction mode"
+                onClick={() => handleOpenKeybindingModal('instruction')}
+              />
+            </div>
+          </motion.section>
 
-                  {/* Time Saved Chart */}
-                  <motion.div
-                    variants={itemVariants}
-                    className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80"
-                  >
-                    <div className="flex justify-between items-center mb-2.5">
-                      <h3 className="text-xs font-medium">
-                        Time Saved with Dictation
-                      </h3>
-                      <select className="bg-sonic-darker text-[10px] px-1.5 py-0.5 rounded border border-sonic-gray/80 outline-none focus:ring-1 focus:ring-sonic-orange">
-                        <option>Last 7 days</option>
-                        <option>Last 30 days</option>
-                        <option>Last 3 months</option>
-                      </select>
-                    </div>
-                    <div className="h-40 relative pl-5">
-                      <div className="absolute inset-0 grid grid-cols-7 grid-rows-5 pointer-events-none">
-                        {Array(35)
-                          .fill(0)
-                          .map((_, i) => (
-                            <div
-                              key={i}
-                              className="border-r border-t border-sonic-gray/20 first:border-l"
-                            ></div>
-                          ))}
-                      </div>
-                      <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[9px] text-gray-500 py-1 pointer-events-none">
-                        <span>5h</span> <span>4h</span> <span>3h</span>{" "}
-                        <span>2h</span> <span>1h</span> <span>0h</span>
-                      </div>
-                      <svg
-                        className="absolute inset-0 h-full w-full"
-                        viewBox="0 0 400 150"
-                        preserveAspectRatio="none"
-                      >
-                        <defs>
-                          <linearGradient
-                            id="gradient"
-                            x1="0%"
-                            y1="0%"
-                            x2="0%"
-                            y2="100%"
-                          >
-                            <stop
-                              offset="0%"
-                              stopColor="rgba(160, 160, 160, 0.4)"
-                            />
-                            <stop
-                              offset="100%"
-                              stopColor="rgba(160, 160, 160, 0)"
-                            />
-                          </linearGradient>
-                        </defs>
-                        <motion.path
-                          d={chartPath}
-                          stroke="#A0A0A0"
-                          strokeWidth="2"
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          initial={{ pathLength: 0 }}
-                          animate={{ pathLength: 1 }}
-                          transition={{ duration: 0.5, ease: "easeInOut" }}
-                        />
-                        <motion.path
-                          d={areaPath}
-                          fill="url(#gradient)"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 0.4 }}
-                          transition={{ duration: 0.5, delay: 0.2 }}
-                        />
-                        {chartDataPoints.map((point, index) => (
-                          <motion.circle
-                            key={index}
-                            cx={point.x}
-                            cy={point.y}
-                            r="3"
-                            fill="#A0A0A0"
-                            stroke="#121212"
-                            strokeWidth="1.5"
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{
-                              type: "spring",
-                              stiffness: 300,
-                              damping: 15,
-                              delay: 0.1 * index,
-                            }}
-                          />
-                        ))}
-                      </svg>
-                      <div className="absolute top-1 right-1 bg-sonic-dark/70 p-1 rounded border border-sonic-gray/50">
-                        <div className="text-[9px] text-gray-400">
-                          Efficiency
-                        </div>
-                        <div className="text-sm font-bold text-sonic-light-orange">
-                          +47%
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex justify-between mt-1 text-[9px] text-gray-500 pl-5">
-                      <span>Mon</span> <span>Tue</span> <span>Wed</span>{" "}
-                      <span>Thu</span> <span>Fri</span> <span>Sat</span>{" "}
-                      <span>Sun</span>
-                    </div>
-                    <div className="mt-2 p-1.5 bg-sonic-darker rounded border border-sonic-gray/30">
-                      <div className="flex items-center gap-1">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <line x1="12" y1="8" x2="12" y2="12"></line>
-                          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <span className="text-[10px] text-gray-400">
-                          Based on avg. typing ({AVG_TYPING_WPM} WPM) vs.
-                          dictation ({AVG_DICTATION_WPM} WPM)
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
+          {/* 3. System */}
+          <motion.section variants={sectionVariants}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-sonic-orange/20 rounded-lg text-sonic-orange">
+                {sections[2].icon}
+              </div>
+              <h2 className="text-xl font-semibold">System</h2>
+            </div>
+            
+            <div className="bg-sonic-dark/60 rounded-xl p-6 space-y-6">
+              <Toggle
+                label="Show Floating Bar"
+                description="Display the floating dictation pill"
+                enabled={showFloatingBar}
+                onChange={setShowFloatingBar}
+              />
+              
+              <Toggle
+                label="Play Sounds"
+                description="Audio feedback for dictation start/stop"
+                enabled={playSounds}
+                onChange={setPlaySounds}
+              />
+              
+              <Toggle
+                label="Open at Login"
+                description="Automatically start Sonic Flow when you log in"
+                enabled={openAtLogin}
+                onChange={setOpenAtLogin}
+              />
+            </div>
+          </motion.section>
+
+          {/* 4. Account */}
+          <motion.section variants={sectionVariants}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-sonic-orange/20 rounded-lg text-sonic-orange">
+                {sections[3].icon}
+              </div>
+              <h2 className="text-xl font-semibold">Account</h2>
+            </div>
+            
+            <div className="bg-sonic-dark/60 rounded-xl p-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 bg-sonic-orange rounded-full flex items-center justify-center text-xl font-bold">
+                  JS
                 </div>
-
-                {/* Right Column: Plan Section */}
-                <motion.div
-                  variants={itemVariants}
-                  className="bg-sonic-dark p-3 rounded-lg border border-sonic-gray/80 md:w-4/12 h-fit"
-                >
-                  <div className="flex justify-between items-start mb-2.5">
-                    <div>
-                      <h3 className="text-sm font-medium mb-0.5">Pro Plan</h3>
-                      <p className="text-gray-400 text-[10px]">
-                        Renews on Oct 12, 2025
-                      </p>
-                    </div>
-                    <span className="bg-sonic-orange bg-opacity-20 text-sonic-light-orange px-1.5 py-0.5 rounded-full text-[9px] font-medium">
-                      Active
-                    </span>
-                  </div>
-                  <div className="space-y-1.5 mb-2.5">
-                    <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">
-                        Usage
-                      </div>
-                      <div className="text-xs font-medium">Unlimited</div>
-                    </div>
-                    <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">
-                        Next Payment
-                      </div>
-                      <div className="text-xs font-medium">$12.99</div>
-                    </div>
-                    <div className="bg-sonic-darker p-2 rounded-md">
-                      <div className="text-[10px] text-gray-400 mb-0.5">
-                        Payment Method
-                      </div>
-                      <div className="text-xs font-medium flex items-center">
-                        <span className="mr-1">•••• 4242</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect
-                            x="1"
-                            y="4"
-                            width="22"
-                            height="16"
-                            rx="2"
-                            ry="2"
-                          ></rect>
-                          <line x1="1" y1="10" x2="23" y2="10"></line>
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="pt-2 border-t border-sonic-gray/60">
-                    <h4 className="text-[10px] font-medium mb-1">
-                      Plan Benefits
-                    </h4>
-                    <ul className="space-y-0.5 mb-2.5">
-                      <li className="flex items-center text-[10px]">
-                        <svg
-                          className="text-green-500 mr-1 w-2.5 h-2.5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        Unlimited dictation time
-                      </li>
-                      <li className="flex items-center text-[10px]">
-                        <svg
-                          className="text-green-500 mr-1 w-2.5 h-2.5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        Custom shortcuts
-                      </li>
-                      <li className="flex items-center text-[10px]">
-                        <svg
-                          className="text-green-500 mr-1 w-2.5 h-2.5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        Priority support
-                      </li>
-                    </ul>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <motion.button
-                      className="flex-1 px-2 py-1 bg-sonic-orange rounded text-[10px] font-medium hover:bg-sonic-light-orange transition-colors"
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      Manage Plan
-                    </motion.button>
-                    <motion.button
-                      className="flex-1 px-2 py-1 bg-sonic-gray/80 rounded text-[10px] font-medium hover:bg-sonic-gray/70 transition-colors"
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      Billing History
-                    </motion.button>
-                  </div>
-                </motion.div>
+                <div>
+                  <h3 className="text-lg font-medium">John Smith</h3>
+                  <p className="text-sm text-gray-400">john.smith@example.com</p>
+                  <span className="inline-block mt-1 px-2 py-1 bg-sonic-orange/20 text-sonic-orange text-xs rounded-full">
+                    Pro Plan
+                  </span>
+                </div>
               </div>
-            )}
+              
+              <ActionButton
+                label="Sign Out"
+                description="Sign out of your Sonic Flow account"
+                onClick={handleSignOut}
+                variant="secondary"
+              />
+            </div>
+          </motion.section>
+        </motion.div>
 
-            {/* --- Settings Tab --- */}
-            {activeTab === "settings" && (
-              <div className="space-y-3 max-w-xl">
-                <motion.div
-                  variants={itemVariants}
-                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
-                >
-                  <h3 className="text-base font-medium mb-3">
-                    Application Settings
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label
-                          htmlFor="launchStartupToggle"
-                          className="text-xs font-medium cursor-pointer"
-                        >
-                          Launch on startup
-                        </label>
-                        {/* Implement actual toggle logic here if needed */}
-                        <div className="w-9 h-4.5 bg-sonic-gray rounded-full relative cursor-pointer">
-                          <motion.div
-                            id="launchStartupToggle"
-                            className="absolute left-0.5 top-0.5 w-3.5 h-3.5 bg-sonic-orange rounded-full"
-                            layout
-                            transition={{
-                              type: "spring",
-                              stiffness: 700,
-                              damping: 30,
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-gray-400">
-                        Automatically start Sonic Flow when you log in.
-                      </p>
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="languageSelect"
-                        className="text-xs font-medium block mb-1"
-                      >
-                        Recognition language
-                      </label>
-                      <select
-                        id="languageSelect"
-                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
-                      >
-                        <option>English (US)</option>{" "}
-                        <option>English (UK)</option> <option>Spanish</option>{" "}
-                        <option>French</option> <option>German</option>
-                      </select>
-                    </div>
-                  </div>
-                </motion.div>
-                <motion.div
-                  variants={itemVariants}
-                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
-                >
-                  <h3 className="text-base font-medium mb-3">
-                    Microphone Setup
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label
-                        htmlFor="micSelect"
-                        className="text-xs font-medium block mb-1"
-                      >
-                        Input device
-                      </label>
-                      <select
-                        id="micSelect"
-                        value={selectedMicId}
-                        onChange={(e) => {
-                          const deviceId = e.target.value;
-                          setSelectedMicId(deviceId);
-                          // Send selection to main process
-                          if (window.mic?.select) {
-                            window.mic.select(deviceId);
-                          }
-                        }}
-                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
-                      >
-                        {micDevices.map((device) => (
-                          <option key={device.id} value={device.id}>
-                            {device.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="micSensitivity"
-                        className="text-xs font-medium block mb-1"
-                      >
-                        Input sensitivity
-                      </label>
-                      <input
-                        id="micSensitivity"
-                        type="range"
-                        min="0"
-                        max="100"
-                        defaultValue="70"
-                        className="w-full h-1.5 bg-sonic-darker rounded-lg appearance-none cursor-pointer accent-sonic-orange"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-
-            {/* --- Account Tab --- */}
-            {activeTab === "account" && (
-              <div className="space-y-3 max-w-xl">
-                <motion.div
-                  variants={itemVariants}
-                  className="bg-sonic-dark p-4 rounded-lg border border-sonic-gray/80"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-sonic-orange rounded-full flex items-center justify-center text-base font-bold flex-shrink-0">
-                      JS
-                    </div>
-                    <div>
-                      <h3 className="text-base font-medium truncate">
-                        John Smith
-                      </h3>
-                      <p className="text-[11px] text-gray-400 truncate">
-                        john.smith@example.com
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label
-                        htmlFor="displayNameInput"
-                        className="text-xs font-medium block mb-1"
-                      >
-                        Display name
-                      </label>
-                      <input
-                        id="displayNameInput"
-                        type="text"
-                        value="John Smith"
-                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="emailInput"
-                        className="text-xs font-medium block mb-1"
-                      >
-                        Email address
-                      </label>
-                      <input
-                        id="emailInput"
-                        type="email"
-                        value="john.smith@example.com"
-                        className="w-full bg-sonic-darker p-2 rounded border border-sonic-gray/80 text-xs outline-none focus:ring-1 focus:ring-sonic-orange"
-                      />
-                    </div>
-                    <div className="pt-1.5">
-                      <motion.button
-                        className="px-3 py-1.5 bg-sonic-orange rounded text-xs font-medium hover:bg-sonic-light-orange transition-colors"
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
-                      >
-                        Update Profile
-                      </motion.button>
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-          </motion.div>
-        </main>
+        {/* Footer */}
+        <motion.footer 
+          variants={sectionVariants}
+          className="mt-12 text-center"
+        >
+          <p className="text-xs text-gray-500">
+            Sonic Flow {VERSION} • Made with ❤️ for productivity
+          </p>
+        </motion.footer>
       </div>
     </div>
   );
