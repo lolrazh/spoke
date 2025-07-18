@@ -53,6 +53,10 @@ const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
 // Last transcript storage for context menu copy functionality
 let lastTranscript: string = "";
 
+// Floating bar hide timer management
+let hideTimer: NodeJS.Timeout | null = null;
+let hideEndTime: number | null = null;
+
 function logBounds(tag: string) {
   if (!mainWindow) return;
   const b = mainWindow.getBounds();
@@ -145,6 +149,114 @@ function broadcastMicSelection(): void {
   BrowserWindow.getAllWindows().forEach(window => {
     window.webContents.send("mic:selected-changed", { id: selectedId });
   });
+}
+
+function clearHideTimer(): void {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+    hideEndTime = null;
+    console.log("[Hide Timer] Timer cleared");
+  }
+}
+
+function hideFloatingBarWithTimer(minutes: number | null): void {
+  console.log(`[Hide Timer] Hiding floating bar for ${minutes ? minutes + ' minutes' : 'indefinitely'}`);
+  
+  // Clear any existing timer
+  clearHideTimer();
+  
+  // Hide the window
+  if (mainWindow) {
+    mainWindow.hide();
+    
+    // Set up timer if duration is specified
+    if (minutes !== null) {
+      hideEndTime = Date.now() + (minutes * 60 * 1000);
+      hideTimer = setTimeout(() => {
+        console.log("[Hide Timer] Timer expired, showing floating bar");
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow?.webContents.send("notify", "Floating bar shown automatically");
+        }
+        clearHideTimer();
+      }, minutes * 60 * 1000);
+      
+      mainWindow?.webContents.send("notify", `Floating bar hidden for ${minutes} minutes. Use tray menu to show early.`);
+    } else {
+      mainWindow?.webContents.send("notify", "Floating bar hidden indefinitely. Use tray menu to show again.");
+    }
+  }
+}
+
+function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
+  if (!mainWindow) {
+    return [];
+  }
+
+  const isVisible = mainWindow.isVisible();
+  
+  if (isVisible) {
+    // Window is visible - show hide options with timing
+    return [{
+      label: "Hide Floating Bar",
+      submenu: [
+        {
+          label: "For 5 minutes",
+          click: () => {
+            console.log("[Menu] Hide floating bar for 5 minutes");
+            hideFloatingBarWithTimer(5);
+          },
+        },
+        {
+          label: "For 30 minutes", 
+          click: () => {
+            console.log("[Menu] Hide floating bar for 30 minutes");
+            hideFloatingBarWithTimer(30);
+          },
+        },
+        {
+          label: "For 1 hour",
+          click: () => {
+            console.log("[Menu] Hide floating bar for 1 hour");
+            hideFloatingBarWithTimer(60);
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Indefinitely",
+          click: () => {
+            console.log("[Menu] Hide floating bar indefinitely");
+            hideFloatingBarWithTimer(null);
+          },
+        },
+      ],
+    }];
+  } else {
+    // Window is hidden - show option to show it
+    let label = "Show Floating Bar";
+    
+    // If there's an active timer, show remaining time
+    if (hideTimer && hideEndTime) {
+      const remainingMs = hideEndTime - Date.now();
+      const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+      if (remainingMinutes > 0) {
+        label = `Show Floating Bar (${remainingMinutes}m remaining)`;
+      }
+    }
+    
+    return [{
+      label,
+      click: () => {
+        console.log("[Menu] Show floating bar");
+        clearHideTimer();
+        if (mainWindow) {
+          mainWindow.show();
+          console.log("[Menu] Floating bar shown");
+        }
+      },
+    }];
+  }
 }
 
 // FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
@@ -289,6 +401,8 @@ const createWindow = () => {
   // Rebuild tray menu when main window visibility changes to update "Show Floating Bar" option
   mainWindow.on("show", () => {
     console.log("[Main Window] Window shown, rebuilding tray menu");
+    // Clear any active hide timer when window is shown
+    clearHideTimer();
     rebuildTrayMenu();
   });
 
@@ -384,17 +498,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         }
       },
     },
-    {
-      label: "Show Floating Bar",
-      visible: mainWindow ? !mainWindow.isVisible() : false,
-      click: () => {
-        console.log("[Tray Menu] Show Floating Bar clicked");
-        if (mainWindow) {
-          mainWindow.show();
-          console.log("[Tray Menu] Floating bar shown");
-        }
-      },
-    },
+    ...buildFloatingBarMenuItems(),
     {
       label: "Select Microphone",
       submenu: micSubmenu,
@@ -497,16 +601,7 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
         }
       },
     },
-    {
-      label: "Hide Floating Bar",
-      click: () => {
-        console.log("[Pill Menu] Hide Floating Bar clicked");
-        if (mainWindow) {
-          mainWindow.hide();
-          mainWindow?.webContents.send("notify", "Floating bar hidden. Use tray menu to show again.");
-        }
-      },
-    },
+    ...buildFloatingBarMenuItems(),
     { type: "separator" },
     {
       label: "Send Feedback…",
@@ -959,6 +1054,8 @@ app.on("activate", () => {
 app.on("before-quit", () => {
   console.log("[App Event] before-quit: Setting isQuitting flag to true.");
   isQuitting = true;
+  // Clear hide timer when app is quitting
+  clearHideTimer();
 });
 
 app.on("will-quit", () => {
