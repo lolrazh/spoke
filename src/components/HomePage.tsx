@@ -194,9 +194,9 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
   return (
     <div className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col relative`}>
-      {/* Vertical version text on left side - only in embedded mode */}
+      {/* Vertical version text on bottom-left - only in embedded mode */}
       {embeddedMode && (
-        <div className="absolute left-2 top-1/2 transform -translate-y-1/2 -rotate-90 text-[10px] text-gray-300/50 whitespace-nowrap">
+        <div className="absolute left-2 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-gray-300/50 whitespace-nowrap">
           v0.0.1
         </div>
       )}

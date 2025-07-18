@@ -82,7 +82,7 @@ const Pill: React.FC<PillProps> = ({
     );
   }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
 
-  // Handle escape key to close expanded view
+  // Handle escape key and click outside to close expanded view
   useEffect(() => {
     if (!isExpanded) return;
 
@@ -92,9 +92,28 @@ const Pill: React.FC<PillProps> = ({
       }
     };
 
+    const handleClickOutside = (event: MouseEvent) => {
+      if (pillCoreRef.current && !pillCoreRef.current.contains(event.target as Node)) {
+        onCollapse();
+      }
+    };
+
     document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, [isExpanded, onCollapse]);
+
+  // Cleanup click timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Generate frequency bars for the waveform (active state)
   const renderFrequencyBars = useMemo(
@@ -139,10 +158,40 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
+  // Handle click timing for single vs double click
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isExpanded) return;
+    
+    // Clear any existing timeout
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+
+    // Set a timeout for single click
+    clickTimeoutRef.current = setTimeout(() => {
+      if (isListening) {
+        onStopDictation();
+      } else {
+        onStartDictation();
+      }
+      clickTimeoutRef.current = null;
+    }, 200); // 200ms delay to distinguish from double-click
+  };
+
   // Handle double-click to expand/collapse
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Clear single click timeout
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+
     if (isExpanded) {
       onCollapse();
     } else {
@@ -165,7 +214,7 @@ const Pill: React.FC<PillProps> = ({
       case "NOTIFICATION":
         return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
       case "EXPANDED":
-        return { width: 600, height: 620 };
+        return { width: 600, height: 610 };
       default:
         return {};
     }
@@ -174,7 +223,7 @@ const Pill: React.FC<PillProps> = ({
   return (
     <div
       className="pill-wrapper"
-      onClick={isExpanded ? undefined : (isListening ? onStopDictation : onStartDictation)}
+      onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={handleContextMenu}
       onMouseEnter={() => {
@@ -217,8 +266,8 @@ const Pill: React.FC<PillProps> = ({
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
-                    <path d="M6 0L0 6h12L6 0z"/>
+                  <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6L6 3L9 6"/>
                   </svg>
                 </button>
               </motion.div>
