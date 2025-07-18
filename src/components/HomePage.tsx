@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, Variants } from "framer-motion";
+import { Switch } from "./ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Button } from "./ui/button";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -11,7 +14,7 @@ const containerVariants: Variants = {
 };
 
 const sectionVariants: Variants = {
-  hidden: { y: 10, opacity: 0 },
+  hidden: { y: 8, opacity: 0 },
   visible: {
     y: 0,
     opacity: 1,
@@ -26,60 +29,44 @@ const Toggle: React.FC<{
   label: string;
   description?: string;
 }> = ({ enabled, onChange, label, description }) => (
-  <div className="flex items-center justify-between py-4">
+  <div className="flex items-center justify-between py-3">
     <div className="flex-1">
-      <div className="text-sm font-medium text-white">{label}</div>
+      <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+        <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
       )}
     </div>
-    <motion.button
-      className={`relative w-10 h-5 rounded-full transition-colors ${
-        enabled ? "bg-sonic-orange" : "bg-sonic-gray/60"
-      }`}
-      onClick={() => onChange(!enabled)}
-      whileTap={{ scale: 0.95 }}
-    >
-      <motion.div
-        className="absolute top-0.5 w-4 h-4 bg-white rounded-full"
-        animate={{ x: enabled ? 20 : 2 }}
-        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-      />
-    </motion.button>
+    <Switch checked={enabled} onCheckedChange={onChange} />
   </div>
 );
 
-const Select: React.FC<{
+const SelectField: React.FC<{
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   label: string;
   description?: string;
 }> = ({ value, onChange, options, label, description }) => (
-  <div className="flex items-center justify-between py-4">
+  <div className="flex items-center justify-between py-3">
     <div className="flex-1">
-      <div className="text-sm font-medium text-white">{label}</div>
+      <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+        <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
       )}
     </div>
-    <div className="relative ml-4">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-48 bg-sonic-darker border border-sonic-gray/60 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-sonic-orange transition-colors appearance-none cursor-pointer"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value} className="bg-sonic-darker">
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
+    <div className="ml-4">
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   </div>
 );
@@ -88,35 +75,19 @@ const ActionButton: React.FC<{
   onClick: () => void;
   label: string;
   description?: string;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "default" | "secondary" | "destructive";
 }> = ({ onClick, label, description, variant = "secondary" }) => {
-  const getVariantClasses = () => {
-    switch (variant) {
-      case "primary":
-        return "bg-sonic-orange text-white hover:bg-sonic-light-orange";
-      case "danger":
-        return "bg-red-600 text-white hover:bg-red-700";
-      default:
-        return "bg-sonic-gray/60 text-white hover:bg-sonic-gray/80";
-    }
-  };
-
   return (
-    <div className="flex items-center justify-between py-4">
+    <div className="flex items-center justify-between py-3">
       <div className="flex-1">
-        <div className="text-sm font-medium text-white">{label}</div>
+        <div className="text-xs font-medium text-white">{label}</div>
         {description && (
-          <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+          <div className="text-[10px] text-gray-400 mt-0.5">{description}</div>
         )}
       </div>
-      <motion.button
-        onClick={onClick}
-        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ml-4 ${getVariantClasses()}`}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
+      <Button variant={variant} size="sm" onClick={onClick} className="ml-4">
         {label}
-      </motion.button>
+      </Button>
     </div>
   );
 };
@@ -126,10 +97,10 @@ const SettingSeparator: React.FC = () => (
 );
 
 const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
-  <div className="relative my-8">
+  <div className="relative my-6">
     <div className="border-b-2 border-sonic-gray/40" />
     <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-sonic-darker px-3 text-xs font-medium text-gray-400 tracking-wider uppercase">
+      <span className="bg-sonic-darker px-3 text-[10px] font-medium text-gray-400 tracking-wider uppercase">
         {title}
       </span>
     </div>
@@ -229,12 +200,12 @@ const HomePage: React.FC = () => {
         className="border-b border-sonic-gray/40 bg-sonic-dark flex-shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
-        <div className="h-8" />
+        <div className="h-6" />
       </div>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-lg mx-auto px-6 py-6">
+        <div className="max-w-lg mx-auto px-5 py-4">
           <motion.div
             initial="hidden"
             animate="visible"
@@ -245,7 +216,7 @@ const HomePage: React.FC = () => {
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Defaults" />
               
-              <Select
+              <SelectField
                 label="Microphone"
                 description="Select your preferred input device"
                 value={selectedMicId}
@@ -254,7 +225,7 @@ const HomePage: React.FC = () => {
               />
               <SettingSeparator />
               
-              <Select
+              <SelectField
                 label="Language"
                 description="Recognition language for transcription"
                 value={selectedLanguage}
@@ -302,38 +273,33 @@ const HomePage: React.FC = () => {
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
               
-              <div className="flex items-center justify-between py-4">
+              <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-sonic-orange rounded-full flex items-center justify-center text-sm font-bold">
+                  <div className="w-8 h-8 bg-sonic-orange rounded-full flex items-center justify-center text-xs font-bold">
                     JS
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-white">John Smith</h3>
-                    <p className="text-xs text-gray-400">john.smith@example.com</p>
+                    <h3 className="text-xs font-medium text-white">John Smith</h3>
+                    <p className="text-[10px] text-gray-400">john.smith@example.com</p>
                   </div>
                 </div>
-                <motion.button
-                  onClick={handleSignOut}
-                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-red-600 text-white hover:bg-red-700"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
+                <Button variant="destructive" size="sm" onClick={handleSignOut}>
                   Sign Out
-                </motion.button>
+                </Button>
               </div>
             </motion.div>
 
             {/* Footer with logo and version */}
             <motion.footer 
               variants={sectionVariants}
-              className="flex items-center gap-2 pt-8 pb-4"
+              className="flex items-center gap-2 pt-6 pb-3"
             >
               <img
                 src="/assets/TrayTemplate.png"
                 alt="Sonic Flow Icon"
                 className="w-4 h-4 brightness-0 invert"
               />
-              <p className="text-xs text-gray-500">v0.0.1</p>
+              <p className="text-[10px] text-gray-500">v0.0.1</p>
             </motion.footer>
           </motion.div>
         </div>
