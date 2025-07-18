@@ -165,7 +165,7 @@ const Pill: React.FC<PillProps> = ({
       case "NOTIFICATION":
         return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
       case "EXPANDED":
-        return { width: 600, height: 680 };
+        return { width: 600, height: 620 };
       default:
         return {};
     }
@@ -211,13 +211,15 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: 0.3 }}
               >
                 <HomePage embeddedMode={true} />
-                {/* Close button overlay */}
+                {/* Collapse chevron at bottom */}
                 <button
-                  className="absolute top-3 right-3 w-6 h-6 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
+                  className="absolute bottom-3 left-1/2 transform -translate-x-1/2 w-8 h-6 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
                   onClick={onCollapse}
-                  aria-label="Close"
+                  aria-label="Collapse"
                 >
-                  ×
+                  <svg width="12" height="8" viewBox="0 0 12 8" fill="currentColor">
+                    <path d="M6 0L0 6h12L6 0z"/>
+                  </svg>
                 </button>
               </motion.div>
             ) : isShowingNotification ? (

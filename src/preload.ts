@@ -88,4 +88,7 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.send("pill-resize", { width, height }),
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
+  expandPill: (callback: () => void) => {
+    ipcRenderer.on("expand-pill", callback);
+  },
 });

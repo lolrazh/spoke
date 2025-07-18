@@ -196,6 +196,17 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Listen for expand pill requests from main process
+  useEffect(() => {
+    const handleExpandPill = () => {
+      pillDispatch({ type: "EXPAND" });
+    };
+
+    window.electron?.expandPill?.(handleExpandPill);
+    
+    // Note: No cleanup needed as this is a one-time setup
+  }, []);
+
   const slideToDebounced = useCallback(
     debounce((y: number) => {
       window.island?.slideTo(y);

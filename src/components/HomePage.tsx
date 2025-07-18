@@ -193,7 +193,14 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   };
 
   return (
-    <div className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col`}>
+    <div className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col relative`}>
+      {/* Vertical version text on left side - only in embedded mode */}
+      {embeddedMode && (
+        <div className="absolute left-2 top-1/2 transform -translate-y-1/2 -rotate-90 text-[10px] text-gray-300/50 whitespace-nowrap">
+          v0.0.1
+        </div>
+      )}
+
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
         <div 
@@ -290,18 +297,20 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
               </div>
             </motion.div>
 
-            {/* Footer with logo and version */}
-            <motion.footer 
-              variants={sectionVariants}
-              className="flex items-center gap-2 pt-6 pb-3"
-            >
-              <img
-                src="/assets/TrayTemplate.png"
-                alt="Sonic Flow Icon"
-                className="w-4 h-4 brightness-0 invert"
-              />
-              <p className="text-[10px] text-gray-300/70">v0.0.1</p>
-            </motion.footer>
+            {/* Footer with logo and version - only in standalone mode */}
+            {!embeddedMode && (
+              <motion.footer 
+                variants={sectionVariants}
+                className="flex items-center gap-2 pt-6 pb-3"
+              >
+                <img
+                  src="/assets/TrayTemplate.png"
+                  alt="Sonic Flow Icon"
+                  className="w-4 h-4 brightness-0 invert"
+                />
+                <p className="text-[10px] text-gray-300/70">v0.0.1</p>
+              </motion.footer>
+            )}
           </motion.div>
         </div>
       </div>

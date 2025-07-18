@@ -35,7 +35,6 @@ type MicPreferences = { selectedMicId?: string };
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
-let homeWindow: BrowserWindow | null = null;
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
@@ -483,18 +482,12 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   
   return [
     {
-      label: "Open Sonic Flow Home",
+      label: "Open Settings",
       click: () => {
-        console.log("[Tray Menu] Open Sonic Flow Home clicked");
-        if (homeWindow) {
-          console.log("[Tray Menu] Home window exists, focusing...");
-          homeWindow.show();
-          homeWindow.focus();
-        } else {
-          console.log(
-            "[Tray Menu] Home window is null, creating new window...",
-          );
-          createHomeWindow();
+        console.log("[Tray Menu] Open Settings clicked");
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send("expand-pill");
         }
       },
     },
@@ -570,18 +563,12 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   
   return [
     {
-      label: "Open Sonic Flow Home",
+      label: "Open Settings",
       click: () => {
-        console.log("[Pill Menu] Open Sonic Flow Home clicked");
-        if (homeWindow) {
-          console.log("[Pill Menu] Home window exists, focusing...");
-          homeWindow.show();
-          homeWindow.focus();
-        } else {
-          console.log(
-            "[Pill Menu] Home window is null, creating new window...",
-          );
-          createHomeWindow();
+        console.log("[Pill Menu] Open Settings clicked");
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send("expand-pill");
         }
       },
     },
@@ -864,7 +851,6 @@ app.whenReady().then(() => {
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
   
   createTray();
-  createHomeWindow();
   startFnListener();
 
   // Handle pill context menu
@@ -880,6 +866,14 @@ app.whenReady().then(() => {
       const menuTemplate = buildPillContextMenu();
       const contextMenu = Menu.buildFromTemplate(menuTemplate);
       contextMenu.popup({ window: mainWindow });
+    }
+  });
+
+  // Handle pill expansion requests
+  ipcMain.on("expand-pill", () => {
+    console.log("[IPC Main] Received expand-pill event");
+    if (mainWindow) {
+      mainWindow.webContents.send("expand-pill");
     }
   });
 
@@ -1017,15 +1011,7 @@ app.on("activate", () => {
   if (visibleWindows.length === 0) {
     // No visible windows - show existing hidden windows or create new ones
 
-    // First priority: show the home window if it exists but is hidden
-    if (homeWindow && !homeWindow.isDestroyed() && !homeWindow.isVisible()) {
-      console.log("[App Event] activate: Showing hidden home window");
-      homeWindow.show();
-      homeWindow.focus();
-      return;
-    }
-
-    // Second priority: show the main window if it exists but is hidden
+    // Show the main window if it exists but is hidden
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       console.log("[App Event] activate: Showing hidden main window");
       mainWindow.show();
@@ -1069,55 +1055,6 @@ app.on("will-quit", () => {
   fnProc?.kill();
 });
 
-const createHomeWindow = () => {
-  if (homeWindow) {
-    homeWindow.focus();
-    return;
-  }
-
-  const newWidth = 600;
-  const newHeight = 680;
-
-  homeWindow = new BrowserWindow({
-    width: newWidth,
-    height: newHeight,
-    minWidth: newWidth,
-    minHeight: newHeight,
-    frame: false,
-    titleBarStyle: "hidden",
-    show: false,
-    title: "Sonic Flow Home",
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      spellcheck: false,
-      enableWebSQL: false,
-    },
-    icon: iconPath,
-  });
-
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    homeWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/home`);
-  } else {
-    const indexHtml = path.join(
-      __dirname,
-      `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-    );
-    homeWindow.loadURL(`file://${indexHtml}#/home`);
-  }
-
-  homeWindow.setMenuBarVisibility(false);
-
-  homeWindow.once("ready-to-show", () => {
-    homeWindow?.show();
-  });
-
-  homeWindow.on("closed", () => {
-    console.log("[Home Window Event] 'closed' event triggered.");
-    homeWindow = null;
-    console.log("[Home Window Event] homeWindow variable set to null.");
-  });
-};
 
 function startFnListener() {
   // Clear any pending restart timer and reset permission flag
