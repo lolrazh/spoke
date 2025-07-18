@@ -11,6 +11,9 @@ declare global {
     contextMenu: {
       showPill: () => void;
     };
+    transcript: {
+      update: (text: string) => void;
+    };
     clipboard: {
       insertText: (
         text: string,

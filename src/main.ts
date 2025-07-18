@@ -50,6 +50,9 @@ let micDevices: MicDevice[] = [
 let micPreferences: MicPreferences = {};
 const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
 
+// Last transcript storage for context menu copy functionality
+let lastTranscript: string = "";
+
 function logBounds(tag: string) {
   if (!mainWindow) return;
   const b = mainWindow.getBounds();
@@ -283,6 +286,17 @@ const createWindow = () => {
     mainWindow = null; // Ensure reference is cleared
   });
 
+  // Rebuild tray menu when main window visibility changes to update "Show Floating Bar" option
+  mainWindow.on("show", () => {
+    console.log("[Main Window] Window shown, rebuilding tray menu");
+    rebuildTrayMenu();
+  });
+
+  mainWindow.on("hide", () => {
+    console.log("[Main Window] Window hidden, rebuilding tray menu");
+    rebuildTrayMenu();
+  });
+
   // Position window centered horizontally and hidden under the notch
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: fullScreenWidth } = primaryDisplay.size; // Use full screen width, not workAreaSize
@@ -371,6 +385,17 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
       },
     },
     {
+      label: "Show Floating Bar",
+      visible: mainWindow ? !mainWindow.isVisible() : false,
+      click: () => {
+        console.log("[Tray Menu] Show Floating Bar clicked");
+        if (mainWindow) {
+          mainWindow.show();
+          console.log("[Tray Menu] Floating bar shown");
+        }
+      },
+    },
+    {
       label: "Select Microphone",
       submenu: micSubmenu,
     },
@@ -407,6 +432,105 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         console.log("[Tray Menu] Quit Sonic Flow clicked");
         isQuitting = true;
         app.quit();
+      },
+    },
+  ];
+}
+
+function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
+  console.log("[Pill Menu] Building pill context menu with", micDevices.length, "devices");
+  const selectedMicId = micPreferences.selectedMicId || "default";
+  
+  // Build microphone submenu
+  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
+  
+  if (micDevices.length === 0) {
+    micSubmenu.push({
+      label: "No microphones detected",
+      enabled: false,
+    });
+  } else {
+    // Add each device as a menu item
+    micDevices.forEach(device => {
+      micSubmenu.push({
+        label: device.label,
+        type: "radio",
+        checked: device.id === selectedMicId,
+        click: () => {
+          console.log(`[Pill Menu] Microphone selected: ${device.label} (${device.id})`);
+          selectMicDevice(device.id);
+        },
+      });
+    });
+  }
+  
+  return [
+    {
+      label: "Open Sonic Flow Home",
+      click: () => {
+        console.log("[Pill Menu] Open Sonic Flow Home clicked");
+        if (homeWindow) {
+          console.log("[Pill Menu] Home window exists, focusing...");
+          homeWindow.show();
+          homeWindow.focus();
+        } else {
+          console.log(
+            "[Pill Menu] Home window is null, creating new window...",
+          );
+          createHomeWindow();
+        }
+      },
+    },
+    {
+      label: "Select Microphone",
+      submenu: micSubmenu,
+    },
+    { type: "separator" },
+    {
+      label: "Copy Last Transcript",
+      enabled: lastTranscript.length > 0,
+      click: () => {
+        console.log("[Pill Menu] Copy Last Transcript clicked");
+        if (lastTranscript) {
+          clipboard.writeText(lastTranscript);
+          mainWindow?.webContents.send("notify", "Transcript copied to clipboard");
+        }
+      },
+    },
+    {
+      label: "Hide Floating Bar",
+      click: () => {
+        console.log("[Pill Menu] Hide Floating Bar clicked");
+        if (mainWindow) {
+          mainWindow.hide();
+          mainWindow?.webContents.send("notify", "Floating bar hidden. Use tray menu to show again.");
+        }
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Send Feedback…",
+      click: () => {
+        console.log("[Pill Menu] Send Feedback clicked");
+        // Open default email client with pre-filled feedback email
+        const feedbackEmail = encodeURI(
+          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`
+        );
+        shell.openExternal(feedbackEmail);
+      },
+    },
+    {
+      label: "About Sonic Flow",
+      click: () => {
+        console.log("[Pill Menu] About Sonic Flow clicked");
+        // Use native macOS about panel
+        app.setAboutPanelOptions({
+          applicationName: "Sonic Flow",
+          applicationVersion: app.getVersion(),
+          credits: "A lightweight AI dictation tool for macOS.",
+          authors: ["Sandheep Rajkumar"],
+        });
+        app.showAboutPanel();
       },
     },
   ];
@@ -652,28 +776,14 @@ app.whenReady().then(() => {
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");
     if (mainWindow) {
-      const contextMenu = Menu.buildFromTemplate([
-        {
-          label: "Home",
-          click: () => {
-            console.log("[Pill Menu] Home clicked");
-            if (homeWindow) {
-              homeWindow.focus();
-            } else {
-              createHomeWindow();
-            }
-          },
-        },
-        { type: "separator" },
-        {
-          label: "Exit",
-          click: () => {
-            console.log("[Pill Menu] Exit clicked");
-            app.quit();
-          },
-        },
-      ]);
+      // Send refresh request to renderer processes before showing menu to ensure device list is current
+      BrowserWindow.getAllWindows().forEach(window => {
+        console.log("[Pill Menu] Sending mic:refresh-devices to window:", window.id);
+        window.webContents.send("mic:refresh-devices");
+      });
 
+      const menuTemplate = buildPillContextMenu();
+      const contextMenu = Menu.buildFromTemplate(menuTemplate);
       contextMenu.popup({ window: mainWindow });
     }
   });
@@ -785,6 +895,12 @@ app.whenReady().then(() => {
       console.error("[IPC] Failed to select microphone:", error);
       return { ok: false };
     }
+  });
+
+  // Handle last transcript updates from renderer
+  ipcMain.on("transcript:update", (_event, text: string) => {
+    console.log("[IPC] Received transcript update:", text.slice(0, 50) + (text.length > 50 ? "..." : ""));
+    lastTranscript = text;
   });
 });
 

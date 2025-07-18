@@ -247,6 +247,8 @@ export function useTranscription(): UseTranscriptionReturn {
       const result = await response.json();
       setText(result.text);
       if (result.text) {
+        // Send transcript to main process for context menu copy functionality
+        window.transcript?.update(result.text);
         window.clipboard.insertText(result.text);
       }
     } catch (err) {

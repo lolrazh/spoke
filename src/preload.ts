@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
 });
 
+contextBridge.exposeInMainWorld("transcript", {
+  update: (text: string) => ipcRenderer.send("transcript:update", text),
+});
+
 contextBridge.exposeInMainWorld("clipboard", {
   insertText: (text: string) =>
     ipcRenderer.invoke("insert-text-at-cursor", text),
