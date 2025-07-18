@@ -1075,8 +1075,8 @@ const createHomeWindow = () => {
     return;
   }
 
-  const newWidth = 680;
-  const newHeight = 520;
+  const newWidth = 600;
+  const newHeight = 680;
 
   homeWindow = new BrowserWindow({
     width: newWidth,
