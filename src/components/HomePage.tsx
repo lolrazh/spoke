@@ -129,15 +129,10 @@ const HomePage: React.FC = () => {
             label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`
           }));
         
-        const fullList = [
-          { id: "default", label: "System Default" },
-          ...audioInputs
-        ];
-        
-        setMicDevices(fullList);
+        setMicDevices(audioInputs);
       } catch (err) {
         console.error("[HomePage] Failed to enumerate devices:", err);
-        setMicDevices([{ id: "default", label: "System Default" }]);
+        setMicDevices([]);
       }
     };
 
@@ -283,7 +278,7 @@ const HomePage: React.FC = () => {
                     <p className="text-[10px] text-gray-300">john.smith@example.com</p>
                   </div>
                 </div>
-                <Button variant="destructive" size="sm" onClick={handleSignOut}>
+                <Button variant="secondary" size="sm" onClick={handleSignOut}>
                   Sign Out
                 </Button>
               </div>

@@ -1075,8 +1075,8 @@ const createHomeWindow = () => {
     return;
   }
 
-  const newWidth = 920;
-  const newHeight = 470;
+  const newWidth = 680;
+  const newHeight = 520;
 
   homeWindow = new BrowserWindow({
     width: newWidth,
@@ -1084,7 +1084,7 @@ const createHomeWindow = () => {
     minWidth: newWidth,
     minHeight: newHeight,
     frame: false,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
+    titleBarStyle: "hidden",
     show: false,
     title: "Sonic Flow Home",
     webPreferences: {
