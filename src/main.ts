@@ -50,7 +50,7 @@ let micPreferences: MicPreferences = {};
 const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
 
 // Last transcript storage for context menu copy functionality
-let lastTranscript: string = "";
+let lastTranscript = "";
 
 // Floating bar hide timer management
 let hideTimer: NodeJS.Timeout | null = null;
