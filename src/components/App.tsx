@@ -93,6 +93,7 @@ const pillReducer = (
       return state;
     case "HOVER_PREVIEW":
       if (event.type === "HOVER_LEAVE") return { ...state, state: "IDLE" };
+      if (event.type === "PTT_START") return { ...state, state: "LISTENING" };
       if (event.type === "EXPAND") return { ...state, state: "EXPANDED" };
       return state;
     case "EXPANDED":
