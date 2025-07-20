@@ -60,7 +60,7 @@ const SelectField: React.FC<{
         <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
       )}
     </div>
-    <div className="ml-4">
+    <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-44">
           <SelectValue />
@@ -91,7 +91,7 @@ const ActionButton: React.FC<{
           <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
         )}
       </div>
-      <Button variant={variant} size="sm" onClick={onClick} className="ml-4">
+      <Button variant={variant} size="sm" onClick={onClick} className="ml-2">
         {label}
       </Button>
     </div>
