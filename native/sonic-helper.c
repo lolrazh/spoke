@@ -1,0 +1,122 @@
+#include <ApplicationServices/ApplicationServices.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h> // For usleep
+
+// For older SDKs that may not have these defined yet.
+#ifndef kCGListenEventAccessGranted
+#define kCGListenEventAccessGranted (1)
+#endif
+
+#define FN_MASK kCGEventFlagMaskSecondaryFn // 0x00800000
+
+// Pre-flight check for permissions
+bool check_permissions() {
+    if (CGPreflightListenEventAccess() != kCGListenEventAccessGranted) {
+        // Request permissions and check again. This will show the prompt.
+        if (CGRequestListenEventAccess() != kCGListenEventAccessGranted) {
+            puts("perm-denied");
+            fflush(stdout); // Ensure the message is sent immediately
+            return false;
+        }
+    }
+    return true;
+}
+
+CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
+    if (t == kCGEventFlagsChanged) {
+        bool *prev = (bool *)ctx;
+        bool now = (CGEventGetFlags(e) & FN_MASK) != 0;
+        if (now && !*prev) {
+            puts("down");
+            fflush(stdout);
+        }
+        if (!now && *prev) {
+            puts("up");
+            fflush(stdout);
+        }
+        *prev = now;
+    }
+    return e;
+}
+
+// Asks for Accessibility permissions and provides explicit logging.
+static void requireAX(void) {
+    CFDictionaryRef opts = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        (const void **)&kAXTrustedCheckOptionPrompt,
+        (const void *[]){ kCFBooleanTrue },
+        1, &kCFCopyStringDictionaryKeyCallBacks,
+           &kCFTypeDictionaryValueCallBacks);
+
+    bool isTrusted = AXIsProcessTrustedWithOptions(opts);
+    CFRelease(opts);
+
+    if (!isTrusted) {
+        // This will now appear in our Electron logs.
+        fprintf(stderr, "[AX] Accessibility permissions are NOT granted. Prompt should be showing.\n");
+        exit(1);
+    }
+    // And so will this.
+    fprintf(stdout, "[AX] Accessibility permissions are granted.\n");
+}
+
+// Sends a robust, correct 4-event sequence for Command-V with delays.
+static void cmdV(void) {
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+
+    const CGKeyCode kVK_COMMAND = 0x37;
+    const CGKeyCode kVK_V = 0x09;
+
+    CGEventRef cmdDown = CGEventCreateKeyboardEvent(src, kVK_COMMAND, true);
+    CGEventRef vDown   = CGEventCreateKeyboardEvent(src, kVK_V, true);
+    CGEventSetFlags(vDown, kCGEventFlagMaskCommand);
+    CGEventRef vUp     = CGEventCreateKeyboardEvent(src, kVK_V, false);
+    CGEventSetFlags(vUp, kCGEventFlagMaskCommand);
+    CGEventRef cmdUp   = CGEventCreateKeyboardEvent(src, kVK_COMMAND, false);
+
+    // Post all four events with small delays between them.
+    CGEventPost(kCGHIDEventTap, cmdDown);
+    usleep(10000); // 10ms
+    CGEventPost(kCGHIDEventTap, vDown);
+    usleep(10000);
+    CGEventPost(kCGHIDEventTap, vUp);
+    usleep(10000);
+    CGEventPost(kCGHIDEventTap, cmdUp);
+
+    CFRelease(cmdDown);
+    CFRelease(vDown);
+    CFRelease(vUp);
+    CFRelease(cmdUp);
+    CFRelease(src);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
+        requireAX();
+        cmdV();
+        return 0;
+    }
+
+    if (!check_permissions()) {
+        // If permissions are denied, we could loop and wait, but for this use
+        // case, exiting and letting the main process handle it is cleaner.
+        return 1;
+    }
+
+    bool s = false;
+    CGEventMask m = 1ULL << kCGEventFlagsChanged;
+    CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+                                       kCGEventTapOptionListenOnly, m, cb, &s);
+
+    if (!tap) {
+        // Handle case where tap creation fails for other reasons
+        return 1;
+    }
+
+    CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(NULL, tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, true);
+    CFRunLoopRun();
+    return 0; // Should not be reached
+}

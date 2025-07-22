@@ -39,7 +39,7 @@ let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
-let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
+let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 
 // Microphone management state
@@ -785,8 +785,8 @@ ipcMain.handle(
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "paste-helper")
-        : path.join(app.getAppPath(), "native", "bin", "paste-helper");
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
 
       if (!fs.existsSync(helperPath)) {
         console.error(
@@ -800,7 +800,7 @@ ipcMain.handle(
       }
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
-      execFile(helperPath, (error, stdout, stderr) => {
+      execFile(helperPath, ["--mode=paste"], (error, stdout, stderr) => {
         // Log output from the helper process for diagnostics
         if (stdout) {
           console.log(`[PasteHelper stdout]: ${stdout.trim()}`);
@@ -1101,7 +1101,7 @@ app.on("before-quit", () => {
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
 
-  // Clear restart timeout and kill fn-tap process
+  // Clear restart timeout and kill sonic-helper process
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
@@ -1127,13 +1127,13 @@ function startFnListener() {
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
     console.log(
-      "[FnListener] Cleaning up existing fn-tap process before starting new one",
+      "[FnListener] Cleaning up existing sonic-helper process before starting new one",
     );
     try {
       fnProc.kill("SIGTERM");
     } catch (error) {
       console.warn(
-        "[FnListener] Error killing existing fn-tap process:",
+        "[FnListener] Error killing existing sonic-helper process:",
         error,
       );
     }
@@ -1141,13 +1141,13 @@ function startFnListener() {
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, "fn-tap")
-    : path.join(app.getAppPath(), "native", "bin", "fn-tap");
+    ? path.join(process.resourcesPath, "sonic-helper")
+    : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] fn-tap binary not found at path: ${helperPath}`,
+      `[FnListener] sonic-helper binary not found at path: ${helperPath}`,
     );
     mainWindow?.webContents.send(
       "notify",
@@ -1157,7 +1157,7 @@ function startFnListener() {
   }
 
   try {
-    console.log(`[FnListener] Starting fn-tap helper from: ${helperPath}`);
+    console.log(`[FnListener] Starting sonic-helper helper from: ${helperPath}`);
     fnProc = spawn(helperPath, []);
 
     fnProc.stdout.setEncoding("utf8");
@@ -1234,31 +1234,31 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(`[FnListener] fn-tap stderr: ${chunk.toString()}`);
+      console.error(`[FnListener] sonic-helper stderr: ${chunk.toString()}`);
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start fn-tap helper process:",
+        "[FnListener] Failed to start sonic-helper helper process:",
         error,
       );
       fnProc = null;
 
       if (error.message.includes("ENOENT")) {
-        console.error("[FnListener] fn-tap binary not found or not executable");
+        console.error("[FnListener] sonic-helper binary not found or not executable");
         mainWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
-        console.error("[FnListener] fn-tap binary lacks execution permissions");
+        console.error("[FnListener] sonic-helper binary lacks execution permissions");
         mainWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting fn-tap:",
+          "[FnListener] Unknown error starting sonic-helper:",
           error.message,
         );
         mainWindow?.webContents.send(
@@ -1273,7 +1273,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] sonic-helper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -1283,11 +1283,11 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] fn-tap helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] sonic-helper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
-    console.error("[FnListener] Exception when spawning fn-tap helper:", error);
+    console.error("[FnListener] Exception when spawning sonic-helper helper:", error);
     fnProc = null;
     mainWindow?.webContents.send(
       "notify",
