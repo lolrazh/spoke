@@ -34,6 +34,7 @@ declare global {
       resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
       expandPill: (callback: () => void) => void;
+      checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean }>;
     };
     mic: {
       updateDevices: (
