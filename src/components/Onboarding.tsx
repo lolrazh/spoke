@@ -64,7 +64,7 @@ const Onboarding: React.FC = () => {
   const handleStartApp = async () => {
     try {
       await window.electron?.startHelper();
-      window.electron?.reloadApp();
+      window.electron?.onboardingComplete();
     } catch (error) {
       console.error("Error starting helper:", error);
     }
@@ -73,7 +73,7 @@ const Onboarding: React.FC = () => {
   const allPermissionsGranted = !needAX && !needIM;
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white p-8">
+    <div className="flex flex-col items-center justify-center h-full bg-gray-900 text-white p-8">
       <div className="max-w-md w-full space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-2">Welcome to Sonic Flow</h1>

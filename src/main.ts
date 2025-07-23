@@ -24,6 +24,11 @@ import {
   ISLAND_HEIGHT,
   ISLAND_VISIBLE_Y,
 } from "./constants/window";
+import {
+  ONBOARDING_WIDTH,
+  ONBOARDING_HEIGHT,
+  FIRST_RUN_PREF_KEY,
+} from "./constants/onboarding";
 
 // Microphone device management types
 type MicDevice = { id: string; label: string };
@@ -34,6 +39,7 @@ type MicPreferences = { selectedMicId?: string };
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 let mainWindow: BrowserWindow | null = null;
+let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
@@ -478,6 +484,48 @@ const createWindow = () => {
   );
 };
 
+function createOnboardingWindow() {
+  const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
+    width: ONBOARDING_WIDTH,
+    height: ONBOARDING_HEIGHT,
+    frame: false,
+    transparent: false,
+    backgroundColor: "#111827",
+    alwaysOnTop: false,
+    focusable: true,
+    resizable: false,
+    skipTaskbar: true,
+    show: false,
+    center: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  };
+
+  onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  onboardingWindow.setMenuBarVisibility(false);
+
+  const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`
+    : `${path.join(
+        __dirname,
+        `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+      )}#/onboarding`;
+
+  onboardingWindow.loadURL(onboardingUrl);
+
+  onboardingWindow.once("ready-to-show", () => {
+    onboardingWindow.show();
+  });
+
+  onboardingWindow.on("closed", () => {
+    onboardingWindow = null;
+  });
+}
+
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   console.log(
     "[Tray Menu] Building tray menu with",
@@ -849,7 +897,32 @@ ipcMain.handle(
   },
 );
 
-app.whenReady().then(() => {
+// Preference checking for first run
+function getFirstRunPreference() {
+  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
+  try {
+    if (fs.existsSync(prefsPath)) {
+      const data = fs.readFileSync(prefsPath, "utf-8");
+      const prefs = JSON.parse(data);
+      return prefs[FIRST_RUN_PREF_KEY] === true;
+    }
+  } catch (error) {
+    console.error("Error reading first run preference:", error);
+  }
+  return false;
+}
+
+function setFirstRunPreference() {
+  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
+  try {
+    const prefs = { [FIRST_RUN_PREF_KEY]: true };
+    fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2));
+  } catch (error) {
+    console.error("Error setting first run preference:", error);
+  }
+}
+
+app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -889,15 +962,37 @@ app.whenReady().then(() => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  createWindow();
+  const onboardingComplete = getFirstRunPreference();
+  if (!onboardingComplete) {
+    createOnboardingWindow();
+  } else {
+    createWindow();
+    createTray();
+    startFnListener();
+  }
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
   micPreferences = loadMicPreferences();
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
 
-  createTray();
-  startFnListener();
+  // Onboarding IPC handlers
+  ipcMain.handle("helper:start", () => {
+    console.log("[IPC] Starting helper process after onboarding");
+    startFnListener();
+    return { success: true };
+  });
+
+  ipcMain.handle("onboarding-complete", () => {
+    console.log("[IPC] Onboarding complete, setting preference and starting app");
+    setFirstRunPreference();
+    if (onboardingWindow) {
+      onboardingWindow.close();
+    }
+    createWindow();
+    createTray();
+    startFnListener();
+  });
 
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
@@ -1159,7 +1254,12 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating main window",
       );
-      createWindow();
+      const onboardingComplete = getFirstRunPreference();
+      if (!onboardingComplete) {
+        createOnboardingWindow();
+      } else {
+        createWindow();
+      }
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1231,7 +1331,9 @@ function startFnListener() {
     console.error(
       `[FnListener] sonic-helper binary not found at path: ${helperPath}`,
     );
-    mainWindow?.webContents.send(
+
+    const targetWindow = mainWindow || onboardingWindow;
+    targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: binary missing",
     );
@@ -1260,15 +1362,16 @@ function startFnListener() {
 
         console.log(`[FnListener] Received command: "${trimmedLine}"`);
 
+        const targetWindow = mainWindow || onboardingWindow;
         if (trimmedLine === "down") {
-          mainWindow?.webContents.send("ptt-down");
+          targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up") {
-          mainWindow?.webContents.send("ptt-up");
+          targetWindow?.webContents.send("ptt-up");
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 
           // Show tray notification immediately
-          mainWindow?.webContents.send(
+          targetWindow?.webContents.send(
             "notify",
             "Grant Input Monitoring permission → restart",
           );
@@ -1326,15 +1429,16 @@ function startFnListener() {
       );
       fnProc = null;
 
+      const targetWindow = mainWindow || onboardingWindow;
       if (error.message.includes("ENOENT")) {
         console.error("[FnListener] sonic-helper binary not found or not executable");
-        mainWindow?.webContents.send(
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
         console.error("[FnListener] sonic-helper binary lacks execution permissions");
-        mainWindow?.webContents.send(
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
         );
@@ -1343,7 +1447,7 @@ function startFnListener() {
           "[FnListener] Unknown error starting sonic-helper:",
           error.message,
         );
-        mainWindow?.webContents.send(
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );
@@ -1371,7 +1475,9 @@ function startFnListener() {
   } catch (error) {
     console.error("[FnListener] Exception when spawning sonic-helper helper:", error);
     fnProc = null;
-    mainWindow?.webContents.send(
+
+    const targetWindow = mainWindow || onboardingWindow;
+    targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: spawn failed",
     );

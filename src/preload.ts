@@ -95,4 +95,5 @@ contextBridge.exposeInMainWorld("electron", {
   requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
   startHelper: () => ipcRenderer.invoke("helper:start"),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
+  onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
 });

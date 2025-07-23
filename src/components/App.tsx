@@ -10,7 +10,6 @@ import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
 import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
-import Onboarding from "./Onboarding";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -143,7 +142,6 @@ const debounce = <T extends (...args: unknown[]) => void>(
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(true);
   const trans = useTranscription();
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -175,13 +173,6 @@ const App: React.FC = () => {
     context: pillContext,
     dispatch: pillDispatch,
   } = usePillMachine();
-
-  // Check if onboarding is needed
-  useEffect(() => {
-    window.electron?.checkPermissions().then((result) => {
-      setShowOnboarding(result.needAX || result.needIM);
-    });
-  }, []);
 
   useEffect(() => {
     if (trans.text && !trans.recording && !trans.processing) {
@@ -368,75 +359,69 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
-      {showOnboarding ? (
-        <Onboarding />
-      ) : (
-        <>
-          <Pill
-            pillState={pillState}
-            pillContext={pillContext}
-            notifWidth={notifWidth}
-            isTextTruncated={isTextTruncated}
-            onStartDictation={() => {
-              pillDispatch({ type: "PTT_START" });
-              trans.start();
-            }}
-            onStopDictation={() => {
-              pillDispatch({ type: "PTT_STOP" });
-              trans.stop();
-            }}
-            onHoverChange={(h) =>
-              pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" })
-            }
-            onMetrics={handlePillMetrics}
-            onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onExpand={() => pillDispatch({ type: "EXPAND" })}
-            onCollapse={() => pillDispatch({ type: "COLLAPSE" })}
-          />
-          <span
-            id="pill-ghost-measure"
-            className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
-            ref={ghostRef}
-          />
-          {showDebug && debugInfo && (
-            <div
-              className="debug-hud"
-              style={{
-                position: "fixed",
-                top: "50px",
-                left: "10px",
-                background: "rgba(0,0,0,0.7)",
-                color: "white",
-                padding: "8px",
-                borderRadius: "4px",
-                fontSize: "12px",
-                fontFamily: "monospace",
-                pointerEvents: "none",
-                zIndex: 9999,
-              }}
-            >
-              <p>
-                Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
-                {debugInfo.pillRect?.height.toFixed(2)}
-              </p>
-              <p>
-                Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
-              </p>
-              <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
-              <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
-                <p>Trace (last 15 events):</p>
-                <ul style={{ listStyle: "none", padding: 0 }}>
-                  {trace.map((entry, index) => (
-                    <li key={index}>{entry}</li>
-                  ))}
-                </ul>
-              </div>
-              <p>Pill State: {pillState}</p>
-            </div>
-          )}
-        </>
+      <Pill
+        pillState={pillState}
+        pillContext={pillContext}
+        notifWidth={notifWidth}
+        isTextTruncated={isTextTruncated}
+        onStartDictation={() => {
+          pillDispatch({ type: "PTT_START" });
+          trans.start();
+        }}
+        onStopDictation={() => {
+          pillDispatch({ type: "PTT_STOP" });
+          trans.stop();
+        }}
+        onHoverChange={(h) =>
+          pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" })
+        }
+        onMetrics={handlePillMetrics}
+        onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onExpand={() => pillDispatch({ type: "EXPAND" })}
+        onCollapse={() => pillDispatch({ type: "COLLAPSE" })}
+      />
+      <span
+        id="pill-ghost-measure"
+        className="notification-text fixed left-[-9999px] top-[-9999px] pointer-events-none whitespace-nowrap"
+        ref={ghostRef}
+      />
+      {showDebug && debugInfo && (
+        <div
+          className="debug-hud"
+          style={{
+            position: "fixed",
+            top: "50px",
+            left: "10px",
+            background: "rgba(0,0,0,0.7)",
+            color: "white",
+            padding: "8px",
+            borderRadius: "4px",
+            fontSize: "12px",
+            fontFamily: "monospace",
+            pointerEvents: "none",
+            zIndex: 9999,
+          }}
+        >
+          <p>
+            Pill Rect: W: {debugInfo.pillRect?.width.toFixed(2)} H:{" "}
+            {debugInfo.pillRect?.height.toFixed(2)}
+          </p>
+          <p>
+            Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
+          </p>
+          <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
+          <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
+            <p>Trace (last 15 events):</p>
+            <ul style={{ listStyle: "none", padding: 0 }}>
+              {trace.map((entry, index) => (
+                <li key={index}>{entry}</li>
+              ))}
+            </ul>
+          </div>
+          <p>Pill State: {pillState}</p>
+        </div>
       )}
     </div>
   );

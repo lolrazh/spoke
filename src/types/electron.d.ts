@@ -35,6 +35,11 @@ declare global {
       setClickThrough: (clickThrough: boolean) => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean }>;
+      requestAccessibilityPermission: () => Promise<void>;
+      requestInputMonitoringPermission: () => Promise<void>;
+      startHelper: () => Promise<void>;
+      reloadApp: () => void;
+      onboardingComplete: () => Promise<void>;
     };
     mic: {
       updateDevices: (
