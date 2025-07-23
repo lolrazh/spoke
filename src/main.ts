@@ -1204,7 +1204,7 @@ app.whenReady().then(async () => {
         ? path.join(process.resourcesPath, "sonic-helper")
         : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
       
-      const helper = spawn(helperPath, ["--check-permissions"]);
+      const helper = spawn(helperPath, []);
       
       // Just start it to trigger the permission dialog, then kill it
       setTimeout(() => {
