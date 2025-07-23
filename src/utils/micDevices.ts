@@ -15,22 +15,6 @@ function mapDevices(devices: MediaDeviceInfo[]): MicDevice[] {
   return mics;
 }
 
-async function refreshDevices() {
-  try {
-    console.log("[MicDevices] Enumerating devices...");
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const mics = mapDevices(devices);
-    console.log("[MicDevices] Found devices:", mics);
-    window.mic?.updateDevices(mics, currentSelected);
-  } catch (err) {
-    console.warn("[MicDevices] enumerateDevices failed", err);
-    window.mic?.updateDevices(
-      [{ id: "default", label: "System Default" }],
-      currentSelected,
-    );
-  }
-}
-
 export function initMicDevicesBridge(defaultSelected?: string) {
   console.log("[MicDevices] Initializing mic devices bridge...");
   currentSelected = defaultSelected;

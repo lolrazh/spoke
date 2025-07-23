@@ -10,6 +10,7 @@ import {
   Menu,
   shell,
   dialog,
+  systemPreferences,
 } from "electron";
 import path from "node:path";
 import process from "node:process";
@@ -23,6 +24,11 @@ import {
   ISLAND_HEIGHT,
   ISLAND_VISIBLE_Y,
 } from "./constants/window";
+import {
+  ONBOARDING_WIDTH,
+  ONBOARDING_HEIGHT,
+  FIRST_RUN_PREF_KEY,
+} from "./constants/onboarding";
 
 // Microphone device management types
 type MicDevice = { id: string; label: string };
@@ -33,13 +39,14 @@ type MicPreferences = { selectedMicId?: string };
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 let mainWindow: BrowserWindow | null = null;
+let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
-let fnStdoutBuffer = ""; // Buffer for incomplete lines from fn-tap stdout
+let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 
 // Microphone management state
@@ -477,6 +484,48 @@ const createWindow = () => {
   );
 };
 
+function createOnboardingWindow() {
+  const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
+    width: ONBOARDING_WIDTH,
+    height: ONBOARDING_HEIGHT,
+    frame: false,
+    transparent: false,
+    backgroundColor: "#111827",
+    alwaysOnTop: false,
+    focusable: true,
+    resizable: false,
+    skipTaskbar: true,
+    show: false,
+    center: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  };
+
+  onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  onboardingWindow.setMenuBarVisibility(false);
+
+  const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`
+    : `${path.join(
+        __dirname,
+        `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+      )}#/onboarding`;
+
+  onboardingWindow.loadURL(onboardingUrl);
+
+  onboardingWindow.once("ready-to-show", () => {
+    onboardingWindow.show();
+  });
+
+  onboardingWindow.on("closed", () => {
+    onboardingWindow = null;
+  });
+}
+
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   console.log(
     "[Tray Menu] Building tray menu with",
@@ -785,8 +834,8 @@ ipcMain.handle(
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "paste-helper")
-        : path.join(app.getAppPath(), "native", "bin", "paste-helper");
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
 
       if (!fs.existsSync(helperPath)) {
         console.error(
@@ -800,7 +849,7 @@ ipcMain.handle(
       }
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
-      execFile(helperPath, (error, stdout, stderr) => {
+      execFile(helperPath, ["--mode=paste"], (error, stdout, stderr) => {
         // Log output from the helper process for diagnostics
         if (stdout) {
           console.log(`[PasteHelper stdout]: ${stdout.trim()}`);
@@ -848,7 +897,32 @@ ipcMain.handle(
   },
 );
 
-app.whenReady().then(() => {
+// Preference checking for first run
+function getFirstRunPreference() {
+  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
+  try {
+    if (fs.existsSync(prefsPath)) {
+      const data = fs.readFileSync(prefsPath, "utf-8");
+      const prefs = JSON.parse(data);
+      return prefs[FIRST_RUN_PREF_KEY] === true;
+    }
+  } catch (error) {
+    console.error("Error reading first run preference:", error);
+  }
+  return false;
+}
+
+function setFirstRunPreference() {
+  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
+  try {
+    const prefs = { [FIRST_RUN_PREF_KEY]: true };
+    fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2));
+  } catch (error) {
+    console.error("Error setting first run preference:", error);
+  }
+}
+
+app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -888,15 +962,37 @@ app.whenReady().then(() => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  createWindow();
+  const onboardingComplete = getFirstRunPreference();
+  if (!onboardingComplete) {
+    createOnboardingWindow();
+  } else {
+    createWindow();
+    createTray();
+    startFnListener();
+  }
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
   micPreferences = loadMicPreferences();
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
 
-  createTray();
-  startFnListener();
+  // Onboarding IPC handlers
+  ipcMain.handle("helper:start", () => {
+    console.log("[IPC] Starting helper process after onboarding");
+    startFnListener();
+    return { success: true };
+  });
+
+  ipcMain.handle("onboarding-complete", () => {
+    console.log("[IPC] Onboarding complete, setting preference and starting app");
+    setFirstRunPreference();
+    if (onboardingWindow) {
+      onboardingWindow.close();
+    }
+    createWindow();
+    createTray();
+    startFnListener();
+  });
 
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
@@ -1045,6 +1141,87 @@ app.whenReady().then(() => {
     );
     lastTranscript = text;
   });
+
+  // Onboarding IPC handlers
+  ipcMain.handle("check-permissions", async () => {
+    try {
+      const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
+      
+      // For Input Monitoring, use the native helper to check
+      const helperPath = app.isPackaged
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      
+      // Check if the helper exists
+      if (!fs.existsSync(helperPath)) {
+        console.error("sonic-helper binary not found at path:", helperPath);
+        return { needAX, needIM: true }; // Assume IM needed if helper missing
+      }
+      
+      // Run the helper with --check-permissions flag
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--check-permissions"]);
+        
+        let output = "";
+        helper.stdout.on("data", (data) => {
+          output += data.toString();
+        });
+        
+        helper.on("close", () => {
+          // Parse the output to determine if permissions are granted
+          const hasPermissions = output.includes("permissions-granted");
+          resolve({ needAX, needIM: !hasPermissions });
+        });
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          helper.kill();
+          resolve({ needAX, needIM: true }); // Assume IM needed on timeout
+        }, 5000);
+      });
+    } catch (error) {
+      console.error("Error checking permissions:", error);
+      // If we can't determine permissions, assume both are needed
+      return { needAX: true, needIM: true };
+    }
+  });
+
+  ipcMain.handle("request-accessibility-permission", () => {
+    try {
+      systemPreferences.isTrustedAccessibilityClient(true);
+      return { success: true };
+    } catch (error) {
+      console.error("Error requesting accessibility permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("request-input-monitoring-permission", () => {
+    try {
+      // Trigger the system dialog for input monitoring by starting the helper
+      // The helper will show the permission dialog if needed
+      const helperPath = app.isPackaged
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      
+      const helper = spawn(helperPath, []);
+      
+      // Just start it to trigger the permission dialog, then kill it
+      setTimeout(() => {
+        helper.kill();
+      }, 1000);
+      
+      return { success: true };
+    } catch (error) {
+      console.error("Error requesting input monitoring permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("reload-app", () => {
+    app.relaunch();
+    app.exit(0);
+  });
 });
 
 app.on("window-all-closed", () => {
@@ -1077,7 +1254,12 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating main window",
       );
-      createWindow();
+      const onboardingComplete = getFirstRunPreference();
+      if (!onboardingComplete) {
+        createOnboardingWindow();
+      } else {
+        createWindow();
+      }
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1101,7 +1283,7 @@ app.on("before-quit", () => {
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
 
-  // Clear restart timeout and kill fn-tap process
+  // Clear restart timeout and kill sonic-helper process
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
@@ -1127,13 +1309,13 @@ function startFnListener() {
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
     console.log(
-      "[FnListener] Cleaning up existing fn-tap process before starting new one",
+      "[FnListener] Cleaning up existing sonic-helper process before starting new one",
     );
     try {
       fnProc.kill("SIGTERM");
     } catch (error) {
       console.warn(
-        "[FnListener] Error killing existing fn-tap process:",
+        "[FnListener] Error killing existing sonic-helper process:",
         error,
       );
     }
@@ -1141,15 +1323,17 @@ function startFnListener() {
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, "fn-tap")
-    : path.join(app.getAppPath(), "native", "bin", "fn-tap");
+    ? path.join(process.resourcesPath, "sonic-helper")
+    : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] fn-tap binary not found at path: ${helperPath}`,
+      `[FnListener] sonic-helper binary not found at path: ${helperPath}`,
     );
-    mainWindow?.webContents.send(
+
+    const targetWindow = mainWindow || onboardingWindow;
+    targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: binary missing",
     );
@@ -1157,7 +1341,7 @@ function startFnListener() {
   }
 
   try {
-    console.log(`[FnListener] Starting fn-tap helper from: ${helperPath}`);
+    console.log(`[FnListener] Starting sonic-helper helper from: ${helperPath}`);
     fnProc = spawn(helperPath, []);
 
     fnProc.stdout.setEncoding("utf8");
@@ -1178,15 +1362,16 @@ function startFnListener() {
 
         console.log(`[FnListener] Received command: "${trimmedLine}"`);
 
+        const targetWindow = mainWindow || onboardingWindow;
         if (trimmedLine === "down") {
-          mainWindow?.webContents.send("ptt-down");
+          targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up") {
-          mainWindow?.webContents.send("ptt-up");
+          targetWindow?.webContents.send("ptt-up");
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 
           // Show tray notification immediately
-          mainWindow?.webContents.send(
+          targetWindow?.webContents.send(
             "notify",
             "Grant Input Monitoring permission → restart",
           );
@@ -1234,34 +1419,35 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(`[FnListener] fn-tap stderr: ${chunk.toString()}`);
+      console.error(`[FnListener] sonic-helper stderr: ${chunk.toString()}`);
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start fn-tap helper process:",
+        "[FnListener] Failed to start sonic-helper helper process:",
         error,
       );
       fnProc = null;
 
+      const targetWindow = mainWindow || onboardingWindow;
       if (error.message.includes("ENOENT")) {
-        console.error("[FnListener] fn-tap binary not found or not executable");
-        mainWindow?.webContents.send(
+        console.error("[FnListener] sonic-helper binary not found or not executable");
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
-        console.error("[FnListener] fn-tap binary lacks execution permissions");
-        mainWindow?.webContents.send(
+        console.error("[FnListener] sonic-helper binary lacks execution permissions");
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting fn-tap:",
+          "[FnListener] Unknown error starting sonic-helper:",
           error.message,
         );
-        mainWindow?.webContents.send(
+        targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );
@@ -1273,7 +1459,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] fn-tap helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] sonic-helper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -1283,13 +1469,15 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] fn-tap helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] sonic-helper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
-    console.error("[FnListener] Exception when spawning fn-tap helper:", error);
+    console.error("[FnListener] Exception when spawning sonic-helper helper:", error);
     fnProc = null;
-    mainWindow?.webContents.send(
+
+    const targetWindow = mainWindow || onboardingWindow;
+    targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: spawn failed",
     );

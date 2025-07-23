@@ -124,7 +124,7 @@ const usePillMachine = () => {
   return { state: machine.state, context: machine.context, dispatch };
 };
 
-const debounce = <T extends (...args: any[]) => void>(
+const debounce = <T extends (...args: unknown[]) => void>(
   func: T,
   delay: number,
 ) => {
