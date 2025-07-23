@@ -89,4 +89,10 @@ contextBridge.exposeInMainWorld("electron", {
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
+  // Onboarding APIs
+  checkPermissions: () => ipcRenderer.invoke("check-permissions"),
+  requestAccessibilityPermission: () => ipcRenderer.invoke("request-accessibility-permission"),
+  requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
+  startHelper: () => ipcRenderer.invoke("helper:start"),
+  reloadApp: () => ipcRenderer.invoke("reload-app"),
 });

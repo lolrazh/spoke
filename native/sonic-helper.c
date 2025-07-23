@@ -97,6 +97,33 @@ int main(int argc, char *argv[]) {
         cmdV();
         return 0;
     }
+    
+    // Add support for checking permissions
+    if (argc > 1 && strcmp(argv[1], "--check-permissions") == 0) {
+        // Check Accessibility permissions
+        CFDictionaryRef opts = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            (const void **)&kAXTrustedCheckOptionPrompt,
+            (const void *[]){ kCFBooleanFalse }, // Don't show prompt
+            1, &kCFCopyStringDictionaryKeyCallBacks,
+               &kCFTypeDictionaryValueCallBacks);
+
+        bool isTrusted = AXIsProcessTrustedWithOptions(opts);
+        CFRelease(opts);
+        
+        // Check Input Monitoring permissions
+        bool hasIMPermission = CGPreflightListenEventAccess() == kCGListenEventAccessGranted;
+        
+        if (isTrusted && hasIMPermission) {
+            puts("permissions-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("permissions-denied");
+            fflush(stdout);
+            return 1;
+        }
+    }
 
     if (!check_permissions()) {
         // If permissions are denied, we could loop and wait, but for this use

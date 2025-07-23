@@ -14,7 +14,8 @@ mkdir -p "$DEST_DIR"
 # --- sonic-helper ---
 echo "Compiling sonic-helper..."
 clang -framework ApplicationServices -o "$DEST_DIR/sonic-helper" "$SOURCE_DIR/sonic-helper.c"
-strip -x "$DEST_DIR/sonic-helper"
+# Removing strip command to avoid post-sign modification
+# strip -x "$DEST_DIR/sonic-helper"
 echo "sonic-helper compiled successfully."
 
 echo "Native helper built successfully." 

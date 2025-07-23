@@ -14,12 +14,15 @@ import type { PillStateType, PillMachineState } from "./App";
 
 interface PillProps {
   pillState: PillStateType;
-  pillContext: PillMachineState["context"];
+  pillContext: {
+    pendingNotif?: string;
+    notifMsg?: string;
+  };
   notifWidth: number | null;
   isTextTruncated: boolean;
   onStartDictation: () => void;
   onStopDictation: () => void;
-  onHoverChange: (hovered: boolean) => void;
+  onHoverChange: (hovering: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
   onAnimDone: () => void;
   onMouseEnter: () => void;
@@ -27,16 +30,6 @@ interface PillProps {
   onExpand: () => void;
   onCollapse: () => void;
 }
-
-// Helper function to read CSS variables from the DOM, with a fallback
-const getCssVar = (name: string, fallback: number): number => {
-  if (typeof window === "undefined") return fallback;
-  const value = getComputedStyle(document.documentElement).getPropertyValue(
-    name,
-  );
-  const parsedValue = parseInt(value, 10);
-  return isNaN(parsedValue) ? fallback : parsedValue;
-};
 
 const Pill: React.FC<PillProps> = ({
   pillState,

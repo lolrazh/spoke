@@ -10,6 +10,7 @@ import {
   Menu,
   shell,
   dialog,
+  systemPreferences,
 } from "electron";
 import path from "node:path";
 import process from "node:process";
@@ -55,6 +56,21 @@ let lastTranscript = "";
 // Floating bar hide timer management
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
+
+// Helper function to check if we need to show onboarding
+function needsOnboarding(): boolean {
+  try {
+    const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
+    // Using a simple check for IM - in a real implementation, you might need to use a native module
+    // For now, we'll simulate this check
+    const needIM = true; // Will be properly checked via IPC later
+    return needAX || needIM;
+  } catch (error) {
+    console.error("Error checking permissions:", error);
+    // If we can't determine permissions, assume onboarding is needed
+    return true;
+  }
+}
 
 function logBounds(tag: string) {
   if (!mainWindow) return;
@@ -1044,6 +1060,87 @@ app.whenReady().then(() => {
       text.slice(0, 50) + (text.length > 50 ? "..." : ""),
     );
     lastTranscript = text;
+  });
+
+  // Onboarding IPC handlers
+  ipcMain.handle("check-permissions", async () => {
+    try {
+      const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
+      
+      // For Input Monitoring, use the native helper to check
+      const helperPath = app.isPackaged
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      
+      // Check if the helper exists
+      if (!fs.existsSync(helperPath)) {
+        console.error("sonic-helper binary not found at path:", helperPath);
+        return { needAX, needIM: true }; // Assume IM needed if helper missing
+      }
+      
+      // Run the helper with --check-permissions flag
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--check-permissions"]);
+        
+        let output = "";
+        helper.stdout.on("data", (data) => {
+          output += data.toString();
+        });
+        
+        helper.on("close", (code) => {
+          // Parse the output to determine if permissions are granted
+          const hasPermissions = output.includes("permissions-granted");
+          resolve({ needAX, needIM: !hasPermissions });
+        });
+        
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          helper.kill();
+          resolve({ needAX, needIM: true }); // Assume IM needed on timeout
+        }, 5000);
+      });
+    } catch (error) {
+      console.error("Error checking permissions:", error);
+      // If we can't determine permissions, assume both are needed
+      return { needAX: true, needIM: true };
+    }
+  });
+
+  ipcMain.handle("request-accessibility-permission", () => {
+    try {
+      systemPreferences.askForAccessibility();
+      return { success: true };
+    } catch (error) {
+      console.error("Error requesting accessibility permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("request-input-monitoring-permission", () => {
+    try {
+      // Trigger the system dialog for input monitoring by starting the helper
+      // The helper will show the permission dialog if needed
+      const helperPath = app.isPackaged
+        ? path.join(process.resourcesPath, "sonic-helper")
+        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      
+      const helper = spawn(helperPath, ["--check-permissions"]);
+      
+      // Just start it to trigger the permission dialog, then kill it
+      setTimeout(() => {
+        helper.kill();
+      }, 1000);
+      
+      return { success: true };
+    } catch (error) {
+      console.error("Error requesting input monitoring permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("reload-app", () => {
+    app.relaunch();
+    app.exit(0);
   });
 });
 

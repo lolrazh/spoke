@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./components/App";
-import HomePage from "./components/HomePage";
+import Onboarding from "./components/Onboarding";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 import { initMicDevicesBridge } from "./utils/micDevices";
@@ -22,7 +22,7 @@ if (!rootElement) {
     <HashRouter>
       <Routes>
         <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
+        <Route path="/onboarding" element={<Onboarding />} />
       </Routes>
     </HashRouter>,
   );
@@ -32,7 +32,7 @@ if (!rootElement) {
     <HashRouter>
       <Routes>
         <Route path="/" element={<App />} />
-        <Route path="/home" element={<HomePage />} />
+        <Route path="/onboarding" element={<Onboarding />} />
       </Routes>
     </HashRouter>,
   );
