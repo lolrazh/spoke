@@ -1093,7 +1093,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle("request-accessibility-permission", () => {
     try {
-      systemPreferences.askForAccessibility();
+      systemPreferences.isTrustedAccessibilityClient(true);
       return { success: true };
     } catch (error) {
       console.error("Error requesting accessibility permission:", error);
