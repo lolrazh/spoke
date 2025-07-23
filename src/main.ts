@@ -57,21 +57,6 @@ let lastTranscript = "";
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
 
-// Helper function to check if we need to show onboarding
-function needsOnboarding(): boolean {
-  try {
-    const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
-    // Using a simple check for IM - in a real implementation, you might need to use a native module
-    // For now, we'll simulate this check
-    const needIM = true; // Will be properly checked via IPC later
-    return needAX || needIM;
-  } catch (error) {
-    console.error("Error checking permissions:", error);
-    // If we can't determine permissions, assume onboarding is needed
-    return true;
-  }
-}
-
 function logBounds(tag: string) {
   if (!mainWindow) return;
   const b = mainWindow.getBounds();
@@ -1087,7 +1072,7 @@ app.whenReady().then(() => {
           output += data.toString();
         });
         
-        helper.on("close", (code) => {
+        helper.on("close", () => {
           // Parse the output to determine if permissions are granted
           const hasPermissions = output.includes("permissions-granted");
           resolve({ needAX, needIM: !hasPermissions });

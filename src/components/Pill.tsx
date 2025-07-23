@@ -10,7 +10,7 @@ type PillMetrics = {
 };
 
 // Use PillStateType from App.tsx
-import type { PillStateType, PillMachineState } from "./App";
+import type { PillStateType } from "./App";
 
 interface PillProps {
   pillState: PillStateType;
@@ -144,7 +144,7 @@ const Pill: React.FC<PillProps> = ({
   // Handle click timing for single vs double click
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     if (isExpanded) return;
 
     // Clear any existing timeout

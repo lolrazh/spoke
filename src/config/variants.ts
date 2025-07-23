@@ -2,7 +2,6 @@ import { Variants } from "framer-motion";
 import { TOKENS } from "./uiTokens";
 
 const PILL_EXPANDED_WIDTH = TOKENS.PILL_BASE_W;
-const PILL_EXPANDED_HEIGHT = TOKENS.PILL_BASE_H;
 const PILL_RESTING_HEIGHT = TOKENS.PILL_RESTING_H;
 
 // Animation variants for the pill's state machine
