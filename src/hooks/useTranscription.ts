@@ -252,7 +252,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
       const formData = new FormData();
       formData.append("file", wavBlob, "audio.wav");
-      formData.append("model", "distil-whisper-large-v3-en");
+      formData.append("model", "whisper-large-v3-turbo");
       formData.append("language", "en");
       formData.append("response_format", "json");
       formData.append("temperature", "0");
