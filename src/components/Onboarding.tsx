@@ -12,14 +12,18 @@ const Onboarding: React.FC = () => {
   });
   const [checking, setChecking] = useState(false);
 
-  // Function to check permissions (we'll expand this later for individual permissions)
+  // Function to check permissions
   const checkPermissions = async () => {
     try {
-      const result = await window.electron?.checkPermissions();
+      const [systemPerms, micPerms] = await Promise.all([
+        window.electron?.checkPermissions(),
+        window.electron?.checkMicrophonePermission()
+      ]);
+      
       setPermissions({
-        microphone: true, // TODO: Add actual microphone permission check
-        inputMonitoring: !result.needIM,
-        accessibility: !result.needAX,
+        microphone: micPerms?.granted || false,
+        inputMonitoring: !systemPerms?.needIM,
+        accessibility: !systemPerms?.needAX,
       });
     } catch (error) {
       console.error("Error checking permissions:", error);
@@ -51,14 +55,18 @@ const Onboarding: React.FC = () => {
   const handleRequestMicrophone = async () => {
     setChecking(true);
     try {
-      // TODO: Add actual microphone permission request
-      console.log("Requesting microphone permission...");
-      // Simulate success for now
-      setTimeout(() => {
+      const result = await window.electron?.requestMicrophonePermission();
+      
+      if (result?.success && result?.granted) {
         setPermissions(prev => ({ ...prev, microphone: true }));
         setChecking(false);
         nextStep();
-      }, 1000);
+      } else {
+        // Permission denied or failed
+        setChecking(false);
+        console.log("Microphone permission denied or failed");
+        // TODO: Show error message or guidance to manually enable
+      }
     } catch (error) {
       console.error("Error requesting microphone permission:", error);
       setChecking(false);

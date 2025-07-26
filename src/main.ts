@@ -1200,6 +1200,29 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("request-microphone-permission", async () => {
+    try {
+      console.log("[IPC] Requesting microphone permission...");
+      const granted = await systemPreferences.askForMediaAccess("microphone");
+      console.log("[IPC] Microphone permission result:", granted);
+      return { success: true, granted };
+    } catch (error) {
+      console.error("Error requesting microphone permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("check-microphone-permission", () => {
+    try {
+      const status = systemPreferences.getMediaAccessStatus("microphone");
+      console.log("[IPC] Microphone permission status:", status);
+      return { status, granted: status === "granted" };
+    } catch (error) {
+      console.error("Error checking microphone permission:", error);
+      return { status: "unknown", granted: false };
+    }
+  });
+
   ipcMain.handle("request-input-monitoring-permission", () => {
     try {
       // Trigger the system dialog for input monitoring by starting the helper

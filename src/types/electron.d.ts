@@ -37,6 +37,8 @@ declare global {
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
       requestInputMonitoringPermission: () => Promise<void>;
+      requestMicrophonePermission: () => Promise<{ success: boolean; granted?: boolean; error?: string }>;
+      checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
       startHelper: () => Promise<void>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;

@@ -93,6 +93,8 @@ contextBridge.exposeInMainWorld("electron", {
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () => ipcRenderer.invoke("request-accessibility-permission"),
   requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
+  requestMicrophonePermission: () => ipcRenderer.invoke("request-microphone-permission"),
+  checkMicrophonePermission: () => ipcRenderer.invoke("check-microphone-permission"),
   startHelper: () => ipcRenderer.invoke("helper:start"),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
