@@ -39,6 +39,7 @@ declare global {
       requestInputMonitoringPermission: () => Promise<void>;
       requestMicrophonePermission: () => Promise<{ success: boolean; granted?: boolean; error?: string }>;
       checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
+      openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;

@@ -12,6 +12,11 @@ const Onboarding: React.FC = () => {
     accessibility: false,
   });
   const [checking, setChecking] = useState(false);
+  const [errors, setErrors] = useState({
+    microphone: false,
+    inputMonitoring: false,
+    accessibility: false,
+  });
 
   // Function to check permissions
   const checkPermissions = async () => {
@@ -65,8 +70,8 @@ const Onboarding: React.FC = () => {
       } else {
         // Permission denied or failed
         setChecking(false);
+        setErrors(prev => ({ ...prev, microphone: true }));
         console.log("Microphone permission denied or failed");
-        // TODO: Show error message or guidance to manually enable
       }
     } catch (error) {
       console.error("Error requesting microphone permission:", error);
@@ -192,8 +197,8 @@ const Onboarding: React.FC = () => {
     <div className="flex h-full text-white" style={{ background: 'rgba(20, 20, 30, 0.98)' }}>
       
       {/* Left Column - Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="max-w-sm w-full">
+      <div className="flex-1 flex flex-col justify-center p-6">
+        <div className="max-w-sm w-full mx-auto">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
@@ -294,6 +299,19 @@ const Onboarding: React.FC = () => {
                   >
                     {checking ? "Requesting..." : "Enable Microphone"}
                   </Button>
+                  
+                  {errors.microphone && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-400 text-center">Permission denied. Please enable manually:</p>
+                      <Button 
+                        variant="secondary"
+                        onClick={() => window.electron?.openSystemPreferences("microphone")}
+                        className="w-full"
+                      >
+                        Open System Preferences
+                      </Button>
+                    </div>
+                  )}
                   
                   {getStepNumber() > 1 && (
                     <Button 

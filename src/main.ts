@@ -490,7 +490,7 @@ function createOnboardingWindow() {
     height: ONBOARDING_HEIGHT,
     frame: false,
     transparent: false,
-    backgroundColor: "#141e2d",
+    backgroundColor: "#14141e",
     alwaysOnTop: false,
     focusable: true,
     resizable: false,
@@ -1218,6 +1218,32 @@ app.whenReady().then(async () => {
     } catch (error) {
       console.error("Error checking microphone permission:", error);
       return { status: "unknown", granted: false };
+    }
+  });
+
+  ipcMain.handle("open-system-preferences", async (event, pane: string) => {
+    try {
+      const { shell } = require("electron");
+      let url = "";
+      
+      switch (pane) {
+        case "microphone":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+          break;
+        case "accessibility":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+          break;
+        case "input-monitoring":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+          break;
+        default:
+          url = "x-apple.systempreferences:com.apple.preference.security";
+      }
+      
+      await shell.openExternal(url);
+      console.log(`[IPC] Opened System Preferences: ${pane}`);
+    } catch (error) {
+      console.error("Error opening System Preferences:", error);
     }
   });
 

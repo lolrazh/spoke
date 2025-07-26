@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld("electron", {
   requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
   requestMicrophonePermission: () => ipcRenderer.invoke("request-microphone-permission"),
   checkMicrophonePermission: () => ipcRenderer.invoke("check-microphone-permission"),
+  openSystemPreferences: (pane: string) => ipcRenderer.invoke("open-system-preferences", pane),
   startHelper: () => ipcRenderer.invoke("helper:start"),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
