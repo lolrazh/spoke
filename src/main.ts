@@ -962,8 +962,12 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
+  // Check if we should always show onboarding in development
+  const alwaysShowOnboarding = process.env.SF_DEV_ONBOARDING === "1";
   const onboardingComplete = getFirstRunPreference();
-  if (!onboardingComplete) {
+  
+  if (alwaysShowOnboarding || !onboardingComplete) {
+    console.log(alwaysShowOnboarding ? "[Dev Mode] Always showing onboarding (SF_DEV_ONBOARDING=1)" : "[First Run] Showing onboarding");
     createOnboardingWindow();
   } else {
     createWindow();
@@ -1254,8 +1258,9 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating main window",
       );
+      const alwaysShowOnboarding = process.env.SF_DEV_ONBOARDING === "1";
       const onboardingComplete = getFirstRunPreference();
-      if (!onboardingComplete) {
+      if (alwaysShowOnboarding || !onboardingComplete) {
         createOnboardingWindow();
       } else {
         createWindow();
