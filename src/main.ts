@@ -490,13 +490,15 @@ function createOnboardingWindow() {
     height: ONBOARDING_HEIGHT,
     frame: false,
     transparent: false,
-    backgroundColor: "#111827",
+    backgroundColor: "#141e2d",
     alwaysOnTop: false,
     focusable: true,
     resizable: false,
-    skipTaskbar: true,
-    show: false,
+    skipTaskbar: false,
+    show: true,
     center: true,
+    minWidth: 800,
+    minHeight: 500,
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -516,10 +518,6 @@ function createOnboardingWindow() {
       )}#/onboarding`;
 
   onboardingWindow.loadURL(onboardingUrl);
-
-  onboardingWindow.once("ready-to-show", () => {
-    onboardingWindow.show();
-  });
 
   onboardingWindow.on("closed", () => {
     onboardingWindow = null;

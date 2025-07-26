@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 
-type OnboardingStep = "welcome" | "microphone" | "input-monitoring" | "accessibility" | "test" | "complete";
+type OnboardingStep = "welcome" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -37,7 +37,7 @@ const Onboarding: React.FC = () => {
 
   // Navigation functions
   const nextStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "test", "complete"];
+    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -45,7 +45,7 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "test", "complete"];
+    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -126,6 +126,18 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  const handleRestart = async () => {
+    try {
+      // Complete onboarding first, then restart
+      await window.electron?.onboardingComplete();
+      setTimeout(() => {
+        window.electron?.reloadApp();
+      }, 500);
+    } catch (error) {
+      console.error("Error restarting app:", error);
+    }
+  };
+
   const handleComplete = async () => {
     try {
       await window.electron?.startHelper();
@@ -142,13 +154,14 @@ const Onboarding: React.FC = () => {
       microphone: 1,
       "input-monitoring": 2,
       accessibility: 3,
-      test: 4,
-      complete: 5,
+      restart: 4,
+      test: 5,
+      complete: 6,
     };
     return stepMap[currentStep];
   };
 
-  const totalSteps = 4; // welcome, mic, input, accessibility
+  const totalSteps = 5; // welcome, mic, input, accessibility, restart
 
   // Animation variants
   const containerVariants = {
@@ -179,8 +192,8 @@ const Onboarding: React.FC = () => {
     <div className="flex h-full text-white" style={{ background: 'rgba(20, 20, 30, 0.98)' }}>
       
       {/* Left Column - Content */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <div className="max-w-md w-full">
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="max-w-sm w-full">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
@@ -387,6 +400,51 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
 
+            {/* Restart Step */}
+            {currentStep === "restart" && (
+              <motion.div
+                key="restart"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-2xl mb-3">🔄</div>
+                  <h2 className="text-xl font-medium text-white">Restart Required</h2>
+                  <p className="text-sm text-gray-300 leading-relaxed">
+                    macOS needs Sonic Flow to restart to activate the new permissions.
+                  </p>
+                </div>
+                
+                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">Why restart is needed</h3>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    macOS only applies permission changes to apps after they restart. 
+                    This ensures your privacy settings are properly enforced.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Button 
+                    onClick={handleRestart}
+                    className="w-full"
+                  >
+                    Restart Sonic Flow
+                  </Button>
+                  
+                  <Button 
+                    variant="secondary" 
+                    onClick={prevStep}
+                    className="w-full"
+                  >
+                    Back
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Test Step */}
             {currentStep === "test" && (
               <motion.div
@@ -492,6 +550,23 @@ const Onboarding: React.FC = () => {
               transition={{ duration: 0.4 }}
             >
               <GIFPlaceholder step="Accessibility" />
+            </motion.div>
+          )}
+          
+          {currentStep === "restart" && (
+            <motion.div
+              key="restart-gif"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.4 }}
+              className="flex items-center justify-center h-full"
+            >
+              <div className="text-center">
+                <div className="text-6xl mb-4">🔄</div>
+                <div className="text-sm text-gray-400">Restarting Sonic Flow</div>
+                <div className="text-xs text-gray-500 mt-2">Applying permissions...</div>
+              </div>
             </motion.div>
           )}
           
