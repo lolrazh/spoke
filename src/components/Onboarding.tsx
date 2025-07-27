@@ -85,7 +85,7 @@ const Onboarding: React.FC = () => {
       await window.electron?.requestInputMonitoringPermission();
       
       // After opening System Preferences, show instructions and provide manual continue
-      setChecking(false);
+        setChecking(false);
       // Don't auto-advance - let user manually continue after granting permission
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
@@ -191,27 +191,24 @@ const Onboarding: React.FC = () => {
   const GIFPlaceholder: React.FC<{ step: string }> = ({ step }) => (
     <div className="flex items-center justify-center h-full">
               <div className="w-64 h-48 bg-sonic-gray/20 rounded-lg border border-sonic-gray/30 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-3xl mb-2">🎬</div>
+        <div className="text-center">
+          <div className="text-3xl mb-2">🎬</div>
             <div className="text-xs text-sonic-light/60">GIF: {step} Demo</div>
-          </div>
         </div>
+      </div>
     </div>
   );
 
   return (
-    <div className="flex h-full text-white bg-sonic-dark">
-      {/* Draggable header bar */}
-      <div className="header-bar absolute top-0 left-0 right-0 h-8 z-50"></div>
-      
+    <div className="flex flex-col lg:flex-row h-full min-h-screen text-white bg-sonic-dark">
       {/* Left Column - Content */}
-      <div className="flex-1 flex flex-col justify-center p-6">
-        <div className="max-w-sm w-full mx-auto">
+      <div className="flex-1 flex flex-col justify-center p-6 relative min-h-0">
+        <div className="max-w-md w-full mx-auto flex-1 flex flex-col justify-center">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
             <motion.div 
-              className="flex items-center justify-center space-x-2 mb-8"
+              className="flex items-center justify-center space-x-2 mb-6"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -320,16 +317,6 @@ const Onboarding: React.FC = () => {
                       </Button>
                     </div>
                   )}
-                  
-                  {getStepNumber() > 1 && (
-                    <Button 
-                      variant="secondary" 
-                      onClick={prevStep}
-                      className="w-full"
-                    >
-                      Back
-                    </Button>
-                  )}
                 </div>
               </motion.div>
             )}
@@ -390,14 +377,6 @@ const Onboarding: React.FC = () => {
                   >
                     {checking ? "Checking..." : "I've Enabled It"}
                   </Button>
-                  
-                  <Button 
-                    variant="secondary" 
-                    onClick={prevStep}
-                    className="w-full"
-                  >
-                    Back
-                  </Button>
                 </div>
               </motion.div>
             )}
@@ -436,14 +415,6 @@ const Onboarding: React.FC = () => {
                   >
                     {checking ? "Requesting..." : "Enable Accessibility"}
                   </Button>
-                  
-                  <Button 
-                    variant="secondary" 
-                    onClick={prevStep}
-                    className="w-full"
-                  >
-                    Back
-                  </Button>
                 </div>
               </motion.div>
             )}
@@ -480,14 +451,6 @@ const Onboarding: React.FC = () => {
                     className="w-full"
                   >
                     Restart Sonic Flow
-                  </Button>
-                  
-                  <Button 
-                    variant="secondary" 
-                    onClick={prevStep}
-                    className="w-full"
-                  >
-                    Back
                   </Button>
                 </div>
               </motion.div>
@@ -528,14 +491,6 @@ const Onboarding: React.FC = () => {
                   >
                     Start Sonic Flow
                   </Button>
-                  
-                  <Button 
-                    variant="secondary" 
-                    onClick={prevStep}
-                    className="w-full"
-                  >
-                    Back
-                  </Button>
                 </div>
               </motion.div>
             )}
@@ -560,10 +515,35 @@ const Onboarding: React.FC = () => {
           </AnimatePresence>
 
         </div>
+
+        {/* Navigation Controls */}
+        {currentStep !== "welcome" && currentStep !== "complete" && (
+          <div className="absolute bottom-6 left-6 right-6 flex justify-between">
+            <Button 
+              variant="secondary" 
+              onClick={prevStep}
+              disabled={getStepNumber() <= 1}
+              className="px-4 py-2"
+            >
+              Back
+            </Button>
+            
+            <Button 
+              variant="secondary" 
+              onClick={() => {
+                // Skip to the end
+                setCurrentStep("restart");
+              }}
+              className="px-4 py-2"
+            >
+              Skip Setup
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Right Column - GIF Placeholder */}
-      <div className="flex-1 border-l border-sonic-gray/30 bg-sonic-gray/10">
+      <div className="flex-1 lg:border-l border-sonic-gray/30 bg-sonic-gray/10 hidden lg:block">
         <AnimatePresence mode="wait">
           {currentStep === "microphone" && (
             <motion.div

@@ -488,18 +488,18 @@ function createOnboardingWindow() {
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
-    frame: false,
-    transparent: false,
+    frame: true, // Enable normal window frame
+    resizable: true, // Enable resizing
     backgroundColor: "#1a1a1a", // Match sonic-dark from tailwind
     alwaysOnTop: false,
     focusable: true,
-    resizable: false,
-    movable: true, // Enable window dragging
     skipTaskbar: false,
     show: true,
     center: true,
-    minWidth: 800,
-    minHeight: 500,
+    minWidth: 600,
+    minHeight: 400,
+    titleBarStyle: 'default',
+    title: 'Sonic Flow Setup',
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -1248,12 +1248,12 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("request-input-monitoring-permission", () => {
+    ipcMain.handle("request-input-monitoring-permission", () => {
     try {
-      // On macOS, we need to open System Preferences for Input Monitoring
-      // The helper binary will trigger the permission prompt when first accessed
       console.log("Requesting input monitoring permission...");
       
+      // In development, the actual app that needs permission is Electron/Cursor
+      // So we need to trigger the permission request for the current process
       const helperPath = app.isPackaged
         ? path.join(process.resourcesPath, "sonic-helper")
         : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
@@ -1261,21 +1261,38 @@ app.whenReady().then(async () => {
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
+        // Still open System Preferences even if helper is missing
+        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
         return { success: false, error: "Helper binary not found" };
       }
 
       // Try to run the helper briefly to trigger the permission dialog
-      const helper = spawn(helperPath, [], { stdio: 'ignore' });
+      // This should show the permission prompt for the current Electron process
+      const helper = spawn(helperPath, [], { 
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: false 
+      });
+      
+      // Listen for any output
+      helper.stdout.on('data', (data) => {
+        console.log('[Helper Output]:', data.toString());
+      });
+      
+      helper.stderr.on('data', (data) => {
+        console.log('[Helper Error]:', data.toString());
+      });
       
       // Kill it after a short time - the permission dialog should appear
       setTimeout(() => {
         if (!helper.killed) {
           helper.kill();
         }
-      }, 2000);
+      }, 3000);
       
-      // Open System Preferences to Input Monitoring
-      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+      // Also open System Preferences to Input Monitoring
+      setTimeout(() => {
+        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+      }, 1000);
       
       return { success: true };
     } catch (error) {
