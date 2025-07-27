@@ -185,7 +185,7 @@ const Onboarding: React.FC = () => {
     return stepMap[currentStep];
   };
 
-  const totalSteps = 5; // welcome, mic, input, accessibility, restart
+  const totalSteps = 5; // mic, input, accessibility, restart, test
 
   // Animation variants
   const containerVariants = {
@@ -237,9 +237,9 @@ const Onboarding: React.FC = () => {
                 <div
                   key={i}
                   className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    i < getStepNumber()
+                    i + 1 < getStepNumber()
                       ? "bg-sonic-light"
-                      : i === getStepNumber()
+                      : i + 1 === getStepNumber()
                       ? "bg-sonic-primary"
                       : "bg-sonic-gray/40"
                   }`}
