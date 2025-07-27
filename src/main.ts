@@ -824,6 +824,64 @@ const createTray = () => {
   }
 };
 
+// Helper function to handle moving app to Applications folder
+async function handleMoveToApplications() {
+  if (process.platform !== 'darwin') {
+    console.log("[Move to Applications] Not on macOS, skipping");
+    return;
+  }
+
+  const appBundlePath = app.getAppPath();
+  const isInApplications = appBundlePath.startsWith('/Applications/');
+  const isDev = !app.isPackaged;
+  
+  // Don't prompt if already in Applications or in development
+  if (isInApplications) {
+    console.log("[Move to Applications] App is already in Applications folder");
+    // Just open Finder to Applications folder to show it's already there
+    await shell.openPath('/Applications');
+    return;
+  }
+  
+  if (isDev) {
+    console.log("[Move to Applications] In development mode, opening Applications folder instead");
+    await shell.openPath('/Applications');
+    return;
+  }
+  
+  const result = await dialog.showMessageBox({
+    type: 'info',
+    buttons: ['Move to Applications', 'Cancel'],
+    defaultId: 0,
+    message: 'Move Sonic Flow to Applications folder?',
+    detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
+  });
+  
+  if (result.response === 0) {
+    try {
+      const destPath = '/Applications/Sonic Flow.app';
+      // Use shell.trashItem to remove any existing version first
+      if (fs.existsSync(destPath)) {
+        await shell.trashItem(destPath);
+      }
+      // Copy the entire app bundle to Applications
+      fs.cpSync(appBundlePath, destPath, { recursive: true });
+      // Open the moved version
+      shell.openPath(destPath);
+      // Quit this instance
+      app.quit();
+    } catch (error) {
+      console.error('Failed to move app to Applications:', error);
+      // Show error dialog and open Applications folder as fallback
+      await dialog.showErrorBox(
+        'Move Failed',
+        'Could not move Sonic Flow to Applications folder. Please move it manually.'
+      );
+      await shell.openPath('/Applications');
+    }
+  }
+}
+
 // Add a handler for insert-text-at-cursor
 ipcMain.handle(
   "insert-text-at-cursor",
@@ -912,6 +970,44 @@ ipcMain.handle(
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  // Check if app should be moved to Applications folder (macOS only)
+  if (process.platform === 'darwin') {
+    const appBundlePath = app.getAppPath();
+    const isInApplications = appBundlePath.startsWith('/Applications/');
+    const isDev = !app.isPackaged;
+    
+    // Only prompt for move if not in Applications and not in development
+    if (!isInApplications && !isDev) {
+      const result = await dialog.showMessageBox({
+        type: 'info',
+        buttons: ['Move to Applications', 'Cancel'],
+        defaultId: 0,
+        message: 'Move Sonic Flow to Applications folder?',
+        detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
+      });
+      
+      if (result.response === 0) {
+        try {
+          const destPath = '/Applications/Sonic Flow.app';
+          // Use shell.trashItem to remove any existing version first
+          if (fs.existsSync(destPath)) {
+            await shell.trashItem(destPath);
+          }
+          // Copy the entire app bundle to Applications
+          fs.cpSync(appBundlePath, destPath, { recursive: true });
+          // Open the moved version
+          shell.openPath(destPath);
+          // Quit this instance
+          app.quit();
+          return;
+        } catch (error) {
+          console.error('Failed to move app to Applications:', error);
+          // Continue with normal startup if move fails
+        }
+      }
+    }
+  }
+
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
   
@@ -1134,56 +1230,15 @@ app.whenReady().then(async () => {
       const isDev = !app.isPackaged;
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
       
-      // In development mode, we need to check permissions for the current Electron process
-      // In production, we check for our app's helper binary
-      if (isDev) {
-        console.log("[Dev Mode] Checking permissions for current Electron process");
-        
-        // For dev mode, try to check if the current process (Cursor/Electron) has input monitoring
-        let hasInputMonitoring = false;
-        try {
-          // Try to create a simple event tap to check if we have permission
-          const helperPath = path.join(app.getAppPath(), "native", "bin", "sonic-helper");
-          if (fs.existsSync(helperPath)) {
-            // Use the helper to check if current process has permissions
-            const result = await new Promise<boolean>((resolve) => {
-              const helper = spawn(helperPath, ["--check-permissions"], { 
-                stdio: ['pipe', 'pipe', 'pipe'],
-                timeout: 3000 
-              });
-              
-              let output = "";
-              helper.stdout.on("data", (data) => {
-                output += data.toString();
-              });
-              
-              helper.on("close", () => {
-                const hasPermissions = output.includes("permissions-granted");
-                resolve(hasPermissions);
-              });
-              
-              setTimeout(() => {
-                helper.kill();
-                resolve(false);
-              }, 3000);
-            });
-            hasInputMonitoring = result;
-          }
-        } catch (error) {
-          console.log("[Dev Mode] Could not check input monitoring:", error);
-        }
-        
-        console.log("[Dev Mode] Input monitoring permission:", hasInputMonitoring ? "granted" : "needed");
-        return { needAX, needIM: !hasInputMonitoring, isDev: true };
-      }
-      
-      // Production mode - use the helper binary to check permissions
-      const helperPath = path.join(process.resourcesPath, "sonic-helper");
+      // Always use the helper binary for consistent permission checking in both dev and prod
+      const helperPath = isDev
+        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
+        : path.join(process.resourcesPath, "sonic-helper");
       
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("sonic-helper binary not found at path:", helperPath);
-        return { needAX, needIM: true, isDev: false }; // Assume IM needed if helper missing
+        return { needAX, needIM: true, isDev };
       }
       
       // Run the helper with --check-permissions flag
@@ -1198,13 +1253,13 @@ app.whenReady().then(async () => {
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
           const hasPermissions = output.includes("permissions-granted");
-          resolve({ needAX, needIM: !hasPermissions, isDev: false });
+          resolve({ needAX, needIM: !hasPermissions, isDev });
         });
         
         // Timeout after 5 seconds
         setTimeout(() => {
           helper.kill();
-          resolve({ needAX, needIM: true, isDev: false }); // Assume IM needed on timeout
+          resolve({ needAX, needIM: true, isDev }); // Assume IM needed on timeout
         }, 5000);
       });
     } catch (error) {
@@ -1249,7 +1304,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("open-system-preferences", async (event, pane: string) => {
     try {
-      const { shell } = require("electron");
+      const { shell } = await import("electron");
       let url = "";
       
       switch (pane) {
@@ -1262,6 +1317,10 @@ app.whenReady().then(async () => {
         case "input-monitoring":
           url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
           break;
+        case "location":
+          // Handle moving app to Applications folder
+          await handleMoveToApplications();
+          return; // Don't open a URL for this case
         default:
           url = "x-apple.systempreferences:com.apple.preference.security";
       }
@@ -1327,6 +1386,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("reload-app", () => {
     app.relaunch();
     app.exit(0);
+  });
+
+  ipcMain.handle("get-app-path", () => {
+    return app.getAppPath();
   });
 });
 

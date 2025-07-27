@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 
-type OnboardingStep = "welcome" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
+type OnboardingStep = "welcome" | "location" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -18,6 +18,7 @@ const Onboarding: React.FC = () => {
     accessibility: false,
   });
   const [isDev, setIsDev] = useState(false);
+  const [needsLocationFix, setNeedsLocationFix] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -25,6 +26,28 @@ const Onboarding: React.FC = () => {
     console.log("[Onboarding] Current step:", currentStep);
     console.log("[Onboarding] Window location:", window.location.href);
   }, []);
+
+  // Check if app needs to be moved to Applications folder
+  const checkAppLocation = async () => {
+    try {
+      const appPath = await window.electron?.getAppPath();
+      if (appPath) {
+        const needsMove = !appPath.startsWith('/Applications/') && (
+          appPath.includes('/Documents/') ||
+          appPath.includes('/Downloads/') ||
+          appPath.includes('/Desktop/')
+        );
+        setNeedsLocationFix(needsMove);
+        
+        // If app needs to be moved, start with location step
+        if (needsMove && currentStep === "welcome") {
+          setCurrentStep("location");
+        }
+      }
+    } catch (error) {
+      console.error("Error checking app location:", error);
+    }
+  };
 
   // Function to check permissions
   const checkPermissions = async () => {
@@ -46,12 +69,19 @@ const Onboarding: React.FC = () => {
   };
 
   useEffect(() => {
+    checkAppLocation();
     checkPermissions();
   }, []);
 
+  // Helper to get the current steps array
+  const getSteps = (): OnboardingStep[] =>
+    needsLocationFix
+      ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
+      : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+
   // Navigation functions
   const nextStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+    const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -59,7 +89,7 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+    const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -106,20 +136,48 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
+
+  // Reset restart prompt when step changes
+  useEffect(() => {
+    setShowRestartPrompt(false);
+  }, [currentStep]);
+
+  // Auto-check permissions when entering Input Monitoring step (for post-restart)
+  useEffect(() => {
+    if (currentStep === "input-monitoring") {
+      const checkInputMonitoringOnMount = async () => {
+        try {
+          const result = await window.electron?.checkPermissions();
+          if (!result?.needIM) {
+            // Permission is already granted, auto-advance
+            setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+            nextStep();
+          }
+        } catch (error) {
+          console.error("Error checking input monitoring permission on mount:", error);
+        }
+      };
+      
+      // Small delay to ensure the UI is ready
+      const timer = setTimeout(checkInputMonitoringOnMount, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
+
   const handleCheckInputMonitoring = async () => {
+    if (!showRestartPrompt) {
+      // First click: Show restart prompt
+      setShowRestartPrompt(true);
+      return;
+    }
+    
+    // Second click: Actually restart the app
     setChecking(true);
     try {
-      const result = await window.electron?.checkPermissions();
-      if (!result?.needIM) {
-        setPermissions(prev => ({ ...prev, inputMonitoring: true }));
-        setChecking(false);
-        nextStep();
-      } else {
-        setChecking(false);
-        setErrors(prev => ({ ...prev, inputMonitoring: true }));
-      }
+      await window.electron?.reloadApp();
     } catch (error) {
-      console.error("Error checking input monitoring permission:", error);
+      console.error("Error restarting app:", error);
       setChecking(false);
     }
   };
@@ -172,20 +230,13 @@ const Onboarding: React.FC = () => {
   };
 
   // Step progress indicator
-  const getStepNumber = () => {
-    const stepMap = {
-      welcome: 0,
-      microphone: 1,
-      "input-monitoring": 2,
-      accessibility: 3,
-      restart: 4,
-      test: 5,
-      complete: 6,
-    };
-    return stepMap[currentStep];
+  // Returns the index (in the progress steps) of the current step, or -1 if not in progress steps
+  const getProgressStepIndex = () => {
+    const steps = getSteps();
+    // Progress steps exclude 'welcome' and 'complete'
+    const progressSteps = steps.slice(1, -1);
+    return progressSteps.indexOf(currentStep);
   };
-
-  const totalSteps = 5; // mic, input, accessibility, restart, test
 
   // Animation variants
   const containerVariants = {
@@ -233,13 +284,13 @@ const Onboarding: React.FC = () => {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              {Array.from({ length: totalSteps }, (_, i) => (
+              {getSteps().slice(1, -1).map((step, i) => (
                 <div
-                  key={i}
+                  key={step}
                   className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    i + 1 < getStepNumber()
+                    i < getProgressStepIndex()
                       ? "bg-sonic-light"
-                      : i + 1 === getStepNumber()
+                      : i === getProgressStepIndex()
                       ? "bg-sonic-primary"
                       : "bg-sonic-gray/40"
                   }`}
@@ -287,6 +338,56 @@ const Onboarding: React.FC = () => {
                 <Button onClick={nextStep} className="w-full">
                   Continue
                 </Button>
+              </motion.div>
+            )}
+
+            {/* Location Step */}
+            {currentStep === "location" && (
+              <motion.div
+                key="location"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-2xl mb-3">📁</div>
+                  <h2 className="text-xl font-medium text-white">App Location</h2>
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
+                    Sonic Flow needs to be in your Applications folder for it to work correctly.
+                  </p>
+                </div>
+                
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why this is important</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
+                    macOS only applies permission changes to apps that are in the Applications folder.
+                    If Sonic Flow is not in Applications, it won't be able to monitor your Fn key.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Button 
+                    onClick={() => window.electron?.openSystemPreferences("location")}
+                    className="w-full"
+                  >
+                    Move Sonic Flow to Applications
+                  </Button>
+                  
+                  {needsLocationFix && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-400 text-center">Sonic Flow is not in Applications. Please move it.</p>
+                      <Button 
+                        variant="secondary"
+                        onClick={() => window.electron?.openSystemPreferences("location")}
+                        className="w-full"
+                      >
+                        Open System Preferences
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 
@@ -381,7 +482,7 @@ const Onboarding: React.FC = () => {
                     {checking ? "Opening System Preferences..." : "Enable Input Monitoring"}
                   </Button>
                   
-                  {errors.inputMonitoring && (
+                  {errors.inputMonitoring && !showRestartPrompt && (
                     <div className="space-y-2">
                       <p className="text-xs text-red-400 text-center">Permission not yet granted. Please enable in System Preferences.</p>
                       <Button 
@@ -394,13 +495,26 @@ const Onboarding: React.FC = () => {
                     </div>
                   )}
                   
+                  {showRestartPrompt && (
+                    <div className="space-y-3 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                      <div className="text-center">
+                        <div className="text-lg mb-2">🔄</div>
+                        <h3 className="text-sm font-medium text-blue-300 mb-2">Restart Required</h3>
+                        <p className="text-xs text-blue-200/80 leading-relaxed">
+                          Permission changes only take effect after restarting the app. 
+                          Click below to restart and continue setup.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
                   <Button 
                     onClick={handleCheckInputMonitoring}
-                    variant="secondary"
+                    variant={showRestartPrompt ? "default" : "secondary"}
                     disabled={checking}
                     className="w-full"
                   >
-                    {checking ? "Checking..." : "I've Enabled It"}
+                    {checking ? "Restarting..." : showRestartPrompt ? "Restart Sonic Flow" : "I've Enabled It"}
                   </Button>
                 </div>
               </motion.div>
@@ -547,7 +661,7 @@ const Onboarding: React.FC = () => {
             <Button 
               variant="secondary" 
               onClick={prevStep}
-              disabled={getStepNumber() <= 1}
+              disabled={getProgressStepIndex() <= 0}
               className="px-4 py-2"
             >
               Back

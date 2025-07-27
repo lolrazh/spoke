@@ -1,5 +1,5 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerZIP } from "@electron-forge/maker-zip";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -8,7 +8,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     // macOS app icon
-    icon: "./public/assets/icon.png",
+    icon: "./public/assets/icon.icns",
     // Ensure icon is copied to the app bundle
     extraResource: [
       "./public/assets/icon.png",
@@ -16,9 +16,30 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/sonic-helper",
     ],
+    // Code signing configuration matching your existing approach
+    osxSign: {
+      identity: "-", // Ad-hoc signing
+      optionsForFile: () => {
+        return {
+          force: true,
+          deep: true,
+          runtime: true,
+          entitlements: "./entitlements.plist"
+        };
+      }
+    }
   },
   rebuildConfig: {},
-  makers: [new MakerZIP({}, ["darwin"])],
+  makers: [
+    new MakerDMG({
+      // Modern DMG format (same as VS Code, Raycast, etc.)
+      format: "ULFO",
+      // Use the existing icon for DMG
+      icon: "./public/assets/icon.icns"
+      // TODO: Add custom layout and background later
+      // Default layout works fine for now
+    }, ["darwin"])
+  ],
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.

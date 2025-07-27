@@ -43,6 +43,7 @@ declare global {
       startHelper: () => Promise<void>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
+      getAppPath: () => Promise<string>;
     };
     mic: {
       updateDevices: (
