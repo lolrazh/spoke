@@ -912,6 +912,44 @@ ipcMain.handle(
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  // Check if app should be moved to Applications folder (macOS only)
+  if (process.platform === 'darwin') {
+    const appPath = app.getPath('exe');
+    const isInApplications = appPath.startsWith('/Applications/');
+    const isDev = !app.isPackaged;
+    
+    // Only prompt for move if not in Applications and not in development
+    if (!isInApplications && !isDev) {
+      const result = await dialog.showMessageBox({
+        type: 'info',
+        buttons: ['Move to Applications', 'Cancel'],
+        defaultId: 0,
+        message: 'Move Sonic Flow to Applications folder?',
+        detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
+      });
+      
+      if (result.response === 0) {
+        try {
+          const destPath = '/Applications/Sonic Flow.app';
+          // Use shell.trashItem to remove any existing version first
+          if (fs.existsSync(destPath)) {
+            await shell.trashItem(destPath);
+          }
+          // Copy the app to Applications
+          fs.cpSync(appPath, destPath, { recursive: true });
+          // Open the moved version
+          shell.openPath(destPath);
+          // Quit this instance
+          app.quit();
+          return;
+        } catch (error) {
+          console.error('Failed to move app to Applications:', error);
+          // Continue with normal startup if move fails
+        }
+      }
+    }
+  }
+
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
   
