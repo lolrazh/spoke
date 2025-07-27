@@ -914,8 +914,8 @@ ipcMain.handle(
 app.whenReady().then(async () => {
   // Check if app should be moved to Applications folder (macOS only)
   if (process.platform === 'darwin') {
-    const appPath = app.getPath('exe');
-    const isInApplications = appPath.startsWith('/Applications/');
+    const appBundlePath = app.getAppPath();
+    const isInApplications = appBundlePath.startsWith('/Applications/');
     const isDev = !app.isPackaged;
     
     // Only prompt for move if not in Applications and not in development
@@ -935,8 +935,8 @@ app.whenReady().then(async () => {
           if (fs.existsSync(destPath)) {
             await shell.trashItem(destPath);
           }
-          // Copy the app to Applications
-          fs.cpSync(appPath, destPath, { recursive: true });
+          // Copy the entire app bundle to Applications
+          fs.cpSync(appBundlePath, destPath, { recursive: true });
           // Open the moved version
           shell.openPath(destPath);
           // Quit this instance
