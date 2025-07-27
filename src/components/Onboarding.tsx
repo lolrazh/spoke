@@ -131,7 +131,7 @@ const Onboarding: React.FC = () => {
       // Poll for permission changes
       const pollInterval = setInterval(async () => {
         const result = await window.electron?.checkPermissions();
-        if (!result.needAX) {
+        if (result && !result.needAX) {
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setChecking(false);
           clearInterval(pollInterval);
