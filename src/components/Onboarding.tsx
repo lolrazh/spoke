@@ -73,11 +73,15 @@ const Onboarding: React.FC = () => {
     checkPermissions();
   }, []);
 
-  // Navigation functions
-  const nextStep = () => {
-    const steps: OnboardingStep[] = needsLocationFix 
+  // Helper to get the current steps array
+  const getSteps = (): OnboardingStep[] =>
+    needsLocationFix
       ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
       : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+
+  // Navigation functions
+  const nextStep = () => {
+    const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -85,9 +89,7 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps: OnboardingStep[] = needsLocationFix 
-      ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
-      : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+    const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -200,21 +202,13 @@ const Onboarding: React.FC = () => {
   };
 
   // Step progress indicator
-  const getStepNumber = () => {
-    const stepMap = {
-      welcome: 0,
-      location: 1,
-      microphone: 2,
-      "input-monitoring": 3,
-      accessibility: 4,
-      restart: 5,
-      test: 6,
-      complete: 7,
-    };
-    return stepMap[currentStep];
+  // Returns the index (in the progress steps) of the current step, or -1 if not in progress steps
+  const getProgressStepIndex = () => {
+    const steps = getSteps();
+    // Progress steps exclude 'welcome' and 'complete'
+    const progressSteps = steps.slice(1, -1);
+    return progressSteps.indexOf(currentStep);
   };
-
-  const totalSteps = 5; // mic, input, accessibility, restart, test
 
   // Animation variants
   const containerVariants = {
@@ -262,13 +256,13 @@ const Onboarding: React.FC = () => {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              {Array.from({ length: totalSteps }, (_, i) => (
+              {getSteps().slice(1, -1).map((step, i) => (
                 <div
-                  key={i}
+                  key={step}
                   className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    i + 1 < getStepNumber()
+                    i < getProgressStepIndex()
                       ? "bg-sonic-light"
-                      : i + 1 === getStepNumber()
+                      : i === getProgressStepIndex()
                       ? "bg-sonic-primary"
                       : "bg-sonic-gray/40"
                   }`}
@@ -626,7 +620,7 @@ const Onboarding: React.FC = () => {
             <Button 
               variant="secondary" 
               onClick={prevStep}
-              disabled={getStepNumber() <= 1}
+              disabled={getProgressStepIndex() <= 0}
               className="px-4 py-2"
             >
               Back
