@@ -83,24 +83,30 @@ const Onboarding: React.FC = () => {
     setChecking(true);
     try {
       await window.electron?.requestInputMonitoringPermission();
-      // Poll for permission changes
-      const pollInterval = setInterval(async () => {
-        const result = await window.electron?.checkPermissions();
-        if (!result.needIM) {
-          setPermissions(prev => ({ ...prev, inputMonitoring: true }));
-          setChecking(false);
-          clearInterval(pollInterval);
-          nextStep();
-        }
-      }, 1000);
       
-      // Stop polling after 10 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setChecking(false);
-      }, 10000);
+      // After opening System Preferences, show instructions and provide manual continue
+      setChecking(false);
+      // Don't auto-advance - let user manually continue after granting permission
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
+      setChecking(false);
+    }
+  };
+
+  const handleCheckInputMonitoring = async () => {
+    setChecking(true);
+    try {
+      const result = await window.electron?.checkPermissions();
+      if (!result?.needIM) {
+        setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+        setChecking(false);
+        nextStep();
+      } else {
+        setChecking(false);
+        setErrors(prev => ({ ...prev, inputMonitoring: true }));
+      }
+    } catch (error) {
+      console.error("Error checking input monitoring permission:", error);
       setChecking(false);
     }
   };
@@ -184,17 +190,19 @@ const Onboarding: React.FC = () => {
   // GIF placeholder component
   const GIFPlaceholder: React.FC<{ step: string }> = ({ step }) => (
     <div className="flex items-center justify-center h-full">
-      <div className="w-64 h-48 bg-black/20 rounded-lg border border-white/5 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-3xl mb-2">🎬</div>
-          <div className="text-xs text-gray-400">GIF: {step} Demo</div>
+              <div className="w-64 h-48 bg-sonic-gray/20 rounded-lg border border-sonic-gray/30 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-3xl mb-2">🎬</div>
+            <div className="text-xs text-sonic-light/60">GIF: {step} Demo</div>
+          </div>
         </div>
-      </div>
     </div>
   );
 
   return (
-    <div className="flex h-full text-white" style={{ background: 'rgba(20, 20, 30, 0.98)' }}>
+    <div className="flex h-full text-white bg-sonic-dark">
+      {/* Draggable header bar */}
+      <div className="header-bar absolute top-0 left-0 right-0 h-8 z-50"></div>
       
       {/* Left Column - Content */}
       <div className="flex-1 flex flex-col justify-center p-6">
@@ -216,7 +224,7 @@ const Onboarding: React.FC = () => {
                       ? "bg-sonic-light"
                       : i === getStepNumber()
                       ? "bg-sonic-primary"
-                      : "bg-white/20"
+                      : "bg-sonic-gray/40"
                   }`}
                 />
               ))}
@@ -236,25 +244,25 @@ const Onboarding: React.FC = () => {
               >
                 <div className="space-y-3">
                   <h1 className="text-2xl font-medium text-white">Welcome to Sonic Flow</h1>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     Let's set up the permissions you need for voice dictation.
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 space-y-3">
-                  <h2 className="text-xs font-medium text-gray-300 uppercase tracking-wide">Required Permissions</h2>
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 space-y-3">
+                  <h2 className="text-xs font-medium text-sonic-light uppercase tracking-wide">Required Permissions</h2>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-3">
                       <div className="w-1 h-1 bg-sonic-primary rounded-full"></div>
-                      <span className="text-xs text-gray-300">Microphone access to hear your voice</span>
+                      <span className="text-xs text-sonic-light/80">Microphone access to hear your voice</span>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-1 h-1 bg-sonic-primary rounded-full"></div>
-                      <span className="text-xs text-gray-300">Fn key monitoring for activation</span>
+                      <span className="text-xs text-sonic-light/80">Fn key monitoring for activation</span>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-1 h-1 bg-sonic-primary rounded-full"></div>
-                      <span className="text-xs text-gray-300">Text insertion for dictation</span>
+                      <span className="text-xs text-sonic-light/80">Text insertion for dictation</span>
                     </div>
                   </div>
                 </div>
@@ -278,14 +286,14 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3">
                   <div className="text-2xl mb-3">🎤</div>
                   <h2 className="text-xl font-medium text-white">Microphone Access</h2>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     We need access to your microphone to hear what you're saying.
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">Why we need this</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why we need this</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
                     Sonic Flow listens to your voice and converts it to text. 
                     Without microphone access, voice dictation won't work.
                   </p>
@@ -339,14 +347,14 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3">
                   <div className="text-2xl mb-3">⌨️</div>
                   <h2 className="text-xl font-medium text-white">Fn Key Monitoring</h2>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     We need to watch for the Fn key to start and stop dictation.
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">Why we need this</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why we need this</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
                     Press and hold the Fn key to activate voice dictation. 
                     This permission lets us detect when you press it.
                   </p>
@@ -358,7 +366,29 @@ const Onboarding: React.FC = () => {
                     disabled={checking}
                     className="w-full"
                   >
-                    {checking ? "Requesting..." : "Enable Input Monitoring"}
+                    {checking ? "Opening System Preferences..." : "Enable Input Monitoring"}
+                  </Button>
+                  
+                  {errors.inputMonitoring && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-400 text-center">Permission not yet granted. Please enable in System Preferences.</p>
+                      <Button 
+                        variant="secondary"
+                        onClick={() => window.electron?.openSystemPreferences("inputmonitoring")}
+                        className="w-full"
+                      >
+                        Open System Preferences
+                      </Button>
+                    </div>
+                  )}
+                  
+                  <Button 
+                    onClick={handleCheckInputMonitoring}
+                    variant="secondary"
+                    disabled={checking}
+                    className="w-full"
+                  >
+                    {checking ? "Checking..." : "I've Enabled It"}
                   </Button>
                   
                   <Button 
@@ -385,14 +415,14 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3">
                   <div className="text-2xl mb-3">📋</div>
                   <h2 className="text-xl font-medium text-white">Text Insertion</h2>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     We need permission to insert transcribed text where your cursor is.
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">Why we need this</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why we need this</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
                     After converting your voice to text, we need to paste it 
                     into your active application (like a document or email).
                   </p>
@@ -431,14 +461,14 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3">
                   <div className="text-2xl mb-3">🔄</div>
                   <h2 className="text-xl font-medium text-white">Restart Required</h2>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     macOS needs Sonic Flow to restart to activate the new permissions.
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">Why restart is needed</h3>
-                  <p className="text-xs text-gray-400 leading-relaxed">
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why restart is needed</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
                     macOS only applies permission changes to apps after they restart. 
                     This ensures your privacy settings are properly enforced.
                   </p>
@@ -476,14 +506,14 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3">
                   <div className="text-2xl mb-3">🎉</div>
                   <h2 className="text-xl font-medium text-white">Ready to Test!</h2>
-                  <p className="text-sm text-gray-300 leading-relaxed">
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
                     All permissions are set up. Let's test your dictation!
                   </p>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-gray-300 uppercase tracking-wide mb-2">How to test</h3>
-                  <div className="space-y-1 text-xs text-gray-400">
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">How to test</h3>
+                  <div className="space-y-1 text-xs text-sonic-light/60">
                     <p>1. Click "Start App" below</p>
                     <p>2. Open any text app (Notes, TextEdit, etc.)</p>
                     <p>3. Hold the Fn key and speak</p>
@@ -522,7 +552,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="text-sonic-light text-4xl mb-4">✓</div>
                 <h2 className="text-xl font-medium text-white">All Set!</h2>
-                <p className="text-sm text-gray-300 leading-relaxed">
+                <p className="text-sm text-sonic-light/80 leading-relaxed">
                   Sonic Flow is ready to use. Enjoy your voice dictation!
                 </p>
               </motion.div>
@@ -533,7 +563,7 @@ const Onboarding: React.FC = () => {
       </div>
 
       {/* Right Column - GIF Placeholder */}
-      <div className="flex-1 border-l border-white/5 bg-black/10">
+      <div className="flex-1 border-l border-sonic-gray/30 bg-sonic-gray/10">
         <AnimatePresence mode="wait">
           {currentStep === "microphone" && (
             <motion.div
@@ -582,8 +612,8 @@ const Onboarding: React.FC = () => {
             >
               <div className="text-center">
                 <div className="text-6xl mb-4">🔄</div>
-                <div className="text-sm text-gray-400">Restarting Sonic Flow</div>
-                <div className="text-xs text-gray-500 mt-2">Applying permissions...</div>
+                <div className="text-sm text-sonic-light/80">Restarting Sonic Flow</div>
+                <div className="text-xs text-sonic-light/60 mt-2">Applying permissions...</div>
               </div>
             </motion.div>
           )}
@@ -598,7 +628,7 @@ const Onboarding: React.FC = () => {
             >
               <div className="text-center">
                 <div className="text-6xl mb-4">🎤</div>
-                <div className="text-sm text-gray-400">Sonic Flow</div>
+                <div className="text-sm text-sonic-light/80">Sonic Flow</div>
               </div>
             </motion.div>
           )}

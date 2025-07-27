@@ -490,10 +490,11 @@ function createOnboardingWindow() {
     height: ONBOARDING_HEIGHT,
     frame: false,
     transparent: false,
-    backgroundColor: "#14141e",
+    backgroundColor: "#1a1a1a", // Match sonic-dark from tailwind
     alwaysOnTop: false,
     focusable: true,
     resizable: false,
+    movable: true, // Enable window dragging
     skipTaskbar: false,
     show: true,
     center: true,
@@ -1249,18 +1250,32 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("request-input-monitoring-permission", () => {
     try {
-      // Trigger the system dialog for input monitoring by starting the helper
-      // The helper will show the permission dialog if needed
+      // On macOS, we need to open System Preferences for Input Monitoring
+      // The helper binary will trigger the permission prompt when first accessed
+      console.log("Requesting input monitoring permission...");
+      
       const helperPath = app.isPackaged
         ? path.join(process.resourcesPath, "sonic-helper")
         : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
       
-      const helper = spawn(helperPath, []);
+      // First check if the helper exists
+      if (!fs.existsSync(helperPath)) {
+        console.error("Helper binary not found at:", helperPath);
+        return { success: false, error: "Helper binary not found" };
+      }
+
+      // Try to run the helper briefly to trigger the permission dialog
+      const helper = spawn(helperPath, [], { stdio: 'ignore' });
       
-      // Just start it to trigger the permission dialog, then kill it
+      // Kill it after a short time - the permission dialog should appear
       setTimeout(() => {
-        helper.kill();
-      }, 1000);
+        if (!helper.killed) {
+          helper.kill();
+        }
+      }, 2000);
+      
+      // Open System Preferences to Input Monitoring
+      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
       
       return { success: true };
     } catch (error) {
