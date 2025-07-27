@@ -136,20 +136,48 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
+
+  // Reset restart prompt when step changes
+  useEffect(() => {
+    setShowRestartPrompt(false);
+  }, [currentStep]);
+
+  // Auto-check permissions when entering Input Monitoring step (for post-restart)
+  useEffect(() => {
+    if (currentStep === "input-monitoring") {
+      const checkInputMonitoringOnMount = async () => {
+        try {
+          const result = await window.electron?.checkPermissions();
+          if (!result?.needIM) {
+            // Permission is already granted, auto-advance
+            setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+            nextStep();
+          }
+        } catch (error) {
+          console.error("Error checking input monitoring permission on mount:", error);
+        }
+      };
+      
+      // Small delay to ensure the UI is ready
+      const timer = setTimeout(checkInputMonitoringOnMount, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
+
   const handleCheckInputMonitoring = async () => {
+    if (!showRestartPrompt) {
+      // First click: Show restart prompt
+      setShowRestartPrompt(true);
+      return;
+    }
+    
+    // Second click: Actually restart the app
     setChecking(true);
     try {
-      const result = await window.electron?.checkPermissions();
-      if (!result?.needIM) {
-        setPermissions(prev => ({ ...prev, inputMonitoring: true }));
-        setChecking(false);
-        nextStep();
-      } else {
-        setChecking(false);
-        setErrors(prev => ({ ...prev, inputMonitoring: true }));
-      }
+      await window.electron?.reloadApp();
     } catch (error) {
-      console.error("Error checking input monitoring permission:", error);
+      console.error("Error restarting app:", error);
       setChecking(false);
     }
   };
@@ -454,7 +482,7 @@ const Onboarding: React.FC = () => {
                     {checking ? "Opening System Preferences..." : "Enable Input Monitoring"}
                   </Button>
                   
-                  {errors.inputMonitoring && (
+                  {errors.inputMonitoring && !showRestartPrompt && (
                     <div className="space-y-2">
                       <p className="text-xs text-red-400 text-center">Permission not yet granted. Please enable in System Preferences.</p>
                       <Button 
@@ -467,13 +495,26 @@ const Onboarding: React.FC = () => {
                     </div>
                   )}
                   
+                  {showRestartPrompt && (
+                    <div className="space-y-3 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                      <div className="text-center">
+                        <div className="text-lg mb-2">🔄</div>
+                        <h3 className="text-sm font-medium text-blue-300 mb-2">Restart Required</h3>
+                        <p className="text-xs text-blue-200/80 leading-relaxed">
+                          Permission changes only take effect after restarting the app. 
+                          Click below to restart and continue setup.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
                   <Button 
                     onClick={handleCheckInputMonitoring}
-                    variant="secondary"
+                    variant={showRestartPrompt ? "default" : "secondary"}
                     disabled={checking}
                     className="w-full"
                   >
-                    {checking ? "Checking..." : "I've Enabled It"}
+                    {checking ? "Restarting..." : showRestartPrompt ? "Restart Sonic Flow" : "I've Enabled It"}
                   </Button>
                 </div>
               </motion.div>
