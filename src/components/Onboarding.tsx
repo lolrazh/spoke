@@ -386,7 +386,7 @@ const Onboarding: React.FC = () => {
                       <p className="text-xs text-red-400 text-center">Permission not yet granted. Please enable in System Preferences.</p>
                       <Button 
                         variant="secondary"
-                        onClick={() => window.electron?.openSystemPreferences("inputmonitoring")}
+                        onClick={() => window.electron?.openSystemPreferences("input-monitoring")}
                         className="w-full"
                       >
                         Open System Preferences
