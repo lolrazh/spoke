@@ -27,7 +27,6 @@ import {
 import {
   ONBOARDING_WIDTH,
   ONBOARDING_HEIGHT,
-  FIRST_RUN_PREF_KEY,
 } from "./constants/onboarding";
 
 // Microphone device management types
@@ -54,7 +53,7 @@ let micDevices: MicDevice[] = [
   { id: "default", label: "System Default" }, // Always available fallback
 ];
 let micPreferences: MicPreferences = {};
-const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+let micPrefsPath: string; // Will be initialized in app.whenReady()
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -910,31 +909,12 @@ ipcMain.handle(
 );
 
 // Preference checking for first run
-function getFirstRunPreference() {
-  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  try {
-    if (fs.existsSync(prefsPath)) {
-      const data = fs.readFileSync(prefsPath, "utf-8");
-      const prefs = JSON.parse(data);
-      return prefs[FIRST_RUN_PREF_KEY] === true;
-    }
-  } catch (error) {
-    console.error("Error reading first run preference:", error);
-  }
-  return false;
-}
-
-function setFirstRunPreference() {
-  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  try {
-    const prefs = { [FIRST_RUN_PREF_KEY]: true };
-    fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2));
-  } catch (error) {
-    console.error("Error setting first run preference:", error);
-  }
-}
+// Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  // Initialize paths after app is ready to avoid keychain dialog
+  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -974,18 +954,9 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Check if we should always show onboarding in development
-  const alwaysShowOnboarding = process.env.SF_DEV_ONBOARDING === "1";
-  const onboardingComplete = getFirstRunPreference();
-  
-  if (alwaysShowOnboarding || !onboardingComplete) {
-    console.log(alwaysShowOnboarding ? "[Dev Mode] Always showing onboarding (SF_DEV_ONBOARDING=1)" : "[First Run] Showing onboarding");
-    createOnboardingWindow();
-  } else {
-    createWindow();
-    createTray();
-    startFnListener();
-  }
+  // Always show onboarding - no persistence tracking
+  console.log("[Startup] Always showing onboarding");
+  createOnboardingWindow();
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
@@ -1000,8 +971,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("onboarding-complete", () => {
-    console.log("[IPC] Onboarding complete, setting preference and starting app");
-    setFirstRunPreference();
+    console.log("[IPC] Onboarding complete, starting app");
     if (onboardingWindow) {
       onboardingWindow.close();
     }
@@ -1168,9 +1138,43 @@ app.whenReady().then(async () => {
       // In production, we check for our app's helper binary
       if (isDev) {
         console.log("[Dev Mode] Checking permissions for current Electron process");
-        // In dev mode, we can't reliably check Input Monitoring for Electron/Cursor
-        // So we'll rely on the user confirmation flow
-        return { needAX, needIM: true, isDev: true };
+        
+        // For dev mode, try to check if the current process (Cursor/Electron) has input monitoring
+        let hasInputMonitoring = false;
+        try {
+          // Try to create a simple event tap to check if we have permission
+          const helperPath = path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+          if (fs.existsSync(helperPath)) {
+            // Use the helper to check if current process has permissions
+            const result = await new Promise<boolean>((resolve) => {
+              const helper = spawn(helperPath, ["--check-permissions"], { 
+                stdio: ['pipe', 'pipe', 'pipe'],
+                timeout: 3000 
+              });
+              
+              let output = "";
+              helper.stdout.on("data", (data) => {
+                output += data.toString();
+              });
+              
+              helper.on("close", () => {
+                const hasPermissions = output.includes("permissions-granted");
+                resolve(hasPermissions);
+              });
+              
+              setTimeout(() => {
+                helper.kill();
+                resolve(false);
+              }, 3000);
+            });
+            hasInputMonitoring = result;
+          }
+        } catch (error) {
+          console.log("[Dev Mode] Could not check input monitoring:", error);
+        }
+        
+        console.log("[Dev Mode] Input monitoring permission:", hasInputMonitoring ? "granted" : "needed");
+        return { needAX, needIM: !hasInputMonitoring, isDev: true };
       }
       
       // Production mode - use the helper binary to check permissions
@@ -1356,13 +1360,8 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating main window",
       );
-      const alwaysShowOnboarding = process.env.SF_DEV_ONBOARDING === "1";
-      const onboardingComplete = getFirstRunPreference();
-      if (alwaysShowOnboarding || !onboardingComplete) {
-        createOnboardingWindow();
-      } else {
-        createWindow();
-      }
+      // Always show onboarding
+      createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
