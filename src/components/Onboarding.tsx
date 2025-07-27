@@ -17,6 +17,14 @@ const Onboarding: React.FC = () => {
     inputMonitoring: false,
     accessibility: false,
   });
+  const [isDev, setIsDev] = useState(false);
+
+  // Debug logging
+  useEffect(() => {
+    console.log("[Onboarding] Component mounted");
+    console.log("[Onboarding] Current step:", currentStep);
+    console.log("[Onboarding] Window location:", window.location.href);
+  }, []);
 
   // Function to check permissions
   const checkPermissions = async () => {
@@ -26,6 +34,7 @@ const Onboarding: React.FC = () => {
         window.electron?.checkMicrophonePermission()
       ]);
       
+      setIsDev(systemPerms?.isDev || false);
       setPermissions({
         microphone: micPerms?.granted || false,
         inputMonitoring: !systemPerms?.needIM,
@@ -79,14 +88,18 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  const handleRequestInputMonitoring = async () => {
+    const handleRequestInputMonitoring = async () => {
     setChecking(true);
     try {
-      await window.electron?.requestInputMonitoringPermission();
+      const result = await window.electron?.requestInputMonitoringPermission();
       
       // After opening System Preferences, show instructions and provide manual continue
-        setChecking(false);
+      setChecking(false);
       // Don't auto-advance - let user manually continue after granting permission
+      
+      if (!result?.success) {
+        setErrors(prev => ({ ...prev, inputMonitoring: true }));
+      }
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
       setChecking(false);
@@ -201,6 +214,13 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-screen text-white bg-sonic-dark">
+      {/* Development Mode Indicator */}
+      {isDev && (
+        <div className="absolute top-4 right-4 z-50 bg-orange-500/20 border border-orange-500/50 rounded-lg px-3 py-1">
+          <span className="text-xs font-medium text-orange-300">Development Mode</span>
+        </div>
+      )}
+      
       {/* Left Column - Content */}
       <div className="flex-1 flex flex-col justify-center p-6 relative min-h-0">
         <div className="max-w-md w-full mx-auto flex-1 flex flex-col justify-center">
@@ -345,6 +365,11 @@ const Onboarding: React.FC = () => {
                     Press and hold the Fn key to activate voice dictation. 
                     This permission lets us detect when you press it.
                   </p>
+                  {isDev && (
+                    <div className="mt-3 p-2 bg-orange-500/10 border border-orange-500/30 rounded text-xs text-orange-300">
+                      <strong>Dev Mode:</strong> Look for "Electron" or "Cursor" in System Preferences → Privacy & Security → Input Monitoring
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">

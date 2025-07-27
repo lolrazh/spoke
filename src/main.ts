@@ -513,12 +513,25 @@ function createOnboardingWindow() {
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
     ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`
-    : `${path.join(
+    : `file://${path.join(
         __dirname,
         `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
       )}#/onboarding`;
 
+  console.log("[Onboarding] Loading URL:", onboardingUrl);
+  console.log("[Onboarding] __dirname:", __dirname);
+  console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
+  
   onboardingWindow.loadURL(onboardingUrl);
+  
+  // Add error handling for loading issues
+  onboardingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
+  });
+
+  onboardingWindow.webContents.on('dom-ready', () => {
+    console.log("[Onboarding] DOM ready");
+  });
 
   onboardingWindow.on("closed", () => {
     onboardingWindow = null;
@@ -1148,17 +1161,25 @@ app.whenReady().then(async () => {
   // Onboarding IPC handlers
   ipcMain.handle("check-permissions", async () => {
     try {
+      const isDev = !app.isPackaged;
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
       
-      // For Input Monitoring, use the native helper to check
-      const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "sonic-helper")
-        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      // In development mode, we need to check permissions for the current Electron process
+      // In production, we check for our app's helper binary
+      if (isDev) {
+        console.log("[Dev Mode] Checking permissions for current Electron process");
+        // In dev mode, we can't reliably check Input Monitoring for Electron/Cursor
+        // So we'll rely on the user confirmation flow
+        return { needAX, needIM: true, isDev: true };
+      }
+      
+      // Production mode - use the helper binary to check permissions
+      const helperPath = path.join(process.resourcesPath, "sonic-helper");
       
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("sonic-helper binary not found at path:", helperPath);
-        return { needAX, needIM: true }; // Assume IM needed if helper missing
+        return { needAX, needIM: true, isDev: false }; // Assume IM needed if helper missing
       }
       
       // Run the helper with --check-permissions flag
@@ -1173,19 +1194,19 @@ app.whenReady().then(async () => {
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
           const hasPermissions = output.includes("permissions-granted");
-          resolve({ needAX, needIM: !hasPermissions });
+          resolve({ needAX, needIM: !hasPermissions, isDev: false });
         });
         
         // Timeout after 5 seconds
         setTimeout(() => {
           helper.kill();
-          resolve({ needAX, needIM: true }); // Assume IM needed on timeout
+          resolve({ needAX, needIM: true, isDev: false }); // Assume IM needed on timeout
         }, 5000);
       });
     } catch (error) {
       console.error("Error checking permissions:", error);
       // If we can't determine permissions, assume both are needed
-      return { needAX: true, needIM: true };
+      return { needAX: true, needIM: true, isDev: !app.isPackaged };
     }
   });
 
@@ -1250,24 +1271,22 @@ app.whenReady().then(async () => {
 
     ipcMain.handle("request-input-monitoring-permission", () => {
     try {
-      console.log("Requesting input monitoring permission...");
+      const isDev = !app.isPackaged;
+      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
       
-      // In development, the actual app that needs permission is Electron/Cursor
-      // So we need to trigger the permission request for the current process
-      const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "sonic-helper")
-        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      const helperPath = isDev
+        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
+        : path.join(process.resourcesPath, "sonic-helper");
       
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
         // Still open System Preferences even if helper is missing
         shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
-        return { success: false, error: "Helper binary not found" };
+        return { success: false, error: "Helper binary not found", isDev };
       }
 
       // Try to run the helper briefly to trigger the permission dialog
-      // This should show the permission prompt for the current Electron process
       const helper = spawn(helperPath, [], { 
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: false 
@@ -1294,10 +1313,10 @@ app.whenReady().then(async () => {
         shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
       }, 1000);
       
-      return { success: true };
+      return { success: true, isDev };
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, isDev: !app.isPackaged };
     }
   });
 
