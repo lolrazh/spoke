@@ -824,6 +824,64 @@ const createTray = () => {
   }
 };
 
+// Helper function to handle moving app to Applications folder
+async function handleMoveToApplications() {
+  if (process.platform !== 'darwin') {
+    console.log("[Move to Applications] Not on macOS, skipping");
+    return;
+  }
+
+  const appBundlePath = app.getAppPath();
+  const isInApplications = appBundlePath.startsWith('/Applications/');
+  const isDev = !app.isPackaged;
+  
+  // Don't prompt if already in Applications or in development
+  if (isInApplications) {
+    console.log("[Move to Applications] App is already in Applications folder");
+    // Just open Finder to Applications folder to show it's already there
+    await shell.openPath('/Applications');
+    return;
+  }
+  
+  if (isDev) {
+    console.log("[Move to Applications] In development mode, opening Applications folder instead");
+    await shell.openPath('/Applications');
+    return;
+  }
+  
+  const result = await dialog.showMessageBox({
+    type: 'info',
+    buttons: ['Move to Applications', 'Cancel'],
+    defaultId: 0,
+    message: 'Move Sonic Flow to Applications folder?',
+    detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
+  });
+  
+  if (result.response === 0) {
+    try {
+      const destPath = '/Applications/Sonic Flow.app';
+      // Use shell.trashItem to remove any existing version first
+      if (fs.existsSync(destPath)) {
+        await shell.trashItem(destPath);
+      }
+      // Copy the entire app bundle to Applications
+      fs.cpSync(appBundlePath, destPath, { recursive: true });
+      // Open the moved version
+      shell.openPath(destPath);
+      // Quit this instance
+      app.quit();
+    } catch (error) {
+      console.error('Failed to move app to Applications:', error);
+      // Show error dialog and open Applications folder as fallback
+      await dialog.showErrorBox(
+        'Move Failed',
+        'Could not move Sonic Flow to Applications folder. Please move it manually.'
+      );
+      await shell.openPath('/Applications');
+    }
+  }
+}
+
 // Add a handler for insert-text-at-cursor
 ipcMain.handle(
   "insert-text-at-cursor",
@@ -1259,6 +1317,10 @@ app.whenReady().then(async () => {
         case "input-monitoring":
           url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
           break;
+        case "location":
+          // Handle moving app to Applications folder
+          await handleMoveToApplications();
+          return; // Don't open a URL for this case
         default:
           url = "x-apple.systempreferences:com.apple.preference.security";
       }
