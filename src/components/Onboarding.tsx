@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 
-type OnboardingStep = "welcome" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
+type OnboardingStep = "welcome" | "location" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -18,6 +18,7 @@ const Onboarding: React.FC = () => {
     accessibility: false,
   });
   const [isDev, setIsDev] = useState(false);
+  const [needsLocationFix, setNeedsLocationFix] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -25,6 +26,28 @@ const Onboarding: React.FC = () => {
     console.log("[Onboarding] Current step:", currentStep);
     console.log("[Onboarding] Window location:", window.location.href);
   }, []);
+
+  // Check if app needs to be moved to Applications folder
+  const checkAppLocation = async () => {
+    try {
+      const appPath = await window.electron?.getAppPath();
+      if (appPath) {
+        const needsMove = !appPath.startsWith('/Applications/') && (
+          appPath.includes('/Documents/') ||
+          appPath.includes('/Downloads/') ||
+          appPath.includes('/Desktop/')
+        );
+        setNeedsLocationFix(needsMove);
+        
+        // If app needs to be moved, start with location step
+        if (needsMove && currentStep === "welcome") {
+          setCurrentStep("location");
+        }
+      }
+    } catch (error) {
+      console.error("Error checking app location:", error);
+    }
+  };
 
   // Function to check permissions
   const checkPermissions = async () => {
@@ -46,12 +69,15 @@ const Onboarding: React.FC = () => {
   };
 
   useEffect(() => {
+    checkAppLocation();
     checkPermissions();
   }, []);
 
   // Navigation functions
   const nextStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+    const steps: OnboardingStep[] = needsLocationFix 
+      ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
+      : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -59,7 +85,9 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps: OnboardingStep[] = ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+    const steps: OnboardingStep[] = needsLocationFix 
+      ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
+      : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -175,12 +203,13 @@ const Onboarding: React.FC = () => {
   const getStepNumber = () => {
     const stepMap = {
       welcome: 0,
-      microphone: 1,
-      "input-monitoring": 2,
-      accessibility: 3,
-      restart: 4,
-      test: 5,
-      complete: 6,
+      location: 1,
+      microphone: 2,
+      "input-monitoring": 3,
+      accessibility: 4,
+      restart: 5,
+      test: 6,
+      complete: 7,
     };
     return stepMap[currentStep];
   };
@@ -287,6 +316,56 @@ const Onboarding: React.FC = () => {
                 <Button onClick={nextStep} className="w-full">
                   Continue
                 </Button>
+              </motion.div>
+            )}
+
+            {/* Location Step */}
+            {currentStep === "location" && (
+              <motion.div
+                key="location"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-2xl mb-3">📁</div>
+                  <h2 className="text-xl font-medium text-white">App Location</h2>
+                  <p className="text-sm text-sonic-light/80 leading-relaxed">
+                    Sonic Flow needs to be in your Applications folder for it to work correctly.
+                  </p>
+                </div>
+                
+                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
+                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why this is important</h3>
+                  <p className="text-xs text-sonic-light/60 leading-relaxed">
+                    macOS only applies permission changes to apps that are in the Applications folder.
+                    If Sonic Flow is not in Applications, it won't be able to monitor your Fn key.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Button 
+                    onClick={() => window.electron?.openSystemPreferences("location")}
+                    className="w-full"
+                  >
+                    Move Sonic Flow to Applications
+                  </Button>
+                  
+                  {needsLocationFix && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-400 text-center">Sonic Flow is not in Applications. Please move it.</p>
+                      <Button 
+                        variant="secondary"
+                        onClick={() => window.electron?.openSystemPreferences("location")}
+                        className="w-full"
+                      >
+                        Open System Preferences
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 

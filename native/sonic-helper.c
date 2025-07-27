@@ -1,4 +1,5 @@
 #include <ApplicationServices/ApplicationServices.h>
+#include <IOKit/hid/IOHIDManager.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h> // For usleep
@@ -10,15 +11,33 @@
 
 #define FN_MASK kCGEventFlagMaskSecondaryFn // 0x00800000
 
-// Pre-flight check for permissions
+// Modern function to check Input Monitoring permissions using IOHIDManager
+bool check_input_monitoring_permission() {
+    // Create a HID manager to test Input Monitoring permissions
+    IOHIDManagerRef manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+    if (!manager) {
+        return false;
+    }
+    
+    // Try to open the manager - this will trigger the permission request if needed
+    IOReturn result = IOHIDManagerOpen(manager, kIOHIDOptionsTypeNone);
+    bool hasPermission = (result == kIOReturnSuccess);
+    
+    // Clean up
+    if (hasPermission) {
+        IOHIDManagerClose(manager, kIOHIDOptionsTypeNone);
+    }
+    CFRelease(manager);
+    
+    return hasPermission;
+}
+
+// Pre-flight check for permissions using modern APIs
 bool check_permissions() {
-    if (CGPreflightListenEventAccess() != kCGListenEventAccessGranted) {
-        // Request permissions and check again. This will show the prompt.
-        if (CGRequestListenEventAccess() != kCGListenEventAccessGranted) {
-            puts("perm-denied");
-            fflush(stdout); // Ensure the message is sent immediately
-            return false;
-        }
+    if (!check_input_monitoring_permission()) {
+        puts("perm-denied");
+        fflush(stdout); // Ensure the message is sent immediately
+        return false;
     }
     return true;
 }
@@ -98,7 +117,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
-    // Add support for checking permissions
+    // Add support for checking permissions using modern APIs
     if (argc > 1 && strcmp(argv[1], "--check-permissions") == 0) {
         // Check Accessibility permissions
         CFDictionaryRef opts = CFDictionaryCreate(
@@ -111,8 +130,8 @@ int main(int argc, char *argv[]) {
         bool isTrusted = AXIsProcessTrustedWithOptions(opts);
         CFRelease(opts);
         
-        // Check Input Monitoring permissions
-        bool hasIMPermission = CGPreflightListenEventAccess() == kCGListenEventAccessGranted;
+        // Check Input Monitoring permissions using modern API
+        bool hasIMPermission = check_input_monitoring_permission();
         
         if (isTrusted && hasIMPermission) {
             puts("permissions-granted");

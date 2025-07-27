@@ -13,7 +13,7 @@ mkdir -p "$DEST_DIR"
 
 # --- sonic-helper ---
 echo "Compiling sonic-helper..."
-clang -framework ApplicationServices -o "$DEST_DIR/sonic-helper" "$SOURCE_DIR/sonic-helper.c"
+clang -framework ApplicationServices -framework IOKit -o "$DEST_DIR/sonic-helper" "$SOURCE_DIR/sonic-helper.c"
 # Removing strip command to avoid post-sign modification
 # strip -x "$DEST_DIR/sonic-helper"
 echo "sonic-helper compiled successfully."

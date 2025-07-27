@@ -99,4 +99,5 @@ contextBridge.exposeInMainWorld("electron", {
   startHelper: () => ipcRenderer.invoke("helper:start"),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
+  getAppPath: () => ipcRenderer.invoke("get-app-path"),
 });
