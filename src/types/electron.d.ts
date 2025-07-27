@@ -34,9 +34,12 @@ declare global {
       resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
       expandPill: (callback: () => void) => void;
-      checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean }>;
+      checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
-      requestInputMonitoringPermission: () => Promise<void>;
+      requestInputMonitoringPermission: () => Promise<{ success: boolean; isDev: boolean; error?: string }>;
+      requestMicrophonePermission: () => Promise<{ success: boolean; granted?: boolean; error?: string }>;
+      checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
+      openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;

@@ -27,7 +27,6 @@ import {
 import {
   ONBOARDING_WIDTH,
   ONBOARDING_HEIGHT,
-  FIRST_RUN_PREF_KEY,
 } from "./constants/onboarding";
 
 // Microphone device management types
@@ -54,7 +53,7 @@ let micDevices: MicDevice[] = [
   { id: "default", label: "System Default" }, // Always available fallback
 ];
 let micPreferences: MicPreferences = {};
-const micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+let micPrefsPath: string; // Will be initialized in app.whenReady()
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -488,15 +487,18 @@ function createOnboardingWindow() {
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
-    frame: false,
-    transparent: false,
-    backgroundColor: "#111827",
+    frame: true, // Enable normal window frame
+    resizable: true, // Enable resizing
+    backgroundColor: "#1a1a1a", // Match sonic-dark from tailwind
     alwaysOnTop: false,
     focusable: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: false,
+    skipTaskbar: false,
+    show: true,
     center: true,
+    minWidth: 600,
+    minHeight: 400,
+    titleBarStyle: 'default',
+    title: 'Sonic Flow Setup',
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -510,15 +512,24 @@ function createOnboardingWindow() {
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
     ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`
-    : `${path.join(
+    : `file://${path.join(
         __dirname,
         `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
       )}#/onboarding`;
 
+  console.log("[Onboarding] Loading URL:", onboardingUrl);
+  console.log("[Onboarding] __dirname:", __dirname);
+  console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
+  
   onboardingWindow.loadURL(onboardingUrl);
+  
+  // Add error handling for loading issues
+  onboardingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
+  });
 
-  onboardingWindow.once("ready-to-show", () => {
-    onboardingWindow.show();
+  onboardingWindow.webContents.on('dom-ready', () => {
+    console.log("[Onboarding] DOM ready");
   });
 
   onboardingWindow.on("closed", () => {
@@ -898,31 +909,12 @@ ipcMain.handle(
 );
 
 // Preference checking for first run
-function getFirstRunPreference() {
-  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  try {
-    if (fs.existsSync(prefsPath)) {
-      const data = fs.readFileSync(prefsPath, "utf-8");
-      const prefs = JSON.parse(data);
-      return prefs[FIRST_RUN_PREF_KEY] === true;
-    }
-  } catch (error) {
-    console.error("Error reading first run preference:", error);
-  }
-  return false;
-}
-
-function setFirstRunPreference() {
-  const prefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  try {
-    const prefs = { [FIRST_RUN_PREF_KEY]: true };
-    fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2));
-  } catch (error) {
-    console.error("Error setting first run preference:", error);
-  }
-}
+// Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  // Initialize paths after app is ready to avoid keychain dialog
+  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -962,14 +954,9 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  const onboardingComplete = getFirstRunPreference();
-  if (!onboardingComplete) {
-    createOnboardingWindow();
-  } else {
-    createWindow();
-    createTray();
-    startFnListener();
-  }
+  // Always show onboarding - no persistence tracking
+  console.log("[Startup] Always showing onboarding");
+  createOnboardingWindow();
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
@@ -984,8 +971,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("onboarding-complete", () => {
-    console.log("[IPC] Onboarding complete, setting preference and starting app");
-    setFirstRunPreference();
+    console.log("[IPC] Onboarding complete, starting app");
     if (onboardingWindow) {
       onboardingWindow.close();
     }
@@ -1145,17 +1131,59 @@ app.whenReady().then(async () => {
   // Onboarding IPC handlers
   ipcMain.handle("check-permissions", async () => {
     try {
+      const isDev = !app.isPackaged;
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
       
-      // For Input Monitoring, use the native helper to check
-      const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "sonic-helper")
-        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      // In development mode, we need to check permissions for the current Electron process
+      // In production, we check for our app's helper binary
+      if (isDev) {
+        console.log("[Dev Mode] Checking permissions for current Electron process");
+        
+        // For dev mode, try to check if the current process (Cursor/Electron) has input monitoring
+        let hasInputMonitoring = false;
+        try {
+          // Try to create a simple event tap to check if we have permission
+          const helperPath = path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+          if (fs.existsSync(helperPath)) {
+            // Use the helper to check if current process has permissions
+            const result = await new Promise<boolean>((resolve) => {
+              const helper = spawn(helperPath, ["--check-permissions"], { 
+                stdio: ['pipe', 'pipe', 'pipe'],
+                timeout: 3000 
+              });
+              
+              let output = "";
+              helper.stdout.on("data", (data) => {
+                output += data.toString();
+              });
+              
+              helper.on("close", () => {
+                const hasPermissions = output.includes("permissions-granted");
+                resolve(hasPermissions);
+              });
+              
+              setTimeout(() => {
+                helper.kill();
+                resolve(false);
+              }, 3000);
+            });
+            hasInputMonitoring = result;
+          }
+        } catch (error) {
+          console.log("[Dev Mode] Could not check input monitoring:", error);
+        }
+        
+        console.log("[Dev Mode] Input monitoring permission:", hasInputMonitoring ? "granted" : "needed");
+        return { needAX, needIM: !hasInputMonitoring, isDev: true };
+      }
+      
+      // Production mode - use the helper binary to check permissions
+      const helperPath = path.join(process.resourcesPath, "sonic-helper");
       
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("sonic-helper binary not found at path:", helperPath);
-        return { needAX, needIM: true }; // Assume IM needed if helper missing
+        return { needAX, needIM: true, isDev: false }; // Assume IM needed if helper missing
       }
       
       // Run the helper with --check-permissions flag
@@ -1170,19 +1198,19 @@ app.whenReady().then(async () => {
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
           const hasPermissions = output.includes("permissions-granted");
-          resolve({ needAX, needIM: !hasPermissions });
+          resolve({ needAX, needIM: !hasPermissions, isDev: false });
         });
         
         // Timeout after 5 seconds
         setTimeout(() => {
           helper.kill();
-          resolve({ needAX, needIM: true }); // Assume IM needed on timeout
+          resolve({ needAX, needIM: true, isDev: false }); // Assume IM needed on timeout
         }, 5000);
       });
     } catch (error) {
       console.error("Error checking permissions:", error);
       // If we can't determine permissions, assume both are needed
-      return { needAX: true, needIM: true };
+      return { needAX: true, needIM: true, isDev: !app.isPackaged };
     }
   });
 
@@ -1196,25 +1224,103 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("request-input-monitoring-permission", () => {
+  ipcMain.handle("request-microphone-permission", async () => {
     try {
-      // Trigger the system dialog for input monitoring by starting the helper
-      // The helper will show the permission dialog if needed
-      const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "sonic-helper")
-        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+      console.log("[IPC] Requesting microphone permission...");
+      const granted = await systemPreferences.askForMediaAccess("microphone");
+      console.log("[IPC] Microphone permission result:", granted);
+      return { success: true, granted };
+    } catch (error) {
+      console.error("Error requesting microphone permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("check-microphone-permission", () => {
+    try {
+      const status = systemPreferences.getMediaAccessStatus("microphone");
+      console.log("[IPC] Microphone permission status:", status);
+      return { status, granted: status === "granted" };
+    } catch (error) {
+      console.error("Error checking microphone permission:", error);
+      return { status: "unknown", granted: false };
+    }
+  });
+
+  ipcMain.handle("open-system-preferences", async (event, pane: string) => {
+    try {
+      const { shell } = require("electron");
+      let url = "";
       
-      const helper = spawn(helperPath, []);
+      switch (pane) {
+        case "microphone":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+          break;
+        case "accessibility":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+          break;
+        case "input-monitoring":
+          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+          break;
+        default:
+          url = "x-apple.systempreferences:com.apple.preference.security";
+      }
       
-      // Just start it to trigger the permission dialog, then kill it
+      await shell.openExternal(url);
+      console.log(`[IPC] Opened System Preferences: ${pane}`);
+    } catch (error) {
+      console.error("Error opening System Preferences:", error);
+    }
+  });
+
+    ipcMain.handle("request-input-monitoring-permission", () => {
+    try {
+      const isDev = !app.isPackaged;
+      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
+      
+      const helperPath = isDev
+        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
+        : path.join(process.resourcesPath, "sonic-helper");
+      
+      // First check if the helper exists
+      if (!fs.existsSync(helperPath)) {
+        console.error("Helper binary not found at:", helperPath);
+        // Still open System Preferences even if helper is missing
+        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+        return { success: false, error: "Helper binary not found", isDev };
+      }
+
+      // Try to run the helper briefly to trigger the permission dialog
+      const helper = spawn(helperPath, [], { 
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: false 
+      });
+      
+      // Listen for any output
+      helper.stdout.on('data', (data) => {
+        console.log('[Helper Output]:', data.toString());
+      });
+      
+      helper.stderr.on('data', (data) => {
+        console.log('[Helper Error]:', data.toString());
+      });
+      
+      // Kill it after a short time - the permission dialog should appear
       setTimeout(() => {
-        helper.kill();
+        if (!helper.killed) {
+          helper.kill();
+        }
+      }, 3000);
+      
+      // Also open System Preferences to Input Monitoring
+      setTimeout(() => {
+        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
       }, 1000);
       
-      return { success: true };
+      return { success: true, isDev };
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message, isDev: !app.isPackaged };
     }
   });
 
@@ -1254,12 +1360,8 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating main window",
       );
-      const onboardingComplete = getFirstRunPreference();
-      if (!onboardingComplete) {
-        createOnboardingWindow();
-      } else {
-        createWindow();
-      }
+      // Always show onboarding
+      createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
