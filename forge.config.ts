@@ -16,18 +16,18 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/sonic-helper",
     ],
-    // Code signing configuration matching your existing approach
+    // Code signing configuration for internal testing
     osxSign: {
-      identity: "-", // Ad-hoc signing
-      optionsForFile: () => {
+      identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
+      optionsForFile: (filePath) => {
         return {
-          force: true,
-          deep: true,
-          runtime: true,
-          entitlements: "./entitlements.plist"
+          entitlements: "./build/entitlements/main.plist",
+          entitlementsInherit: "./build/entitlements/inherit.plist",
         };
-      }
+      },
+      preAutoEntitlements: false
     }
+    // No notarization needed for internal testing
   },
   rebuildConfig: {},
   makers: [
