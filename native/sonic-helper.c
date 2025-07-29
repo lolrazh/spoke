@@ -5,6 +5,14 @@
 #include <unistd.h> // For usleep
 
 // For older SDKs that may not have these defined yet.
+#ifndef kIOHIDRequestTypeListenEvent
+#define kIOHIDRequestTypeListenEvent 1
+#endif
+
+// Declare the function for older SDKs
+extern IOReturn IOHIDRequestAccess(uint32_t requestType);
+
+// For older SDKs that may not have these defined yet.
 #ifndef kCGListenEventAccessGranted
 #define kCGListenEventAccessGranted (1)
 #endif
@@ -30,6 +38,32 @@ bool check_input_monitoring_permission() {
     CFRelease(manager);
     
     return hasPermission;
+}
+
+// Function to register the app in Input Monitoring settings
+bool register_input_monitoring() {
+    // This call will:
+    // 1. Register the app in System Settings → Privacy → Input Monitoring (but disabled)
+    // 2. Show the permission prompt if not already granted
+    // 3. Return true if permission is granted, false otherwise
+    IOReturn result = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
+    
+    // Add detailed logging to see what's happening
+    fprintf(stderr, "[IM] IOHIDRequestAccess returned: 0x%08x\n", result);
+    fflush(stderr);
+    
+    if (result == kIOReturnSuccess) {
+        fprintf(stderr, "[IM] Success - permission granted\n");
+        fflush(stderr);
+    } else if (result == kIOReturnNotPrivileged) {
+        fprintf(stderr, "[IM] Not privileged - app not signed or no bundle ID\n");
+        fflush(stderr);
+    } else {
+        fprintf(stderr, "[IM] Other error: 0x%08x\n", result);
+        fflush(stderr);
+    }
+    
+    return (result == kIOReturnSuccess);
 }
 
 // Pre-flight check for permissions using modern APIs
@@ -115,6 +149,20 @@ int main(int argc, char *argv[]) {
         requireAX();
         cmdV();
         return 0;
+    }
+    
+    // Add support for registering Input Monitoring permission
+    if (argc > 1 && strcmp(argv[1], "--register-input-monitoring") == 0) {
+        bool registered = register_input_monitoring();
+        if (registered) {
+            puts("registered-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("registered-denied");
+            fflush(stdout);
+            return 1;
+        }
     }
     
     // Add support for checking permissions using modern APIs

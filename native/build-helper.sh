@@ -14,8 +14,14 @@ mkdir -p "$DEST_DIR"
 # --- sonic-helper ---
 echo "Compiling sonic-helper..."
 clang -framework ApplicationServices -framework IOKit -o "$DEST_DIR/sonic-helper" "$SOURCE_DIR/sonic-helper.c"
-# Removing strip command to avoid post-sign modification
-# strip -x "$DEST_DIR/sonic-helper"
-echo "sonic-helper compiled successfully."
+
+# Sign the helper with the same identity as the main app
+echo "Signing sonic-helper..."
+codesign --force --timestamp --options=runtime \
+         --entitlements "$SOURCE_DIR/../build/entitlements/inherit.plist" \
+         --sign "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)" \
+         "$DEST_DIR/sonic-helper"
+
+echo "sonic-helper compiled and signed successfully."
 
 echo "Native helper built successfully." 

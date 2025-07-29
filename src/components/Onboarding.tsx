@@ -119,20 +119,35 @@ const Onboarding: React.FC = () => {
   };
 
     const handleRequestInputMonitoring = async () => {
+    console.log('[Onboarding] Starting Input Monitoring permission request...');
     setChecking(true);
     try {
       const result = await window.electron?.requestInputMonitoringPermission();
+      console.log('[Onboarding] Permission request result:', result);
       
-      // After opening System Preferences, show instructions and provide manual continue
       setChecking(false);
-      // Don't auto-advance - let user manually continue after granting permission
       
-      if (!result?.success) {
+      if (result?.success) {
+        if (result.alreadyGranted) {
+          console.log('[Onboarding] Permission already granted - auto advancing');
+          // Permission was already granted - auto advance
+          setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+          nextStep();
+        } else {
+          console.log('[Onboarding] Permission needs to be enabled in Settings');
+          // Permission needs to be enabled in Settings - show instructions
+          setErrors(prev => ({ ...prev, inputMonitoring: false })); // Clear any previous errors
+          // The System Preferences should have opened automatically
+          // User needs to manually enable it and then click "I've Enabled It"
+        }
+      } else {
+        console.log('[Onboarding] Permission request failed:', result?.error);
         setErrors(prev => ({ ...prev, inputMonitoring: true }));
       }
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
       setChecking(false);
+      setErrors(prev => ({ ...prev, inputMonitoring: true }));
     }
   };
 
@@ -479,7 +494,7 @@ const Onboarding: React.FC = () => {
                     disabled={checking}
                     className="w-full"
                   >
-                    {checking ? "Opening System Preferences..." : "Enable Input Monitoring"}
+                    {checking ? "Registering in System Settings..." : "Enable Input Monitoring"}
                   </Button>
                   
                   {errors.inputMonitoring && !showRestartPrompt && (

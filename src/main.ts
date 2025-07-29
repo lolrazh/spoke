@@ -1332,7 +1332,7 @@ app.whenReady().then(async () => {
     }
   });
 
-    ipcMain.handle("request-input-monitoring-permission", () => {
+    ipcMain.handle("request-input-monitoring-permission", async () => {
     try {
       const isDev = !app.isPackaged;
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
@@ -1349,34 +1349,53 @@ app.whenReady().then(async () => {
         return { success: false, error: "Helper binary not found", isDev };
       }
 
-      // Try to run the helper briefly to trigger the permission dialog
-      const helper = spawn(helperPath, [], { 
+          // Use our new registration functionality
+    return new Promise((resolve) => {
+      // Always open System Preferences immediately (in case registration fails)
+      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+      
+      const helper = spawn(helperPath, ["--register-input-monitoring"], { 
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: false 
       });
-      
-      // Listen for any output
-      helper.stdout.on('data', (data) => {
-        console.log('[Helper Output]:', data.toString());
+        
+        let stdout = '';
+        let stderr = '';
+        
+        helper.stdout.on('data', (data) => {
+          stdout += data.toString();
+          console.log('[Helper Output]:', data.toString());
+        });
+        
+        helper.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.log('[Helper Error]:', data.toString());
+        });
+        
+        helper.on('close', (code) => {
+          console.log(`[Helper] Registration process exited with code ${code}`);
+          
+          if (stdout.includes('registered-granted')) {
+            console.log('[Helper] Input Monitoring permission already granted');
+            resolve({ success: true, isDev, alreadyGranted: true });
+          } else if (stdout.includes('registered-denied')) {
+            console.log('[Helper] Input Monitoring permission not granted - user needs to enable in Settings');
+            // Open System Preferences to Input Monitoring
+            console.log('[Helper] Opening System Preferences to Input Monitoring...');
+            shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+            console.log('[Helper] System Preferences opened');
+            resolve({ success: true, isDev, alreadyGranted: false });
+          } else {
+            console.error('[Helper] Unexpected output from registration process');
+            resolve({ success: false, error: "Unexpected helper output", isDev });
+          }
+        });
+        
+        helper.on('error', (error) => {
+          console.error('[Helper] Error running registration process:', error);
+          resolve({ success: false, error: error.message, isDev });
+        });
       });
-      
-      helper.stderr.on('data', (data) => {
-        console.log('[Helper Error]:', data.toString());
-      });
-      
-      // Kill it after a short time - the permission dialog should appear
-      setTimeout(() => {
-        if (!helper.killed) {
-          helper.kill();
-        }
-      }, 3000);
-      
-      // Also open System Preferences to Input Monitoring
-      setTimeout(() => {
-        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
-      }, 1000);
-      
-      return { success: true, isDev };
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
       return { success: false, error: error.message, isDev: !app.isPackaged };
