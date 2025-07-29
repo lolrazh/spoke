@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 
-type OnboardingStep = "welcome" | "location" | "microphone" | "input-monitoring" | "accessibility" | "restart" | "test" | "complete";
+type OnboardingStep = "welcome" | "location" | "microphone" | "accessibility" | "input-monitoring" | "test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -76,8 +76,8 @@ const Onboarding: React.FC = () => {
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] =>
     needsLocationFix
-      ? ["welcome", "location", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"]
-      : ["welcome", "microphone", "input-monitoring", "accessibility", "restart", "test", "complete"];
+      ? ["welcome", "location", "microphone", "accessibility", "input-monitoring", "test", "complete"]
+      : ["welcome", "microphone", "accessibility", "input-monitoring", "test", "complete"];
 
   // Navigation functions
   const nextStep = () => {
@@ -151,14 +151,7 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
-
-  // Reset restart prompt when step changes
-  useEffect(() => {
-    setShowRestartPrompt(false);
-  }, [currentStep]);
-
-  // Auto-check permissions when entering Input Monitoring step (for post-restart)
+  // Auto-check permissions when entering Input Monitoring step
   useEffect(() => {
     if (currentStep === "input-monitoring") {
       const checkInputMonitoringOnMount = async () => {
@@ -181,19 +174,24 @@ const Onboarding: React.FC = () => {
   }, [currentStep]);
 
   const handleCheckInputMonitoring = async () => {
-    if (!showRestartPrompt) {
-      // First click: Show restart prompt
-      setShowRestartPrompt(true);
-      return;
-    }
-    
-    // Second click: Actually restart the app
+    // Check if permission is now granted
     setChecking(true);
     try {
-      await window.electron?.reloadApp();
+      const result = await window.electron?.checkPermissions();
+      if (result && !result.needIM) {
+        // Permission granted - auto advance
+        setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+        setChecking(false);
+        nextStep();
+      } else {
+        // Permission still not granted
+        setChecking(false);
+        setErrors(prev => ({ ...prev, inputMonitoring: true }));
+      }
     } catch (error) {
-      console.error("Error restarting app:", error);
+      console.error("Error checking input monitoring permission:", error);
       setChecking(false);
+      setErrors(prev => ({ ...prev, inputMonitoring: true }));
     }
   };
 
@@ -223,17 +221,7 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  const handleRestart = async () => {
-    try {
-      // Complete onboarding first, then restart
-      await window.electron?.onboardingComplete();
-      setTimeout(() => {
-        window.electron?.reloadApp();
-      }, 500);
-    } catch (error) {
-      console.error("Error restarting app:", error);
-    }
-  };
+
 
   const handleComplete = async () => {
     try {
@@ -497,7 +485,7 @@ const Onboarding: React.FC = () => {
                     {checking ? "Registering in System Settings..." : "Enable Input Monitoring"}
                   </Button>
                   
-                  {errors.inputMonitoring && !showRestartPrompt && (
+                  {errors.inputMonitoring && (
                     <div className="space-y-2">
                       <p className="text-xs text-red-400 text-center">Permission not yet granted. Please enable in System Preferences.</p>
                       <Button 
@@ -510,26 +498,13 @@ const Onboarding: React.FC = () => {
                     </div>
                   )}
                   
-                  {showRestartPrompt && (
-                    <div className="space-y-3 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                      <div className="text-center">
-                        <div className="text-lg mb-2">🔄</div>
-                        <h3 className="text-sm font-medium text-blue-300 mb-2">Restart Required</h3>
-                        <p className="text-xs text-blue-200/80 leading-relaxed">
-                          Permission changes only take effect after restarting the app. 
-                          Click below to restart and continue setup.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  
                   <Button 
                     onClick={handleCheckInputMonitoring}
-                    variant={showRestartPrompt ? "default" : "secondary"}
+                    variant="secondary"
                     disabled={checking}
                     className="w-full"
                   >
-                    {checking ? "Restarting..." : showRestartPrompt ? "Restart Sonic Flow" : "I've Enabled It"}
+                    {checking ? "Checking..." : "I've Enabled It"}
                   </Button>
                 </div>
               </motion.div>
@@ -573,42 +548,7 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
 
-            {/* Restart Step */}
-            {currentStep === "restart" && (
-              <motion.div
-                key="restart"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center space-y-6"
-              >
-                <div className="space-y-3">
-                  <div className="text-2xl mb-3">🔄</div>
-                  <h2 className="text-xl font-medium text-white">Restart Required</h2>
-                  <p className="text-sm text-sonic-light/80 leading-relaxed">
-                    macOS needs Sonic Flow to restart to activate the new permissions.
-                  </p>
-                </div>
-                
-                <div className="bg-sonic-gray/30 border border-sonic-gray/50 rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-sonic-light uppercase tracking-wide mb-2">Why restart is needed</h3>
-                  <p className="text-xs text-sonic-light/60 leading-relaxed">
-                    macOS only applies permission changes to apps after they restart. 
-                    This ensures your privacy settings are properly enforced.
-                  </p>
-                </div>
 
-                <div className="space-y-3">
-                  <Button 
-                    onClick={handleRestart}
-                    className="w-full"
-                  >
-                    Restart Sonic Flow
-                  </Button>
-                </div>
-              </motion.div>
-            )}
 
             {/* Test Step */}
             {currentStep === "test" && (
@@ -686,7 +626,7 @@ const Onboarding: React.FC = () => {
               variant="secondary" 
               onClick={() => {
                 // Skip to the end
-                setCurrentStep("restart");
+                setCurrentStep("test");
               }}
               className="px-4 py-2"
             >
@@ -735,22 +675,7 @@ const Onboarding: React.FC = () => {
             </motion.div>
           )}
           
-          {currentStep === "restart" && (
-            <motion.div
-              key="restart-gif"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.4 }}
-              className="flex items-center justify-center h-full"
-            >
-              <div className="text-center">
-                <div className="text-6xl mb-4">🔄</div>
-                <div className="text-sm text-sonic-light/80">Restarting Sonic Flow</div>
-                <div className="text-xs text-sonic-light/60 mt-2">Applying permissions...</div>
-              </div>
-            </motion.div>
-          )}
+
           
           {(currentStep === "welcome" || currentStep === "test" || currentStep === "complete") && (
             <motion.div
