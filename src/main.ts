@@ -1252,8 +1252,9 @@ app.whenReady().then(async () => {
         
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
-          const hasPermissions = output.includes("permissions-granted");
-          resolve({ needAX, needIM: !hasPermissions, isDev });
+          const hasAXPermission = output.includes("ax-granted");
+          const hasIMPermission = output.includes("im-granted");
+          resolve({ needAX: !hasAXPermission, needIM: !hasIMPermission, isDev });
         });
         
         // Timeout after 5 seconds
@@ -1332,7 +1333,7 @@ app.whenReady().then(async () => {
     }
   });
 
-    ipcMain.handle("request-input-monitoring-permission", () => {
+    ipcMain.handle("request-input-monitoring-permission", async () => {
     try {
       const isDev = !app.isPackaged;
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
@@ -1349,36 +1350,112 @@ app.whenReady().then(async () => {
         return { success: false, error: "Helper binary not found", isDev };
       }
 
-      // Try to run the helper briefly to trigger the permission dialog
-      const helper = spawn(helperPath, [], { 
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: false 
+      // Use our new registration functionality
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--register-input-monitoring"], { 
+          stdio: ['pipe', 'pipe', 'pipe'],
+          detached: false 
+        });
+          
+        let stdout = '';
+        let stderr = '';
+        
+        helper.stdout.on('data', (data) => {
+          stdout += data.toString();
+          console.log('[Helper Output]:', data.toString());
+        });
+        
+        helper.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.log('[Helper Error]:', data.toString());
+        });
+        
+        helper.on('close', (code) => {
+          console.log(`[Helper] Registration process exited with code ${code}`);
+          
+          if (stdout.includes('registered-granted')) {
+            console.log('[Helper] Input Monitoring permission already granted');
+            resolve({ success: true, isDev, alreadyGranted: true });
+          } else if (stdout.includes('registered-denied')) {
+            console.log('[Helper] Input Monitoring permission not granted - user needs to enable in Settings');
+            // Open System Preferences to Input Monitoring AFTER registration
+            console.log('[Helper] Opening System Preferences to Input Monitoring...');
+            shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+            console.log('[Helper] System Preferences opened');
+            resolve({ success: true, isDev, alreadyGranted: false });
+          } else {
+            console.error('[Helper] Unexpected output from registration process');
+            resolve({ success: false, error: "Unexpected helper output", isDev });
+          }
+        });
+        
+        helper.on('error', (error) => {
+          console.error('[Helper] Error running registration process:', error);
+          resolve({ success: false, error: error.message, isDev });
+        });
       });
-      
-      // Listen for any output
-      helper.stdout.on('data', (data) => {
-        console.log('[Helper Output]:', data.toString());
-      });
-      
-      helper.stderr.on('data', (data) => {
-        console.log('[Helper Error]:', data.toString());
-      });
-      
-      // Kill it after a short time - the permission dialog should appear
-      setTimeout(() => {
-        if (!helper.killed) {
-          helper.kill();
-        }
-      }, 3000);
-      
-      // Also open System Preferences to Input Monitoring
-      setTimeout(() => {
-        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
-      }, 1000);
-      
-      return { success: true, isDev };
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
+      return { success: false, error: error.message, isDev: !app.isPackaged };
+    }
+  });
+
+  // NEW: Add handler for the proper Input Monitoring request
+  ipcMain.handle("ask-im", async () => {
+    try {
+      const isDev = !app.isPackaged;
+      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Asking for Input Monitoring permission...`);
+      
+      const helperPath = isDev
+        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
+        : path.join(process.resourcesPath, "sonic-helper");
+      
+      if (!fs.existsSync(helperPath)) {
+        console.error("Helper binary not found at:", helperPath);
+        return { success: false, error: "Helper binary not found", isDev };
+      }
+
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--ask-im"], { 
+          stdio: ['pipe', 'pipe', 'pipe'],
+          detached: false 
+        });
+          
+        let stdout = '';
+        let stderr = '';
+        
+        helper.stdout.on('data', (data) => {
+          stdout += data.toString();
+          console.log('[Ask-IM Output]:', data.toString());
+        });
+        
+        helper.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.log('[Ask-IM Error]:', data.toString());
+        });
+        
+        helper.on('close', (code) => {
+          console.log(`[Ask-IM] Process exited with code ${code}`);
+          
+          if (stdout.includes('im-granted')) {
+            console.log('[Ask-IM] Input Monitoring permission granted');
+            resolve({ success: true, status: "authorized", isDev });
+          } else if (stdout.includes('im-denied')) {
+            console.log('[Ask-IM] Input Monitoring permission denied');
+            resolve({ success: true, status: "denied", isDev });
+          } else {
+            console.error('[Ask-IM] Unexpected output from helper');
+            resolve({ success: false, error: "Unexpected helper output", isDev });
+          }
+        });
+        
+        helper.on('error', (error) => {
+          console.error('[Ask-IM] Error running helper:', error);
+          resolve({ success: false, error: error.message, isDev });
+        });
+      });
+    } catch (error) {
+      console.error("Error asking for Input Monitoring permission:", error);
       return { success: false, error: error.message, isDev: !app.isPackaged };
     }
   });

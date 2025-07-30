@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld("electron", {
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () => ipcRenderer.invoke("request-accessibility-permission"),
   requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
+  askIM: () => ipcRenderer.invoke("ask-im"),
   requestMicrophonePermission: () => ipcRenderer.invoke("request-microphone-permission"),
   checkMicrophonePermission: () => ipcRenderer.invoke("check-microphone-permission"),
   openSystemPreferences: (pane: string) => ipcRenderer.invoke("open-system-preferences", pane),

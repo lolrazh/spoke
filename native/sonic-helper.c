@@ -1,8 +1,29 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <IOKit/hid/IOHIDManager.h>
+#include <CoreGraphics/CoreGraphics.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h> // For usleep
+
+// For older SDKs that may not have these defined yet.
+#ifndef kIOHIDRequestTypeListenEvent
+#define kIOHIDRequestTypeListenEvent 1
+#endif
+
+// For older SDKs that may not have these defined yet.
+#ifndef IOHIDAccessType
+typedef enum {
+    kIOHIDAccessTypeGranted = 0,
+    kIOHIDAccessTypeDenied = 1,
+    kIOHIDAccessTypeUnknown = 2
+} IOHIDAccessType;
+#endif
+
+// Declare the function for older SDKs
+extern IOReturn IOHIDRequestAccess(uint32_t requestType);
+
+// Declare IOHIDCheckAccess for permission checking
+extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
 
 // For older SDKs that may not have these defined yet.
 #ifndef kCGListenEventAccessGranted
@@ -13,23 +34,32 @@
 
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
-    // Create a HID manager to test Input Monitoring permissions
-    IOHIDManagerRef manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-    if (!manager) {
-        return false;
+    // Use IOHIDCheckAccess for accurate permission checking on all supported macOS versions
+    return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted;
+}
+
+// NEW: Proper Input Monitoring request function using CoreGraphics API
+static bool request_input_monitoring(void) {
+    // Don't flash the dialog twice - check if already authorized
+    if (CGPreflightListenEventAccess()) {
+        fprintf(stderr, "[IM] Already authorized\n");
+        return true; // already authorized
     }
-    
-    // Try to open the manager - this will trigger the permission request if needed
-    IOReturn result = IOHIDManagerOpen(manager, kIOHIDOptionsTypeNone);
-    bool hasPermission = (result == kIOReturnSuccess);
-    
-    // Clean up
-    if (hasPermission) {
-        IOHIDManagerClose(manager, kIOHIDOptionsTypeNone);
+
+    // This will show the permission dialog and register the app in System Settings
+    bool ok = CGRequestListenEventAccess(); // shows the alert
+    if (!ok) {
+        fprintf(stderr, "[IM] User clicked 'Deny' or dialog failed\n");
+    } else {
+        fprintf(stderr, "[IM] Permission granted\n");
     }
-    CFRelease(manager);
-    
-    return hasPermission;
+    return ok;
+}
+
+// Function to register the app in Input Monitoring settings
+bool register_input_monitoring() {
+    // Use the new proper request function
+    return request_input_monitoring();
 }
 
 // Pre-flight check for permissions using modern APIs
@@ -117,6 +147,34 @@ int main(int argc, char *argv[]) {
         return 0;
     }
     
+    // NEW: Add support for requesting Input Monitoring permission
+    if (argc > 1 && strcmp(argv[1], "--ask-im") == 0) {
+        bool granted = request_input_monitoring();
+        if (granted) {
+            puts("im-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("im-denied");
+            fflush(stdout);
+            return 1;
+        }
+    }
+    
+    // Add support for registering Input Monitoring permission
+    if (argc > 1 && strcmp(argv[1], "--register-input-monitoring") == 0) {
+        bool registered = register_input_monitoring();
+        if (registered) {
+            puts("registered-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("registered-denied");
+            fflush(stdout);
+            return 1;
+        }
+    }
+    
     // Add support for checking permissions using modern APIs
     if (argc > 1 && strcmp(argv[1], "--check-permissions") == 0) {
         // Check Accessibility permissions
@@ -133,15 +191,21 @@ int main(int argc, char *argv[]) {
         // Check Input Monitoring permissions using modern API
         bool hasIMPermission = check_input_monitoring_permission();
         
-        if (isTrusted && hasIMPermission) {
-            puts("permissions-granted");
-            fflush(stdout);
-            return 0;
+        // Emit separate tokens for each permission type
+        if (isTrusted) {
+            puts("ax-granted");
         } else {
-            puts("permissions-denied");
-            fflush(stdout);
-            return 1;
+            puts("ax-denied");
         }
+        
+        if (hasIMPermission) {
+            puts("im-granted");
+        } else {
+            puts("im-denied");
+        }
+        
+        fflush(stdout);
+        return 0;
     }
 
     if (!check_permissions()) {
@@ -153,7 +217,7 @@ int main(int argc, char *argv[]) {
     bool s = false;
     CGEventMask m = 1ULL << kCGEventFlagsChanged;
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                                       kCGEventTapOptionListenOnly, m, cb, &s);
+                                       kCGEventTapOptionDefault, m, cb, &s);
 
     if (!tap) {
         // Handle case where tap creation fails for other reasons

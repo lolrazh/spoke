@@ -6,6 +6,9 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
 const config: ForgeConfig = {
   packagerConfig: {
+    appBundleId: "com.sonicflow.app",
+    appCategoryType: "public.app-category.productivity",
+    
     asar: true,
     // macOS app icon
     icon: "./public/assets/icon.icns",
