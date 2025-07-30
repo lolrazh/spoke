@@ -1400,6 +1400,66 @@ app.whenReady().then(async () => {
     }
   });
 
+  // NEW: Add handler for the proper Input Monitoring request
+  ipcMain.handle("ask-im", async () => {
+    try {
+      const isDev = !app.isPackaged;
+      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Asking for Input Monitoring permission...`);
+      
+      const helperPath = isDev
+        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
+        : path.join(process.resourcesPath, "sonic-helper");
+      
+      if (!fs.existsSync(helperPath)) {
+        console.error("Helper binary not found at:", helperPath);
+        return { success: false, error: "Helper binary not found", isDev };
+      }
+
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--ask-im"], { 
+          stdio: ['pipe', 'pipe', 'pipe'],
+          detached: false 
+        });
+          
+        let stdout = '';
+        let stderr = '';
+        
+        helper.stdout.on('data', (data) => {
+          stdout += data.toString();
+          console.log('[Ask-IM Output]:', data.toString());
+        });
+        
+        helper.stderr.on('data', (data) => {
+          stderr += data.toString();
+          console.log('[Ask-IM Error]:', data.toString());
+        });
+        
+        helper.on('close', (code) => {
+          console.log(`[Ask-IM] Process exited with code ${code}`);
+          
+          if (stdout.includes('im-granted')) {
+            console.log('[Ask-IM] Input Monitoring permission granted');
+            resolve({ success: true, status: "authorized", isDev });
+          } else if (stdout.includes('im-denied')) {
+            console.log('[Ask-IM] Input Monitoring permission denied');
+            resolve({ success: true, status: "denied", isDev });
+          } else {
+            console.error('[Ask-IM] Unexpected output from helper');
+            resolve({ success: false, error: "Unexpected helper output", isDev });
+          }
+        });
+        
+        helper.on('error', (error) => {
+          console.error('[Ask-IM] Error running helper:', error);
+          resolve({ success: false, error: error.message, isDev });
+        });
+      });
+    } catch (error) {
+      console.error("Error asking for Input Monitoring permission:", error);
+      return { success: false, error: error.message, isDev: !app.isPackaged };
+    }
+  });
+
   ipcMain.handle("reload-app", () => {
     app.relaunch();
     app.exit(0);

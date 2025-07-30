@@ -1,5 +1,6 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <IOKit/hid/IOHIDManager.h>
+#include <CoreGraphics/CoreGraphics.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h> // For usleep
@@ -37,30 +38,28 @@ bool check_input_monitoring_permission() {
 #endif
 }
 
+// NEW: Proper Input Monitoring request function using CoreGraphics API
+static bool request_input_monitoring(void) {
+    // Don't flash the dialog twice - check if already authorized
+    if (CGPreflightListenEventAccess()) {
+        fprintf(stderr, "[IM] Already authorized\n");
+        return true; // already authorized
+    }
+
+    // This will show the permission dialog and register the app in System Settings
+    bool ok = CGRequestListenEventAccess(); // shows the alert
+    if (!ok) {
+        fprintf(stderr, "[IM] User clicked 'Deny' or dialog failed\n");
+    } else {
+        fprintf(stderr, "[IM] Permission granted\n");
+    }
+    return ok;
+}
+
 // Function to register the app in Input Monitoring settings
 bool register_input_monitoring() {
-    // This call will:
-    // 1. Register the app in System Settings → Privacy → Input Monitoring (but disabled)
-    // 2. Show the permission prompt if not already granted
-    // 3. Return true if permission is granted, false otherwise
-    IOReturn result = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
-    
-    // Add detailed logging to see what's happening
-    fprintf(stderr, "[IM] IOHIDRequestAccess returned: 0x%08x\n", result);
-    fflush(stderr);
-    
-    if (result == kIOReturnSuccess) {
-        fprintf(stderr, "[IM] Success - permission granted\n");
-        fflush(stderr);
-    } else if (result == kIOReturnNotPrivileged) {
-        fprintf(stderr, "[IM] Not privileged - app not signed or no bundle ID\n");
-        fflush(stderr);
-    } else {
-        fprintf(stderr, "[IM] Other error: 0x%08x\n", result);
-        fflush(stderr);
-    }
-    
-    return (result == kIOReturnSuccess);
+    // Use the new proper request function
+    return request_input_monitoring();
 }
 
 // Pre-flight check for permissions using modern APIs
@@ -146,6 +145,20 @@ int main(int argc, char *argv[]) {
         requireAX();
         cmdV();
         return 0;
+    }
+    
+    // NEW: Add support for requesting Input Monitoring permission
+    if (argc > 1 && strcmp(argv[1], "--ask-im") == 0) {
+        bool granted = request_input_monitoring();
+        if (granted) {
+            puts("im-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("im-denied");
+            fflush(stdout);
+            return 1;
+        }
     }
     
     // Add support for registering Input Monitoring permission

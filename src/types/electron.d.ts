@@ -37,6 +37,7 @@ declare global {
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
       requestInputMonitoringPermission: () => Promise<{ success: boolean; isDev: boolean; alreadyGranted?: boolean; error?: string }>;
+      askIM: () => Promise<{ success: boolean; status?: string; isDev: boolean; error?: string }>;
       requestMicrophonePermission: () => Promise<{ success: boolean; granted?: boolean; error?: string }>;
       checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
       openSystemPreferences: (pane: string) => Promise<void>;

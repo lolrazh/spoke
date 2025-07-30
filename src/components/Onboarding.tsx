@@ -122,23 +122,24 @@ const Onboarding: React.FC = () => {
     console.log('[Onboarding] Starting Input Monitoring permission request...');
     setChecking(true);
     try {
-      const result = await window.electron?.requestInputMonitoringPermission();
+      // Use the new proper Input Monitoring request
+      const result = await window.electron?.askIM();
       console.log('[Onboarding] Permission request result:', result);
       
       setChecking(false);
       
       if (result?.success) {
-        if (result.alreadyGranted) {
-          console.log('[Onboarding] Permission already granted - auto advancing');
-          // Permission was already granted - auto advance
+        if (result.status === "authorized") {
+          console.log('[Onboarding] Permission granted - auto advancing');
+          // Permission was granted - auto advance
           setPermissions(prev => ({ ...prev, inputMonitoring: true }));
           nextStep();
-        } else {
-          console.log('[Onboarding] Permission needs to be enabled in Settings');
-          // Permission needs to be enabled in Settings - show instructions
+        } else if (result.status === "denied") {
+          console.log('[Onboarding] Permission denied - user needs to enable in Settings');
+          // Permission was denied - open System Preferences
           setErrors(prev => ({ ...prev, inputMonitoring: false })); // Clear any previous errors
-          // The System Preferences should have opened automatically
-          // User needs to manually enable it and then click "I've Enabled It"
+          // Open System Preferences to Input Monitoring
+          window.electron?.openSystemPreferences("input-monitoring");
         }
       } else {
         console.log('[Onboarding] Permission request failed:', result?.error);
