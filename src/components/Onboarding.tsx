@@ -152,27 +152,7 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // Auto-check permissions when entering Input Monitoring step
-  useEffect(() => {
-    if (currentStep === "input-monitoring") {
-      const checkInputMonitoringOnMount = async () => {
-        try {
-          const result = await window.electron?.checkPermissions();
-          if (!result?.needIM) {
-            // Permission is already granted, auto-advance
-            setPermissions(prev => ({ ...prev, inputMonitoring: true }));
-            nextStep();
-          }
-        } catch (error) {
-          console.error("Error checking input monitoring permission on mount:", error);
-        }
-      };
-      
-      // Small delay to ensure the UI is ready
-      const timer = setTimeout(checkInputMonitoringOnMount, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentStep]);
+
 
   const handleCheckInputMonitoring = async () => {
     // Check if permission is now granted
