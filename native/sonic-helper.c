@@ -22,6 +22,9 @@ typedef enum {
 // Declare the function for older SDKs
 extern IOReturn IOHIDRequestAccess(uint32_t requestType);
 
+// Declare IOHIDCheckAccess for permission checking
+extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
+
 // For older SDKs that may not have these defined yet.
 #ifndef kCGListenEventAccessGranted
 #define kCGListenEventAccessGranted (1)
@@ -31,11 +34,8 @@ extern IOReturn IOHIDRequestAccess(uint32_t requestType);
 
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
-#if defined(__MAC_OS_14_0)   // Sonoma / Sequoia SDKs
+    // Use IOHIDCheckAccess for accurate permission checking on all supported macOS versions
     return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted;
-#else
-    return CGPreflightListenEventAccess();   // 10.15+
-#endif
 }
 
 // NEW: Proper Input Monitoring request function using CoreGraphics API
@@ -217,7 +217,7 @@ int main(int argc, char *argv[]) {
     bool s = false;
     CGEventMask m = 1ULL << kCGEventFlagsChanged;
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                                       kCGEventTapOptionListenOnly, m, cb, &s);
+                                       kCGEventTapOptionDefault, m, cb, &s);
 
     if (!tap) {
         // Handle case where tap creation fails for other reasons
