@@ -1252,8 +1252,9 @@ app.whenReady().then(async () => {
         
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
-          const hasPermissions = output.includes("permissions-granted");
-          resolve({ needAX, needIM: !hasPermissions, isDev });
+          const hasAXPermission = output.includes("ax-granted");
+          const hasIMPermission = output.includes("im-granted");
+          resolve({ needAX: !hasAXPermission, needIM: !hasIMPermission, isDev });
         });
         
         // Timeout after 5 seconds
@@ -1349,16 +1350,13 @@ app.whenReady().then(async () => {
         return { success: false, error: "Helper binary not found", isDev };
       }
 
-          // Use our new registration functionality
-    return new Promise((resolve) => {
-      // Always open System Preferences immediately (in case registration fails)
-      shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
-      
-      const helper = spawn(helperPath, ["--register-input-monitoring"], { 
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: false 
-      });
-        
+      // Use our new registration functionality
+      return new Promise((resolve) => {
+        const helper = spawn(helperPath, ["--register-input-monitoring"], { 
+          stdio: ['pipe', 'pipe', 'pipe'],
+          detached: false 
+        });
+          
         let stdout = '';
         let stderr = '';
         
@@ -1380,7 +1378,7 @@ app.whenReady().then(async () => {
             resolve({ success: true, isDev, alreadyGranted: true });
           } else if (stdout.includes('registered-denied')) {
             console.log('[Helper] Input Monitoring permission not granted - user needs to enable in Settings');
-            // Open System Preferences to Input Monitoring
+            // Open System Preferences to Input Monitoring AFTER registration
             console.log('[Helper] Opening System Preferences to Input Monitoring...');
             shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
             console.log('[Helper] System Preferences opened');

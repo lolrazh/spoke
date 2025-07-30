@@ -2,7 +2,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.sonicflow.helper</string>
+    <string>com.sonicflow.app.helper</string>
     <key>CFBundleName</key>
     <string>Sonic Flow</string>
     <key>CFBundleDisplayName</key>

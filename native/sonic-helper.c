@@ -9,6 +9,15 @@
 #define kIOHIDRequestTypeListenEvent 1
 #endif
 
+// For older SDKs that may not have these defined yet.
+#ifndef IOHIDAccessType
+typedef enum {
+    kIOHIDAccessTypeGranted = 0,
+    kIOHIDAccessTypeDenied = 1,
+    kIOHIDAccessTypeUnknown = 2
+} IOHIDAccessType;
+#endif
+
 // Declare the function for older SDKs
 extern IOReturn IOHIDRequestAccess(uint32_t requestType);
 
@@ -21,23 +30,11 @@ extern IOReturn IOHIDRequestAccess(uint32_t requestType);
 
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
-    // Create a HID manager to test Input Monitoring permissions
-    IOHIDManagerRef manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-    if (!manager) {
-        return false;
-    }
-    
-    // Try to open the manager - this will trigger the permission request if needed
-    IOReturn result = IOHIDManagerOpen(manager, kIOHIDOptionsTypeNone);
-    bool hasPermission = (result == kIOReturnSuccess);
-    
-    // Clean up
-    if (hasPermission) {
-        IOHIDManagerClose(manager, kIOHIDOptionsTypeNone);
-    }
-    CFRelease(manager);
-    
-    return hasPermission;
+#if defined(__MAC_OS_14_0)   // Sonoma / Sequoia SDKs
+    return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted;
+#else
+    return CGPreflightListenEventAccess();   // 10.15+
+#endif
 }
 
 // Function to register the app in Input Monitoring settings
@@ -181,15 +178,21 @@ int main(int argc, char *argv[]) {
         // Check Input Monitoring permissions using modern API
         bool hasIMPermission = check_input_monitoring_permission();
         
-        if (isTrusted && hasIMPermission) {
-            puts("permissions-granted");
-            fflush(stdout);
-            return 0;
+        // Emit separate tokens for each permission type
+        if (isTrusted) {
+            puts("ax-granted");
         } else {
-            puts("permissions-denied");
-            fflush(stdout);
-            return 1;
+            puts("ax-denied");
         }
+        
+        if (hasIMPermission) {
+            puts("im-granted");
+        } else {
+            puts("im-denied");
+        }
+        
+        fflush(stdout);
+        return 0;
     }
 
     if (!check_permissions()) {
