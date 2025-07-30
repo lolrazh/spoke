@@ -308,6 +308,13 @@ const App: React.FC = () => {
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }
+      // Add processing guard
+      if (latestTransRef.current.processing) {
+        if (window.notifications?.send) {
+          window.notifications.send("Still transcribing… wait a sec");
+        }
+        return;
+      }
       if (latestTransRef.current.recording) {
         return;
       }

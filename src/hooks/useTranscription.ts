@@ -177,6 +177,7 @@ export function useTranscription(): UseTranscriptionReturn {
 
   const start = useCallback(async () => {
     if (recording) return;
+    if (processing) return; // Prevent starting while processing
     if (!streamRef.current) {
       setError("Microphone stream not available.");
       return;
@@ -224,7 +225,7 @@ export function useTranscription(): UseTranscriptionReturn {
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording]);
+  }, [recording, processing]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
