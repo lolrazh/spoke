@@ -359,8 +359,11 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const cleanupOnDown = window.ptt.onDown(handleFunctionKeyDown);
-    const cleanupOnUp = window.ptt.onUp(handleFunctionKeyUp);
+    const debouncedKeyDown = debounce(handleFunctionKeyDown, 50);
+    const debouncedKeyUp = debounce(handleFunctionKeyUp, 50);
+
+    const cleanupOnDown = window.ptt.onDown(debouncedKeyDown);
+    const cleanupOnUp = window.ptt.onUp(debouncedKeyUp);
 
     return () => {
       cleanupOnDown();
