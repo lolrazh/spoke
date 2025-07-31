@@ -903,12 +903,12 @@ ipcMain.handle(
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "sonic-helper")
-        : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+        ? path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
+        : path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
 
       if (!fs.existsSync(helperPath)) {
         console.error(
-          `[PasteHelper] paste-helper binary not found at path: ${helperPath}`,
+          `[PasteHelper] SonicFlowHelper binary not found at path: ${helperPath}`,
         );
         mainWindow?.webContents.send(
           "notify",
@@ -1232,12 +1232,12 @@ app.whenReady().then(async () => {
       
       // Always use the helper binary for consistent permission checking in both dev and prod
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
-        : path.join(process.resourcesPath, "sonic-helper");
+        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
+        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
       
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
-        console.error("sonic-helper binary not found at path:", helperPath);
+        console.error("SonicFlowHelper binary not found at path:", helperPath);
         return { needAX, needIM: true, isDev };
       }
       
@@ -1339,8 +1339,8 @@ app.whenReady().then(async () => {
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
       
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
-        : path.join(process.resourcesPath, "sonic-helper");
+        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
+        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
       
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -1407,8 +1407,8 @@ app.whenReady().then(async () => {
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Asking for Input Monitoring permission...`);
       
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "sonic-helper")
-        : path.join(process.resourcesPath, "sonic-helper");
+        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
+        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
       
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
@@ -1565,13 +1565,13 @@ function startFnListener() {
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, "sonic-helper")
-    : path.join(app.getAppPath(), "native", "bin", "sonic-helper");
+    ? path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
+    : path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] sonic-helper binary not found at path: ${helperPath}`,
+      `[FnListener] SonicFlowHelper binary not found at path: ${helperPath}`,
     );
 
     const targetWindow = mainWindow || onboardingWindow;
@@ -1583,7 +1583,7 @@ function startFnListener() {
   }
 
   try {
-    console.log(`[FnListener] Starting sonic-helper helper from: ${helperPath}`);
+    console.log(`[FnListener] Starting SonicFlowHelper helper from: ${helperPath}`);
     fnProc = spawn(helperPath, []);
 
     fnProc.stdout.setEncoding("utf8");
@@ -1661,32 +1661,32 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(`[FnListener] sonic-helper stderr: ${chunk.toString()}`);
+      console.error(`[FnListener] SonicFlowHelper stderr: ${chunk.toString()}`);
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start sonic-helper helper process:",
+        "[FnListener] Failed to start SonicFlowHelper helper process:",
         error,
       );
       fnProc = null;
 
       const targetWindow = mainWindow || onboardingWindow;
       if (error.message.includes("ENOENT")) {
-        console.error("[FnListener] sonic-helper binary not found or not executable");
+        console.error("[FnListener] SonicFlowHelper binary not found or not executable");
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
-        console.error("[FnListener] sonic-helper binary lacks execution permissions");
+        console.error("[FnListener] SonicFlowHelper binary lacks execution permissions");
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting sonic-helper:",
+          "[FnListener] Unknown error starting SonicFlowHelper:",
           error.message,
         );
         targetWindow?.webContents.send(
@@ -1701,7 +1701,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] sonic-helper helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] SonicFlowHelper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -1711,11 +1711,11 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] sonic-helper helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] SonicFlowHelper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
-    console.error("[FnListener] Exception when spawning sonic-helper helper:", error);
+    console.error("[FnListener] Exception when spawning SonicFlowHelper helper:", error);
     fnProc = null;
 
     const targetWindow = mainWindow || onboardingWindow;
