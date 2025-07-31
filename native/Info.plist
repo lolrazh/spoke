@@ -4,9 +4,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.sonicflow.app.helper</string>
     <key>CFBundleName</key>
-    <string>Sonic Flow</string>
+    <string>Sonic Flow Helper</string>
     <key>CFBundleDisplayName</key>
-    <string>Sonic Flow</string>
+    <string>Sonic Flow Helper</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -16,6 +16,6 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleExecutable</key>
-    <string>sonic-helper</string>
+    <string>Sonic Flow Helper</string>
 </dict>
-</plist> 
+</plist>
