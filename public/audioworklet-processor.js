@@ -34,6 +34,12 @@ class CaptureProcessor extends AudioWorkletProcessor {
       }
     }
 
+    // Flush any remaining partial buffer so short taps still emit audio data.
+    if (this.idx > 0) {
+      this.port.postMessage(this.pcm16.buffer.slice(0, this.idx * 2));
+      this.idx = 0;
+    }
+
     // Return true to indicate the processor should not be terminated.
     return true;
   }

@@ -175,11 +175,15 @@ const App: React.FC = () => {
   } = usePillMachine();
 
   useEffect(() => {
-    if (trans.text && !trans.recording && !trans.processing) {
-      pushTrace(`Transcription complete: "${trans.text}" `);
+    if (!trans.recording && !trans.processing) {
+      pushTrace(
+        trans.text
+          ? `Transcription complete: "${trans.text}"`
+          : `Transcription finished (no text or failed fast)`,
+      );
       pillDispatch({ type: "PROCESSING_COMPLETE" });
     }
-  }, [trans.text, trans.recording, trans.processing]);
+  }, [trans.recording, trans.processing]);
 
   useEffect(() => {
     if (trans.error) {
