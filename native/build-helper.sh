@@ -26,6 +26,9 @@ clang -framework ApplicationServices -framework IOKit \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
       "$SOURCE_DIR/sonic-helper.c"
 
+# Ensure the binary is executable
+chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME"
+
 # --- Copy Info.plist ---
 echo "Copying Info.plist..."
 cp "$SOURCE_DIR/Info.plist" "$APP_BUNDLE_PATH/Contents/Info.plist"

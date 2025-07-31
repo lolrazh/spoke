@@ -953,18 +953,28 @@ ipcMain.handle(
         stderrBuffer += data.toString();
       });
 
-      pasteProc.on("close", () => {
+      pasteProc.on("close", (code) => {
         if (stdoutBuffer) {
           console.log(`[PasteHelper stdout]: ${stdoutBuffer.trim()}`);
         }
         if (stderrBuffer) {
           console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
         }
-        console.log("[PasteHelper] paste-helper executed successfully.");
-        setTimeout(() => {
-          console.log("[PasteHelper] Restoring original clipboard content.");
-          clipboard.writeText(originalClipboardText);
-        }, 300);
+
+        if (code === 0) {
+          console.log("[PasteHelper] paste-helper executed successfully.");
+          // If successful, restore the original clipboard content after a short delay.
+          setTimeout(() => {
+            console.log("[PasteHelper] Restoring original clipboard content.");
+            clipboard.writeText(originalClipboardText);
+          }, 300);
+        } else {
+          console.error(`[PasteHelper] Error: paste-helper exited with code ${code}`);
+          mainWindow?.webContents.send(
+            "notify",
+            "Paste failed. Grant Accessibility permission. Text copied.",
+          );
+        }
       });
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
