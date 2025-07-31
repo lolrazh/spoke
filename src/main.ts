@@ -14,7 +14,7 @@ import {
 } from "electron";
 import path from "node:path";
 import process from "node:process";
-import { spawn, execFile } from "child_process";
+import { spawn, execFile, execSync } from "child_process";
 
 import fs from "node:fs";
 
@@ -37,10 +37,13 @@ type MicPreferences = { selectedMicId?: string };
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
+import { ChildProcess } from "child_process";
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+const fnHelpers = new Set<ChildProcess>();
+const pasteHelpers = new Set<ChildProcess>();
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
@@ -61,6 +64,18 @@ let lastTranscript = "";
 // Floating bar hide timer management
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
+
+function spawnHelper(
+  path: string,
+  args: string[] = [],
+  isFnHelper: boolean,
+) {
+  const proc = spawn(path, args, { stdio: "pipe", detached: false });
+  const helperSet = isFnHelper ? fnHelpers : pasteHelpers;
+  helperSet.add(proc);
+  proc.once("exit", () => helperSet.delete(proc));
+  return proc;
+}
 
 function logBounds(tag: string) {
   if (!mainWindow) return;
@@ -918,32 +933,38 @@ ipcMain.handle(
       }
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
-      execFile(helperPath, ["--mode=paste"], (error, stdout, stderr) => {
-        // Log output from the helper process for diagnostics
-        if (stdout) {
-          console.log(`[PasteHelper stdout]: ${stdout.trim()}`);
-        }
-        if (stderr) {
-          console.error(`[PasteHelper stderr]: ${stderr.trim()}`);
-        }
+      const pasteProc = spawnHelper(helperPath, ["--mode=paste"], false);
 
-        if (error) {
-          console.error("[PasteHelper] Error executing paste-helper:", error);
-          // This can happen if Accessibility permission is not granted.
-          // The helper will prompt for it on the first run.
-          // As a fallback, we leave the transcribed text in the clipboard.
-          mainWindow?.webContents.send(
-            "notify",
-            "Paste failed. Grant Accessibility permission. Text copied.",
-          );
-        } else {
-          console.log("[PasteHelper] paste-helper executed successfully.");
-          // If successful, restore the original clipboard content after a short delay.
-          setTimeout(() => {
-            console.log("[PasteHelper] Restoring original clipboard content.");
-            clipboard.writeText(originalClipboardText);
-          }, 300);
+      pasteProc.on("error", (error) => {
+        console.error("[PasteHelper] Error executing paste-helper:", error);
+        mainWindow?.webContents.send(
+          "notify",
+          "Paste failed. Grant Accessibility permission. Text copied.",
+        );
+      });
+
+      let stdoutBuffer = "";
+      pasteProc.stdout.on("data", (data) => {
+        stdoutBuffer += data.toString();
+      });
+
+      let stderrBuffer = "";
+      pasteProc.stderr.on("data", (data) => {
+        stderrBuffer += data.toString();
+      });
+
+      pasteProc.on("close", () => {
+        if (stdoutBuffer) {
+          console.log(`[PasteHelper stdout]: ${stdoutBuffer.trim()}`);
         }
+        if (stderrBuffer) {
+          console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
+        }
+        console.log("[PasteHelper] paste-helper executed successfully.");
+        setTimeout(() => {
+          console.log("[PasteHelper] Restoring original clipboard content.");
+          clipboard.writeText(originalClipboardText);
+        }, 300);
       });
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
@@ -1516,10 +1537,22 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  console.log("[App Event] before-quit: Setting isQuitting flag to true.");
   isQuitting = true;
-  // Clear hide timer when app is quitting
-  clearHideTimer();
+
+  // brutally nuke anything we forgot
+  for (const p of [...fnHelpers, ...pasteHelpers]) {
+    try {
+      process.kill(p.pid, "SIGKILL");
+    } catch {}
+  }
+
+  // **belts-and-suspenders**: kill anything matching the name
+  try {
+    execSync("pkill -9 -f SonicFlowHelper || true");
+  } catch {}
+  try {
+    execSync("pkill -9 -f sonic-helper    || true");
+  } catch {}
 });
 
 app.on("will-quit", () => {
@@ -1530,7 +1563,11 @@ app.on("will-quit", () => {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
   }
-  fnProc?.kill();
+  for (const p of [...fnHelpers, ...pasteHelpers]) {
+    try {
+      p.kill("SIGKILL");
+    } catch {}
+  }
 });
 
 function startFnListener() {
@@ -1584,7 +1621,7 @@ function startFnListener() {
 
   try {
     console.log(`[FnListener] Starting SonicFlowHelper helper from: ${helperPath}`);
-    fnProc = spawn(helperPath, []);
+    fnProc = spawnHelper(helperPath, [], true) as import("child_process").ChildProcessWithoutNullStreams;
 
     fnProc.stdout.setEncoding("utf8");
     fnProc.stdout.on("data", (chunk: string) => {

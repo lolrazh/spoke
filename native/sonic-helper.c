@@ -4,6 +4,27 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h> // For usleep
+#include <signal.h>
+#include <dispatch/dispatch.h>
+
+static void handle_signal(int sig) {
+    fprintf(stderr, "[SIG] caught %d – exiting\n", sig);
+    exit(0);                          // guarantees `close` event in Node
+}
+
+static void watch_parent(void) {
+    pid_t ppid = getppid();           // the Electron process
+    dispatch_source_t src =
+        dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC,
+                               ppid,
+                               DISPATCH_PROC_EXIT,
+                               dispatch_get_main_queue());
+    dispatch_source_set_event_handler(src, ^{
+        fprintf(stderr, "[PARENT] died – exiting helper\n");
+        exit(0);
+    });
+    dispatch_resume(src);
+}
 
 // For older SDKs that may not have these defined yet.
 #ifndef kIOHIDRequestTypeListenEvent
@@ -141,6 +162,9 @@ static void cmdV(void) {
 }
 
 int main(int argc, char *argv[]) {
+    signal(SIGTERM, handle_signal);   // respond to normal shutdown
+    signal(SIGINT,  handle_signal);
+    watch_parent();                   // respond to crashes / force-quit
     if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
         requireAX();
         cmdV();
