@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Sonic Flow</string>
+	<string>Sonic Flow Helper</string>
 	<key>CFBundleExecutable</key>
-	<string>SonicFlowHelper</string>
+	<string>Sonic Flow Helper</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.sonicflow.helper</string>
 	<key>CFBundleName</key>
-	<string>SonicFlowHelper</string>
+	<string>Sonic Flow Helper</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

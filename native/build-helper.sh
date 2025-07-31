@@ -6,9 +6,9 @@ set -e
 # Define source and destination directories
 SOURCE_DIR="native"
 DEST_DIR="native/bin"
-APP_BUNDLE_NAME="SonicFlowHelper.app"
+APP_BUNDLE_NAME="Sonic Flow Helper.app"
 APP_BUNDLE_PATH="$DEST_DIR/$APP_BUNDLE_NAME"
-EXECUTABLE_NAME="SonicFlowHelper"
+EXECUTABLE_NAME="Sonic Flow Helper"
 
 # Clean up previous build
 echo "Cleaning up old build artifacts..."

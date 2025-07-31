@@ -17,7 +17,7 @@ const config: ForgeConfig = {
       "./public/assets/icon.png",
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
-      "./native/bin/SonicFlowHelper.app",
+      "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing configuration for internal testing
     osxSign: {

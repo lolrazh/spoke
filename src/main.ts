@@ -918,12 +918,12 @@ ipcMain.handle(
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
-        : path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
+        ? path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
+        : path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
 
       if (!fs.existsSync(helperPath)) {
         console.error(
-          `[PasteHelper] SonicFlowHelper binary not found at path: ${helperPath}`,
+          `[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`,
         );
         mainWindow?.webContents.send(
           "notify",
@@ -1253,12 +1253,12 @@ app.whenReady().then(async () => {
       
       // Always use the helper binary for consistent permission checking in both dev and prod
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
-        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
+        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
+        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
       
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
-        console.error("SonicFlowHelper binary not found at path:", helperPath);
+        console.error("Sonic Flow Helper binary not found at path:", helperPath);
         return { needAX, needIM: true, isDev };
       }
       
@@ -1360,8 +1360,8 @@ app.whenReady().then(async () => {
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
       
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
-        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
+        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
+        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
       
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -1428,8 +1428,8 @@ app.whenReady().then(async () => {
       console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Asking for Input Monitoring permission...`);
       
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
-        : path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
+        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
+        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
       
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
@@ -1548,7 +1548,7 @@ app.on("before-quit", () => {
 
   // **belts-and-suspenders**: kill anything matching the name
   try {
-    execSync("pkill -9 -f SonicFlowHelper || true");
+    execSync("pkill -9 -f 'Sonic Flow Helper' || true");
   } catch {}
   try {
     execSync("pkill -9 -f sonic-helper    || true");
@@ -1602,13 +1602,13 @@ function startFnListener() {
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper")
-    : path.join(app.getAppPath(), "native", "bin", "SonicFlowHelper.app", "Contents", "MacOS", "SonicFlowHelper");
+    ? path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
+    : path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] SonicFlowHelper binary not found at path: ${helperPath}`,
+      `[FnListener] Sonic Flow Helper binary not found at path: ${helperPath}`,
     );
 
     const targetWindow = mainWindow || onboardingWindow;
@@ -1620,7 +1620,7 @@ function startFnListener() {
   }
 
   try {
-    console.log(`[FnListener] Starting SonicFlowHelper helper from: ${helperPath}`);
+    console.log(`[FnListener] Starting Sonic Flow Helper helper from: ${helperPath}`);
     fnProc = spawnHelper(helperPath, [], true) as import("child_process").ChildProcessWithoutNullStreams;
 
     fnProc.stdout.setEncoding("utf8");
@@ -1698,32 +1698,32 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(`[FnListener] SonicFlowHelper stderr: ${chunk.toString()}`);
+      console.error(`[FnListener] Sonic Flow Helper stderr: ${chunk.toString()}`);
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start SonicFlowHelper helper process:",
+        "[FnListener] Failed to start Sonic Flow Helper helper process:",
         error,
       );
       fnProc = null;
 
       const targetWindow = mainWindow || onboardingWindow;
       if (error.message.includes("ENOENT")) {
-        console.error("[FnListener] SonicFlowHelper binary not found or not executable");
+        console.error("[FnListener] Sonic Flow Helper binary not found or not executable");
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
-        console.error("[FnListener] SonicFlowHelper binary lacks execution permissions");
+        console.error("[FnListener] Sonic Flow Helper binary lacks execution permissions");
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting SonicFlowHelper:",
+          "[FnListener] Unknown error starting Sonic Flow Helper:",
           error.message,
         );
         targetWindow?.webContents.send(
@@ -1738,7 +1738,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] SonicFlowHelper helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] Sonic Flow Helper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -1748,11 +1748,11 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] SonicFlowHelper helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] Sonic Flow Helper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
-    console.error("[FnListener] Exception when spawning SonicFlowHelper helper:", error);
+    console.error("[FnListener] Exception when spawning Sonic Flow Helper helper:", error);
     fnProc = null;
 
     const targetWindow = mainWindow || onboardingWindow;
