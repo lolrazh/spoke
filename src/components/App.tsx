@@ -175,11 +175,15 @@ const App: React.FC = () => {
   } = usePillMachine();
 
   useEffect(() => {
-    if (trans.text && !trans.recording && !trans.processing) {
-      pushTrace(`Transcription complete: "${trans.text}" `);
+    if (!trans.recording && !trans.processing) {
+      pushTrace(
+        trans.text
+          ? `Transcription complete: "${trans.text}"`
+          : `Transcription finished (no text or failed fast)`,
+      );
       pillDispatch({ type: "PROCESSING_COMPLETE" });
     }
-  }, [trans.text, trans.recording, trans.processing]);
+  }, [trans.recording, trans.processing]);
 
   useEffect(() => {
     if (trans.error) {
@@ -355,8 +359,11 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const cleanupOnDown = window.ptt.onDown(handleFunctionKeyDown);
-    const cleanupOnUp = window.ptt.onUp(handleFunctionKeyUp);
+    const debouncedKeyDown = debounce(handleFunctionKeyDown, 50);
+    const debouncedKeyUp = debounce(handleFunctionKeyUp, 50);
+
+    const cleanupOnDown = window.ptt.onDown(debouncedKeyDown);
+    const cleanupOnUp = window.ptt.onUp(debouncedKeyUp);
 
     return () => {
       cleanupOnDown();
