@@ -98,6 +98,7 @@ const pillReducer = (
       return state;
     case "EXPANDED":
       if (event.type === "COLLAPSE") return { ...state, state: "IDLE" };
+      if (event.type === "PTT_START") return { ...state, state: "LISTENING" };
       return state;
     default:
       return state;
