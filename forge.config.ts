@@ -17,6 +17,8 @@ const config: ForgeConfig = {
       "./public/assets/icon.png",
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
+      "./public/assets/dmg-background@1x.png",
+      "./public/assets/dmg-background@2x.png",
       "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing configuration for internal testing
@@ -38,14 +40,41 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerDMG({
-      // Modern DMG format (same as VS Code, Raycast, etc.)
-      format: "ULFO",
-      // Use the existing icon for DMG
-      icon: "./public/assets/icon.icns"
-      // TODO: Add custom layout and background later
-      // Default layout works fine for now
-    }, ["darwin"])
+    new MakerDMG(
+      {
+        // Modern DMG format (same as VS Code, Raycast, etc.)
+        format: "ULFO",
+        // Use the existing icon for DMG
+        icon: "./public/assets/icon.icns",
+        background: "./public/assets/dmg-background@1x.png",
+        iconSize: 104,
+        additionalDMGOptions: {
+          window: {
+            size: {
+              width: 660,
+              height: 400,
+            },
+          },
+        },
+        contents: (opts) => {
+          return [
+            {
+              x: 180,
+              y: 170,
+              type: "file",
+              path: `${opts.appPath}`,
+            },
+            {
+              x: 480,
+              y: 170,
+              type: "link",
+              path: "/Applications",
+            },
+          ];
+        },
+      },
+      ["darwin"],
+    ),
   ],
   plugins: [
     new VitePlugin({
