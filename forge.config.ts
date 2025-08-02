@@ -47,7 +47,7 @@ const config: ForgeConfig = {
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
         background: "./public/assets/dmg-background@2x.png",
-        iconSize: 95,
+        iconSize: 96,
         additionalDMGOptions: {
           window: {
             size: {
