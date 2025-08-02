@@ -47,7 +47,7 @@ const config: ForgeConfig = {
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
         background: "./public/assets/dmg-background@1x.png",
-        iconSize: 104,
+        iconSize: 84,
         additionalDMGOptions: {
           window: {
             size: {
@@ -60,13 +60,13 @@ const config: ForgeConfig = {
           return [
             {
               x: 180,
-              y: 170,
+              y: 220,
               type: "file",
               path: `${opts.appPath}`,
             },
             {
               x: 480,
-              y: 170,
+              y: 220,
               type: "link",
               path: "/Applications",
             },
