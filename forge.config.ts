@@ -59,13 +59,13 @@ const config: ForgeConfig = {
         contents: (opts) => {
           return [
             {
-              x: 175,
+              x: 165,
               y: 225,
               type: "file",
               path: `${opts.appPath}`,
             },
             {
-              x: 500,
+              x: 495,
               y: 225,
               type: "link",
               path: "/Applications",
