@@ -46,7 +46,7 @@ const config: ForgeConfig = {
         format: "ULFO",
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
-        background: "./public/assets/dmg-background@1x.png",
+        background: "./public/assets/dmg-background@2x.png",
         iconSize: 84,
         additionalDMGOptions: {
           window: {
