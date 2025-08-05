@@ -301,7 +301,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
                 
-                <div className="card-elevated rounded-lg p-4 space-y-3">
+                <div className="card-primary rounded-lg p-4 space-y-3">
                   <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Required Permissions</h2>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-3">

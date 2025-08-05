@@ -502,9 +502,11 @@ function createOnboardingWindow() {
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
-    frame: true, // Enable normal window frame
+    frame: false, // Frameless for transparency
+    transparent: true, // Enable transparency
+    backgroundColor: "#00000000", // Fully transparent background
+    hasShadow: false, // Remove macOS shadow
     resizable: true, // Enable resizing
-    backgroundColor: "#1a1a1a", // Match sonic-dark from tailwind
     alwaysOnTop: false,
     focusable: true,
     skipTaskbar: false,
@@ -512,8 +514,6 @@ function createOnboardingWindow() {
     center: true,
     minWidth: 600,
     minHeight: 400,
-    titleBarStyle: 'default',
-    title: 'Sonic Flow Setup',
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
