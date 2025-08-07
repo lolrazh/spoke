@@ -502,15 +502,15 @@ function createOnboardingWindow() {
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
-    frame: false, // Frameless for transparency
-    transparent: true, // Enable transparency
-    backgroundColor: "#00000000", // Fully transparent background
-    hasShadow: false, // Remove macOS shadow
-    resizable: true, // Enable resizing
+    frame: false,
+    transparent: true, // crucial: no opaque backing store
+    backgroundColor: "#00000000", // extra guard against fallback fill
+    hasShadow: false,
+    resizable: true,
     alwaysOnTop: false,
     focusable: true,
     skipTaskbar: false,
-    show: true,
+    show: false, // FIX 1: Don't show immediately - wait for content to load
     center: true,
     minWidth: 600,
     minHeight: 400,
@@ -521,6 +521,16 @@ function createOnboardingWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   };
+
+  // Add native macOS vibrancy for true glassmorphic effect
+  if (process.platform === 'darwin') {
+    onboardingWindowOptions.vibrancy = 'hud'; // 'sidebar' or 'fullscreen-ui' also work
+    onboardingWindowOptions.visualEffectState = 'active'; // window remains vibrant when focused
+    onboardingWindowOptions.titleBarStyle = 'hiddenInset'; // FIX 2: Add titleBarStyle to ensure proper vibrancy initialization
+  } else {
+    // Fallback for non-macOS platforms
+    onboardingWindowOptions.backgroundColor = '#0f0f0f';
+  }
 
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
   onboardingWindow.setMenuBarVisibility(false);
@@ -543,8 +553,54 @@ function createOnboardingWindow() {
     console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
   });
 
+  // FIX 3: Wait for DOM and full rendering before showing window
   onboardingWindow.webContents.on('dom-ready', () => {
     console.log("[Onboarding] DOM ready");
+  });
+
+  // FIX 4: Use did-finish-load to ensure all resources are ready
+  onboardingWindow.webContents.once('did-finish-load', () => {
+    console.log("[Onboarding] Content finished loading");
+    
+    // FIX 8: Force hardware acceleration settings for better vibrancy
+    if (process.platform === 'darwin') {
+      onboardingWindow.webContents.executeJavaScript(`
+        // Ensure proper rendering context
+        document.documentElement.style.transform = 'translateZ(0)';
+        console.log('[Vibrancy] Hardware acceleration enabled for rendering');
+      `).catch((err) => {
+        console.warn('[Vibrancy] Could not set hardware acceleration:', err);
+      });
+    }
+    
+    // FIX 5: Add small delay to ensure vibrancy effect is ready
+    setTimeout(() => {
+      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+        console.log("[Onboarding] Showing window after vibrancy delay");
+        onboardingWindow.show();
+        
+        // FIX 6: Force invalidate shadow to clear any artifacts
+        if (process.platform === 'darwin') {
+          onboardingWindow.invalidateShadow();
+        }
+      }
+    }, 100); // Small delay to let vibrancy settle
+  });
+
+  // FIX 7: Backup using ready-to-show as fallback
+  onboardingWindow.once('ready-to-show', () => {
+    console.log("[Onboarding] Ready to show event fired");
+    // Only show if not already shown by did-finish-load
+    setTimeout(() => {
+      if (onboardingWindow && !onboardingWindow.isDestroyed() && !onboardingWindow.isVisible()) {
+        console.log("[Onboarding] Showing window via ready-to-show fallback");
+        onboardingWindow.show();
+        
+        if (process.platform === 'darwin') {
+          onboardingWindow.invalidateShadow();
+        }
+      }
+    }, 150);
   });
 
   onboardingWindow.on("closed", () => {
