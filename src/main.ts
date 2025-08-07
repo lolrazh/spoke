@@ -544,6 +544,7 @@ const createWindow = () => {
 };
 
 function createOnboardingWindow() {
+  console.log("[Debug] Inside createOnboardingWindow function");
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
@@ -578,7 +579,9 @@ function createOnboardingWindow() {
     onboardingWindowOptions.backgroundColor = '#0f0f0f';
   }
 
+  console.log("[Debug] Creating BrowserWindow with options:", onboardingWindowOptions);
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -591,12 +594,28 @@ function createOnboardingWindow() {
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
   console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
+  console.log("[Debug] About to load URL in onboarding window");
   
-  onboardingWindow.loadURL(onboardingUrl);
+  onboardingWindow.loadURL(onboardingUrl).catch(error => {
+    console.error("[Debug] Error loading URL:", error);
+  });
+  console.log("[Debug] URL load initiated");
   
-  // Add error handling for loading issues
+  // Add comprehensive error handling 
   onboardingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
+  });
+  
+  onboardingWindow.webContents.on('crashed', (event, killed) => {
+    console.error("[Onboarding] Renderer crashed:", killed);
+  });
+  
+  onboardingWindow.on('unresponsive', () => {
+    console.error("[Onboarding] Window became unresponsive");
+  });
+  
+  onboardingWindow.on('closed', () => {
+    console.log("[Debug] Onboarding window was closed");
   });
 
   // FIX 3: Wait for DOM and full rendering before showing window
@@ -1185,7 +1204,13 @@ app.whenReady().then(async () => {
 
   // Always show onboarding - no persistence tracking
   console.log("[Startup] Always showing onboarding");
-  createOnboardingWindow();
+  console.log("[Debug] About to create onboarding window...");
+  try {
+    createOnboardingWindow();
+    console.log("[Debug] Onboarding window created successfully");
+  } catch (error) {
+    console.error("[Debug] Error creating onboarding window:", error);
+  }
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");

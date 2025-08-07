@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+// Temporarily inline the development flags for debugging
+const devFlags = {
+  mockPermissionStates: false,
+  showDebugOverlay: false,
+  fastAnimations: false,
+  alwaysShowDevMode: false,
+  isDevelopment: process.env.NODE_ENV === 'development',
+  methods: {
+    devLog: (...args: any[]) => console.log('[DEV]', ...args),
+    devNotify: (message: string) => console.log('[DEV NOTIFY]', message),
+  }
+};
+
+// Simple mock for now
+const mockPermissions = {
+  checkPermissions: async () => ({ needAX: true, needIM: true, isDev: false }),
+  checkMicrophonePermission: async () => ({ status: 'denied', granted: false }),
+  requestMicrophonePermission: async () => ({ success: false }),
+  askIM: async () => ({ success: false }),
+  requestAccessibilityPermission: async () => ({ success: false }),
+  resetPermissions: () => {}
+};
 
 type OnboardingStep = "welcome" | "permissions" | "hotkey-test" | "complete";
 
@@ -29,19 +51,28 @@ const Onboarding: React.FC = () => {
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
 
-  // Function to check permissions
+  // Function to check permissions (with mock support)
   const checkPermissions = async () => {
     try {
+      devFlags.methods.devLog('Checking permissions...');
+      
       const [systemPerms, micPerms] = await Promise.all([
-        window.electron?.checkPermissions(),
-        window.electron?.checkMicrophonePermission()
+        devFlags.mockPermissionStates ? mockPermissions.checkPermissions() : window.electron?.checkPermissions(),
+        devFlags.mockPermissionStates ? mockPermissions.checkMicrophonePermission() : window.electron?.checkMicrophonePermission()
       ]);
       
-      setIsDev(systemPerms?.isDev || false);
+      setIsDev(systemPerms?.isDev || devFlags.isDevelopment);
       setPermissions({
         microphone: micPerms?.granted || false,
         inputMonitoring: !systemPerms?.needIM,
         accessibility: !systemPerms?.needAX,
+      });
+      
+      devFlags.methods.devLog('Permissions checked:', {
+        microphone: micPerms?.granted || false,
+        inputMonitoring: !systemPerms?.needIM,
+        accessibility: !systemPerms?.needAX,
+        mock: (systemPerms as any)?.mock || (micPerms as any)?.mock
       });
     } catch (error) {
       console.error("Error checking permissions:", error);
@@ -140,15 +171,20 @@ const Onboarding: React.FC = () => {
   const handleRequestMicrophone = async () => {
     setChecking(true);
     try {
-      const result = await window.electron?.requestMicrophonePermission();
+      devFlags.methods.devLog('Requesting microphone permission...');
+      
+      const result = devFlags.mockPermissionStates 
+        ? await mockPermissions.requestMicrophonePermission()
+        : await window.electron?.requestMicrophonePermission();
       
       if (result?.success && result?.granted) {
         setPermissions(prev => ({ ...prev, microphone: true }));
         setErrors(prev => ({ ...prev, microphone: false }));
+        devFlags.methods.devLog('Microphone permission granted');
       } else {
         // Permission denied or failed
         setErrors(prev => ({ ...prev, microphone: true }));
-        console.log("Microphone permission denied or failed");
+        devFlags.methods.devLog("Microphone permission denied or failed");
       }
     } catch (error) {
       console.error("Error requesting microphone permission:", error);
@@ -158,26 +194,33 @@ const Onboarding: React.FC = () => {
   };
 
   const handleRequestInputMonitoring = async () => {
-    console.log('[Onboarding] Starting Input Monitoring permission request...');
+    devFlags.methods.devLog('Starting Input Monitoring permission request...');
     setChecking(true);
     try {
-      // Use the new proper Input Monitoring request
-      const result = await window.electron?.askIM();
-      console.log('[Onboarding] Permission request result:', result);
+      // Use mock or real Input Monitoring request
+      const result = devFlags.mockPermissionStates
+        ? await mockPermissions.askIM()
+        : await window.electron?.askIM();
+      
+      devFlags.methods.devLog('Input Monitoring permission request result:', result);
       
       if (result?.success) {
         if (result.status === "authorized") {
-          console.log('[Onboarding] Permission granted');
+          devFlags.methods.devLog('Input Monitoring permission granted');
           setPermissions(prev => ({ ...prev, inputMonitoring: true }));
           setErrors(prev => ({ ...prev, inputMonitoring: false }));
         } else if (result.status === "denied") {
-          console.log('[Onboarding] Permission denied - user needs to enable in Settings');
+          devFlags.methods.devLog('Input Monitoring permission denied - user needs to enable in Settings');
           setErrors(prev => ({ ...prev, inputMonitoring: false }));
-          // Open System Preferences to Input Monitoring
-          window.electron?.openSystemPreferences("input-monitoring");
+          // Open System Preferences (mock or real)
+          if (devFlags.mockPermissionStates) {
+            await mockPermissions.openSystemPreferences("inputMonitoring");
+          } else {
+            window.electron?.openSystemPreferences("input-monitoring");
+          }
         }
       } else {
-        console.log('[Onboarding] Permission request failed:', result?.error);
+        devFlags.methods.devLog('Input Monitoring permission request failed:', (result as any)?.error);
         setErrors(prev => ({ ...prev, inputMonitoring: true }));
       }
     } catch (error) {
@@ -194,6 +237,18 @@ const Onboarding: React.FC = () => {
   const handleRequestAccessibility = async () => {
     setChecking(true);
     try {
+      devFlags.methods.devLog('Requesting accessibility permission...');
+      
+      if (devFlags.mockPermissionStates) {
+        const result = await mockPermissions.requestAccessibilityPermission();
+        if (result && 'success' in result && result.success) {
+          setPermissions(prev => ({ ...prev, accessibility: true }));
+          setErrors(prev => ({ ...prev, accessibility: false }));
+        }
+        setChecking(false);
+        return;
+      }
+      
       await window.electron?.requestAccessibilityPermission();
       // Poll for permission changes
       const pollInterval = setInterval(async () => {
@@ -238,16 +293,19 @@ const Onboarding: React.FC = () => {
     return progressSteps.indexOf(currentStep);
   };
 
-  // Animation variants
+  // Animation variants (with dev speed control)
+  const animationDuration = devFlags.fastAnimations ? 0.1 : 0.3;
   const containerVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { 
       opacity: 1, 
-      y: 0
+      y: 0,
+      transition: { duration: animationDuration }
     },
     exit: { 
       opacity: 0, 
-      y: -20
+      y: -20,
+      transition: { duration: animationDuration }
     }
   };
 
@@ -259,16 +317,47 @@ const Onboarding: React.FC = () => {
       {/* Draggable Header Areas */}
       <div className="onboarding-header" />
       
-      {/* Development Mode Indicator */}
-      {isDev && (
-        <div className="absolute top-4 right-4 z-50 card-floating rounded-lg px-3 py-1">
-          <span className="text-xs font-medium text-orange-300">Development Mode</span>
+      {/* Development Mode Indicator & Controls */}
+      {(isDev || devFlags.alwaysShowDevMode) && (
+        <div className="absolute top-4 right-4 z-50 space-y-2">
+          <div className="card-floating rounded-lg px-3 py-1">
+            <span className="text-xs font-medium text-orange-300">
+              Development Mode
+              {devFlags.mockPermissionStates && " (Mock)"}
+            </span>
+          </div>
+          
+          {devFlags.showDebugOverlay && (
+            <div className="card-floating rounded-lg p-2 text-xs space-y-1">
+              <div className="text-orange-300 font-medium">Debug Panel</div>
+              <div className="text-xs text-dimmed">
+                Step: {currentStep}
+              </div>
+              <div className="text-xs text-dimmed">
+                Perms: M:{permissions.microphone ? '✓' : '✗'} 
+                A:{permissions.accessibility ? '✓' : '✗'} 
+                I:{permissions.inputMonitoring ? '✓' : '✗'}
+              </div>
+              {devFlags.mockPermissionStates && (
+                <button 
+                  className="text-blue-300 hover:text-blue-200 underline"
+                  onClick={() => {
+                    // Quick reset for development
+                    setPermissions({ microphone: false, accessibility: false, inputMonitoring: false });
+                    mockPermissions.resetPermissions();
+                  }}
+                >
+                  Reset Mock Perms
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
       
       {/* Main Content - Single Column */}
-      <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0">
-        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center">
+      <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
+        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
@@ -542,52 +631,36 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-4"
+                className="text-center space-y-3 overflow-hidden"
               >
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <h2 className="text-xl font-medium heading-gradient font-serif">Test Your Setup</h2>
-                  <p className="text-sm text-subtle leading-relaxed">
+                  <p className="text-sm text-subtle">
                     Let's make sure everything works properly.
                   </p>
                 </div>
 
-                <div className="card-primary rounded-lg p-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-center">
-                      <div className="w-16 h-12 rounded-lg bg-secondary border border-border flex items-center justify-center">
-                        <span className="text-lg font-mono font-bold">Fn</span>
-                      </div>
+                <div className="flex items-center justify-center space-x-6">
+                  {/* Compact Fn Key Display */}
+                  <div className="text-center">
+                    <div className="w-12 h-8 rounded bg-secondary border border-border flex items-center justify-center mb-2">
+                      <span className="text-sm font-mono font-bold">Fn</span>
                     </div>
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-foreground mb-1">Your Activation Key</p>
-                      <p className="text-xs text-subtle">Hold this key and speak to activate dictation</p>
-                    </div>
+                    <p className="text-xs font-medium text-foreground">Activation Key</p>
                   </div>
-                </div>
-                
-                <div className="card-elevated rounded-lg p-4 text-left">
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Quick Test</h3>
-                  <div className="space-y-2 text-xs text-dimmed">
-                    <div className="flex items-start space-x-2">
-                      <span className="text-primary font-medium">1.</span>
-                      <span>Open any text app (Notes, TextEdit, etc.)</span>
-                    </div>
-                    <div className="flex items-start space-x-2">
-                      <span className="text-primary font-medium">2.</span>
-                      <span>Click in a text field</span>
-                    </div>
-                    <div className="flex items-start space-x-2">
-                      <span className="text-primary font-medium">3.</span>
-                      <span>Hold <strong>Fn</strong> and say "Hello world"</span>
-                    </div>
-                    <div className="flex items-start space-x-2">
-                      <span className="text-primary font-medium">4.</span>
-                      <span>Release <strong>Fn</strong> and watch the magic! ✨</span>
+                  
+                  {/* Compact Instructions */}
+                  <div className="text-left flex-1 max-w-sm">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Quick Test</p>
+                    <div className="space-y-1 text-xs text-dimmed">
+                      <div>1. Open Notes or any text app</div>
+                      <div>2. Hold <strong>Fn</strong> and say "Hello world"</div>
+                      <div>3. Release <strong>Fn</strong> and see the magic! ✨</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2 pt-2">
                   <Button 
                     onClick={handleComplete}
                     className="w-full"
