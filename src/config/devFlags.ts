@@ -48,9 +48,9 @@ const devFlags = {
   
   // Permission simulation modes
   simulatePermissionStates: {
-    microphone: process.env.SF_MOCK_MIC_STATE || 'granted', // 'granted', 'denied', 'prompt'
-    accessibility: process.env.SF_MOCK_AX_STATE || 'granted',
-    inputMonitoring: process.env.SF_MOCK_IM_STATE || 'granted'
+    microphone: process.env.SF_MOCK_MIC_STATE || 'denied', // 'granted', 'denied', 'prompt'
+    accessibility: process.env.SF_MOCK_AX_STATE || 'denied',
+    inputMonitoring: process.env.SF_MOCK_IM_STATE || 'denied'
   },
   
   // Development workflow features

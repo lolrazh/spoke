@@ -14,9 +14,9 @@ export SF_DESIGN_MODE=1
 export SF_SHOW_DEV_INDICATOR=true
 
 # Mock permission states for testing different scenarios
-export SF_MOCK_MIC_STATE=granted    # granted, denied, prompt
-export SF_MOCK_AX_STATE=granted     # granted, denied, prompt  
-export SF_MOCK_IM_STATE=granted     # granted, denied, prompt
+export SF_MOCK_MIC_STATE=denied     # granted, denied, prompt
+export SF_MOCK_AX_STATE=denied      # granted, denied, prompt  
+export SF_MOCK_IM_STATE=denied      # granted, denied, prompt
 
 echo "🎛️  Development Mode Features:"
 echo "   • Mock Permissions: ON (no system dialogs)"
@@ -25,9 +25,9 @@ echo "   • Fast Animations: ON (10x speed)"
 echo "   • Design Mode: ON (all dev features)"
 echo ""
 echo "🧪 Mock Permission States:"
-echo "   • Microphone: $SF_MOCK_MIC_STATE"
-echo "   • Accessibility: $SF_MOCK_AX_STATE"
-echo "   • Input Monitoring: $SF_MOCK_IM_STATE"
+echo "   • Microphone: $SF_MOCK_MIC_STATE (for UI development)"
+echo "   • Accessibility: $SF_MOCK_AX_STATE (for UI development)"
+echo "   • Input Monitoring: $SF_MOCK_IM_STATE (for UI development)"
 echo ""
 echo "💡 Pro Tips:"
 echo "   • Use the debug panel (top-right) to reset permissions"

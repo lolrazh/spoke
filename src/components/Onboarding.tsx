@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 // Temporarily inline the development flags for debugging
 const devFlags = {
-  mockPermissionStates: false,
-  showDebugOverlay: false,
-  fastAnimations: false,
-  alwaysShowDevMode: false,
+  mockPermissionStates: true,
+  showDebugOverlay: true,
+  fastAnimations: true,
+  alwaysShowDevMode: true,
   isDevelopment: process.env.NODE_ENV === 'development',
   methods: {
     devLog: (...args: any[]) => console.log('[DEV]', ...args),
@@ -14,13 +14,14 @@ const devFlags = {
   }
 };
 
-// Simple mock for now
+// Simple mock for now - starting in disabled state for UI development
 const mockPermissions = {
-  checkPermissions: async () => ({ needAX: true, needIM: true, isDev: false }),
+  checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
   checkMicrophonePermission: async () => ({ status: 'denied', granted: false }),
-  requestMicrophonePermission: async () => ({ success: false }),
-  askIM: async () => ({ success: false }),
-  requestAccessibilityPermission: async () => ({ success: false }),
+  requestMicrophonePermission: async () => ({ success: true, granted: true }),
+  askIM: async () => ({ success: true, status: 'authorized' }),
+  requestAccessibilityPermission: async () => ({ success: true }),
+  openSystemPreferences: async (pane: string) => ({ success: true }),
   resetPermissions: () => {}
 };
 
