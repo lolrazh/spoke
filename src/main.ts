@@ -526,7 +526,8 @@ function createOnboardingWindow() {
   if (process.platform === 'darwin') {
     onboardingWindowOptions.vibrancy = 'hud'; // 'sidebar' or 'fullscreen-ui' also work
     onboardingWindowOptions.visualEffectState = 'active'; // window remains vibrant when focused
-    onboardingWindowOptions.titleBarStyle = 'hiddenInset'; // FIX 2: Add titleBarStyle to ensure proper vibrancy initialization
+    onboardingWindowOptions.titleBarStyle = 'hiddenInset'; // ① keep it frameless — we still get traffic-lights
+    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 }; // ③ nudge them if your design needs it (same numbers Raycast uses)
   } else {
     // Fallback for non-macOS platforms
     onboardingWindowOptions.backgroundColor = '#0f0f0f';

@@ -301,27 +301,11 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row h-full min-h-screen text-foreground onboarding-window relative">
-      {/* Window Controls */}
-      <div className="window-controls">
-        <button 
-          className="window-control-btn close-btn"
-          onClick={() => window.electron?.closeOnboarding?.()}
-          title="Close"
-        />
-        <button 
-          className="window-control-btn minimize-btn"
-          onClick={() => window.electron?.minimizeOnboarding?.()}
-          title="Minimize"
-        />
-        <button 
-          className="window-control-btn maximize-btn"
-          onClick={() => window.electron?.maximizeOnboarding?.()}
-          title="Zoom"
-        />
-      </div>
+      {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
       
-      {/* Draggable Header Area */}
+      {/* Draggable Header Areas - split to avoid button interference */}
       <div className="onboarding-header" />
+      <div className="onboarding-header-left" />
       {/* Development Mode Indicator */}
       {isDev && (
         <div className="absolute top-4 right-4 z-50 card-floating rounded-lg px-3 py-1">
