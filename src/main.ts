@@ -1499,6 +1499,29 @@ app.whenReady().then(async () => {
   ipcMain.handle("get-app-path", () => {
     return app.getAppPath();
   });
+
+  // Onboarding window controls
+  ipcMain.handle("close-onboarding", () => {
+    if (onboardingWindow) {
+      onboardingWindow.close();
+    }
+  });
+
+  ipcMain.handle("minimize-onboarding", () => {
+    if (onboardingWindow) {
+      onboardingWindow.minimize();
+    }
+  });
+
+  ipcMain.handle("maximize-onboarding", () => {
+    if (onboardingWindow) {
+      if (onboardingWindow.isMaximized()) {
+        onboardingWindow.unmaximize();
+      } else {
+        onboardingWindow.maximize();
+      }
+    }
+  });
 });
 
 app.on("window-all-closed", () => {

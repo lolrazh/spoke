@@ -71,6 +71,36 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     checkAppLocation();
     checkPermissions();
+    
+    // Fix resize color glitching by temporarily disabling backdrop-filter
+    let resizeTimeout: NodeJS.Timeout | null = null;
+    
+    const handleResizeStart = () => {
+      const onboardingWindow = document.querySelector('.onboarding-window') as HTMLElement;
+      if (onboardingWindow) {
+        onboardingWindow.classList.add('resizing');
+      }
+    };
+    
+    const handleResizeEnd = () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        const onboardingWindow = document.querySelector('.onboarding-window') as HTMLElement;
+        if (onboardingWindow) {
+          onboardingWindow.classList.remove('resizing');
+        }
+      }, 150);
+    };
+    
+    // Listen for window resize events
+    window.addEventListener('resize', handleResizeStart);
+    window.addEventListener('resize', handleResizeEnd);
+    
+    return () => {
+      window.removeEventListener('resize', handleResizeStart);
+      window.removeEventListener('resize', handleResizeEnd);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+    };
   }, []);
 
   // Helper to get the current steps array
@@ -248,7 +278,28 @@ const Onboarding: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col lg:flex-row h-full min-h-screen text-foreground onboarding-window">
+    <div className="flex flex-col lg:flex-row h-full min-h-screen text-foreground onboarding-window relative">
+      {/* Window Controls */}
+      <div className="window-controls">
+        <button 
+          className="window-control-btn close-btn"
+          onClick={() => window.electron?.closeOnboarding?.()}
+          title="Close"
+        />
+        <button 
+          className="window-control-btn minimize-btn"
+          onClick={() => window.electron?.minimizeOnboarding?.()}
+          title="Minimize"
+        />
+        <button 
+          className="window-control-btn maximize-btn"
+          onClick={() => window.electron?.maximizeOnboarding?.()}
+          title="Zoom"
+        />
+      </div>
+      
+      {/* Draggable Header Area */}
+      <div className="onboarding-header" />
       {/* Development Mode Indicator */}
       {isDev && (
         <div className="absolute top-4 right-4 z-50 card-floating rounded-lg px-3 py-1">
@@ -257,7 +308,7 @@ const Onboarding: React.FC = () => {
       )}
       
       {/* Left Column - Content */}
-      <div className="flex-1 flex flex-col justify-center p-6 relative min-h-0">
+      <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0">
         <div className="max-w-md w-full mx-auto flex-1 flex flex-col justify-center">
           
           {/* Progress indicator */}
@@ -593,7 +644,7 @@ const Onboarding: React.FC = () => {
 
         {/* Navigation Controls */}
         {currentStep !== "welcome" && currentStep !== "complete" && (
-          <div className="absolute bottom-6 left-6 right-6 flex justify-between">
+          <div className="absolute bottom-8 left-8 right-8 flex justify-between">
             <Button 
               variant="secondary" 
               onClick={prevStep}
@@ -618,7 +669,7 @@ const Onboarding: React.FC = () => {
       </div>
 
       {/* Right Column - GIF Placeholder */}
-      <div className="flex-1 lg:border-l border-border bg-muted/10 hidden lg:block">
+      <div className="flex-1 lg:border-l border-border bg-muted/10 hidden lg:block p-8">
         <AnimatePresence mode="wait">
           {currentStep === "microphone" && (
             <motion.div
