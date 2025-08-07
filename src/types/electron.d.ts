@@ -45,6 +45,10 @@ declare global {
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;
+      // Window controls
+      closeOnboarding: () => Promise<void>;
+      minimizeOnboarding: () => Promise<void>;
+      maximizeOnboarding: () => Promise<void>;
     };
     mic: {
       updateDevices: (
