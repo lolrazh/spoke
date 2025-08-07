@@ -267,13 +267,13 @@ const Onboarding: React.FC = () => {
       )}
       
       {/* Main Content - Single Column */}
-      <div className="flex-1 flex flex-col justify-center p-8 pt-12 relative min-h-0">
-        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center">
+      <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0">
+        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
             <motion.div 
-              className="flex items-center justify-center space-x-2 mb-6"
+              className="flex items-center justify-center space-x-2 mb-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -302,7 +302,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-6"
+                className="text-center space-y-4"
               >
                 <div className="space-y-3">
                   <h1 className="text-2xl font-medium heading-gradient font-serif">Welcome to Sonic Flow</h1>
@@ -351,7 +351,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-6"
+                className="text-center space-y-4"
               >
                 <div className="space-y-3">
                   <h2 className="text-xl font-medium heading-gradient font-serif">Grant Permissions</h2>
@@ -542,7 +542,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-6"
+                className="text-center space-y-4"
               >
                 <div className="space-y-3">
                   <h2 className="text-xl font-medium heading-gradient font-serif">Test Your Setup</h2>
@@ -551,7 +551,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="card-primary rounded-lg p-6">
+                <div className="card-primary rounded-lg p-4">
                   <div className="space-y-4">
                     <div className="flex items-center justify-center">
                       <div className="w-16 h-12 rounded-lg bg-secondary border border-border flex items-center justify-center">
@@ -614,7 +614,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-6"
+                className="text-center space-y-4"
               >
                 <div className="text-primary text-4xl mb-4">✓</div>
                 <h2 className="text-xl font-medium heading-gradient font-serif">All Set!</h2>
@@ -629,7 +629,7 @@ const Onboarding: React.FC = () => {
 
         {/* Navigation Controls */}
         {currentStep !== "welcome" && currentStep !== "complete" && (
-          <div className="absolute bottom-8 left-8 right-8 flex justify-between">
+          <div className="absolute bottom-6 left-6 right-6 flex justify-between">
             <Button 
               variant="secondary" 
               onClick={prevStep}
