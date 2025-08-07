@@ -251,25 +251,14 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // GIF placeholder component
-  const GIFPlaceholder: React.FC<{ step: string }> = ({ step }) => (
-    <div className="flex items-center justify-center h-full">
-              <div className="w-64 h-48 card-elevated rounded-lg flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-3xl mb-2">🎬</div>
-            <div className="text-xs text-dimmed">GIF: {step} Demo</div>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
-    <div className="flex flex-col lg:flex-row h-full min-h-screen text-foreground onboarding-window relative">
+    <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
       
-      {/* Draggable Header Areas - split to avoid button interference */}
+      {/* Draggable Header Areas */}
       <div className="onboarding-header" />
-      <div className="onboarding-header-left" />
+      
       {/* Development Mode Indicator */}
       {isDev && (
         <div className="absolute top-4 right-4 z-50 card-floating rounded-lg px-3 py-1">
@@ -277,9 +266,9 @@ const Onboarding: React.FC = () => {
         </div>
       )}
       
-      {/* Left Column - Content */}
-      <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0">
-        <div className="max-w-md w-full mx-auto flex-1 flex flex-col justify-center">
+      {/* Main Content - Single Column */}
+      <div className="flex-1 flex flex-col justify-center p-8 pt-12 relative min-h-0">
+        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center">
           
           {/* Progress indicator */}
           {currentStep !== "welcome" && currentStep !== "complete" && (
@@ -663,55 +652,6 @@ const Onboarding: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Right Column - GIF Placeholder */}
-      <div className="flex-1 lg:border-l border-border bg-muted/10 hidden lg:block p-8">
-        <AnimatePresence mode="wait">
-          {currentStep === "permissions" && (
-            <motion.div
-              key="permissions-gif"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.4 }}
-            >
-              <GIFPlaceholder step="Permissions Setup" />
-            </motion.div>
-          )}
-          
-          {currentStep === "hotkey-test" && (
-            <motion.div
-              key="hotkey-test-gif"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.4 }}
-            >
-              <GIFPlaceholder step="Hotkey Test" />
-            </motion.div>
-          )}
-          
-          {(currentStep === "welcome" || currentStep === "complete") && (
-            <motion.div
-              key="default-visual"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center justify-center h-full"
-            >
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="text-sm text-subtle font-serif">Sonic Flow</div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
     </div>
   );
 };

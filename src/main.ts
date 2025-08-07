@@ -551,7 +551,7 @@ function createOnboardingWindow() {
     transparent: true, // crucial: no opaque backing store
     backgroundColor: "#00000000", // extra guard against fallback fill
     hasShadow: false,
-    resizable: true,
+    resizable: false,
     alwaysOnTop: false,
     focusable: true,
     skipTaskbar: false,
