@@ -359,6 +359,51 @@ const getTrayIconPath = () => {
   return possiblePaths[0]; // fallback
 };
 
+// Silent background check for app location
+const checkAppLocationSilently = () => {
+  if (!app.isPackaged) {
+    console.log("[App Location Check] Skipping in development mode");
+    return;
+  }
+
+  try {
+    const appPath = app.getAppPath();
+    console.log(`[App Location Check] Current app path: ${appPath}`);
+    
+    const needsMove = !appPath.startsWith('/Applications/') && (
+      appPath.includes('/Documents/') ||
+      appPath.includes('/Downloads/') ||
+      appPath.includes('/Desktop/') ||
+      appPath.includes('/Users/') // Catch other user directories
+    );
+
+    if (needsMove) {
+      console.log("[App Location Check] App is not in Applications folder, showing toast");
+      
+      // Send notification to the main window (if it exists)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(
+          "notify",
+          "⚠️ Move Sonic Flow to Applications folder to enable hotkey detection"
+        );
+      }
+      
+      // Also show a tray notification if tray exists  
+      if (tray && !tray.isDestroyed()) {
+        tray.displayBalloon({
+          title: "Sonic Flow",
+          content: "Move Sonic Flow to the Applications folder to enable hotkey detection",
+          icon: iconPath
+        });
+      }
+    } else {
+      console.log("[App Location Check] App is properly located in Applications folder");
+    }
+  } catch (error) {
+    console.error("[App Location Check] Error checking app location:", error);
+  }
+};
+
 const iconPath = getIconPath();
 
 const createWindow = () => {
@@ -1147,6 +1192,8 @@ app.whenReady().then(async () => {
   micPreferences = loadMicPreferences();
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
 
+  // Silent background check for app location will be triggered after onboarding completes
+
   // Onboarding IPC handlers
   ipcMain.handle("helper:start", () => {
     console.log("[IPC] Starting helper process after onboarding");
@@ -1162,6 +1209,11 @@ app.whenReady().then(async () => {
     createWindow();
     createTray();
     startFnListener();
+    
+    // Run the silent app location check after main app is set up
+    setTimeout(() => {
+      checkAppLocationSilently();
+    }, 2000); // Give time for main window and tray to initialize
   });
 
   // Handle pill context menu
