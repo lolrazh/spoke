@@ -149,12 +149,21 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
+  // Helper function to clear all polling timers
+  const clearAllPolling = () => {
+    Object.values(pollRefs.current).forEach(timer => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    });
+    // Reset the refs to null
+    pollRefs.current = { mic: null, im: null, ax: null };
+  };
+
   // Clear any active polling timers on unmount
   useEffect(() => {
     return () => {
-      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic);
-      if (pollRefs.current.im) clearInterval(pollRefs.current.im);
-      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax);
+      clearAllPolling();
     };
   }, []);
 
@@ -222,14 +231,20 @@ const Onboarding: React.FC = () => {
         } else {
           window.electron?.openSystemPreferences('microphone');
         }
-        if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
+        // Clear any existing microphone polling before starting new one
+        if (pollRefs.current.mic) {
+          clearInterval(pollRefs.current.mic);
+          pollRefs.current.mic = null;
+        }
         pollRefs.current.mic = setInterval(async () => {
           const status = devFlags.mockPermissionStates
             ? await mockPermissions.checkMicrophonePermission()
             : await window.electron?.checkMicrophonePermission();
           if (status?.granted) {
-            clearInterval(pollRefs.current.mic!);
-            pollRefs.current.mic = null;
+            if (pollRefs.current.mic) {
+              clearInterval(pollRefs.current.mic);
+              pollRefs.current.mic = null;
+            }
             setPermissions(prev => ({ ...prev, microphone: true }));
             setUi(prev => ({ ...prev, microphone: { loading: false, justGranted: true } }));
             setTimeout(() => setUi(prev => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
@@ -274,14 +289,20 @@ const Onboarding: React.FC = () => {
           } else {
             window.electron?.openSystemPreferences("input-monitoring");
           }
-          if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+          // Clear any existing input monitoring polling before starting new one
+          if (pollRefs.current.im) {
+            clearInterval(pollRefs.current.im);
+            pollRefs.current.im = null;
+          }
           pollRefs.current.im = setInterval(async () => {
             const sys = devFlags.mockPermissionStates
               ? await mockPermissions.checkPermissions()
               : await window.electron?.checkPermissions();
             if (sys && !sys.needIM) {
-              clearInterval(pollRefs.current.im!);
-              pollRefs.current.im = null;
+              if (pollRefs.current.im) {
+                clearInterval(pollRefs.current.im);
+                pollRefs.current.im = null;
+              }
               setPermissions(prev => ({ ...prev, inputMonitoring: true }));
               setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
               setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
@@ -296,14 +317,20 @@ const Onboarding: React.FC = () => {
         } else {
           window.electron?.openSystemPreferences("input-monitoring");
         }
-        if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+        // Clear any existing input monitoring polling before starting new one
+        if (pollRefs.current.im) {
+          clearInterval(pollRefs.current.im);
+          pollRefs.current.im = null;
+        }
         pollRefs.current.im = setInterval(async () => {
           const sys = devFlags.mockPermissionStates
             ? await mockPermissions.checkPermissions()
             : await window.electron?.checkPermissions();
           if (sys && !sys.needIM) {
-            clearInterval(pollRefs.current.im!);
-            pollRefs.current.im = null;
+            if (pollRefs.current.im) {
+              clearInterval(pollRefs.current.im);
+              pollRefs.current.im = null;
+            }
             setPermissions(prev => ({ ...prev, inputMonitoring: true }));
             setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
             setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
@@ -346,12 +373,18 @@ const Onboarding: React.FC = () => {
       await window.electron?.requestAccessibilityPermission();
       // Open System Settings pane and poll until granted
       window.electron?.openSystemPreferences('accessibility');
-      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      // Clear any existing accessibility polling before starting new one
+      if (pollRefs.current.ax) {
+        clearInterval(pollRefs.current.ax);
+        pollRefs.current.ax = null;
+      }
       pollRefs.current.ax = setInterval(async () => {
         const result = await window.electron?.checkPermissions();
         if (result && !result.needAX) {
-          clearInterval(pollRefs.current.ax!);
-          pollRefs.current.ax = null;
+          if (pollRefs.current.ax) {
+            clearInterval(pollRefs.current.ax);
+            pollRefs.current.ax = null;
+          }
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
           setUi((prev) => ({
