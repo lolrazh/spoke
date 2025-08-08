@@ -40,7 +40,7 @@ const Toggle: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-subtle mt-0.5">{description}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
       )}
     </div>
     <Switch checked={enabled} onCheckedChange={onChange} />
@@ -58,7 +58,7 @@ const SelectField: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-subtle mt-0.5">{description}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
       )}
     </div>
     <div className="ml-2">
@@ -89,7 +89,7 @@ const ActionButton: React.FC<{
       <div className="flex-1">
         <div className="text-xs font-medium text-white">{label}</div>
         {description && (
-          <div className="text-[10px] text-subtle mt-0.5">{description}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
         )}
       </div>
       <Button variant={variant} size="sm" onClick={onClick} className="ml-2">
@@ -107,7 +107,7 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
     <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-background px-3 text-[10px] font-medium text-subtle tracking-wider uppercase">
+      <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
         {title}
       </span>
     </div>
@@ -215,7 +215,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     >
       {/* Vertical version text on bottom-left - only in embedded mode */}
       {embeddedMode && (
-        <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-dimmed whitespace-nowrap">
+        <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-muted-foreground opacity-60 whitespace-nowrap">
           v0.0.1
         </div>
       )}
@@ -306,10 +306,10 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                     JS
                   </div>
                   <div>
-                   <h3 className="text-xs font-medium text-white font-lexend">
+                    <h3 className="text-xs font-medium text-white font-sans">
                       John Smith
                     </h3>
-                    <p className="text-[10px] text-subtle">
+                    <p className="text-[10px] text-muted-foreground">
                       john.smith@example.com
                     </p>
                   </div>
@@ -331,7 +331,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-dimmed">v0.0.1</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">v0.0.1</p>
               </motion.footer>
             )}
           </motion.div>
