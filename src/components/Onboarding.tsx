@@ -579,7 +579,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex justify-center">
-                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta">
+                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta shimmer">
                     Start Setup
                   </Button>
                 </div>
@@ -840,7 +840,7 @@ const Onboarding: React.FC = () => {
                   <div>
                     {/* removed the small label above the textarea */}
                     <textarea
-                      className="w-full h-28 resize-none rounded-md bg-transparent onboarding-row p-3 text-sm outline-none"
+                      className="w-full h-28 resize-none rounded-md onboarding-row px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
                       placeholder="Hold Fn and speak…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
@@ -863,11 +863,11 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                  <div className="mx-auto w-14 h-14 rounded-full card-floating flex items-center justify-center text-primary text-2xl mb-4">✓</div>
-                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You’re all set</h2>
-                <p className="text-sm text-subtle leading-relaxed">Sonic Flow is ready. Press Fn any time to dictate.</p>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You're all set</h2>
+                <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Press Fn to dictate anywhere.</p>
                 <div className="pt-2 flex justify-center">
-                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
-                    Start Sonic Flow
+                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta shimmer">
+                    Start dictating
                   </Button>
                 </div>
               </motion.div>
