@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import { useTranscription } from "../hooks/useTranscription";
 // Temporarily inline the development flags for debugging
 const devFlags = {
   mockPermissionStates: true,
@@ -310,6 +311,59 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  // --- Dictation test wiring for Hotkey step ---
+  const trans = useTranscription();
+  const [testText, setTestText] = useState("");
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  // Minimal debounce utility
+  const debounce = <T extends (...args: unknown[]) => void>(func: T, delay: number) => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    return (...args: Parameters<T>) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  };
+
+  // Append recognized text to test area
+  useEffect(() => {
+    if (trans.text) {
+      setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+    }
+  }, [trans.text]);
+
+  // Hook Fn key to start/stop dictation for onboarding test
+  useEffect(() => {
+    if (!window.ptt?.onDown || !window.ptt?.onUp) return;
+
+    const HOLD_MS = 180;
+    const handleDown = () => {
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+      if (trans.processing || trans.recording) return;
+      isLongPressRef.current = false;
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        if (!trans.recording) trans.start();
+      }, HOLD_MS);
+    };
+    const handleUp = () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      if (trans.recording) trans.stop();
+      isLongPressRef.current = false;
+    };
+
+    const cleanupDown = window.ptt.onDown(debounce(handleDown, 50));
+    const cleanupUp = window.ptt.onUp(debounce(handleUp, 50));
+    return () => {
+      cleanupDown?.();
+      cleanupUp?.();
+    };
+  }, [trans.recording, trans.processing]);
+
 
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
@@ -317,6 +371,28 @@ const Onboarding: React.FC = () => {
       
       {/* Draggable Header Areas */}
       <div className="onboarding-header" />
+      
+      {/* Static top progress - glassy bars */}
+      {currentStep !== "complete" && (
+        <div className="absolute top-12 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className="onboarding-progress">
+            {(() => {
+              const progressSteps = getSteps().slice(0, -1);
+              const idx = getProgressStepIndex();
+              return progressSteps.map((step, i) => {
+                const isComplete = i < idx;
+                const isActive = i === idx;
+                const widthClass = isActive ? "w-16" : isComplete ? "w-10" : "w-6";
+                const heightClass = isActive ? "h-[6px]" : "h-[4px]";
+                const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
+                return (
+                  <div key={step} className={`onboarding-progress-bar ${toneClass} ${widthClass} ${heightClass}`} />
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
       
       {/* Development Mode Indicator & Controls */}
       {(isDev || devFlags.alwaysShowDevMode) && (
@@ -356,41 +432,24 @@ const Onboarding: React.FC = () => {
         </div>
       )}
       
+      {/* Close Button */}
+      <div className="absolute top-3 right-3 z-40">
+        <button
+          aria-label="Close"
+          className="onboarding-close"
+          onClick={() => window.electron?.onboardingComplete?.()}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto">
+        <div className="onboarding-card max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           
-          {/* Progress indicator */}
-          {currentStep !== "complete" && (
-            <motion.div
-              className="flex items-center justify-center space-x-2 mb-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.15 }}
-            >
-              {(() => {
-                const progressSteps = getSteps().slice(0, -1); // include welcome, exclude complete
-                const idx = getProgressStepIndex();
-                return progressSteps.map((step, i) => {
-                  const isComplete = i < idx;
-                  const isActive = i === idx;
-                  const widthClass = isActive ? "w-8" : isComplete ? "w-5" : "w-3";
-                  const heightClass = isActive ? "h-1.5" : "h-1";
-                  const colorClass = isActive
-                    ? "bg-primary"
-                    : isComplete
-                    ? "bg-primary/60"
-                    : "bg-muted";
-                  return (
-                    <div
-                      key={step}
-                      className={`${widthClass} ${heightClass} rounded-full ${colorClass} transition-all duration-300`}
-                    />
-                  );
-                });
-              })()}
-            </motion.div>
-          )}
+          
 
           <AnimatePresence mode="wait">
             {/* Welcome Step */}
@@ -404,14 +463,14 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight">Welcome to Sonic Flow</h1>
+                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">Welcome to Sonic Flow</h1>
                   <p className="text-sm text-subtle leading-relaxed">
                     Let's set up the permissions you need for voice dictation.
                   </p>
                 </div>
 
                 <div className="flex justify-center">
-                  <Button onClick={nextStep} className="px-5 py-2">
+                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta">
                     Continue
                   </Button>
                 </div>
@@ -431,7 +490,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Grant Permissions</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Grant Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed">
                     We need three permissions for Sonic Flow to work properly.
                   </p>
@@ -439,17 +498,17 @@ const Onboarding: React.FC = () => {
 
                 <div className="space-y-3">
                   {/* Microphone Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Microphone</p>
-                          <p className="text-xs text-subtle">Record your voice for dictation</p>
+                           <p className="text-[11px] text-subtle">Record your voice for dictation</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -465,7 +524,7 @@ const Onboarding: React.FC = () => {
                             size="sm"
                             onClick={handleRequestMicrophone}
                             disabled={checking}
-                            className="text-xs"
+                            className="text-xs onboarding-cta"
                           >
                             {checking ? "..." : "Grant"}
                           </Button>
@@ -488,17 +547,17 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Input Monitoring Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Input Monitoring</p>
-                          <p className="text-xs text-subtle">Detect Fn key presses</p>
+                           <p className="text-[11px] text-subtle">Detect Fn key presses</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -514,7 +573,7 @@ const Onboarding: React.FC = () => {
                             size="sm"
                             onClick={handleRequestInputMonitoring}
                             disabled={checking}
-                            className="text-xs"
+                            className="text-xs onboarding-cta"
                           >
                             {checking ? "..." : "Grant"}
                           </Button>
@@ -542,17 +601,17 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Accessibility Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Accessibility</p>
-                          <p className="text-xs text-subtle">Insert text into applications</p>
+                           <p className="text-[11px] text-subtle">Insert text into applications</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -568,7 +627,7 @@ const Onboarding: React.FC = () => {
                             size="sm"
                             onClick={handleRequestAccessibility}
                             disabled={checking}
-                            className="text-xs"
+                            className="text-xs onboarding-cta"
                           >
                             {checking ? "..." : "Grant"}
                           </Button>
@@ -622,7 +681,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-3 overflow-hidden"
               >
                 <div className="space-y-2">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Test Your Setup</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
                   <p className="text-sm text-subtle">
                     Let's make sure everything works properly.
                   </p>
@@ -648,8 +707,21 @@ const Onboarding: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Dictation Test Area */}
+                <div className="mt-2">
+                  <div className="text-left max-w-sm mx-auto">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Try Dictating Here</p>
+                    <textarea
+                      className="w-full h-24 resize-none rounded-md bg-transparent card-primary p-3 text-sm outline-none"
+                      placeholder="Hold Fn and speak…"
+                      value={testText}
+                      onChange={(e) => setTestText(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2 pt-2 flex flex-col items-center">
-                  <Button onClick={handleComplete} className="px-5 py-2">
+                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
                     Start Sonic Flow
                   </Button>
                 </div>
@@ -666,8 +738,8 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="text-primary text-4xl mb-4">✓</div>
-                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight">All Set!</h2>
+                 <div className="mx-auto w-14 h-14 rounded-full card-floating flex items-center justify-center text-primary text-2xl mb-4">✓</div>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">All Set!</h2>
                 <p className="text-sm text-subtle leading-relaxed">
                   Sonic Flow is ready to use. Enjoy your voice dictation!
                 </p>
