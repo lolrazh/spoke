@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, Variants } from "framer-motion";
+import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
 import {
   Select,
@@ -24,7 +25,7 @@ const sectionVariants: Variants = {
   visible: {
     y: 0,
     opacity: 1,
-    transition: { type: "spring", stiffness: 400, damping: 30 },
+    transition: { type: "spring", ...MOTION.springs.quick },
   },
 };
 
