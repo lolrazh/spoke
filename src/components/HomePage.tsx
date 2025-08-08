@@ -306,7 +306,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                     JS
                   </div>
                   <div>
-                    <h3 className="text-xs font-medium text-white">
+                   <h3 className="text-xs font-medium text-white font-lexend">
                       John Smith
                     </h3>
                     <p className="text-[10px] text-subtle">

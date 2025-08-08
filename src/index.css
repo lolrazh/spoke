@@ -395,11 +395,11 @@ body {
     /* Typography tokens */
     --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
-    --font-weight-heading: 600; /* semibold by default */
-    --font-size-heading-xl: 1.5rem; /* equivalent to Tailwind text-2xl */
-    --font-size-heading-lg: 1.25rem; /* equivalent to Tailwind text-xl */
+    --font-weight-heading: 400; /* DM Serif Display ships as 400; avoid synthetic bold */
+    --font-size-heading-xl: 1.5rem; /* Tailwind text-2xl */
+    --font-size-heading-lg: 1.25rem; /* Tailwind text-xl */
     --line-height-heading: 1.3;
-    --letter-spacing-heading: -0.005em;
+    --letter-spacing-heading: -0.025em; /* match tracking-tight from site */
 
     /* Spacing tokens */
     --spacing-xs: 0.25rem;  /* 4px */
