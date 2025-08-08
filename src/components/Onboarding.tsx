@@ -383,8 +383,8 @@ const Onboarding: React.FC = () => {
                 const isComplete = i < idx;
                 const isActive = i === idx;
                 // Width rules: active = largest, completed = medium, upcoming = very small
-                const widthClass = isActive ? "w-16" : isComplete ? "w-8" : "w-3";
-                const heightClass = isActive ? "h-[6px]" : "h-[4px]";
+                const widthClass = isActive ? "w-14" : isComplete ? "w-7" : "w-2.5";
+                const heightClass = isActive ? "h-[3px]" : "h-[2px]";
                 const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
                 return (
                   <div key={step} className={`onboarding-progress-bar ${toneClass} ${widthClass} ${heightClass}`} />

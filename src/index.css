@@ -645,23 +645,19 @@ body {
   }
   .onboarding-progress-bar {
     @apply rounded-full transition-all duration-200;
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    border: 1px solid var(--stroke-fg);
-    backdrop-filter: blur(var(--blur-md));
-    box-shadow: var(--shadow-elevated);
+    background-color: transparent; /* variants set tone */
+    border: none; /* tertiary element, no stroke */
+    box-shadow: none; /* keep ultra-clean */
   }
   /* Active and completed share the same neutral tone; completed is distinguished by width only */
   .onboarding-progress-bar.bar-active {
-    background-color: rgba(255, 255, 255, 0.14);
-    border-color: var(--stroke-fg-strong);
+    background-color: rgba(255, 255, 255, 0.85); /* nearly white, matches font */
   }
   .onboarding-progress-bar.bar-complete {
-    background-color: rgba(255, 255, 255, 0.14);
-    border-color: var(--stroke-fg-strong);
+    background-color: rgba(255, 255, 255, 0.45);
   }
   .onboarding-progress-bar.bar-upcoming {
-    background-color: rgba(255, 255, 255, 0.06);
-    border-color: var(--stroke-fg);
+    background-color: rgba(255, 255, 255, 0.18);
   }
 
   .text-subtle {
