@@ -575,10 +575,8 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Enable Permissions</h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    We need a few permissions for Sonic Flow to work properly.
-                  </p>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Enable Required Permissions</h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">Sonic Flow needs these macOS permissions to work.</p>
                 </div>
 
                 <div className="space-y-3">
@@ -593,7 +591,7 @@ const Onboarding: React.FC = () => {
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Microphone</p>
-                           <p className="text-[11px] text-subtle">To record your voice for dictation</p>
+                           <p className="text-[11px] text-subtle">Capture your voice for dictation.</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -651,14 +649,14 @@ const Onboarding: React.FC = () => {
                     </div>
                     {errors.microphone && (
                       <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable manually:</p>
+                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable in System Settings:</p>
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => window.electron?.openSystemPreferences("microphone")}
                           className="text-xs"
                         >
-                          Open System Preferences
+                          Open System Settings
                         </Button>
                       </div>
                     )}
@@ -675,7 +673,7 @@ const Onboarding: React.FC = () => {
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Input Monitoring</p>
-                           <p className="text-[11px] text-subtle">To detect hotkey presses</p>
+                           <p className="text-[11px] text-subtle">Detect the Fn key to start and stop dictation.</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -733,14 +731,14 @@ const Onboarding: React.FC = () => {
                     
                     {errors.inputMonitoring && (
                       <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Enable in System Preferences:</p>
+                        <p className="text-xs text-red-400 mb-2">Enable in System Settings:</p>
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => window.electron?.openSystemPreferences("input-monitoring")}
                           className="text-xs"
                         >
-                          Open System Preferences
+                          Open System Settings
                         </Button>
                       </div>
                     )}
@@ -757,7 +755,7 @@ const Onboarding: React.FC = () => {
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Accessibility</p>
-                           <p className="text-[11px] text-subtle">To insert text into applications</p>
+                           <p className="text-[11px] text-subtle">Insert recognized text into your apps.</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -814,14 +812,14 @@ const Onboarding: React.FC = () => {
                     </div>
                     {errors.accessibility && (
                       <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable manually:</p>
+                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable in System Settings:</p>
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() => window.electron?.openSystemPreferences("accessibility")}
                           className="text-xs"
                         >
-                          Open System Preferences
+                          Open System Settings
                         </Button>
                       </div>
                     )}
