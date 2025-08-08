@@ -445,9 +445,9 @@ const Onboarding: React.FC = () => {
             exit="exit"
             className="text-center space-y-4"
           >
-            <div className="space-y-3">
+            <div className="heading-stack">
               <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Hotkey is the Fn key</h2>
-              <p className="text-sm text-subtle">Press and hold to speak. Release to stop.</p>
+              <p className="text-sm text-subtle subheading">Press and hold to speak. Release to stop.</p>
             </div>
             <div className="flex flex-col items-center justify-center gap-2">
               <div className={`keycap keycap-lg ${trans.recording ? "keycap-active" : ""}`}
@@ -473,9 +473,9 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="space-y-3">
+                <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">Welcome to Sonic Flow</h1>
-                  <p className="text-sm text-subtle leading-relaxed">
+                  <p className="text-sm text-subtle leading-relaxed subheading">
                     Let's set up the permissions you need for voice dictation.
                   </p>
                 </div>
@@ -500,9 +500,9 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="space-y-3">
+                <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Grant Permissions</h2>
-                  <p className="text-sm text-subtle leading-relaxed">
+                  <p className="text-sm text-subtle leading-relaxed subheading">
                     We need three permissions for Sonic Flow to work properly.
                   </p>
                 </div>
@@ -692,9 +692,9 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-3 overflow-hidden"
               >
                 <div className="space-y-3 max-w-xl mx-auto text-left">
-                  <div className="text-center space-y-3">
+                  <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
-                    <p className="text-sm text-subtle">You can test your dictation here.</p>
+                    <p className="text-sm text-subtle subheading">You can test your dictation here.</p>
                   </div>
 
                   {/* Dictation Textarea */}

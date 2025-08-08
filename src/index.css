@@ -517,6 +517,19 @@ body {
     color: rgba(255, 255, 255, 0.98);
   }
 
+  /* Unified heading/subheading spacing */
+  .heading-stack {
+    display: flex;
+    flex-direction: column;
+  }
+  .heading-stack > * + * {
+    margin-top: var(--spacing-sm); /* tighter gap between heading and subheading */
+  }
+  .subheading {
+    font-weight: 500; /* stronger subheading */
+    margin-bottom: var(--spacing-lg); /* extra space below subheading pushes content down */
+  }
+
   /* Keycap visual for Fn key */
   .keycap {
     display: inline-flex;
