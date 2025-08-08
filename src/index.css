@@ -419,6 +419,19 @@ body {
     --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
     --shadow-interactive: 0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
     --shadow-interactive-hover: 0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+
+    /* Motion tokens (CSS) */
+    --duration-instant: 0s;
+    --duration-fast: 0.2s;
+    --duration-standard: 0.3s;
+    --duration-slow: 0.5s;
+
+    --delay-short: 0.1s;
+    --delay-medium: 0.2s;
+    --delay-long: 0.3s;
+
+    --ease-standard: cubic-bezier(0.25, 0.8, 0.25, 1);
+    --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .dark {
     /* Same values for dark mode since this is inherently a dark theme */
