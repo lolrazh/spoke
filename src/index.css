@@ -387,6 +387,15 @@ body {
     --stroke-fg: rgba(255, 255, 255, 0.08);
     --text-primary: #ffffff;
     --text-secondary: #c0c0c0;
+
+    /* Typography tokens */
+    --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
+    --font-weight-heading: 600; /* semibold by default */
+    --font-size-heading-xl: 1.5rem; /* equivalent to Tailwind text-2xl */
+    --font-size-heading-lg: 1.25rem; /* equivalent to Tailwind text-xl */
+    --line-height-heading: 1.3;
+    --letter-spacing-heading: -0.005em;
   }
   .dark {
     /* Same values for dark mode since this is inherently a dark theme */
@@ -511,6 +520,23 @@ body {
     background-clip: text;
     overflow: visible !important;
     line-height: 1.3 !important;
+  }
+
+  /* Semantic typography utilities */
+  .text-heading-xl {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-xl);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--line-height-heading) !important;
+    letter-spacing: var(--letter-spacing-heading);
+  }
+
+  .text-heading-lg {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-lg);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--line-height-heading) !important;
+    letter-spacing: var(--letter-spacing-heading);
   }
 
   .text-subtle {

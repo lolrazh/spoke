@@ -395,7 +395,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h1 className="text-2xl font-medium heading-gradient font-serif">Welcome to Sonic Flow</h1>
+                  <h1 className="text-heading-xl heading-gradient">Welcome to Sonic Flow</h1>
                   <p className="text-sm text-subtle leading-relaxed">
                     Let's set up the permissions you need for voice dictation.
                   </p>
@@ -444,7 +444,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h2 className="text-xl font-medium heading-gradient font-serif">Grant Permissions</h2>
+                  <h2 className="text-heading-lg heading-gradient">Grant Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed">
                     We need three permissions for Sonic Flow to work properly.
                   </p>
@@ -635,7 +635,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-3 overflow-hidden"
               >
                 <div className="space-y-2">
-                  <h2 className="text-xl font-medium heading-gradient font-serif">Test Your Setup</h2>
+                  <h2 className="text-heading-lg heading-gradient">Test Your Setup</h2>
                   <p className="text-sm text-subtle">
                     Let's make sure everything works properly.
                   </p>
@@ -691,7 +691,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="text-primary text-4xl mb-4">✓</div>
-                <h2 className="text-xl font-medium heading-gradient font-serif">All Set!</h2>
+                <h2 className="text-heading-lg heading-gradient">All Set!</h2>
                 <p className="text-sm text-subtle leading-relaxed">
                   Sonic Flow is ready to use. Enjoy your voice dictation!
                 </p>
