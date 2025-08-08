@@ -1,16 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
-// Temporarily inline the development flags for debugging
+import { useTranscription } from "../hooks/useTranscription";
+// Development flags - only enabled in development mode
+const isDevelopment = process.env.NODE_ENV === 'development';
 const devFlags = {
-  mockPermissionStates: true,
-  showDebugOverlay: true,
-  fastAnimations: true,
-  alwaysShowDevMode: true,
-  isDevelopment: process.env.NODE_ENV === 'development',
+  mockPermissionStates: isDevelopment,
+  showDebugOverlay: isDevelopment,
+  fastAnimations: isDevelopment,
+  alwaysShowDevMode: isDevelopment,
+  isDevelopment,
   methods: {
-    devLog: (...args: any[]) => console.log('[DEV]', ...args),
-    devNotify: (message: string) => console.log('[DEV NOTIFY]', message),
+    devLog: (...args: any[]) => {
+      if (isDevelopment) console.log('[DEV]', ...args);
+    },
+    devNotify: (message: string) => {
+      if (isDevelopment) console.log('[DEV NOTIFY]', message);
+    },
   }
 };
 
@@ -22,10 +28,12 @@ const mockPermissions = {
   askIM: async () => ({ success: true, status: 'authorized' }),
   requestAccessibilityPermission: async () => ({ success: true }),
   openSystemPreferences: async (pane: string) => ({ success: true }),
-  resetPermissions: () => {}
+  resetPermissions: () => { 
+    if (isDevelopment) console.debug('[MockPermissions] resetPermissions'); 
+  }
 };
 
-type OnboardingStep = "welcome" | "permissions" | "hotkey-test" | "complete";
+type OnboardingStep = "welcome" | "permissions" | "hotkey-info" | "hotkey-test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -34,19 +42,34 @@ const Onboarding: React.FC = () => {
     inputMonitoring: false,
     accessibility: false,
   });
-  const [checking, setChecking] = useState(false);
+  // UI state per-permission for loading + success animation
+  const [ui, setUi] = useState({
+    microphone: { loading: false, justGranted: false },
+    inputMonitoring: { loading: false, justGranted: false },
+    accessibility: { loading: false, justGranted: false },
+  });
   const [errors, setErrors] = useState({
     microphone: false,
     inputMonitoring: false,
     accessibility: false,
   });
   const [isDev, setIsDev] = useState(false);
+  const [pttApiReady, setPttApiReady] = useState(false);
+  const [fnKeyPressed, setFnKeyPressed] = useState(false);
+  // Poll timers for system permissions (cleared on unmount)
+  const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
 
-  // Debug logging
+  // Debug logging and initial PTT API check
   useEffect(() => {
-    console.log("[Onboarding] Component mounted");
-    console.log("[Onboarding] Current step:", currentStep);
-    console.log("[Onboarding] Window location:", window.location.href);
+    devFlags.methods.devLog("Component mounted");
+    devFlags.methods.devLog("Current step:", currentStep);
+    devFlags.methods.devLog("Window location:", window.location.href);
+    
+    // Check if PTT API is already available (in case helper was already running)
+    if (window.ptt?.onDown && window.ptt?.onUp) {
+      devFlags.methods.devLog("PTT API already available on mount");
+      setPttApiReady(true);
+    }
   }, []);
 
   // Note: App location check moved to silent background check
@@ -76,7 +99,7 @@ const Onboarding: React.FC = () => {
         mock: (systemPerms as any)?.mock || (micPerms as any)?.mock
       });
     } catch (error) {
-      console.error("Error checking permissions:", error);
+      if (isDevelopment) console.error("Error checking permissions:", error);
     }
   };
 
@@ -89,7 +112,7 @@ const Onboarding: React.FC = () => {
       setTimeout(() => {
         const onboardingWindow = document.querySelector('.onboarding-window') as HTMLElement;
         if (onboardingWindow) {
-          console.log('[Onboarding] DOM ready, ensuring vibrancy visibility');
+          devFlags.methods.devLog('DOM ready, ensuring vibrancy visibility');
           // Ensure the window becomes visible by triggering a minimal style change
           onboardingWindow.style.transform = 'translateZ(0)';
         }
@@ -136,26 +159,82 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
+  // Helper function to clear all polling timers
+  const clearAllPolling = () => {
+    Object.values(pollRefs.current).forEach(timer => {
+      if (timer) {
+        clearInterval(timer);
+      }
+    });
+    // Reset the refs to null
+    pollRefs.current = { mic: null, im: null, ax: null };
+  };
+
+  // Clear any active polling timers on unmount
+  useEffect(() => {
+    return () => {
+      clearAllPolling();
+      setFnKeyPressed(false); // Reset Fn key state
+    };
+  }, []);
+
   // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-test", "complete"];
+  const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-info", "hotkey-test", "complete"];
 
   // Check if all permissions are granted
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
 
-  // Auto-advance from permissions step when all are granted
+  // Start helper when all permissions are granted (so Fn key testing works)
   useEffect(() => {
-    if (currentStep === "permissions" && allPermissionsGranted) {
-      setTimeout(() => {
-        setCurrentStep("hotkey-test");
-      }, 1000); // Small delay to show success state
+    if (allPermissionsGranted && !pttApiReady) {
+      const startHelperForTesting = async () => {
+        try {
+          devFlags.methods.devLog('Starting helper for onboarding testing...');
+          await window.electron?.startHelper();
+          
+          // Poll for PTT API to become available
+          let attempts = 0;
+          const maxAttempts = 20; // 10 seconds max
+          const checkPTTAPI = () => {
+            if (window.ptt?.onDown && window.ptt?.onUp) {
+              devFlags.methods.devLog('PTT API is ready for testing!');
+              setPttApiReady(true);
+              return;
+            }
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(checkPTTAPI, 500); // Check every 500ms
+            } else {
+              devFlags.methods.devLog('PTT API failed to initialize after 10 seconds');
+            }
+          };
+          checkPTTAPI();
+        } catch (error) {
+          if (isDevelopment) console.error("Error starting helper for testing:", error);
+        }
+      };
+      startHelperForTesting();
     }
-  }, [currentStep, allPermissionsGranted]);
+  }, [allPermissionsGranted, pttApiReady]);
+
+  // Auto-advance disabled per UX: user will click Next explicitly
+  // useEffect(() => {
+  //   if (currentStep === "permissions" && allPermissionsGranted) {
+  //     setTimeout(() => {
+  //       setCurrentStep("hotkey-info");
+  //     }, 1200);
+  //   }
+  // }, [currentStep, allPermissionsGranted]);
 
   // Navigation functions
   const nextStep = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
+      // Reset Fn key visual state when leaving hotkey pages
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+        setFnKeyPressed(false);
+      }
       setCurrentStep(steps[currentIndex + 1]);
     }
   };
@@ -164,13 +243,16 @@ const Onboarding: React.FC = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
+      // Reset Fn key visual state when leaving hotkey pages
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+        setFnKeyPressed(false);
+      }
       setCurrentStep(steps[currentIndex - 1]);
     }
   };
 
   // Permission handlers - now work within combined interface
   const handleRequestMicrophone = async () => {
-    setChecking(true);
     try {
       devFlags.methods.devLog('Requesting microphone permission...');
       
@@ -182,21 +264,53 @@ const Onboarding: React.FC = () => {
         setPermissions(prev => ({ ...prev, microphone: true }));
         setErrors(prev => ({ ...prev, microphone: false }));
         devFlags.methods.devLog('Microphone permission granted');
+        // Trigger success animation in-place where the button was
+        setUi((prev) => ({
+          ...prev,
+          microphone: { loading: false, justGranted: true },
+        }));
+        setTimeout(() => {
+          setUi((prev) => ({
+            ...prev,
+            microphone: { ...prev.microphone, justGranted: false },
+          }));
+        }, 800);
       } else {
-        // Permission denied or failed
-        setErrors(prev => ({ ...prev, microphone: true }));
-        devFlags.methods.devLog("Microphone permission denied or failed");
+        // Open the correct System Settings pane and begin polling until granted
+        devFlags.methods.devLog('Opening System Settings for microphone…');
+        if (devFlags.mockPermissionStates) {
+          await mockPermissions.openSystemPreferences('microphone');
+        } else {
+          window.electron?.openSystemPreferences('microphone');
+        }
+        // Clear any existing microphone polling before starting new one
+        if (pollRefs.current.mic) {
+          clearInterval(pollRefs.current.mic);
+          pollRefs.current.mic = null;
+        }
+        pollRefs.current.mic = setInterval(async () => {
+          const status = devFlags.mockPermissionStates
+            ? await mockPermissions.checkMicrophonePermission()
+            : await window.electron?.checkMicrophonePermission();
+          if (status?.granted) {
+            if (pollRefs.current.mic) {
+              clearInterval(pollRefs.current.mic);
+              pollRefs.current.mic = null;
+            }
+            setPermissions(prev => ({ ...prev, microphone: true }));
+            setUi(prev => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+            setTimeout(() => setUi(prev => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+          }
+        }, 1000);
       }
     } catch (error) {
-      console.error("Error requesting microphone permission:", error);
+      if (isDevelopment) console.error("Error requesting microphone permission:", error);
       setErrors(prev => ({ ...prev, microphone: true }));
     }
-    setChecking(false);
   };
 
   const handleRequestInputMonitoring = async () => {
     devFlags.methods.devLog('Starting Input Monitoring permission request...');
-    setChecking(true);
     try {
       // Use mock or real Input Monitoring request
       const result = devFlags.mockPermissionStates
@@ -210,25 +324,75 @@ const Onboarding: React.FC = () => {
           devFlags.methods.devLog('Input Monitoring permission granted');
           setPermissions(prev => ({ ...prev, inputMonitoring: true }));
           setErrors(prev => ({ ...prev, inputMonitoring: false }));
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
+            }));
+          }, 800);
         } else if (result.status === "denied") {
-          devFlags.methods.devLog('Input Monitoring permission denied - user needs to enable in Settings');
-          setErrors(prev => ({ ...prev, inputMonitoring: false }));
-          // Open System Preferences (mock or real)
+          devFlags.methods.devLog('Input Monitoring permission denied - opening System Settings');
           if (devFlags.mockPermissionStates) {
             await mockPermissions.openSystemPreferences("inputMonitoring");
           } else {
             window.electron?.openSystemPreferences("input-monitoring");
           }
+          // Clear any existing input monitoring polling before starting new one
+          if (pollRefs.current.im) {
+            clearInterval(pollRefs.current.im);
+            pollRefs.current.im = null;
+          }
+          pollRefs.current.im = setInterval(async () => {
+            const sys = devFlags.mockPermissionStates
+              ? await mockPermissions.checkPermissions()
+              : await window.electron?.checkPermissions();
+            if (sys && !sys.needIM) {
+              if (pollRefs.current.im) {
+                clearInterval(pollRefs.current.im);
+                pollRefs.current.im = null;
+              }
+              setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+              setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+              setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+            }
+          }, 1000);
         }
       } else {
         devFlags.methods.devLog('Input Monitoring permission request failed:', (result as any)?.error);
-        setErrors(prev => ({ ...prev, inputMonitoring: true }));
+        // Open pane and poll anyway
+        if (devFlags.mockPermissionStates) {
+          await mockPermissions.openSystemPreferences("inputMonitoring");
+        } else {
+          window.electron?.openSystemPreferences("input-monitoring");
+        }
+        // Clear any existing input monitoring polling before starting new one
+        if (pollRefs.current.im) {
+          clearInterval(pollRefs.current.im);
+          pollRefs.current.im = null;
+        }
+        pollRefs.current.im = setInterval(async () => {
+          const sys = devFlags.mockPermissionStates
+            ? await mockPermissions.checkPermissions()
+            : await window.electron?.checkPermissions();
+          if (sys && !sys.needIM) {
+            if (pollRefs.current.im) {
+              clearInterval(pollRefs.current.im);
+              pollRefs.current.im = null;
+            }
+            setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+            setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+            setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+          }
+        }, 1000);
       }
     } catch (error) {
-      console.error("Error requesting input monitoring permission:", error);
+      if (isDevelopment) console.error("Error requesting input monitoring permission:", error);
       setErrors(prev => ({ ...prev, inputMonitoring: true }));
     }
-    setChecking(false);
   };
 
 
@@ -236,7 +400,6 @@ const Onboarding: React.FC = () => {
 
 
   const handleRequestAccessibility = async () => {
-    setChecking(true);
     try {
       devFlags.methods.devLog('Requesting accessibility permission...');
       
@@ -245,70 +408,157 @@ const Onboarding: React.FC = () => {
         if (result && 'success' in result && result.success) {
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              accessibility: { ...prev.accessibility, justGranted: false },
+            }));
+          }, 800);
         }
-        setChecking(false);
         return;
       }
       
       await window.electron?.requestAccessibilityPermission();
-      // Poll for permission changes
-      const pollInterval = setInterval(async () => {
+      // Open System Settings pane and poll until granted
+      window.electron?.openSystemPreferences('accessibility');
+      // Clear any existing accessibility polling before starting new one
+      if (pollRefs.current.ax) {
+        clearInterval(pollRefs.current.ax);
+        pollRefs.current.ax = null;
+      }
+      pollRefs.current.ax = setInterval(async () => {
         const result = await window.electron?.checkPermissions();
         if (result && !result.needAX) {
+          if (pollRefs.current.ax) {
+            clearInterval(pollRefs.current.ax);
+            pollRefs.current.ax = null;
+          }
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
-          setChecking(false);
-          clearInterval(pollInterval);
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              accessibility: { ...prev.accessibility, justGranted: false },
+            }));
+          }, 800);
         }
       }, 1000);
-      
-      // Stop polling after 10 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setChecking(false);
-      }, 10000);
     } catch (error) {
-      console.error("Error requesting accessibility permission:", error);
+      if (isDevelopment) console.error("Error requesting accessibility permission:", error);
       setErrors(prev => ({ ...prev, accessibility: true }));
-      setChecking(false);
     }
   };
 
 
 
   const handleComplete = async () => {
+    // Finish onboarding from the Complete screen
+    // Helper should already be running from permissions step, but ensure it's started
     try {
-      await window.electron?.startHelper();
-      window.electron?.onboardingComplete();
+      await window.electron?.startHelper(); // Safe to call multiple times
     } catch (error) {
-      console.error("Error completing onboarding:", error);
+      if (isDevelopment) console.error("Error starting helper:", error);
     }
+    try {
+      await window.electron?.onboardingComplete();
+    } catch (error) {
+      if (isDevelopment) console.error("Error completing onboarding:", error);
+    }
+    // Small delay for UX before closing
+    setTimeout(() => {
+      try { window.electron?.closeOnboarding?.(); } catch {}
+    }, 300);
   };
 
   // Step progress indicator
-  // Returns the index (in the progress steps) of the current step, or -1 if not in progress steps
+  // Returns the index among ['welcome','permissions','hotkey-test'], or -1 when not applicable
   const getProgressStepIndex = () => {
     const steps = getSteps();
-    // Progress steps exclude 'welcome' and 'complete'
-    const progressSteps = steps.slice(1, -1);
+    // Progress steps include welcome and exclude 'complete'
+    const progressSteps = steps.slice(0, -1);
     return progressSteps.indexOf(currentStep);
   };
 
   // Animation variants (with dev speed control)
-  const animationDuration = devFlags.fastAnimations ? 0.1 : 0.3;
+  const spring = devFlags.fastAnimations
+    ? { type: "spring" as const, stiffness: 420, damping: 30, mass: 0.35 }
+    : { type: "spring" as const, stiffness: 340, damping: 28, mass: 0.45 };
   const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      transition: { duration: animationDuration }
-    },
-    exit: { 
-      opacity: 0, 
-      y: -20,
-      transition: { duration: animationDuration }
-    }
+    hidden: { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: spring },
+    exit: { opacity: 0, y: -16, transition: spring },
   };
+
+  // --- Dictation test wiring for Hotkey step ---
+  const trans = useTranscription();
+  const [testText, setTestText] = useState("");
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  // Minimal debounce utility
+  const debounce = <T extends (...args: unknown[]) => void>(func: T, delay: number) => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    return (...args: Parameters<T>) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  };
+
+  // Append recognized text to test area
+  useEffect(() => {
+    if (trans.text) {
+      setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+    }
+  }, [trans.text]);
+
+  // Hook Fn key to start/stop dictation for onboarding test
+  useEffect(() => {
+    if (!window.ptt?.onDown || !window.ptt?.onUp) {
+      devFlags.methods.devLog('PTT API not available yet, waiting...');
+      return;
+    }
+
+    devFlags.methods.devLog('PTT API available, setting up Fn key handlers');
+    const HOLD_MS = 180;
+    const handleDown = () => {
+      devFlags.methods.devLog('Fn key pressed down');
+      setFnKeyPressed(true); // Immediate visual feedback
+      
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+      if (trans.processing || trans.recording) return;
+      isLongPressRef.current = false;
+      pressTimerRef.current = setTimeout(() => {
+        isLongPressRef.current = true;
+        if (!trans.recording) trans.start();
+      }, HOLD_MS);
+    };
+    const handleUp = () => {
+      devFlags.methods.devLog('Fn key released');
+      setFnKeyPressed(false); // Immediate visual feedback
+      
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      if (trans.recording) trans.stop();
+      isLongPressRef.current = false;
+    };
+
+    const cleanupDown = window.ptt.onDown(debounce(handleDown, 50));
+    const cleanupUp = window.ptt.onUp(debounce(handleUp, 50));
+    return () => {
+      cleanupDown?.();
+      cleanupUp?.();
+    };
+  }, [trans.recording, trans.processing, pttApiReady]); // Re-run when PTT API becomes ready
 
 
   return (
@@ -317,6 +567,28 @@ const Onboarding: React.FC = () => {
       
       {/* Draggable Header Areas */}
       <div className="onboarding-header" />
+      
+      {/* Static top progress - glassy bars */}
+      {currentStep !== "complete" && (
+        <div className="absolute top-12 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className="onboarding-progress-shell">
+            {(() => {
+              const progressSteps = getSteps().slice(0, -1);
+              const idx = getProgressStepIndex();
+              return progressSteps.map((step, i) => {
+                const isComplete = i < idx;
+                const isActive = i === idx;
+                const growClass = isActive ? "grow-active" : "grow-inactive";
+                const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
+                const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
+                return (
+                  <div key={step} className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`} />
+                );
+              });
+            })()}
+          </div>
+        </div>
+      )}
       
       {/* Development Mode Indicator & Controls */}
       {(isDev || devFlags.alwaysShowDevMode) && (
@@ -356,34 +628,42 @@ const Onboarding: React.FC = () => {
         </div>
       )}
       
+      {/* Close Button removed per design */}
+      
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto">
+        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           
-          {/* Progress indicator */}
-          {currentStep !== "welcome" && currentStep !== "complete" && (
-            <motion.div 
-              className="flex items-center justify-center space-x-2 mb-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              {getSteps().slice(1, -1).map((step, i) => (
-                <div
-                  key={step}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    i < getProgressStepIndex()
-                      ? "bg-primary"
-                      : i === getProgressStepIndex()
-                      ? "bg-muted-foreground"
-                      : "bg-muted"
-                  }`}
-                />
-              ))}
-            </motion.div>
-          )}
+          
 
           <AnimatePresence mode="wait">
+        {/* Hotkey Info Step */}
+        {currentStep === "hotkey-info" && (
+          <motion.div
+            key="hotkey-info"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="text-center space-y-4"
+          >
+            <div className="heading-stack">
+              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Hotkey is the Fn key</h2>
+              <p className="text-sm text-subtle subheading">Press and hold to speak. Release to stop.</p>
+            </div>
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div 
+                className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                aria-label={fnKeyPressed || trans.recording ? "Function key active - recording in progress" : "Function key - press and hold to start dictation"}
+                aria-live="polite"
+              >
+                <span className="keycap-label text-[12px] font-system lowercase">fn</span>
+              </div>
+              <p className="text-[11px] text-dimmed">Press your Fn key now to test it.</p>
+            </div>
+            {/* Removed central Continue button; Next lives in bottom-right consistently */}
+          </motion.div>
+        )}
             {/* Welcome Step */}
             {currentStep === "welcome" && (
               <motion.div
@@ -394,40 +674,17 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="space-y-3">
-                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight">Welcome to Sonic Flow</h1>
-                  <p className="text-sm text-subtle leading-relaxed">
-                    Let's set up the permissions you need for voice dictation.
+                <div className="heading-stack">
+                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">Welcome to Sonic Flow</h1>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Let's get you started.
                   </p>
                 </div>
-                
-                <div className="card-primary rounded-lg p-4 space-y-3">
-                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Required Permissions</h2>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Microphone access to hear your voice</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Fn key monitoring for activation</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Text insertion for dictation</span>
-                    </div>
-                  </div>
+                <div className="flex justify-center">
+                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta shimmer">
+                    Start Setup
+                  </Button>
                 </div>
-                
-                <Button onClick={nextStep} className="w-full">
-                  Continue
-                </Button>
               </motion.div>
             )}
 
@@ -443,182 +700,223 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="space-y-3">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Grant Permissions</h2>
-                  <p className="text-sm text-subtle leading-relaxed">
-                    We need three permissions for Sonic Flow to work properly.
-                  </p>
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Enable Required Permissions</h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">Sonic Flow needs these macOS permissions to work.</p>
                 </div>
 
                 <div className="space-y-3">
                   {/* Microphone Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Microphone</p>
-                          <p className="text-xs text-subtle">Record your voice for dictation</p>
+                           <p className="text-[11px] text-subtle">Capture your voice for dictation.</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.microphone ? (
-                          <div className="flex items-center space-x-2 text-green-400">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs">Granted</span>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestMicrophone}
-                            disabled={checking}
-                            className="text-xs"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.microphone ? (
+                              <motion.div
+                                key={ui.microphone.loading ? "mic-loading" : "mic-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestMicrophone}
+                                  disabled={ui.microphone.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.microphone.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Enable</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    // Draw when just granted; otherwise show complete path instantly
+                                    initial={{ pathLength: ui.microphone.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.microphone.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
-                    {errors.microphone && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable manually:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("microphone")}
-                          className="text-xs"
-                        >
-                          Open System Preferences
-                        </Button>
-                      </div>
-                    )}
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
 
                   {/* Input Monitoring Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Input Monitoring</p>
-                          <p className="text-xs text-subtle">Detect Fn key presses</p>
+                           <p className="text-[11px] text-subtle">Detect the Fn key to start and stop dictation.</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.inputMonitoring ? (
-                          <div className="flex items-center space-x-2 text-green-400">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs">Granted</span>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestInputMonitoring}
-                            disabled={checking}
-                            className="text-xs"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.inputMonitoring ? (
+                              <motion.div
+                                key={ui.inputMonitoring.loading ? "im-loading" : "im-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestInputMonitoring}
+                                  disabled={ui.inputMonitoring.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.inputMonitoring.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Enable</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    initial={{ pathLength: ui.inputMonitoring.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.inputMonitoring.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
-                    {isDev && !permissions.inputMonitoring && (
-                      <div className="mt-3 p-2 bg-white/5 border border-white/20 rounded text-xs text-white/70">
-                        <strong>Dev Mode:</strong> Look for "Electron" or "Cursor" in System Preferences
-                      </div>
-                    )}
-                    {errors.inputMonitoring && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Enable in System Preferences:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("input-monitoring")}
-                          className="text-xs"
-                        >
-                          Open System Preferences
-                        </Button>
-                      </div>
-                    )}
+                    
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
 
                   {/* Accessibility Permission */}
-                  <div className="card-primary rounded-lg p-4">
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Accessibility</p>
-                          <p className="text-xs text-subtle">Insert text into applications</p>
+                           <p className="text-[11px] text-subtle">Insert recognized text into your apps.</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.accessibility ? (
-                          <div className="flex items-center space-x-2 text-green-400">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="text-xs">Granted</span>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestAccessibility}
-                            disabled={checking}
-                            className="text-xs"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.accessibility ? (
+                              <motion.div
+                                key={ui.accessibility.loading ? "ax-loading" : "ax-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestAccessibility}
+                                  disabled={ui.accessibility.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.accessibility.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Enable</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    initial={{ pathLength: ui.accessibility.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.accessibility.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
-                    {errors.accessibility && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable manually:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("accessibility")}
-                          className="text-xs"
-                        >
-                          Open System Preferences
-                        </Button>
-                      </div>
-                    )}
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
                 </div>
 
-                {allPermissionsGranted && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="card-elevated rounded-lg p-4 border border-green-500/20"
-                  >
-                    <div className="flex items-center justify-center space-x-2 text-green-400">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <p className="text-sm font-medium">All permissions granted!</p>
-                    </div>
-                    <p className="text-xs text-subtle mt-2">Proceeding to setup test...</p>
-                  </motion.div>
-                )}
+                
               </motion.div>
             )}
 
@@ -634,48 +932,33 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-3 overflow-hidden"
               >
-                <div className="space-y-2">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Test Your Setup</h2>
-                  <p className="text-sm text-subtle">
-                    Let's make sure everything works properly.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center space-x-6">
-                  {/* Compact Fn Key Display */}
-                  <div className="text-center">
-                    <div className="w-12 h-8 rounded bg-secondary border border-border flex items-center justify-center mb-2">
-                      <span className="text-sm font-mono font-bold">Fn</span>
-                    </div>
-                    <p className="text-xs font-medium text-foreground">Activation Key</p>
+                <div className="space-y-3 max-w-xl mx-auto text-left">
+                  <div className="text-center heading-stack">
+                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
+                    <p className="text-sm text-subtle subheading">
+                      {pttApiReady ? "Hold Fn and speak to test dictation." : "Initializing dictation system..."}
+                    </p>
+                    {!pttApiReady && (
+                      <div className="flex items-center justify-center gap-2 mt-2">
+                        <div className="h-2 w-2 animate-spin rounded-full border border-white/30 border-t-white" />
+                        <span className="text-xs text-dimmed">Setting up Fn key detection</span>
+                      </div>
+                    )}
                   </div>
-                  
-                  {/* Compact Instructions */}
-                  <div className="text-left flex-1 max-w-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Quick Test</p>
-                    <div className="space-y-1 text-xs text-dimmed">
-                      <div>1. Open Notes or any text app</div>
-                      <div>2. Hold <strong>Fn</strong> and say "Hello world"</div>
-                      <div>3. Release <strong>Fn</strong> and see the magic! ✨</div>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="space-y-2 pt-2">
-                  <Button 
-                    onClick={handleComplete}
-                    className="w-full"
-                  >
-                    Start Sonic Flow
-                  </Button>
-                  
-                  <Button 
-                    variant="secondary"
-                    onClick={() => setCurrentStep("permissions")}
-                    className="w-full text-xs"
-                  >
-                    ← Back to Permissions
-                  </Button>
+                  {/* Dictation Textarea */}
+                  <div>
+                    {/* removed the small label above the textarea */}
+                    <textarea
+                      className={`w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30 ${!pttApiReady ? 'opacity-50' : ''}`}
+                      placeholder={pttApiReady ? "Hold Fn and speak…" : "Initializing..."}
+                      value={testText}
+                      onChange={(e) => setTestText(e.target.value)}
+                      readOnly={!pttApiReady}
+                    />
+                  </div>
+
+                  {/* No CTA here; proceed with Next to the completion screen */}
                 </div>
               </motion.div>
             )}
@@ -690,39 +973,73 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                <div className="text-primary text-4xl mb-4">✓</div>
-                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight">All Set!</h2>
-                <p className="text-sm text-subtle leading-relaxed">
-                  Sonic Flow is ready to use. Enjoy your voice dictation!
-                </p>
+                 {/* Checkmark badge - matches waitlist modal */}
+                 <motion.div
+                   initial={{ scale: 0 }}
+                   animate={{ scale: 1 }}
+                   transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                   className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/10 border border-white/20"
+                 >
+                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-white/80">
+                     <motion.path
+                       initial={{ pathLength: 0 }}
+                       animate={{ pathLength: 1 }}
+                       transition={{ delay: 0.2, duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
+                       d="M5 13l4 4L19 7"
+                       stroke="currentColor"
+                       strokeWidth="2.25"
+                       strokeLinecap="round"
+                       strokeLinejoin="round"
+                     />
+                   </svg>
+                 </motion.div>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You're all set</h2>
+                <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Press Fn to dictate anywhere.</p>
+                <div className="pt-2 flex justify-center">
+                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta shimmer">
+                    Start dictating
+                  </Button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
 
         </div>
 
-        {/* Navigation Controls */}
-        {currentStep !== "welcome" && currentStep !== "complete" && (
+        {/* Navigation Controls (hidden on welcome) */}
+        {currentStep !== "complete" && currentStep !== "welcome" && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-            <Button 
-              variant="secondary" 
+            <Button
+              variant="secondary"
               onClick={prevStep}
               disabled={getProgressStepIndex() <= 0}
-              className="px-4 py-2"
+              className="px-3 py-1.5"
             >
               Back
             </Button>
-            
-            <Button 
-              variant="secondary" 
-              onClick={() => {
-                // Skip to the end
-                setCurrentStep("hotkey-test");
-              }}
-              className="px-4 py-2"
-            >
-              Skip Setup
-            </Button>
+
+            {/* Next button appears on permissions and hotkey-info */}
+            {currentStep !== "hotkey-test" && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  nextStep();
+                }}
+                disabled={currentStep === "permissions" && !allPermissionsGranted}
+                className="px-3 py-1.5"
+              >
+                Next
+              </Button>
+            )}
+            {currentStep === "hotkey-test" && (
+              <Button
+                variant="secondary"
+                onClick={() => setCurrentStep("complete")}
+                className="px-3 py-1.5"
+              >
+                Next
+              </Button>
+            )}
           </div>
         )}
       </div>
