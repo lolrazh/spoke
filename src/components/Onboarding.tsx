@@ -445,20 +445,18 @@ const Onboarding: React.FC = () => {
             exit="exit"
             className="text-center space-y-4"
           >
-            <div className="space-y-3">
-              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Activation Key</h2>
-              <p className="text-sm text-subtle">Sonic Flow uses the Function key as your push‑to‑talk.</p>
+            <div className="space-y-2">
+              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Hotkey is the Fn key</h2>
+              <p className="text-sm text-subtle">Press and hold to speak. Release to stop.</p>
             </div>
-            <div className="flex items-center justify-center gap-6">
-              <div className="text-center">
-                <div className="w-14 h-10 rounded bg-secondary border border-border flex items-center justify-center mb-2">
-                  <span className="text-sm font-mono font-bold">Fn</span>
-                </div>
-                <p className="text-xs font-medium text-foreground">Function Key</p>
+            <div className="flex flex-col items-center justify-center gap-2">
+              <div className={`keycap ${trans.recording ? "keycap-active" : ""}`}
+                   onMouseDown={(e) => e.preventDefault()}
+                   onMouseUp={(e) => e.preventDefault()}
+              >
+                <span className="text-sm font-system lowercase">fn</span>
               </div>
-              <div className="text-left max-w-xs text-dimmed text-xs leading-relaxed">
-                Hold to speak. Release to finish. You can change this later in Settings.
-              </div>
+              <p className="text-[11px] text-dimmed">Press your Fn key now to test it.</p>
             </div>
             <div className="pt-2">
               <Button onClick={() => setCurrentStep("hotkey-test")} className="px-5 py-2 onboarding-cta">Continue</Button>
@@ -695,23 +693,8 @@ const Onboarding: React.FC = () => {
               >
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center">
-                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
-                    <p className="text-sm text-subtle">Let's make sure everything works properly.</p>
-                  </div>
-
-                  <div className="grid grid-cols-[auto,1fr] items-start gap-x-4 gap-y-1 mx-auto">
-                    {/* Fn key visual */}
-                    <div className="row-span-3">
-                      <div className="w-12 h-8 rounded bg-secondary border border-border flex items-center justify-center">
-                        <span className="text-sm font-mono font-bold">Fn</span>
-                      </div>
-                    </div>
-                    <div className="text-xs font-medium text-foreground">Activation Key</div>
-                    <div className="col-start-2">
-                      <p className="text-[11px] text-dimmed leading-relaxed">
-                        Hold the key to speak. Release to stop.
-                      </p>
-                    </div>
+                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Let’s test dictation here</h2>
+                    <p className="text-sm text-subtle">Open a text field below and try a short phrase.</p>
                   </div>
 
                   {/* Dictation Textarea */}
