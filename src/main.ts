@@ -473,6 +473,18 @@ const createWindow = () => {
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     console.log("Main window shown.");
+    // Ensure initial position is the visible top-aligned Y (flush to screen top)
+    try {
+      const current = mainWindow.getBounds();
+      mainWindow.setBounds(
+        { x: current.x, y: ISLAND_VISIBLE_Y, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+      logBounds("ready-to-show -> top-align");
+    } catch (e) {
+      console.warn("Failed to top-align on ready-to-show:", e);
+    }
 
     // Open DevTools automatically in development mode
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

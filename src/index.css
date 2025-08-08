@@ -13,9 +13,7 @@
     display: flex;
     align-items: flex-start; /* Align pill to the TOP of the window */
     justify-content: center;
-    /* Shadow breathing room inside the window bounds */
-    padding: 60px; /* keep in sync with SHADOW_PAD */
-    box-sizing: border-box;
+    /* No internal padding – window Y handles shadow pad so pill can be flush to top */
   }
 
   /* CSS variables for pill styling - change these to update all states */
