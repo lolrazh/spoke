@@ -454,7 +454,7 @@ const Onboarding: React.FC = () => {
                    onMouseDown={(e) => e.preventDefault()}
                    onMouseUp={(e) => e.preventDefault()}
               >
-                <span className="keycap-label text-[10px] font-system lowercase">fn</span>
+                <span className="keycap-label text-[12px] font-system lowercase">fn</span>
               </div>
               <p className="text-[11px] text-dimmed">Press your Fn key now to test it.</p>
             </div>
@@ -693,12 +693,13 @@ const Onboarding: React.FC = () => {
               >
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center">
+                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
                     <p className="text-sm text-subtle">You can test your dictation here.</p>
                   </div>
 
                   {/* Dictation Textarea */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Try Dictating Here</p>
+                    {/* removed the small label above the textarea */}
                     <textarea
                       className="w-full h-28 resize-none rounded-md bg-transparent onboarding-row p-3 text-sm outline-none"
                       placeholder="Hold Fn and speak…"
