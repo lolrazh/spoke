@@ -13,6 +13,9 @@
     display: flex;
     align-items: flex-start; /* Align pill to the TOP of the window */
     justify-content: center;
+    /* Shadow breathing room inside the window bounds */
+    padding: 60px; /* keep in sync with SHADOW_PAD */
+    box-sizing: border-box;
   }
 
   /* CSS variables for pill styling - change these to update all states */
@@ -39,6 +42,11 @@
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
     overflow: hidden;
+    /* Performance: avoid flicker by promoting and isolating */
+    will-change: transform, opacity, filter;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    contain: paint;
   }
 
   /* Expanded state styling - make it look like a proper window */
@@ -46,7 +54,8 @@
     border-radius: var(--radius-window); /* Larger radius for window appearance */
     background: rgba(20, 20, 30, 0.98); /* More opaque background */
     border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    /* Use layered window-strength shadow for soft, glass-friendly falloff */
+    box-shadow: var(--shadow-interactive);
   }
 
   /* Resting indicator - invisible by default, just for spacing */

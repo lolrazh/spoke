@@ -23,6 +23,7 @@ import {
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
   ISLAND_VISIBLE_Y,
+  SHADOW_PAD,
 } from "./constants/window";
 import {
   ONBOARDING_WIDTH,
@@ -1280,20 +1281,27 @@ app.whenReady().then(async () => {
 
   ipcMain.on("pill-resize", (event, { width, height }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Enforce padding so CSS shadows never get clipped during animations
+      const paddedWidth = Math.round(width + SHADOW_PAD * 2);
+      const paddedHeight = Math.round(height + SHADOW_PAD * 2);
+
+      const targetW = Math.max(paddedWidth, ISLAND_WIDTH);
+      const targetH = Math.max(paddedHeight, ISLAND_HEIGHT);
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth } = primaryDisplay.size;
-      const x = Math.round((screenWidth - width) / 2);
+      const x = Math.round((screenWidth - targetW) / 2);
 
       const currentBounds = mainWindow.getBounds();
       mainWindow.setBounds(
         {
-          x: x,
+          x,
           y: currentBounds.y,
-          width: Math.round(width),
-          height: Math.round(height),
+          width: targetW,
+          height: targetH,
         },
         false,
-      ); // animate: false
+      );
 
       if (process.platform === "darwin") {
         mainWindow.invalidateShadow();
