@@ -2,16 +2,21 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
-// Temporarily inline the development flags for debugging
+// Development flags - only enabled in development mode
+const isDevelopment = process.env.NODE_ENV === 'development';
 const devFlags = {
-  mockPermissionStates: true,
-  showDebugOverlay: true,
-  fastAnimations: true,
-  alwaysShowDevMode: true,
-  isDevelopment: process.env.NODE_ENV === 'development',
+  mockPermissionStates: isDevelopment,
+  showDebugOverlay: isDevelopment,
+  fastAnimations: isDevelopment,
+  alwaysShowDevMode: isDevelopment,
+  isDevelopment,
   methods: {
-    devLog: (...args: any[]) => console.log('[DEV]', ...args),
-    devNotify: (message: string) => console.log('[DEV NOTIFY]', message),
+    devLog: (...args: any[]) => {
+      if (isDevelopment) console.log('[DEV]', ...args);
+    },
+    devNotify: (message: string) => {
+      if (isDevelopment) console.log('[DEV NOTIFY]', message);
+    },
   }
 };
 
