@@ -655,12 +655,18 @@ body {
     border: none; /* tertiary element, no stroke */
     box-shadow: none; /* ultra-clean */
     flex-basis: 0; /* allow flex-grow to define width */
-    transition: flex-grow 200ms var(--ease-standard), background-color 200ms var(--ease-standard), height 200ms var(--ease-standard), opacity 200ms var(--ease-standard);
+    transition: flex-grow 260ms var(--ease-emphasized), background-color 260ms var(--ease-emphasized), height 260ms var(--ease-emphasized), opacity 260ms var(--ease-emphasized);
+    will-change: transform, flex-grow;
+  }
+  @keyframes barSpring {
+    0% { transform: scaleY(0.92); }
+    60% { transform: scaleY(1.08); }
+    100% { transform: scaleY(1); }
   }
   .onboarding-progress-bar.grow-active { flex-grow: 6; }
   .onboarding-progress-bar.grow-inactive { flex-grow: 2; }
   /* Active and completed share the same neutral tone; completed is distinguished by width only */
-  .onboarding-progress-bar.bar-active { background-color: rgba(255, 255, 255, 0.85); height: 3px; }
+  .onboarding-progress-bar.bar-active { background-color: rgba(255, 255, 255, 0.85); height: 3px; animation: barSpring 260ms var(--ease-emphasized); }
   .onboarding-progress-bar.bar-complete { background-color: rgba(255, 255, 255, 0.45); }
   .onboarding-progress-bar.bar-upcoming { background-color: rgba(255, 255, 255, 0.18); }
 
