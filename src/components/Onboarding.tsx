@@ -26,7 +26,7 @@ const mockPermissions = {
   resetPermissions: () => { console.debug('[MockPermissions] resetPermissions'); }
 };
 
-type OnboardingStep = "welcome" | "permissions" | "hotkey-test" | "complete";
+type OnboardingStep = "welcome" | "permissions" | "hotkey-info" | "hotkey-test" | "complete";
 
 const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
@@ -138,7 +138,7 @@ const Onboarding: React.FC = () => {
   }, []);
 
   // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-test", "complete"];
+  const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-info", "hotkey-test", "complete"];
 
   // Check if all permissions are granted
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
@@ -147,7 +147,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (currentStep === "permissions" && allPermissionsGranted) {
       setTimeout(() => {
-        setCurrentStep("hotkey-test");
+        setCurrentStep("hotkey-info");
       }, 1000); // Small delay to show success state
     }
   }, [currentStep, allPermissionsGranted]);
@@ -296,19 +296,13 @@ const Onboarding: React.FC = () => {
   };
 
   // Animation variants (with dev speed control)
-  const animationDuration = devFlags.fastAnimations ? 0.1 : 0.3;
+  const spring = devFlags.fastAnimations
+    ? { type: "spring" as const, stiffness: 420, damping: 30, mass: 0.35 }
+    : { type: "spring" as const, stiffness: 340, damping: 28, mass: 0.45 };
   const containerVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      transition: { duration: animationDuration }
-    },
-    exit: { 
-      opacity: 0, 
-      y: -20,
-      transition: { duration: animationDuration }
-    }
+    hidden: { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: spring },
+    exit: { opacity: 0, y: -16, transition: spring },
   };
 
   // --- Dictation test wiring for Hotkey step ---
@@ -441,6 +435,36 @@ const Onboarding: React.FC = () => {
           
 
           <AnimatePresence mode="wait">
+        {/* Hotkey Info Step */}
+        {currentStep === "hotkey-info" && (
+          <motion.div
+            key="hotkey-info"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="text-center space-y-4"
+          >
+            <div className="space-y-3">
+              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Activation Key</h2>
+              <p className="text-sm text-subtle">Sonic Flow uses the Function key as your push‑to‑talk.</p>
+            </div>
+            <div className="flex items-center justify-center gap-6">
+              <div className="text-center">
+                <div className="w-14 h-10 rounded bg-secondary border border-border flex items-center justify-center mb-2">
+                  <span className="text-sm font-mono font-bold">Fn</span>
+                </div>
+                <p className="text-xs font-medium text-foreground">Function Key</p>
+              </div>
+              <div className="text-left max-w-xs text-dimmed text-xs leading-relaxed">
+                Hold to speak. Release to finish. You can change this later in Settings.
+              </div>
+            </div>
+            <div className="pt-2">
+              <Button onClick={() => setCurrentStep("hotkey-test")} className="px-5 py-2 onboarding-cta">Continue</Button>
+            </div>
+          </motion.div>
+        )}
             {/* Welcome Step */}
             {currentStep === "welcome" && (
               <motion.div
