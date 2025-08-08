@@ -28,7 +28,9 @@ const mockPermissions = {
   askIM: async () => ({ success: true, status: 'authorized' }),
   requestAccessibilityPermission: async () => ({ success: true }),
   openSystemPreferences: async (pane: string) => ({ success: true }),
-  resetPermissions: () => { console.debug('[MockPermissions] resetPermissions'); }
+  resetPermissions: () => { 
+    if (isDevelopment) console.debug('[MockPermissions] resetPermissions'); 
+  }
 };
 
 type OnboardingStep = "welcome" | "permissions" | "hotkey-info" | "hotkey-test" | "complete";
@@ -57,9 +59,9 @@ const Onboarding: React.FC = () => {
 
   // Debug logging
   useEffect(() => {
-    console.log("[Onboarding] Component mounted");
-    console.log("[Onboarding] Current step:", currentStep);
-    console.log("[Onboarding] Window location:", window.location.href);
+    devFlags.methods.devLog("Component mounted");
+    devFlags.methods.devLog("Current step:", currentStep);
+    devFlags.methods.devLog("Window location:", window.location.href);
   }, []);
 
   // Note: App location check moved to silent background check
@@ -89,7 +91,7 @@ const Onboarding: React.FC = () => {
         mock: (systemPerms as any)?.mock || (micPerms as any)?.mock
       });
     } catch (error) {
-      console.error("Error checking permissions:", error);
+      if (isDevelopment) console.error("Error checking permissions:", error);
     }
   };
 
@@ -102,7 +104,7 @@ const Onboarding: React.FC = () => {
       setTimeout(() => {
         const onboardingWindow = document.querySelector('.onboarding-window') as HTMLElement;
         if (onboardingWindow) {
-          console.log('[Onboarding] DOM ready, ensuring vibrancy visibility');
+          devFlags.methods.devLog('DOM ready, ensuring vibrancy visibility');
           // Ensure the window becomes visible by triggering a minimal style change
           onboardingWindow.style.transform = 'translateZ(0)';
         }
@@ -252,7 +254,7 @@ const Onboarding: React.FC = () => {
         }, 1000);
       }
     } catch (error) {
-      console.error("Error requesting microphone permission:", error);
+      if (isDevelopment) console.error("Error requesting microphone permission:", error);
       setErrors(prev => ({ ...prev, microphone: true }));
     }
   };
@@ -338,7 +340,7 @@ const Onboarding: React.FC = () => {
         }, 1000);
       }
     } catch (error) {
-      console.error("Error requesting input monitoring permission:", error);
+      if (isDevelopment) console.error("Error requesting input monitoring permission:", error);
       setErrors(prev => ({ ...prev, inputMonitoring: true }));
     }
   };
@@ -400,7 +402,7 @@ const Onboarding: React.FC = () => {
         }
       }, 1000);
     } catch (error) {
-      console.error("Error requesting accessibility permission:", error);
+      if (isDevelopment) console.error("Error requesting accessibility permission:", error);
       setErrors(prev => ({ ...prev, accessibility: true }));
     }
   };
@@ -412,12 +414,12 @@ const Onboarding: React.FC = () => {
     try {
       await window.electron?.startHelper();
     } catch (error) {
-      console.error("Error starting helper:", error);
+      if (isDevelopment) console.error("Error starting helper:", error);
     }
     try {
       await window.electron?.onboardingComplete();
     } catch (error) {
-      console.error("Error completing onboarding:", error);
+      if (isDevelopment) console.error("Error completing onboarding:", error);
     }
     // Small delay for UX before closing
     setTimeout(() => {
@@ -589,9 +591,10 @@ const Onboarding: React.FC = () => {
               <p className="text-sm text-subtle subheading">Press and hold to speak. Release to stop.</p>
             </div>
             <div className="flex flex-col items-center justify-center gap-2">
-              <div className={`keycap keycap-lg ${trans.recording ? "keycap-active" : ""}`}
-                   onMouseDown={(e) => e.preventDefault()}
-                   onMouseUp={(e) => e.preventDefault()}
+              <div 
+                className={`keycap keycap-lg ${trans.recording ? "keycap-active" : ""}`}
+                aria-label={trans.recording ? "Function key active - recording in progress" : "Function key - press and hold to start dictation"}
+                aria-live="polite"
               >
                 <span className="keycap-label text-[12px] font-system lowercase">fn</span>
               </div>
