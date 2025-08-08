@@ -322,7 +322,7 @@ const Onboarding: React.FC = () => {
       {(isDev || devFlags.alwaysShowDevMode) && (
         <div className="absolute top-4 right-4 z-50 space-y-2">
           <div className="card-floating rounded-lg px-3 py-1">
-            <span className="text-xs font-medium text-orange-300">
+            <span className="text-xs font-medium text-white/80">
               Development Mode
               {devFlags.mockPermissionStates && " (Mock)"}
             </span>
@@ -330,7 +330,7 @@ const Onboarding: React.FC = () => {
           
           {devFlags.showDebugOverlay && (
             <div className="card-floating rounded-lg p-2 text-xs space-y-1">
-              <div className="text-orange-300 font-medium">Debug Panel</div>
+              <div className="text-white/80 font-medium">Debug Panel</div>
               <div className="text-xs text-dimmed">
                 Step: {currentStep}
               </div>
@@ -341,7 +341,7 @@ const Onboarding: React.FC = () => {
               </div>
               {devFlags.mockPermissionStates && (
                 <button 
-                  className="text-blue-300 hover:text-blue-200 underline"
+                  className="text-white/70 hover:text-white/90 underline"
                   onClick={() => {
                     // Quick reset for development
                     setPermissions({ microphone: false, accessibility: false, inputMonitoring: false });
@@ -395,7 +395,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h1 className="text-heading-xl heading-gradient">Welcome to Sonic Flow</h1>
+                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight">Welcome to Sonic Flow</h1>
                   <p className="text-sm text-subtle leading-relaxed">
                     Let's set up the permissions you need for voice dictation.
                   </p>
@@ -444,7 +444,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="space-y-3">
-                  <h2 className="text-heading-lg heading-gradient">Grant Permissions</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Grant Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed">
                     We need three permissions for Sonic Flow to work properly.
                   </p>
@@ -535,7 +535,7 @@ const Onboarding: React.FC = () => {
                       </div>
                     </div>
                     {isDev && !permissions.inputMonitoring && (
-                      <div className="mt-3 p-2 bg-orange-500/10 border border-orange-500/30 rounded text-xs text-orange-300">
+                      <div className="mt-3 p-2 bg-white/5 border border-white/20 rounded text-xs text-white/70">
                         <strong>Dev Mode:</strong> Look for "Electron" or "Cursor" in System Preferences
                       </div>
                     )}
@@ -635,7 +635,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-3 overflow-hidden"
               >
                 <div className="space-y-2">
-                  <h2 className="text-heading-lg heading-gradient">Test Your Setup</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight">Test Your Setup</h2>
                   <p className="text-sm text-subtle">
                     Let's make sure everything works properly.
                   </p>
@@ -691,7 +691,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="text-primary text-4xl mb-4">✓</div>
-                <h2 className="text-heading-xl heading-gradient">All Set!</h2>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight">All Set!</h2>
                 <p className="text-sm text-subtle leading-relaxed">
                   Sonic Flow is ready to use. Enjoy your voice dictation!
                 </p>
