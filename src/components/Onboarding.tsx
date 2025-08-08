@@ -47,6 +47,8 @@ const Onboarding: React.FC = () => {
     accessibility: false,
   });
   const [isDev, setIsDev] = useState(false);
+  // Poll timers for system permissions (cleared on unmount)
+  const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
 
   // Debug logging
   useEffect(() => {
@@ -142,6 +144,15 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
+  // Clear any active polling timers on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic);
+      if (pollRefs.current.im) clearInterval(pollRefs.current.im);
+      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax);
+    };
+  }, []);
+
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-info", "hotkey-test", "complete"];
 
@@ -176,10 +187,6 @@ const Onboarding: React.FC = () => {
 
   // Permission handlers - now work within combined interface
   const handleRequestMicrophone = async () => {
-    setUi((prev) => ({
-      ...prev,
-      microphone: { ...prev.microphone, loading: true },
-    }));
     try {
       devFlags.methods.devLog('Requesting microphone permission...');
       
@@ -203,30 +210,35 @@ const Onboarding: React.FC = () => {
           }));
         }, 800);
       } else {
-        // Permission denied or failed
-        setErrors(prev => ({ ...prev, microphone: true }));
-        devFlags.methods.devLog("Microphone permission denied or failed");
-        setUi((prev) => ({
-          ...prev,
-          microphone: { ...prev.microphone, loading: false },
-        }));
+        // Open the correct System Settings pane and begin polling until granted
+        devFlags.methods.devLog('Opening System Settings for microphone…');
+        if (devFlags.mockPermissionStates) {
+          await mockPermissions.openSystemPreferences('microphone');
+        } else {
+          window.electron?.openSystemPreferences('microphone');
+        }
+        if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
+        pollRefs.current.mic = setInterval(async () => {
+          const status = devFlags.mockPermissionStates
+            ? await mockPermissions.checkMicrophonePermission()
+            : await window.electron?.checkMicrophonePermission();
+          if (status?.granted) {
+            clearInterval(pollRefs.current.mic!);
+            pollRefs.current.mic = null;
+            setPermissions(prev => ({ ...prev, microphone: true }));
+            setUi(prev => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+            setTimeout(() => setUi(prev => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error("Error requesting microphone permission:", error);
       setErrors(prev => ({ ...prev, microphone: true }));
-      setUi((prev) => ({
-        ...prev,
-        microphone: { ...prev.microphone, loading: false },
-      }));
     }
   };
 
   const handleRequestInputMonitoring = async () => {
     devFlags.methods.devLog('Starting Input Monitoring permission request...');
-    setUi((prev) => ({
-      ...prev,
-      inputMonitoring: { ...prev.inputMonitoring, loading: true },
-    }));
     try {
       // Use mock or real Input Monitoring request
       const result = devFlags.mockPermissionStates
@@ -251,34 +263,51 @@ const Onboarding: React.FC = () => {
             }));
           }, 800);
         } else if (result.status === "denied") {
-          devFlags.methods.devLog('Input Monitoring permission denied - user needs to enable in Settings');
-          setErrors(prev => ({ ...prev, inputMonitoring: false }));
-          // Open System Preferences (mock or real)
+          devFlags.methods.devLog('Input Monitoring permission denied - opening System Settings');
           if (devFlags.mockPermissionStates) {
             await mockPermissions.openSystemPreferences("inputMonitoring");
           } else {
             window.electron?.openSystemPreferences("input-monitoring");
           }
-          setUi((prev) => ({
-            ...prev,
-            inputMonitoring: { ...prev.inputMonitoring, loading: false },
-          }));
+          if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+          pollRefs.current.im = setInterval(async () => {
+            const sys = devFlags.mockPermissionStates
+              ? await mockPermissions.checkPermissions()
+              : await window.electron?.checkPermissions();
+            if (sys && !sys.needIM) {
+              clearInterval(pollRefs.current.im!);
+              pollRefs.current.im = null;
+              setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+              setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+              setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+            }
+          }, 1000);
         }
       } else {
         devFlags.methods.devLog('Input Monitoring permission request failed:', (result as any)?.error);
-        setErrors(prev => ({ ...prev, inputMonitoring: true }));
-        setUi((prev) => ({
-          ...prev,
-          inputMonitoring: { ...prev.inputMonitoring, loading: false },
-        }));
+        // Open pane and poll anyway
+        if (devFlags.mockPermissionStates) {
+          await mockPermissions.openSystemPreferences("inputMonitoring");
+        } else {
+          window.electron?.openSystemPreferences("input-monitoring");
+        }
+        if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+        pollRefs.current.im = setInterval(async () => {
+          const sys = devFlags.mockPermissionStates
+            ? await mockPermissions.checkPermissions()
+            : await window.electron?.checkPermissions();
+          if (sys && !sys.needIM) {
+            clearInterval(pollRefs.current.im!);
+            pollRefs.current.im = null;
+            setPermissions(prev => ({ ...prev, inputMonitoring: true }));
+            setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+            setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+          }
+        }, 1000);
       }
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
       setErrors(prev => ({ ...prev, inputMonitoring: true }));
-      setUi((prev) => ({
-        ...prev,
-        inputMonitoring: { ...prev.inputMonitoring, loading: false },
-      }));
     }
   };
 
@@ -287,10 +316,6 @@ const Onboarding: React.FC = () => {
 
 
   const handleRequestAccessibility = async () => {
-    setUi((prev) => ({
-      ...prev,
-      accessibility: { ...prev.accessibility, loading: true },
-    }));
     try {
       devFlags.methods.devLog('Requesting accessibility permission...');
       
@@ -314,10 +339,14 @@ const Onboarding: React.FC = () => {
       }
       
       await window.electron?.requestAccessibilityPermission();
-      // Poll for permission changes
-      const pollInterval = setInterval(async () => {
+      // Open System Settings pane and poll until granted
+      window.electron?.openSystemPreferences('accessibility');
+      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      pollRefs.current.ax = setInterval(async () => {
         const result = await window.electron?.checkPermissions();
         if (result && !result.needAX) {
+          clearInterval(pollRefs.current.ax!);
+          pollRefs.current.ax = null;
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
           setUi((prev) => ({
@@ -330,37 +359,35 @@ const Onboarding: React.FC = () => {
               accessibility: { ...prev.accessibility, justGranted: false },
             }));
           }, 800);
-          clearInterval(pollInterval);
         }
       }, 1000);
-      
-      // Stop polling after 10 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setUi((prev) => ({
-          ...prev,
-          accessibility: { ...prev.accessibility, loading: false },
-        }));
-      }, 10000);
     } catch (error) {
       console.error("Error requesting accessibility permission:", error);
       setErrors(prev => ({ ...prev, accessibility: true }));
-      setUi((prev) => ({
-        ...prev,
-        accessibility: { ...prev.accessibility, loading: false },
-      }));
     }
   };
 
 
 
   const handleComplete = async () => {
-    try {
-      await window.electron?.startHelper();
-      window.electron?.onboardingComplete();
-    } catch (error) {
-      console.error("Error completing onboarding:", error);
-    }
+    // Show a brief completion screen, then start helper and finalize
+    setCurrentStep("complete");
+    setTimeout(async () => {
+      try {
+        await window.electron?.startHelper();
+      } catch (error) {
+        console.error("Error starting helper:", error);
+      }
+      try {
+        await window.electron?.onboardingComplete();
+      } catch (error) {
+        console.error("Error completing onboarding:", error);
+      }
+      // Give a short beat, then close the onboarding window
+      setTimeout(() => {
+        try { window.electron?.closeOnboarding?.(); } catch {}
+      }, 500);
+    }, 900);
   };
 
   // Step progress indicator
@@ -647,19 +674,7 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    {errors.microphone && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable in System Settings:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("microphone")}
-                          className="text-xs"
-                        >
-                          Open System Settings
-                        </Button>
-                      </div>
-                    )}
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
 
                   {/* Input Monitoring Permission */}
@@ -729,19 +744,7 @@ const Onboarding: React.FC = () => {
                       </div>
                     </div>
                     
-                    {errors.inputMonitoring && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Enable in System Settings:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("input-monitoring")}
-                          className="text-xs"
-                        >
-                          Open System Settings
-                        </Button>
-                      </div>
-                    )}
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
 
                   {/* Accessibility Permission */}
@@ -810,19 +813,7 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    {errors.accessibility && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-red-400 mb-2">Permission denied. Enable in System Settings:</p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => window.electron?.openSystemPreferences("accessibility")}
-                          className="text-xs"
-                        >
-                          Open System Settings
-                        </Button>
-                      </div>
-                    )}
+                    {/* No separate denied section; user can press Enable again. */}
                   </div>
                 </div>
 
@@ -879,10 +870,8 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                  <div className="mx-auto w-14 h-14 rounded-full card-floating flex items-center justify-center text-primary text-2xl mb-4">✓</div>
-                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">All Set!</h2>
-                <p className="text-sm text-subtle leading-relaxed">
-                  Sonic Flow is ready to use. Enjoy your voice dictation!
-                </p>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You’re all set</h2>
+                <p className="text-sm text-subtle leading-relaxed">Sonic Flow is ready. Press Fn any time to dictate.</p>
               </motion.div>
             )}
           </AnimatePresence>
