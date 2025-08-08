@@ -581,7 +581,7 @@ const Onboarding: React.FC = () => {
 
                 <div className="space-y-3">
                   {/* Microphone Permission */}
-                  <div className="onboarding-row rounded-lg p-3">
+                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
@@ -663,7 +663,7 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Input Monitoring Permission */}
-                  <div className="onboarding-row rounded-lg p-3">
+                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
@@ -745,7 +745,7 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Accessibility Permission */}
-                  <div className="onboarding-row rounded-lg p-3">
+                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
