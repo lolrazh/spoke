@@ -63,7 +63,7 @@ const SelectField: React.FC<{
     </div>
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-44">
+        <SelectTrigger className="w-48">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
