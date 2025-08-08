@@ -641,7 +641,11 @@ body {
 
   /* Onboarding progress bars - glassy */
   .onboarding-progress {
-    @apply flex items-center justify-center space-x-2;
+    @apply flex items-center justify-center space-x-1; /* tighter spacing */
+  }
+  .onboarding-progress-slot {
+    @apply flex items-center justify-center w-14; /* fixed bounding box width */
+    height: 3px; /* fixed bounding box height for smooth transitions */
   }
   .onboarding-progress-bar {
     @apply rounded-full transition-all duration-200;

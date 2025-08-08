@@ -382,12 +382,14 @@ const Onboarding: React.FC = () => {
               return progressSteps.map((step, i) => {
                 const isComplete = i < idx;
                 const isActive = i === idx;
-                // Width rules: active = largest, completed = medium, upcoming = very small
-                const widthClass = isActive ? "w-14" : isComplete ? "w-7" : "w-2.5";
+                // Width rules: active = larger; all inactive (completed or upcoming) = same small width
+                const widthClass = isActive ? "w-12" : "w-2.5";
                 const heightClass = isActive ? "h-[3px]" : "h-[2px]";
                 const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
                 return (
-                  <div key={step} className={`onboarding-progress-bar ${toneClass} ${widthClass} ${heightClass}`} />
+                  <div key={step} className="onboarding-progress-slot">
+                    <div className={`onboarding-progress-bar ${toneClass} ${widthClass} ${heightClass}`} />
+                  </div>
                 );
               });
             })()}
