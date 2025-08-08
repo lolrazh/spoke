@@ -506,6 +506,14 @@ body {
     box-shadow: var(--shadow-floating);
   }
 
+  /* Textarea-specific styling without backdrop-filter to prevent timing issues */
+  .onboarding-textarea {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border: 1px solid var(--stroke-fg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-floating);
+  }
+
   .onboarding-cta {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     border: 1px solid var(--stroke-fg);

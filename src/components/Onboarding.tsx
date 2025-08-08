@@ -840,7 +840,7 @@ const Onboarding: React.FC = () => {
                   <div>
                     {/* removed the small label above the textarea */}
                     <textarea
-                      className="w-full h-28 resize-none rounded-md onboarding-row px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                      className="w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
                       placeholder="Hold Fn and speak…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
