@@ -476,13 +476,13 @@ const Onboarding: React.FC = () => {
                 <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">Welcome to Sonic Flow</h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Let's set up the permissions you need for voice dictation.
+                    Let's get you started.
                   </p>
                 </div>
 
                 <div className="flex justify-center">
                   <Button onClick={nextStep} className="px-5 py-2 onboarding-cta">
-                    Continue
+                    Start Setup
                   </Button>
                 </div>
               </motion.div>
@@ -503,7 +503,7 @@ const Onboarding: React.FC = () => {
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Grant Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    We need three permissions for Sonic Flow to work properly.
+                    We need a few permissions for Sonic Flow to work properly.
                   </p>
                 </div>
 
@@ -512,14 +512,14 @@ const Onboarding: React.FC = () => {
                   <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Microphone</p>
-                           <p className="text-[11px] text-subtle">Record your voice for dictation</p>
+                           <p className="text-[11px] text-subtle">To record your voice for dictation</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -561,14 +561,14 @@ const Onboarding: React.FC = () => {
                   <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Input Monitoring</p>
-                           <p className="text-[11px] text-subtle">Detect Fn key presses</p>
+                           <p className="text-[11px] text-subtle">To detect hotkey presses</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -591,11 +591,7 @@ const Onboarding: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {isDev && !permissions.inputMonitoring && (
-                      <div className="mt-3 p-2 bg-white/5 border border-white/20 rounded text-xs text-white/70">
-                        <strong>Dev Mode:</strong> Look for "Electron" or "Cursor" in System Preferences
-                      </div>
-                    )}
+                    
                     {errors.inputMonitoring && (
                       <div className="mt-3 pt-3 border-t border-border">
                         <p className="text-xs text-red-400 mb-2">Enable in System Preferences:</p>
@@ -615,14 +611,14 @@ const Onboarding: React.FC = () => {
                   <div className="onboarding-row rounded-lg p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
                           </svg>
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Accessibility</p>
-                           <p className="text-[11px] text-subtle">Insert text into applications</p>
+                           <p className="text-[11px] text-subtle">To insert text into applications</p>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -661,21 +657,7 @@ const Onboarding: React.FC = () => {
                   </div>
                 </div>
 
-                {allPermissionsGranted && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="card-elevated rounded-lg p-4 border border-green-500/20"
-                  >
-                    <div className="flex items-center justify-center space-x-2 text-green-400">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <p className="text-sm font-medium">All permissions granted!</p>
-                    </div>
-                    <p className="text-xs text-subtle mt-2">Proceeding to setup test...</p>
-                  </motion.div>
-                )}
+                
               </motion.div>
             )}
 
