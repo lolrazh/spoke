@@ -148,15 +148,14 @@ const Onboarding: React.FC = () => {
   // Check if all permissions are granted
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
 
-  // Auto-advance from permissions step when all are granted
-  useEffect(() => {
-    if (currentStep === "permissions" && allPermissionsGranted) {
-      // Slightly longer to allow the final check animation to be seen
-      setTimeout(() => {
-        setCurrentStep("hotkey-info");
-      }, 1200);
-    }
-  }, [currentStep, allPermissionsGranted]);
+  // Auto-advance disabled per UX: user will click Next explicitly
+  // useEffect(() => {
+  //   if (currentStep === "permissions" && allPermissionsGranted) {
+  //     setTimeout(() => {
+  //       setCurrentStep("hotkey-info");
+  //     }, 1200);
+  //   }
+  // }, [currentStep, allPermissionsGranted]);
 
   // Navigation functions
   const nextStep = () => {
@@ -536,9 +535,7 @@ const Onboarding: React.FC = () => {
               </div>
               <p className="text-[11px] text-dimmed">Press your Fn key now to test it.</p>
             </div>
-            <div className="pt-2">
-              <Button onClick={() => setCurrentStep("hotkey-test")} className="px-5 py-2 onboarding-cta">Continue</Button>
-            </div>
+            {/* Removed central Continue button; Next lives in bottom-right consistently */}
           </motion.div>
         )}
             {/* Welcome Step */}
@@ -558,11 +555,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex justify-center">
-                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta">
-                    Start Setup
-                  </Button>
-                </div>
+                {/* Removed central Start button; Next lives in bottom-right consistently */}
               </motion.div>
             )}
 
@@ -626,15 +619,8 @@ const Onboarding: React.FC = () => {
                                   </div>
                                 </Button>
                               </motion.div>
-                            ) : ui.microphone.justGranted ? (
-                              <motion.div
-                                key="mic-just-granted"
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
-                                className="flex items-center justify-center"
-                              >
+                            ) : (
+                              <div className="flex items-center justify-center">
                                 <motion.svg
                                   width="22"
                                   height="22"
@@ -642,30 +628,19 @@ const Onboarding: React.FC = () => {
                                   className="text-white/80"
                                 >
                                   <motion.path
+                                    // Draw when just granted; otherwise show complete path instantly
+                                    initial={{ pathLength: ui.microphone.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.microphone.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
                                     d="M5 13l4 4L19 7"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2.5"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    initial={{ pathLength: 0 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
                                   />
                                 </motion.svg>
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="mic-granted-static"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center justify-center text-white/70"
-                              >
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              </motion.div>
+                              </div>
                             )}
                           </AnimatePresence>
                         </div>
@@ -726,15 +701,8 @@ const Onboarding: React.FC = () => {
                                   </div>
                                 </Button>
                               </motion.div>
-                            ) : ui.inputMonitoring.justGranted ? (
-                              <motion.div
-                                key="im-just-granted"
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
-                                className="flex items-center justify-center"
-                              >
+                            ) : (
+                              <div className="flex items-center justify-center">
                                 <motion.svg
                                   width="22"
                                   height="22"
@@ -742,30 +710,18 @@ const Onboarding: React.FC = () => {
                                   className="text-white/80"
                                 >
                                   <motion.path
+                                    initial={{ pathLength: ui.inputMonitoring.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.inputMonitoring.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
                                     d="M5 13l4 4L19 7"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2.5"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    initial={{ pathLength: 0 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
                                   />
                                 </motion.svg>
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="im-granted-static"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center justify-center text-white/70"
-                              >
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              </motion.div>
+                              </div>
                             )}
                           </AnimatePresence>
                         </div>
@@ -827,15 +783,8 @@ const Onboarding: React.FC = () => {
                                   </div>
                                 </Button>
                               </motion.div>
-                            ) : ui.accessibility.justGranted ? (
-                              <motion.div
-                                key="ax-just-granted"
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
-                                className="flex items-center justify-center"
-                              >
+                            ) : (
+                              <div className="flex items-center justify-center">
                                 <motion.svg
                                   width="22"
                                   height="22"
@@ -843,30 +792,18 @@ const Onboarding: React.FC = () => {
                                   className="text-white/80"
                                 >
                                   <motion.path
+                                    initial={{ pathLength: ui.accessibility.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.accessibility.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
                                     d="M5 13l4 4L19 7"
                                     fill="none"
                                     stroke="currentColor"
                                     strokeWidth="2.5"
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    initial={{ pathLength: 0 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
                                   />
                                 </motion.svg>
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="ax-granted-static"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center justify-center text-white/70"
-                              >
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              </motion.div>
+                              </div>
                             )}
                           </AnimatePresence>
                         </div>
@@ -952,7 +889,7 @@ const Onboarding: React.FC = () => {
         </div>
 
         {/* Navigation Controls */}
-        {currentStep !== "welcome" && currentStep !== "complete" && (
+        {currentStep !== "complete" && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
             <Button
               variant="secondary"
@@ -963,15 +900,16 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {currentStep === "permissions" && (
+            {/* Next button appears on steps welcome, permissions, hotkey-info */}
+            {currentStep !== "hotkey-test" && (
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setCurrentStep("hotkey-test");
+                  nextStep();
                 }}
                 className="px-3 py-1.5"
               >
-                Skip Setup
+                Next
               </Button>
             )}
           </div>
