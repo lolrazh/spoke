@@ -382,7 +382,8 @@ const Onboarding: React.FC = () => {
               return progressSteps.map((step, i) => {
                 const isComplete = i < idx;
                 const isActive = i === idx;
-                const widthClass = isActive ? "w-16" : isComplete ? "w-10" : "w-6";
+                // Width rules: active = largest, completed = medium, upcoming = very small
+                const widthClass = isActive ? "w-16" : isComplete ? "w-8" : "w-3";
                 const heightClass = isActive ? "h-[6px]" : "h-[4px]";
                 const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
                 return (
@@ -447,7 +448,7 @@ const Onboarding: React.FC = () => {
       
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="onboarding-card max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
+        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           
           
 

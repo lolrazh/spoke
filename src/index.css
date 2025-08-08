@@ -305,11 +305,11 @@ body {
 }
 
 /* Add very light surface tint for text contrast without fighting wallpaper */
-.onboarding-window::before {
+  .onboarding-window::before {
   content: '';
   position: absolute;
   inset: 0;
-    background: rgba(10, 12, 20, 0.35); /* slight blue-leaning tint */
+    background: rgba(10, 10, 10, 0.35); /* neutral tint - no color cast */
     border-radius: var(--radius-window);
   pointer-events: none;
   z-index: -1;
@@ -645,21 +645,22 @@ body {
   }
   .onboarding-progress-bar {
     @apply rounded-full transition-all duration-200;
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
-    border: 1px solid var(--stroke-fg-mid);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border: 1px solid var(--stroke-fg);
     backdrop-filter: blur(var(--blur-md));
     box-shadow: var(--shadow-elevated);
   }
+  /* Active and completed share the same neutral tone; completed is distinguished by width only */
   .onboarding-progress-bar.bar-active {
-    background-color: rgba(60, 120, 255, 0.35);
-    border-color: rgba(120, 170, 255, 0.5);
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: var(--stroke-fg-strong);
   }
   .onboarding-progress-bar.bar-complete {
-    background-color: rgba(60, 120, 255, 0.2);
-    border-color: rgba(120, 170, 255, 0.35);
+    background-color: rgba(255, 255, 255, 0.14);
+    border-color: var(--stroke-fg-strong);
   }
   .onboarding-progress-bar.bar-upcoming {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-color: rgba(255, 255, 255, 0.06);
     border-color: var(--stroke-fg);
   }
 
