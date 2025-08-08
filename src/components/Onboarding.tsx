@@ -55,6 +55,7 @@ const Onboarding: React.FC = () => {
   });
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
+  const [fnKeyPressed, setFnKeyPressed] = useState(false);
   // Poll timers for system permissions (cleared on unmount)
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
 
@@ -173,6 +174,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     return () => {
       clearAllPolling();
+      setFnKeyPressed(false); // Reset Fn key state
     };
   }, []);
 
@@ -229,6 +231,10 @@ const Onboarding: React.FC = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
+      // Reset Fn key visual state when leaving hotkey pages
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+        setFnKeyPressed(false);
+      }
       setCurrentStep(steps[currentIndex + 1]);
     }
   };
@@ -237,6 +243,10 @@ const Onboarding: React.FC = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
+      // Reset Fn key visual state when leaving hotkey pages
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+        setFnKeyPressed(false);
+      }
       setCurrentStep(steps[currentIndex - 1]);
     }
   };
@@ -519,6 +529,9 @@ const Onboarding: React.FC = () => {
     devFlags.methods.devLog('PTT API available, setting up Fn key handlers');
     const HOLD_MS = 180;
     const handleDown = () => {
+      devFlags.methods.devLog('Fn key pressed down');
+      setFnKeyPressed(true); // Immediate visual feedback
+      
       if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
       if (trans.processing || trans.recording) return;
       isLongPressRef.current = false;
@@ -528,6 +541,9 @@ const Onboarding: React.FC = () => {
       }, HOLD_MS);
     };
     const handleUp = () => {
+      devFlags.methods.devLog('Fn key released');
+      setFnKeyPressed(false); // Immediate visual feedback
+      
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
@@ -637,8 +653,8 @@ const Onboarding: React.FC = () => {
             </div>
             <div className="flex flex-col items-center justify-center gap-2">
               <div 
-                className={`keycap keycap-lg ${trans.recording ? "keycap-active" : ""}`}
-                aria-label={trans.recording ? "Function key active - recording in progress" : "Function key - press and hold to start dictation"}
+                className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                aria-label={fnKeyPressed || trans.recording ? "Function key active - recording in progress" : "Function key - press and hold to start dictation"}
                 aria-live="polite"
               >
                 <span className="keycap-label text-[12px] font-system lowercase">fn</span>
@@ -691,7 +707,7 @@ const Onboarding: React.FC = () => {
 
                 <div className="space-y-3">
                   {/* Microphone Permission */}
-                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}>
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
@@ -761,7 +777,7 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Input Monitoring Permission */}
-                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
@@ -831,7 +847,7 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* Accessibility Permission */}
-                  <div className={`onboarding-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}>
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
