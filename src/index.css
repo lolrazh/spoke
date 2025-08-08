@@ -640,29 +640,29 @@ body {
   }
 
   /* Onboarding progress bars - glassy */
-  .onboarding-progress {
-    @apply flex items-center justify-center space-x-1; /* tighter spacing */
-  }
-  .onboarding-progress-slot {
-    @apply flex items-center justify-center w-14; /* fixed bounding box width */
-    height: 3px; /* fixed bounding box height for smooth transitions */
+  .onboarding-progress-shell {
+    width: 84px; /* slightly wider overall */
+    height: 3px; /* fixed total height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1px; /* ultra-tight spacing */
   }
   .onboarding-progress-bar {
-    @apply rounded-full transition-all duration-200;
+    height: 2px; /* base height for inactive */
+    border-radius: 9999px;
     background-color: transparent; /* variants set tone */
     border: none; /* tertiary element, no stroke */
-    box-shadow: none; /* keep ultra-clean */
+    box-shadow: none; /* ultra-clean */
+    flex-basis: 0; /* allow flex-grow to define width */
+    transition: flex-grow 200ms var(--ease-standard), background-color 200ms var(--ease-standard), height 200ms var(--ease-standard), opacity 200ms var(--ease-standard);
   }
+  .onboarding-progress-bar.grow-active { flex-grow: 6; }
+  .onboarding-progress-bar.grow-inactive { flex-grow: 1; }
   /* Active and completed share the same neutral tone; completed is distinguished by width only */
-  .onboarding-progress-bar.bar-active {
-    background-color: rgba(255, 255, 255, 0.85); /* nearly white, matches font */
-  }
-  .onboarding-progress-bar.bar-complete {
-    background-color: rgba(255, 255, 255, 0.45);
-  }
-  .onboarding-progress-bar.bar-upcoming {
-    background-color: rgba(255, 255, 255, 0.18);
-  }
+  .onboarding-progress-bar.bar-active { background-color: rgba(255, 255, 255, 0.85); height: 3px; }
+  .onboarding-progress-bar.bar-complete { background-color: rgba(255, 255, 255, 0.45); }
+  .onboarding-progress-bar.bar-upcoming { background-color: rgba(255, 255, 255, 0.18); }
 
   .text-subtle {
     color: rgba(255, 255, 255, 0.6);

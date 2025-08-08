@@ -375,21 +375,18 @@ const Onboarding: React.FC = () => {
       {/* Static top progress - glassy bars */}
       {currentStep !== "complete" && (
         <div className="absolute top-12 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
-          <div className="onboarding-progress">
+          <div className="onboarding-progress-shell">
             {(() => {
               const progressSteps = getSteps().slice(0, -1);
               const idx = getProgressStepIndex();
               return progressSteps.map((step, i) => {
                 const isComplete = i < idx;
                 const isActive = i === idx;
-                // Width rules: active = larger; all inactive (completed or upcoming) = same small width
-                const widthClass = isActive ? "w-12" : "w-2.5";
-                const heightClass = isActive ? "h-[3px]" : "h-[2px]";
+                const growClass = isActive ? "grow-active" : "grow-inactive";
+                const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
                 const toneClass = isActive ? "bar-active" : isComplete ? "bar-complete" : "bar-upcoming";
                 return (
-                  <div key={step} className="onboarding-progress-slot">
-                    <div className={`onboarding-progress-bar ${toneClass} ${widthClass} ${heightClass}`} />
-                  </div>
+                  <div key={step} className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`} />
                 );
               });
             })()}
@@ -435,18 +432,7 @@ const Onboarding: React.FC = () => {
         </div>
       )}
       
-      {/* Close Button */}
-      <div className="absolute top-3 right-3 z-40">
-        <button
-          aria-label="Close"
-          className="onboarding-close"
-          onClick={() => window.electron?.onboardingComplete?.()}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
+      {/* Close Button removed per design */}
       
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
@@ -683,50 +669,43 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-3 overflow-hidden"
               >
-                <div className="space-y-2">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
-                  <p className="text-sm text-subtle">
-                    Let's make sure everything works properly.
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center space-x-6">
-                  {/* Compact Fn Key Display */}
+                <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center">
-                    <div className="w-12 h-8 rounded bg-secondary border border-border flex items-center justify-center mb-2">
-                      <span className="text-sm font-mono font-bold">Fn</span>
-                    </div>
-                    <p className="text-xs font-medium text-foreground">Activation Key</p>
+                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
+                    <p className="text-sm text-subtle">Let's make sure everything works properly.</p>
                   </div>
-                  
-                  {/* Compact Instructions */}
-                  <div className="text-left flex-1 max-w-sm">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Quick Test</p>
-                    <div className="space-y-1 text-xs text-dimmed">
-                      <div>1. Open Notes or any text app</div>
-                      <div>2. Hold <strong>Fn</strong> and say "Hello world"</div>
-                      <div>3. Release <strong>Fn</strong> and see the magic! ✨</div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Dictation Test Area */}
-                <div className="mt-2">
-                  <div className="text-left max-w-sm mx-auto">
+                  <div className="grid grid-cols-[auto,1fr] items-start gap-x-4 gap-y-1 mx-auto">
+                    {/* Fn key visual */}
+                    <div className="row-span-3">
+                      <div className="w-12 h-8 rounded bg-secondary border border-border flex items-center justify-center">
+                        <span className="text-sm font-mono font-bold">Fn</span>
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium text-foreground">Activation Key</div>
+                    <div className="col-start-2">
+                      <p className="text-[11px] text-dimmed leading-relaxed">
+                        Hold the key to speak. Release to stop.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Dictation Textarea */}
+                  <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Try Dictating Here</p>
                     <textarea
-                      className="w-full h-24 resize-none rounded-md bg-transparent card-primary p-3 text-sm outline-none"
+                      className="w-full h-28 resize-none rounded-md bg-transparent onboarding-row p-3 text-sm outline-none"
                       placeholder="Hold Fn and speak…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
                     />
                   </div>
-                </div>
 
-                <div className="space-y-2 pt-2 flex flex-col items-center">
-                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
-                    Start Sonic Flow
-                  </Button>
+                  <div className="pt-2 flex justify-center">
+                    <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
+                      Start Sonic Flow
+                    </Button>
+                  </div>
                 </div>
               </motion.div>
             )}
