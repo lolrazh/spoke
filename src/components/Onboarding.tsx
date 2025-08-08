@@ -691,7 +691,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="text-primary text-4xl mb-4">✓</div>
-                <h2 className="text-heading-lg heading-gradient">All Set!</h2>
+                <h2 className="text-heading-xl heading-gradient">All Set!</h2>
                 <p className="text-sm text-subtle leading-relaxed">
                   Sonic Flow is ready to use. Enjoy your voice dictation!
                 </p>
