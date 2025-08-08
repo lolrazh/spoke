@@ -396,6 +396,29 @@ body {
     --font-size-heading-lg: 1.25rem; /* equivalent to Tailwind text-xl */
     --line-height-heading: 1.3;
     --letter-spacing-heading: -0.005em;
+
+    /* Surface and effect tokens */
+    --surface-base-rgb: 15, 15, 15;
+    --surface-alpha-xxs: 0.2;  /* very light */
+    --surface-alpha-xs: 0.25;  /* light */
+    --surface-alpha-sm: 0.3;   /* subtle */
+    --surface-alpha-md: 0.35;  /* medium */
+    --surface-alpha-lg: 0.4;   /* strong */
+
+    --blur-md: 16px;
+    --blur-lg: 32px;
+
+    /* Stroke tokens */
+    /* keep --stroke-fg as defined above (0.08) for weak strokes */
+    --stroke-fg-mid: rgba(255, 255, 255, 0.1);
+    --stroke-fg-strong: rgba(255, 255, 255, 0.12);
+    --stroke-fg-xstrong: rgba(255, 255, 255, 0.15);
+
+    /* Shadow tokens */
+    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-interactive: 0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
+    --shadow-interactive-hover: 0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
   }
   .dark {
     /* Same values for dark mode since this is inherently a dark theme */
@@ -440,42 +463,40 @@ body {
 
   /* Frosted Glass with Noise elevation system - cleaner for native vibrancy */
   .card-elevated {
-    background-color: rgba(15, 15, 15, 0.25);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); /* gentler shadow */
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-elevated); /* gentler shadow */
   }
 
   /* Primary cards - clean styling without shadows */
   .card-primary {
-    background-color: rgba(15, 15, 15, 0.35);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg-mid);
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
   .card-primary:hover {
-    background-color: rgba(15, 15, 15, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg-xstrong);
   }
 
   .card-floating {
-    background-color: rgba(15, 15, 15, 0.3);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); /* gentler shadow for vibrancy */
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
   }
 
   /* Interactive card with hover effects */
   .card-interactive {
-    background-color: rgba(15, 15, 15, 0.2);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url('%23noiseFilter')' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 8px 22px rgba(0, 0, 0, 0.35),
-      0 25px 60px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(var(--blur-lg));
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-interactive);
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     position: relative;
   }
@@ -500,11 +521,9 @@ body {
   }
 
   .card-interactive:hover {
-    background-color: rgba(15, 15, 15, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.4),
-      0 30px 70px rgba(0, 0, 0, 0.3);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
+    border: 1px solid var(--stroke-fg-strong);
+    box-shadow: var(--shadow-interactive-hover);
     transform: translateY(-2px);
   }
 
@@ -549,9 +568,9 @@ body {
 
   /* Button enhancements - remove bloom, add crisp edges, fix vibrancy artifacts */
   .btn-primary {
-    background-color: rgba(15, 15, 15, 0.4);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--stroke-fg);
     box-shadow: none; /* remove bloom */
     color: rgba(255, 255, 255, 0.9);
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -565,8 +584,8 @@ body {
   }
 
   .btn-primary:hover {
-    background-color: rgba(15, 15, 15, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(var(--surface-base-rgb), 0.5);
+    border: 1px solid var(--stroke-fg-strong);
   }
 
   /* FIX 12: Specific fix for Move to Applications button */
@@ -577,17 +596,17 @@ body {
 
   /* Secondary buttons - clean, no bloom */
   .btn-secondary {
-    background-color: rgba(15, 15, 15, 0.3);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg);
     color: rgba(255, 255, 255, 0.6);
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
   .btn-secondary:hover {
-    background-color: rgba(15, 15, 15, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg-xstrong);
     color: rgba(255, 255, 255, 0.8);
   }
 
