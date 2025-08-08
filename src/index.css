@@ -646,7 +646,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1px; /* ultra-tight spacing */
+    gap: 4px; /* slightly increased spacing */
   }
   .onboarding-progress-bar {
     height: 2px; /* base height for inactive */
