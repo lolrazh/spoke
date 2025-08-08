@@ -370,24 +370,21 @@ const Onboarding: React.FC = () => {
 
 
   const handleComplete = async () => {
-    // Show a brief completion screen, then start helper and finalize
-    setCurrentStep("complete");
-    setTimeout(async () => {
-      try {
-        await window.electron?.startHelper();
-      } catch (error) {
-        console.error("Error starting helper:", error);
-      }
-      try {
-        await window.electron?.onboardingComplete();
-      } catch (error) {
-        console.error("Error completing onboarding:", error);
-      }
-      // Give a short beat, then close the onboarding window
-      setTimeout(() => {
-        try { window.electron?.closeOnboarding?.(); } catch {}
-      }, 500);
-    }, 900);
+    // Finish onboarding from the Complete screen
+    try {
+      await window.electron?.startHelper();
+    } catch (error) {
+      console.error("Error starting helper:", error);
+    }
+    try {
+      await window.electron?.onboardingComplete();
+    } catch (error) {
+      console.error("Error completing onboarding:", error);
+    }
+    // Small delay for UX before closing
+    setTimeout(() => {
+      try { window.electron?.closeOnboarding?.(); } catch {}
+    }, 300);
   };
 
   // Step progress indicator
@@ -850,11 +847,7 @@ const Onboarding: React.FC = () => {
                     />
                   </div>
 
-                  <div className="pt-2 flex justify-center">
-                    <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
-                      Start Sonic Flow
-                    </Button>
-                  </div>
+                  {/* No CTA here; proceed with Next to the completion screen */}
                 </div>
               </motion.div>
             )}
@@ -872,6 +865,11 @@ const Onboarding: React.FC = () => {
                  <div className="mx-auto w-14 h-14 rounded-full card-floating flex items-center justify-center text-primary text-2xl mb-4">✓</div>
                 <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You’re all set</h2>
                 <p className="text-sm text-subtle leading-relaxed">Sonic Flow is ready. Press Fn any time to dictate.</p>
+                <div className="pt-2 flex justify-center">
+                  <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta">
+                    Start Sonic Flow
+                  </Button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -890,7 +888,7 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {/* Continue button appears on permissions and hotkey-info */}
+            {/* Next button appears on permissions and hotkey-info */}
             {currentStep !== "hotkey-test" && (
               <Button
                 variant="secondary"
@@ -900,7 +898,16 @@ const Onboarding: React.FC = () => {
                 disabled={currentStep === "permissions" && !allPermissionsGranted}
                 className="px-3 py-1.5"
               >
-                Continue
+                Next
+              </Button>
+            )}
+            {currentStep === "hotkey-test" && (
+              <Button
+                variant="secondary"
+                onClick={() => setCurrentStep("complete")}
+                className="px-3 py-1.5"
+              >
+                Next
               </Button>
             )}
           </div>
