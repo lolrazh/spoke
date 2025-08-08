@@ -11,17 +11,26 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+        // Prefer Lexend/DM Serif like the site; fall back to system fonts
+        sans: [
+          "Lexend Deca",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica",
+          "Arial",
+          "sans-serif",
+        ],
+        serif: [
+          "DM Serif Display",
+          "Georgia",
+          "Times New Roman",
+          "serif",
+        ],
       },
       colors: {
-        // Legacy Sonic Flow colors (preserved for existing components)
-        "sonic-primary": "#A0A0A0",
-        "sonic-dark": "#1A1A1A",
-        "sonic-darker": "#121212",
-        "sonic-light": "#CCCCCC",
-        "sonic-gray": "#2A2A2A",
-        
-        // Unified design system colors (from website)
+        // Design system colors (CSS variables)
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
