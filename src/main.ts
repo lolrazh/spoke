@@ -23,6 +23,7 @@ import {
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
   ISLAND_VISIBLE_Y,
+  SHADOW_PAD,
 } from "./constants/window";
 import {
   ONBOARDING_WIDTH,
@@ -472,6 +473,18 @@ const createWindow = () => {
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     console.log("Main window shown.");
+    // Ensure initial position is the visible top-aligned Y (flush to screen top)
+    try {
+      const current = mainWindow.getBounds();
+      mainWindow.setBounds(
+        { x: current.x, y: ISLAND_VISIBLE_Y, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+      logBounds("ready-to-show -> top-align");
+    } catch (e) {
+      console.warn("Failed to top-align on ready-to-show:", e);
+    }
 
     // Open DevTools automatically in development mode
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -1280,20 +1293,27 @@ app.whenReady().then(async () => {
 
   ipcMain.on("pill-resize", (event, { width, height }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Enforce padding so CSS shadows never get clipped during animations
+      const paddedWidth = Math.round(width + SHADOW_PAD * 2);
+      const paddedHeight = Math.round(height + SHADOW_PAD * 2);
+
+      const targetW = Math.max(paddedWidth, ISLAND_WIDTH);
+      const targetH = Math.max(paddedHeight, ISLAND_HEIGHT);
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth } = primaryDisplay.size;
-      const x = Math.round((screenWidth - width) / 2);
+      const x = Math.round((screenWidth - targetW) / 2);
 
       const currentBounds = mainWindow.getBounds();
       mainWindow.setBounds(
         {
-          x: x,
+          x,
           y: currentBounds.y,
-          width: Math.round(width),
-          height: Math.round(height),
+          width: targetW,
+          height: targetH,
         },
         false,
-      ); // animate: false
+      );
 
       if (process.platform === "darwin") {
         mainWindow.invalidateShadow();
