@@ -22,7 +22,7 @@ const mockPermissions = {
   askIM: async () => ({ success: true, status: 'authorized' }),
   requestAccessibilityPermission: async () => ({ success: true }),
   openSystemPreferences: async (pane: string) => ({ success: true }),
-  resetPermissions: () => {}
+  resetPermissions: () => { console.debug('[MockPermissions] resetPermissions'); }
 };
 
 type OnboardingStep = "welcome" | "permissions" | "hotkey-test" | "complete";
@@ -286,11 +286,11 @@ const Onboarding: React.FC = () => {
   };
 
   // Step progress indicator
-  // Returns the index (in the progress steps) of the current step, or -1 if not in progress steps
+  // Returns the index among ['welcome','permissions','hotkey-test'], or -1 when not applicable
   const getProgressStepIndex = () => {
     const steps = getSteps();
-    // Progress steps exclude 'welcome' and 'complete'
-    const progressSteps = steps.slice(1, -1);
+    // Progress steps include welcome and exclude 'complete'
+    const progressSteps = steps.slice(0, -1);
     return progressSteps.indexOf(currentStep);
   };
 
@@ -358,28 +358,37 @@ const Onboarding: React.FC = () => {
       
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto">
+        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto">
           
           {/* Progress indicator */}
-          {currentStep !== "welcome" && currentStep !== "complete" && (
-            <motion.div 
+          {currentStep !== "complete" && (
+            <motion.div
               className="flex items-center justify-center space-x-2 mb-4"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
+              transition={{ delay: 0.15 }}
             >
-              {getSteps().slice(1, -1).map((step, i) => (
-                <div
-                  key={step}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    i < getProgressStepIndex()
-                      ? "bg-primary"
-                      : i === getProgressStepIndex()
-                      ? "bg-muted-foreground"
-                      : "bg-muted"
-                  }`}
-                />
-              ))}
+              {(() => {
+                const progressSteps = getSteps().slice(0, -1); // include welcome, exclude complete
+                const idx = getProgressStepIndex();
+                return progressSteps.map((step, i) => {
+                  const isComplete = i < idx;
+                  const isActive = i === idx;
+                  const widthClass = isActive ? "w-8" : isComplete ? "w-5" : "w-3";
+                  const heightClass = isActive ? "h-1.5" : "h-1";
+                  const colorClass = isActive
+                    ? "bg-primary"
+                    : isComplete
+                    ? "bg-primary/60"
+                    : "bg-muted";
+                  return (
+                    <div
+                      key={step}
+                      className={`${widthClass} ${heightClass} rounded-full ${colorClass} transition-all duration-300`}
+                    />
+                  );
+                });
+              })()}
             </motion.div>
           )}
 
@@ -400,34 +409,12 @@ const Onboarding: React.FC = () => {
                     Let's set up the permissions you need for voice dictation.
                   </p>
                 </div>
-                
-                <div className="card-primary rounded-lg p-4 space-y-3">
-                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Required Permissions</h2>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Microphone access to hear your voice</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Fn key monitoring for activation</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <svg className="w-3 h-3 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs text-subtle">Text insertion for dictation</span>
-                    </div>
-                  </div>
+
+                <div className="flex justify-center">
+                  <Button onClick={nextStep} className="px-5 py-2">
+                    Continue
+                  </Button>
                 </div>
-                
-                <Button onClick={nextStep} className="w-full">
-                  Continue
-                </Button>
               </motion.div>
             )}
 
@@ -661,20 +648,9 @@ const Onboarding: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-2">
-                  <Button 
-                    onClick={handleComplete}
-                    className="w-full"
-                  >
+                <div className="space-y-2 pt-2 flex flex-col items-center">
+                  <Button onClick={handleComplete} className="px-5 py-2">
                     Start Sonic Flow
-                  </Button>
-                  
-                  <Button 
-                    variant="secondary"
-                    onClick={() => setCurrentStep("permissions")}
-                    className="w-full text-xs"
-                  >
-                    ← Back to Permissions
                   </Button>
                 </div>
               </motion.div>
@@ -704,25 +680,26 @@ const Onboarding: React.FC = () => {
         {/* Navigation Controls */}
         {currentStep !== "welcome" && currentStep !== "complete" && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-            <Button 
-              variant="secondary" 
+            <Button
+              variant="secondary"
               onClick={prevStep}
               disabled={getProgressStepIndex() <= 0}
-              className="px-4 py-2"
+              className="px-3 py-1.5"
             >
               Back
             </Button>
-            
-            <Button 
-              variant="secondary" 
-              onClick={() => {
-                // Skip to the end
-                setCurrentStep("hotkey-test");
-              }}
-              className="px-4 py-2"
-            >
-              Skip Setup
-            </Button>
+
+            {currentStep === "permissions" && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCurrentStep("hotkey-test");
+                }}
+                className="px-3 py-1.5"
+              >
+                Skip Setup
+              </Button>
+            )}
           </div>
         )}
       </div>
