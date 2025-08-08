@@ -35,7 +35,12 @@ const Onboarding: React.FC = () => {
     inputMonitoring: false,
     accessibility: false,
   });
-  const [checking, setChecking] = useState(false);
+  // UI state per-permission for loading + success animation
+  const [ui, setUi] = useState({
+    microphone: { loading: false, justGranted: false },
+    inputMonitoring: { loading: false, justGranted: false },
+    accessibility: { loading: false, justGranted: false },
+  });
   const [errors, setErrors] = useState({
     microphone: false,
     inputMonitoring: false,
@@ -146,9 +151,10 @@ const Onboarding: React.FC = () => {
   // Auto-advance from permissions step when all are granted
   useEffect(() => {
     if (currentStep === "permissions" && allPermissionsGranted) {
+      // Slightly longer to allow the final check animation to be seen
       setTimeout(() => {
         setCurrentStep("hotkey-info");
-      }, 1000); // Small delay to show success state
+      }, 1200);
     }
   }, [currentStep, allPermissionsGranted]);
 
@@ -171,7 +177,10 @@ const Onboarding: React.FC = () => {
 
   // Permission handlers - now work within combined interface
   const handleRequestMicrophone = async () => {
-    setChecking(true);
+    setUi((prev) => ({
+      ...prev,
+      microphone: { ...prev.microphone, loading: true },
+    }));
     try {
       devFlags.methods.devLog('Requesting microphone permission...');
       
@@ -183,21 +192,42 @@ const Onboarding: React.FC = () => {
         setPermissions(prev => ({ ...prev, microphone: true }));
         setErrors(prev => ({ ...prev, microphone: false }));
         devFlags.methods.devLog('Microphone permission granted');
+        // Trigger success animation in-place where the button was
+        setUi((prev) => ({
+          ...prev,
+          microphone: { loading: false, justGranted: true },
+        }));
+        setTimeout(() => {
+          setUi((prev) => ({
+            ...prev,
+            microphone: { ...prev.microphone, justGranted: false },
+          }));
+        }, 800);
       } else {
         // Permission denied or failed
         setErrors(prev => ({ ...prev, microphone: true }));
         devFlags.methods.devLog("Microphone permission denied or failed");
+        setUi((prev) => ({
+          ...prev,
+          microphone: { ...prev.microphone, loading: false },
+        }));
       }
     } catch (error) {
       console.error("Error requesting microphone permission:", error);
       setErrors(prev => ({ ...prev, microphone: true }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: false },
+      }));
     }
-    setChecking(false);
   };
 
   const handleRequestInputMonitoring = async () => {
     devFlags.methods.devLog('Starting Input Monitoring permission request...');
-    setChecking(true);
+    setUi((prev) => ({
+      ...prev,
+      inputMonitoring: { ...prev.inputMonitoring, loading: true },
+    }));
     try {
       // Use mock or real Input Monitoring request
       const result = devFlags.mockPermissionStates
@@ -211,6 +241,16 @@ const Onboarding: React.FC = () => {
           devFlags.methods.devLog('Input Monitoring permission granted');
           setPermissions(prev => ({ ...prev, inputMonitoring: true }));
           setErrors(prev => ({ ...prev, inputMonitoring: false }));
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
+            }));
+          }, 800);
         } else if (result.status === "denied") {
           devFlags.methods.devLog('Input Monitoring permission denied - user needs to enable in Settings');
           setErrors(prev => ({ ...prev, inputMonitoring: false }));
@@ -220,16 +260,27 @@ const Onboarding: React.FC = () => {
           } else {
             window.electron?.openSystemPreferences("input-monitoring");
           }
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { ...prev.inputMonitoring, loading: false },
+          }));
         }
       } else {
         devFlags.methods.devLog('Input Monitoring permission request failed:', (result as any)?.error);
         setErrors(prev => ({ ...prev, inputMonitoring: true }));
+        setUi((prev) => ({
+          ...prev,
+          inputMonitoring: { ...prev.inputMonitoring, loading: false },
+        }));
       }
     } catch (error) {
       console.error("Error requesting input monitoring permission:", error);
       setErrors(prev => ({ ...prev, inputMonitoring: true }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: false },
+      }));
     }
-    setChecking(false);
   };
 
 
@@ -237,7 +288,10 @@ const Onboarding: React.FC = () => {
 
 
   const handleRequestAccessibility = async () => {
-    setChecking(true);
+    setUi((prev) => ({
+      ...prev,
+      accessibility: { ...prev.accessibility, loading: true },
+    }));
     try {
       devFlags.methods.devLog('Requesting accessibility permission...');
       
@@ -246,8 +300,17 @@ const Onboarding: React.FC = () => {
         if (result && 'success' in result && result.success) {
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              accessibility: { ...prev.accessibility, justGranted: false },
+            }));
+          }, 800);
         }
-        setChecking(false);
         return;
       }
       
@@ -258,7 +321,16 @@ const Onboarding: React.FC = () => {
         if (result && !result.needAX) {
           setPermissions(prev => ({ ...prev, accessibility: true }));
           setErrors(prev => ({ ...prev, accessibility: false }));
-          setChecking(false);
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          setTimeout(() => {
+            setUi((prev) => ({
+              ...prev,
+              accessibility: { ...prev.accessibility, justGranted: false },
+            }));
+          }, 800);
           clearInterval(pollInterval);
         }
       }, 1000);
@@ -266,12 +338,18 @@ const Onboarding: React.FC = () => {
       // Stop polling after 10 seconds
       setTimeout(() => {
         clearInterval(pollInterval);
-        setChecking(false);
+        setUi((prev) => ({
+          ...prev,
+          accessibility: { ...prev.accessibility, loading: false },
+        }));
       }, 10000);
     } catch (error) {
       console.error("Error requesting accessibility permission:", error);
       setErrors(prev => ({ ...prev, accessibility: true }));
-      setChecking(false);
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: false },
+      }));
     }
   };
 
@@ -522,23 +600,75 @@ const Onboarding: React.FC = () => {
                            <p className="text-[11px] text-subtle">To record your voice for dictation</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.microphone ? (
-                          <div className="flex items-center space-x-2 text-white/60">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestMicrophone}
-                            disabled={checking}
-                            className="text-xs onboarding-cta"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.microphone ? (
+                              <motion.div
+                                key={ui.microphone.loading ? "mic-loading" : "mic-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestMicrophone}
+                                  disabled={ui.microphone.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.microphone.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Grant</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : ui.microphone.justGranted ? (
+                              <motion.div
+                                key="mic-just-granted"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                                className="flex items-center justify-center"
+                              >
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
+                                  />
+                                </motion.svg>
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="mic-granted-static"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex items-center justify-center text-white/70"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
                     {errors.microphone && (
@@ -570,23 +700,75 @@ const Onboarding: React.FC = () => {
                            <p className="text-[11px] text-subtle">To detect hotkey presses</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.inputMonitoring ? (
-                          <div className="flex items-center space-x-2 text-white/60">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestInputMonitoring}
-                            disabled={checking}
-                            className="text-xs onboarding-cta"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.inputMonitoring ? (
+                              <motion.div
+                                key={ui.inputMonitoring.loading ? "im-loading" : "im-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestInputMonitoring}
+                                  disabled={ui.inputMonitoring.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.inputMonitoring.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Grant</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : ui.inputMonitoring.justGranted ? (
+                              <motion.div
+                                key="im-just-granted"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                                className="flex items-center justify-center"
+                              >
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
+                                  />
+                                </motion.svg>
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="im-granted-static"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex items-center justify-center text-white/70"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
                     
@@ -619,23 +801,75 @@ const Onboarding: React.FC = () => {
                            <p className="text-[11px] text-subtle">To insert text into applications</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {permissions.accessibility ? (
-                          <div className="flex items-center space-x-2 text-white/60">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={handleRequestAccessibility}
-                            disabled={checking}
-                            className="text-xs onboarding-cta"
-                          >
-                            {checking ? "..." : "Grant"}
-                          </Button>
-                        )}
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.accessibility ? (
+                              <motion.div
+                                key={ui.accessibility.loading ? "ax-loading" : "ax-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestAccessibility}
+                                  disabled={ui.accessibility.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.accessibility.loading ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Grant</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : ui.accessibility.justGranted ? (
+                              <motion.div
+                                key="ax-just-granted"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                                className="flex items-center justify-center"
+                              >
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
+                                  />
+                                </motion.svg>
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="ax-granted-static"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex items-center justify-center text-white/70"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
                     {errors.accessibility && (
