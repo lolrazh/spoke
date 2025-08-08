@@ -575,7 +575,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Grant Permissions</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Enable Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     We need a few permissions for Sonic Flow to work properly.
                   </p>
@@ -617,7 +617,7 @@ const Onboarding: React.FC = () => {
                                     {ui.microphone.loading ? (
                                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
-                                      <span>Grant</span>
+                                      <span>Enable</span>
                                     )}
                                   </div>
                                 </Button>
@@ -699,7 +699,7 @@ const Onboarding: React.FC = () => {
                                     {ui.inputMonitoring.loading ? (
                                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
-                                      <span>Grant</span>
+                                      <span>Enable</span>
                                     )}
                                   </div>
                                 </Button>
@@ -781,7 +781,7 @@ const Onboarding: React.FC = () => {
                                     {ui.accessibility.loading ? (
                                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
-                                      <span>Grant</span>
+                                      <span>Enable</span>
                                     )}
                                   </div>
                                 </Button>
