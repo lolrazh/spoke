@@ -54,14 +54,21 @@ const Onboarding: React.FC = () => {
     accessibility: false,
   });
   const [isDev, setIsDev] = useState(false);
+  const [pttApiReady, setPttApiReady] = useState(false);
   // Poll timers for system permissions (cleared on unmount)
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
 
-  // Debug logging
+  // Debug logging and initial PTT API check
   useEffect(() => {
     devFlags.methods.devLog("Component mounted");
     devFlags.methods.devLog("Current step:", currentStep);
     devFlags.methods.devLog("Window location:", window.location.href);
+    
+    // Check if PTT API is already available (in case helper was already running)
+    if (window.ptt?.onDown && window.ptt?.onUp) {
+      devFlags.methods.devLog("PTT API already available on mount");
+      setPttApiReady(true);
+    }
   }, []);
 
   // Note: App location check moved to silent background check
@@ -174,6 +181,39 @@ const Onboarding: React.FC = () => {
 
   // Check if all permissions are granted
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
+
+  // Start helper when all permissions are granted (so Fn key testing works)
+  useEffect(() => {
+    if (allPermissionsGranted && !pttApiReady) {
+      const startHelperForTesting = async () => {
+        try {
+          devFlags.methods.devLog('Starting helper for onboarding testing...');
+          await window.electron?.startHelper();
+          
+          // Poll for PTT API to become available
+          let attempts = 0;
+          const maxAttempts = 20; // 10 seconds max
+          const checkPTTAPI = () => {
+            if (window.ptt?.onDown && window.ptt?.onUp) {
+              devFlags.methods.devLog('PTT API is ready for testing!');
+              setPttApiReady(true);
+              return;
+            }
+            attempts++;
+            if (attempts < maxAttempts) {
+              setTimeout(checkPTTAPI, 500); // Check every 500ms
+            } else {
+              devFlags.methods.devLog('PTT API failed to initialize after 10 seconds');
+            }
+          };
+          checkPTTAPI();
+        } catch (error) {
+          if (isDevelopment) console.error("Error starting helper for testing:", error);
+        }
+      };
+      startHelperForTesting();
+    }
+  }, [allPermissionsGranted, pttApiReady]);
 
   // Auto-advance disabled per UX: user will click Next explicitly
   // useEffect(() => {
@@ -411,8 +451,9 @@ const Onboarding: React.FC = () => {
 
   const handleComplete = async () => {
     // Finish onboarding from the Complete screen
+    // Helper should already be running from permissions step, but ensure it's started
     try {
-      await window.electron?.startHelper();
+      await window.electron?.startHelper(); // Safe to call multiple times
     } catch (error) {
       if (isDevelopment) console.error("Error starting helper:", error);
     }
@@ -470,8 +511,12 @@ const Onboarding: React.FC = () => {
 
   // Hook Fn key to start/stop dictation for onboarding test
   useEffect(() => {
-    if (!window.ptt?.onDown || !window.ptt?.onUp) return;
+    if (!window.ptt?.onDown || !window.ptt?.onUp) {
+      devFlags.methods.devLog('PTT API not available yet, waiting...');
+      return;
+    }
 
+    devFlags.methods.devLog('PTT API available, setting up Fn key handlers');
     const HOLD_MS = 180;
     const handleDown = () => {
       if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
@@ -497,7 +542,7 @@ const Onboarding: React.FC = () => {
       cleanupDown?.();
       cleanupUp?.();
     };
-  }, [trans.recording, trans.processing]);
+  }, [trans.recording, trans.processing, pttApiReady]); // Re-run when PTT API becomes ready
 
 
   return (
@@ -874,17 +919,26 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
-                    <p className="text-sm text-subtle subheading">You can test your dictation here.</p>
+                    <p className="text-sm text-subtle subheading">
+                      {pttApiReady ? "Hold Fn and speak to test dictation." : "Initializing dictation system..."}
+                    </p>
+                    {!pttApiReady && (
+                      <div className="flex items-center justify-center gap-2 mt-2">
+                        <div className="h-2 w-2 animate-spin rounded-full border border-white/30 border-t-white" />
+                        <span className="text-xs text-dimmed">Setting up Fn key detection</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Dictation Textarea */}
                   <div>
                     {/* removed the small label above the textarea */}
                     <textarea
-                      className="w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                      placeholder="Hold Fn and speak…"
+                      className={`w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30 ${!pttApiReady ? 'opacity-50' : ''}`}
+                      placeholder={pttApiReady ? "Hold Fn and speak…" : "Initializing..."}
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
+                      readOnly={!pttApiReady}
                     />
                   </div>
 
