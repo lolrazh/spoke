@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TOKENS } from "../config/uiTokens";
+import { MOTION } from "../config/motionTokens";
 import HomePage from "./HomePage";
 
 type PillMetrics = {
@@ -240,7 +241,7 @@ const Pill: React.FC<PillProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: MOTION.durations.standard }}
               >
                 <HomePage embeddedMode={true} />
                 {/* Collapse chevron at bottom */}
@@ -270,7 +271,7 @@ const Pill: React.FC<PillProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {pillContext.notifMsg}
               </motion.span>
@@ -281,7 +282,7 @@ const Pill: React.FC<PillProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
+                transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {/* Visuals for non-notification states */}
                 {pillState === "LISTENING" && <>{renderFrequencyBars}</>}
