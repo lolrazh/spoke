@@ -862,7 +862,26 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center space-y-4"
               >
-                 <div className="mx-auto w-14 h-14 rounded-full card-floating flex items-center justify-center text-primary text-2xl mb-4">✓</div>
+                 {/* Checkmark badge - matches waitlist modal */}
+                 <motion.div
+                   initial={{ scale: 0 }}
+                   animate={{ scale: 1 }}
+                   transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                   className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/10 border border-white/20"
+                 >
+                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-white/80">
+                     <motion.path
+                       initial={{ pathLength: 0 }}
+                       animate={{ pathLength: 1 }}
+                       transition={{ delay: 0.2, duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
+                       d="M5 13l4 4L19 7"
+                       stroke="currentColor"
+                       strokeWidth="2.25"
+                       strokeLinecap="round"
+                       strokeLinejoin="round"
+                     />
+                   </svg>
+                 </motion.div>
                 <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You're all set</h2>
                 <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Press Fn to dictate anywhere.</p>
                 <div className="pt-2 flex justify-center">
