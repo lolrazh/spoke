@@ -450,11 +450,11 @@ const Onboarding: React.FC = () => {
               <p className="text-sm text-subtle">Press and hold to speak. Release to stop.</p>
             </div>
             <div className="flex flex-col items-center justify-center gap-2">
-              <div className={`keycap ${trans.recording ? "keycap-active" : ""}`}
+              <div className={`keycap keycap-lg ${trans.recording ? "keycap-active" : ""}`}
                    onMouseDown={(e) => e.preventDefault()}
                    onMouseUp={(e) => e.preventDefault()}
               >
-                <span className="text-sm font-system lowercase">fn</span>
+                <span className="keycap-label text-[10px] font-system lowercase">fn</span>
               </div>
               <p className="text-[11px] text-dimmed">Press your Fn key now to test it.</p>
             </div>
@@ -693,8 +693,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center">
-                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Let’s test dictation here</h2>
-                    <p className="text-sm text-subtle">Open a text field below and try a short phrase.</p>
+                    <p className="text-sm text-subtle">You can test your dictation here.</p>
                   </div>
 
                   {/* Dictation Textarea */}
