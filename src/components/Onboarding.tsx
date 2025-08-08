@@ -554,8 +554,11 @@ const Onboarding: React.FC = () => {
                     Let's get you started.
                   </p>
                 </div>
-
-                {/* Removed central Start button; Next lives in bottom-right consistently */}
+                <div className="flex justify-center">
+                  <Button onClick={nextStep} className="px-5 py-2 onboarding-cta">
+                    Start Setup
+                  </Button>
+                </div>
               </motion.div>
             )}
 
@@ -900,16 +903,17 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {/* Next button appears on steps welcome, permissions, hotkey-info */}
+            {/* Continue button appears on permissions and hotkey-info */}
             {currentStep !== "hotkey-test" && (
               <Button
                 variant="secondary"
                 onClick={() => {
                   nextStep();
                 }}
+                disabled={currentStep === "permissions" && !allPermissionsGranted}
                 className="px-3 py-1.5"
               >
-                Next
+                Continue
               </Button>
             )}
           </div>
