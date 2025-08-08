@@ -813,7 +813,7 @@ body {
   }
 
   .switch-track:hover {
-    border-color: var(--stroke-fg-mid);
+    border-color: var(--stroke-fg-strong);
   }
 
   .switch-track:focus-visible {
@@ -827,7 +827,8 @@ body {
   }
 
   .switch-track[data-state="unchecked"]:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border-color: var(--stroke-fg-xstrong);
   }
 
   .switch-track[data-state="checked"] {
@@ -836,24 +837,38 @@ body {
   }
 
   .switch-track[data-state="checked"]:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
-    border-color: var(--stroke-fg-strong);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border-color: var(--stroke-fg-xstrong);
   }
 
   .switch-thumb {
-    background-color: rgba(255, 255, 255, 0.86);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    /* Match button text tonality (subtle like secondary text) */
+    background-color: rgba(255, 255, 255, 0.6); /* ~btn-secondary text */
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+    border: 1px solid var(--stroke-fg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
     transition: background-color var(--duration-fast) var(--ease-standard),
                 border-color var(--duration-fast) var(--ease-standard),
                 transform var(--duration-fast) var(--ease-standard),
                 box-shadow var(--duration-fast) var(--ease-standard);
   }
 
+  .switch-track:hover .switch-thumb {
+    background-color: rgba(255, 255, 255, 0.8); /* hover like button text brightening */
+    border-color: var(--stroke-fg-mid);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  }
+
   .switch-track[data-state="checked"] .switch-thumb {
-    background-color: rgba(255, 255, 255, 0.95);
-    border-color: rgba(255, 255, 255, 0.28);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: var(--stroke-fg-mid);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .switch-track[data-state="checked"]:hover .switch-thumb {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-color: var(--stroke-fg-strong);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   }
 }
 
