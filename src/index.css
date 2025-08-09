@@ -8,29 +8,12 @@
   font-display: swap;
 }
 
+/* Lexend Deca variable font (100–900) */
 @font-face {
   font-family: "Lexend Deca";
-  src: local("Lexend Deca Regular"), local("LexendDeca-Regular"),
-       url("fonts/LexendDeca-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Lexend Deca";
-  src: local("Lexend Deca Medium"), local("LexendDeca-Medium"),
-       url("fonts/LexendDeca-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Lexend Deca";
-  src: local("Lexend Deca SemiBold"), local("LexendDeca-SemiBold"),
-       url("fonts/LexendDeca-SemiBold.woff2") format("woff2");
-  font-weight: 600;
+  src: local("Lexend Deca"), local("LexendDeca-VariableFont_wght"),
+       url("fonts/LexendDeca-VariableFont_wght.woff2") format("woff2");
+  font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
@@ -464,7 +447,7 @@ body {
     --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
     --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
     --line-height-heading: 1.3;
-    --letter-spacing-heading: -0.025em; /* match tracking-tight from site */
+    --letter-spacing-heading: 0; /* match site hero tracking-normal */
 
     /* Spacing tokens */
     --spacing-xs: 0.25rem;  /* 4px */
@@ -961,8 +944,6 @@ body {
   .text-breathe {
     overflow: visible !important;
     line-height: 1.3 !important;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
   
   /* Opt-in utilities for targeted will-change usage */
