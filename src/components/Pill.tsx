@@ -49,6 +49,7 @@ const Pill: React.FC<PillProps> = ({
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
+  const previousStateRef = useRef<PillStateType>(pillState);
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -75,6 +76,11 @@ const Pill: React.FC<PillProps> = ({
       `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}, isExpanded=${isExpanded}`,
     );
   }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
+
+  // Track previous state to detect transitions into IDLE
+  useEffect(() => {
+    previousStateRef.current = pillState;
+  }, [pillState]);
 
   // Handle escape key to close expanded view
   useEffect(() => {
@@ -204,6 +210,28 @@ const Pill: React.FC<PillProps> = ({
     }
   })();
 
+  // State-specific spring feel
+  const transitionForState = (() => {
+    const isReturningToIdle = pillState === "IDLE" && previousStateRef.current !== "IDLE";
+    switch (pillState) {
+      case "HOVER_PREVIEW":
+      case "LISTENING":
+        return { type: "spring" as const, ...MOTION.springs.lively };
+      case "PROCESSING":
+      case "NOTIFICATION":
+        return { type: "spring" as const, ...MOTION.springs.quick };
+      case "IDLE":
+        return {
+          type: "spring" as const,
+          ...(isReturningToIdle ? MOTION.springs.settle : MOTION.springs.quick),
+        };
+      case "EXPANDED":
+        return { type: "spring" as const, ...MOTION.springs.heavy };
+      default:
+        return { type: "spring" as const, ...MOTION.springs.quick };
+    }
+  })();
+
   return (
     <div
       className="pill-wrapper"
@@ -225,6 +253,7 @@ const Pill: React.FC<PillProps> = ({
         layout
         initial={false}
         animate={animateForState}
+        transition={transitionForState}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
           if (pillState !== "NOTIFICATION") {
