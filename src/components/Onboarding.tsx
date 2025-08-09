@@ -739,7 +739,7 @@ const Onboarding: React.FC = () => {
                                 >
                                   <div className="relative flex items-center justify-center h-4">
                                     {ui.microphone.loading ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
                                       <span>Enable</span>
                                     )}
@@ -809,7 +809,7 @@ const Onboarding: React.FC = () => {
                                 >
                                   <div className="relative flex items-center justify-center h-4">
                                     {ui.inputMonitoring.loading ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
                                       <span>Enable</span>
                                     )}
@@ -879,7 +879,7 @@ const Onboarding: React.FC = () => {
                                 >
                                   <div className="relative flex items-center justify-center h-4">
                                     {ui.accessibility.loading ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                     ) : (
                                       <span>Enable</span>
                                     )}
@@ -940,7 +940,7 @@ const Onboarding: React.FC = () => {
                     </p>
                     {!pttApiReady && (
                       <div className="flex items-center justify-center gap-2 mt-2">
-                        <div className="h-2 w-2 animate-spin rounded-full border border-white/30 border-t-white" />
+                        <div className="h-2 w-2 animate-spin will-change-transform rounded-full border border-white/30 border-t-white" />
                         <span className="text-xs text-dimmed">Setting up Fn key detection</span>
                       </div>
                     )}

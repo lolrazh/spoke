@@ -135,6 +135,9 @@
   /* Animated dots for processing state */
   .dot.animated {
     animation: wave 1.5s infinite ease-in-out;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform: translateZ(0);
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
   }
 
@@ -170,7 +173,8 @@
   .waveform-bar {
     width: 3px;
     border-radius: 1px;
-    animation: pulse 1.5s infinite;
+    animation: pulse 1.5s infinite ease-in-out;
+    will-change: height, opacity;
     background: linear-gradient(to top, #a0a0a0, #cccccc);
     opacity: 1;
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
@@ -181,12 +185,10 @@
     100% {
       height: 3px;
       opacity: 0.7;
-      transform: scaleY(1);
     }
     50% {
       height: 10px;
       opacity: 1;
-      transform: scaleY(1.1);
     }
   }
 
@@ -213,11 +215,30 @@
     border-top-color: #a0a0a0;
     border-radius: 50%;
     animation: spin 1s linear infinite;
+    will-change: transform;
   }
 
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  /* Ensure Tailwind's animate-spin also gets GPU and will-change hints */
+  .animate-spin {
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .dot.animated,
+    .waveform-bar,
+    .spinner,
+    .animate-spin {
+      animation: none !important;
+      transition: none !important;
     }
   }
 
@@ -884,6 +905,10 @@ body {
   body {
     background-color: transparent !important;
   }
+  /* Opt-in utilities for targeted will-change usage */
+  .will-change-transform { will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
+  .will-change-opacity { will-change: opacity; }
+  .will-change-bg-pos { will-change: background-position; }
   
   /* Ensure native traffic lights work properly */
   .onboarding-window {
