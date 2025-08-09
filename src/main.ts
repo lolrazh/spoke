@@ -360,50 +360,7 @@ const getTrayIconPath = () => {
   return possiblePaths[0]; // fallback
 };
 
-// Silent background check for app location
-const checkAppLocationSilently = () => {
-  if (!app.isPackaged) {
-    console.log("[App Location Check] Skipping in development mode");
-    return;
-  }
-
-  try {
-    const appPath = app.getAppPath();
-    console.log(`[App Location Check] Current app path: ${appPath}`);
-    
-    const needsMove = !appPath.startsWith('/Applications/') && (
-      appPath.includes('/Documents/') ||
-      appPath.includes('/Downloads/') ||
-      appPath.includes('/Desktop/') ||
-      appPath.includes('/Users/') // Catch other user directories
-    );
-
-    if (needsMove) {
-      console.log("[App Location Check] App is not in Applications folder, showing toast");
-      
-      // Send notification to the main window (if it exists)
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(
-          "notify",
-          "⚠️ Move Sonic Flow to Applications folder to enable hotkey detection"
-        );
-      }
-      
-      // Also show a tray notification if tray exists  
-      if (tray && !tray.isDestroyed()) {
-        tray.displayBalloon({
-          title: "Sonic Flow",
-          content: "Move Sonic Flow to the Applications folder to enable hotkey detection",
-          icon: iconPath
-        });
-      }
-    } else {
-      console.log("[App Location Check] App is properly located in Applications folder");
-    }
-  } catch (error) {
-    console.error("[App Location Check] Error checking app location:", error);
-  }
-};
+// (Removed) Silent background check for app location
 
 const iconPath = getIconPath();
 
@@ -973,63 +930,7 @@ const createTray = () => {
   }
 };
 
-// Helper function to handle moving app to Applications folder
-async function handleMoveToApplications() {
-  if (process.platform !== 'darwin') {
-    console.log("[Move to Applications] Not on macOS, skipping");
-    return;
-  }
-
-  const appBundlePath = app.getAppPath();
-  const isInApplications = appBundlePath.startsWith('/Applications/');
-  const isDev = !app.isPackaged;
-  
-  // Don't prompt if already in Applications or in development
-  if (isInApplications) {
-    console.log("[Move to Applications] App is already in Applications folder");
-    // Just open Finder to Applications folder to show it's already there
-    await shell.openPath('/Applications');
-    return;
-  }
-  
-  if (isDev) {
-    console.log("[Move to Applications] In development mode, opening Applications folder instead");
-    await shell.openPath('/Applications');
-    return;
-  }
-  
-  const result = await dialog.showMessageBox({
-    type: 'info',
-    buttons: ['Move to Applications', 'Cancel'],
-    defaultId: 0,
-    message: 'Move Sonic Flow to Applications folder?',
-    detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
-  });
-  
-  if (result.response === 0) {
-    try {
-      const destPath = '/Applications/Sonic Flow.app';
-      // Use shell.trashItem to remove any existing version first
-      if (fs.existsSync(destPath)) {
-        await shell.trashItem(destPath);
-      }
-      // Copy the entire app bundle to Applications
-      fs.cpSync(appBundlePath, destPath, { recursive: true });
-      // Open the moved version
-      shell.openPath(destPath);
-      // Quit this instance
-      app.quit();
-    } catch (error) {
-      console.error('Failed to move app to Applications:', error);
-      // Show error dialog and open Applications folder as fallback
-      await dialog.showErrorBox(
-        'Move Failed',
-        'Could not move Sonic Flow to Applications folder. Please move it manually.'
-      );
-      await shell.openPath('/Applications');
-    }
-  }
-}
+// (Removed) Move to Applications helper
 
 // Add a handler for insert-text-at-cursor
 ipcMain.handle(
@@ -1135,43 +1036,6 @@ ipcMain.handle(
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
-  // Check if app should be moved to Applications folder (macOS only)
-  if (process.platform === 'darwin') {
-    const appBundlePath = app.getAppPath();
-    const isInApplications = appBundlePath.startsWith('/Applications/');
-    const isDev = !app.isPackaged;
-    
-    // Only prompt for move if not in Applications and not in development
-    if (!isInApplications && !isDev) {
-      const result = await dialog.showMessageBox({
-        type: 'info',
-        buttons: ['Move to Applications', 'Cancel'],
-        defaultId: 0,
-        message: 'Move Sonic Flow to Applications folder?',
-        detail: 'For the best experience, Sonic Flow should be installed in your Applications folder. This helps avoid permission issues.'
-      });
-      
-      if (result.response === 0) {
-        try {
-          const destPath = '/Applications/Sonic Flow.app';
-          // Use shell.trashItem to remove any existing version first
-          if (fs.existsSync(destPath)) {
-            await shell.trashItem(destPath);
-          }
-          // Copy the entire app bundle to Applications
-          fs.cpSync(appBundlePath, destPath, { recursive: true });
-          // Open the moved version
-          shell.openPath(destPath);
-          // Quit this instance
-          app.quit();
-          return;
-        } catch (error) {
-          console.error('Failed to move app to Applications:', error);
-          // Continue with normal startup if move fails
-        }
-      }
-    }
-  }
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
@@ -1254,11 +1118,7 @@ app.whenReady().then(async () => {
     createWindow();
     createTray();
     startFnListener();
-    
-    // Run the silent app location check after main app is set up
-    setTimeout(() => {
-      checkAppLocationSilently();
-    }, 2000); // Give time for main window and tray to initialize
+    // (Removed) silent app location check after onboarding
   });
 
   // Handle pill context menu
@@ -1510,10 +1370,6 @@ app.whenReady().then(async () => {
         case "input-monitoring":
           url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
           break;
-        case "location":
-          // Handle moving app to Applications folder
-          await handleMoveToApplications();
-          return; // Don't open a URL for this case
         default:
           url = "x-apple.systempreferences:com.apple.preference.security";
       }

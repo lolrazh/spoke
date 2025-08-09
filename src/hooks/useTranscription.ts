@@ -31,12 +31,21 @@ export interface UseTranscriptionOptions {
    * currently selected device. When false, a stream will only be opened on start().
    */
   autoInitStream?: boolean;
+  /**
+   * When true, request mic permission during device enumeration to fetch device labels.
+   * Defaults to false to avoid opening the mic until dictation starts.
+   */
+  requestLabelPermissionForEnumeration?: boolean;
 }
 
 export function useTranscription(
   options?: UseTranscriptionOptions,
 ): UseTranscriptionReturn {
-  const { autoEnumerateDevices = true, autoInitStream = true } = options ?? {};
+  const {
+    autoEnumerateDevices = true,
+    autoInitStream = true,
+    requestLabelPermissionForEnumeration = false,
+  } = options ?? {};
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -53,8 +62,12 @@ export function useTranscription(
   // Device enumeration function
   const enumerateAndSendDevices = useCallback(async () => {
     try {
-      // Request permission first to get device labels
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Avoid opening the mic by default; only request permission for labels if explicitly asked
+      if (requestLabelPermissionForEnumeration) {
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately stop tracks to prevent persistent capture
+        tempStream.getTracks().forEach((track) => track.stop());
+      }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices
@@ -79,7 +92,7 @@ export function useTranscription(
     } catch (err) {
       console.error("[useTranscription] Failed to enumerate devices:", err);
     }
-  }, [selectedMicId]);
+  }, [selectedMicId, requestLabelPermissionForEnumeration]);
 
   // Enumerate and send available microphones to main process
   useEffect(() => {
@@ -263,6 +276,20 @@ export function useTranscription(
     try {
       microphoneSourceRef.current?.disconnect();
       workletNodeRef.current?.disconnect();
+      microphoneSourceRef.current = null;
+      workletNodeRef.current = null;
+
+      // Stop capturing audio completely so macOS mic indicator turns off
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setReady(false);
+      }
+
+      // Suspend the AudioContext to reduce CPU when idle
+      if (audioCtxRef.current && audioCtxRef.current.state === "running") {
+        await audioCtxRef.current.suspend().catch(() => {});
+      }
 
       const totalLength = audioChunksRef.current.reduce(
         (acc, chunk) => acc + chunk.length,

@@ -143,7 +143,12 @@ const debounce = <T extends (...args: unknown[]) => void>(
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const trans = useTranscription();
+  // Only open mic during dictation
+  const trans = useTranscription({
+    autoEnumerateDevices: true,
+    autoInitStream: false,
+    requestLabelPermissionForEnumeration: false,
+  });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
   const [isTextTruncated, setIsTextTruncated] = useState(false);
