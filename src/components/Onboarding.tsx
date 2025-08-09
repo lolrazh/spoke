@@ -770,7 +770,7 @@ const Onboarding: React.FC = () => {
                                   size="sm"
                                   onClick={handleRequestMicrophone}
                                   disabled={ui.microphone.loading}
-                                  className="text-xs onboarding-cta w-full"
+                                  className=" text-xs onboarding-cta w-full"
                                 >
                                   <div className="relative flex items-center justify-center h-4">
                                     {ui.microphone.loading ? (
@@ -808,76 +808,6 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    {/* No separate denied section; user can press Enable again. */}
-                  </div>
-
-                  {/* Input Monitoring Permission */}
-                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">Input Monitoring</p>
-                           <p className="text-[11px] text-subtle">Detect the Fn key to start and stop dictation.</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="relative w-[84px] flex items-center justify-center">
-                          <AnimatePresence mode="wait" initial={false}>
-                            {!permissions.inputMonitoring ? (
-                              <motion.div
-                                key={ui.inputMonitoring.loading ? "im-loading" : "im-idle"}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full flex items-center justify-center"
-                              >
-                                <Button
-                                  size="sm"
-                                  onClick={handleRequestInputMonitoring}
-                                  disabled={ui.inputMonitoring.loading}
-                                  className="text-xs onboarding-cta w-full"
-                                >
-                                  <div className="relative flex items-center justify-center h-4">
-                                    {ui.inputMonitoring.loading ? (
-                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                                    ) : (
-                                      <span>Enable</span>
-                                    )}
-                                  </div>
-                                </Button>
-                              </motion.div>
-                            ) : (
-                              <div className="flex items-center justify-center">
-                                <motion.svg
-                                  width="22"
-                                  height="22"
-                                  viewBox="0 0 24 24"
-                                  className="text-white/80"
-                                >
-                                  <motion.path
-                                    initial={{ pathLength: ui.inputMonitoring.justGranted ? 0 : 1 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={ui.inputMonitoring.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
-                                    d="M5 13l4 4L19 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              </div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
-                    
                     {/* No separate denied section; user can press Enable again. */}
                   </div>
 
@@ -947,6 +877,76 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {/* No separate denied section; user can press Enable again. */}
+                  </div>
+
+                  {/* Input Monitoring Permission (restart required) */}
+                  <div className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                          <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm font-medium text-foreground">Input Monitoring</p>
+                           <p className="text-[11px] text-subtle">Detect the Fn key to start and stop dictation.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <div className="relative w-[84px] flex items-center justify-center">
+                          <AnimatePresence mode="wait" initial={false}>
+                            {!permissions.inputMonitoring ? (
+                              <motion.div
+                                key={ui.inputMonitoring.loading ? "im-loading" : "im-idle"}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="w-full flex items-center justify-center"
+                              >
+                                <Button
+                                  size="sm"
+                                  onClick={handleRequestInputMonitoring}
+                                  disabled={ui.inputMonitoring.loading}
+                                  className="text-xs onboarding-cta w-full"
+                                >
+                                  <div className="relative flex items-center justify-center h-4">
+                                    {ui.inputMonitoring.loading ? (
+                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                    ) : (
+                                      <span>Enable</span>
+                                    )}
+                                  </div>
+                                </Button>
+                              </motion.div>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <motion.svg
+                                  width="22"
+                                  height="22"
+                                  viewBox="0 0 24 24"
+                                  className="text-white/80"
+                                >
+                                  <motion.path
+                                    initial={{ pathLength: ui.inputMonitoring.justGranted ? 0 : 1 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={ui.inputMonitoring.justGranted ? { duration: 0.45, ease: [0.25, 0.8, 0.25, 1] } : { duration: 0 }}
+                                    d="M5 13l4 4L19 7"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    </div>
+                    
                     {/* No separate denied section; user can press Enable again. */}
                   </div>
                 </div>
@@ -1032,7 +1032,7 @@ const Onboarding: React.FC = () => {
                 <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Press Fn to dictate anywhere.</p>
                 <div className="pt-2 flex justify-center">
                   <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta shimmer">
-                    Start dictating
+                    Start Dictating
                   </Button>
                 </div>
               </motion.div>
