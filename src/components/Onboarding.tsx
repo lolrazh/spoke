@@ -529,7 +529,8 @@ const Onboarding: React.FC = () => {
   };
 
   // --- Dictation test wiring for Hotkey step ---
-  const trans = useTranscription();
+  // In onboarding, avoid auto enumeration/init to prevent early mic prompts.
+  const trans = useTranscription({ autoEnumerateDevices: false, autoInitStream: false });
   const [testText, setTestText] = useState("");
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);

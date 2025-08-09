@@ -20,7 +20,23 @@ export interface UseTranscriptionReturn {
   stop: () => void;
 }
 
-export function useTranscription(): UseTranscriptionReturn {
+export interface UseTranscriptionOptions {
+  /**
+   * When true (default), the hook will enumerate audio devices on mount and on device changes.
+   * This requires getUserMedia to obtain device labels on macOS and may trigger a permission prompt.
+   */
+  autoEnumerateDevices?: boolean;
+  /**
+   * When true (default), the hook will open a microphone stream automatically based on the
+   * currently selected device. When false, a stream will only be opened on start().
+   */
+  autoInitStream?: boolean;
+}
+
+export function useTranscription(
+  options?: UseTranscriptionOptions,
+): UseTranscriptionReturn {
+  const { autoEnumerateDevices = true, autoInitStream = true } = options ?? {};
   const audioCtxRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -67,6 +83,9 @@ export function useTranscription(): UseTranscriptionReturn {
 
   // Enumerate and send available microphones to main process
   useEffect(() => {
+    if (!autoEnumerateDevices) {
+      return;
+    }
     enumerateAndSendDevices();
 
     // Listen for device changes (plug/unplug)
@@ -88,7 +107,7 @@ export function useTranscription(): UseTranscriptionReturn {
         handleDeviceChange,
       );
     };
-  }, [enumerateAndSendDevices]);
+  }, [enumerateAndSendDevices, autoEnumerateDevices]);
 
   // Listen for microphone selection changes from main process
   useEffect(() => {
@@ -110,14 +129,58 @@ export function useTranscription(): UseTranscriptionReturn {
       console.log(
         "[useTranscription] ✅ Refresh devices requested from main process - executing refresh...",
       );
-      enumerateAndSendDevices();
+      if (autoEnumerateDevices) {
+        enumerateAndSendDevices();
+      }
     });
 
     return unsubscribe;
-  }, [enumerateAndSendDevices]);
+  }, [enumerateAndSendDevices, autoEnumerateDevices]);
+
+  // Helper to open a microphone stream for the currently selected device
+  const openStreamForSelectedDevice = useCallback(async (): Promise<boolean> => {
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: {
+          sampleRate: MICROPHONE_PREFERRED_RATE,
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+        },
+      };
+
+      if (selectedMicId !== "default") {
+        (constraints.audio as MediaTrackConstraints).deviceId = {
+          exact: selectedMicId,
+        };
+      }
+
+      console.log(
+        "[useTranscription] Opening microphone stream with constraints:",
+        constraints,
+      );
+      streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
+      setReady(true);
+      setError(null);
+      console.log(
+        "[useTranscription] Microphone stream opened successfully",
+      );
+      return true;
+    } catch (err) {
+      console.error("[useTranscription] Failed to open microphone stream:", err);
+      setError(
+        "Microphone permissions denied or selected microphone not available.",
+      );
+      setReady(false);
+      return false;
+    }
+  }, [selectedMicId]);
 
   // Initialize microphone stream when selected device changes
   useEffect(() => {
+    if (!autoInitStream) {
+      return;
+    }
     const initializeMicrophone = async () => {
       // Stop existing stream if any
       if (streamRef.current) {
@@ -126,44 +189,7 @@ export function useTranscription(): UseTranscriptionReturn {
         setReady(false);
       }
 
-      try {
-        const constraints: MediaStreamConstraints = {
-          audio: {
-            sampleRate: MICROPHONE_PREFERRED_RATE,
-            channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-          },
-        };
-
-        // Add device ID constraint if not "default"
-        if (selectedMicId !== "default") {
-          (constraints.audio as MediaTrackConstraints).deviceId = {
-            exact: selectedMicId,
-          };
-        }
-
-        console.log(
-          "[useTranscription] Requesting microphone with constraints:",
-          constraints,
-        );
-        streamRef.current =
-          await navigator.mediaDevices.getUserMedia(constraints);
-        setReady(true);
-        setError(null);
-        console.log(
-          "[useTranscription] Microphone stream initialized successfully",
-        );
-      } catch (err) {
-        console.error(
-          "[useTranscription] Failed to get microphone stream:",
-          err,
-        );
-        setError(
-          "Microphone permissions denied or selected microphone not available.",
-        );
-        setReady(false);
-      }
+      await openStreamForSelectedDevice();
     };
 
     initializeMicrophone();
@@ -173,14 +199,14 @@ export function useTranscription(): UseTranscriptionReturn {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [selectedMicId]);
+  }, [selectedMicId, autoInitStream, openStreamForSelectedDevice]);
 
   const start = useCallback(async () => {
     if (recording) return;
     if (processing) return; // Prevent starting while processing
     if (!streamRef.current) {
-      setError("Microphone stream not available.");
-      return;
+      const ok = await openStreamForSelectedDevice();
+      if (!ok) return;
     }
 
     playToggleOn();
@@ -225,7 +251,7 @@ export function useTranscription(): UseTranscriptionReturn {
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording, processing]);
+  }, [recording, processing, openStreamForSelectedDevice]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
