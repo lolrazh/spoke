@@ -292,15 +292,22 @@ body {
   font-family:
     "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Font family utilities */
 .font-serif {
   font-family: "DM Serif Display", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .font-sans {
   font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Onboarding window - true macOS glassmorphic effect */
@@ -420,12 +427,12 @@ body {
     --text-primary: #ffffff;
     --text-secondary: #c0c0c0;
 
-    /* Typography tokens */
+    /* Typography tokens - match website scale */
     --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
     --font-weight-heading: 400; /* DM Serif Display ships as 400; avoid synthetic bold */
-    --font-size-heading-xl: 1.5rem; /* Tailwind text-2xl */
-    --font-size-heading-lg: 1.25rem; /* Tailwind text-xl */
+    --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
+    --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
     --line-height-heading: 1.3;
     --letter-spacing-heading: -0.025em; /* match tracking-tight from site */
 
@@ -905,6 +912,15 @@ body {
   body {
     background-color: transparent !important;
   }
+  
+  /* Typography utilities for proper font rendering */
+  .text-breathe {
+    overflow: visible !important;
+    line-height: 1.3 !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
   /* Opt-in utilities for targeted will-change usage */
   .will-change-transform { will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
   .will-change-opacity { will-change: opacity; }

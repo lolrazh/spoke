@@ -683,7 +683,7 @@ const Onboarding: React.FC = () => {
             className="text-center space-y-4"
           >
             <div className="heading-stack">
-              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Your Hotkey is the Fn key</h2>
+              <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-2xl font-normal text-breathe">Your Hotkey is the Fn key</h2>
               <p className="text-sm text-subtle subheading">Press and hold to speak. Release to stop.</p>
             </div>
             <div className="flex flex-col items-center justify-center gap-2">
@@ -710,7 +710,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="heading-stack">
-                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">Welcome to Sonic Flow</h1>
+                  <h1 className="text-heading-xl heading-gradient font-serif tracking-tight text-3xl font-normal text-breathe">Welcome to Sonic Flow</h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     Let's get you started.
                   </p>
@@ -736,7 +736,7 @@ const Onboarding: React.FC = () => {
                 className="text-center space-y-4"
               >
                 <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Enable Required Permissions</h2>
+                  <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-2xl font-normal text-breathe">Enable Required Permissions</h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">Sonic Flow needs these macOS permissions to work.</p>
                 </div>
 
@@ -969,7 +969,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
-                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-[1.4rem] font-semibold">Test Your Setup</h2>
+                    <h2 className="text-heading-lg heading-gradient font-serif tracking-tight text-2xl font-normal text-breathe">Test Your Setup</h2>
                     <p className="text-sm text-subtle subheading">
                       {pttApiReady ? "Hold Fn and speak to test dictation." : "Initializing dictation system..."}
                     </p>
@@ -1028,7 +1028,7 @@ const Onboarding: React.FC = () => {
                      />
                    </svg>
                  </motion.div>
-                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-[1.75rem] font-semibold">You're all set</h2>
+                <h2 className="text-heading-xl heading-gradient font-serif tracking-tight text-3xl font-normal text-breathe">You're all set</h2>
                 <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Press Fn to dictate anywhere.</p>
                 <div className="pt-2 flex justify-center">
                   <Button onClick={handleComplete} className="px-5 py-2 onboarding-cta shimmer">
