@@ -1181,16 +1181,20 @@ app.whenReady().then(async () => {
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const styleSrc = isDev
+      ? "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
+      : "style-src 'self' 'unsafe-inline'";
+    const fontSrc = isDev
+      ? "font-src 'self' https://fonts.gstatic.com data:"
+      : "font-src 'self' data:";
     const csp = [
       "default-src 'self'",
       // Allow required API endpoints and public CDNs
       "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
       `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
-      // Permit Google Fonts stylesheet for development parity; we will still prefer self-hosted fonts for prod
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      styleSrc,
       "img-src 'self' data:",
-      // Permit Google Fonts font files; keep data: for inlined assets
-      "font-src 'self' https://fonts.gstatic.com data:",
+      fontSrc,
     ].join("; ");
 
     callback({

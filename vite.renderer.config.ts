@@ -17,6 +17,11 @@ export default defineConfig({
           ],
           dest: "assets", // copies icon files to dist/assets/
         },
+        {
+          // Copy any self-hosted fonts into the packaged renderer
+          src: [join(__dirname, "public/fonts/*")],
+          dest: "fonts",
+        },
       ],
     }),
   ],
