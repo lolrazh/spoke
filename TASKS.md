@@ -111,6 +111,16 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M0 and what to test
+- In plain terms: We add a safety net (error screen), centralize settings (API URL), and basic rules so mistakes are caught early.
+- Changes: New config file, stricter lint rules, an ErrorBoundary wrapper, and commit hooks.
+- Test:
+  - Launch app normally (nothing should look different).
+  - Temporarily throw an error in a component and confirm a friendly error UI appears.
+  - Change API host via env; confirm network calls go to the new host.
+
+---
+
 ### M1 — API response validation and fetch hardening
 Objective: Validate and sanitize all external API responses; unify fetch behavior.
 
@@ -131,6 +141,16 @@ Acceptance criteria
 
 Rollback
 - [ ] Toggle feature flag to restore old fetch path
+
+---
+
+#### ELI5 — What are we changing in M1 and what to test
+- In plain terms: We stop trusting the internet blindly. We check that responses match the shape we expect.
+- Changes: New API client wrapper, schemas to validate server responses, sanitized text before UI/clipboard.
+- Test:
+  - Simulate a bad payload (dev server or mock) and verify a clear error is shown, not a crash.
+  - Verify successful payload updates UI and paste behavior still works.
+  - Kill the network and confirm retries/backoff happen and user feedback is reasonable.
 
 ---
 
@@ -155,6 +175,15 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M2 and what to test
+- In plain terms: Make sure we only create one microphone engine and load its plugin once.
+- Changes: A manager that prevents double-creation and safely loads the audio worklet.
+- Test:
+  - Rapidly toggle transcription on/off; verify no errors and only one AudioContext exists (devtools logging).
+  - Confirm audio still transcribes; CPU usage remains stable.
+
+---
+
 ### M3 — Timer, event, and async cleanup
 Objective: Eliminate memory leaks and orphaned timers/listeners.
 
@@ -173,6 +202,15 @@ Acceptance criteria
 
 Rollback
 - [ ] Revert targeted hook adoptions individually if regressions occur
+
+---
+
+#### ELI5 — What are we changing in M3 and what to test
+- In plain terms: We tidy up clocks and listeners so they don’t keep running after the screen changes.
+- Changes: Standard hooks for timeouts/intervals; abortable async patterns.
+- Test:
+  - Navigate away/unmount components while timers run; ensure no warnings about updates on unmounted components.
+  - Watch memory while toggling views; verify it doesn’t creep upward.
 
 ---
 
@@ -197,6 +235,15 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M4 and what to test
+- In plain terms: When we start our tiny helper app, we make sure it’s the real one and we always close it when we’re done.
+- Changes: Central manager, integrity verification, and guaranteed cleanup on quit/crash.
+- Test:
+  - Launch and quit the app; confirm no zombie processes via Activity Monitor.
+  - Corrupt or mismatch helper (in a controlled env) to see a clear error.
+
+---
+
 ### M5 — CSP and BrowserWindow security hardening
 Objective: Minimize attack surface without breaking dev flow.
 
@@ -214,6 +261,15 @@ Acceptance criteria
 
 Rollback
 - [ ] Slightly expand CSP in dev only; keep prod locked down
+
+---
+
+#### ELI5 — What are we changing in M5 and what to test
+- In plain terms: We lock the doors and only allow our app to talk to our servers.
+- Changes: Stricter Content Security Policy; safer BrowserWindow/preload defaults.
+- Test:
+  - Dev: App still runs; hot reload works.
+  - Prod build: Only allowed network calls succeed; unexpected scripts are blocked.
 
 ---
 
@@ -245,6 +301,15 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M6 and what to test
+- In plain terms: We split one giant file into labeled folders so it’s not a spaghetti bowl.
+- Changes: Move code into `main/*` files; keep behavior identical.
+- Test:
+  - Smoke test: app launches, tray/pill menus, onboarding, transcription.
+  - Verify logs and IPC still function as before.
+
+---
+
 ### M7 — Refactor `src/components/Onboarding.tsx`
 Objective: Split a ~1.1k-line component into modular steps with a clearer flow.
 
@@ -264,6 +329,15 @@ Acceptance criteria
 
 Rollback
 - [ ] Revert step extraction order-by-order if needed
+
+---
+
+#### ELI5 — What are we changing in M7 and what to test
+- In plain terms: We break a huge screen into smaller Lego pieces without changing how it looks.
+- Changes: New components for steps; a small state manager for transitions; permission logic moved to a service.
+- Test:
+  - Run onboarding end-to-end; visuals and steps should be identical.
+  - Test all permission paths using `test-permission-scenarios.sh`.
 
 ---
 
@@ -290,6 +364,15 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M8 and what to test
+- In plain terms: Instead of saving a big bucket of sound then sending it, we send small sips continuously and optionally squeeze them smaller.
+- Changes: Streaming transport, rolling buffer to cap memory, optional codec.
+- Test:
+  - Long session transcription: memory stays stable.
+  - Toggle feature flag on/off to compare network usage and behavior.
+
+---
+
 ### M9 — Menu logic deduplication and constants
 Objective: DRY pill/tray menus and replace magic numbers with shared tokens.
 
@@ -305,6 +388,14 @@ Acceptance criteria
 
 Rollback
 - [ ] Revert per menu if any regression
+
+---
+
+#### ELI5 — What are we changing in M9 and what to test
+- In plain terms: We make one menu recipe instead of two similar ones, and we give names to mystery numbers.
+- Changes: Shared menu builder; timing constants in `uiTokens`.
+- Test:
+  - Menus show the same items and actions as before in tray and pill.
 
 ---
 
@@ -332,6 +423,14 @@ Rollback
 
 ---
 
+#### ELI5 — What are we changing in M10 and what to test
+- In plain terms: We teach robots to double-check our work every time we change something.
+- Changes: Unit tests, one E2E, CI workflow, CodeQL, Dependabot.
+- Test:
+  - CI pipeline runs on PRs: lint, unit, E2E; all green.
+  - Flaky tests addressed until reliable.
+
+---
 Cross-cutting trackers
 
 - [ ] FF.1 Feature flags documented (`AUDIO_STREAMING_ENABLED`, fetch hardening, integrity checks)
