@@ -1,3 +1,6 @@
+/* Load the exact same Google fonts used on the website */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Lexend+Deca:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -297,13 +300,6 @@ body {
 }
 
 /* Font family utilities */
-.font-serif {
-  font-family: "DM Serif Display", Georgia, "Times New Roman", serif;
-  font-weight: 600; /* Match browser default bold synthesis like website */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 .font-sans {
   font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -430,7 +426,7 @@ body {
     /* Typography tokens - match website scale */
     --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
-    --font-weight-heading: 600; /* Match browser default bold synthesis like website */
+    --font-weight-heading: 400; /* Match website hero (DM Serif Display 400) */
     --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
     --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
     --line-height-heading: 1.3;
