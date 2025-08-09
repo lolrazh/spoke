@@ -1004,7 +1004,7 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">Test Your Setup</h2>
-                    <p className="text-sm text-subtle subheading">Hold Fn and speak to test dictation.</p>
+                    <p className="text-sm text-subtle subheading">Press and hold Fn to dictate, then release to stop.</p>
                   </div>
 
                   {/* Dictation Textarea */}
@@ -1012,7 +1012,7 @@ const Onboarding: React.FC = () => {
                     {/* removed the small label above the textarea */}
                     <textarea
                       className={"w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"}
-                      placeholder="Hold Fn and speak…"
+                      placeholder="Say something…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
                     />
@@ -1096,6 +1096,7 @@ const Onboarding: React.FC = () => {
                 variant="secondary"
                 onClick={() => setCurrentStep("complete")}
                 className="px-3 py-1.5"
+                disabled={!testText || testText.trim().length === 0}
               >
                 Next
               </Button>
