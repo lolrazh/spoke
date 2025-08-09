@@ -61,6 +61,8 @@ const Onboarding: React.FC = () => {
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Prevent duplicate deep-links for Accessibility
+  const axDeepLinkOpenedRef = useRef(false);
 
   // Debug logging and initial PTT API check
   useEffect(() => {
@@ -452,14 +454,17 @@ const Onboarding: React.FC = () => {
         return;
       }
       
+      // Trigger OS prompt (may itself open System Settings upon user action)
       await window.electron?.requestAccessibilityPermission();
-      // Open System Settings pane and poll until granted
-      window.electron?.openSystemPreferences('accessibility');
+      // Do NOT immediately open System Settings to avoid duplicate prompts.
+      // We will poll and only deep-link as a fallback if still denied after a grace period.
+      axDeepLinkOpenedRef.current = false;
       // Clear any existing accessibility polling before starting new one
       if (pollRefs.current.ax) {
         clearInterval(pollRefs.current.ax);
         pollRefs.current.ax = null;
       }
+      const startedAt = Date.now();
       pollRefs.current.ax = setInterval(async () => {
         const result = await window.electron?.checkPermissions();
         if (result && !result.needAX) {
@@ -480,6 +485,14 @@ const Onboarding: React.FC = () => {
               accessibility: { ...prev.accessibility, justGranted: false },
             }));
           }, 800);
+        } else {
+          // After a short grace period, deep-link once as a fallback if permission still denied
+          const elapsedMs = Date.now() - startedAt;
+          if (!axDeepLinkOpenedRef.current && elapsedMs > 4000) {
+            devFlags.methods.devLog('AX still denied after grace period; opening System Settings (once).');
+            axDeepLinkOpenedRef.current = true;
+            window.electron?.openSystemPreferences('accessibility');
+          }
         }
       }, 1000);
     } catch (error) {
