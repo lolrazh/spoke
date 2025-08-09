@@ -58,6 +58,9 @@ const Onboarding: React.FC = () => {
   const [fnKeyPressed, setFnKeyPressed] = useState(false);
   // Poll timers for system permissions (cleared on unmount)
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
+  // Track mount state and timeout handles to prevent leaks
+  const isMountedRef = useRef(true);
+  const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debug logging and initial PTT API check
   useEffect(() => {
@@ -175,6 +178,15 @@ const Onboarding: React.FC = () => {
     return () => {
       clearAllPolling();
       setFnKeyPressed(false); // Reset Fn key state
+      isMountedRef.current = false;
+      if (pttCheckTimeoutRef.current) {
+        clearTimeout(pttCheckTimeoutRef.current);
+        pttCheckTimeoutRef.current = null;
+      }
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -203,7 +215,7 @@ const Onboarding: React.FC = () => {
             }
             attempts++;
             if (attempts < maxAttempts) {
-              setTimeout(checkPTTAPI, 500); // Check every 500ms
+              pttCheckTimeoutRef.current = setTimeout(checkPTTAPI, 500); // Check every 500ms
             } else {
               devFlags.methods.devLog('PTT API failed to initialize after 10 seconds');
             }
@@ -215,6 +227,12 @@ const Onboarding: React.FC = () => {
       };
       startHelperForTesting();
     }
+    return () => {
+      if (pttCheckTimeoutRef.current) {
+        clearTimeout(pttCheckTimeoutRef.current);
+        pttCheckTimeoutRef.current = null;
+      }
+    };
   }, [allPermissionsGranted, pttApiReady]);
 
   // Auto-advance disabled per UX: user will click Next explicitly
@@ -270,6 +288,7 @@ const Onboarding: React.FC = () => {
           microphone: { loading: false, justGranted: true },
         }));
         setTimeout(() => {
+          if (!isMountedRef.current) return;
           setUi((prev) => ({
             ...prev,
             microphone: { ...prev.microphone, justGranted: false },
@@ -299,7 +318,10 @@ const Onboarding: React.FC = () => {
             }
             setPermissions(prev => ({ ...prev, microphone: true }));
             setUi(prev => ({ ...prev, microphone: { loading: false, justGranted: true } }));
-            setTimeout(() => setUi(prev => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+            setTimeout(() => {
+              if (!isMountedRef.current) return;
+              setUi(prev => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
+            }, 800);
           }
         }, 1000);
       }
@@ -329,6 +351,7 @@ const Onboarding: React.FC = () => {
             inputMonitoring: { loading: false, justGranted: true },
           }));
           setTimeout(() => {
+            if (!isMountedRef.current) return;
             setUi((prev) => ({
               ...prev,
               inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
@@ -357,7 +380,10 @@ const Onboarding: React.FC = () => {
               }
               setPermissions(prev => ({ ...prev, inputMonitoring: true }));
               setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
-              setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+              setTimeout(() => {
+                if (!isMountedRef.current) return;
+                setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
+              }, 800);
             }
           }, 1000);
         }
@@ -385,7 +411,10 @@ const Onboarding: React.FC = () => {
             }
             setPermissions(prev => ({ ...prev, inputMonitoring: true }));
             setUi(prev => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
-            setTimeout(() => setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+            setTimeout(() => {
+              if (!isMountedRef.current) return;
+              setUi(prev => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
+            }, 800);
           }
         }, 1000);
       }
@@ -413,6 +442,7 @@ const Onboarding: React.FC = () => {
             accessibility: { loading: false, justGranted: true },
           }));
           setTimeout(() => {
+            if (!isMountedRef.current) return;
             setUi((prev) => ({
               ...prev,
               accessibility: { ...prev.accessibility, justGranted: false },
@@ -444,6 +474,7 @@ const Onboarding: React.FC = () => {
             accessibility: { loading: false, justGranted: true },
           }));
           setTimeout(() => {
+            if (!isMountedRef.current) return;
             setUi((prev) => ({
               ...prev,
               accessibility: { ...prev.accessibility, justGranted: false },
@@ -557,6 +588,10 @@ const Onboarding: React.FC = () => {
     return () => {
       cleanupDown?.();
       cleanupUp?.();
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
     };
   }, [trans.recording, trans.processing, pttApiReady]); // Re-run when PTT API becomes ready
 
