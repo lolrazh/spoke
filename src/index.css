@@ -52,6 +52,7 @@
 
   /* The visible pill element styled as Dynamic Island */
   .pill-core {
+    position: relative;
     width: auto; /* fallback; actual size driven by Framer */
     height: auto; /* fallback */
     border-radius: var(--radius-pill);
@@ -65,6 +66,19 @@
     transform: translateZ(0);
     backface-visibility: hidden;
     contain: paint;
+  }
+
+  /* Afterglow overlay for micro-physics impact */
+  .impact-glow-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      90% 180% at 50% 50%,
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0) 60%
+    );
+    mix-blend-mode: overlay;
   }
 
   /* Expanded state styling - make it look like a proper window */

@@ -210,6 +210,12 @@ const Pill: React.FC<PillProps> = ({
     }
   })();
 
+  // Micro-physics: tiny overshoot on every state transition (except expanded)
+  const shouldImpactPulse = previousStateRef.current !== pillState && !isExpanded;
+  const animateWithImpact = shouldImpactPulse
+    ? { ...animateForState, scale: [1, 1.006, 1] }
+    : { ...animateForState, scale: 1 };
+
   // State-specific spring feel
   const transitionForState = (() => {
     const isReturningToIdle = pillState === "IDLE" && previousStateRef.current !== "IDLE";
@@ -232,6 +238,18 @@ const Pill: React.FC<PillProps> = ({
     }
   })();
 
+  // Micro-physics transition for the overshoot pulse
+  const transitionWithImpact = shouldImpactPulse
+    ? {
+        ...transitionForState,
+        // Use a snappy spring for the tiny scale pulse
+        scale: { type: "spring" as const, stiffness: 820, damping: 28, mass: 0.75 },
+        // Spring chain: width leads, height follows by a hair
+        width: { ...(transitionForState as any) },
+        height: { ...(transitionForState as any), delay: 0.015 },
+      }
+    : transitionForState;
+
   return (
     <div
       className="pill-wrapper"
@@ -252,8 +270,8 @@ const Pill: React.FC<PillProps> = ({
         className={`pill-core ${isExpanded ? "expanded" : ""}`}
         layout
         initial={false}
-        animate={animateForState}
-        transition={transitionForState}
+        animate={animateWithImpact}
+        transition={transitionWithImpact}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
           if (pillState !== "NOTIFICATION") {
@@ -261,6 +279,16 @@ const Pill: React.FC<PillProps> = ({
           }
         }}
       >
+        {/* Afterglow overlay: subtle fade right after state changes */}
+        {!isExpanded && shouldImpactPulse && (
+          <motion.div
+            key={`impact-glow-${pillState}`}
+            className="impact-glow-overlay"
+            initial={{ opacity: 0.03 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          />
+        )}
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
             {isExpanded ? (
