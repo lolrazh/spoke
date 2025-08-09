@@ -1182,10 +1182,10 @@ app.whenReady().then(async () => {
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const styleSrc = isDev
-      ? "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
+      ? "style-src 'self' 'unsafe-inline'"
       : "style-src 'self' 'unsafe-inline'";
     const fontSrc = isDev
-      ? "font-src 'self' https://fonts.gstatic.com data:"
+      ? "font-src 'self' data:"
       : "font-src 'self' data:";
     const csp = [
       "default-src 'self'",
