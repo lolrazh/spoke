@@ -326,10 +326,8 @@ body {
 /* Onboarding window - true macOS glassmorphic effect */
 .onboarding-window {
   background: transparent; /* Let macOS handle the vibrancy */
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--stroke-fg);
   border-radius: var(--radius-window);
-  /* Fix border cut-off issues */
-  margin: 1px;
   box-sizing: border-box;
   /* Resize performance optimization */
   will-change: transform;
