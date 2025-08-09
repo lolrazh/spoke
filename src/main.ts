@@ -51,6 +51,8 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
+type PttTarget = "auto" | "onboarding" | "main";
+let pttTarget: PttTarget = "auto";
 
 // Microphone management state
 let micDevices: MicDevice[] = [
@@ -1110,14 +1112,55 @@ app.whenReady().then(async () => {
     return { success: true };
   });
 
+  // Prepare the pill window and tray before onboarding completes
+  ipcMain.handle("prepare-pill", () => {
+    console.log("[IPC] Preparing pill window and tray during onboarding");
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      createTray();
+      // Ensure pill is hidden until the test step asks to show it
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const currentBounds = mainWindow.getBounds();
+        mainWindow.setBounds(
+          {
+            y: ISLAND_HIDDEN_Y,
+            height: currentBounds.height,
+            width: currentBounds.width,
+            x: currentBounds.x,
+          },
+          false,
+        );
+        logBounds("prepare-pill -> hide");
+      }
+      return { success: true };
+    } catch (error) {
+      console.error("[IPC] Failed to prepare pill:", error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
+    console.log(`[IPC] Setting PTT target to: ${target}`);
+    pttTarget = target;
+    return { success: true };
+  });
+
   ipcMain.handle("onboarding-complete", () => {
     console.log("[IPC] Onboarding complete, starting app");
     if (onboardingWindow) {
       onboardingWindow.close();
     }
-    createWindow();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+    } else {
+      // Ensure the pill window is visible and interactive
+      mainWindow.show();
+    }
     createTray();
     startFnListener();
+    pttTarget = "main";
     // (Removed) silent app location check after onboarding
   });
 
@@ -1691,8 +1734,15 @@ function startFnListener() {
 
         console.log(`[FnListener] Received command: "${trimmedLine}"`);
 
-        const targetWindow = mainWindow || onboardingWindow;
-        if (trimmedLine === "down") {
+        let targetWindow: BrowserWindow | null = null;
+        if (pttTarget === "onboarding") targetWindow = onboardingWindow || mainWindow;
+        else if (pttTarget === "main") targetWindow = mainWindow || onboardingWindow;
+        else targetWindow = onboardingWindow || mainWindow;
+        if (trimmedLine === "ready") {
+          // Signal to both windows that PTT is ready
+          onboardingWindow?.webContents.send("ptt-ready");
+          mainWindow?.webContents.send("ptt-ready");
+        } else if (trimmedLine === "down") {
           targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up") {
           targetWindow?.webContents.send("ptt-up");
@@ -1758,7 +1808,7 @@ function startFnListener() {
       );
       fnProc = null;
 
-      const targetWindow = mainWindow || onboardingWindow;
+      const targetWindow = pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow);
       if (error.message.includes("ENOENT")) {
         console.error("[FnListener] Sonic Flow Helper binary not found or not executable");
         targetWindow?.webContents.send(
@@ -1776,7 +1826,7 @@ function startFnListener() {
           "[FnListener] Unknown error starting Sonic Flow Helper:",
           error.message,
         );
-        targetWindow?.webContents.send(
+        ;(pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );
@@ -1805,7 +1855,7 @@ function startFnListener() {
     console.error("[FnListener] Exception when spawning Sonic Flow Helper helper:", error);
     fnProc = null;
 
-    const targetWindow = mainWindow || onboardingWindow;
+    const targetWindow = pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow);
     targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: spawn failed",

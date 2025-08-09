@@ -26,6 +26,7 @@ declare global {
     ptt: {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
+      onReady: (cb: () => void) => () => void;
     };
     island: {
       slideTo: (y: number) => void;
@@ -33,6 +34,10 @@ declare global {
     electron: {
       resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
+      pillShow: () => void;
+      pillHide: () => void;
+      pillRendererReady: () => void;
+      onPillRendererReady: (cb: () => void) => () => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
@@ -42,6 +47,8 @@ declare global {
       checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
       openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
+      preparePill: () => Promise<{ success: boolean; error?: string } | void>;
+      setPttTarget: (target: "auto" | "onboarding" | "main") => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;

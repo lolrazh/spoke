@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld("ptt", {
     ipcRenderer.on("ptt-up", cb);
     return () => ipcRenderer.removeAllListeners("ptt-up");
   },
+  onReady: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("ptt-ready", listener);
+    return () => ipcRenderer.removeListener("ptt-ready", listener);
+  },
 });
 
 // Microphone device management bridge
@@ -86,6 +91,14 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.send("pill-resize", { width, height }),
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
+  pillShow: () => ipcRenderer.send("pill-show"),
+  pillHide: () => ipcRenderer.send("pill-hide"),
+  pillRendererReady: () => ipcRenderer.send("pill-renderer-ready"),
+  onPillRendererReady: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("pill-renderer-ready", listener);
+    return () => ipcRenderer.removeListener("pill-renderer-ready", listener);
+  },
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
@@ -98,6 +111,8 @@ contextBridge.exposeInMainWorld("electron", {
   checkMicrophonePermission: () => ipcRenderer.invoke("check-microphone-permission"),
   openSystemPreferences: (pane: string) => ipcRenderer.invoke("open-system-preferences", pane),
   startHelper: () => ipcRenderer.invoke("helper:start"),
+  preparePill: () => ipcRenderer.invoke("prepare-pill"),
+  setPttTarget: (target: "auto" | "onboarding" | "main") => ipcRenderer.invoke("ptt:set-target", target),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),

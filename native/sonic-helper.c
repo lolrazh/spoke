@@ -251,6 +251,9 @@ int main(int argc, char *argv[]) {
     CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(NULL, tap, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopCommonModes);
     CGEventTapEnable(tap, true);
+    // Signal readiness to the Electron app
+    puts("ready");
+    fflush(stdout);
     CFRunLoopRun();
     return 0; // Should not be reached
 }

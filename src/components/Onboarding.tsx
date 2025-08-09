@@ -4,8 +4,10 @@ import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === 'development';
+// Make permission mocking opt-in via URL (?mockPerms)
+const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
 const devFlags = {
-  mockPermissionStates: isDevelopment,
+  mockPermissionStates: isDevelopment && params.has('mockPerms'),
   showDebugOverlay: isDevelopment,
   fastAnimations: isDevelopment,
   alwaysShowDevMode: isDevelopment,
@@ -75,6 +77,16 @@ const Onboarding: React.FC = () => {
       devFlags.methods.devLog("PTT API already available on mount");
       setPttApiReady(true);
     }
+
+    // Listen for explicit ready from main/helper
+    const cleanupReady = window.ptt?.onReady?.(() => {
+      devFlags.methods.devLog('Received ptt-ready');
+      setPttApiReady(true);
+    });
+
+    return () => {
+      cleanupReady && cleanupReady();
+    };
   }, []);
 
   // Note: App location check moved to silent background check
@@ -198,31 +210,31 @@ const Onboarding: React.FC = () => {
   // Check if all permissions are granted
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
 
-  // Start helper when all permissions are granted (so Fn key testing works)
+  // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
   useEffect(() => {
-    if (allPermissionsGranted && !pttApiReady) {
+    if (currentStep === "hotkey-info" && allPermissionsGranted && !pttApiReady) {
+      // Ensure PTT events route to onboarding while testing
+      window.electron?.setPttTarget?.("onboarding");
       const startHelperForTesting = async () => {
         try {
           devFlags.methods.devLog('Starting helper for onboarding testing...');
           await window.electron?.startHelper();
-          
-          // Poll for PTT API to become available
+          // If helper emits ptt-ready, we'll flip the state via onReady listener above.
+          // Also keep a fallback quick check on ptt handlers presence.
           let attempts = 0;
-          const maxAttempts = 20; // 10 seconds max
-          const checkPTTAPI = () => {
+          const maxAttempts = 10;
+          const quickCheck = () => {
             if (window.ptt?.onDown && window.ptt?.onUp) {
-              devFlags.methods.devLog('PTT API is ready for testing!');
+              devFlags.methods.devLog('PTT API ready (fallback quick check)');
               setPttApiReady(true);
               return;
             }
             attempts++;
             if (attempts < maxAttempts) {
-              pttCheckTimeoutRef.current = setTimeout(checkPTTAPI, 500); // Check every 500ms
-            } else {
-              devFlags.methods.devLog('PTT API failed to initialize after 10 seconds');
+              pttCheckTimeoutRef.current = setTimeout(quickCheck, 300);
             }
           };
-          checkPTTAPI();
+          quickCheck();
         } catch (error) {
           if (isDevelopment) console.error("Error starting helper for testing:", error);
         }
@@ -235,7 +247,7 @@ const Onboarding: React.FC = () => {
         pttCheckTimeoutRef.current = null;
       }
     };
-  }, [allPermissionsGranted, pttApiReady]);
+  }, [currentStep, allPermissionsGranted, pttApiReady]);
 
   // Auto-advance disabled per UX: user will click Next explicitly
   // useEffect(() => {
@@ -270,6 +282,30 @@ const Onboarding: React.FC = () => {
       setCurrentStep(steps[currentIndex - 1]);
     }
   };
+
+  // Prepare the pill (create main window + tray) when entering the hotkey test step
+  const pillPreparedRef = useRef(false);
+  useEffect(() => {
+    if (currentStep === "hotkey-test" && !pillPreparedRef.current) {
+      pillPreparedRef.current = true;
+      try {
+        window.electron?.preparePill?.();
+      } catch (e) {
+        if (isDevelopment) console.error("Error preparing pill window:", e);
+      }
+    }
+  }, [currentStep]);
+
+  // Show the pill UI during the hotkey-test step; hide it on other steps
+  useEffect(() => {
+    if (currentStep === "hotkey-test") {
+      // Route PTT to the main pill for dictation testing
+      window.electron?.setPttTarget?.("main");
+      window.electron?.pillShow?.();
+    } else {
+      window.electron?.pillHide?.();
+    }
+  }, [currentStep]);
 
   // Permission handlers - now work within combined interface
   const handleRequestMicrophone = async () => {
@@ -512,6 +548,8 @@ const Onboarding: React.FC = () => {
       if (isDevelopment) console.error("Error starting helper:", error);
     }
     try {
+      // Route PTT to main app after onboarding
+      window.electron?.setPttTarget?.("main");
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
