@@ -203,11 +203,10 @@ const Onboarding: React.FC = () => {
 
   // Permission aggregates
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
-  const imAxGranted = permissions.accessibility && permissions.inputMonitoring;
 
   // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
   useEffect(() => {
-    if (currentStep === "hotkey-info" && imAxGranted && !pttApiReady) {
+    if (currentStep === "hotkey-info" && !pttApiReady) {
       // Ensure PTT events route to onboarding while testing
       window.electron?.setPttTarget?.("onboarding");
       const startHelperForTesting = async () => {
@@ -227,7 +226,7 @@ const Onboarding: React.FC = () => {
         pttCheckTimeoutRef.current = null;
       }
     };
-  }, [currentStep, imAxGranted, pttApiReady]);
+  }, [currentStep, pttApiReady]);
 
   // Auto-advance disabled per UX: user will click Next explicitly
   // useEffect(() => {
@@ -582,7 +581,7 @@ const Onboarding: React.FC = () => {
     }
   }, [trans.text]);
 
-  // Hook Fn key to start/stop dictation for onboarding test
+  // Hook Fn key to provide visual feedback on step 3; only dictate on step 4
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) {
       devFlags.methods.devLog('PTT API not available yet, waiting...');
@@ -595,6 +594,8 @@ const Onboarding: React.FC = () => {
       devFlags.methods.devLog('Fn key pressed down');
       setFnKeyPressed(true); // Immediate visual feedback
       
+      // Only start dictation on hotkey-test step (step 4)
+      if (currentStep !== "hotkey-test") return;
       if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
       if (trans.processing || trans.recording) return;
       isLongPressRef.current = false;
@@ -611,7 +612,8 @@ const Onboarding: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-      if (trans.recording) trans.stop();
+      // Only stop dictation on hotkey-test step (step 4)
+      if (currentStep === "hotkey-test" && trans.recording) trans.stop();
       isLongPressRef.current = false;
     };
 
@@ -625,7 +627,7 @@ const Onboarding: React.FC = () => {
         pressTimerRef.current = null;
       }
     };
-  }, [trans.recording, trans.processing, pttApiReady]); // Re-run when PTT API becomes ready
+  }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
 
 
   return (
