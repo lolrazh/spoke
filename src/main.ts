@@ -23,6 +23,7 @@ import {
   ISLAND_WIDTH,
   ISLAND_HEIGHT,
   ISLAND_VISIBLE_Y,
+  SHADOW_PAD,
 } from "./constants/window";
 import {
   ONBOARDING_WIDTH,
@@ -359,6 +360,51 @@ const getTrayIconPath = () => {
   return possiblePaths[0]; // fallback
 };
 
+// Silent background check for app location
+const checkAppLocationSilently = () => {
+  if (!app.isPackaged) {
+    console.log("[App Location Check] Skipping in development mode");
+    return;
+  }
+
+  try {
+    const appPath = app.getAppPath();
+    console.log(`[App Location Check] Current app path: ${appPath}`);
+    
+    const needsMove = !appPath.startsWith('/Applications/') && (
+      appPath.includes('/Documents/') ||
+      appPath.includes('/Downloads/') ||
+      appPath.includes('/Desktop/') ||
+      appPath.includes('/Users/') // Catch other user directories
+    );
+
+    if (needsMove) {
+      console.log("[App Location Check] App is not in Applications folder, showing toast");
+      
+      // Send notification to the main window (if it exists)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(
+          "notify",
+          "⚠️ Move Sonic Flow to Applications folder to enable hotkey detection"
+        );
+      }
+      
+      // Also show a tray notification if tray exists  
+      if (tray && !tray.isDestroyed()) {
+        tray.displayBalloon({
+          title: "Sonic Flow",
+          content: "Move Sonic Flow to the Applications folder to enable hotkey detection",
+          icon: iconPath
+        });
+      }
+    } else {
+      console.log("[App Location Check] App is properly located in Applications folder");
+    }
+  } catch (error) {
+    console.error("[App Location Check] Error checking app location:", error);
+  }
+};
+
 const iconPath = getIconPath();
 
 const createWindow = () => {
@@ -427,6 +473,18 @@ const createWindow = () => {
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
     console.log("Main window shown.");
+    // Ensure initial position is the visible top-aligned Y (flush to screen top)
+    try {
+      const current = mainWindow.getBounds();
+      mainWindow.setBounds(
+        { x: current.x, y: ISLAND_VISIBLE_Y, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+      logBounds("ready-to-show -> top-align");
+    } catch (e) {
+      console.warn("Failed to top-align on ready-to-show:", e);
+    }
 
     // Open DevTools automatically in development mode
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -499,21 +557,22 @@ const createWindow = () => {
 };
 
 function createOnboardingWindow() {
+  console.log("[Debug] Inside createOnboardingWindow function");
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
-    frame: true, // Enable normal window frame
-    resizable: true, // Enable resizing
-    backgroundColor: "#1a1a1a", // Match sonic-dark from tailwind
+    frame: false,
+    transparent: true, // crucial: no opaque backing store
+    backgroundColor: "#00000000", // extra guard against fallback fill
+    hasShadow: false,
+    resizable: false,
     alwaysOnTop: false,
     focusable: true,
     skipTaskbar: false,
-    show: true,
+    show: false, // FIX 1: Don't show immediately - wait for content to load
     center: true,
     minWidth: 600,
     minHeight: 400,
-    titleBarStyle: 'default',
-    title: 'Sonic Flow Setup',
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -522,7 +581,20 @@ function createOnboardingWindow() {
     },
   };
 
+  // Add native macOS vibrancy for true glassmorphic effect
+  if (process.platform === 'darwin') {
+    onboardingWindowOptions.vibrancy = 'hud'; // 'sidebar' or 'fullscreen-ui' also work
+    onboardingWindowOptions.visualEffectState = 'active'; // window remains vibrant when focused
+    onboardingWindowOptions.titleBarStyle = 'hiddenInset'; // ① keep it frameless — we still get traffic-lights
+    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 }; // ③ nudge them if your design needs it (same numbers Raycast uses)
+  } else {
+    // Fallback for non-macOS platforms
+    onboardingWindowOptions.backgroundColor = '#0f0f0f';
+  }
+
+  console.log("[Debug] Creating BrowserWindow with options:", onboardingWindowOptions);
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -535,16 +607,78 @@ function createOnboardingWindow() {
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
   console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
+  console.log("[Debug] About to load URL in onboarding window");
   
-  onboardingWindow.loadURL(onboardingUrl);
+  onboardingWindow.loadURL(onboardingUrl).catch(error => {
+    console.error("[Debug] Error loading URL:", error);
+  });
+  console.log("[Debug] URL load initiated");
   
-  // Add error handling for loading issues
+  // Add comprehensive error handling 
   onboardingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
   });
+  
+  onboardingWindow.webContents.on('crashed', (event, killed) => {
+    console.error("[Onboarding] Renderer crashed:", killed);
+  });
+  
+  onboardingWindow.on('unresponsive', () => {
+    console.error("[Onboarding] Window became unresponsive");
+  });
+  
+  onboardingWindow.on('closed', () => {
+    console.log("[Debug] Onboarding window was closed");
+  });
 
+  // FIX 3: Wait for DOM and full rendering before showing window
   onboardingWindow.webContents.on('dom-ready', () => {
     console.log("[Onboarding] DOM ready");
+  });
+
+  // FIX 4: Use did-finish-load to ensure all resources are ready
+  onboardingWindow.webContents.once('did-finish-load', () => {
+    console.log("[Onboarding] Content finished loading");
+    
+    // FIX 8: Force hardware acceleration settings for better vibrancy
+    if (process.platform === 'darwin') {
+      onboardingWindow.webContents.executeJavaScript(`
+        // Ensure proper rendering context
+        document.documentElement.style.transform = 'translateZ(0)';
+        console.log('[Vibrancy] Hardware acceleration enabled for rendering');
+      `).catch((err) => {
+        console.warn('[Vibrancy] Could not set hardware acceleration:', err);
+      });
+    }
+    
+    // FIX 5: Add small delay to ensure vibrancy effect is ready
+    setTimeout(() => {
+      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+        console.log("[Onboarding] Showing window after vibrancy delay");
+        onboardingWindow.show();
+        
+        // FIX 6: Force invalidate shadow to clear any artifacts
+        if (process.platform === 'darwin') {
+          onboardingWindow.invalidateShadow();
+        }
+      }
+    }, 100); // Small delay to let vibrancy settle
+  });
+
+  // FIX 7: Backup using ready-to-show as fallback
+  onboardingWindow.once('ready-to-show', () => {
+    console.log("[Onboarding] Ready to show event fired");
+    // Only show if not already shown by did-finish-load
+    setTimeout(() => {
+      if (onboardingWindow && !onboardingWindow.isDestroyed() && !onboardingWindow.isVisible()) {
+        console.log("[Onboarding] Showing window via ready-to-show fallback");
+        onboardingWindow.show();
+        
+        if (process.platform === 'darwin') {
+          onboardingWindow.invalidateShadow();
+        }
+      }
+    }, 150);
   });
 
   onboardingWindow.on("closed", () => {
@@ -1047,13 +1181,20 @@ app.whenReady().then(async () => {
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const styleSrc = isDev
+      ? "style-src 'self' 'unsafe-inline'"
+      : "style-src 'self' 'unsafe-inline'";
+    const fontSrc = isDev
+      ? "font-src 'self' data:"
+      : "font-src 'self' data:";
     const csp = [
       "default-src 'self'",
+      // Allow required API endpoints and public CDNs
       "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
       `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
-      "style-src 'self' 'unsafe-inline'",
+      styleSrc,
       "img-src 'self' data:",
-      "font-src 'self' data:",
+      fontSrc,
     ].join("; ");
 
     callback({
@@ -1083,12 +1224,20 @@ app.whenReady().then(async () => {
 
   // Always show onboarding - no persistence tracking
   console.log("[Startup] Always showing onboarding");
-  createOnboardingWindow();
+  console.log("[Debug] About to create onboarding window...");
+  try {
+    createOnboardingWindow();
+    console.log("[Debug] Onboarding window created successfully");
+  } catch (error) {
+    console.error("[Debug] Error creating onboarding window:", error);
+  }
 
   // Initialize microphone preferences
   console.log("[Main Process] Initializing microphone preferences...");
   micPreferences = loadMicPreferences();
   console.log("[Main Process] Microphone preferences loaded:", micPreferences);
+
+  // Silent background check for app location will be triggered after onboarding completes
 
   // Onboarding IPC handlers
   ipcMain.handle("helper:start", () => {
@@ -1105,6 +1254,11 @@ app.whenReady().then(async () => {
     createWindow();
     createTray();
     startFnListener();
+    
+    // Run the silent app location check after main app is set up
+    setTimeout(() => {
+      checkAppLocationSilently();
+    }, 2000); // Give time for main window and tray to initialize
   });
 
   // Handle pill context menu
@@ -1146,20 +1300,27 @@ app.whenReady().then(async () => {
 
   ipcMain.on("pill-resize", (event, { width, height }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Enforce padding so CSS shadows never get clipped during animations
+      const paddedWidth = Math.round(width + SHADOW_PAD * 2);
+      const paddedHeight = Math.round(height + SHADOW_PAD * 2);
+
+      const targetW = Math.max(paddedWidth, ISLAND_WIDTH);
+      const targetH = Math.max(paddedHeight, ISLAND_HEIGHT);
+
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth } = primaryDisplay.size;
-      const x = Math.round((screenWidth - width) / 2);
+      const x = Math.round((screenWidth - targetW) / 2);
 
       const currentBounds = mainWindow.getBounds();
       mainWindow.setBounds(
         {
-          x: x,
+          x,
           y: currentBounds.y,
-          width: Math.round(width),
-          height: Math.round(height),
+          width: targetW,
+          height: targetH,
         },
         false,
-      ); // animate: false
+      );
 
       if (process.platform === "darwin") {
         mainWindow.invalidateShadow();
@@ -1498,6 +1659,29 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-app-path", () => {
     return app.getAppPath();
+  });
+
+  // Onboarding window controls
+  ipcMain.handle("close-onboarding", () => {
+    if (onboardingWindow) {
+      onboardingWindow.close();
+    }
+  });
+
+  ipcMain.handle("minimize-onboarding", () => {
+    if (onboardingWindow) {
+      onboardingWindow.minimize();
+    }
+  });
+
+  ipcMain.handle("maximize-onboarding", () => {
+    if (onboardingWindow) {
+      if (onboardingWindow.isMaximized()) {
+        onboardingWindow.unmaximize();
+      } else {
+        onboardingWindow.maximize();
+      }
+    }
   });
 });
 

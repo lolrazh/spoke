@@ -1,3 +1,23 @@
+/* Self-hosted font faces (preferred in production). Place .woff2 files in public/fonts/ */
+@font-face {
+  font-family: "DM Serif Display";
+  src: local("DM Serif Display Regular"), local("DMSerifDisplay-Regular"),
+       url("fonts/DMSerifDisplay-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Lexend Deca variable font (100–900) */
+@font-face {
+  font-family: "Lexend Deca";
+  src: local("Lexend Deca"), local("LexendDeca-VariableFont_wght"),
+       url("fonts/LexendDeca-VariableFont_wght.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,12 +33,11 @@
     display: flex;
     align-items: flex-start; /* Align pill to the TOP of the window */
     justify-content: center;
+    /* No internal padding – window Y handles shadow pad so pill can be flush to top */
   }
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-border-radius: 8px;
-    --pill-resting-radius: 5px;
     --pill-background: rgba(0, 0, 0, 0.95);
     --pill-border: 1px solid rgba(255, 255, 255, 0.08);
     --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
@@ -35,20 +54,26 @@
   .pill-core {
     width: auto; /* fallback; actual size driven by Framer */
     height: auto; /* fallback */
-    border-radius: var(--pill-border-radius);
+    border-radius: var(--radius-pill);
     background: var(--pill-background);
     border: var(--pill-border);
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
     overflow: hidden;
+    /* Performance: avoid flicker by promoting and isolating */
+    will-change: transform, opacity, filter;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    contain: paint;
   }
 
   /* Expanded state styling - make it look like a proper window */
   .pill-core.expanded {
-    border-radius: 12px; /* Larger radius for window appearance */
+    border-radius: var(--radius-window); /* Larger radius for window appearance */
     background: rgba(20, 20, 30, 0.98); /* More opaque background */
     border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    /* Use layered window-strength shadow for soft, glass-friendly falloff */
+    box-shadow: var(--shadow-interactive);
   }
 
   /* Resting indicator - invisible by default, just for spacing */
@@ -130,6 +155,9 @@
   /* Animated dots for processing state */
   .dot.animated {
     animation: wave 1.5s infinite ease-in-out;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform: translateZ(0);
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
   }
 
@@ -165,7 +193,8 @@
   .waveform-bar {
     width: 3px;
     border-radius: 1px;
-    animation: pulse 1.5s infinite;
+    animation: pulse 1.5s infinite ease-in-out;
+    will-change: height, opacity;
     background: linear-gradient(to top, #a0a0a0, #cccccc);
     opacity: 1;
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
@@ -176,12 +205,10 @@
     100% {
       height: 3px;
       opacity: 0.7;
-      transform: scaleY(1);
     }
     50% {
       height: 10px;
       opacity: 1;
-      transform: scaleY(1.1);
     }
   }
 
@@ -208,11 +235,30 @@
     border-top-color: #a0a0a0;
     border-radius: 50%;
     animation: spin 1s linear infinite;
+    will-change: transform;
   }
 
   @keyframes spin {
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  /* Ensure Tailwind's animate-spin also gets GPU and will-change hints */
+  .animate-spin {
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .dot.animated,
+    .waveform-bar,
+    .spinner,
+    .animate-spin {
+      animation: none !important;
+      transition: none !important;
     }
   }
 
@@ -264,17 +310,90 @@ body {
 
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glassmorphic onboarding window */
-.onboarding-window {
-  background-color: rgba(15, 15, 15, 0.15);
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+/* Font family utilities */
+.font-sans {
+  font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Onboarding window - true macOS glassmorphic effect */
+.onboarding-window {
+  background: transparent; /* Let macOS handle the vibrancy */
+  border: 1px solid var(--stroke-fg);
+  border-radius: var(--radius-window);
+  box-sizing: border-box;
+  /* Resize performance optimization */
+  will-change: transform;
+  contain: layout style paint;
+  position: relative;
+  /* FIX 8: Initial opacity to prevent flash of black content */
+  opacity: 0;
+  animation: fadeInOnboarding 0.3s ease-out 0.2s forwards;
+}
+
+/* FIX 9: Fade in animation to ensure smooth vibrancy appearance */
+@keyframes fadeInOnboarding {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Add very light surface tint for text contrast without fighting wallpaper */
+  .onboarding-window::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+    background: rgba(10, 10, 10, 0.35); /* neutral tint - no color cast */
+    border-radius: var(--radius-window);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Resize performance optimization - disable effects during resize */
+.onboarding-window.resizing {
+  backdrop-filter: none;
+  transition: none;
+}
+
+.onboarding-window.resizing * {
+  transition: none !important;
+}
+
+/* Draggable header area - exclude native traffic lights region */
+.onboarding-header {
+  -webkit-app-region: drag;
+  position: absolute;
+  top: 0;
+  left: 80px; /* Leave first 80px alone for native traffic lights (3 buttons × 12px + 6px gutter on each side) */
+  right: 0;
+  height: 32px;
+  z-index: 1000;
+}
+
+/* Small draggable area on the left - below the native traffic lights */
+.onboarding-header-left {
+  -webkit-app-region: drag;
+  position: absolute;
+  top: 40px; /* Below the native traffic lights area */
+  left: 0;
+  width: 80px; /* Same width as excluded area above */
+  height: 20px;
+  z-index: 1000;
+}
+
+/* Native macOS traffic lights are now handled by Electron - no custom styling needed */
 
 @layer base {
   :root {
@@ -282,8 +401,8 @@ body {
     --pill-expanded-height: 30px;
     --pill-resting-height: 9px;
 
-    /* Unified design system - dark mode optimized (from website) */
-    --background: 0 0% 3.9%; /* Default dark background */
+    /* Unified design system - optimized for native vibrancy */
+    --background: 0 0% 3.9%; 
     --foreground: 0 0% 98%;
     --card: 0 0% 3.9%;
     --card-foreground: 0 0% 98%;
@@ -303,8 +422,73 @@ body {
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
     --radius: 0.5rem;
+    /* Radius scale tokens */
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+    /* Semantic radius tokens */
+    --radius-window: 12px;
+    --radius-pill: var(--radius-lg);
     --mouse-x: 0px;
     --mouse-y: 0px;
+
+    /* New glass tokens for native vibrancy */
+    --surface-glass: rgba(10, 10, 10, 0.35);
+    --stroke-fg: rgba(255, 255, 255, 0.08);
+    --text-primary: #ffffff;
+    --text-secondary: #c0c0c0;
+
+    /* Typography tokens - match website scale */
+    --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
+    --font-weight-heading: 400; /* Match website hero (DM Serif Display 400) */
+    --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
+    --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
+    --line-height-heading: 1.3;
+    --letter-spacing-heading: 0; /* match site hero tracking-normal */
+
+    /* Spacing tokens */
+    --spacing-xs: 0.25rem;  /* 4px */
+    --spacing-sm: 0.5rem;   /* 8px */
+    --spacing-md: 1rem;     /* 16px */
+    --spacing-lg: 1.5rem;   /* 24px */
+    --spacing-xl: 2rem;     /* 32px */
+
+    /* Surface and effect tokens */
+    --surface-base-rgb: 15, 15, 15;
+    --surface-alpha-xxs: 0.2;  /* very light */
+    --surface-alpha-xs: 0.25;  /* light */
+    --surface-alpha-sm: 0.3;   /* subtle */
+    --surface-alpha-md: 0.35;  /* medium */
+    --surface-alpha-lg: 0.4;   /* strong */
+
+    --blur-md: 16px;
+    --blur-lg: 32px;
+
+    /* Stroke tokens */
+    /* keep --stroke-fg as defined above (0.08) for weak strokes */
+    --stroke-fg-mid: rgba(255, 255, 255, 0.1);
+    --stroke-fg-strong: rgba(255, 255, 255, 0.12);
+    --stroke-fg-xstrong: rgba(255, 255, 255, 0.15);
+
+    /* Shadow tokens */
+    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-interactive: 0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
+    --shadow-interactive-hover: 0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+
+    /* Motion tokens (CSS) */
+    --duration-instant: 0s;
+    --duration-fast: 0.2s;
+    --duration-standard: 0.3s;
+    --duration-slow: 0.5s;
+
+    --delay-short: 0.1s;
+    --delay-medium: 0.2s;
+    --delay-long: 0.3s;
+
+    --ease-standard: cubic-bezier(0.25, 0.8, 0.25, 1);
+    --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .dark {
     /* Same values for dark mode since this is inherently a dark theme */
@@ -342,41 +526,159 @@ body {
 
 /* Glassmorphic Design System Components (from website) */
 @layer components {
+  /* Onboarding Card and UI Utilities */
+  .onboarding-card {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg-mid);
+    border-radius: var(--radius-window);
+    box-shadow: var(--shadow-elevated);
+    transition: background-color var(--duration-standard) var(--ease-standard),
+                border-color var(--duration-standard) var(--ease-standard),
+                box-shadow var(--duration-standard) var(--ease-standard);
+  }
+
+  .onboarding-card:hover {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
+    border-color: var(--stroke-fg-strong);
+  }
+
+  .onboarding-row {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
+    border: 1px solid var(--stroke-fg);
+    border-radius: var(--radius);
+    backdrop-filter: blur(var(--blur-md));
+    box-shadow: var(--shadow-floating);
+  }
+
+  /* Textarea-specific styling without backdrop-filter to prevent timing issues */
+  .onboarding-textarea {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border: 1px solid var(--stroke-fg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-floating);
+  }
+
+  /* Permission row styling without backdrop-filter to prevent timing issues */
+  .onboarding-permission-row {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border: 1px solid var(--stroke-fg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-floating);
+  }
+
+  .onboarding-cta {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg);
+    color: rgba(255, 255, 255, 0.92);
+  }
+  .onboarding-cta:hover {
+    background-color: rgba(var(--surface-base-rgb), 0.5);
+    border-color: var(--stroke-fg-strong);
+    color: rgba(255, 255, 255, 0.98);
+  }
+
+  /* Unified heading/subheading spacing */
+  .heading-stack {
+    display: flex;
+    flex-direction: column;
+  }
+  .heading-stack > * + * {
+    margin-top: var(--spacing-sm); /* tighter gap between heading and subheading */
+  }
+  .subheading {
+    font-weight: 500; /* stronger subheading */
+    margin-bottom: var(--spacing-lg); /* extra space below subheading pushes content down */
+  }
+
+  /* Keycap visual for Fn key */
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-width: 44px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-md);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg);
+    transition: background-color 220ms var(--ease-emphasized), border-color 220ms var(--ease-emphasized), box-shadow 220ms var(--ease-emphasized), transform 220ms var(--ease-emphasized);
+  }
+  .keycap-lg { width: 56px; height: 56px; padding: 0; }
+  .keycap-label { position: absolute; bottom: 6px; right: 8px; }
+  .keycap.keycap-active {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--stroke-fg-strong);
+    box-shadow: var(--shadow-floating);
+    transform: translateY(-0.5px);
+  }
+  .font-system {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .onboarding-close {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border: 1px solid var(--stroke-fg);
+    backdrop-filter: blur(var(--blur-md));
+    box-shadow: var(--shadow-floating);
+    color: rgba(255,255,255,0.8);
+    transition: all var(--duration-standard) var(--ease-standard);
+  }
+  .onboarding-close:hover {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    color: rgba(255,255,255,0.95);
+    border-color: var(--stroke-fg-strong);
+  }
+
   /* Clean section separators */
   .section-separator {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  /* Frosted Glass with Noise elevation system */
+  /* Frosted Glass with Noise elevation system - cleaner for native vibrancy */
   .card-elevated {
-    background-color: rgba(15, 15, 15, 0.2);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(28px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow:
-      0 5px 15px rgba(0, 0, 0, 0.3),
-      0 18px 45px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-elevated); /* gentler shadow */
+  }
+
+  /* Primary cards - clean styling without shadows */
+  .card-primary {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg-mid);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  .card-primary:hover {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg-xstrong);
   }
 
   .card-floating {
-    background-color: rgba(15, 15, 15, 0.2);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 8px 22px rgba(0, 0, 0, 0.35),
-      0 25px 60px rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
   }
 
   /* Interactive card with hover effects */
   .card-interactive {
-    background-color: rgba(15, 15, 15, 0.2);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url('%23noiseFilter')' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 8px 22px rgba(0, 0, 0, 0.35),
-      0 25px 60px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-interactive);
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     position: relative;
   }
@@ -401,11 +703,9 @@ body {
   }
 
   .card-interactive:hover {
-    background-color: rgba(15, 15, 15, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.4),
-      0 30px 70px rgba(0, 0, 0, 0.3);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
+    border: 1px solid var(--stroke-fg-strong);
+    box-shadow: var(--shadow-interactive-hover);
     transform: translateY(-2px);
   }
 
@@ -423,6 +723,68 @@ body {
     line-height: 1.3 !important;
   }
 
+  /* Add subtle edge reinforcement for serif headings on vibrant backgrounds */
+  .heading-crisp {
+    -webkit-font-smoothing: auto; /* Let macOS choose best rendering */
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
+    -webkit-text-stroke: 0.15px rgba(255, 255, 255, 0.25);
+  }
+
+  /* Semantic typography utilities */
+  .text-heading-xl {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-xl);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--line-height-heading) !important;
+    letter-spacing: var(--letter-spacing-heading);
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
+  }
+
+  .text-heading-lg {
+    font-family: var(--font-family-heading);
+    font-size: var(--font-size-heading-lg);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--line-height-heading) !important;
+    letter-spacing: var(--letter-spacing-heading);
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Onboarding progress bars - glassy */
+  .onboarding-progress-shell {
+    width: 84px; /* slightly wider overall */
+    height: 3px; /* fixed total height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px; /* slightly increased spacing */
+  }
+  .onboarding-progress-bar {
+    height: 2px; /* base height for inactive */
+    border-radius: 9999px;
+    background-color: transparent; /* variants set tone */
+    border: none; /* tertiary element, no stroke */
+    box-shadow: none; /* ultra-clean */
+    flex-basis: 0; /* allow flex-grow to define width */
+    transition: flex-grow 260ms var(--ease-emphasized), background-color 260ms var(--ease-emphasized), height 260ms var(--ease-emphasized), opacity 260ms var(--ease-emphasized);
+    will-change: transform, flex-grow;
+  }
+  @keyframes barSpring {
+    0% { transform: scaleY(0.92); }
+    60% { transform: scaleY(1.08); }
+    100% { transform: scaleY(1); }
+  }
+  .onboarding-progress-bar.grow-active { flex-grow: 6; }
+  .onboarding-progress-bar.grow-inactive { flex-grow: 2; }
+  /* Active and completed share the same neutral tone; completed is distinguished by width only */
+  .onboarding-progress-bar.bar-active { background-color: rgba(255, 255, 255, 0.85); height: 3px; animation: barSpring 260ms var(--ease-emphasized); }
+  .onboarding-progress-bar.bar-complete { background-color: rgba(255, 255, 255, 0.45); }
+  .onboarding-progress-bar.bar-upcoming { background-color: rgba(255, 255, 255, 0.18); }
+
   .text-subtle {
     color: rgba(255, 255, 255, 0.6);
   }
@@ -431,36 +793,48 @@ body {
     color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Button enhancements */
+  /* Button enhancements - remove bloom, add crisp edges, fix vibrancy artifacts */
   .btn-primary {
-    background-color: rgba(15, 15, 15, 0.2);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 8px 22px rgba(0, 0, 0, 0.35),
-      0 25px 60px rgba(0, 0, 0, 0.25);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+    border: 1px solid var(--stroke-fg);
+    box-shadow: none; /* remove bloom */
     color: rgba(255, 255, 255, 0.9);
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    /* FIX 10: Prevent button artifacts with proper containment */
+    isolation: isolate;
+    transform: translateZ(0); /* Force hardware acceleration for smooth rendering */
+    -webkit-font-smoothing: subpixel-antialiased;
+    /* FIX 11: Ensure proper stacking context */
     position: relative;
-    overflow: hidden;
+    z-index: 1;
   }
 
   .btn-primary:hover {
-    background-color: rgba(15, 15, 15, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background-color: rgba(var(--surface-base-rgb), 0.5);
+    border: 1px solid var(--stroke-fg-strong);
   }
 
+  /* FIX 12: Specific fix for Move to Applications button */
+  .btn-primary:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.2);
+    outline-offset: 2px;
+  }
+
+  /* Secondary buttons - clean, no bloom */
   .btn-secondary {
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+    backdrop-filter: blur(var(--blur-md));
+    border: 1px solid var(--stroke-fg);
+    color: rgba(255, 255, 255, 0.6);
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
 
   .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border: 1px solid var(--stroke-fg-xstrong);
+    color: rgba(255, 255, 255, 0.8);
   }
 
   /* Shimmer effect */
@@ -485,11 +859,99 @@ body {
   .shimmer:hover::before {
     left: 150%;
   }
+
+  /* Switch (glass-aligned) */
+  .switch-track {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
+    border: 1px solid var(--stroke-fg);
+    box-shadow: var(--shadow-floating);
+    backdrop-filter: blur(var(--blur-md));
+    transition: background-color var(--duration-fast) var(--ease-standard),
+                border-color var(--duration-fast) var(--ease-standard),
+                box-shadow var(--duration-fast) var(--ease-standard);
+  }
+
+  .switch-track:hover {
+    border-color: var(--stroke-fg-strong);
+  }
+
+  .switch-track:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.18);
+    outline-offset: 2px;
+  }
+
+  .switch-track[data-state="unchecked"] {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
+    border-color: var(--stroke-fg);
+  }
+
+  .switch-track[data-state="unchecked"]:hover {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border-color: var(--stroke-fg-xstrong);
+  }
+
+  .switch-track[data-state="checked"] {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    border-color: var(--stroke-fg-mid);
+  }
+
+  .switch-track[data-state="checked"]:hover {
+    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    border-color: var(--stroke-fg-xstrong);
+  }
+
+  .switch-thumb {
+    /* Match button text tonality (subtle like secondary text) */
+    background-color: rgba(255, 255, 255, 0.6); /* ~btn-secondary text */
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+    border: 1px solid var(--stroke-fg);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+    transition: background-color var(--duration-fast) var(--ease-standard),
+                border-color var(--duration-fast) var(--ease-standard),
+                transform var(--duration-fast) var(--ease-standard),
+                box-shadow var(--duration-fast) var(--ease-standard);
+  }
+
+  .switch-track:hover .switch-thumb {
+    background-color: rgba(255, 255, 255, 0.8); /* hover like button text brightening */
+    border-color: var(--stroke-fg-mid);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  }
+
+  .switch-track[data-state="checked"] .switch-thumb {
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: var(--stroke-fg-mid);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .switch-track[data-state="checked"]:hover .switch-thumb {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-color: var(--stroke-fg-strong);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
 }
 
 @layer utilities {
   html,
   body {
     background-color: transparent !important;
+  }
+  
+  /* Typography utilities for proper font rendering */
+  .text-breathe {
+    overflow: visible !important;
+    line-height: 1.3 !important;
+  }
+  
+  /* Opt-in utilities for targeted will-change usage */
+  .will-change-transform { will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
+  .will-change-opacity { will-change: opacity; }
+  .will-change-bg-pos { will-change: background-position; }
+  
+  /* Ensure native traffic lights work properly */
+  .onboarding-window {
+    /* Allow native traffic lights to be visible and clickable */
+    overflow: visible;
   }
 }

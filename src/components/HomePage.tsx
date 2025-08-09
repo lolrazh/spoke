@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, Variants } from "framer-motion";
+import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
 import {
   Select,
@@ -24,7 +25,7 @@ const sectionVariants: Variants = {
   visible: {
     y: 0,
     opacity: 1,
-    transition: { type: "spring", stiffness: 400, damping: 30 },
+    transition: { type: "spring", ...MOTION.springs.quick },
   },
 };
 
@@ -39,7 +40,7 @@ const Toggle: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
       )}
     </div>
     <Switch checked={enabled} onCheckedChange={onChange} />
@@ -57,12 +58,12 @@ const SelectField: React.FC<{
     <div className="flex-1">
       <div className="text-xs font-medium text-white">{label}</div>
       {description && (
-        <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
       )}
     </div>
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-44">
+        <SelectTrigger className="w-48">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -88,7 +89,7 @@ const ActionButton: React.FC<{
       <div className="flex-1">
         <div className="text-xs font-medium text-white">{label}</div>
         {description && (
-          <div className="text-[10px] text-gray-300 mt-0.5">{description}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
         )}
       </div>
       <Button variant={variant} size="sm" onClick={onClick} className="ml-2">
@@ -99,14 +100,14 @@ const ActionButton: React.FC<{
 };
 
 const SettingSeparator: React.FC = () => (
-  <div className="border-b border-sonic-gray/20" />
+  <div className="border-b border-border/20" />
 );
 
 const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
-    <div className="border-b-2 border-sonic-gray/40" />
+    <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-sonic-darker px-3 text-[10px] font-medium text-gray-300 tracking-wider uppercase">
+      <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
         {title}
       </span>
     </div>
@@ -210,11 +211,11 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
   return (
     <div
-      className={`${embeddedMode ? "h-full" : "h-screen"} bg-sonic-darker text-white flex flex-col relative`}
+      className={`${embeddedMode ? "h-full" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Vertical version text on bottom-left - only in embedded mode */}
       {embeddedMode && (
-        <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-gray-300/50 whitespace-nowrap">
+        <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-muted-foreground opacity-60 whitespace-nowrap">
           v0.0.1
         </div>
       )}
@@ -222,7 +223,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
         <div
-          className="border-b border-sonic-gray/40 bg-sonic-dark flex-shrink-0"
+          className="border-b border-border/40 bg-background flex-shrink-0"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           <div className="h-6" />
@@ -301,14 +302,14 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
               <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-t from-sonic-primary to-sonic-light rounded-full flex items-center justify-center text-xs font-bold text-white">
+                  <div className="w-8 h-8 bg-gradient-to-t from-primary to-foreground/80 rounded-full flex items-center justify-center text-xs font-bold text-white">
                     JS
                   </div>
                   <div>
-                    <h3 className="text-xs font-medium text-white">
+                    <h3 className="text-xs font-medium text-white font-sans">
                       John Smith
                     </h3>
-                    <p className="text-[10px] text-gray-300">
+                    <p className="text-[10px] text-muted-foreground">
                       john.smith@example.com
                     </p>
                   </div>
@@ -330,7 +331,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-gray-300/70">v0.0.1</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">v0.0.1</p>
               </motion.footer>
             )}
           </motion.div>
