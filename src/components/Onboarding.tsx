@@ -597,7 +597,7 @@ const Onboarding: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+    <div className="flex flex-col h-[calc(100vh-2px)] text-foreground onboarding-window relative">
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
       
       {/* Draggable Header Areas */}
