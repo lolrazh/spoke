@@ -49,6 +49,7 @@ const Pill: React.FC<PillProps> = ({
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
+  const previousStateRef = useRef<PillStateType>(pillState);
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -75,6 +76,11 @@ const Pill: React.FC<PillProps> = ({
       `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}, isExpanded=${isExpanded}`,
     );
   }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
+
+  // Track previous state to detect transitions into IDLE
+  useEffect(() => {
+    previousStateRef.current = pillState;
+  }, [pillState]);
 
   // Handle escape key to close expanded view
   useEffect(() => {
@@ -204,6 +210,46 @@ const Pill: React.FC<PillProps> = ({
     }
   })();
 
+  // Micro-physics: tiny overshoot on every state transition (except expanded)
+  const shouldImpactPulse = previousStateRef.current !== pillState && !isExpanded;
+  const animateWithImpact = shouldImpactPulse
+    ? { ...animateForState, scale: [1, 1.006, 1] }
+    : { ...animateForState, scale: 1 };
+
+  // State-specific spring feel
+  const transitionForState = (() => {
+    const isReturningToIdle = pillState === "IDLE" && previousStateRef.current !== "IDLE";
+    switch (pillState) {
+      case "HOVER_PREVIEW":
+      case "LISTENING":
+        return { type: "spring" as const, ...MOTION.springs.lively };
+      case "PROCESSING":
+      case "NOTIFICATION":
+        return { type: "spring" as const, ...MOTION.springs.quick };
+      case "IDLE":
+        return {
+          type: "spring" as const,
+          ...(isReturningToIdle ? MOTION.springs.settle : MOTION.springs.quick),
+        };
+      case "EXPANDED":
+        return { type: "spring" as const, ...MOTION.springs.heavy };
+      default:
+        return { type: "spring" as const, ...MOTION.springs.quick };
+    }
+  })();
+
+  // Micro-physics transition for the overshoot pulse
+  const transitionWithImpact = shouldImpactPulse
+    ? {
+        ...transitionForState,
+        // Use a snappy spring for the tiny scale pulse
+        scale: { type: "spring" as const, stiffness: 820, damping: 28, mass: 0.75 },
+        // Spring chain: width leads, height follows by a hair
+        width: { ...(transitionForState as any) },
+        height: { ...(transitionForState as any), delay: 0.015 },
+      }
+    : transitionForState;
+
   return (
     <div
       className="pill-wrapper"
@@ -224,7 +270,8 @@ const Pill: React.FC<PillProps> = ({
         className={`pill-core ${isExpanded ? "expanded" : ""}`}
         layout
         initial={false}
-        animate={animateForState}
+        animate={animateWithImpact}
+        transition={transitionWithImpact}
         onAnimationComplete={() => {
           // Only advance the FSM when the *shrink back to idle* finishes
           if (pillState !== "NOTIFICATION") {
@@ -232,6 +279,16 @@ const Pill: React.FC<PillProps> = ({
           }
         }}
       >
+        {/* Afterglow overlay: subtle fade right after state changes */}
+        {!isExpanded && shouldImpactPulse && (
+          <motion.div
+            key={`impact-glow-${pillState}`}
+            className="impact-glow-overlay"
+            initial={{ opacity: 0.03 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+          />
+        )}
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
             {isExpanded ? (

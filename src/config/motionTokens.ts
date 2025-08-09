@@ -14,11 +14,13 @@ export const MOTION = {
   },
   springs: {
     // General purpose spring for quick transitions
-    quick: { stiffness: 400, damping: 30 } as SpringToken,
+    quick: { stiffness: 520, damping: 26 } as SpringToken,
     // Slightly bouncier for hover/active interactions
-    lively: { stiffness: 400, damping: 25, mass: 0.9 } as SpringToken,
+    lively: { stiffness: 700, damping: 22, mass: 0.8 } as SpringToken,
     // Heavier feel for large layout changes
-    heavy: { stiffness: 200, damping: 25, mass: 1.2 } as SpringToken,
+    heavy: { stiffness: 420, damping: 34, mass: 1.0 } as SpringToken,
+    // Subtle, tasteful bounce specifically for returning to idle
+    settle: { stiffness: 560, damping: 24, mass: 0.85 } as SpringToken,
   },
 } as const;
 
