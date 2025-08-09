@@ -1004,26 +1004,17 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">Test Your Setup</h2>
-                    <p className="text-sm text-subtle subheading">
-                      {pttApiReady ? "Hold Fn and speak to test dictation." : "Initializing dictation system..."}
-                    </p>
-                    {!pttApiReady && (
-                      <div className="flex items-center justify-center gap-2 mt-2">
-                        <div className="h-2 w-2 animate-spin will-change-transform rounded-full border border-white/30 border-t-white" />
-                        <span className="text-xs text-dimmed">Setting up Fn key detection</span>
-                      </div>
-                    )}
+                    <p className="text-sm text-subtle subheading">Hold Fn and speak to test dictation.</p>
                   </div>
 
                   {/* Dictation Textarea */}
                   <div>
                     {/* removed the small label above the textarea */}
                     <textarea
-                      className={`w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30 ${!pttApiReady ? 'opacity-50' : ''}`}
-                      placeholder={pttApiReady ? "Hold Fn and speak…" : "Initializing..."}
+                      className={"w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"}
+                      placeholder="Hold Fn and speak…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
-                      readOnly={!pttApiReady}
                     />
                   </div>
 
