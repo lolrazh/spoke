@@ -286,6 +286,15 @@ const Onboarding: React.FC = () => {
     }
   }, [currentStep]);
 
+  // Auto-focus the text box on step 4 for better UX
+  useEffect(() => {
+    if (currentStep !== "hotkey-test") return;
+    const id = setTimeout(() => {
+      textAreaRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(id);
+  }, [currentStep]);
+
   // Permission handlers - now work within combined interface
   const handleRequestMicrophone = async () => {
     try {
@@ -564,6 +573,7 @@ const Onboarding: React.FC = () => {
   const [testText, setTestText] = useState("");
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Minimal debounce utility
   const debounce = <T extends (...args: unknown[]) => void>(func: T, delay: number) => {
@@ -1015,6 +1025,7 @@ const Onboarding: React.FC = () => {
                       placeholder="Say something…"
                       value={testText}
                       onChange={(e) => setTestText(e.target.value)}
+                      ref={textAreaRef}
                     />
                   </div>
 
