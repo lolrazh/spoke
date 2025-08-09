@@ -66,17 +66,11 @@ const Onboarding: React.FC = () => {
   // Prevent duplicate deep-links for Accessibility
   const axDeepLinkOpenedRef = useRef(false);
 
-  // Debug logging and initial PTT API check
+  // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
     devFlags.methods.devLog("Component mounted");
     devFlags.methods.devLog("Current step:", currentStep);
     devFlags.methods.devLog("Window location:", window.location.href);
-    
-    // Check if PTT API is already available (in case helper was already running)
-    if (window.ptt?.onDown && window.ptt?.onUp) {
-      devFlags.methods.devLog("PTT API already available on mount");
-      setPttApiReady(true);
-    }
 
     // Listen for explicit ready from main/helper
     const cleanupReady = window.ptt?.onReady?.(() => {
@@ -207,34 +201,20 @@ const Onboarding: React.FC = () => {
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-info", "hotkey-test", "complete"];
 
-  // Check if all permissions are granted
+  // Permission aggregates
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
+  const imAxGranted = permissions.accessibility && permissions.inputMonitoring;
 
   // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
   useEffect(() => {
-    if (currentStep === "hotkey-info" && allPermissionsGranted && !pttApiReady) {
+    if (currentStep === "hotkey-info" && imAxGranted && !pttApiReady) {
       // Ensure PTT events route to onboarding while testing
       window.electron?.setPttTarget?.("onboarding");
       const startHelperForTesting = async () => {
         try {
           devFlags.methods.devLog('Starting helper for onboarding testing...');
           await window.electron?.startHelper();
-          // If helper emits ptt-ready, we'll flip the state via onReady listener above.
-          // Also keep a fallback quick check on ptt handlers presence.
-          let attempts = 0;
-          const maxAttempts = 10;
-          const quickCheck = () => {
-            if (window.ptt?.onDown && window.ptt?.onUp) {
-              devFlags.methods.devLog('PTT API ready (fallback quick check)');
-              setPttApiReady(true);
-              return;
-            }
-            attempts++;
-            if (attempts < maxAttempts) {
-              pttCheckTimeoutRef.current = setTimeout(quickCheck, 300);
-            }
-          };
-          quickCheck();
+          // Helper will emit 'ready' -> handled by onReady listener above.
         } catch (error) {
           if (isDevelopment) console.error("Error starting helper for testing:", error);
         }
@@ -247,7 +227,7 @@ const Onboarding: React.FC = () => {
         pttCheckTimeoutRef.current = null;
       }
     };
-  }, [currentStep, allPermissionsGranted, pttApiReady]);
+  }, [currentStep, imAxGranted, pttApiReady]);
 
   // Auto-advance disabled per UX: user will click Next explicitly
   // useEffect(() => {
