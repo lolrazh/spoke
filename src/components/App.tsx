@@ -143,6 +143,7 @@ const debounce = <T extends (...args: unknown[]) => void>(
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [uiScale, setUiScale] = useState(1);
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
@@ -173,6 +174,15 @@ const App: React.FC = () => {
   useEffect(() => {
     latestTransRef.current = trans;
   }, [trans]);
+
+  // Listen for active display updates from main (provides computed scale)
+  useEffect(() => {
+    if (typeof window.onActiveDisplay !== "function") return;
+    window.onActiveDisplay?.((payload: any) => {
+      const s = typeof payload?.scale === "number" ? payload.scale : 1;
+      setUiScale(s);
+    });
+  }, []);
 
   const {
     state: pillState,
@@ -288,6 +298,15 @@ const App: React.FC = () => {
     }
   }, [pillState]);
 
+  // Derived scaled dimensions based on active display scale
+  const S = Math.min(1, Math.max(0.9, uiScale || 1));
+  const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
+  const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
+  const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
+  const EXPANDED_W = Math.round(600 * S);
+  const EXPANDED_H = Math.round(610 * S);
+  const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
+
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
     if (!ghostRef.current) return;
@@ -300,13 +319,13 @@ const App: React.FC = () => {
     const pad = 24; // px total
     const measuredWidth = Math.ceil(rect.width + pad);
     // Clamp to maximum width to prevent overly wide notifications
-    const clampedWidth = Math.min(measuredWidth, TOKENS.PILL_MAX_W);
+    const clampedWidth = Math.min(measuredWidth, MAX_W);
     // Check if text will be truncated
-    const isTruncated = measuredWidth > TOKENS.PILL_MAX_W;
+    const isTruncated = measuredWidth > MAX_W;
 
     setNotifWidth(clampedWidth);
     setIsTextTruncated(isTruncated);
-  }, [pillContext.notifMsg]);
+  }, [pillContext.notifMsg, MAX_W]);
 
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
@@ -384,6 +403,7 @@ const App: React.FC = () => {
         pillContext={pillContext}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
+        dims={{ baseW: BASE_W, baseH: BASE_H, restingH: RESTING_H, expandedW: EXPANDED_W, expandedH: EXPANDED_H, maxW: MAX_W }}
         onStartDictation={() => {
           pillDispatch({ type: "PTT_START" });
           trans.start();

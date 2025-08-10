@@ -96,3 +96,9 @@ contextBridge.exposeInMainWorld("electron", {
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),
 });
+
+// Event bridge for active display updates
+contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: any) => void) => {
+  const listener = (_event: Electron.IpcRendererEvent, payload: any) => cb(payload);
+  ipcRenderer.on("active-display", listener);
+});

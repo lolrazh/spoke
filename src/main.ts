@@ -91,6 +91,61 @@ function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = tr
   }
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function computeScaleForDisplay(display: Electron.Display): number {
+  // Shrink-only scaling: keep 1.0 on wider displays, scale down on smaller ones
+  // Reference width tuned to typical modern Macs (1728 logical px). Range: [0.9, 1.0]
+  const referenceWidth = 1728;
+  const raw = display.size.width / referenceWidth;
+  return clamp(raw, 0.9, 1.0);
+}
+
+function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; width: number; height: number } | null {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const scale = computeScaleForDisplay(display);
+
+  // Expanded pill is 600×610 at scale 1. Add shadow pad on all sides
+  const targetContentW = Math.round(600 * scale);
+  const targetContentH = Math.round(610 * scale);
+  const targetW = Math.max(ISLAND_WIDTH, targetContentW + SHADOW_PAD * 2);
+  const targetH = Math.max(ISLAND_HEIGHT, targetContentH + SHADOW_PAD * 2);
+
+  const current = mainWindow.getBounds();
+  const newX = display.bounds.x + Math.round((display.size.width - targetW) / 2);
+  // Preserve relative Y offset to the display
+  const currentDisplay = screen.getDisplayMatching(current);
+  const relativeY = current.y - currentDisplay.bounds.y;
+  const newY = display.bounds.y + relativeY;
+
+  if (current.width !== targetW || current.height !== targetH || current.x !== newX || current.y !== newY) {
+    mainWindow.setBounds({ x: newX, y: newY, width: targetW, height: targetH }, false);
+    if (process.platform === "darwin") mainWindow.invalidateShadow();
+    logBounds("ensureEnvelopeForDisplay");
+  }
+  return { scale, width: targetW, height: targetH };
+}
+
+function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
+  try {
+    const payload = {
+      id: display.id,
+      bounds: display.bounds,
+      size: display.size,
+      workArea: display.workArea,
+      scaleFactor: display.scaleFactor,
+      scale,
+      // Current window envelope for reference
+      window: mainWindow?.getBounds() ?? null,
+    };
+    mainWindow?.webContents.send("active-display", payload);
+  } catch (e) {
+    // ignore
+  }
+}
+
 function startFollowCursor(): void {
   if (followCursorInterval) {
     clearInterval(followCursorInterval);
@@ -104,10 +159,11 @@ function startFollowCursor(): void {
       if (display.id !== activeDisplayId) {
         const prevId = activeDisplayId;
         activeDisplayId = display.id;
-        centerWindowOnDisplay(display, true);
+        const result = ensureEnvelopeForDisplay(display);
+        const scale = result?.scale ?? computeScaleForDisplay(display);
+        emitActiveDisplayInfo(display, scale);
         console.log(
-          `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scale=${display.scaleFactor}, bounds=%o`,
-          display.bounds,
+          `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scaleFactor=${display.scaleFactor}, logicalWidth=${display.size.width}, scale=${scale}`,
         );
       }
     } catch (_) {
@@ -493,10 +549,13 @@ const createWindow = () => {
       console.warn("Failed to top-align on ready-to-show:", e);
     }
 
-    // Open DevTools automatically in development mode
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    // Suppress DevTools auto-open for transparent pill window to avoid overlays.
+    // Opt-in with SF_DEVTOOLS=1 if you explicitly need DevTools.
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL && process.env.SF_DEVTOOLS === "1") {
       mainWindow.webContents.openDevTools({ mode: "detach" });
-      console.log("DevTools opened in development mode.");
+      console.log("DevTools opened (opt-in).\nTip: unset SF_DEVTOOLS to suppress overlays on transparent window.");
+    } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      console.log("DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)");
     }
     // Note: DevTools disabled in production to maintain transparency on macOS
   });
@@ -530,6 +589,9 @@ const createWindow = () => {
   );
   mainWindow.setBounds({ x: initialX, y: initialY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
   logBounds("createWindow");
+  // Immediately size envelope for display scale and notify renderer
+  const sized = ensureEnvelopeForDisplay(cursorDisplay);
+  emitActiveDisplayInfo(cursorDisplay, sized?.scale ?? computeScaleForDisplay(cursorDisplay));
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -1144,12 +1206,13 @@ app.whenReady().then(async () => {
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const display = getActiveDisplay();
-      const centeredX = display.bounds.x + Math.round((display.size.width - ISLAND_WIDTH) / 2);
+      const current = mainWindow.getBounds();
+      const centeredX = display.bounds.x + Math.round((display.size.width - current.width) / 2);
       const newY = display.bounds.y + y; // slide offset relative to target display
       console.log(
         `[Island Slide] Display=${display.id} width=${display.size.width}px, centeredX=${centeredX}, yRel=${y}, yAbs=${newY}`,
       );
-      mainWindow.setBounds({ x: centeredX, y: newY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
+      mainWindow.setBounds({ x: centeredX, y: newY, width: current.width, height: current.height });
     }
   });
 

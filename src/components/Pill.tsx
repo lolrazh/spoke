@@ -21,6 +21,14 @@ interface PillProps {
   };
   notifWidth: number | null;
   isTextTruncated: boolean;
+  dims: {
+    baseW: number;
+    baseH: number;
+    restingH: number;
+    expandedW: number;
+    expandedH: number;
+    maxW: number;
+  };
   onStartDictation: () => void;
   onStopDictation: () => void;
   onHoverChange: (hovering: boolean) => void;
@@ -42,6 +50,7 @@ const Pill: React.FC<PillProps> = ({
   onAnimDone,
   notifWidth,
   isTextTruncated,
+  dims,
   onMouseEnter,
   onMouseLeave,
   onExpand,
@@ -190,21 +199,21 @@ const Pill: React.FC<PillProps> = ({
   };
 
   // Build dynamic animation target
-  const notificationTargetWidth = notifWidth ?? TOKENS.PILL_BASE_W; // fallback
+  const notificationTargetWidth = notifWidth ?? dims.baseW; // fallback
 
   // We'll drive width/height via explicit animate prop (overrides variants.width)
   const animateForState = (() => {
     switch (pillState) {
       case "IDLE":
-        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_RESTING_H };
+        return { width: dims.baseW, height: dims.restingH };
       case "HOVER_PREVIEW":
       case "LISTENING":
       case "PROCESSING":
-        return { width: TOKENS.PILL_BASE_W, height: TOKENS.PILL_BASE_H };
+        return { width: dims.baseW, height: dims.baseH };
       case "NOTIFICATION":
-        return { width: notificationTargetWidth, height: TOKENS.PILL_BASE_H };
+        return { width: notificationTargetWidth, height: dims.baseH };
       case "EXPANDED":
-        return { width: 600, height: 610 };
+        return { width: dims.expandedW, height: dims.expandedH };
       default:
         return {};
     }

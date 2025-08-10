@@ -49,6 +49,18 @@ declare global {
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
     };
+    /** Receive active display information and computed UI scale from main */
+    onActiveDisplay?: (
+      cb: (payload: {
+        id: number;
+        bounds: { x: number; y: number; width: number; height: number };
+        size: { width: number; height: number };
+        workArea: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+        scale: number;
+        window: { x: number; y: number; width: number; height: number } | null;
+      }) => void,
+    ) => void;
     mic: {
       updateDevices: (
         devices: Array<{ id: string; label: string }>,
