@@ -76,6 +76,20 @@ function getActiveDisplay(): Electron.Display {
   return getDisplayForPoint(screen.getCursorScreenPoint());
 }
 
+function getDisplayForWindow(): Electron.Display {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return getActiveDisplay();
+  }
+  const b = mainWindow.getBounds();
+  // Prefer the display that best matches the window bounds (largest area intersection)
+  const match = screen.getDisplayMatching(b);
+  if (match) return match;
+  // Fallback: use the display nearest to the window center point
+  const cx = Math.round(b.x + b.width / 2);
+  const cy = Math.round(b.y + b.height / 2);
+  return screen.getDisplayNearestPoint({ x: cx, y: cy });
+}
+
 function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = true): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const currentBounds = mainWindow.getBounds();
@@ -174,7 +188,8 @@ function startFollowCursor(): void {
 
 function syncToCurrentDisplay(reason: string): void {
   try {
-    const display = getActiveDisplay();
+    // On OS display changes, select display based on current window location
+    const display = getDisplayForWindow();
     activeDisplayId = display.id;
     const sized = ensureEnvelopeForDisplay(display);
     const scale = sized?.scale ?? computeScaleForDisplay(display);
