@@ -61,6 +61,8 @@ let hideEndTime: number | null = null;
 // === Active display tracking for continuous follow ===
 let activeDisplayId: number | null = null;
 let followCursorInterval: NodeJS.Timeout | null = null;
+let coalesceTimer: NodeJS.Timeout | null = null;
+let pendingBounds: Electron.Rectangle | null = null;
 
 function getDisplayForPoint(point: Electron.Point): Electron.Display {
   return screen.getDisplayNearestPoint(point);
@@ -85,8 +87,7 @@ function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = tr
     newY = display.bounds.y + relativeY;
   }
   if (currentBounds.x !== newX || currentBounds.y !== newY) {
-    mainWindow.setBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height }, false);
-    if (process.platform === "darwin") mainWindow.invalidateShadow();
+    coalescedSetBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height });
     logBounds("centerWindowOnDisplay");
   }
 }
@@ -121,8 +122,7 @@ function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; w
   const newY = display.bounds.y + relativeY;
 
   if (current.width !== targetW || current.height !== targetH || current.x !== newX || current.y !== newY) {
-    mainWindow.setBounds({ x: newX, y: newY, width: targetW, height: targetH }, false);
-    if (process.platform === "darwin") mainWindow.invalidateShadow();
+    coalescedSetBounds({ x: newX, y: newY, width: targetW, height: targetH });
     logBounds("ensureEnvelopeForDisplay");
   }
   return { scale, width: targetW, height: targetH };
@@ -183,6 +183,36 @@ function syncToCurrentDisplay(reason: string): void {
   } catch (e) {
     // ignore
   }
+}
+
+function coalescedSetBounds(bounds: Electron.Rectangle): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const current = mainWindow.getBounds();
+  // Skip if identical
+  if (
+    current.x === bounds.x &&
+    current.y === bounds.y &&
+    current.width === bounds.width &&
+    current.height === bounds.height
+  ) {
+    return;
+  }
+
+  // Merge into pending
+  pendingBounds = bounds;
+  if (coalesceTimer) return;
+  // Coalesce within ~16ms
+  coalesceTimer = setTimeout(() => {
+    coalesceTimer = null;
+    const finalBounds = pendingBounds ?? mainWindow!.getBounds();
+    pendingBounds = null;
+    try {
+      mainWindow!.setBounds(finalBounds, false);
+      if (process.platform === "darwin") mainWindow!.invalidateShadow();
+    } catch (e) {
+      // ignore
+    }
+  }, 16);
 }
 
 function spawnHelper(
@@ -1225,12 +1255,10 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const display = getActiveDisplay();
       const current = mainWindow.getBounds();
-      const centeredX = display.bounds.x + Math.round((display.size.width - current.width) / 2);
       const newY = display.bounds.y + y; // slide offset relative to target display
-      console.log(
-        `[Island Slide] Display=${display.id} width=${display.size.width}px, centeredX=${centeredX}, yRel=${y}, yAbs=${newY}`,
-      );
-      mainWindow.setBounds({ x: centeredX, y: newY, width: current.width, height: current.height });
+      // Only change Y during slide to avoid compositor thrash; X is handled on display change/envelope resize
+      const target = { x: current.x, y: newY, width: current.width, height: current.height };
+      coalescedSetBounds(target);
     }
   });
 
