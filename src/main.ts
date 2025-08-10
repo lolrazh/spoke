@@ -96,7 +96,7 @@ function startFollowCursor(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
-  // 60 Hz polling for "Wispr-fast" feel
+  // 30 Hz polling for responsiveness with low overhead
   followCursorInterval = setInterval(() => {
     try {
       const point = screen.getCursorScreenPoint();
@@ -113,7 +113,7 @@ function startFollowCursor(): void {
     } catch (_) {
       // ignore
     }
-  }, 17);
+  }, 33);
 }
 
 function spawnHelper(
