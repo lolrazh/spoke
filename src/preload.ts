@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld("ptt", {
 });
 
 // Microphone device management bridge
-type MicDevice = { id: string; label: string };
+import type { MicDevice } from "./types/shared";
 
 contextBridge.exposeInMainWorld("mic", {
   /** Send the current discovered set of microphone devices to main. */

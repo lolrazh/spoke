@@ -18,21 +18,12 @@ import { spawn, execFile, execSync } from "child_process";
 
 import fs from "node:fs";
 
-import {
-  ISLAND_HIDDEN_Y,
-  ISLAND_WIDTH,
-  ISLAND_HEIGHT,
-  ISLAND_VISIBLE_Y,
-  SHADOW_PAD,
-} from "./constants/window";
-import {
-  ONBOARDING_WIDTH,
-  ONBOARDING_HEIGHT,
-} from "./constants/onboarding";
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD } from "./constants/window";
+import { ONBOARDING_WIDTH, ONBOARDING_HEIGHT } from "./constants/onboarding";
+import type { MicDevice, MicPreferences, PttTarget } from "./types/shared";
+import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems, buildCopyTranscriptItem } from "./utils/menuBuilders";
 
-// Microphone device management types
-type MicDevice = { id: string; label: string };
-type MicPreferences = { selectedMicId?: string };
+// Types moved to ./types/shared
 
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -51,7 +42,6 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
-type PttTarget = "auto" | "onboarding" | "main";
 let pttTarget: PttTarget = "auto";
 
 // Microphone management state
@@ -653,73 +643,23 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  // Build microphone submenu
-  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-
-  if (micDevices.length === 0) {
-    micSubmenu.push({
-      label: "No microphones detected",
-      enabled: false,
-    });
-  } else {
-    // Add each device as a menu item
-    micDevices.forEach((device) => {
-      micSubmenu.push({
-        label: device.label,
-        type: "radio",
-        checked: device.id === selectedMicId,
-        click: () => {
-          console.log(
-            `[Tray Menu] Microphone selected: ${device.label} (${device.id})`,
-          );
-          selectMicDevice(device.id);
-        },
-      });
-    });
-  }
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
 
   return [
-    {
-      label: "Open Settings",
-      click: () => {
-        console.log("[Tray Menu] Open Settings clicked");
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.webContents.send("expand-pill");
-        }
-      },
-    },
+    ...buildCommonAppItems(() => {
+      console.log("[Tray Menu] Open Settings clicked");
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.webContents.send("expand-pill");
+      }
+    }),
     ...buildFloatingBarMenuItems(),
     {
       label: "Select Microphone",
       submenu: micSubmenu,
     },
     { type: "separator" },
-    {
-      label: "Send Feedback…",
-      click: () => {
-        console.log("[Tray Menu] Send Feedback clicked");
-        // Open default email client with pre-filled feedback email
-        const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
-        );
-        shell.openExternal(feedbackEmail);
-      },
-    },
-    {
-      label: "About Sonic Flow",
-      click: () => {
-        console.log("[Tray Menu] About Sonic Flow clicked");
-        // Use native macOS about panel
-        app.setAboutPanelOptions({
-          applicationName: "Sonic Flow",
-          applicationVersion: app.getVersion(),
-          credits: "A lightweight AI dictation tool for macOS.",
-          authors: ["Sandheep Rajkumar"],
-        });
-        app.showAboutPanel();
-      },
-    },
+    ...buildFeedbackAndAboutItems(),
     { type: "separator" },
     {
       label: "Quit Sonic Flow",
@@ -740,88 +680,27 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  // Build microphone submenu
-  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-
-  if (micDevices.length === 0) {
-    micSubmenu.push({
-      label: "No microphones detected",
-      enabled: false,
-    });
-  } else {
-    // Add each device as a menu item
-    micDevices.forEach((device) => {
-      micSubmenu.push({
-        label: device.label,
-        type: "radio",
-        checked: device.id === selectedMicId,
-        click: () => {
-          console.log(
-            `[Pill Menu] Microphone selected: ${device.label} (${device.id})`,
-          );
-          selectMicDevice(device.id);
-        },
-      });
-    });
-  }
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
 
   return [
-    {
-      label: "Open Settings",
-      click: () => {
-        console.log("[Pill Menu] Open Settings clicked");
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.webContents.send("expand-pill");
-        }
-      },
-    },
+    ...buildCommonAppItems(() => {
+      console.log("[Pill Menu] Open Settings clicked");
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.webContents.send("expand-pill");
+      }
+    }),
     {
       label: "Select Microphone",
       submenu: micSubmenu,
     },
     { type: "separator" },
-    {
-      label: "Copy Last Transcript",
-      enabled: lastTranscript.length > 0,
-      click: () => {
-        console.log("[Pill Menu] Copy Last Transcript clicked");
-        if (lastTranscript) {
-          clipboard.writeText(lastTranscript);
-          mainWindow?.webContents.send(
-            "notify",
-            "Transcript copied to clipboard",
-          );
-        }
-      },
-    },
+    buildCopyTranscriptItem(() => lastTranscript, () => {
+      mainWindow?.webContents.send("notify", "Transcript copied to clipboard");
+    }),
     ...buildFloatingBarMenuItems(),
     { type: "separator" },
-    {
-      label: "Send Feedback…",
-      click: () => {
-        console.log("[Pill Menu] Send Feedback clicked");
-        // Open default email client with pre-filled feedback email
-        const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
-        );
-        shell.openExternal(feedbackEmail);
-      },
-    },
-    {
-      label: "About Sonic Flow",
-      click: () => {
-        console.log("[Pill Menu] About Sonic Flow clicked");
-        // Use native macOS about panel
-        app.setAboutPanelOptions({
-          applicationName: "Sonic Flow",
-          applicationVersion: app.getVersion(),
-          credits: "A lightweight AI dictation tool for macOS.",
-          authors: ["Sandheep Rajkumar"],
-        });
-        app.showAboutPanel();
-      },
-    },
+    ...buildFeedbackAndAboutItems(),
   ];
 }
 
@@ -1774,7 +1653,7 @@ function startFnListener() {
           "[FnListener] Unknown error starting Sonic Flow Helper:",
           error.message,
         );
-        ;(pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
+        (pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );

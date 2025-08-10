@@ -1,5 +1,5 @@
 // src/utils/micDevices.ts
-export type MicDevice = { id: string; label: string };
+import type { MicDevice } from "../types/shared";
 
 let currentSelected: string | undefined; // from prefs; updated via main broadcast
 
