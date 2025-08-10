@@ -259,18 +259,8 @@ const App: React.FC = () => {
     };
   }, [pillState]);
 
-  const slideToDebounced = useCallback(
-    debounce((y: number) => {
-      window.island?.slideTo(y);
-    }, 100),
-    [],
-  );
-
-  useEffect(() => {
-    const isPillVisible = pillState !== "IDLE";
-    const targetY = isPillVisible ? ISLAND_VISIBLE_Y : ISLAND_HIDDEN_Y;
-    slideToDebounced(targetY);
-  }, [pillState, slideToDebounced]);
+  // During onboarding we avoid fighting with onboarding's request to expand the pill.
+  // Keep native window stationary here; expansion is driven by renderer UI state.
 
   // Notification duration for NOTIFICATION
   useEffect(() => {

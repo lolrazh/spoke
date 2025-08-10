@@ -1213,6 +1213,15 @@ app.whenReady().then(async () => {
     // (Removed) silent app location check after onboarding
   });
 
+  // Allow other windows (onboarding) to request the pill to expand without directly moving the window
+  ipcMain.handle("pill:expand", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("expand-pill");
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");

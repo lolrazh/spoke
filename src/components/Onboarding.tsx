@@ -275,16 +275,11 @@ const Onboarding: React.FC = () => {
     }
   }, [currentStep]);
 
-  // Show the pill UI during the hotkey-test step; hide it on other steps
+  // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
     if (currentStep === "hotkey-test") {
-      // Route PTT to the main pill for dictation testing
       window.electron?.setPttTarget?.("main");
-      // Show pill by sliding it into view
-      window.island?.slideTo?.(-60);
-    } else {
-      // Hide pill by sliding it out of view
-      window.island?.slideTo?.(-160);
+      window.electron?.requestExpandPill?.();
     }
   }, [currentStep]);
 
