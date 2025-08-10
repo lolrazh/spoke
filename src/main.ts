@@ -94,12 +94,8 @@ function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = tr
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const currentBounds = mainWindow.getBounds();
   const newX = display.bounds.x + Math.round((display.size.width - currentBounds.width) / 2);
-  let newY = currentBounds.y;
-  if (preserveRelativeY) {
-    const currentDisplay = screen.getDisplayMatching(currentBounds);
-    const relativeY = currentBounds.y - currentDisplay.bounds.y;
-    newY = display.bounds.y + relativeY;
-  }
+  // Always snap to safe top of target display to keep pill flush to menu bar/notch
+  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
   if (currentBounds.x !== newX || currentBounds.y !== newY) {
     coalescedSetBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height });
     logBounds("centerWindowOnDisplay");
@@ -130,10 +126,8 @@ function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; w
 
   const current = mainWindow.getBounds();
   const newX = display.bounds.x + Math.round((display.size.width - targetW) / 2);
-  // Preserve relative Y offset to the display
-  const currentDisplay = screen.getDisplayMatching(current);
-  const relativeY = current.y - currentDisplay.bounds.y;
-  const newY = display.bounds.y + relativeY;
+  // Snap Y to the top safe area of the target display (stick to menu bar/notch)
+  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
 
   if (current.width !== targetW || current.height !== targetH || current.x !== newX || current.y !== newY) {
     coalescedSetBounds({ x: newX, y: newY, width: targetW, height: targetH });
@@ -599,7 +593,7 @@ const createWindow = () => {
       const current = mainWindow.getBounds();
       const currentDisplay = screen.getDisplayMatching(current);
       activeDisplayId = currentDisplay.id;
-      const targetY = currentDisplay.bounds.y + ISLAND_VISIBLE_Y;
+      const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
       mainWindow.setBounds({ x: current.x, y: targetY, width: current.width, height: current.height }, false);
       if (process.platform === "darwin") mainWindow.invalidateShadow();
       logBounds("ready-to-show -> top-align");
@@ -641,7 +635,8 @@ const createWindow = () => {
   const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   activeDisplayId = cursorDisplay.id;
   const initialX = cursorDisplay.bounds.x + Math.round((cursorDisplay.size.width - ISLAND_WIDTH) / 2);
-  const initialY = cursorDisplay.bounds.y + ISLAND_HIDDEN_Y;
+  // Start aligned to safe top so the pill is always flush when shown
+  const initialY = cursorDisplay.workArea.y + ISLAND_VISIBLE_Y;
   console.log(
     `[Window Creation] Display=${cursorDisplay.id} width=${cursorDisplay.size.width}px, Initial X=${initialX}, Y=${initialY}`,
   );
