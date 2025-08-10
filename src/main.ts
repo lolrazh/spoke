@@ -58,6 +58,64 @@ let lastTranscript = "";
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
 
+// === Active display tracking for continuous follow ===
+let activeDisplayId: number | null = null;
+let followCursorInterval: NodeJS.Timeout | null = null;
+
+function getDisplayForPoint(point: Electron.Point): Electron.Display {
+  return screen.getDisplayNearestPoint(point);
+}
+
+function getActiveDisplay(): Electron.Display {
+  if (activeDisplayId != null) {
+    const existing = screen.getAllDisplays().find((d) => d.id === activeDisplayId);
+    if (existing) return existing;
+  }
+  return getDisplayForPoint(screen.getCursorScreenPoint());
+}
+
+function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = true): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const currentBounds = mainWindow.getBounds();
+  const newX = display.bounds.x + Math.round((display.size.width - currentBounds.width) / 2);
+  let newY = currentBounds.y;
+  if (preserveRelativeY) {
+    const currentDisplay = screen.getDisplayMatching(currentBounds);
+    const relativeY = currentBounds.y - currentDisplay.bounds.y;
+    newY = display.bounds.y + relativeY;
+  }
+  if (currentBounds.x !== newX || currentBounds.y !== newY) {
+    mainWindow.setBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height }, false);
+    if (process.platform === "darwin") mainWindow.invalidateShadow();
+    logBounds("centerWindowOnDisplay");
+  }
+}
+
+function startFollowCursor(): void {
+  if (followCursorInterval) {
+    clearInterval(followCursorInterval);
+    followCursorInterval = null;
+  }
+  // 60 Hz polling for "Wispr-fast" feel
+  followCursorInterval = setInterval(() => {
+    try {
+      const point = screen.getCursorScreenPoint();
+      const display = getDisplayForPoint(point);
+      if (display.id !== activeDisplayId) {
+        const prevId = activeDisplayId;
+        activeDisplayId = display.id;
+        centerWindowOnDisplay(display, true);
+        console.log(
+          `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scale=${display.scaleFactor}, bounds=%o`,
+          display.bounds,
+        );
+      }
+    } catch (_) {
+      // ignore
+    }
+  }, 17);
+}
+
 function spawnHelper(
   path: string,
   args: string[] = [],
@@ -425,10 +483,10 @@ const createWindow = () => {
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
       const current = mainWindow.getBounds();
-      mainWindow.setBounds(
-        { x: current.x, y: ISLAND_VISIBLE_Y, width: current.width, height: current.height },
-        false,
-      );
+      const currentDisplay = screen.getDisplayMatching(current);
+      activeDisplayId = currentDisplay.id;
+      const targetY = currentDisplay.bounds.y + ISLAND_VISIBLE_Y;
+      mainWindow.setBounds({ x: current.x, y: targetY, width: current.width, height: current.height }, false);
       if (process.platform === "darwin") mainWindow.invalidateShadow();
       logBounds("ready-to-show -> top-align");
     } catch (e) {
@@ -462,19 +520,15 @@ const createWindow = () => {
     rebuildTrayMenu();
   });
 
-  // Position window centered horizontally and hidden under the notch
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: fullScreenWidth } = primaryDisplay.size; // Use full screen width, not workAreaSize
-  const initialX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+  // Position window centered on the cursor's display and hidden under the notch
+  const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  activeDisplayId = cursorDisplay.id;
+  const initialX = cursorDisplay.bounds.x + Math.round((cursorDisplay.size.width - ISLAND_WIDTH) / 2);
+  const initialY = cursorDisplay.bounds.y + ISLAND_HIDDEN_Y;
   console.log(
-    `[Window Creation] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Initial X: ${initialX}, Y: ${ISLAND_HIDDEN_Y}`,
+    `[Window Creation] Display=${cursorDisplay.id} width=${cursorDisplay.size.width}px, Initial X=${initialX}, Y=${initialY}`,
   );
-  mainWindow.setBounds({
-    x: initialX,
-    y: ISLAND_HIDDEN_Y,
-    width: ISLAND_WIDTH,
-    height: ISLAND_HEIGHT,
-  });
+  mainWindow.setBounds({ x: initialX, y: initialY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
   logBounds("createWindow");
 
   // and load the index.html of the app.
@@ -999,18 +1053,14 @@ app.whenReady().then(async () => {
         createWindow();
       }
       createTray();
+      // Start continuous follow once window exists
+      startFollowCursor();
       // Ensure pill is hidden until the test step asks to show it
       if (mainWindow && !mainWindow.isDestroyed()) {
         const currentBounds = mainWindow.getBounds();
-        mainWindow.setBounds(
-          {
-            y: ISLAND_HIDDEN_Y,
-            height: currentBounds.height,
-            width: currentBounds.width,
-            x: currentBounds.x,
-          },
-          false,
-        );
+        const display = screen.getDisplayMatching(currentBounds);
+        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
+        mainWindow.setBounds({ x: currentBounds.x, y: hideY, width: currentBounds.width, height: currentBounds.height }, false);
         logBounds("prepare-pill -> hide");
       }
       return { success: true };
@@ -1093,19 +1143,13 @@ app.whenReady().then(async () => {
 
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { width: fullScreenWidth } = primaryDisplay.size;
-      // Recalculate X to ensure perfect centering on every slide
-      const centeredX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+      const display = getActiveDisplay();
+      const centeredX = display.bounds.x + Math.round((display.size.width - ISLAND_WIDTH) / 2);
+      const newY = display.bounds.y + y; // slide offset relative to target display
       console.log(
-        `[Island Slide] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Centered X: ${centeredX}, Y: ${y}`,
+        `[Island Slide] Display=${display.id} width=${display.size.width}px, centeredX=${centeredX}, yRel=${y}, yAbs=${newY}`,
       );
-      mainWindow.setBounds({
-        x: centeredX,
-        y: y,
-        width: ISLAND_WIDTH,
-        height: ISLAND_HEIGHT,
-      });
+      mainWindow.setBounds({ x: centeredX, y: newY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
     }
   });
 
