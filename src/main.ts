@@ -172,6 +172,19 @@ function startFollowCursor(): void {
   }, 33);
 }
 
+function syncToCurrentDisplay(reason: string): void {
+  try {
+    const display = getActiveDisplay();
+    activeDisplayId = display.id;
+    const sized = ensureEnvelopeForDisplay(display);
+    const scale = sized?.scale ?? computeScaleForDisplay(display);
+    emitActiveDisplayInfo(display, scale);
+    console.log(`[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`);
+  } catch (e) {
+    // ignore
+  }
+}
+
 function spawnHelper(
   path: string,
   args: string[] = [],
@@ -1173,6 +1186,11 @@ app.whenReady().then(async () => {
       contextMenu.popup({ window: mainWindow });
     }
   });
+
+  // React to OS display changes to keep the pill consistent
+  screen.on("display-added", () => syncToCurrentDisplay("display-added"));
+  screen.on("display-removed", () => syncToCurrentDisplay("display-removed"));
+  screen.on("display-metrics-changed", () => syncToCurrentDisplay("display-metrics-changed"));
 
   // Handle pill expansion requests
   ipcMain.on("expand-pill", () => {
