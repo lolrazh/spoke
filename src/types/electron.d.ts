@@ -4,10 +4,7 @@
 
 declare global {
   interface Window {
-    app: {
-      toggleDictation: (callback: () => void) => () => void;
-      viewLogFile: () => Promise<string>;
-    };
+    app: never; // removed unused bridge
     contextMenu: {
       showPill: () => void;
     };
@@ -32,12 +29,7 @@ declare global {
       slideTo: (y: number) => void;
     };
     electron: {
-      resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
-      pillShow: () => void;
-      pillHide: () => void;
-      pillRendererReady: () => void;
-      onPillRendererReady: (cb: () => void) => () => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;

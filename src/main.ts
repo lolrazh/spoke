@@ -1201,36 +1201,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  ipcMain.on("pill-resize", (event, { width, height }) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      // Enforce padding so CSS shadows never get clipped during animations
-      const paddedWidth = Math.round(width + SHADOW_PAD * 2);
-      const paddedHeight = Math.round(height + SHADOW_PAD * 2);
-
-      const targetW = Math.max(paddedWidth, ISLAND_WIDTH);
-      const targetH = Math.max(paddedHeight, ISLAND_HEIGHT);
-
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { width: screenWidth } = primaryDisplay.size;
-      const x = Math.round((screenWidth - targetW) / 2);
-
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          x,
-          y: currentBounds.y,
-          width: targetW,
-          height: targetH,
-        },
-        false,
-      );
-
-      if (process.platform === "darwin") {
-        mainWindow.invalidateShadow();
-      }
-      logBounds("pill-resize");
-    }
-  });
+  // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)
 
   // Handle dynamic click-through control
   ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
@@ -1239,38 +1210,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on("pill-show", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          y: ISLAND_VISIBLE_Y,
-          height: currentBounds.height,
-          width: currentBounds.width,
-          x: currentBounds.x,
-        },
-        false,
-      );
-      logBounds("pill-show");
-      mainWindow.focus();
-    }
-  });
-
-  ipcMain.on("pill-hide", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          y: ISLAND_HIDDEN_Y,
-          height: currentBounds.height,
-          width: currentBounds.width,
-          x: currentBounds.x,
-        },
-        false,
-      );
-      logBounds("pill-hide");
-    }
-  });
+  // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
 
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {

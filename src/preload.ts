@@ -3,21 +3,6 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld("app", {
-  toggleDictation: (callback: () => void) => {
-    // Remove any existing listeners to prevent duplicates
-    ipcRenderer.removeAllListeners("toggle-dictation");
-    // Add the new listener
-    ipcRenderer.on("toggle-dictation", () => callback());
-
-    // Return a cleanup function that can be called when the component unmounts
-    return () => {
-      ipcRenderer.removeAllListeners("toggle-dictation");
-    };
-  },
-  viewLogFile: () => ipcRenderer.invoke("view-log-file"),
-});
-
 contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
 });
@@ -87,18 +72,8 @@ contextBridge.exposeInMainWorld("island", {
 });
 
 contextBridge.exposeInMainWorld("electron", {
-  resizePill: (width: number, height: number) =>
-    ipcRenderer.send("pill-resize", { width, height }),
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
-  pillShow: () => ipcRenderer.send("pill-show"),
-  pillHide: () => ipcRenderer.send("pill-hide"),
-  pillRendererReady: () => ipcRenderer.send("pill-renderer-ready"),
-  onPillRendererReady: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-renderer-ready", listener);
-    return () => ipcRenderer.removeListener("pill-renderer-ready", listener);
-  },
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
