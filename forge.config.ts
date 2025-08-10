@@ -22,20 +22,20 @@ const config: ForgeConfig = {
       "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing configuration for internal testing
-    osxSign: {
-      identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
-      // @ts-ignore
-      hardenedRuntime: true,
-      signatureFlags: "runtime",
-      entitlements: "./build/entitlements/main.plist",
-      entitlementsInherit: "./build/entitlements/inherit.plist",
-      preAutoEntitlements: false,
-      optionsForFile: (filePath) => {
-        // The main app has its own entitlements.
-        // The helper bundle is signed separately by our build script.
-        return {};
-      }
-    }
+    // osxSign: {
+    //   identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
+    //   // @ts-ignore
+    //   hardenedRuntime: true,
+    //   signatureFlags: "runtime",
+    //   entitlements: "./build/entitlements/main.plist",
+    //   entitlementsInherit: "./build/entitlements/inherit.plist",
+    //   preAutoEntitlements: false,
+    //   optionsForFile: (filePath) => {
+    //     // The main app has its own entitlements.
+    //     // The helper bundle is signed separately by our build script.
+    //     return {};
+    //   }
+    // }
     // No notarization needed for internal testing
   },
   rebuildConfig: {},
@@ -47,12 +47,13 @@ const config: ForgeConfig = {
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
         background: "./public/assets/dmg-background@2x.png",
+        title: "Sonic Flow",
         iconSize: 96,
         additionalDMGOptions: {
           window: {
             size: {
               width: 660,
-              height: 450,
+              height: 400,
             },
           },
         },
