@@ -578,8 +578,8 @@ function createOnboardingWindow() {
     console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
   });
   
-  onboardingWindow.webContents.on('crashed', (event, killed) => {
-    console.error("[Onboarding] Renderer crashed:", killed);
+  onboardingWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error("[Onboarding] Renderer process gone:", details);
   });
   
   onboardingWindow.on('unresponsive', () => {
@@ -1575,17 +1575,23 @@ app.on("before-quit", () => {
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
-      process.kill(p.pid, "SIGKILL");
-    } catch {}
+      if (p.pid) process.kill(p.pid, "SIGKILL");
+    } catch (e) {
+      // ignore
+    }
   }
 
   // **belts-and-suspenders**: kill anything matching the name
   try {
     execSync("pkill -9 -f 'Sonic Flow Helper' || true");
-  } catch {}
+  } catch (e) {
+    // ignore
+  }
   try {
     execSync("pkill -9 -f sonic-helper    || true");
-  } catch {}
+  } catch (e) {
+    // ignore
+  }
 });
 
 app.on("will-quit", () => {
@@ -1599,7 +1605,9 @@ app.on("will-quit", () => {
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
       p.kill("SIGKILL");
-    } catch {}
+    } catch (e) {
+      // ignore
+    }
   }
 });
 
