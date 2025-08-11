@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
+import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y, CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 
 // Pill State Machine Types
@@ -333,8 +333,8 @@ const App: React.FC = () => {
   const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
-  const EXPANDED_W = Math.round(600 * S);
-  const EXPANDED_H = Math.round(610 * S);
+  const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
+  const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   // Measure notification width whenever notif message changes

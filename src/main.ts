@@ -18,7 +18,7 @@ import { spawn, execFile, execSync } from "child_process";
 
 import fs from "node:fs";
 
-import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD } from "./constants/window";
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD, CONTENT_WIDTH, CONTENT_HEIGHT } from "./constants/window";
 import { ONBOARDING_WIDTH, ONBOARDING_HEIGHT } from "./constants/onboarding";
 import type { MicDevice, MicPreferences, PttTarget } from "./types/shared";
 import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems, buildCopyTranscriptItem } from "./utils/menuBuilders";
@@ -124,9 +124,9 @@ function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; w
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const scale = computeScaleForDisplay(display);
 
-  // Expanded pill is 600×610 at scale 1. Add shadow pad on all sides
-  const targetContentW = Math.round(600 * scale);
-  const targetContentH = Math.round(610 * scale);
+  // Expanded pill content, scaled per active display
+  const targetContentW = Math.round(CONTENT_WIDTH * scale);
+  const targetContentH = Math.round(CONTENT_HEIGHT * scale);
   const targetW = Math.max(ISLAND_WIDTH, targetContentW + SHADOW_PAD * 2);
   const targetH = Math.max(ISLAND_HEIGHT, targetContentH + SHADOW_PAD * 2);
 

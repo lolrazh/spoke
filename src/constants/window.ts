@@ -4,6 +4,10 @@ export const SHADOW_PAD = 60; // px on each side to prevent CSS shadow clipping
 export const ISLAND_HIDDEN_Y = -100 - SHADOW_PAD;
 export const ISLAND_VISIBLE_Y = -SHADOW_PAD;
 
-// Expanded pill is 600×610 → window must include padding on all sides
-export const ISLAND_WIDTH = 600 + SHADOW_PAD * 2; // 720
-export const ISLAND_HEIGHT = 610 + SHADOW_PAD * 2; // 730
+// Base content dimensions for the expanded pill
+export const CONTENT_WIDTH = 600;
+export const CONTENT_HEIGHT = 700;
+
+// Window envelope includes padding on all sides for shadows
+export const ISLAND_WIDTH = CONTENT_WIDTH + SHADOW_PAD * 2; // 720
+export const ISLAND_HEIGHT = CONTENT_HEIGHT + SHADOW_PAD * 2; // 760
