@@ -34,7 +34,11 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
           )}
         </div>
       </div>
-      {children && <div className="flex items-center shrink-0">{children}</div>}
+      {children && (
+        <div className="flex items-center shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 };

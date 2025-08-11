@@ -308,6 +308,14 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     console.log("Signing out");
   };
 
+  // Ensure interactive cursor and events work in embedded (expanded) mode
+  useEffect(() => {
+    if (embeddedMode) {
+      window.electron?.setClickThrough(false);
+    }
+    // No explicit cleanup; outer FSM restores click-through when collapsing
+  }, [embeddedMode]);
+
   return (
     <div
       className={`${embeddedMode ? "h-full" : "h-screen"} bg-background text-foreground flex flex-col relative`}
@@ -342,7 +350,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Defaults" />
 
-              <div className="space-y-3">
+              <div className="space-y-3" style={{ WebkitAppRegion: "no-drag" }}>
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"

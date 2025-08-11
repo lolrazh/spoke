@@ -220,6 +220,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleExpandPill = () => {
       pillDispatch({ type: "EXPAND" });
+      // Ensure OS uses our window for cursor during expanded mode
+      window.electron?.setClickThrough(false);
+      window.electron?.setFocusable?.(true);
     };
 
     window.electron?.expandPill?.(handleExpandPill);
@@ -231,6 +234,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (pillState === "EXPANDED") {
       window.electron?.setClickThrough(false);
+      window.electron?.setFocusable?.(true);
     }
   }, [pillState]);
 
@@ -256,6 +260,9 @@ const App: React.FC = () => {
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener("mousedown", handleClickOutside);
+      // Restore original click-through and focusable behavior when collapsing
+      window.electron?.setFocusable?.(false);
+      window.electron?.setClickThrough(true);
     };
   }, [pillState]);
 

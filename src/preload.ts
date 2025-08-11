@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld("island", {
 contextBridge.exposeInMainWorld("electron", {
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
+  setFocusable: (focusable: boolean) => ipcRenderer.send("set-focusable", focusable),
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },

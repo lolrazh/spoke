@@ -671,8 +671,9 @@ const createWindow = () => {
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Make window click-through by default - clicks pass through to underlying windows
-  mainWindow.setIgnoreMouseEvents(true);
+  // Make window click-through by default, but keep hover/move events forwarded
+  // This allows CSS cursors/tooltips/hover states to work even when click-through is enabled
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler(
@@ -1296,6 +1297,19 @@ app.whenReady().then(async () => {
   ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+    }
+  });
+
+  // Allow renderer to toggle focusable during expanded settings mode
+  ipcMain.on("set-focusable", (event, focusable: boolean) => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        // setFocusable is a no-op on some platforms; call defensively
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mainWindow as any).setFocusable?.(focusable);
+      }
+    } catch (e) {
+      // ignore
     }
   });
 
