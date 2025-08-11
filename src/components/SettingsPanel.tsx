@@ -58,11 +58,7 @@ const SelectField: React.FC<{
   <SettingsCard
     title={label}
     description={description}
-    icon={
-      <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M10 3a7 7 0 100 14A7 7 0 0010 3zM9 7a1 1 0 112 0v3a1 1 0 11-2 0V7zm1 6a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
-      </svg>
-    }
+    icon={<SfIcon name="mic.fill" size={16} className="text-primary/70" />}
   >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
@@ -402,11 +398,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                 <SettingsCard
                   title="Accessibility"
                   description="Insert recognized text into your apps"
-                  icon={
-                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                    </svg>
-                  }
+                  icon={<SfIcon name="accessibility" size={16} className="text-primary/70" />}
                 >
                   {!permissions.accessibility ? (
                     <Button size="sm" onClick={handleRequestAccessibility} disabled={ui.accessibility.loading} className="text-xs onboarding-cta">

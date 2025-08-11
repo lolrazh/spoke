@@ -316,7 +316,7 @@ const Pill: React.FC<PillProps> = ({
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <SfIcon name="chevron.up" size={16} />
+                  <SfIcon name="chevron.up" size={14} />
                 </button>
               </motion.div>
             ) : isShowingNotification ? (

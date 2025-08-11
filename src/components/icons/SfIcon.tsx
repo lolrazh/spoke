@@ -88,7 +88,7 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
       role={title ? "img" : undefined}
     >
       {title ? <title>{title}</title> : null}
-      <path d={spec.path} />
+      <path d={spec.path} fillRule="evenodd" clipRule="evenodd" />
     </svg>
   );
 };
