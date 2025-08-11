@@ -659,6 +659,15 @@ const createWindow = () => {
   const sized = ensureEnvelopeForDisplay(cursorDisplay);
   emitActiveDisplayInfo(cursorDisplay, sized?.scale ?? computeScaleForDisplay(cursorDisplay));
 
+  // Collapse request on blur: if user clicks outside our window, renderer can decide to collapse
+  mainWindow.on("blur", () => {
+    try {
+      mainWindow?.webContents.send("collapse-request");
+    } catch {
+      // ignore
+    }
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);

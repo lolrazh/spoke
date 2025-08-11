@@ -104,3 +104,12 @@ contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: any) => void) 
   const listener = (_event: Electron.IpcRendererEvent, payload: any) => cb(payload);
   ipcRenderer.on("active-display", listener);
 });
+
+// Forward collapse-request from main to the renderer via a window message
+ipcRenderer.on("collapse-request", () => {
+  try {
+    window.postMessage('collapse-request', '*');
+  } catch {
+    // ignore
+  }
+});
