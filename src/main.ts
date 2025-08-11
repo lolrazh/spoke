@@ -46,6 +46,11 @@ let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
 
+// Dev helper: allow skipping onboarding for faster iteration
+const SKIP_ONBOARDING =
+  process.env.SKIP_ONBOARDING === "1" ||
+  process.env.SKIP_ONBOARDING === "true";
+
 // Microphone management state
 let micDevices: MicDevice[] = [
   { id: "default", label: "System Default" }, // Always available fallback
@@ -1144,14 +1149,32 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Always show onboarding - no persistence tracking
-  console.log("[Startup] Always showing onboarding");
-  console.log("[Debug] About to create onboarding window...");
-  try {
-    createOnboardingWindow();
-    console.log("[Debug] Onboarding window created successfully");
-  } catch (error) {
-    console.error("[Debug] Error creating onboarding window:", error);
+  // Startup flow: respect SKIP_ONBOARDING for development
+  if (SKIP_ONBOARDING) {
+    console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
+    try {
+      createWindow();
+      createTray();
+      // Start continuous follow and helper to fully mimic post-onboarding state
+      startFollowCursor();
+      startFnListener();
+      pttTarget = "main";
+      console.log("[Debug] Main window launched (onboarding skipped)");
+    } catch (error) {
+      console.error(
+        "[Debug] Error launching main window with SKIP_ONBOARDING:",
+        error,
+      );
+    }
+  } else {
+    console.log("[Startup] Showing onboarding");
+    console.log("[Debug] About to create onboarding window...");
+    try {
+      createOnboardingWindow();
+      console.log("[Debug] Onboarding window created successfully");
+    } catch (error) {
+      console.error("[Debug] Error creating onboarding window:", error);
+    }
   }
 
   // Initialize microphone preferences
@@ -1611,10 +1634,13 @@ app.on("activate", () => {
     // If no windows exist at all, create the main window
     if (allWindows.length === 0) {
       console.log(
-        "[App Event] activate: No windows exist, creating main window",
+        "[App Event] activate: No windows exist, creating window",
       );
-      // Always show onboarding
-      createOnboardingWindow();
+      if (SKIP_ONBOARDING) {
+        createWindow();
+      } else {
+        createOnboardingWindow();
+      }
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
