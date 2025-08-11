@@ -97,11 +97,11 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
 );
 
 // --- Main Component --- //
-interface HomePageProps {
+interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
 }
 
-const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
     [],
@@ -138,7 +138,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
 
         setMicDevices(audioInputs);
       } catch (err) {
-        console.error("[HomePage] Failed to enumerate devices:", err);
+        console.error("[SettingsPanel] Failed to enumerate devices:", err);
         setMicDevices([]);
       }
     };
@@ -300,8 +300,6 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
       setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
     }
   };
-
-  // Keybind setting removed
 
   const handleSignOut = () => {
     // TODO: Implement sign out functionality
@@ -471,9 +469,8 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                 title="John Smith"
                 description="john.smith@example.com"
                 icon={
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-t from-primary to-foreground/80 flex items-center justify-center text-[10px] font-bold text-white">
-                    JS
-                  </div>
+                  // Avatar content only; relies on parent square container from SettingsCard
+                  <span className="text-[11px] font-semibold tracking-wide">JS</span>
                 }
               >
                 <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
@@ -501,4 +498,6 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   );
 };
 
-export default React.memo(HomePage);
+export default React.memo(SettingsPanel);
+
+
