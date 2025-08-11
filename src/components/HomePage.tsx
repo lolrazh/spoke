@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -109,7 +109,20 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [playSounds, setPlaySounds] = useState<boolean>(true);
-  const [openAtLogin, setOpenAtLogin] = useState<boolean>(false);
+
+  // Permissions state (mirrors onboarding)
+  const [permissions, setPermissions] = useState({
+    microphone: false,
+    inputMonitoring: false,
+    accessibility: false,
+  });
+  const [ui, setUi] = useState({
+    microphone: { loading: false, justGranted: false },
+    inputMonitoring: { loading: false, justGranted: false },
+    accessibility: { loading: false, justGranted: false },
+  });
+  const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
+  const axDeepLinkOpenedRef = useRef(false);
 
   // Listen for microphone device updates and selection changes
   useEffect(() => {
@@ -166,6 +179,125 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     setSelectedMicId(deviceId);
     if (window.mic?.select) {
       window.mic.select(deviceId);
+    }
+  };
+
+  // Initial permission check
+  useEffect(() => {
+    const initPerms = async () => {
+      try {
+        const [sys, mic] = await Promise.all([
+          window.electron?.checkPermissions?.(),
+          window.electron?.checkMicrophonePermission?.(),
+        ]);
+        setPermissions({
+          microphone: !!mic?.granted,
+          inputMonitoring: !(sys?.needIM ?? true),
+          accessibility: !(sys?.needAX ?? true),
+        });
+      } catch (e) {
+        // ignore
+      }
+    };
+    initPerms();
+    return () => {
+      // Cleanup polls if any were started
+      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
+      if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      pollRefs.current = { mic: null, im: null, ax: null };
+    };
+  }, []);
+
+  // Permission handlers
+  const handleRequestMicrophone = async () => {
+    try {
+      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: true } }));
+      const result = await window.electron?.requestMicrophonePermission();
+      if (result?.success && result?.granted) {
+        setPermissions((p) => ({ ...p, microphone: true }));
+        setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+        setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+      } else {
+        // Open System Settings and poll
+        await window.electron?.openSystemPreferences("microphone");
+        if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
+        pollRefs.current.mic = setInterval(async () => {
+          const status = await window.electron?.checkMicrophonePermission();
+          if (status?.granted) {
+            if (pollRefs.current.mic) {
+              clearInterval(pollRefs.current.mic!);
+              pollRefs.current.mic = null;
+            }
+            setPermissions((p) => ({ ...p, microphone: true }));
+            setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+            setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+          }
+        }, 1000);
+        setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+      }
+    } catch (e) {
+      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+    }
+  };
+
+  const handleRequestAccessibility = async () => {
+    try {
+      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
+      await window.electron?.requestAccessibilityPermission();
+      // Poll until granted; deep-link once after grace period
+      const startedAt = Date.now();
+      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      pollRefs.current.ax = setInterval(async () => {
+        const sys = await window.electron?.checkPermissions?.();
+        if (sys && !sys.needAX) {
+          if (pollRefs.current.ax) {
+            clearInterval(pollRefs.current.ax!);
+            pollRefs.current.ax = null;
+          }
+          setPermissions((p) => ({ ...p, accessibility: true }));
+          setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
+          setTimeout(() => setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } })), 800);
+        } else if (!axDeepLinkOpenedRef.current && Date.now() - startedAt > 4000) {
+          // open the pane once as fallback
+          axDeepLinkOpenedRef.current = true;
+          await window.electron?.openSystemPreferences("accessibility");
+        }
+      }, 1000);
+      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+    } catch (e) {
+      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+    }
+  };
+
+  const handleRequestInputMonitoring = async () => {
+    try {
+      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: true } }));
+      const result = await window.electron?.askIM();
+      if (result?.success && result.status === "authorized") {
+        setPermissions((p) => ({ ...p, inputMonitoring: true }));
+        setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+        setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+        return;
+      }
+      // Open System Settings and poll until granted
+      await window.electron?.openSystemPreferences("input-monitoring");
+      if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+      pollRefs.current.im = setInterval(async () => {
+        const sys = await window.electron?.checkPermissions?.();
+        if (sys && !sys.needIM) {
+          if (pollRefs.current.im) {
+            clearInterval(pollRefs.current.im!);
+            pollRefs.current.im = null;
+          }
+          setPermissions((p) => ({ ...p, inputMonitoring: true }));
+          setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+          setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+        }
+      }, 1000);
+      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
+    } catch (e) {
+      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
     }
   };
 
@@ -240,12 +372,86 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
               <SectionSeparator title="System" />
 
               <div className="space-y-3">
-                <Toggle
-                  label="Open at Login"
-                  description="Automatically start Sonic Flow when you log in"
-                  enabled={openAtLogin}
-                  onChange={setOpenAtLogin}
-                />
+                {/* Microphone Permission */}
+                <SettingsCard
+                  title="Microphone"
+                  description="Capture your voice for dictation"
+                  icon={
+                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
+                    </svg>
+                  }
+                >
+                  {!permissions.microphone ? (
+                    <Button size="sm" onClick={handleRequestMicrophone} disabled={ui.microphone.loading} className="text-xs onboarding-cta">
+                      <div className="relative flex items-center justify-center h-4 w-14">
+                        {ui.microphone.loading ? (
+                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </div>
+                    </Button>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
+                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </SettingsCard>
+
+                {/* Accessibility Permission */}
+                <SettingsCard
+                  title="Accessibility"
+                  description="Insert recognized text into your apps"
+                  icon={
+                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                    </svg>
+                  }
+                >
+                  {!permissions.accessibility ? (
+                    <Button size="sm" onClick={handleRequestAccessibility} disabled={ui.accessibility.loading} className="text-xs onboarding-cta">
+                      <div className="relative flex items-center justify-center h-4 w-14">
+                        {ui.accessibility.loading ? (
+                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </div>
+                    </Button>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
+                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </SettingsCard>
+
+                {/* Input Monitoring Permission */}
+                <SettingsCard
+                  title="Input Monitoring"
+                  description="Detect the Fn key to start and stop dictation"
+                  icon={
+                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                  }
+                >
+                  {!permissions.inputMonitoring ? (
+                    <Button size="sm" onClick={handleRequestInputMonitoring} disabled={ui.inputMonitoring.loading} className="text-xs onboarding-cta">
+                      <div className="relative flex items-center justify-center h-4 w-14">
+                        {ui.inputMonitoring.loading ? (
+                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </div>
+                    </Button>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
+                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </SettingsCard>
               </div>
             </motion.div>
 
