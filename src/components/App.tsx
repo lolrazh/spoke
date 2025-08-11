@@ -288,8 +288,11 @@ const App: React.FC = () => {
     }
   }, [pillState]);
 
+  // NOTE: Keep clamp consistent with main process scaling
+  const MIN_UI_SCALE = 0.9;
+  const MAX_UI_SCALE = 1.0;
   // Derived scaled dimensions based on active display scale
-  const S = Math.min(1, Math.max(0.9, uiScale || 1));
+  const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
   const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);

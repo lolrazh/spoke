@@ -29,7 +29,8 @@ import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
-import { ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
+import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } from "./constants/display";
 import { logger } from "./utils/logger";
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
@@ -110,9 +111,8 @@ function clamp(value: number, min: number, max: number): number {
 function computeScaleForDisplay(display: Electron.Display): number {
   // Shrink-only scaling: keep 1.0 on wider displays, scale down on smaller ones
   // Reference width tuned to typical modern Macs (1728 logical px). Range: [0.9, 1.0]
-  const referenceWidth = 1728;
-  const raw = display.size.width / referenceWidth;
-  return clamp(raw, 0.9, 1.0);
+  const raw = display.size.width / REFERENCE_WIDTH;
+  return clamp(raw, MIN_UI_SCALE, MAX_UI_SCALE);
 }
 
 function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; width: number; height: number } | null {
@@ -178,7 +178,7 @@ function startFollowCursor(): void {
     } catch (err) {
       logger.main.warn("startFollowCursor tick failed", err);
     }
-  }, 100);
+  }, CURSOR_POLL_INTERVAL_MS);
 }
 
 function stopFollowCursor(): void {
