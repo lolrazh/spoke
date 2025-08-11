@@ -46,5 +46,8 @@ export function pcm16ToWav(samples: Int16Array, sampleRate = 16000): Blob {
   view.setUint32(offset, dataSize, true);
   offset += 4;
 
-  return new Blob([header, samples.buffer], { type: "audio/wav" });
+  // Copy the Int16Array into a new ArrayBuffer to avoid SharedArrayBuffer incompatibility with BlobPart
+  const samplesCopy = new Uint8Array(samples.byteLength);
+  samplesCopy.set(new Uint8Array(samples.buffer));
+  return new Blob([header, samplesCopy.buffer], { type: "audio/wav" });
 }

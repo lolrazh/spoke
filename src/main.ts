@@ -18,27 +18,20 @@ import { spawn, execFile, execSync } from "child_process";
 
 import fs from "node:fs";
 
-import {
-  ISLAND_HIDDEN_Y,
-  ISLAND_WIDTH,
-  ISLAND_HEIGHT,
-  ISLAND_VISIBLE_Y,
-  SHADOW_PAD,
-} from "./constants/window";
-import {
-  ONBOARDING_WIDTH,
-  ONBOARDING_HEIGHT,
-} from "./constants/onboarding";
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD } from "./constants/window";
+import { ONBOARDING_WIDTH, ONBOARDING_HEIGHT } from "./constants/onboarding";
+import type { MicDevice, MicPreferences, PttTarget } from "./types/shared";
+import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems, buildCopyTranscriptItem } from "./utils/menuBuilders";
 
-// Microphone device management types
-type MicDevice = { id: string; label: string };
-type MicPreferences = { selectedMicId?: string };
+// Types moved to ./types/shared
 
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
-import { ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
+import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } from "./constants/display";
+import { logger } from "./utils/logger";
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -51,7 +44,6 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
-type PttTarget = "auto" | "onboarding" | "main";
 let pttTarget: PttTarget = "auto";
 
 // Microphone management state
@@ -67,6 +59,178 @@ let lastTranscript = "";
 // Floating bar hide timer management
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
+
+// === Active display tracking for continuous follow ===
+let activeDisplayId: number | null = null;
+let followCursorInterval: NodeJS.Timeout | null = null;
+let coalesceTimer: NodeJS.Timeout | null = null;
+let pendingBounds: Electron.Rectangle | null = null;
+
+function getDisplayForPoint(point: Electron.Point): Electron.Display {
+  return screen.getDisplayNearestPoint(point);
+}
+
+function getActiveDisplay(): Electron.Display {
+  if (activeDisplayId != null) {
+    const existing = screen.getAllDisplays().find((d) => d.id === activeDisplayId);
+    if (existing) return existing;
+  }
+  return getDisplayForPoint(screen.getCursorScreenPoint());
+}
+
+function getDisplayForWindow(): Electron.Display {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return getActiveDisplay();
+  }
+  const b = mainWindow.getBounds();
+  // Prefer the display that best matches the window bounds (largest area intersection)
+  const match = screen.getDisplayMatching(b);
+  if (match) return match;
+  // Fallback: use the display nearest to the window center point
+  const cx = Math.round(b.x + b.width / 2);
+  const cy = Math.round(b.y + b.height / 2);
+  return screen.getDisplayNearestPoint({ x: cx, y: cy });
+}
+
+function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = true): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const currentBounds = mainWindow.getBounds();
+  const newX = display.bounds.x + Math.round((display.size.width - currentBounds.width) / 2);
+  // Always snap to safe top of target display to keep pill flush to menu bar/notch
+  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
+  if (currentBounds.x !== newX || currentBounds.y !== newY) {
+    coalescedSetBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height });
+    logBounds("centerWindowOnDisplay");
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function computeScaleForDisplay(display: Electron.Display): number {
+  // Shrink-only scaling: keep 1.0 on wider displays, scale down on smaller ones
+  // Reference width tuned to typical modern Macs (1728 logical px). Range: [0.9, 1.0]
+  const raw = display.size.width / REFERENCE_WIDTH;
+  return clamp(raw, MIN_UI_SCALE, MAX_UI_SCALE);
+}
+
+function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; width: number; height: number } | null {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const scale = computeScaleForDisplay(display);
+
+  // Expanded pill is 600×610 at scale 1. Add shadow pad on all sides
+  const targetContentW = Math.round(600 * scale);
+  const targetContentH = Math.round(610 * scale);
+  const targetW = Math.max(ISLAND_WIDTH, targetContentW + SHADOW_PAD * 2);
+  const targetH = Math.max(ISLAND_HEIGHT, targetContentH + SHADOW_PAD * 2);
+
+  const current = mainWindow.getBounds();
+  const newX = display.bounds.x + Math.round((display.size.width - targetW) / 2);
+  // Snap Y to the top safe area of the target display (stick to menu bar/notch)
+  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
+
+  if (current.width !== targetW || current.height !== targetH || current.x !== newX || current.y !== newY) {
+    coalescedSetBounds({ x: newX, y: newY, width: targetW, height: targetH });
+    logBounds("ensureEnvelopeForDisplay");
+  }
+  return { scale, width: targetW, height: targetH };
+}
+
+function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
+  try {
+    const payload = {
+      id: display.id,
+      bounds: display.bounds,
+      size: display.size,
+      workArea: display.workArea,
+      scaleFactor: display.scaleFactor,
+      scale,
+      // Current window envelope for reference
+      window: mainWindow?.getBounds() ?? null,
+    };
+    mainWindow?.webContents.send("active-display", payload);
+  } catch (e) {
+    logger.main.warn("emitActiveDisplayInfo failed", e);
+  }
+}
+
+function startFollowCursor(): void {
+  if (followCursorInterval) {
+    clearInterval(followCursorInterval);
+    followCursorInterval = null;
+  }
+  // 5 Hz polling to reduce CPU usage while still tracking display changes
+  followCursorInterval = setInterval(() => {
+    try {
+      const point = screen.getCursorScreenPoint();
+      const display = getDisplayForPoint(point);
+      if (display.id !== activeDisplayId) {
+        const prevId = activeDisplayId;
+        activeDisplayId = display.id;
+        const result = ensureEnvelopeForDisplay(display);
+        const scale = result?.scale ?? computeScaleForDisplay(display);
+        emitActiveDisplayInfo(display, scale);
+        console.log(
+          `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scaleFactor=${display.scaleFactor}, logicalWidth=${display.size.width}, scale=${scale}`,
+        );
+      }
+    } catch (err) {
+      logger.main.warn("startFollowCursor tick failed", err);
+    }
+  }, CURSOR_POLL_INTERVAL_MS);
+}
+
+function stopFollowCursor(): void {
+  if (followCursorInterval) {
+    clearInterval(followCursorInterval);
+    followCursorInterval = null;
+  }
+}
+
+function syncToCurrentDisplay(reason: string): void {
+  try {
+    // On OS display changes, select display based on current window location
+    const display = getDisplayForWindow();
+    activeDisplayId = display.id;
+    const sized = ensureEnvelopeForDisplay(display);
+    const scale = sized?.scale ?? computeScaleForDisplay(display);
+    emitActiveDisplayInfo(display, scale);
+    console.log(`[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`);
+  } catch (e) {
+    logger.main.warn("syncToCurrentDisplay failed", e);
+  }
+}
+
+function coalescedSetBounds(bounds: Electron.Rectangle): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const current = mainWindow.getBounds();
+  // Skip if identical
+  if (
+    current.x === bounds.x &&
+    current.y === bounds.y &&
+    current.width === bounds.width &&
+    current.height === bounds.height
+  ) {
+    return;
+  }
+
+  // Merge into pending
+  pendingBounds = bounds;
+  if (coalesceTimer) return;
+  // Coalesce within ~16ms
+  coalesceTimer = setTimeout(() => {
+    coalesceTimer = null;
+    const finalBounds = pendingBounds ?? mainWindow!.getBounds();
+    pendingBounds = null;
+    try {
+      mainWindow!.setBounds(finalBounds, false);
+      if (process.platform === "darwin") mainWindow!.invalidateShadow();
+    } catch (e) {
+      // ignore
+    }
+  }, 16);
+}
 
 function spawnHelper(
   path: string,
@@ -435,20 +599,23 @@ const createWindow = () => {
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
       const current = mainWindow.getBounds();
-      mainWindow.setBounds(
-        { x: current.x, y: ISLAND_VISIBLE_Y, width: current.width, height: current.height },
-        false,
-      );
+      const currentDisplay = screen.getDisplayMatching(current);
+      activeDisplayId = currentDisplay.id;
+      const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
+      mainWindow.setBounds({ x: current.x, y: targetY, width: current.width, height: current.height }, false);
       if (process.platform === "darwin") mainWindow.invalidateShadow();
       logBounds("ready-to-show -> top-align");
     } catch (e) {
       console.warn("Failed to top-align on ready-to-show:", e);
     }
 
-    // Open DevTools automatically in development mode
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    // Suppress DevTools auto-open for transparent pill window to avoid overlays.
+    // Opt-in with SF_DEVTOOLS=1 if you explicitly need DevTools.
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL && process.env.SF_DEVTOOLS === "1") {
       mainWindow.webContents.openDevTools({ mode: "detach" });
-      console.log("DevTools opened in development mode.");
+      console.log("DevTools opened (opt-in).\nTip: unset SF_DEVTOOLS to suppress overlays on transparent window.");
+    } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      console.log("DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)");
     }
     // Note: DevTools disabled in production to maintain transparency on macOS
   });
@@ -472,20 +639,20 @@ const createWindow = () => {
     rebuildTrayMenu();
   });
 
-  // Position window centered horizontally and hidden under the notch
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: fullScreenWidth } = primaryDisplay.size; // Use full screen width, not workAreaSize
-  const initialX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
+  // Position window centered on the cursor's display and hidden under the notch
+  const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  activeDisplayId = cursorDisplay.id;
+  const initialX = cursorDisplay.bounds.x + Math.round((cursorDisplay.size.width - ISLAND_WIDTH) / 2);
+  // Start aligned to safe top so the pill is always flush when shown
+  const initialY = cursorDisplay.workArea.y + ISLAND_VISIBLE_Y;
   console.log(
-    `[Window Creation] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Initial X: ${initialX}, Y: ${ISLAND_HIDDEN_Y}`,
+    `[Window Creation] Display=${cursorDisplay.id} width=${cursorDisplay.size.width}px, Initial X=${initialX}, Y=${initialY}`,
   );
-  mainWindow.setBounds({
-    x: initialX,
-    y: ISLAND_HIDDEN_Y,
-    width: ISLAND_WIDTH,
-    height: ISLAND_HEIGHT,
-  });
+  mainWindow.setBounds({ x: initialX, y: initialY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
   logBounds("createWindow");
+  // Immediately size envelope for display scale and notify renderer
+  const sized = ensureEnvelopeForDisplay(cursorDisplay);
+  emitActiveDisplayInfo(cursorDisplay, sized?.scale ?? computeScaleForDisplay(cursorDisplay));
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -578,8 +745,8 @@ function createOnboardingWindow() {
     console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
   });
   
-  onboardingWindow.webContents.on('crashed', (event, killed) => {
-    console.error("[Onboarding] Renderer crashed:", killed);
+  onboardingWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error("[Onboarding] Renderer process gone:", details);
   });
   
   onboardingWindow.on('unresponsive', () => {
@@ -653,73 +820,23 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  // Build microphone submenu
-  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-
-  if (micDevices.length === 0) {
-    micSubmenu.push({
-      label: "No microphones detected",
-      enabled: false,
-    });
-  } else {
-    // Add each device as a menu item
-    micDevices.forEach((device) => {
-      micSubmenu.push({
-        label: device.label,
-        type: "radio",
-        checked: device.id === selectedMicId,
-        click: () => {
-          console.log(
-            `[Tray Menu] Microphone selected: ${device.label} (${device.id})`,
-          );
-          selectMicDevice(device.id);
-        },
-      });
-    });
-  }
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
 
   return [
-    {
-      label: "Open Settings",
-      click: () => {
-        console.log("[Tray Menu] Open Settings clicked");
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.webContents.send("expand-pill");
-        }
-      },
-    },
+    ...buildCommonAppItems(() => {
+      console.log("[Tray Menu] Open Settings clicked");
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.webContents.send("expand-pill");
+      }
+    }),
     ...buildFloatingBarMenuItems(),
     {
       label: "Select Microphone",
       submenu: micSubmenu,
     },
     { type: "separator" },
-    {
-      label: "Send Feedback…",
-      click: () => {
-        console.log("[Tray Menu] Send Feedback clicked");
-        // Open default email client with pre-filled feedback email
-        const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
-        );
-        shell.openExternal(feedbackEmail);
-      },
-    },
-    {
-      label: "About Sonic Flow",
-      click: () => {
-        console.log("[Tray Menu] About Sonic Flow clicked");
-        // Use native macOS about panel
-        app.setAboutPanelOptions({
-          applicationName: "Sonic Flow",
-          applicationVersion: app.getVersion(),
-          credits: "A lightweight AI dictation tool for macOS.",
-          authors: ["Sandheep Rajkumar"],
-        });
-        app.showAboutPanel();
-      },
-    },
+    ...buildFeedbackAndAboutItems(),
     { type: "separator" },
     {
       label: "Quit Sonic Flow",
@@ -740,88 +857,27 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  // Build microphone submenu
-  const micSubmenu: Electron.MenuItemConstructorOptions[] = [];
-
-  if (micDevices.length === 0) {
-    micSubmenu.push({
-      label: "No microphones detected",
-      enabled: false,
-    });
-  } else {
-    // Add each device as a menu item
-    micDevices.forEach((device) => {
-      micSubmenu.push({
-        label: device.label,
-        type: "radio",
-        checked: device.id === selectedMicId,
-        click: () => {
-          console.log(
-            `[Pill Menu] Microphone selected: ${device.label} (${device.id})`,
-          );
-          selectMicDevice(device.id);
-        },
-      });
-    });
-  }
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
 
   return [
-    {
-      label: "Open Settings",
-      click: () => {
-        console.log("[Pill Menu] Open Settings clicked");
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.webContents.send("expand-pill");
-        }
-      },
-    },
+    ...buildCommonAppItems(() => {
+      console.log("[Pill Menu] Open Settings clicked");
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.webContents.send("expand-pill");
+      }
+    }),
     {
       label: "Select Microphone",
       submenu: micSubmenu,
     },
     { type: "separator" },
-    {
-      label: "Copy Last Transcript",
-      enabled: lastTranscript.length > 0,
-      click: () => {
-        console.log("[Pill Menu] Copy Last Transcript clicked");
-        if (lastTranscript) {
-          clipboard.writeText(lastTranscript);
-          mainWindow?.webContents.send(
-            "notify",
-            "Transcript copied to clipboard",
-          );
-        }
-      },
-    },
+    buildCopyTranscriptItem(() => lastTranscript, () => {
+      mainWindow?.webContents.send("notify", "Transcript copied to clipboard");
+    }),
     ...buildFloatingBarMenuItems(),
     { type: "separator" },
-    {
-      label: "Send Feedback…",
-      click: () => {
-        console.log("[Pill Menu] Send Feedback clicked");
-        // Open default email client with pre-filled feedback email
-        const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
-        );
-        shell.openExternal(feedbackEmail);
-      },
-    },
-    {
-      label: "About Sonic Flow",
-      click: () => {
-        console.log("[Pill Menu] About Sonic Flow clicked");
-        // Use native macOS about panel
-        app.setAboutPanelOptions({
-          applicationName: "Sonic Flow",
-          applicationVersion: app.getVersion(),
-          credits: "A lightweight AI dictation tool for macOS.",
-          authors: ["Sandheep Rajkumar"],
-        });
-        app.showAboutPanel();
-      },
-    },
+    ...buildFeedbackAndAboutItems(),
   ];
 }
 
@@ -1120,18 +1176,14 @@ app.whenReady().then(async () => {
         createWindow();
       }
       createTray();
+      // Start continuous follow once window exists
+      startFollowCursor();
       // Ensure pill is hidden until the test step asks to show it
       if (mainWindow && !mainWindow.isDestroyed()) {
         const currentBounds = mainWindow.getBounds();
-        mainWindow.setBounds(
-          {
-            y: ISLAND_HIDDEN_Y,
-            height: currentBounds.height,
-            width: currentBounds.width,
-            x: currentBounds.x,
-          },
-          false,
-        );
+        const display = screen.getDisplayMatching(currentBounds);
+        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
+        mainWindow.setBounds({ x: currentBounds.x, y: hideY, width: currentBounds.width, height: currentBounds.height }, false);
         logBounds("prepare-pill -> hide");
       }
       return { success: true };
@@ -1164,6 +1216,15 @@ app.whenReady().then(async () => {
     // (Removed) silent app location check after onboarding
   });
 
+  // Allow other windows (onboarding) to request the pill to expand without directly moving the window
+  ipcMain.handle("pill:expand", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("expand-pill");
+      return { ok: true };
+    }
+    return { ok: false };
+  });
+
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");
@@ -1183,6 +1244,11 @@ app.whenReady().then(async () => {
     }
   });
 
+  // React to OS display changes to keep the pill consistent
+  screen.on("display-added", () => syncToCurrentDisplay("display-added"));
+  screen.on("display-removed", () => syncToCurrentDisplay("display-removed"));
+  screen.on("display-metrics-changed", () => syncToCurrentDisplay("display-metrics-changed"));
+
   // Handle pill expansion requests
   ipcMain.on("expand-pill", () => {
     console.log("[IPC Main] Received expand-pill event");
@@ -1201,36 +1267,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  ipcMain.on("pill-resize", (event, { width, height }) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      // Enforce padding so CSS shadows never get clipped during animations
-      const paddedWidth = Math.round(width + SHADOW_PAD * 2);
-      const paddedHeight = Math.round(height + SHADOW_PAD * 2);
-
-      const targetW = Math.max(paddedWidth, ISLAND_WIDTH);
-      const targetH = Math.max(paddedHeight, ISLAND_HEIGHT);
-
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { width: screenWidth } = primaryDisplay.size;
-      const x = Math.round((screenWidth - targetW) / 2);
-
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          x,
-          y: currentBounds.y,
-          width: targetW,
-          height: targetH,
-        },
-        false,
-      );
-
-      if (process.platform === "darwin") {
-        mainWindow.invalidateShadow();
-      }
-      logBounds("pill-resize");
-    }
-  });
+  // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)
 
   // Handle dynamic click-through control
   ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
@@ -1239,54 +1276,16 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.on("pill-show", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          y: ISLAND_VISIBLE_Y,
-          height: currentBounds.height,
-          width: currentBounds.width,
-          x: currentBounds.x,
-        },
-        false,
-      );
-      logBounds("pill-show");
-      mainWindow.focus();
-    }
-  });
-
-  ipcMain.on("pill-hide", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const currentBounds = mainWindow.getBounds();
-      mainWindow.setBounds(
-        {
-          y: ISLAND_HIDDEN_Y,
-          height: currentBounds.height,
-          width: currentBounds.width,
-          x: currentBounds.x,
-        },
-        false,
-      );
-      logBounds("pill-hide");
-    }
-  });
+  // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
 
   ipcMain.on("island-slide", (_e, y) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { width: fullScreenWidth } = primaryDisplay.size;
-      // Recalculate X to ensure perfect centering on every slide
-      const centeredX = Math.round((fullScreenWidth - ISLAND_WIDTH) / 2);
-      console.log(
-        `[Island Slide] Screen: ${fullScreenWidth}px, Island: ${ISLAND_WIDTH}px, Centered X: ${centeredX}, Y: ${y}`,
-      );
-      mainWindow.setBounds({
-        x: centeredX,
-        y: y,
-        width: ISLAND_WIDTH,
-        height: ISLAND_HEIGHT,
-      });
+      const display = getActiveDisplay();
+      const current = mainWindow.getBounds();
+      const newY = display.bounds.y + y; // slide offset relative to target display
+      // Only change Y during slide to avoid compositor thrash; X is handled on display change/envelope resize
+      const target = { x: current.x, y: newY, width: current.width, height: current.height };
+      coalescedSetBounds(target);
     }
   });
 
@@ -1631,25 +1630,35 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  // Stop follow-cursor polling to avoid timers running during shutdown
+  stopFollowCursor();
 
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
-      process.kill(p.pid, "SIGKILL");
-    } catch {}
+      if (p.pid) process.kill(p.pid, "SIGKILL");
+    } catch (e) {
+      // ignore
+    }
   }
 
   // **belts-and-suspenders**: kill anything matching the name
   try {
     execSync("pkill -9 -f 'Sonic Flow Helper' || true");
-  } catch {}
+  } catch (e) {
+    // ignore
+  }
   try {
     execSync("pkill -9 -f sonic-helper    || true");
-  } catch {}
+  } catch (e) {
+    // ignore
+  }
 });
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
+  // Extra guard to ensure polling is stopped
+  stopFollowCursor();
 
   // Clear restart timeout and kill sonic-helper process
   if (fnRestartTimeout) {
@@ -1659,7 +1668,9 @@ app.on("will-quit", () => {
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
       p.kill("SIGKILL");
-    } catch {}
+    } catch (e) {
+      // ignore
+    }
   }
 });
 
@@ -1826,7 +1837,7 @@ function startFnListener() {
           "[FnListener] Unknown error starting Sonic Flow Helper:",
           error.message,
         );
-        ;(pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
+        (pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );

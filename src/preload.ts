@@ -3,21 +3,6 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 
-contextBridge.exposeInMainWorld("app", {
-  toggleDictation: (callback: () => void) => {
-    // Remove any existing listeners to prevent duplicates
-    ipcRenderer.removeAllListeners("toggle-dictation");
-    // Add the new listener
-    ipcRenderer.on("toggle-dictation", () => callback());
-
-    // Return a cleanup function that can be called when the component unmounts
-    return () => {
-      ipcRenderer.removeAllListeners("toggle-dictation");
-    };
-  },
-  viewLogFile: () => ipcRenderer.invoke("view-log-file"),
-});
-
 contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
 });
@@ -61,7 +46,7 @@ contextBridge.exposeInMainWorld("ptt", {
 });
 
 // Microphone device management bridge
-type MicDevice = { id: string; label: string };
+import type { MicDevice } from "./types/shared";
 
 contextBridge.exposeInMainWorld("mic", {
   /** Send the current discovered set of microphone devices to main. */
@@ -87,21 +72,12 @@ contextBridge.exposeInMainWorld("island", {
 });
 
 contextBridge.exposeInMainWorld("electron", {
-  resizePill: (width: number, height: number) =>
-    ipcRenderer.send("pill-resize", { width, height }),
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
-  pillShow: () => ipcRenderer.send("pill-show"),
-  pillHide: () => ipcRenderer.send("pill-hide"),
-  pillRendererReady: () => ipcRenderer.send("pill-renderer-ready"),
-  onPillRendererReady: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-renderer-ready", listener);
-    return () => ipcRenderer.removeListener("pill-renderer-ready", listener);
-  },
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
+  requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
   // Onboarding APIs
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () => ipcRenderer.invoke("request-accessibility-permission"),
@@ -120,4 +96,10 @@ contextBridge.exposeInMainWorld("electron", {
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),
+});
+
+// Event bridge for active display updates
+contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: any) => void) => {
+  const listener = (_event: Electron.IpcRendererEvent, payload: any) => cb(payload);
+  ipcRenderer.on("active-display", listener);
 });

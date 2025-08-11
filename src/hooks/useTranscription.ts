@@ -288,7 +288,11 @@ export function useTranscription(
 
       // Suspend the AudioContext to reduce CPU when idle
       if (audioCtxRef.current && audioCtxRef.current.state === "running") {
-        await audioCtxRef.current.suspend().catch(() => {});
+        try {
+          await audioCtxRef.current.suspend();
+        } catch (e) {
+          // ignore suspend errors
+        }
       }
 
       const totalLength = audioChunksRef.current.reduce(

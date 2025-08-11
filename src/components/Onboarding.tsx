@@ -6,14 +6,14 @@ import { useTranscription } from "../hooks/useTranscription";
 const isDevelopment = process.env.NODE_ENV === 'development';
 // Make permission mocking opt-in via URL (?mockPerms)
 const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-const devFlags = {
+  const devFlags = {
   mockPermissionStates: isDevelopment && params.has('mockPerms'),
   showDebugOverlay: isDevelopment,
   fastAnimations: isDevelopment,
   alwaysShowDevMode: isDevelopment,
   isDevelopment,
   methods: {
-    devLog: (...args: any[]) => {
+    devLog: (...args: unknown[]) => {
       if (isDevelopment) console.log('[DEV]', ...args);
     },
     devNotify: (message: string) => {
@@ -23,13 +23,13 @@ const devFlags = {
 };
 
 // Simple mock for now - starting in disabled state for UI development
-const mockPermissions = {
+  const mockPermissions = {
   checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
   checkMicrophonePermission: async () => ({ status: 'denied', granted: false }),
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
   askIM: async () => ({ success: true, status: 'authorized' }),
   requestAccessibilityPermission: async () => ({ success: true }),
-  openSystemPreferences: async (pane: string) => ({ success: true }),
+    openSystemPreferences: async (_pane: string) => ({ success: true }),
   resetPermissions: () => { 
     if (isDevelopment) console.debug('[MockPermissions] resetPermissions'); 
   }
@@ -275,14 +275,11 @@ const Onboarding: React.FC = () => {
     }
   }, [currentStep]);
 
-  // Show the pill UI during the hotkey-test step; hide it on other steps
+  // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
     if (currentStep === "hotkey-test") {
-      // Route PTT to the main pill for dictation testing
       window.electron?.setPttTarget?.("main");
-      window.electron?.pillShow?.();
-    } else {
-      window.electron?.pillHide?.();
+      window.electron?.requestExpandPill?.();
     }
   }, [currentStep]);
 
@@ -544,7 +541,7 @@ const Onboarding: React.FC = () => {
     }
     // Small delay for UX before closing
     setTimeout(() => {
-      try { window.electron?.closeOnboarding?.(); } catch {}
+      try { window.electron?.closeOnboarding?.(); } catch (e) { /* ignore */ }
     }, 300);
   };
 

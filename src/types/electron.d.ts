@@ -4,10 +4,7 @@
 
 declare global {
   interface Window {
-    app: {
-      toggleDictation: (callback: () => void) => () => void;
-      viewLogFile: () => Promise<string>;
-    };
+    app: never; // removed unused bridge
     contextMenu: {
       showPill: () => void;
     };
@@ -32,12 +29,7 @@ declare global {
       slideTo: (y: number) => void;
     };
     electron: {
-      resizePill: (width: number, height: number) => void;
       setClickThrough: (clickThrough: boolean) => void;
-      pillShow: () => void;
-      pillHide: () => void;
-      pillRendererReady: () => void;
-      onPillRendererReady: (cb: () => void) => () => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
@@ -57,6 +49,18 @@ declare global {
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
     };
+    /** Receive active display information and computed UI scale from main */
+    onActiveDisplay?: (
+      cb: (payload: {
+        id: number;
+        bounds: { x: number; y: number; width: number; height: number };
+        size: { width: number; height: number };
+        workArea: { x: number; y: number; width: number; height: number };
+        scaleFactor: number;
+        scale: number;
+        window: { x: number; y: number; width: number; height: number } | null;
+      }) => void,
+    ) => void;
     mic: {
       updateDevices: (
         devices: Array<{ id: string; label: string }>,
