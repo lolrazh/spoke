@@ -11,6 +11,7 @@ import {
 } from "./ui/select";
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
+import SfIcon from "./icons/SfIcon";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -36,15 +37,12 @@ const Toggle: React.FC<{
   onChange: (enabled: boolean) => void;
   label: string;
   description?: string;
-}> = ({ enabled, onChange, label, description }) => (
+  icon?: React.ReactNode;
+}> = ({ enabled, onChange, label, description, icon }) => (
   <SettingsCard
     title={label}
     description={description}
-    icon={
-      <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M11.983 1.284a2 2 0 00-3.966 0l-.09.542a2 2 0 01-1.274 1.556l-.5.19a2 2 0 00-1.05 2.796l.257.498a2 2 0 010 1.768l-.257.498a2 2 0 001.05 2.796l.5.19a2 2 0 011.274 1.556l.09.542a2 2 0 003.966 0l.09-.542a2 2 0 011.274-1.556l.5-.19a2 2 0 001.05-2.796l-.257-.498a2 2 0 010-1.768l.257-.498a2 2 0 00-1.05-2.796l-.5-.19a2 2 0 01-1.274-1.556l-.09-.542z" />
-      </svg>
-    }
+    icon={icon}
   >
     <Switch checked={enabled} onCheckedChange={onChange} />
   </SettingsCard>
@@ -327,10 +325,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
 
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
-        <div
-          className="border-b border-border/40 bg-background flex-shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        >
+        <div className="border-b border-border/40 bg-background flex-shrink-0 drag-region">
           <div className="h-6" />
         </div>
       )}
@@ -348,7 +343,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Defaults" />
 
-              <div className="space-y-3" style={{ WebkitAppRegion: "no-drag" }}>
+              <div className="space-y-3 no-drag">
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"
@@ -362,6 +357,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                   description="Display the floating dictation pill"
                   enabled={showFloatingBar}
                   onChange={setShowFloatingBar}
+                  icon={<SfIcon name="eye.fill" size={16} className="text-primary/70" />}
                 />
 
                 <Toggle
@@ -369,6 +365,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                   description="Audio feedback for dictation start/stop"
                   enabled={playSounds}
                   onChange={setPlaySounds}
+                  icon={<SfIcon name="speaker.wave.3.fill" size={16} className="text-primary/70" />}
                 />
               </div>
             </motion.div>
@@ -382,11 +379,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                 <SettingsCard
                   title="Microphone"
                   description="Capture your voice for dictation"
-                  icon={
-                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                    </svg>
-                  }
+                  icon={<SfIcon name="mic.fill" size={16} className="text-primary/70" />}
                 >
                   {!permissions.microphone ? (
                     <Button size="sm" onClick={handleRequestMicrophone} disabled={ui.microphone.loading} className="text-xs onboarding-cta">
@@ -436,11 +429,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                 <SettingsCard
                   title="Input Monitoring"
                   description="Detect the Fn key to start and stop dictation"
-                  icon={
-                    <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                    </svg>
-                  }
+                  icon={<SfIcon name="keyboard.badge.eye.fill" size={16} className="text-primary/70" />}
                 >
                   {!permissions.inputMonitoring ? (
                     <Button size="sm" onClick={handleRequestInputMonitoring} disabled={ui.inputMonitoring.loading} className="text-xs onboarding-cta">

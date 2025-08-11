@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TOKENS } from "../config/uiTokens";
 import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
+import SfIcon from "./icons/SfIcon";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -315,18 +316,7 @@ const Pill: React.FC<PillProps> = ({
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <svg
-                    width="16"
-                    height="10"
-                    viewBox="0 0 16 10"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M4 7L8 3L12 7" />
-                  </svg>
+                  <SfIcon name="chevron.up" size={16} />
                 </button>
               </motion.div>
             ) : isShowingNotification ? (
