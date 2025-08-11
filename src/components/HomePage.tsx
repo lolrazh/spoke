@@ -83,30 +83,7 @@ const SelectField: React.FC<{
   </SettingsCard>
 );
 
-const ActionButton: React.FC<{
-  onClick: () => void;
-  label: string;
-  description?: string;
-  variant?: "default" | "secondary" | "destructive";
-}> = ({ onClick, label, description, variant = "secondary" }) => {
-  return (
-    <div className="flex items-center justify-between py-3">
-      <div className="flex-1">
-        <div className="text-xs font-medium text-white">{label}</div>
-        {description && (
-          <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
-        )}
-      </div>
-      <Button variant={variant} size="sm" onClick={onClick} className="ml-2">
-        {label}
-      </Button>
-    </div>
-  );
-};
-
-const SettingSeparator: React.FC = () => (
-  <div className="border-b border-border/20" />
-);
+// Cleaned out legacy row components; cards are now the single layout primitive
 
 const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
@@ -130,7 +107,6 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     [],
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("en-US");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [playSounds, setPlaySounds] = useState<boolean>(true);
   const [openAtLogin, setOpenAtLogin] = useState<boolean>(false);
@@ -175,18 +151,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     };
   }, []);
 
-  const languageOptions = useMemo(
-    () => [
-      { value: "en-US", label: "English (US)" },
-      { value: "en-GB", label: "English (UK)" },
-      { value: "es-ES", label: "Spanish" },
-      { value: "fr-FR", label: "French" },
-      { value: "de-DE", label: "German" },
-      { value: "it-IT", label: "Italian" },
-      { value: "pt-BR", label: "Portuguese (Brazil)" },
-    ],
-    [],
-  );
+  // Language selection removed for a simpler defaults experience
 
   const micOptions = useMemo(
     () =>
@@ -204,10 +169,7 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
     }
   };
 
-  const handleOpenKeybindingModal = (type: "dictation" | "instruction") => {
-    // TODO: Implement modal for keybinding configuration
-    console.log(`Opening ${type} keybinding modal`);
-  };
+  // Keybind setting removed
 
   const handleSignOut = () => {
     // TODO: Implement sign out functionality
@@ -257,33 +219,6 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                   options={micOptions}
                 />
 
-                <SelectField
-                  label="Language"
-                  description="Recognition language for transcription"
-                  value={selectedLanguage}
-                  onChange={setSelectedLanguage}
-                  options={languageOptions}
-                />
-
-                <SettingsCard
-                  title="Keybind"
-                  description="Set custom hotkey for voice dictation"
-                  icon={
-                    <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M3 7a4 4 0 118 0v1h1a3 3 0 013 3v2h-2v-2a1 1 0 00-1-1h-1v1a4 4 0 11-8 0V7z" />
-                    </svg>
-                  }
-                >
-                  <Button variant="secondary" size="sm" onClick={() => handleOpenKeybindingModal("dictation")}>Configure</Button>
-                </SettingsCard>
-              </div>
-            </motion.div>
-
-            {/* Section 2: System */}
-            <motion.div variants={sectionVariants}>
-              <SectionSeparator title="System" />
-
-              <div className="space-y-3">
                 <Toggle
                   label="Show Floating Bar"
                   description="Display the floating dictation pill"
@@ -297,7 +232,14 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
                   enabled={playSounds}
                   onChange={setPlaySounds}
                 />
+              </div>
+            </motion.div>
 
+            {/* Section 2: System */}
+            <motion.div variants={sectionVariants}>
+              <SectionSeparator title="System" />
+
+              <div className="space-y-3">
                 <Toggle
                   label="Open at Login"
                   description="Automatically start Sonic Flow when you log in"
