@@ -159,7 +159,7 @@ function startFollowCursor(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
-  // 30 Hz polling for responsiveness with low overhead
+  // 5 Hz polling to reduce CPU usage while still tracking display changes
   followCursorInterval = setInterval(() => {
     try {
       const point = screen.getCursorScreenPoint();
@@ -177,7 +177,7 @@ function startFollowCursor(): void {
     } catch (_) {
       // ignore
     }
-  }, 33);
+  }, 100);
 }
 
 function syncToCurrentDisplay(reason: string): void {
