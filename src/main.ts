@@ -180,6 +180,13 @@ function startFollowCursor(): void {
   }, 100);
 }
 
+function stopFollowCursor(): void {
+  if (followCursorInterval) {
+    clearInterval(followCursorInterval);
+    followCursorInterval = null;
+  }
+}
+
 function syncToCurrentDisplay(reason: string): void {
   try {
     // On OS display changes, select display based on current window location
@@ -1622,6 +1629,8 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  // Stop follow-cursor polling to avoid timers running during shutdown
+  stopFollowCursor();
 
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
@@ -1647,6 +1656,8 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
+  // Extra guard to ensure polling is stopped
+  stopFollowCursor();
 
   // Clear restart timeout and kill sonic-helper process
   if (fnRestartTimeout) {
