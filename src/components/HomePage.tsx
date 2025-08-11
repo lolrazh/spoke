@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Button } from "./ui/button";
+import SettingsCard from "./SettingsCard";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -36,15 +37,17 @@ const Toggle: React.FC<{
   label: string;
   description?: string;
 }> = ({ enabled, onChange, label, description }) => (
-  <div className="flex items-center justify-between py-3">
-    <div className="flex-1">
-      <div className="text-xs font-medium text-white">{label}</div>
-      {description && (
-        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
-      )}
-    </div>
+  <SettingsCard
+    title={label}
+    description={description}
+    icon={
+      <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M11.983 1.284a2 2 0 00-3.966 0l-.09.542a2 2 0 01-1.274 1.556l-.5.19a2 2 0 00-1.05 2.796l.257.498a2 2 0 010 1.768l-.257.498a2 2 0 001.05 2.796l.5.19a2 2 0 011.274 1.556l.09.542a2 2 0 003.966 0l.09-.542a2 2 0 011.274-1.556l.5-.19a2 2 0 001.05-2.796l-.257-.498a2 2 0 010-1.768l.257-.498a2 2 0 00-1.05-2.796l-.5-.19a2 2 0 01-1.274-1.556l-.09-.542z" />
+      </svg>
+    }
+  >
     <Switch checked={enabled} onCheckedChange={onChange} />
-  </div>
+  </SettingsCard>
 );
 
 const SelectField: React.FC<{
@@ -54,13 +57,15 @@ const SelectField: React.FC<{
   label: string;
   description?: string;
 }> = ({ value, onChange, options, label, description }) => (
-  <div className="flex items-center justify-between py-3">
-    <div className="flex-1">
-      <div className="text-xs font-medium text-white">{label}</div>
-      {description && (
-        <div className="text-[10px] text-muted-foreground mt-0.5">{description}</div>
-      )}
-    </div>
+  <SettingsCard
+    title={label}
+    description={description}
+    icon={
+      <svg className="w-4 h-4 text-primary/70" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M10 3a7 7 0 100 14A7 7 0 0010 3zM9 7a1 1 0 112 0v3a1 1 0 11-2 0V7zm1 6a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
+      </svg>
+    }
+  >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-48">
@@ -75,7 +80,7 @@ const SelectField: React.FC<{
         </SelectContent>
       </Select>
     </div>
-  </div>
+  </SettingsCard>
 );
 
 const ActionButton: React.FC<{
@@ -237,87 +242,86 @@ const HomePage: React.FC<HomePageProps> = ({ embeddedMode = false }) => {
             initial="hidden"
             animate="visible"
             variants={containerVariants}
-            className="space-y-0"
+            className="space-y-4"
           >
             {/* Section 1: Defaults */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Defaults" />
 
-              <SelectField
-                label="Microphone"
-                description="Select your preferred input device"
-                value={selectedMicId}
-                onChange={handleMicChange}
-                options={micOptions}
-              />
-              <SettingSeparator />
+              <div className="space-y-3">
+                <SelectField
+                  label="Microphone"
+                  description="Select your preferred input device"
+                  value={selectedMicId}
+                  onChange={handleMicChange}
+                  options={micOptions}
+                />
 
-              <SelectField
-                label="Language"
-                description="Recognition language for transcription"
-                value={selectedLanguage}
-                onChange={setSelectedLanguage}
-                options={languageOptions}
-              />
-              <SettingSeparator />
+                <SelectField
+                  label="Language"
+                  description="Recognition language for transcription"
+                  value={selectedLanguage}
+                  onChange={setSelectedLanguage}
+                  options={languageOptions}
+                />
 
-              <ActionButton
-                label="Keybind"
-                description="Set custom hotkey for voice dictation"
-                onClick={() => handleOpenKeybindingModal("dictation")}
-              />
+                <SettingsCard
+                  title="Keybind"
+                  description="Set custom hotkey for voice dictation"
+                  icon={
+                    <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M3 7a4 4 0 118 0v1h1a3 3 0 013 3v2h-2v-2a1 1 0 00-1-1h-1v1a4 4 0 11-8 0V7z" />
+                    </svg>
+                  }
+                >
+                  <Button variant="secondary" size="sm" onClick={() => handleOpenKeybindingModal("dictation")}>Configure</Button>
+                </SettingsCard>
+              </div>
             </motion.div>
 
             {/* Section 2: System */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="System" />
 
-              <Toggle
-                label="Show Floating Bar"
-                description="Display the floating dictation pill"
-                enabled={showFloatingBar}
-                onChange={setShowFloatingBar}
-              />
-              <SettingSeparator />
+              <div className="space-y-3">
+                <Toggle
+                  label="Show Floating Bar"
+                  description="Display the floating dictation pill"
+                  enabled={showFloatingBar}
+                  onChange={setShowFloatingBar}
+                />
 
-              <Toggle
-                label="Play Sounds"
-                description="Audio feedback for dictation start/stop"
-                enabled={playSounds}
-                onChange={setPlaySounds}
-              />
-              <SettingSeparator />
+                <Toggle
+                  label="Play Sounds"
+                  description="Audio feedback for dictation start/stop"
+                  enabled={playSounds}
+                  onChange={setPlaySounds}
+                />
 
-              <Toggle
-                label="Open at Login"
-                description="Automatically start Sonic Flow when you log in"
-                enabled={openAtLogin}
-                onChange={setOpenAtLogin}
-              />
+                <Toggle
+                  label="Open at Login"
+                  description="Automatically start Sonic Flow when you log in"
+                  enabled={openAtLogin}
+                  onChange={setOpenAtLogin}
+                />
+              </div>
             </motion.div>
 
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
 
-              <div className="flex items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-t from-primary to-foreground/80 rounded-full flex items-center justify-center text-xs font-bold text-white">
+              <SettingsCard
+                title="John Smith"
+                description="john.smith@example.com"
+                icon={
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-t from-primary to-foreground/80 flex items-center justify-center text-[10px] font-bold text-white">
                     JS
                   </div>
-                  <div>
-                    <h3 className="text-xs font-medium text-white font-sans">
-                      John Smith
-                    </h3>
-                    <p className="text-[10px] text-muted-foreground">
-                      john.smith@example.com
-                    </p>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm" onClick={handleSignOut}>
-                  Sign Out
-                </Button>
-              </div>
+                }
+              >
+                <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
+              </SettingsCard>
             </motion.div>
 
             {/* Footer with logo and version - only in standalone mode */}
