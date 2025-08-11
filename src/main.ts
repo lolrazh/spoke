@@ -30,6 +30,7 @@ import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 import { ChildProcess } from "child_process";
+import { logger } from "./utils/logger";
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -150,7 +151,7 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
     };
     mainWindow?.webContents.send("active-display", payload);
   } catch (e) {
-    // ignore
+    logger.main.warn("emitActiveDisplayInfo failed", e);
   }
 }
 
@@ -174,8 +175,8 @@ function startFollowCursor(): void {
           `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scaleFactor=${display.scaleFactor}, logicalWidth=${display.size.width}, scale=${scale}`,
         );
       }
-    } catch (_) {
-      // ignore
+    } catch (err) {
+      logger.main.warn("startFollowCursor tick failed", err);
     }
   }, 100);
 }
@@ -197,7 +198,7 @@ function syncToCurrentDisplay(reason: string): void {
     emitActiveDisplayInfo(display, scale);
     console.log(`[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`);
   } catch (e) {
-    // ignore
+    logger.main.warn("syncToCurrentDisplay failed", e);
   }
 }
 
