@@ -191,9 +191,8 @@ const Pill: React.FC<PillProps> = ({
       clickTimeoutRef.current = null;
     }
 
-    if (isExpanded) {
-      onCollapse();
-    } else {
+    // Disable double-click collapse. Only allow double-click to expand.
+    if (!isExpanded) {
       onExpand();
     }
   };
