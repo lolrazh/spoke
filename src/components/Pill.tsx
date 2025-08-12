@@ -116,21 +116,17 @@ const Pill: React.FC<PillProps> = ({
   }, []);
 
   // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = useMemo(
-    () =>
-      // Create bars with consistent count
-      Array.from({ length: 7 }).map((_, index) => (
-        <div
-          key={`bar-${index}`}
-          className="waveform-bar"
-          style={{
-            animationDelay: `${index * 0.1}s`,
-            height: `${3 + Math.random() * 5}px`,
-          }}
-        />
-      )),
-    [], // Empty dependency array means this runs only once
-  );
+  const renderFrequencyBars = useMemo(() => {
+    // Deterministic, symmetric base heights (px) for consistent visuals
+    const heightsPx = [3, 4.2, 6.4, 8, 6.4, 4.2, 3];
+    return heightsPx.map((h, index) => (
+      <div
+        key={`bar-${index}`}
+        className="waveform-bar"
+        style={{ animationDelay: `${index * 0.1}s`, height: `${h}px` }}
+      />
+    ));
+  }, []);
 
   // Unified function to render dots with different styles
   const renderDots = (type: "static" | "animated" | "collapsed") => {
