@@ -252,6 +252,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
     return () => {
       // Cleanup all scheduled intervals (centralized)
       cancelAll();
+      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic);
+      if (pollRefs.current.im) clearInterval(pollRefs.current.im);
+      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax);
       pollRefs.current = { mic: null, im: null, ax: null };
 
       window.removeEventListener("focus", handleFocus);
@@ -272,11 +275,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         // Open System Settings and poll
         await window.electron?.openSystemPreferences("microphone");
         cancel("mic");
+        if (pollRefs.current.mic) {
+          clearInterval(pollRefs.current.mic);
+          pollRefs.current.mic = null;
+        }
         pollRefs.current.mic = setInterval(async () => {
           const status = await window.electron?.checkMicrophonePermission();
           if (status?.granted) {
-            cancel("mic");
-            pollRefs.current.mic = null;
+            if (pollRefs.current.mic) {
+              clearInterval(pollRefs.current.mic);
+              pollRefs.current.mic = null;
+            }
             setPermissions((p) => ({ ...p, microphone: true }));
             setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
             setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
@@ -296,11 +305,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
       // Poll until granted; deep-link once after grace period
       const startedAt = Date.now();
       cancel("ax");
+      if (pollRefs.current.ax) {
+        clearInterval(pollRefs.current.ax);
+        pollRefs.current.ax = null;
+      }
       pollRefs.current.ax = setInterval(async () => {
         const sys = await window.electron?.checkPermissions?.();
         if (sys && !sys.needAX) {
-          cancel("ax");
-          pollRefs.current.ax = null;
+          if (pollRefs.current.ax) {
+            clearInterval(pollRefs.current.ax);
+            pollRefs.current.ax = null;
+          }
           setPermissions((p) => ({ ...p, accessibility: true }));
           setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
           setTimeout(() => setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } })), 800);
@@ -329,11 +344,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
       // Open System Settings and poll until granted
       await window.electron?.openSystemPreferences("input-monitoring");
       cancel("im");
+      if (pollRefs.current.im) {
+        clearInterval(pollRefs.current.im);
+        pollRefs.current.im = null;
+      }
       pollRefs.current.im = setInterval(async () => {
         const sys = await window.electron?.checkPermissions?.();
         if (sys && !sys.needIM) {
-          cancel("im");
-          pollRefs.current.im = null;
+          if (pollRefs.current.im) {
+            clearInterval(pollRefs.current.im);
+            pollRefs.current.im = null;
+          }
           setPermissions((p) => ({ ...p, inputMonitoring: true }));
           setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
           setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
