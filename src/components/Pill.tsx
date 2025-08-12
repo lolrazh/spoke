@@ -39,6 +39,7 @@ interface PillProps {
   onMouseLeave: () => void;
   onExpand: () => void;
   onCollapse: () => void;
+  onToggleFloatingBar?: (enabled: boolean) => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -56,6 +57,7 @@ const Pill: React.FC<PillProps> = ({
   onMouseLeave,
   onExpand,
   onCollapse,
+  onToggleFloatingBar,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -305,7 +307,7 @@ const Pill: React.FC<PillProps> = ({
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.standard }}
               >
-                <SettingsPanel embeddedMode={true} />
+                <SettingsPanel embeddedMode={true} onToggleFloatingBar={onToggleFloatingBar} />
                 {/* Collapse chevron at bottom */}
                 <button
                   className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-10 h-8 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"

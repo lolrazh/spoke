@@ -64,6 +64,8 @@ let lastTranscript = "";
 // Floating bar hide timer management
 let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
+// Preference-level flag to reflect user's intent (Settings toggle)
+let floatingBarEnabled = true;
 
 // === Active display tracking for continuous follow ===
 let activeDisplayId: number | null = null;
@@ -391,6 +393,8 @@ function hideFloatingBarWithTimer(minutes: number | null): void {
         `Floating bar hidden for ${minutes} minutes. Use tray menu to show early.`,
       );
     } else {
+      // Treat indefinite hide as preference OFF
+      floatingBarEnabled = false;
       mainWindow?.webContents.send(
         "notify",
         "Floating bar hidden indefinitely. Use tray menu to show again.",
@@ -467,6 +471,7 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
             mainWindow.show();
             console.log("[Menu] Floating bar shown");
           }
+          floatingBarEnabled = true;
         },
       },
     ];
@@ -1300,6 +1305,47 @@ app.whenReady().then(async () => {
     },
   );
 
+  // Floating bar visibility controls for renderer-driven UX flows
+  ipcMain.handle("floating-bar:is-visible", () => {
+    try {
+      const visible = !!(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
+      return { visible };
+    } catch {
+      return { visible: false };
+    }
+  });
+
+  ipcMain.handle("floating-bar:get-enabled", () => {
+    return { enabled: floatingBarEnabled };
+  });
+
+  // Hide indefinitely without emitting an additional notification (renderer handles UX)
+  ipcMain.handle("floating-bar:hide-indefinitely", () => {
+    try {
+      clearHideTimer();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+      }
+      floatingBarEnabled = false;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
+
+  ipcMain.handle("floating-bar:show", () => {
+    try {
+      clearHideTimer();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+      }
+      floatingBarEnabled = true;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
+
   // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)
 
   // Handle dynamic click-through control
@@ -1316,6 +1362,17 @@ app.whenReady().then(async () => {
         // setFocusable is a no-op on some platforms; call defensively
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mainWindow as any).setFocusable?.(focusable);
+      }
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  // Allow renderer to focus the window (needed for proper cursor hover states)
+  ipcMain.on("focus-window", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.focus();
       }
     } catch (e) {
       // ignore

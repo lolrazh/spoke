@@ -30,6 +30,8 @@ declare global {
     };
     electron: {
       setClickThrough: (clickThrough: boolean) => void;
+      setFocusable: (focusable: boolean) => void;
+      focusWindow: () => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;
@@ -48,6 +50,11 @@ declare global {
       closeOnboarding: () => Promise<void>;
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
+      // Floating bar visibility helpers
+      isFloatingBarVisible: () => Promise<{ visible: boolean }>;
+      getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;
+      hideFloatingBarIndefinitely: () => Promise<{ ok: boolean; error?: string }>;
+      showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
