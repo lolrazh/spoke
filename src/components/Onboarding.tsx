@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
+import SfIcon from "./icons/SfIcon";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === 'development';
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -787,9 +788,7 @@ const Onboarding: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                          </svg>
+                          <SfIcon name="mic.fill" size={16} className="text-primary/70" />
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Microphone</p>
@@ -857,9 +856,7 @@ const Onboarding: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                          </svg>
+                          <SfIcon name="accessibility" size={16} className="text-primary/70" />
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Accessibility</p>
@@ -926,9 +923,7 @@ const Onboarding: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <svg className="w-4 h-4 text-primary/70" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                          </svg>
+                          <SfIcon name="keyboard.badge.eye.fill" size={16} className="text-primary/70" />
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-medium text-foreground">Input Monitoring</p>
