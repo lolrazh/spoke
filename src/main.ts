@@ -1027,7 +1027,8 @@ ipcMain.handle(
       console.log("Original clipboard text stored.");
 
       // Preserve exact text (no trimming) so verification matches payload
-      const payloadText = text;
+      // Remove leading whitespace that some transcription paths prepend
+      const payloadText = text.trimStart();
       clipboard.writeText(payloadText);
       console.log("Transcription text copied to clipboard for pasting.");
 
@@ -1118,7 +1119,12 @@ ipcMain.handle(
       console.error("=== TEXT INSERTION PROCESS FAILED (Exception) ===");
       console.error("Error during text insertion:", error);
       // In case of any other error, leave the transcribed text in the clipboard.
-      clipboard.writeText(text);
+      try {
+        const trimmed = typeof text === "string" ? text.trimStart() : text;
+        clipboard.writeText(trimmed as string);
+      } catch {
+        clipboard.writeText(text);
+      }
       mainWindow?.webContents.send(
         "notify",
         "Error. Text copied to clipboard.",
