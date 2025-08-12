@@ -178,7 +178,7 @@ const App: React.FC = () => {
   // Listen for active display updates from main (provides computed scale)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;
-    window.onActiveDisplay?.((payload: any) => {
+    window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
     });
@@ -269,32 +269,16 @@ const App: React.FC = () => {
   // Also listen for a blur-originated collapse request from main
   useEffect(() => {
     if (pillState !== "EXPANDED") return;
-    const handler = () => {
-      pillDispatch({ type: "COLLAPSE" });
-    };
-    const { ipcRenderer } = (window as any).require ? (window as any).require('electron') : {};
-    // Use preload bridge: listen via notifications or add a simple event bus
-    // Fallback to window-level event: bind to 'collapse-request' sent by main
-    const listener = (_e?: any) => handler();
-    try {
-      // Bind with the global ipc exposed event if available
-      // @ts-ignore: runtime channel subscription via window
-      window?.electron && window?.electron?.setFocusable; // no-op use to ensure bridge loads
-      // Bind directly on DOM for simplicity
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).electronCollapseRequest = listener;
-    } catch {}
-    // Attach via IPC event from preload? We don't have a typed hook; rely on DOM event from preload send
     const onMessage = (ev: MessageEvent) => {
-      if (ev.data === 'collapse-request') handler();
+      if (ev.data === "collapse-request") {
+        pillDispatch({ type: "COLLAPSE" });
+      }
     };
-    window.addEventListener('message', onMessage);
-    // Also create a small ipc-based listener via postMessage from preload (sent already from main)
-    // The preload isn't forwarding this yet; we'll handle in renderer via webContents 'collapse-request' by injecting postMessage.
+    window.addEventListener("message", onMessage);
     return () => {
-      window.removeEventListener('message', onMessage);
+      window.removeEventListener("message", onMessage);
     };
-  }, [pillState]);
+  }, [pillState, pillDispatch]);
 
   // During onboarding we avoid fighting with onboarding's request to expand the pill.
   // Keep native window stationary here; expansion is driven by renderer UI state.
