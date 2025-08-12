@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
+import type { ActiveDisplayPayload } from "./types/shared";
 
 contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
@@ -102,8 +103,8 @@ contextBridge.exposeInMainWorld("electron", {
 });
 
 // Event bridge for active display updates
-contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: any) => void) => {
-  const listener = (_event: Electron.IpcRendererEvent, payload: any) => cb(payload);
+contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: ActiveDisplayPayload) => void) => {
+  const listener = (_event: Electron.IpcRendererEvent, payload: ActiveDisplayPayload) => cb(payload);
   ipcRenderer.on("active-display", listener);
 });
 
