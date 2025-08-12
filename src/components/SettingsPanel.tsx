@@ -210,8 +210,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       initPerms();
       initSelectedMic();
     };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        initPerms();
+        initSelectedMic();
+      }
+    };
     window.addEventListener("focus", handleFocus);
-    const interval = setInterval(initPerms, 5000);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       // Cleanup all scheduled intervals (centralized)
@@ -219,7 +225,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       pollRefs.current = { mic: null, im: null, ax: null };
 
       window.removeEventListener("focus", handleFocus);
-      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
