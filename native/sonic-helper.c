@@ -231,13 +231,8 @@ static int paste_and_verify_core(const char *payload_utf8, int timeout_ms) {
     cmdV();
 
     // Wait for notification or timeout; pump runloop so observer fires
-    const int step_ms = 20;
-    int waited = 0;
-    while (waited < timeout_ms && !watch.valueChangedNotified) {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, (CFTimeInterval)step_ms/1000.0, false);
-        usleep(step_ms * 1000);
-        waited += step_ms;
-    }
+    // Event-driven wait: spin the run loop once up to timeout, returning early when a source is handled
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, (CFTimeInterval)timeout_ms/1000.0, true);
 
     // POST state
     CFStringRef postVal = ax_copy_value(el);
