@@ -18,8 +18,20 @@ audioOff.volume = 0.2;
   a.load();
 });
 
+function isPlaySoundsEnabled(): boolean {
+  try {
+    const stored = localStorage.getItem("sf.playSounds");
+    // Default to true if not set
+    return stored == null ? true : stored === "true";
+  } catch {
+    return true;
+  }
+}
+
 // small utility so repeated clicks don't overlap the tail
 function play(el: HTMLAudioElement) {
+  // Respect user preference to disable sounds
+  if (!isPlaySoundsEnabled()) return;
   el.pause();
   el.currentTime = 0;
   // play() returns a promise – ignore rejection from rapid user spam

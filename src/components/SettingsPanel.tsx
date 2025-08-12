@@ -120,6 +120,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
   const axDeepLinkOpenedRef = useRef(false);
 
+  // Load persisted preferences on mount
+  useEffect(() => {
+    try {
+      const storedPlay = localStorage.getItem("sf.playSounds");
+      if (storedPlay != null) setPlaySounds(storedPlay === "true");
+    } catch {}
+  }, []);
+
+  // Persist preferences when they change
+  useEffect(() => {
+    try {
+      localStorage.setItem("sf.playSounds", String(playSounds));
+    } catch {}
+  }, [playSounds]);
+
   // Listen for microphone device updates and selection changes
   useEffect(() => {
     const updateDeviceList = async () => {
