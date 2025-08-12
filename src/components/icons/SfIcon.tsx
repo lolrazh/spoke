@@ -14,10 +14,15 @@ type SymbolsJson = Record<string, SymbolEntry>;
 let symbolsCache: SymbolsJson | null = null;
 let symbolsPromise: Promise<SymbolsJson> | null = null;
 
+function resetSymbolsCache() {
+  symbolsCache = null;
+  symbolsPromise = null;
+}
+
 async function loadSymbols(): Promise<SymbolsJson> {
   if (symbolsCache) return symbolsCache;
   if (!symbolsPromise) {
-    symbolsPromise = fetch("/assets/sf-symbols.json", { cache: "force-cache" })
+    symbolsPromise = fetch("/assets/sf-symbols.json", { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Failed to load sf-symbols.json: ${res.status}`);
         return (await res.json()) as SymbolsJson;
@@ -46,8 +51,17 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
   const [symbols, setSymbols] = useState<SymbolsJson | null>(symbolsCache);
 
   useEffect(() => {
-    if (symbolsCache) return; // already loaded
     let mounted = true;
+    // If cache exists and contains the requested icon, use it
+    if (symbolsCache && symbolsCache[name]) {
+      if (mounted) setSymbols(symbolsCache);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    // Otherwise, force a refetch to pick up newly added icons during dev
+    resetSymbolsCache();
     loadSymbols()
       .then((json) => {
         if (mounted) setSymbols(json);
@@ -58,7 +72,7 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [name]);
 
   const spec = useMemo(() => {
     const entry = symbols?.[name];
