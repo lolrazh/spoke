@@ -1355,6 +1355,11 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("mic:get-selected", () => {
+    const selectedId = micPreferences.selectedMicId || "default";
+    return { id: selectedId };
+  });
+
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {
     console.log(

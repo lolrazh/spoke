@@ -176,7 +176,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
     }
   };
 
-  // Initial permission check + passive refresh (focus + 5s interval while open)
+  // Initial permission check + initial mic selection + passive refresh (focus + 5s interval while open)
   useEffect(() => {
     const initPerms = async () => {
       try {
@@ -193,9 +193,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
         // ignore
       }
     };
+    const initSelectedMic = async () => {
+      try {
+        const res = await window.mic?.getSelected?.();
+        if (res?.id) setSelectedMicId(res.id);
+      } catch (e) {
+        // ignore
+      }
+    };
     initPerms();
+    initSelectedMic();
 
-    const handleFocus = () => initPerms();
+    const handleFocus = () => {
+      initPerms();
+      initSelectedMic();
+    };
     window.addEventListener("focus", handleFocus);
     const interval = setInterval(initPerms, 5000);
 

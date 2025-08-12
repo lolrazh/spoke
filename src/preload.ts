@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld("mic", {
   },
   /** Ask main to change the selected microphone (persist + broadcast). */
   select: (id: string) => ipcRenderer.invoke("mic:select", { id }),
+  /** Get the currently selected microphone id from main. */
+  getSelected: (): Promise<{ id: string }> => ipcRenderer.invoke("mic:get-selected"),
   /** Subscribe to selection changes coming from main. */
   onSelectedChanged: (cb: (payload: { id: string }) => void) => {
     ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
