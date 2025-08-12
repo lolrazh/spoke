@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useIntervalManager } from "../hooks/useIntervalManager";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -115,6 +116,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
     inputMonitoring: { loading: false, justGranted: false },
     accessibility: { loading: false, justGranted: false },
   });
+  const { schedule, cancel, cancelAll } = useIntervalManager();
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
   const axDeepLinkOpenedRef = useRef(false);
 
@@ -212,10 +214,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
     const interval = setInterval(initPerms, 5000);
 
     return () => {
-      // Cleanup polls if any were started
-      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
-      if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
-      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      // Cleanup all scheduled intervals (centralized)
+      cancelAll();
       pollRefs.current = { mic: null, im: null, ax: null };
 
       window.removeEventListener("focus", handleFocus);
@@ -235,14 +235,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       } else {
         // Open System Settings and poll
         await window.electron?.openSystemPreferences("microphone");
-        if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
+        cancel("mic");
         pollRefs.current.mic = setInterval(async () => {
           const status = await window.electron?.checkMicrophonePermission();
           if (status?.granted) {
-            if (pollRefs.current.mic) {
-              clearInterval(pollRefs.current.mic!);
-              pollRefs.current.mic = null;
-            }
+            cancel("mic");
+            pollRefs.current.mic = null;
             setPermissions((p) => ({ ...p, microphone: true }));
             setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
             setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
@@ -261,14 +259,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       await window.electron?.requestAccessibilityPermission();
       // Poll until granted; deep-link once after grace period
       const startedAt = Date.now();
-      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
+      cancel("ax");
       pollRefs.current.ax = setInterval(async () => {
         const sys = await window.electron?.checkPermissions?.();
         if (sys && !sys.needAX) {
-          if (pollRefs.current.ax) {
-            clearInterval(pollRefs.current.ax!);
-            pollRefs.current.ax = null;
-          }
+          cancel("ax");
+          pollRefs.current.ax = null;
           setPermissions((p) => ({ ...p, accessibility: true }));
           setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
           setTimeout(() => setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } })), 800);
@@ -296,14 +292,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       }
       // Open System Settings and poll until granted
       await window.electron?.openSystemPreferences("input-monitoring");
-      if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
+      cancel("im");
       pollRefs.current.im = setInterval(async () => {
         const sys = await window.electron?.checkPermissions?.();
         if (sys && !sys.needIM) {
-          if (pollRefs.current.im) {
-            clearInterval(pollRefs.current.im!);
-            pollRefs.current.im = null;
-          }
+          cancel("im");
+          pollRefs.current.im = null;
           setPermissions((p) => ({ ...p, inputMonitoring: true }));
           setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
           setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
