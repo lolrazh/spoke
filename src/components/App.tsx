@@ -220,6 +220,22 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Listen for window show events to reset pill state when shown from tray menu
+  useEffect(() => {
+    const handleWindowShow = () => {
+      // When window is shown (e.g., from tray menu), ensure pill is in clean state
+      if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
+        // Clear any pending hide state and reset to IDLE
+        setPendingHideAfterCollapse({ active: false, message: "" });
+        pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
+      }
+    };
+
+    // Listen for window focus events as a proxy for window being shown
+    window.addEventListener("focus", handleWindowShow);
+    return () => window.removeEventListener("focus", handleWindowShow);
+  }, [pillState]);
+
   // Listen for expand pill requests from main process
   useEffect(() => {
     const handleExpandPill = () => {
@@ -233,6 +249,7 @@ const App: React.FC = () => {
 
     // Note: No cleanup needed as this is a one-time setup
   }, []);
+
 
   // Ensure click-through is properly managed based on pill state
   useEffect(() => {
@@ -293,11 +310,16 @@ const App: React.FC = () => {
       const shouldHideAfter = pendingHideAfterCollapse.active;
       const timeout = setTimeout(async () => {
         pillDispatch({ type: "ANIM_DONE" });
+        
+        // If we need to hide after notification, add a small delay to ensure
+        // pill state machine completes its transition to IDLE cleanly
         if (shouldHideAfter) {
-          try {
-            await window.electron?.hideFloatingBarIndefinitely?.();
-          } catch {}
-          setPendingHideAfterCollapse({ active: false, message: "" });
+          setTimeout(async () => {
+            try {
+              await window.electron?.hideFloatingBarIndefinitely?.();
+            } catch {}
+            setPendingHideAfterCollapse({ active: false, message: "" });
+          }, 100); // 100ms delay to let pill reach IDLE state properly
         }
       }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);
@@ -493,6 +515,10 @@ const App: React.FC = () => {
           // Cancel any pending hide if user turns it back on
           if (enabled) {
             setPendingHideAfterCollapse({ active: false, message: "" });
+            // Ensure pill is in clean IDLE state when showing the floating bar
+            if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
+              pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
+            }
             try {
               await window.electron?.showFloatingBar?.();
             } catch {}
