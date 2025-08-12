@@ -1026,8 +1026,10 @@ ipcMain.handle(
       const originalClipboardText = clipboard.readText();
       console.log("Original clipboard text stored.");
 
-      const trimmedText = text.trimStart();
-      clipboard.writeText(trimmedText);
+      // Preserve exact text (no trimming) so verification matches payload
+      // Remove leading whitespace that some transcription paths prepend
+      const payloadText = text.trimStart();
+      clipboard.writeText(payloadText);
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
@@ -1046,57 +1048,83 @@ ipcMain.handle(
       }
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
-      const pasteProc = spawnHelper(helperPath, ["--mode=paste"], false);
 
-      pasteProc.on("error", (error) => {
-        console.error("[PasteHelper] Error executing paste-helper:", error);
-        mainWindow?.webContents.send(
-          "notify",
-          "Paste failed. Grant Accessibility permission. Text copied.",
-        );
+      // Run enhanced paste with AX verification and await completion
+      const result = await new Promise<{ success: boolean; error?: string; verified?: boolean }>((resolve) => {
+        const proc = spawnHelper(helperPath, ["--paste-and-verify", payloadText], false);
+
+        let stdoutBuffer = "";
+        let stderrBuffer = "";
+
+        proc.stdout.on("data", (data) => {
+          stdoutBuffer += data.toString();
+        });
+        proc.stderr.on("data", (data) => {
+          stderrBuffer += data.toString();
+        });
+        proc.on("error", (error) => {
+          console.error("[PasteHelper] Error executing paste-helper:", error);
+          resolve({ success: false, error: error.message });
+        });
+        proc.on("close", (code) => {
+          const out = stdoutBuffer.trim();
+          if (out) console.log(`[PasteHelper stdout]: ${out}`);
+          if (stderrBuffer) console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
+
+          const ok = out.includes("paste:ok:") && code === 0;
+          const definiteNoFocus = out.includes("paste:err:no-focus") || out.includes("paste:err:no-app");
+          const secureField = out.includes("paste:err:secure-field");
+          const unreadable = out.includes("paste:err:unreadable");
+          const verifyUnknown = out.includes("paste:verify:unknown") || code === 10;
+          const mismatch = out.includes("paste:mismatch") || code === 11;
+
+          if (ok) {
+            resolve({ success: true, verified: true });
+            return;
+          }
+
+          // Only treat these as hard failures for UX notification
+          if (definiteNoFocus || secureField) {
+            let reason = secureField ? "Secure field" : "No focused text field";
+            resolve({ success: false, error: reason });
+            return;
+          }
+
+          // Inconclusive AX read due to unreadable/unknown => treat as failure (no detectable text)
+          if (verifyUnknown || unreadable) {
+            resolve({ success: false, error: verifyUnknown ? "Verification unavailable" : "Unreadable" });
+            return;
+          }
+
+          // Mismatch (readable but content differs). Treat as unverified success since we did detect text.
+          if (mismatch) {
+            resolve({ success: true, verified: false });
+            return;
+          }
+
+          // Default: assume success but unverified to avoid noisy false negatives
+          resolve({ success: true, verified: false });
+        });
       });
 
-      let stdoutBuffer = "";
-      pasteProc.stdout.on("data", (data) => {
-        stdoutBuffer += data.toString();
-      });
-
-      let stderrBuffer = "";
-      pasteProc.stderr.on("data", (data) => {
-        stderrBuffer += data.toString();
-      });
-
-      pasteProc.on("close", (code) => {
-        if (stdoutBuffer) {
-          console.log(`[PasteHelper stdout]: ${stdoutBuffer.trim()}`);
-        }
-        if (stderrBuffer) {
-          console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
-        }
-
-        if (code === 0) {
-          console.log("[PasteHelper] paste-helper executed successfully.");
-          // If successful, restore the original clipboard content after a short delay.
-          setTimeout(() => {
-            console.log("[PasteHelper] Restoring original clipboard content.");
-            clipboard.writeText(originalClipboardText);
-          }, 300);
-        } else {
-          console.error(`[PasteHelper] Error: paste-helper exited with code ${code}`);
-          mainWindow?.webContents.send(
-            "notify",
-            "Paste failed. Grant Accessibility permission. Text copied.",
-          );
-        }
-      });
+      if (result.success) {
+        setTimeout(() => clipboard.writeText(originalClipboardText), 300);
+      } else {
+        mainWindow?.webContents.send("notify", "Text copied to clipboard.");
+      }
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
-      return { success: true };
+      return result;
     } catch (error) {
       console.error("=== TEXT INSERTION PROCESS FAILED (Exception) ===");
       console.error("Error during text insertion:", error);
       // In case of any other error, leave the transcribed text in the clipboard.
-      clipboard.writeText(text);
+      try {
+        const trimmed = typeof text === "string" ? text.trimStart() : text;
+        clipboard.writeText(trimmed as string);
+      } catch {
+        clipboard.writeText(text);
+      }
       mainWindow?.webContents.send(
         "notify",
         "Error. Text copied to clipboard.",

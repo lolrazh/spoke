@@ -6,6 +6,300 @@
 #include <unistd.h> // For usleep
 #include <signal.h>
 #include <dispatch/dispatch.h>
+#include <Foundation/Foundation.h>
+#include <AppKit/AppKit.h>
+
+// Forward declarations for functions defined later in this file
+static void requireAX(void);
+static void cmdV(void);
+
+// ==== Accessibility (AX) paste verification utilities ====
+// We keep Cmd+V for insertion, and use AX to read/observe for verification.
+
+typedef struct {
+    AXObserverRef observer;
+    AXUIElementRef appEl;
+    AXUIElementRef focusedEl;
+    volatile int valueChangedNotified;
+    volatile int selectionChangedNotified;
+} AXWatch;
+
+static AXUIElementRef ax_focused_app_element(void) {
+    // Prefer app-specific path via NSWorkspace (more reliable than system-wide attribute)
+    @autoreleasepool {
+        NSRunningApplication *front = [[NSWorkspace sharedWorkspace] frontmostApplication];
+        if (front) {
+            pid_t pid = front.processIdentifier;
+            if (pid > 0) {
+                AXUIElementRef appEl = AXUIElementCreateApplication(pid);
+                if (appEl) return appEl;
+            }
+        }
+    }
+    // Fallback to system-wide attribute if NSWorkspace path fails
+    AXUIElementRef sys = AXUIElementCreateSystemWide();
+    if (!sys) return NULL;
+    AXUIElementRef appEl = NULL;
+    if (AXUIElementCopyAttributeValue(sys, kAXFocusedApplicationAttribute, (CFTypeRef *)&appEl) != kAXErrorSuccess) {
+        CFRelease(sys);
+        return NULL;
+    }
+    CFRelease(sys);
+    return appEl; // caller CFRelease
+}
+
+static AXUIElementRef ax_focused_element_from_app(AXUIElementRef appEl) {
+    if (!appEl) return NULL;
+    AXUIElementRef el = NULL;
+    if (AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el) != kAXErrorSuccess) {
+        return NULL;
+    }
+    return el; // caller CFRelease
+}
+
+static bool ax_is_secure(AXUIElementRef el) {
+    if (!el) return false;
+    CFTypeRef subrole = NULL;
+    if (AXUIElementCopyAttributeValue(el, kAXSubroleAttribute, &subrole) == kAXErrorSuccess && subrole) {
+        bool secure = (CFGetTypeID(subrole) == CFStringGetTypeID()) &&
+                      (CFStringCompare((CFStringRef)subrole, CFSTR("AXSecureTextField"), 0) == kCFCompareEqualTo);
+        CFRelease(subrole);
+        return secure;
+    }
+    return false;
+}
+
+static bool ax_get_selected_range_cf(AXUIElementRef el, CFRange *out) {
+    if (!el || !out) return false;
+    AXValueRef v = NULL;
+    if (AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute, (CFTypeRef *)&v) == kAXErrorSuccess && v) {
+        bool ok = false;
+        if (AXValueGetType(v) == kAXValueCFRangeType) {
+            ok = AXValueGetValue(v, kAXValueCFRangeType, out);
+        }
+        CFRelease(v);
+        return ok;
+    }
+    return false; // marker-only editors not handled here
+}
+
+static CFStringRef ax_copy_value(AXUIElementRef el) {
+    if (!el) return NULL;
+    CFTypeRef v = NULL;
+    if (AXUIElementCopyAttributeValue(el, kAXValueAttribute, &v) == kAXErrorSuccess && v) {
+        if (CFGetTypeID(v) == CFStringGetTypeID()) {
+            return (CFStringRef)v; // caller CFRelease
+        }
+        CFRelease(v);
+    }
+    return NULL;
+}
+
+static CFStringRef cfstring_from_utf8(const char *s) {
+    if (!s) return NULL;
+    return CFStringCreateWithCString(kCFAllocatorDefault, s, kCFStringEncodingUTF8);
+}
+
+static void print_cfstring_truncated(const char *label, CFStringRef s, CFIndex limit) {
+    if (!label) label = "";
+    if (!s) {
+        printf("%s: (null)\n", label); return;
+    }
+    CFIndex len = CFStringGetLength(s);
+    CFIndex take = (limit > 0 && limit < len) ? limit : len;
+    CFStringRef slice = (take == len) ? CFRetain(s) : CFStringCreateWithSubstring(kCFAllocatorDefault, s, CFRangeMake(0, take));
+    if (!slice) { printf("%s: (slice-null)\n", label); return; }
+    CFIndex max = CFStringGetMaximumSizeForEncoding(CFStringGetLength(slice), kCFStringEncodingUTF8) + 1;
+    char *buf = (char *)malloc((size_t)max);
+    if (buf && CFStringGetCString(slice, buf, max, kCFStringEncodingUTF8)) {
+        printf("%s: %s\n", label, buf);
+    } else {
+        printf("%s: (unprintable)\n", label);
+    }
+    if (buf) free(buf);
+    CFRelease(slice);
+}
+
+static CFStringRef cfstring_substring_safe(CFStringRef s, CFRange r) {
+    if (!s) return NULL;
+    CFIndex len = CFStringGetLength(s);
+    if (r.location < 0) r.location = 0;
+    if (r.length < 0) r.length = 0;
+    if (r.location > len) r.location = len;
+    if (r.location + r.length > len) r.length = len - r.location;
+    return CFStringCreateWithSubstring(kCFAllocatorDefault, s, r);
+}
+
+static CFStringRef cfstring_replace_range(CFStringRef base, CFRange r, CFStringRef insert) {
+    if (!base) {
+        return insert ? CFRetain(insert) : CFStringCreateWithCString(kCFAllocatorDefault, "", kCFStringEncodingUTF8);
+    }
+    CFMutableStringRef m = CFStringCreateMutableCopy(kCFAllocatorDefault, 0, base);
+    if (!m) return NULL;
+    CFStringRef repl = insert ? insert : CFSTR("");
+    CFStringReplace(m, r, repl);
+    return m; // caller CFRelease
+}
+
+static bool cfstring_equals(CFStringRef a, CFStringRef b) {
+    if (a == b) return true;
+    if (!a || !b) return false;
+    return CFStringCompare(a, b, 0) == kCFCompareEqualTo;
+}
+
+static void ax_observer_cb(AXObserverRef obs, AXUIElementRef element, CFStringRef notification, void *refcon) {
+    (void)obs; (void)element;
+    AXWatch *w = (AXWatch *)refcon;
+    if (!notification || !w) return;
+    if (CFStringCompare(notification, kAXValueChangedNotification, 0) == kCFCompareEqualTo) {
+        w->valueChangedNotified = 1;
+        puts("ax:AXValueChanged"); fflush(stdout);
+    } else if (CFStringCompare(notification, kAXSelectedTextChangedNotification, 0) == kCFCompareEqualTo) {
+        w->selectionChangedNotified = 1;
+        puts("ax:AXSelectedTextChanged"); fflush(stdout);
+    } else if (CFStringCompare(notification, kAXFocusedUIElementChangedNotification, 0) == kCFCompareEqualTo) {
+        puts("ax:AXFocusedUIElementChanged"); fflush(stdout);
+    }
+}
+
+static bool ax_watch_start(AXWatch *w, AXUIElementRef appEl, AXUIElementRef focusedEl) {
+    if (!w || !appEl || !focusedEl) return false;
+    memset(w, 0, sizeof(*w));
+    pid_t pid = 0;
+    if (AXUIElementGetPid(focusedEl, &pid) != kAXErrorSuccess || pid == 0) return false;
+    AXObserverRef obs = NULL;
+    if (AXObserverCreate(pid, ax_observer_cb, &obs) != kAXErrorSuccess || !obs) return false;
+    // Retain elements for lifetime of watch
+    w->observer = obs;
+    w->appEl = CFRetain(appEl);
+    w->focusedEl = CFRetain(focusedEl);
+    AXObserverAddNotification(obs, focusedEl, kAXValueChangedNotification, w);
+    AXObserverAddNotification(obs, focusedEl, kAXSelectedTextChangedNotification, w);
+    AXObserverAddNotification(obs, appEl, kAXFocusedUIElementChangedNotification, w);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(obs), kCFRunLoopCommonModes);
+    return true;
+}
+
+static void ax_watch_stop(AXWatch *w) {
+    if (!w) return;
+    if (w->observer) {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(w->observer), kCFRunLoopCommonModes);
+        CFRelease(w->observer);
+        w->observer = NULL;
+    }
+    if (w->appEl) { CFRelease(w->appEl); w->appEl = NULL; }
+    if (w->focusedEl) { CFRelease(w->focusedEl); w->focusedEl = NULL; }
+}
+
+static int paste_and_verify_core(const char *payload_utf8, int timeout_ms) {
+    requireAX();
+
+    // Resolve focused app and element (app-specific path is more reliable than system-wide element alone)
+    AXUIElementRef appEl = ax_focused_app_element();
+    if (!appEl) {
+        puts("paste:err:no-app"); fflush(stdout);
+        return 2;
+    }
+    AXUIElementRef el = ax_focused_element_from_app(appEl);
+    if (!el) {
+        CFRelease(appEl);
+        puts("paste:err:no-focus"); fflush(stdout);
+        return 2;
+    }
+    if (ax_is_secure(el)) {
+        CFRelease(el); CFRelease(appEl);
+        puts("paste:err:secure-field"); fflush(stdout);
+        return 3;
+    }
+
+    // PRE state
+    CFStringRef preVal = ax_copy_value(el);
+    CFRange preSel = {0,0};
+    bool haveSel = ax_get_selected_range_cf(el, &preSel);
+    if (!preVal || !haveSel) {
+        if (preVal) CFRelease(preVal);
+        CFRelease(el); CFRelease(appEl);
+        puts("paste:err:unreadable"); fflush(stdout);
+        return 4;
+    }
+
+    // Start observer before cmdV
+    AXWatch watch = {0};
+    ax_watch_start(&watch, appEl, el);
+
+    // Paste via existing keystroke simulation
+    cmdV();
+
+    // Wait for notification or timeout; pump runloop so observer fires
+    // Event-driven wait: spin the run loop once up to timeout, returning early when a source is handled
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, (CFTimeInterval)timeout_ms/1000.0, true);
+
+    // POST state
+    CFStringRef postVal = ax_copy_value(el);
+    CFRange postSel = {0,0};
+    ax_get_selected_range_cf(el, &postSel);
+
+    CFStringRef payload = cfstring_from_utf8(payload_utf8 ? payload_utf8 : "");
+    CFStringRef expected = cfstring_replace_range(preVal, preSel, payload);
+
+    int rc = 0;
+    if (!postVal) {
+        puts("paste:verify:unknown"); rc = 10;
+    } else if (cfstring_equals(postVal, expected)) {
+        CFIndex payloadLen = payload ? CFStringGetLength(payload) : 0;
+        printf("paste:ok:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
+        rc = 0;
+    } else {
+        puts("paste:mismatch"); rc = 11;
+    }
+    fflush(stdout);
+
+    if (preVal) CFRelease(preVal);
+    if (postVal) CFRelease(postVal);
+    if (payload) CFRelease(payload);
+    if (expected) CFRelease(expected);
+    ax_watch_stop(&watch);
+    CFRelease(el);
+    CFRelease(appEl);
+    return rc;
+}
+
+static int inspect_text_core(int context_chars) {
+    requireAX();
+    AXUIElementRef appEl = ax_focused_app_element();
+    if (!appEl) { puts("read:err:no-app"); fflush(stdout); return 2; }
+    AXUIElementRef el = ax_focused_element_from_app(appEl);
+    if (!el) { CFRelease(appEl); puts("read:err:no-focus"); fflush(stdout); return 2; }
+    if (ax_is_secure(el)) { CFRelease(el); CFRelease(appEl); puts("read:err:secure-field"); fflush(stdout); return 3; }
+
+    CFStringRef value = ax_copy_value(el);
+    CFRange sel = {0,0};
+    bool haveSel = ax_get_selected_range_cf(el, &sel);
+    if (!value) { CFRelease(el); CFRelease(appEl); puts("read:err:unreadable"); fflush(stdout); return 4; }
+
+    CFIndex len = CFStringGetLength(value);
+    CFIndex beforeStart = sel.location - (context_chars > 0 ? context_chars : 32);
+    if (beforeStart < 0) beforeStart = 0;
+    CFIndex afterEnd = sel.location + sel.length + (context_chars > 0 ? context_chars : 32);
+    if (afterEnd > len) afterEnd = len;
+
+    CFStringRef selectedText = haveSel ? cfstring_substring_safe(value, sel) : NULL;
+    CFStringRef contextSlice = cfstring_substring_safe(value, CFRangeMake(beforeStart, afterEnd - beforeStart));
+
+    printf("read:ok\n");
+    printf("selectedRange:%ld:%ld\n", (long)sel.location, (long)sel.length);
+    print_cfstring_truncated("selectedText", selectedText, 512);
+    print_cfstring_truncated("context", contextSlice, 512);
+    printf("valueLength:%ld\n", (long)len);
+    fflush(stdout);
+
+    if (selectedText) CFRelease(selectedText);
+    if (contextSlice) CFRelease(contextSlice);
+    if (value) CFRelease(value);
+    CFRelease(el);
+    CFRelease(appEl);
+    return 0;
+}
 
 static void handle_signal(int sig) {
     fprintf(stderr, "[SIG] caught %d – exiting\n", sig);
@@ -169,6 +463,22 @@ int main(int argc, char *argv[]) {
         requireAX();
         cmdV();
         return 0;
+    }
+    // New: paste and verify with AX (reads/observes)
+    if (argc > 1 && strcmp(argv[1], "--paste-and-verify") == 0) {
+        // The UI should set the clipboard and pass the payload (optional but recommended for exact comparison)
+        const char *payload = NULL;
+        if (argc > 2) payload = argv[2];
+        int code = paste_and_verify_core(payload, 700 /* ms */);
+        return code;
+    }
+    if (argc > 1 && strcmp(argv[1], "--inspect-text") == 0) {
+        int ctx = 32;
+        if (argc > 2) {
+            int parsed = atoi(argv[2]);
+            if (parsed > 0 && parsed < 2048) ctx = parsed;
+        }
+        return inspect_text_core(ctx);
     }
     
     // NEW: Add support for requesting Input Monitoring permission

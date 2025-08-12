@@ -21,8 +21,10 @@ mkdir -p "$APP_BUNDLE_PATH/Contents/MacOS"
 mkdir -p "$APP_BUNDLE_PATH/Contents/Resources"
 
 # --- Compile the executable ---
-echo "Compiling $EXECUTABLE_NAME..."
-clang -framework ApplicationServices -framework IOKit \
+echo "Compiling $EXECUTABLE_NAME (Objective-C with AX support)..."
+clang -x objective-c -fobjc-arc \
+      -framework Foundation -framework AppKit \
+      -framework ApplicationServices -framework IOKit -framework CoreGraphics \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
       "$SOURCE_DIR/sonic-helper.c"
 
