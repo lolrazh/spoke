@@ -100,6 +100,36 @@ static CFStringRef cfstring_from_utf8(const char *s) {
     return CFStringCreateWithCString(kCFAllocatorDefault, s, kCFStringEncodingUTF8);
 }
 
+static void print_cfstring_truncated(const char *label, CFStringRef s, CFIndex limit) {
+    if (!label) label = "";
+    if (!s) {
+        printf("%s: (null)\n", label); return;
+    }
+    CFIndex len = CFStringGetLength(s);
+    CFIndex take = (limit > 0 && limit < len) ? limit : len;
+    CFStringRef slice = (take == len) ? CFRetain(s) : CFStringCreateWithSubstring(kCFAllocatorDefault, s, CFRangeMake(0, take));
+    if (!slice) { printf("%s: (slice-null)\n", label); return; }
+    CFIndex max = CFStringGetMaximumSizeForEncoding(CFStringGetLength(slice), kCFStringEncodingUTF8) + 1;
+    char *buf = (char *)malloc((size_t)max);
+    if (buf && CFStringGetCString(slice, buf, max, kCFStringEncodingUTF8)) {
+        printf("%s: %s\n", label, buf);
+    } else {
+        printf("%s: (unprintable)\n", label);
+    }
+    if (buf) free(buf);
+    CFRelease(slice);
+}
+
+static CFStringRef cfstring_substring_safe(CFStringRef s, CFRange r) {
+    if (!s) return NULL;
+    CFIndex len = CFStringGetLength(s);
+    if (r.location < 0) r.location = 0;
+    if (r.length < 0) r.length = 0;
+    if (r.location > len) r.location = len;
+    if (r.location + r.length > len) r.length = len - r.location;
+    return CFStringCreateWithSubstring(kCFAllocatorDefault, s, r);
+}
+
 static CFStringRef cfstring_replace_range(CFStringRef base, CFRange r, CFStringRef insert) {
     if (!base) {
         return insert ? CFRetain(insert) : CFStringCreateWithCString(kCFAllocatorDefault, "", kCFStringEncodingUTF8);
@@ -237,6 +267,43 @@ static int paste_and_verify_core(const char *payload_utf8, int timeout_ms) {
     CFRelease(el);
     CFRelease(appEl);
     return rc;
+}
+
+static int inspect_text_core(int context_chars) {
+    requireAX();
+    AXUIElementRef appEl = ax_focused_app_element();
+    if (!appEl) { puts("read:err:no-app"); fflush(stdout); return 2; }
+    AXUIElementRef el = ax_focused_element_from_app(appEl);
+    if (!el) { CFRelease(appEl); puts("read:err:no-focus"); fflush(stdout); return 2; }
+    if (ax_is_secure(el)) { CFRelease(el); CFRelease(appEl); puts("read:err:secure-field"); fflush(stdout); return 3; }
+
+    CFStringRef value = ax_copy_value(el);
+    CFRange sel = {0,0};
+    bool haveSel = ax_get_selected_range_cf(el, &sel);
+    if (!value) { CFRelease(el); CFRelease(appEl); puts("read:err:unreadable"); fflush(stdout); return 4; }
+
+    CFIndex len = CFStringGetLength(value);
+    CFIndex beforeStart = sel.location - (context_chars > 0 ? context_chars : 32);
+    if (beforeStart < 0) beforeStart = 0;
+    CFIndex afterEnd = sel.location + sel.length + (context_chars > 0 ? context_chars : 32);
+    if (afterEnd > len) afterEnd = len;
+
+    CFStringRef selectedText = haveSel ? cfstring_substring_safe(value, sel) : NULL;
+    CFStringRef contextSlice = cfstring_substring_safe(value, CFRangeMake(beforeStart, afterEnd - beforeStart));
+
+    printf("read:ok\n");
+    printf("selectedRange:%ld:%ld\n", (long)sel.location, (long)sel.length);
+    print_cfstring_truncated("selectedText", selectedText, 512);
+    print_cfstring_truncated("context", contextSlice, 512);
+    printf("valueLength:%ld\n", (long)len);
+    fflush(stdout);
+
+    if (selectedText) CFRelease(selectedText);
+    if (contextSlice) CFRelease(contextSlice);
+    if (value) CFRelease(value);
+    CFRelease(el);
+    CFRelease(appEl);
+    return 0;
 }
 
 static void handle_signal(int sig) {
@@ -409,6 +476,14 @@ int main(int argc, char *argv[]) {
         if (argc > 2) payload = argv[2];
         int code = paste_and_verify_core(payload, 700 /* ms */);
         return code;
+    }
+    if (argc > 1 && strcmp(argv[1], "--inspect-text") == 0) {
+        int ctx = 32;
+        if (argc > 2) {
+            int parsed = atoi(argv[2]);
+            if (parsed > 0 && parsed < 2048) ctx = parsed;
+        }
+        return inspect_text_core(ctx);
     }
     
     // NEW: Add support for requesting Input Monitoring permission
