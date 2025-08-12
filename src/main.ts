@@ -1109,8 +1109,7 @@ ipcMain.handle(
       if (result.success) {
         setTimeout(() => clipboard.writeText(originalClipboardText), 300);
       } else {
-        const msg = result.error === "Secure field" ? "Paste failed (secure field)." : "Paste failed (no text field).";
-        mainWindow?.webContents.send("notify", msg);
+        mainWindow?.webContents.send("notify", "Text copied to clipboard.");
       }
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
