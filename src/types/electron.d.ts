@@ -48,6 +48,11 @@ declare global {
       closeOnboarding: () => Promise<void>;
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
+      // Floating bar visibility helpers
+      isFloatingBarVisible: () => Promise<{ visible: boolean }>;
+      getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;
+      hideFloatingBarIndefinitely: () => Promise<{ ok: boolean; error?: string }>;
+      showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (

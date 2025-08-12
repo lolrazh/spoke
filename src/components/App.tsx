@@ -158,6 +158,10 @@ const App: React.FC = () => {
   const isLongPressRef = useRef(false);
   const latestTransRef = useRef(trans);
   const [trace, setTrace] = useState<string[]>([]);
+  const [pendingHideAfterCollapse, setPendingHideAfterCollapse] = useState<{
+    active: boolean;
+    message: string;
+  }>({ active: false, message: "" });
 
   const pushTrace = (msg: string) => {
     setTrace((t) => [
@@ -283,15 +287,30 @@ const App: React.FC = () => {
   // During onboarding we avoid fighting with onboarding's request to expand the pill.
   // Keep native window stationary here; expansion is driven by renderer UI state.
 
-  // Notification duration for NOTIFICATION
+  // Notification duration for NOTIFICATION, and optional post-notification hide
   useEffect(() => {
     if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
-      const timeout = setTimeout(() => {
+      const shouldHideAfter = pendingHideAfterCollapse.active;
+      const timeout = setTimeout(async () => {
         pillDispatch({ type: "ANIM_DONE" });
+        if (shouldHideAfter) {
+          try {
+            await window.electron?.hideFloatingBarIndefinitely?.();
+          } catch {}
+          setPendingHideAfterCollapse({ active: false, message: "" });
+        }
       }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);
     }
-  }, [pillState, pillContext.notifMsg]);
+  }, [pillState, pillContext.notifMsg, pendingHideAfterCollapse.active]);
+
+  const notifyThenHide = useCallback((message: string) => {
+    try {
+      window.notifications?.send?.(message);
+    } catch {}
+    // Defer actual hide until NOTIFICATION finishes and we return to IDLE
+    setPendingHideAfterCollapse({ active: true, message });
+  }, []);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
@@ -459,7 +478,36 @@ const App: React.FC = () => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={() => pillDispatch({ type: "EXPAND" })}
-        onCollapse={() => pillDispatch({ type: "COLLAPSE" })}
+        onCollapse={() => {
+          pillDispatch({ type: "COLLAPSE" });
+          // If a deferred hide is pending (from toggle while expanded), show the heads-up now
+          if (pendingHideAfterCollapse.active && pendingHideAfterCollapse.message) {
+            setTimeout(() => {
+              try {
+                window.notifications?.send?.(pendingHideAfterCollapse.message);
+              } catch {}
+            }, 0);
+          }
+        }}
+        onToggleFloatingBar={async (enabled: boolean) => {
+          // Cancel any pending hide if user turns it back on
+          if (enabled) {
+            setPendingHideAfterCollapse({ active: false, message: "" });
+            try {
+              await window.electron?.showFloatingBar?.();
+            } catch {}
+            return;
+          }
+
+          const message = "Floating bar hidden. Use the tray to bring it back.";
+          // If expanded, defer notification until collapse to avoid jank
+          if (pillState === "EXPANDED") {
+            setPendingHideAfterCollapse({ active: true, message });
+            return;
+          }
+          // If not expanded, show heads-up now and then hide after it settles
+          notifyThenHide(message);
+        }}
       />
       <span
         id="pill-ghost-measure"

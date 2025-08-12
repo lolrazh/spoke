@@ -94,9 +94,10 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
+  onToggleFloatingBar?: (enabled: boolean) => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onToggleFloatingBar }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
     [],
@@ -120,12 +121,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
   const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
   const axDeepLinkOpenedRef = useRef(false);
 
-  // Load persisted preferences on mount
+  // Initialize from main visibility state (source of truth)
   useEffect(() => {
-    try {
-      const storedPlay = localStorage.getItem("sf.playSounds");
-      if (storedPlay != null) setPlaySounds(storedPlay === "true");
-    } catch {}
+    (async () => {
+      try {
+        // Prefer persisted intent if available; fallback to current visibility
+        const pref = await window.electron?.getFloatingBarEnabled?.();
+        if (pref && typeof pref.enabled === 'boolean') {
+          setShowFloatingBar(pref.enabled);
+        } else {
+          const vis = await window.electron?.isFloatingBarVisible?.();
+          if (vis && typeof vis.visible === 'boolean') {
+            setShowFloatingBar(vis.visible);
+          }
+        }
+      } catch {}
+      try {
+        const storedPlay = localStorage.getItem("sf.playSounds");
+        if (storedPlay != null) setPlaySounds(storedPlay === "true");
+      } catch {}
+    })();
   }, []);
 
   // Persist preferences when they change
@@ -387,7 +402,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
                   label="Show Floating Bar"
                   description="Display the floating dictation pill"
                   enabled={showFloatingBar}
-                  onChange={setShowFloatingBar}
+                  onChange={(enabled) => {
+                    setShowFloatingBar(enabled);
+                    if (onToggleFloatingBar) onToggleFloatingBar(enabled);
+                  }}
                   icon={<SfIcon name="eye.fill" size={16} className="text-primary/70" />}
                 />
 

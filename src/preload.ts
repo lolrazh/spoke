@@ -100,6 +100,15 @@ contextBridge.exposeInMainWorld("electron", {
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),
+  // Floating bar visibility helpers
+  isFloatingBarVisible: (): Promise<{ visible: boolean }> =>
+    ipcRenderer.invoke("floating-bar:is-visible"),
+  getFloatingBarEnabled: (): Promise<{ enabled: boolean }> =>
+    ipcRenderer.invoke("floating-bar:get-enabled"),
+  hideFloatingBarIndefinitely: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("floating-bar:hide-indefinitely"),
+  showFloatingBar: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("floating-bar:show"),
 });
 
 // Event bridge for active display updates
