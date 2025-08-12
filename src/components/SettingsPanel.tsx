@@ -175,7 +175,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
     let unsubscribe: (() => void) | undefined;
     if (window.mic?.onSelectedChanged) {
       unsubscribe = window.mic.onSelectedChanged(({ id }) => {
-        setSelectedMicId(id);
+        if (id && typeof id === "string") {
+          setSelectedMicId(id);
+        }
       });
     }
 
