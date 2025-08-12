@@ -67,6 +67,7 @@ declare global {
         selectedId?: string,
       ) => void;
       select: (id: string) => Promise<{ ok: boolean }>;
+      getSelected: () => Promise<{ id: string }>;
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
       onRefreshRequest: (cb: () => void) => () => void;
     };

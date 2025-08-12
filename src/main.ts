@@ -18,7 +18,7 @@ import { spawn, execFile, execSync } from "child_process";
 
 import fs from "node:fs";
 
-import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD } from "./constants/window";
+import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD, CONTENT_WIDTH, CONTENT_HEIGHT } from "./constants/window";
 import { ONBOARDING_WIDTH, ONBOARDING_HEIGHT } from "./constants/onboarding";
 import type { MicDevice, MicPreferences, PttTarget } from "./types/shared";
 import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems, buildCopyTranscriptItem } from "./utils/menuBuilders";
@@ -45,6 +45,11 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
+
+// Dev helper: allow skipping onboarding for faster iteration
+const SKIP_ONBOARDING =
+  process.env.SKIP_ONBOARDING === "1" ||
+  process.env.SKIP_ONBOARDING === "true";
 
 // Microphone management state
 let micDevices: MicDevice[] = [
@@ -119,9 +124,9 @@ function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; w
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const scale = computeScaleForDisplay(display);
 
-  // Expanded pill is 600×610 at scale 1. Add shadow pad on all sides
-  const targetContentW = Math.round(600 * scale);
-  const targetContentH = Math.round(610 * scale);
+  // Expanded pill content, scaled per active display
+  const targetContentW = Math.round(CONTENT_WIDTH * scale);
+  const targetContentH = Math.round(CONTENT_HEIGHT * scale);
   const targetW = Math.max(ISLAND_WIDTH, targetContentW + SHADOW_PAD * 2);
   const targetH = Math.max(ISLAND_HEIGHT, targetContentH + SHADOW_PAD * 2);
 
@@ -654,6 +659,15 @@ const createWindow = () => {
   const sized = ensureEnvelopeForDisplay(cursorDisplay);
   emitActiveDisplayInfo(cursorDisplay, sized?.scale ?? computeScaleForDisplay(cursorDisplay));
 
+  // Collapse request on blur: if user clicks outside our window, renderer can decide to collapse
+  mainWindow.on("blur", () => {
+    try {
+      mainWindow?.webContents.send("collapse-request");
+    } catch {
+      // ignore
+    }
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -666,8 +680,9 @@ const createWindow = () => {
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Make window click-through by default - clicks pass through to underlying windows
-  mainWindow.setIgnoreMouseEvents(true);
+  // Make window click-through by default, but keep hover/move events forwarded
+  // This allows CSS cursors/tooltips/hover states to work even when click-through is enabled
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
 
   // Add this handler to grant permissions needed for SharedArrayBuffer in some contexts
   mainWindow.webContents.session.setPermissionRequestHandler(
@@ -1144,14 +1159,32 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Always show onboarding - no persistence tracking
-  console.log("[Startup] Always showing onboarding");
-  console.log("[Debug] About to create onboarding window...");
-  try {
-    createOnboardingWindow();
-    console.log("[Debug] Onboarding window created successfully");
-  } catch (error) {
-    console.error("[Debug] Error creating onboarding window:", error);
+  // Startup flow: respect SKIP_ONBOARDING for development
+  if (SKIP_ONBOARDING) {
+    console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
+    try {
+      createWindow();
+      createTray();
+      // Start continuous follow and helper to fully mimic post-onboarding state
+      startFollowCursor();
+      startFnListener();
+      pttTarget = "main";
+      console.log("[Debug] Main window launched (onboarding skipped)");
+    } catch (error) {
+      console.error(
+        "[Debug] Error launching main window with SKIP_ONBOARDING:",
+        error,
+      );
+    }
+  } else {
+    console.log("[Startup] Showing onboarding");
+    console.log("[Debug] About to create onboarding window...");
+    try {
+      createOnboardingWindow();
+      console.log("[Debug] Onboarding window created successfully");
+    } catch (error) {
+      console.error("[Debug] Error creating onboarding window:", error);
+    }
   }
 
   // Initialize microphone preferences
@@ -1276,6 +1309,19 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Allow renderer to toggle focusable during expanded settings mode
+  ipcMain.on("set-focusable", (event, focusable: boolean) => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        // setFocusable is a no-op on some platforms; call defensively
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mainWindow as any).setFocusable?.(focusable);
+      }
+    } catch (e) {
+      // ignore
+    }
+  });
+
   // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
 
   ipcMain.on("island-slide", (_e, y) => {
@@ -1307,6 +1353,11 @@ app.whenReady().then(async () => {
       console.error("[IPC] Failed to select microphone:", error);
       return { ok: false };
     }
+  });
+
+  ipcMain.handle("mic:get-selected", () => {
+    const selectedId = micPreferences.selectedMicId || "default";
+    return { id: selectedId };
   });
 
   // Handle last transcript updates from renderer
@@ -1611,10 +1662,13 @@ app.on("activate", () => {
     // If no windows exist at all, create the main window
     if (allWindows.length === 0) {
       console.log(
-        "[App Event] activate: No windows exist, creating main window",
+        "[App Event] activate: No windows exist, creating window",
       );
-      // Always show onboarding
-      createOnboardingWindow();
+      if (SKIP_ONBOARDING) {
+        createWindow();
+      } else {
+        createOnboardingWindow();
+      }
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {

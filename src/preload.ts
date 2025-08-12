@@ -2,6 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
+import type { ActiveDisplayPayload } from "./types/shared";
 
 contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
@@ -55,6 +56,8 @@ contextBridge.exposeInMainWorld("mic", {
   },
   /** Ask main to change the selected microphone (persist + broadcast). */
   select: (id: string) => ipcRenderer.invoke("mic:select", { id }),
+  /** Get the currently selected microphone id from main. */
+  getSelected: (): Promise<{ id: string }> => ipcRenderer.invoke("mic:get-selected"),
   /** Subscribe to selection changes coming from main. */
   onSelectedChanged: (cb: (payload: { id: string }) => void) => {
     ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
@@ -74,6 +77,7 @@ contextBridge.exposeInMainWorld("island", {
 contextBridge.exposeInMainWorld("electron", {
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
+  setFocusable: (focusable: boolean) => ipcRenderer.send("set-focusable", focusable),
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
@@ -99,7 +103,16 @@ contextBridge.exposeInMainWorld("electron", {
 });
 
 // Event bridge for active display updates
-contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: any) => void) => {
-  const listener = (_event: Electron.IpcRendererEvent, payload: any) => cb(payload);
+contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: ActiveDisplayPayload) => void) => {
+  const listener = (_event: Electron.IpcRendererEvent, payload: ActiveDisplayPayload) => cb(payload);
   ipcRenderer.on("active-display", listener);
+});
+
+// Forward collapse-request from main to the renderer via a window message
+ipcRenderer.on("collapse-request", () => {
+  try {
+    window.postMessage('collapse-request', '*');
+  } catch {
+    // ignore
+  }
 });

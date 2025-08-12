@@ -47,7 +47,6 @@
     align-items: center;
     justify-content: center;
     pointer-events: auto; /* Pill now captures its own events */
-    cursor: pointer; /* Hand cursor when hovering over the pill */
   }
 
   /* The visible pill element styled as Dynamic Island */
@@ -66,6 +65,11 @@
     transform: translateZ(0);
     backface-visibility: hidden;
     contain: paint;
+  }
+
+  /* Show hand cursor when pill is clickable (non-expanded) */
+  .pill-core:not(.expanded) {
+    cursor: pointer;
   }
 
   /* Afterglow overlay for micro-physics impact */
@@ -88,6 +92,7 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
     /* Use layered window-strength shadow for soft, glass-friendly falloff */
     box-shadow: var(--shadow-interactive);
+    cursor: default; /* Arrow over expanded/home UI; buttons manage their own pointer */
   }
 
   /* Resting indicator - invisible by default, just for spacing */

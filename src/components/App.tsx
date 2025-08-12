@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../constants/window";
+import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y, CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 
 // Pill State Machine Types
@@ -178,7 +178,7 @@ const App: React.FC = () => {
   // Listen for active display updates from main (provides computed scale)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;
-    window.onActiveDisplay?.((payload: any) => {
+    window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
     });
@@ -220,6 +220,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleExpandPill = () => {
       pillDispatch({ type: "EXPAND" });
+      // Ensure OS uses our window for cursor during expanded mode
+      window.electron?.setClickThrough(false);
+      window.electron?.setFocusable?.(true);
     };
 
     window.electron?.expandPill?.(handleExpandPill);
@@ -231,6 +234,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (pillState === "EXPANDED") {
       window.electron?.setClickThrough(false);
+      window.electron?.setFocusable?.(true);
     }
   }, [pillState]);
 
@@ -256,8 +260,25 @@ const App: React.FC = () => {
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener("mousedown", handleClickOutside);
+      // Restore original click-through and focusable behavior when collapsing
+      window.electron?.setFocusable?.(false);
+      window.electron?.setClickThrough(true);
     };
   }, [pillState]);
+
+  // Also listen for a blur-originated collapse request from main
+  useEffect(() => {
+    if (pillState !== "EXPANDED") return;
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.data === "collapse-request") {
+        pillDispatch({ type: "COLLAPSE" });
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+    };
+  }, [pillState, pillDispatch]);
 
   // During onboarding we avoid fighting with onboarding's request to expand the pill.
   // Keep native window stationary here; expansion is driven by renderer UI state.
@@ -296,8 +317,8 @@ const App: React.FC = () => {
   const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
-  const EXPANDED_W = Math.round(600 * S);
-  const EXPANDED_H = Math.round(610 * S);
+  const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
+  const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   // Measure notification width whenever notif message changes
@@ -341,11 +362,20 @@ const App: React.FC = () => {
         return;
       }
       isLongPressRef.current = false;
-      pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
         pillDispatch({ type: "PTT_START" });
         if (!latestTransRef.current.recording) {
+          try {
+            const mic = await window.electron?.checkMicrophonePermission?.();
+            if (!mic?.granted) {
+              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+              return;
+            }
+          } catch (_) {
+            // Fall through and attempt to start; useTranscription will surface errors
+          }
           latestTransRef.current.start();
         }
       }, HOLD_DURATION_MS);
@@ -369,7 +399,16 @@ const App: React.FC = () => {
           pushTrace(`PTT short press stop`);
           pillDispatch({ type: "PTT_STOP" });
         } else {
-          latestTransRef.current.start();
+          (async () => {
+            try {
+              const mic = await window.electron?.checkMicrophonePermission?.();
+              if (!mic?.granted) {
+                window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+                return;
+              }
+            } catch (_) {}
+            latestTransRef.current.start();
+          })();
           pushTrace(`PTT short press start`);
           pillDispatch({ type: "PTT_START" });
         }
@@ -397,8 +436,15 @@ const App: React.FC = () => {
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
         dims={{ baseW: BASE_W, baseH: BASE_H, restingH: RESTING_H, expandedW: EXPANDED_W, expandedH: EXPANDED_H, maxW: MAX_W }}
-        onStartDictation={() => {
+        onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
+          try {
+            const mic = await window.electron?.checkMicrophonePermission?.();
+            if (!mic?.granted) {
+              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+              return;
+            }
+          } catch (_) {}
           trans.start();
         }}
         onStopDictation={() => {

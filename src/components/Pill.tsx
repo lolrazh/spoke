@@ -2,7 +2,8 @@ import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TOKENS } from "../config/uiTokens";
 import { MOTION } from "../config/motionTokens";
-import HomePage from "./HomePage";
+import SettingsPanel from "./SettingsPanel";
+import SfIcon from "./icons/SfIcon";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -115,21 +116,17 @@ const Pill: React.FC<PillProps> = ({
   }, []);
 
   // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = useMemo(
-    () =>
-      // Create bars with consistent count
-      Array.from({ length: 7 }).map((_, index) => (
-        <div
-          key={`bar-${index}`}
-          className="waveform-bar"
-          style={{
-            animationDelay: `${index * 0.1}s`,
-            height: `${3 + Math.random() * 5}px`,
-          }}
-        />
-      )),
-    [], // Empty dependency array means this runs only once
-  );
+  const renderFrequencyBars = useMemo(() => {
+    // Deterministic, symmetric base heights (px) for consistent visuals
+    const heightsPx = [3, 4.2, 6.4, 8, 6.4, 4.2, 3];
+    return heightsPx.map((h, index) => (
+      <div
+        key={`bar-${index}`}
+        className="waveform-bar"
+        style={{ animationDelay: `${index * 0.1}s`, height: `${h}px` }}
+      />
+    ));
+  }, []);
 
   // Unified function to render dots with different styles
   const renderDots = (type: "static" | "animated" | "collapsed") => {
@@ -191,9 +188,8 @@ const Pill: React.FC<PillProps> = ({
       clickTimeoutRef.current = null;
     }
 
-    if (isExpanded) {
-      onCollapse();
-    } else {
+    // Disable double-click collapse. Only allow double-click to expand.
+    if (!isExpanded) {
       onExpand();
     }
   };
@@ -302,32 +298,21 @@ const Pill: React.FC<PillProps> = ({
           <AnimatePresence mode="wait">
             {isExpanded ? (
               <motion.div
-                key="home-content"
+                key="settings-content"
                 className="w-full h-full relative"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.standard }}
               >
-                <HomePage embeddedMode={true} />
+                <SettingsPanel embeddedMode={true} />
                 {/* Collapse chevron at bottom */}
                 <button
                   className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-10 h-8 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >
-                  <svg
-                    width="16"
-                    height="10"
-                    viewBox="0 0 16 10"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M4 7L8 3L12 7" />
-                  </svg>
+                  <SfIcon name="chevron.up" size={14} />
                 </button>
               </motion.div>
             ) : isShowingNotification ? (
