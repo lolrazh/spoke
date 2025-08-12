@@ -176,7 +176,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
     }
   };
 
-  // Initial permission check
+  // Initial permission check + passive refresh (focus + 5s interval while open)
   useEffect(() => {
     const initPerms = async () => {
       try {
@@ -194,12 +194,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false }) =
       }
     };
     initPerms();
+
+    const handleFocus = () => initPerms();
+    window.addEventListener("focus", handleFocus);
+    const interval = setInterval(initPerms, 5000);
+
     return () => {
       // Cleanup polls if any were started
       if (pollRefs.current.mic) clearInterval(pollRefs.current.mic!);
       if (pollRefs.current.im) clearInterval(pollRefs.current.im!);
       if (pollRefs.current.ax) clearInterval(pollRefs.current.ax!);
       pollRefs.current = { mic: null, im: null, ax: null };
+
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(interval);
     };
   }, []);
 

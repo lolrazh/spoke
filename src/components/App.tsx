@@ -378,11 +378,20 @@ const App: React.FC = () => {
         return;
       }
       isLongPressRef.current = false;
-      pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
         pillDispatch({ type: "PTT_START" });
         if (!latestTransRef.current.recording) {
+          try {
+            const mic = await window.electron?.checkMicrophonePermission?.();
+            if (!mic?.granted) {
+              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+              return;
+            }
+          } catch (_) {
+            // Fall through and attempt to start; useTranscription will surface errors
+          }
           latestTransRef.current.start();
         }
       }, HOLD_DURATION_MS);
@@ -406,7 +415,16 @@ const App: React.FC = () => {
           pushTrace(`PTT short press stop`);
           pillDispatch({ type: "PTT_STOP" });
         } else {
-          latestTransRef.current.start();
+          (async () => {
+            try {
+              const mic = await window.electron?.checkMicrophonePermission?.();
+              if (!mic?.granted) {
+                window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+                return;
+              }
+            } catch (_) {}
+            latestTransRef.current.start();
+          })();
           pushTrace(`PTT short press start`);
           pillDispatch({ type: "PTT_START" });
         }
@@ -434,8 +452,15 @@ const App: React.FC = () => {
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
         dims={{ baseW: BASE_W, baseH: BASE_H, restingH: RESTING_H, expandedW: EXPANDED_W, expandedH: EXPANDED_H, maxW: MAX_W }}
-        onStartDictation={() => {
+        onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
+          try {
+            const mic = await window.electron?.checkMicrophonePermission?.();
+            if (!mic?.granted) {
+              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
+              return;
+            }
+          } catch (_) {}
           trans.start();
         }}
         onStopDictation={() => {
