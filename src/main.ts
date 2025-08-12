@@ -1078,7 +1078,6 @@ ipcMain.handle(
           const mismatch = out.includes("paste:mismatch") || code === 11;
 
           if (ok) {
-            setTimeout(() => clipboard.writeText(originalClipboardText), 300);
             resolve({ success: true, verified: true });
             return;
           }
@@ -1107,7 +1106,9 @@ ipcMain.handle(
         });
       });
 
-      if (!result.success) {
+      if (result.success) {
+        setTimeout(() => clipboard.writeText(originalClipboardText), 300);
+      } else {
         const msg = result.error === "Secure field" ? "Paste failed (secure field)." : "Paste failed (no text field).";
         mainWindow?.webContents.send("notify", msg);
       }
