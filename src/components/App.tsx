@@ -140,6 +140,25 @@ const debounce = <T extends (...args: unknown[]) => void>(
   };
 };
 
+// Centralized microphone permission check with consistent error handling
+// Returns true if we should proceed with starting transcription.
+// Notifies and returns false if permission is explicitly not granted.
+// Swallows errors and returns true to allow downstream surfaces to report.
+const canProceedWithStartBasedOnMicPermission = async (): Promise<boolean> => {
+  try {
+    const mic = await window.electron?.checkMicrophonePermission?.();
+    if (!mic?.granted) {
+      window.notifications?.send?.(
+        "Microphone permission is off. Double-click to open Settings.",
+      );
+      return false;
+    }
+  } catch {
+    // Fall through and attempt to start; useTranscription will surface errors
+  }
+  return true;
+};
+
 const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
@@ -412,15 +431,8 @@ const App: React.FC = () => {
         pushTrace(`PTT long press start`);
         pillDispatch({ type: "PTT_START" });
         if (!latestTransRef.current.recording) {
-          try {
-            const mic = await window.electron?.checkMicrophonePermission?.();
-            if (!mic?.granted) {
-              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
-              return;
-            }
-          } catch (_) {
-            // Fall through and attempt to start; useTranscription will surface errors
-          }
+          const allowed = await canProceedWithStartBasedOnMicPermission();
+          if (!allowed) return;
           latestTransRef.current.start();
         }
       }, HOLD_DURATION_MS);
@@ -445,13 +457,8 @@ const App: React.FC = () => {
           pillDispatch({ type: "PTT_STOP" });
         } else {
           (async () => {
-            try {
-              const mic = await window.electron?.checkMicrophonePermission?.();
-              if (!mic?.granted) {
-                window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
-                return;
-              }
-            } catch (_) {}
+            const allowed = await canProceedWithStartBasedOnMicPermission();
+            if (!allowed) return;
             latestTransRef.current.start();
           })();
           pushTrace(`PTT short press start`);
@@ -483,13 +490,8 @@ const App: React.FC = () => {
         dims={{ baseW: BASE_W, baseH: BASE_H, restingH: RESTING_H, expandedW: EXPANDED_W, expandedH: EXPANDED_H, maxW: MAX_W }}
         onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
-          try {
-            const mic = await window.electron?.checkMicrophonePermission?.();
-            if (!mic?.granted) {
-              window.notifications?.send?.("Microphone permission is off. Double-click to open Settings.");
-              return;
-            }
-          } catch (_) {}
+          const allowed = await canProceedWithStartBasedOnMicPermission();
+          if (!allowed) return;
           trans.start();
         }}
         onStopDictation={() => {
