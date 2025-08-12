@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld("electron", {
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
   setFocusable: (focusable: boolean) => ipcRenderer.send("set-focusable", focusable),
+  focusWindow: () => ipcRenderer.send("focus-window"),
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },

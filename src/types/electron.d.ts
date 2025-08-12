@@ -30,6 +30,8 @@ declare global {
     };
     electron: {
       setClickThrough: (clickThrough: boolean) => void;
+      setFocusable: (focusable: boolean) => void;
+      focusWindow: () => void;
       expandPill: (callback: () => void) => void;
       checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
       requestAccessibilityPermission: () => Promise<void>;

@@ -243,6 +243,8 @@ const App: React.FC = () => {
       // Ensure OS uses our window for cursor during expanded mode
       window.electron?.setClickThrough(false);
       window.electron?.setFocusable?.(true);
+      // Focus the window to ensure cursor hover states work immediately
+      window.electron?.focusWindow?.();
     };
 
     window.electron?.expandPill?.(handleExpandPill);
@@ -256,6 +258,8 @@ const App: React.FC = () => {
     if (pillState === "EXPANDED") {
       window.electron?.setClickThrough(false);
       window.electron?.setFocusable?.(true);
+      // Focus the window to ensure cursor hover states work immediately
+      window.electron?.focusWindow?.();
     }
   }, [pillState]);
 

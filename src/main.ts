@@ -1368,6 +1368,17 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Allow renderer to focus the window (needed for proper cursor hover states)
+  ipcMain.on("focus-window", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.focus();
+      }
+    } catch (e) {
+      // ignore
+    }
+  });
+
   // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
 
   ipcMain.on("island-slide", (_e, y) => {
