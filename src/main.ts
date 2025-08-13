@@ -90,7 +90,7 @@ let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
-let onboardingPrefs: { done?: boolean } = {};
+let onboardingPrefs: { done?: boolean; signedIn?: boolean } = {};
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -1453,6 +1453,31 @@ app.whenReady().then(async () => {
     startFnListener();
     pttTarget = "main";
     // (Removed) silent app location check after onboarding
+  });
+
+  // Auth state persistence from renderer
+  ipcMain.handle("auth:set-signed-in", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
+    return { ok: true };
+  });
+
+  ipcMain.handle("auth:show-onboarding", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
+    // Hide pill/main, show onboarding
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch {}
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      onboardingWindow.show();
+    } else {
+      createOnboardingWindow();
+    }
+    pttTarget = "onboarding";
+    return { ok: true };
   });
 
   // Allow other windows (onboarding) to request the pill to expand without directly moving the window

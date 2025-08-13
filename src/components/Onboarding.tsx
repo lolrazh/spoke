@@ -219,6 +219,8 @@ const Onboarding: React.FC = () => {
       try {
         const profile = await getProfile();
         if (profile?.onboarding_done) {
+          try { await window.electron?.setPttTarget?.("main"); } catch {}
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch {}
           await window.electron?.onboardingComplete();
           return;
         }
@@ -238,6 +240,8 @@ const Onboarding: React.FC = () => {
       try {
         const profile = await getProfile();
         if (profile?.onboarding_done) {
+          try { await window.electron?.setPttTarget?.("main"); } catch {}
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch {}
           await window.electron?.onboardingComplete();
           return;
         }
@@ -351,7 +355,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       window.electron?.setPttTarget?.("main");
-      window.electron?.requestExpandPill?.();
+      window.electron?.expandPill?.(() => {});
     }
   }, [currentStep]);
 
@@ -850,8 +854,8 @@ const Onboarding: React.FC = () => {
             {/* Removed central Continue button; Next lives in bottom-right consistently */}
           </motion.div>
         )}
-            {/* Welcome Step */}
-            {currentStep === "welcome" && (
+            {/* Legacy welcome step removed */}
+            {false && (
               <motion.div
                 key="welcome"
                 variants={containerVariants}

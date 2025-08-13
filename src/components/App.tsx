@@ -163,6 +163,33 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
+  // Ensure pill is not shown when signed out; route to onboarding instead
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getSupabase, getCurrentUser } = await import("../lib/supabaseClient");
+        const user = await getCurrentUser();
+        if (!user) {
+          try { await window.electron?.showOnboarding?.(); } catch {}
+          try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+        }
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!session?.user) {
+              (async () => {
+                try { await window.electron?.showOnboarding?.(); } catch {}
+                try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+              })();
+            }
+          });
+          unsubscribe = () => subscription.unsubscribe();
+        }
+      } catch {}
+    })();
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, []);
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,

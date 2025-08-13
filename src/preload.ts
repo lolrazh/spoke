@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld("electron", {
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Window controls
+  showOnboarding: () => ipcRenderer.invoke("auth:show-onboarding"),
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),

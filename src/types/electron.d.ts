@@ -47,6 +47,7 @@ declare global {
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;
       // Window controls
+      showOnboarding: () => Promise<{ ok: boolean }>;
       closeOnboarding: () => Promise<void>;
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
@@ -57,6 +58,9 @@ declare global {
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       getAuthRedirectUrl: () => Promise<{ url: string }>;
+      // Auth helpers
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
