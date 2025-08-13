@@ -8,17 +8,94 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Mode",
-  "Access-Control-Expose-Headers": "Server-Timing, CF-Worker-Colo, X-Request-Id, X-Upstream-Status, X-Request-Size",
+  "Access-Control-Expose-Headers": "Server-Timing, CF-Worker-Colo, X-Request-Id, X-Upstream-Status, X-Request-Size, X-Warm-Triggered",
 };
 
+const lastWarmAtByColo = Object.create(null);
+const WARM_TTL_MS = 20000;
+const WARM_JITTER_MS = 3000;
+
+function shouldTriggerWarm(colo) {
+  const now = Date.now();
+  const last = lastWarmAtByColo[colo] || 0;
+  const jitter = (Math.random() * 2 - 1) * WARM_JITTER_MS;
+  const effectiveTtl = WARM_TTL_MS + jitter;
+  return now - last >= effectiveTtl;
+}
+
+function markWarm(colo) {
+  lastWarmAtByColo[colo] = Date.now();
+}
+
+async function warmUpGroq(env) {
+  const start = Date.now();
+  try {
+    const resp = await fetch("https://api.groq.com/openai/v1/models", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+      signal: AbortSignal.timeout(1500),
+    });
+    // Drain headers only; body not needed
+    return Date.now() - start;
+  } catch {
+    return -1;
+  }
+}
+
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+    const colo = (req.cf && req.cf.colo) || "unknown";
+    const requestId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const contentLength = req.headers.get("content-length");
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: corsHeaders,
       });
+    }
+
+    if (req.method === "HEAD" && pathname === "/ping") {
+      const t0 = Date.now();
+      const headers = new Headers(corsHeaders);
+      headers.set("Cache-Control", "no-store");
+      headers.set("CF-Worker-Colo", colo);
+      headers.set("X-Request-Id", requestId);
+      if (contentLength) headers.set("X-Request-Size", contentLength);
+
+      let warmTriggered = false;
+      if (shouldTriggerWarm(colo)) {
+        warmTriggered = true;
+        markWarm(colo);
+        if (ctx && ctx.waitUntil) ctx.waitUntil(warmUpGroq(env));
+        else warmUpGroq(env); // best-effort if ctx not available
+      }
+
+      headers.set("X-Warm-Triggered", warmTriggered ? "1" : "0");
+      headers.set("Server-Timing", `ping;dur=${Date.now() - t0}`);
+      return new Response(null, { status: 204, headers });
+    }
+
+    if (req.method === "GET" && pathname === "/warm") {
+      const headers = new Headers(corsHeaders);
+      headers.set("Cache-Control", "no-store");
+      headers.set("CF-Worker-Colo", colo);
+      headers.set("X-Request-Id", requestId);
+      if (contentLength) headers.set("X-Request-Size", contentLength);
+
+      let serverTiming = "";
+      let warmTriggered = false;
+      if (shouldTriggerWarm(colo)) {
+        markWarm(colo);
+        warmTriggered = true;
+        const ttfb = await warmUpGroq(env);
+        if (ttfb >= 0) serverTiming = `warm_ttfb;dur=${ttfb}`;
+      }
+      headers.set("X-Warm-Triggered", warmTriggered ? "1" : "0");
+      if (serverTiming) headers.set("Server-Timing", serverTiming);
+      return new Response(null, { status: 204, headers });
     }
 
     if (req.method !== "POST") {
@@ -36,10 +113,6 @@ export default {
 
     // Pass-through: do not parse form-data; forward body stream directly
     const upstreamUrl = "https://api.groq.com/openai/v1/audio/transcriptions";
-
-    const requestId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const colo = (req.cf && req.cf.colo) || "unknown";
-    const contentLength = req.headers.get("content-length");
 
     const outgoingHeaders = new Headers();
     outgoingHeaders.set("Authorization", `Bearer ${env.GROQ_API_KEY}`);
