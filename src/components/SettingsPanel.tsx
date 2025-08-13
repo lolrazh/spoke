@@ -13,6 +13,7 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
+import { getCurrentUser, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, signOut as supaSignOut } from "../lib/supabaseClient";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -105,6 +106,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [playSounds, setPlaySounds] = useState<boolean>(true);
+  // Auth state for settings panel
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
   // Permissions state (mirrors onboarding)
   const [permissions, setPermissions] = useState({
@@ -139,6 +148,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
       try {
         const storedPlay = localStorage.getItem("sf.playSounds");
         if (storedPlay != null) setPlaySounds(storedPlay === "true");
+      } catch {}
+      try {
+        // Initialize auth view
+        const u = await getCurrentUser();
+        if (u) {
+          setUserEmail(u.email ?? null);
+          setUserName((u.user_metadata as any)?.name ?? null);
+          setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+        } else {
+          setUserEmail(null);
+          setUserName(null);
+          setUserAvatarUrl(null);
+        }
       } catch {}
     })();
   }, []);
@@ -369,9 +391,70 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   };
 
   const handleSignOut = () => {
-    // TODO: Implement sign out functionality
-    console.log("Signing out");
+    (async () => {
+      try {
+        await supaSignOut();
+        setUserEmail(null);
+        setUserName(null);
+        setUserAvatarUrl(null);
+        setAuthEmail("");
+        setAuthEmailRequested(false);
+        setAuthError(null);
+      } catch (e: any) {
+        setAuthError(e?.message || "Failed to sign out");
+      }
+    })();
   };
+
+  const handleGoogle = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      const url = await getGoogleOAuthUrl();
+      setAuthLoading(false);
+      if (url) {
+        await window.electron?.openExternal(url);
+      } else {
+        setAuthError("Could not start Google sign-in");
+      }
+    } catch (e: any) {
+      setAuthLoading(false);
+      setAuthError(e?.message || "Could not start Google sign-in");
+    }
+  };
+
+  const handleEmailStart = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    const res = await startEmailOtp(authEmail.trim());
+    setAuthLoading(false);
+    if (!res.ok) {
+      setAuthError(res.error || "Failed to send code");
+      return;
+    }
+    setAuthEmailRequested(true);
+  };
+
+  // Listen for deep link callbacks (if onboarding window isn't active, main window receives it)
+  useEffect(() => {
+    const off = window.auth?.onCallback?.(async ({ url }) => {
+      setAuthLoading(true);
+      setAuthError(null);
+      const res = await handleAuthCallbackUrl(url);
+      setAuthLoading(false);
+      if (!res.ok) {
+        setAuthError(res.error || "Login failed");
+        return;
+      }
+      const u = await getCurrentUser();
+      setUserEmail(u?.email ?? null);
+      setUserName((u?.user_metadata as any)?.name ?? null);
+      setUserAvatarUrl((u?.user_metadata as any)?.avatar_url ?? null);
+      setAuthEmailRequested(false);
+      setAuthEmail("");
+    });
+    return () => { off && off(); };
+  }, []);
 
   // Ensure interactive cursor and events work in embedded (expanded) mode
   useEffect(() => {
@@ -521,17 +604,51 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
-
-              <SettingsCard
-                title="John Smith"
-                description="john.smith@example.com"
-                icon={
-                  // Avatar content only; relies on parent square container from SettingsCard
-                  <span className="text-[11px] font-semibold tracking-wide">JS</span>
-                }
-              >
-                <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
-              </SettingsCard>
+              {userEmail ? (
+                <SettingsCard
+                  title={userName || userEmail}
+                  description={userEmail}
+                  icon={
+                    userAvatarUrl ? (
+                      <img src={userAvatarUrl} alt="avatar" className="w-6 h-6 rounded" />
+                    ) : (
+                      <span className="text-[11px] font-semibold tracking-wide">
+                        {(userName || userEmail || "").slice(0, 2).toUpperCase()}
+                      </span>
+                    )
+                  }
+                >
+                  <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
+                </SettingsCard>
+              ) : (
+                <div className="space-y-3">
+                  {authError && (
+                    <div className="text-[12px] text-red-300">{authError}</div>
+                  )}
+                  <Button className="w-full onboarding-cta" disabled={authLoading} onClick={handleGoogle}>
+                    <span>Continue with Google</span>
+                  </Button>
+                  <div className="text-[11px] text-subtle">or</div>
+                  {!authEmailRequested ? (
+                    <div className="space-y-2">
+                      <input
+                        type="email"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="Enter your email"
+                        className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
+                      />
+                      <Button className="w-full" disabled={authLoading || !authEmail} onClick={handleEmailStart}>
+                        Send code
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[12px] text-subtle">Check your email. After you click the link, you’ll be signed in.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
 
             {/* Footer with logo and version - only in standalone mode */}
