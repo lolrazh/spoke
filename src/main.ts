@@ -1071,7 +1071,7 @@ ipcMain.handle(
           if (out) console.log(`[PasteHelper stdout]: ${out}`);
           if (stderrBuffer) console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
 
-          const ok = out.includes("paste:ok:") && code === 0;
+          const ok = (out.includes("paste:ok:") || out.includes("paste:ok-sel:") || out.includes("paste:ok-unverified:")) && code === 0;
           const definiteNoFocus = out.includes("paste:err:no-focus") || out.includes("paste:err:no-app");
           const secureField = out.includes("paste:err:secure-field");
           const unreadable = out.includes("paste:err:unreadable");

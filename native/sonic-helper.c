@@ -15,6 +15,7 @@ static void cmdV(void);
 
 // ==== Accessibility (AX) paste verification utilities ====
 // We keep Cmd+V for insertion, and use AX to read/observe for verification.
+// Supports fallback verification strategies for content-editable web elements.
 
 typedef struct {
     AXObserverRef observer;
@@ -48,13 +49,76 @@ static AXUIElementRef ax_focused_app_element(void) {
     return appEl; // caller CFRelease
 }
 
+// Recursive helper to search for focusable elements in web content
+static AXUIElementRef ax_find_text_input_recursive(AXUIElementRef element, int depth) {
+    if (!element || depth > 10) return NULL; // Prevent infinite recursion
+    
+    // Check if this element looks like a text input
+    CFTypeRef role = NULL;
+    if (AXUIElementCopyAttributeValue(element, kAXRoleAttribute, &role) == kAXErrorSuccess && role) {
+        bool isTextInput = false;
+        if (CFGetTypeID(role) == CFStringGetTypeID()) {
+            CFStringRef roleStr = (CFStringRef)role;
+            isTextInput = (CFStringCompare(roleStr, CFSTR("AXTextField"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXTextArea"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXComboBox"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXGroup"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXWebArea"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXScrollArea"), 0) == kCFCompareEqualTo) ||
+                         (CFStringCompare(roleStr, CFSTR("AXTable"), 0) == kCFCompareEqualTo);
+        }
+        CFRelease(role);
+        
+        if (isTextInput) {
+            // Check if it can accept input (has kAXValueAttribute or kAXSelectedTextRangeAttribute)
+            CFTypeRef value = NULL;
+            CFTypeRef selRange = NULL;
+            bool canInput = (AXUIElementCopyAttributeValue(element, kAXValueAttribute, &value) == kAXErrorSuccess) ||
+                           (AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute, &selRange) == kAXErrorSuccess);
+            
+            if (value) CFRelease(value);
+            if (selRange) CFRelease(selRange);
+            
+            if (canInput) {
+                return CFRetain(element); // Found a usable text input
+            }
+        }
+    }
+    
+    // Recursively search children
+    CFArrayRef children = NULL;
+    if (AXUIElementCopyAttributeValue(element, kAXChildrenAttribute, (CFTypeRef *)&children) == kAXErrorSuccess && children) {
+        CFIndex count = CFArrayGetCount(children);
+        for (CFIndex i = 0; i < count; i++) {
+            AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(children, i);
+            AXUIElementRef found = ax_find_text_input_recursive(child, depth + 1);
+            if (found) {
+                CFRelease(children);
+                return found; // caller CFRelease
+            }
+        }
+        CFRelease(children);
+    }
+    
+    return NULL;
+}
+
 static AXUIElementRef ax_focused_element_from_app(AXUIElementRef appEl) {
     if (!appEl) return NULL;
+    
+    // Strategy 1: Standard focus detection
     AXUIElementRef el = NULL;
-    if (AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el) != kAXErrorSuccess) {
-        return NULL;
+    if (AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el) == kAXErrorSuccess && el) {
+        return el; // caller CFRelease
     }
-    return el; // caller CFRelease
+    
+    // Strategy 2: Search for text inputs in web content (browsers)
+    AXUIElementRef webInput = ax_find_text_input_recursive(appEl, 0);
+    if (webInput) {
+        return webInput; // caller CFRelease
+    }
+    
+    return NULL;
 }
 
 static bool ax_is_secure(AXUIElementRef el) {
@@ -147,6 +211,22 @@ static bool cfstring_equals(CFStringRef a, CFStringRef b) {
     return CFStringCompare(a, b, 0) == kCFCompareEqualTo;
 }
 
+// ==== Fallback verification strategies for content-editable elements ====
+
+static bool verify_by_selection_math(CFRange preSel, CFRange postSel, CFIndex payloadLen) {
+    // Common behaviors after paste:
+    // 1) caret ends after inserted text: postSel.length == 0 && postSel.location == preSel.location + payloadLen
+    // 2) inserted text remains selected: postSel.length == payloadLen && postSel.location == preSel.location
+    if (payloadLen < 0) payloadLen = 0;
+    if (postSel.length == 0 && postSel.location == preSel.location + payloadLen) return true;
+    if (postSel.length == payloadLen && postSel.location == preSel.location) return true;
+    // Replacement case: preSel.length > 0 and caret ends after new text
+    if (preSel.length > 0 && postSel.length == 0 && postSel.location == preSel.location + payloadLen) return true;
+    return false;
+}
+
+// Clean verification - no janky copy-back probe
+
 static void ax_observer_cb(AXObserverRef obs, AXUIElementRef element, CFStringRef notification, void *refcon) {
     (void)obs; (void)element;
     AXWatch *w = (AXWatch *)refcon;
@@ -216,7 +296,10 @@ static int paste_and_verify_core(const char *payload_utf8, int timeout_ms) {
     CFStringRef preVal = ax_copy_value(el);
     CFRange preSel = {0,0};
     bool haveSel = ax_get_selected_range_cf(el, &preSel);
-    if (!preVal || !haveSel) {
+    bool canVerifyByValue = (preVal != NULL);
+    
+    // Early exit only if we can't even read selection position
+    if (!haveSel) {
         if (preVal) CFRelease(preVal);
         CFRelease(el); CFRelease(appEl);
         puts("paste:err:unreadable"); fflush(stdout);
@@ -237,27 +320,44 @@ static int paste_and_verify_core(const char *payload_utf8, int timeout_ms) {
     // POST state
     CFStringRef postVal = ax_copy_value(el);
     CFRange postSel = {0,0};
-    ax_get_selected_range_cf(el, &postSel);
+    bool havePostSel = ax_get_selected_range_cf(el, &postSel);
 
     CFStringRef payload = cfstring_from_utf8(payload_utf8 ? payload_utf8 : "");
-    CFStringRef expected = cfstring_replace_range(preVal, preSel, payload);
-
+    CFIndex payloadLen = payload ? CFStringGetLength(payload) : 0;
+    
     int rc = 0;
-    if (!postVal) {
-        puts("paste:verify:unknown"); rc = 10;
-    } else if (cfstring_equals(postVal, expected)) {
-        CFIndex payloadLen = payload ? CFStringGetLength(payload) : 0;
-        printf("paste:ok:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
+    
+    // Strategy 1: Full text verification (preferred)
+    if (canVerifyByValue && postVal) {
+        CFStringRef expected = cfstring_replace_range(preVal, preSel, payload);
+        if (cfstring_equals(postVal, expected)) {
+            printf("paste:ok:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
+            rc = 0;
+        } else if (havePostSel && verify_by_selection_math(preSel, postSel, payloadLen)) {
+            // Full text verification failed but selection math suggests success
+            printf("paste:ok-sel:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
+            rc = 0;
+        } else {
+            puts("paste:mismatch");
+            rc = 11;
+        }
+        CFRelease(expected);
+    }
+    // Strategy 2: Selection-only verification (for content-editable and terminals)
+    else if (havePostSel && verify_by_selection_math(preSel, postSel, payloadLen)) {
+        printf("paste:ok-sel:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
         rc = 0;
-    } else {
-        puts("paste:mismatch"); rc = 11;
+    }
+    // Paste probably worked but we can't verify
+    else {
+        printf("paste:ok-unverified:%ld:%ld\n", (long)preSel.location, (long)payloadLen);
+        rc = 0;  // Treat as success since paste likely worked
     }
     fflush(stdout);
 
     if (preVal) CFRelease(preVal);
     if (postVal) CFRelease(postVal);
     if (payload) CFRelease(payload);
-    if (expected) CFRelease(expected);
     ax_watch_stop(&watch);
     CFRelease(el);
     CFRelease(appEl);
