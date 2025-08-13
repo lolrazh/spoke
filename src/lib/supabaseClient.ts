@@ -28,7 +28,10 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: "sonicflow://auth/callback",
+      // Use dev scheme in dev to avoid opening the packaged app handler
+      redirectTo: import.meta.env.DEV
+        ? "sonicflow-dev://auth/callback"
+        : "sonicflow://auth/callback",
       skipBrowserRedirect: true,
     },
   });
@@ -44,7 +47,11 @@ export async function startEmailOtp(email: string): Promise<{ ok: boolean; error
   if (!supabase) return { ok: false, error: "Supabase not configured" };
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: "sonicflow://auth/callback" },
+    options: {
+      emailRedirectTo: import.meta.env.DEV
+        ? "sonicflow-dev://auth/callback"
+        : "sonicflow://auth/callback",
+    },
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

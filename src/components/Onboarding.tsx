@@ -218,6 +218,7 @@ const Onboarding: React.FC = () => {
       if (user) setCurrentStep("permissions");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
+      devFlags.methods.devLog('[Auth] onCallback URL:', url);
       setAuthLoading(true);
       setAuthError(null);
       const res = await handleAuthCallbackUrl(url);

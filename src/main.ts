@@ -48,6 +48,33 @@ let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
 
+// Ensure single instance so deep links route to the running app
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    try {
+      const maybeUrl = argv.find(
+        (a) =>
+          typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+      );
+      if (maybeUrl) {
+        const targetWindow = onboardingWindow || mainWindow;
+        if (targetWindow && !targetWindow.isDestroyed()) {
+          targetWindow.webContents.send("auth:callback", { url: maybeUrl });
+          if (!targetWindow.isVisible()) targetWindow.show();
+          targetWindow.focus();
+        } else {
+          pendingAuthUrls.push(maybeUrl);
+        }
+      }
+    } catch (e) {
+      console.error("[Auth] second-instance handler error:", e);
+    }
+  });
+}
+
 // Dev helper: allow skipping onboarding for faster iteration
 const SKIP_ONBOARDING =
   process.env.SKIP_ONBOARDING === "1" ||
@@ -726,6 +753,7 @@ function createOnboardingWindow() {
       sandbox: false,
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
+      webSecurity: app.isPackaged ? true : false,
     },
   };
 
@@ -1158,9 +1186,40 @@ ipcMain.handle(
 app.whenReady().then(async () => {
   try {
     // Register custom protocol for OAuth/magic link callbacks
-    app.setAsDefaultProtocolClient("sonicflow");
+    const isDev = !app.isPackaged;
+    let ok = false;
+    if (isDev) {
+      // Use a dev-only scheme to avoid clashing with a packaged app's handler
+      ok = app.setAsDefaultProtocolClient("sonicflow-dev");
+      if (!ok && process.defaultApp) {
+        const exe = process.execPath;
+        const appPath = path.resolve(process.argv[1] || "");
+        ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
+      }
+      console.log(`[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`);
+    } else {
+      ok = app.setAsDefaultProtocolClient("sonicflow");
+      console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
+    }
   } catch (e) {
     console.error("[Auth] Failed to register protocol client:", e);
+  }
+
+  // Handle protocol URL passed at first launch (Windows/Linux)
+  try {
+    const firstUrl = process.argv.find(
+      (a) => typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+    );
+    if (firstUrl) {
+      const targetWindow = onboardingWindow || mainWindow;
+      if (targetWindow && !targetWindow.isDestroyed()) {
+        targetWindow.webContents.send("auth:callback", { url: firstUrl });
+      } else {
+        pendingAuthUrls.push(firstUrl);
+      }
+    }
+  } catch (e) {
+    console.error("[Auth] initial argv scan error:", e);
   }
 
   // Initialize paths after app is ready to avoid keychain dialog
@@ -1171,30 +1230,44 @@ app.whenReady().then(async () => {
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const styleSrc = isDev
-      ? "style-src 'self' 'unsafe-inline'"
-      : "style-src 'self' 'unsafe-inline'";
-    const fontSrc = isDev
-      ? "font-src 'self' data:"
-      : "font-src 'self' data:";
+    // Loosen CSP for auth flows; explicitly allow Supabase and websockets
+    const styleSrc = "style-src 'self' 'unsafe-inline'";
+    const fontSrc = "font-src 'self' data:";
+    const connect = [
+      "connect-src 'self'",
+      "https://api.sonicflow.app",
+      "https://huggingface.co",
+      "https://cdn.jsdelivr.net",
+      "https://*.supabase.co",
+      "https://*.supabase.in",
+      "wss://*.supabase.co",
+      "wss://*.supabase.in",
+      "blob:",
+      "data:",
+    ].join(' ');
+
+    const scriptSrc = `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`;
+    const imgSrc = "img-src 'self' data:";
     const csp = [
       "default-src 'self'",
-      // Allow required API endpoints and public CDNs
-      "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
-      `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
+      connect,
+      scriptSrc,
       styleSrc,
-      "img-src 'self' data:",
+      imgSrc,
       fontSrc,
     ].join("; ");
 
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Cross-Origin-Opener-Policy": "same-origin",
-        "Cross-Origin-Embedder-Policy": "require-corp",
-        "Content-Security-Policy": csp,
-      },
-    });
+    const headers: Record<string, string | string[]> = {
+      ...details.responseHeaders,
+      "Content-Security-Policy": csp,
+    };
+    // COOP/COEP off in dev to avoid cross-origin issues; keep in prod if you want
+    if (!isDev) {
+      headers["Cross-Origin-Opener-Policy"] = "same-origin";
+      headers["Cross-Origin-Embedder-Policy"] = "require-corp";
+    }
+
+    callback({ responseHeaders: headers });
   });
   console.log("[Main Process] onHeadersReceived listener configured.");
 
@@ -1753,6 +1826,9 @@ app.whenReady().then(async () => {
 // Handle deep links like sonicflow://auth/callback?code=...
 app.on("open-url", (event, url) => {
   event.preventDefault();
+  try {
+    console.log("[Auth] open-url received:", url);
+  } catch {}
   try {
     const targetWindow = onboardingWindow || mainWindow;
     if (targetWindow && !targetWindow.isDestroyed()) {
