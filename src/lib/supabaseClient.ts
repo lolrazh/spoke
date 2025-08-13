@@ -25,13 +25,12 @@ export function getSupabase(): SupabaseClient | null {
 export async function getGoogleOAuthUrl(): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
+  // Ask Electron main which redirect to use
+  const redirect = await (window.electron?.getAuthRedirectUrl?.() ?? Promise.resolve({ url: "sonicflow://auth/callback" }));
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      // Use dev scheme in dev to avoid opening the packaged app handler
-      redirectTo: import.meta.env.DEV
-        ? "sonicflow-dev://auth/callback"
-        : "sonicflow://auth/callback",
+      redirectTo: redirect.url,
       skipBrowserRedirect: true,
     },
   });
@@ -45,13 +44,10 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
 export async function startEmailOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
+  const redirect = await (window.electron?.getAuthRedirectUrl?.() ?? Promise.resolve({ url: "sonicflow://auth/callback" }));
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: {
-      emailRedirectTo: import.meta.env.DEV
-        ? "sonicflow-dev://auth/callback"
-        : "sonicflow://auth/callback",
-    },
+    options: { emailRedirectTo: redirect.url },
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true };

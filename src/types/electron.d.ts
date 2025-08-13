@@ -56,6 +56,7 @@ declare global {
       hideFloatingBarIndefinitely: () => Promise<{ ok: boolean; error?: string }>;
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
+      getAuthRedirectUrl: () => Promise<{ url: string }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (

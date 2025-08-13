@@ -15,6 +15,7 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { spawn, execFile, execSync } from "child_process";
+import http from "node:http";
 
 import fs from "node:fs";
 
@@ -47,6 +48,7 @@ let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
+let devAuthServerUrl: string | null = null;
 
 // Ensure single instance so deep links route to the running app
 const gotTheLock = app.requestSingleInstanceLock();
@@ -1187,22 +1189,51 @@ app.whenReady().then(async () => {
   try {
     // Register custom protocol for OAuth/magic link callbacks
     const isDev = !app.isPackaged;
-    let ok = false;
     if (isDev) {
-      // Use a dev-only scheme to avoid clashing with a packaged app's handler
-      ok = app.setAsDefaultProtocolClient("sonicflow-dev");
-      if (!ok && process.defaultApp) {
-        const exe = process.execPath;
-        const appPath = path.resolve(process.argv[1] || "");
-        ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
-      }
+      // Always register with explicit exe and app path in dev
+      const exe = process.execPath;
+      const appPath = path.resolve(process.argv[1] || "");
+      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
       console.log(`[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`);
+      console.log(`[Auth] isDefaultProtocolClient(dev):`, app.isDefaultProtocolClient("sonicflow-dev"));
     } else {
-      ok = app.setAsDefaultProtocolClient("sonicflow");
+      const ok = app.setAsDefaultProtocolClient("sonicflow");
       console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
+      console.log(`[Auth] isDefaultProtocolClient(prod):`, app.isDefaultProtocolClient("sonicflow"));
     }
   } catch (e) {
     console.error("[Auth] Failed to register protocol client:", e);
+  }
+
+  // In dev, start a tiny local HTTP server to receive auth callbacks as a fallback
+  try {
+    const isDev = !app.isPackaged;
+    if (isDev) {
+      const host = "127.0.0.1";
+      const port = 43112;
+      const server = http.createServer((req, res) => {
+        const url = `http://${host}:${port}${req.url || ""}`;
+        try {
+          const targetWindow = onboardingWindow || mainWindow;
+          if (targetWindow && !targetWindow.isDestroyed()) {
+            targetWindow.webContents.send("auth:callback", { url });
+          } else {
+            pendingAuthUrls.push(url);
+          }
+        } catch (err) {
+          console.error("[Auth] dev server callback error:", err);
+        }
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end("<html><body><p>Authentication complete. You can close this window.</p></body></html>");
+      });
+      server.listen(port, host, () => {
+        devAuthServerUrl = `http://${host}:${port}/auth/callback`;
+        console.log("[Auth] Dev auth server listening:", devAuthServerUrl);
+      });
+    }
+  } catch (e) {
+    console.error("[Auth] Failed to start dev auth server:", e);
   }
 
   // Handle protocol URL passed at first launch (Windows/Linux)
@@ -1361,6 +1392,12 @@ app.whenReady().then(async () => {
       console.error("[IPC] open-external failed:", err);
       return { ok: false, error: err?.message || String(err) };
     }
+  });
+
+  // Provide renderer with correct redirect URL (dev: http callback; prod: custom scheme)
+  ipcMain.handle("auth:get-redirect-url", () => {
+    if (!app.isPackaged && devAuthServerUrl) return { url: devAuthServerUrl };
+    return { url: "sonicflow://auth/callback" };
   });
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {

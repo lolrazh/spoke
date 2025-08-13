@@ -112,6 +112,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("floating-bar:show"),
   // Generic external URL opener for OAuth links
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+  // Return the active redirect URL the renderer should use
+  getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
 });
 
 // Auth bridge: receive deep link callback URLs
