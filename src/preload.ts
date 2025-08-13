@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld("electron", {
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Window controls
+  showOnboarding: () => ipcRenderer.invoke("auth:show-onboarding"),
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),
@@ -110,6 +111,19 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("floating-bar:hide-indefinitely"),
   showFloatingBar: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("floating-bar:show"),
+  // Generic external URL opener for OAuth links
+  openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+  // Return the active redirect URL the renderer should use
+  getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
+});
+
+// Auth bridge: receive deep link callback URLs
+contextBridge.exposeInMainWorld("auth", {
+  onCallback: (cb: (payload: { url: string }) => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, payload: { url: string }) => cb(payload);
+    ipcRenderer.on("auth:callback", listener);
+    return () => ipcRenderer.removeListener("auth:callback", listener);
+  },
 });
 
 // Event bridge for active display updates

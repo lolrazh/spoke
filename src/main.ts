@@ -15,6 +15,7 @@ import {
 import path from "node:path";
 import process from "node:process";
 import { spawn, execFile, execSync } from "child_process";
+import http from "node:http";
 
 import fs from "node:fs";
 
@@ -45,6 +46,36 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
+// Buffer deep links received before windows are ready
+let pendingAuthUrls: string[] = [];
+let devAuthServerUrl: string | null = null;
+
+// Ensure single instance so deep links route to the running app
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, argv) => {
+    try {
+      const maybeUrl = argv.find(
+        (a) =>
+          typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+      );
+      if (maybeUrl) {
+        const targetWindow = onboardingWindow || mainWindow;
+        if (targetWindow && !targetWindow.isDestroyed()) {
+          targetWindow.webContents.send("auth:callback", { url: maybeUrl });
+          if (!targetWindow.isVisible()) targetWindow.show();
+          targetWindow.focus();
+        } else {
+          pendingAuthUrls.push(maybeUrl);
+        }
+      }
+    } catch (e) {
+      console.error("[Auth] second-instance handler error:", e);
+    }
+  });
+}
 
 // Dev helper: allow skipping onboarding for faster iteration
 const SKIP_ONBOARDING =
@@ -57,6 +88,9 @@ let micDevices: MicDevice[] = [
 ];
 let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
+// Onboarding persistence (local flag)
+let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
+let onboardingPrefs: { done?: boolean; signedIn?: boolean } = {};
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -724,6 +758,7 @@ function createOnboardingWindow() {
       sandbox: false,
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
+      webSecurity: app.isPackaged ? true : false,
     },
   };
 
@@ -829,6 +864,23 @@ function createOnboardingWindow() {
 
   onboardingWindow.on("closed", () => {
     onboardingWindow = null;
+  });
+
+  // Flush pending auth deep links to the onboarding window only after content finishes loading
+  const flushPending = () => {
+    try {
+      if (pendingAuthUrls.length > 0) {
+        for (const url of pendingAuthUrls) {
+          onboardingWindow?.webContents.send("auth:callback", { url });
+        }
+        pendingAuthUrls = [];
+      }
+    } catch (e) {
+      console.error("[Auth] Failed to flush pending auth URLs:", e);
+    }
+  };
+  onboardingWindow.webContents.once('did-finish-load', () => {
+    setTimeout(flushPending, 0);
   });
 }
 
@@ -1142,39 +1194,129 @@ ipcMain.handle(
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  try {
+    // Register custom protocol for OAuth/magic link callbacks
+    const isDev = !app.isPackaged;
+    if (isDev) {
+      // Always register with explicit exe and app path in dev
+      const exe = process.execPath;
+      const appPath = path.resolve(process.argv[1] || "");
+      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
+      console.log(`[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`);
+      console.log(`[Auth] isDefaultProtocolClient(dev):`, app.isDefaultProtocolClient("sonicflow-dev"));
+    } else {
+      const ok = app.setAsDefaultProtocolClient("sonicflow");
+      console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
+      console.log(`[Auth] isDefaultProtocolClient(prod):`, app.isDefaultProtocolClient("sonicflow"));
+    }
+  } catch (e) {
+    console.error("[Auth] Failed to register protocol client:", e);
+  }
+
+  // In dev, start a tiny local HTTP server to receive auth callbacks as a fallback
+  try {
+    const isDev = !app.isPackaged;
+    if (isDev) {
+      const host = "127.0.0.1";
+      const port = 43112;
+      const server = http.createServer((req, res) => {
+        const url = `http://${host}:${port}${req.url || ""}`;
+        try {
+          const targetWindow = onboardingWindow || mainWindow;
+          if (targetWindow && !targetWindow.isDestroyed()) {
+            targetWindow.webContents.send("auth:callback", { url });
+          } else {
+            pendingAuthUrls.push(url);
+          }
+        } catch (err) {
+          console.error("[Auth] dev server callback error:", err);
+        }
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.end("<html><body><p>Authentication complete. You can close this window.</p></body></html>");
+      });
+      server.listen(port, host, () => {
+        devAuthServerUrl = `http://${host}:${port}/auth/callback`;
+        console.log("[Auth] Dev auth server listening:", devAuthServerUrl);
+      });
+    }
+  } catch (e) {
+    console.error("[Auth] Failed to start dev auth server:", e);
+  }
+
+  // Handle protocol URL passed at first launch (Windows/Linux)
+  try {
+    const firstUrl = process.argv.find(
+      (a) => typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+    );
+    if (firstUrl) {
+      const targetWindow = onboardingWindow || mainWindow;
+      if (targetWindow && !targetWindow.isDestroyed()) {
+        targetWindow.webContents.send("auth:callback", { url: firstUrl });
+      } else {
+        pendingAuthUrls.push(firstUrl);
+      }
+    }
+  } catch (e) {
+    console.error("[Auth] initial argv scan error:", e);
+  }
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
-  
+  // Load onboarding flag BEFORE startup flow decision
+  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
+  try {
+    if (fs.existsSync(onboardingPrefsPath)) {
+      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
+      onboardingPrefs = JSON.parse(raw);
+    }
+  } catch {
+    onboardingPrefs = {};
+  }
+
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const styleSrc = isDev
-      ? "style-src 'self' 'unsafe-inline'"
-      : "style-src 'self' 'unsafe-inline'";
-    const fontSrc = isDev
-      ? "font-src 'self' data:"
-      : "font-src 'self' data:";
+    // Loosen CSP for auth flows; explicitly allow Supabase and websockets
+    const styleSrc = "style-src 'self' 'unsafe-inline'";
+    const fontSrc = "font-src 'self' data:";
+    const connect = [
+      "connect-src 'self'",
+      "https://api.sonicflow.app",
+      "https://huggingface.co",
+      "https://cdn.jsdelivr.net",
+      "https://*.supabase.co",
+      "https://*.supabase.in",
+      "wss://*.supabase.co",
+      "wss://*.supabase.in",
+      "blob:",
+      "data:",
+    ].join(' ');
+
+    const scriptSrc = `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`;
+    const imgSrc = "img-src 'self' data:";
     const csp = [
       "default-src 'self'",
-      // Allow required API endpoints and public CDNs
-      "connect-src 'self' https://api.sonicflow.app https://huggingface.co https://cdn.jsdelivr.net blob:",
-      `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`,
+      connect,
+      scriptSrc,
       styleSrc,
-      "img-src 'self' data:",
+      imgSrc,
       fontSrc,
     ].join("; ");
 
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Cross-Origin-Opener-Policy": "same-origin",
-        "Cross-Origin-Embedder-Policy": "require-corp",
-        "Content-Security-Policy": csp,
-      },
-    });
+    const headers: Record<string, string | string[]> = {
+      ...details.responseHeaders,
+      "Content-Security-Policy": csp,
+    };
+    // COOP/COEP off in dev to avoid cross-origin issues; keep in prod if you want
+    if (!isDev) {
+      headers["Cross-Origin-Opener-Policy"] = "same-origin";
+      headers["Cross-Origin-Embedder-Policy"] = "require-corp";
+    }
+
+    callback({ responseHeaders: headers });
   });
   console.log("[Main Process] onHeadersReceived listener configured.");
 
@@ -1192,8 +1334,9 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Startup flow: respect SKIP_ONBOARDING for development
-  if (SKIP_ONBOARDING) {
+  // Startup flow: skip onboarding when either SKIP_ONBOARDING is set
+  // or we have a local onboarding done flag
+  if (SKIP_ONBOARDING || onboardingPrefs?.done === true) {
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
@@ -1259,6 +1402,36 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Generic external URL opener for OAuth and links
+  ipcMain.handle("open-external", async (_event, url: string) => {
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (err: any) {
+      console.error("[IPC] open-external failed:", err);
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  // Provide renderer with correct redirect URL (dev: http callback; prod: custom scheme)
+  ipcMain.handle("auth:get-redirect-url", () => {
+    if (!app.isPackaged && devAuthServerUrl) return { url: devAuthServerUrl };
+    return { url: "sonicflow://auth/callback" };
+  });
+
+  // Initialize paths after app is ready to avoid keychain dialog
+  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
+  // Load onboarding flag (best-effort)
+  try {
+    if (fs.existsSync(onboardingPrefsPath)) {
+      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
+      onboardingPrefs = JSON.parse(raw);
+    }
+  } catch {
+    onboardingPrefs = {};
+  }
+
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
     console.log(`[IPC] Setting PTT target to: ${target}`);
     pttTarget = target;
@@ -1270,6 +1443,11 @@ app.whenReady().then(async () => {
     if (onboardingWindow) {
       onboardingWindow.close();
     }
+    // Persist local onboarding flag so future launches can skip onboarding entirely
+    try {
+      onboardingPrefs = { ...onboardingPrefs, done: true };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
     } else {
@@ -1280,6 +1458,31 @@ app.whenReady().then(async () => {
     startFnListener();
     pttTarget = "main";
     // (Removed) silent app location check after onboarding
+  });
+
+  // Auth state persistence from renderer
+  ipcMain.handle("auth:set-signed-in", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
+    return { ok: true };
+  });
+
+  ipcMain.handle("auth:show-onboarding", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
+    // Hide pill/main, show onboarding
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch {}
+    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+      onboardingWindow.show();
+    } else {
+      createOnboardingWindow();
+    }
+    pttTarget = "onboarding";
+    return { ok: true };
   });
 
   // Allow other windows (onboarding) to request the pill to expand without directly moving the window
@@ -1719,6 +1922,24 @@ app.whenReady().then(async () => {
   });
 });
 
+// Handle deep links like sonicflow://auth/callback?code=...
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  try {
+    console.log("[Auth] open-url received:", url);
+  } catch {}
+  try {
+    const targetWindow = onboardingWindow || mainWindow;
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send("auth:callback", { url });
+    } else {
+      pendingAuthUrls.push(url);
+    }
+  } catch (err) {
+    console.error("[Auth] open-url handler error:", err);
+  }
+});
+
 app.on("window-all-closed", () => {
   // On macOS, keep app running in dock even when all windows are closed
 });
@@ -1749,16 +1970,14 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating window",
       );
-      if (SKIP_ONBOARDING) {
-        createWindow();
-      } else {
-        createOnboardingWindow();
-      }
+      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      else createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
       console.log("[App Event] activate: Main window is destroyed, recreating");
-      createWindow();
+      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      else createOnboardingWindow();
     }
   } else {
     console.log(

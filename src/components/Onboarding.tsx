@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
 import SfIcon from "./icons/SfIcon";
+import { getSupabase, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, getCurrentUser, getProfile, markOnboardingDone } from "../lib/supabaseClient";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === 'development';
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -36,10 +37,14 @@ const params = typeof window !== 'undefined' ? new URLSearchParams(window.locati
   }
 };
 
-type OnboardingStep = "welcome" | "permissions" | "hotkey-info" | "hotkey-test" | "complete";
+type OnboardingStep = "auth" | "permissions" | "hotkey-info" | "hotkey-test" | "complete";
 
 const Onboarding: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>("welcome");
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [permissions, setPermissions] = useState({
     microphone: false,
     inputMonitoring: false,
@@ -200,10 +205,80 @@ const Onboarding: React.FC = () => {
   }, []);
 
   // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => ["welcome", "permissions", "hotkey-info", "hotkey-test", "complete"];
+  const getSteps = (): OnboardingStep[] => ["auth", "permissions", "hotkey-info", "hotkey-test", "complete"];
 
   // Permission aggregates
   const allPermissionsGranted = permissions.microphone && permissions.accessibility && permissions.inputMonitoring;
+
+  // Initial auth check and deep-link listener
+  useEffect(() => {
+    getSupabase();
+    (async () => {
+      const user = await getCurrentUser();
+      if (!user) return;
+      try {
+        const profile = await getProfile();
+        if (profile?.onboarding_done) {
+          try { await window.electron?.setPttTarget?.("main"); } catch (e) { console.warn("[Onboarding] setPttTarget failed:", e); }
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch (e) { console.warn("[Onboarding] auth:set-signed-in invoke failed:", e); }
+          await window.electron?.onboardingComplete();
+          return;
+        }
+      } catch {}
+      setCurrentStep("permissions");
+    })();
+    const off = window.auth?.onCallback?.(async ({ url }) => {
+      devFlags.methods.devLog('[Auth] onCallback URL:', url);
+      setAuthLoading(true);
+      setAuthError(null);
+      const res = await handleAuthCallbackUrl(url);
+      setAuthLoading(false);
+      if (!res.ok) {
+        setAuthError(res.error || "Login failed");
+        return;
+      }
+      try {
+        const profile = await getProfile();
+        if (profile?.onboarding_done) {
+          try { await window.electron?.setPttTarget?.("main"); } catch (e) { console.warn("[Onboarding] setPttTarget failed:", e); }
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch (e) { console.warn("[Onboarding] auth:set-signed-in invoke failed:", e); }
+          await window.electron?.onboardingComplete();
+          return;
+        }
+      } catch {}
+      setCurrentStep("permissions");
+    });
+    return () => { off && off(); };
+  }, []);
+
+  const handleGoogle = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      const url = await getGoogleOAuthUrl();
+      setAuthLoading(false);
+      if (url) {
+        await window.electron?.openExternal(url);
+      } else {
+        setAuthError("Could not start Google sign-in");
+      }
+    } catch (e: any) {
+      setAuthLoading(false);
+      setAuthError(e?.message || "Could not start Google sign-in");
+    }
+  };
+
+  const handleEmailStart = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    const res = await startEmailOtp(authEmail.trim());
+    setAuthLoading(false);
+    if (!res.ok) {
+      setAuthError(res.error || "Failed to send code");
+      return;
+    }
+    setAuthEmailRequested(true);
+  };
 
   // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
   useEffect(() => {
@@ -280,7 +355,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       window.electron?.setPttTarget?.("main");
-      window.electron?.requestExpandPill?.();
+      window.electron?.expandPill?.(() => {});
     }
   }, [currentStep]);
 
@@ -536,6 +611,7 @@ const Onboarding: React.FC = () => {
     try {
       // Route PTT to main app after onboarding
       window.electron?.setPttTarget?.("main");
+      try { await markOnboardingDone(); } catch {}
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
@@ -714,6 +790,43 @@ const Onboarding: React.FC = () => {
           
 
           <AnimatePresence mode="wait">
+        {/* Auth Step */}
+        {currentStep === "auth" && (
+          <motion.div key="auth" variants={containerVariants} initial="hidden" animate="visible" exit="exit" className="text-center space-y-4">
+            <div className="heading-stack">
+              <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">Welcome to Sonic Flow</h1>
+              <p className="text-sm text-subtle leading-relaxed subheading">Sign in to continue</p>
+            </div>
+            <div className="mx-auto max-w-sm space-y-3">
+              {authError && (
+                <div className="text-[12px] text-red-300">{authError}</div>
+              )}
+              <Button className="w-full onboarding-cta" disabled={authLoading} onClick={handleGoogle}>
+                <span>Continue with Google</span>
+              </Button>
+              <div className="text-[11px] text-subtle">or</div>
+              {!authEmailRequested ? (
+                <div className="space-y-2">
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
+                  />
+                  <Button className="w-full" disabled={authLoading || !authEmail} onClick={handleEmailStart}>
+                    Send code
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[12px] text-subtle">Check your email. After you click the link or enter the code, you’ll be signed in.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         {/* Hotkey Info Step */}
         {currentStep === "hotkey-info" && (
           <motion.div
@@ -741,8 +854,8 @@ const Onboarding: React.FC = () => {
             {/* Removed central Continue button; Next lives in bottom-right consistently */}
           </motion.div>
         )}
-            {/* Welcome Step */}
-            {currentStep === "welcome" && (
+            {/* Legacy welcome step removed */}
+            {false && (
               <motion.div
                 key="welcome"
                 variants={containerVariants}
@@ -1069,8 +1182,8 @@ const Onboarding: React.FC = () => {
 
         </div>
 
-        {/* Navigation Controls (hidden on welcome) */}
-        {currentStep !== "complete" && currentStep !== "welcome" && (
+        {/* Navigation Controls (hidden on auth & complete) */}
+        {currentStep !== "complete" && currentStep !== "auth" && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
             <Button
               variant="secondary"

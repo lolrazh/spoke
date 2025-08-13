@@ -47,6 +47,7 @@ declare global {
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;
       // Window controls
+      showOnboarding: () => Promise<{ ok: boolean }>;
       closeOnboarding: () => Promise<void>;
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
@@ -55,6 +56,11 @@ declare global {
       getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;
       hideFloatingBarIndefinitely: () => Promise<{ ok: boolean; error?: string }>;
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
+      openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
+      getAuthRedirectUrl: () => Promise<{ url: string }>;
+      // Auth helpers
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
@@ -77,6 +83,9 @@ declare global {
       getSelected: () => Promise<{ id: string }>;
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
       onRefreshRequest: (cb: () => void) => () => void;
+    };
+    auth: {
+      onCallback: (cb: (payload: { url: string }) => void) => () => void;
     };
   }
 }

@@ -13,6 +13,7 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
+import { getCurrentUser, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, signOut as supaSignOut } from "../lib/supabaseClient";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -105,6 +106,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [playSounds, setPlaySounds] = useState<boolean>(true);
+  // Auth state for settings panel
+  // Remove inline login from Settings Panel — this surface should only show when signed in
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // Permissions state (mirrors onboarding)
   const [permissions, setPermissions] = useState({
@@ -140,7 +151,79 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         const storedPlay = localStorage.getItem("sf.playSounds");
         if (storedPlay != null) setPlaySounds(storedPlay === "true");
       } catch {}
+      try {
+        // Initialize auth view – optimistic seed from cache to reduce flicker
+        const cachedEmail = localStorage.getItem("sf.lastUserEmail");
+        if (cachedEmail) setUserEmail(cachedEmail);
+        // Fast path: hydrate from local session first to avoid UI flicker
+        try {
+          const { getSupabase } = await import("../lib/supabaseClient");
+          const sb = getSupabase();
+          const sess = await sb?.auth.getSession();
+          const fastUser = sess?.data.session?.user;
+          if (fastUser) {
+            setUserEmail(fastUser.email ?? null);
+            setUserName((fastUser.user_metadata as any)?.name ?? null);
+            setUserAvatarUrl((fastUser.user_metadata as any)?.avatar_url ?? null);
+            if (fastUser.email) localStorage.setItem("sf.lastUserEmail", fastUser.email);
+          }
+        } catch {}
+        // Authoritative fetch
+        const u = await getCurrentUser();
+        if (u) {
+          setUserEmail(u.email ?? null);
+          setUserName((u.user_metadata as any)?.name ?? null);
+          setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+          if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
+        } else {
+          setUserEmail(null);
+          setUserName(null);
+          setUserAvatarUrl(null);
+        }
+        setAuthReady(true);
+      } catch {
+        setAuthReady(true);
+      }
     })();
+  }, []);
+
+  // If not signed in, automatically route to onboarding
+  useEffect(() => {
+    if (!authReady) return;
+    if (!userEmail) {
+      (async () => {
+        try { await window.electron?.showOnboarding?.(); } catch {}
+      })();
+    }
+  }, [authReady, userEmail]);
+
+  // Minimal auth state hydration listener
+  useEffect(() => {
+    // Lazy import to avoid adding supabase client to this component directly
+    let unsubscribe: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getSupabase } = await import("../lib/supabaseClient");
+        const supabase = getSupabase();
+        if (!supabase) return;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          const u = session?.user;
+          if (u) {
+            setUserEmail(u.email ?? null);
+            setUserName((u.user_metadata as any)?.name ?? null);
+            setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+            if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
+          } else {
+            setUserEmail(null);
+            setUserName(null);
+            setUserAvatarUrl(null);
+          }
+          setAuthReady(true);
+        });
+        unsubscribe = () => subscription.unsubscribe();
+      } catch {}
+    })();
+    return () => { unsubscribe && unsubscribe(); };
   }, []);
 
   // Persist preferences when they change
@@ -369,9 +452,53 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   };
 
   const handleSignOut = () => {
-    // TODO: Implement sign out functionality
-    console.log("Signing out");
+    (async () => {
+      try {
+        await supaSignOut();
+      } catch (e: any) {
+        setAuthError(e?.message || "Failed to sign out");
+      }
+      // Regardless of signOut outcome, route user into onboarding
+      try { await window.electron?.showOnboarding?.(); } catch {}
+      setUserEmail(null);
+      setUserName(null);
+      setUserAvatarUrl(null);
+      setAuthEmail("");
+      setAuthEmailRequested(false);
+      setAuthError(null);
+    })();
   };
+
+  const handleGoogle = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      const url = await getGoogleOAuthUrl();
+      setAuthLoading(false);
+      if (url) {
+        await window.electron?.openExternal(url);
+      } else {
+        setAuthError("Could not start Google sign-in");
+      }
+    } catch (e: any) {
+      setAuthLoading(false);
+      setAuthError(e?.message || "Could not start Google sign-in");
+    }
+  };
+
+  const handleEmailStart = async () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    const res = await startEmailOtp(authEmail.trim());
+    setAuthLoading(false);
+    if (!res.ok) {
+      setAuthError(res.error || "Failed to send code");
+      return;
+    }
+    setAuthEmailRequested(true);
+  };
+
+  // Remove login handling from Settings Panel: onboarding is the sole login surface
 
   // Ensure interactive cursor and events work in embedded (expanded) mode
   useEffect(() => {
@@ -521,17 +648,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
-
-              <SettingsCard
-                title="John Smith"
-                description="john.smith@example.com"
-                icon={
-                  // Avatar content only; relies on parent square container from SettingsCard
-                  <span className="text-[11px] font-semibold tracking-wide">JS</span>
-                }
-              >
-                <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
-              </SettingsCard>
+              {userEmail ? (
+                <SettingsCard
+                  title={userName || userEmail}
+                  description={userEmail}
+                  icon={
+                    <span className="text-[11px] font-semibold tracking-wide">
+                      {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                    </span>
+                  }
+                >
+                  <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
+                </SettingsCard>
+              ) : (
+                // If not signed in, do not render login UI here — redirect to onboarding
+                <div className="space-y-3">
+                  <div className="text-[12px] text-subtle">You are signed out.</div>
+                  <Button
+                    className="w-full onboarding-cta"
+                    disabled={authLoading}
+                    onClick={async () => {
+                      try { await window.electron?.showOnboarding?.(); } catch {}
+                    }}
+                  >
+                    Open Onboarding to Sign In
+                  </Button>
+                </div>
+              )}
             </motion.div>
 
             {/* Footer with logo and version - only in standalone mode */}
