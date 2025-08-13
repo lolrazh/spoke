@@ -10,6 +10,13 @@ const config: ForgeConfig = {
     appCategoryType: "public.app-category.productivity",
     
     asar: true,
+    // Register custom URL scheme for OAuth deep-link callbacks in packaged builds
+    protocols: [
+      {
+        name: "Sonic Flow",
+        schemes: ["sonicflow"],
+      },
+    ],
     // macOS app icon
     icon: "./public/assets/icon.icns",
     // Ensure icon is copied to the app bundle
@@ -22,20 +29,20 @@ const config: ForgeConfig = {
       "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing configuration for internal testing
-    // osxSign: {
-    //   identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
-    //   // @ts-ignore
-    //   hardenedRuntime: true,
-    //   signatureFlags: "runtime",
-    //   entitlements: "./build/entitlements/main.plist",
-    //   entitlementsInherit: "./build/entitlements/inherit.plist",
-    //   preAutoEntitlements: false,
-    //   optionsForFile: (filePath) => {
-    //     // The main app has its own entitlements.
-    //     // The helper bundle is signed separately by our build script.
-    //     return {};
-    //   }
-    // }
+    osxSign: {
+      identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
+      // @ts-ignore
+      hardenedRuntime: true,
+      signatureFlags: "runtime",
+      entitlements: "./build/entitlements/main.plist",
+      entitlementsInherit: "./build/entitlements/inherit.plist",
+      preAutoEntitlements: false,
+      optionsForFile: (filePath) => {
+        // The main app has its own entitlements.
+        // The helper bundle is signed separately by our build script.
+        return {};
+      }
+    }
     // No notarization needed for internal testing
   },
   rebuildConfig: {},

@@ -1161,8 +1161,8 @@ const Onboarding: React.FC = () => {
 
         </div>
 
-        {/* Navigation Controls (hidden on welcome) */}
-        {currentStep !== "complete" && currentStep !== "welcome" && (
+        {/* Navigation Controls (hidden on auth & complete) */}
+        {currentStep !== "complete" && currentStep !== "auth" && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
             <Button
               variant="secondary"
