@@ -45,6 +45,8 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
+// Buffer deep links received before windows are ready
+let pendingAuthUrls: string[] = [];
 
 // Dev helper: allow skipping onboarding for faster iteration
 const SKIP_ONBOARDING =
@@ -830,6 +832,18 @@ function createOnboardingWindow() {
   onboardingWindow.on("closed", () => {
     onboardingWindow = null;
   });
+
+  // Flush pending auth deep links to the onboarding window
+  try {
+    if (pendingAuthUrls.length > 0) {
+      for (const url of pendingAuthUrls) {
+        onboardingWindow?.webContents.send("auth:callback", { url });
+      }
+      pendingAuthUrls = [];
+    }
+  } catch (e) {
+    console.error("[Auth] Failed to flush pending auth URLs:", e);
+  }
 }
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
@@ -1142,6 +1156,12 @@ ipcMain.handle(
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  try {
+    // Register custom protocol for OAuth/magic link callbacks
+    app.setAsDefaultProtocolClient("sonicflow");
+  } catch (e) {
+    console.error("[Auth] Failed to register protocol client:", e);
+  }
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
@@ -1256,6 +1276,17 @@ app.whenReady().then(async () => {
     } catch (error) {
       console.error("[IPC] Failed to prepare pill:", error);
       return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Generic external URL opener for OAuth and links
+  ipcMain.handle("open-external", async (_event, url: string) => {
+    try {
+      await shell.openExternal(url);
+      return { ok: true };
+    } catch (err: any) {
+      console.error("[IPC] open-external failed:", err);
+      return { ok: false, error: err?.message || String(err) };
     }
   });
 
@@ -1717,6 +1748,21 @@ app.whenReady().then(async () => {
       }
     }
   });
+});
+
+// Handle deep links like sonicflow://auth/callback?code=...
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  try {
+    const targetWindow = onboardingWindow || mainWindow;
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send("auth:callback", { url });
+    } else {
+      pendingAuthUrls.push(url);
+    }
+  } catch (err) {
+    console.error("[Auth] open-url handler error:", err);
+  }
 });
 
 app.on("window-all-closed", () => {
