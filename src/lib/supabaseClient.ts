@@ -22,6 +22,11 @@ export function getSupabase(): SupabaseClient | null {
   return client;
 }
 
+export type UserMetadata = {
+  name?: string;
+  avatar_url?: string;
+};
+
 export async function getGoogleOAuthUrl(): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -67,6 +72,13 @@ export async function handleAuthCallbackUrl(url: string): Promise<{ ok: boolean;
 
   try {
     const parsed = new URL(url);
+    // Validate scheme and path to reduce accidental/hostile inputs
+    const isCustomScheme = parsed.protocol === "sonicflow:" || parsed.protocol === "sonicflow-dev:";
+    const isDevHttp = (parsed.protocol === "http:" || parsed.protocol === "https:") && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
+    const isAuthPath = parsed.pathname === "/auth/callback";
+    if (!(isAuthPath && (isCustomScheme || isDevHttp))) {
+      return { ok: false, error: "Invalid auth callback URL" };
+    }
     // OAuth PKCE callback: code in query
     const code = parsed.searchParams.get("code");
     if (code) {
@@ -129,6 +141,29 @@ export async function getProfile(): Promise<
   return data as any;
 }
 
+export async function getProfileDetailed(): Promise<{ ok: true; data: { id: string; email: string | null; display_name: string | null; avatar_url: string | null; onboarding_done: boolean | null } } | { ok: false; error: string } | { ok: false; error: "NO_USER" } | { ok: false; error: "NOT_FOUND" } > {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "Supabase not configured" };
+  const u = await getCurrentUser();
+  if (!u) return { ok: false, error: "NO_USER" };
+  try {
+    const { data, error, status } = await supabase
+      .from("profiles")
+      .select("id,email,display_name,avatar_url,onboarding_done")
+      .eq("id", u.id)
+      .single();
+    if (error) {
+      // 406/404 are common for missing row
+      if ((status === 406 || status === 404)) return { ok: false, error: "NOT_FOUND" };
+      return { ok: false, error: error.message };
+    }
+    if (!data) return { ok: false, error: "NOT_FOUND" };
+    return { ok: true, data: data as any };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 export async function markOnboardingDone(): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase) return false;
@@ -145,5 +180,3 @@ export async function markOnboardingDone(): Promise<boolean> {
     return false;
   }
 }
-
-

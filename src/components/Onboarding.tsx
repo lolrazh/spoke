@@ -219,8 +219,8 @@ const Onboarding: React.FC = () => {
       try {
         const profile = await getProfile();
         if (profile?.onboarding_done) {
-          try { await window.electron?.setPttTarget?.("main"); } catch {}
-          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch {}
+          try { await window.electron?.setPttTarget?.("main"); } catch (e) { console.warn("[Onboarding] setPttTarget failed:", e); }
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch (e) { console.warn("[Onboarding] auth:set-signed-in invoke failed:", e); }
           await window.electron?.onboardingComplete();
           return;
         }
@@ -240,8 +240,8 @@ const Onboarding: React.FC = () => {
       try {
         const profile = await getProfile();
         if (profile?.onboarding_done) {
-          try { await window.electron?.setPttTarget?.("main"); } catch {}
-          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch {}
+          try { await window.electron?.setPttTarget?.("main"); } catch (e) { console.warn("[Onboarding] setPttTarget failed:", e); }
+          try { await (window.electron as any)?.invoke?.("auth:set-signed-in"); } catch (e) { console.warn("[Onboarding] auth:set-signed-in invoke failed:", e); }
           await window.electron?.onboardingComplete();
           return;
         }

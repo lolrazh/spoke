@@ -866,17 +866,22 @@ function createOnboardingWindow() {
     onboardingWindow = null;
   });
 
-  // Flush pending auth deep links to the onboarding window
-  try {
-    if (pendingAuthUrls.length > 0) {
-      for (const url of pendingAuthUrls) {
-        onboardingWindow?.webContents.send("auth:callback", { url });
+  // Flush pending auth deep links to the onboarding window only after content finishes loading
+  const flushPending = () => {
+    try {
+      if (pendingAuthUrls.length > 0) {
+        for (const url of pendingAuthUrls) {
+          onboardingWindow?.webContents.send("auth:callback", { url });
+        }
+        pendingAuthUrls = [];
       }
-      pendingAuthUrls = [];
+    } catch (e) {
+      console.error("[Auth] Failed to flush pending auth URLs:", e);
     }
-  } catch (e) {
-    console.error("[Auth] Failed to flush pending auth URLs:", e);
-  }
+  };
+  onboardingWindow.webContents.once('did-finish-load', () => {
+    setTimeout(flushPending, 0);
+  });
 }
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
