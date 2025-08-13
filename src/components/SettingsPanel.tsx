@@ -155,6 +155,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         // Initialize auth view – optimistic seed from cache to reduce flicker
         const cachedEmail = localStorage.getItem("sf.lastUserEmail");
         if (cachedEmail) setUserEmail(cachedEmail);
+        // Fast path: hydrate from local session first to avoid UI flicker
+        try {
+          const { getSupabase } = await import("../lib/supabaseClient");
+          const sb = getSupabase();
+          const sess = await sb?.auth.getSession();
+          const fastUser = sess?.data.session?.user;
+          if (fastUser) {
+            setUserEmail(fastUser.email ?? null);
+            setUserName((fastUser.user_metadata as any)?.name ?? null);
+            setUserAvatarUrl((fastUser.user_metadata as any)?.avatar_url ?? null);
+            if (fastUser.email) localStorage.setItem("sf.lastUserEmail", fastUser.email);
+          }
+        } catch {}
+        // Authoritative fetch
         const u = await getCurrentUser();
         if (u) {
           setUserEmail(u.email ?? null);
@@ -634,9 +648,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
-              {!authReady ? (
-                <div className="text-[12px] text-subtle">Loading account…</div>
-              ) : userEmail ? (
+              {userEmail ? (
                 <SettingsCard
                   title={userName || userEmail}
                   description={userEmail}
