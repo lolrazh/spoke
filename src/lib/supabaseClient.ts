@@ -112,4 +112,38 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
 
+export async function getProfile(): Promise<
+  | { id: string; email: string | null; display_name: string | null; avatar_url: string | null; onboarding_done: boolean | null }
+  | null
+> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const u = await getCurrentUser();
+  if (!u) return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id,email,display_name,avatar_url,onboarding_done")
+    .eq("id", u.id)
+    .single();
+  if (error) return null;
+  return data as any;
+}
+
+export async function markOnboardingDone(): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const u = await getCurrentUser();
+  if (!u) return false;
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ onboarding_done: true })
+      .eq("id", u.id);
+    if (error) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 

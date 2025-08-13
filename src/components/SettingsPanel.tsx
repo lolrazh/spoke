@@ -609,45 +609,27 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                   title={userName || userEmail}
                   description={userEmail}
                   icon={
-                    userAvatarUrl ? (
-                      <img src={userAvatarUrl} alt="avatar" className="w-6 h-6 rounded" />
-                    ) : (
-                      <span className="text-[11px] font-semibold tracking-wide">
-                        {(userName || userEmail || "").slice(0, 2).toUpperCase()}
-                      </span>
-                    )
+                    <span className="text-[11px] font-semibold tracking-wide">
+                      {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                    </span>
                   }
                 >
                   <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
                 </SettingsCard>
               ) : (
-                <div className="space-y-3">
-                  {authError && (
-                    <div className="text-[12px] text-red-300">{authError}</div>
-                  )}
-                  <Button className="w-full onboarding-cta" disabled={authLoading} onClick={handleGoogle}>
-                    <span>Continue with Google</span>
+                <SettingsCard
+                  title="Not signed in"
+                  description="Open onboarding to sign in"
+                  icon={<SfIcon name="person.crop.circle.badge.exclamationmark" size={16} className="text-primary/70" />}
+                >
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => window.notifications?.send?.("Sign in required. Open onboarding to log in.")}
+                  >
+                    Sign in from Onboarding
                   </Button>
-                  <div className="text-[11px] text-subtle">or</div>
-                  {!authEmailRequested ? (
-                    <div className="space-y-2">
-                      <input
-                        type="email"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
-                      />
-                      <Button className="w-full" disabled={authLoading || !authEmail} onClick={handleEmailStart}>
-                        Send code
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-[12px] text-subtle">Check your email. After you click the link, you’ll be signed in.</p>
-                    </div>
-                  )}
-                </div>
+                </SettingsCard>
               )}
             </motion.div>
 
