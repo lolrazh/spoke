@@ -1940,16 +1940,14 @@ app.on("activate", () => {
       console.log(
         "[App Event] activate: No windows exist, creating window",
       );
-      if (SKIP_ONBOARDING) {
-        createWindow();
-      } else {
-        createOnboardingWindow();
-      }
+      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      else createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
       console.log("[App Event] activate: Main window is destroyed, recreating");
-      createWindow();
+      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      else createOnboardingWindow();
     }
   } else {
     console.log(
