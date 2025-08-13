@@ -114,6 +114,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // Permissions state (mirrors onboarding)
   const [permissions, setPermissions] = useState({
@@ -150,19 +151,54 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         if (storedPlay != null) setPlaySounds(storedPlay === "true");
       } catch {}
       try {
-        // Initialize auth view
+        // Initialize auth view – optimistic seed from cache to reduce flicker
+        const cachedEmail = localStorage.getItem("sf.lastUserEmail");
+        if (cachedEmail) setUserEmail(cachedEmail);
         const u = await getCurrentUser();
         if (u) {
           setUserEmail(u.email ?? null);
           setUserName((u.user_metadata as any)?.name ?? null);
           setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+          if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
         } else {
           setUserEmail(null);
           setUserName(null);
           setUserAvatarUrl(null);
         }
+        setAuthReady(true);
+      } catch {
+        setAuthReady(true);
+      }
+    })();
+  }, []);
+
+  // Minimal auth state hydration listener
+  useEffect(() => {
+    // Lazy import to avoid adding supabase client to this component directly
+    let unsubscribe: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getSupabase } = await import("../lib/supabaseClient");
+        const supabase = getSupabase();
+        if (!supabase) return;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          const u = session?.user;
+          if (u) {
+            setUserEmail(u.email ?? null);
+            setUserName((u.user_metadata as any)?.name ?? null);
+            setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+            if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
+          } else {
+            setUserEmail(null);
+            setUserName(null);
+            setUserAvatarUrl(null);
+          }
+          setAuthReady(true);
+        });
+        unsubscribe = () => subscription.unsubscribe();
       } catch {}
     })();
+    return () => { unsubscribe && unsubscribe(); };
   }, []);
 
   // Persist preferences when they change
@@ -604,7 +640,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
-              {userEmail ? (
+              {!authReady ? (
+                <div className="text-[12px] text-subtle">Loading account…</div>
+              ) : userEmail ? (
                 <SettingsCard
                   title={userName || userEmail}
                   description={userEmail}

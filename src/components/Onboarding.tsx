@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
 import SfIcon from "./icons/SfIcon";
-import { getSupabase, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, getCurrentUser } from "../lib/supabaseClient";
+import { getSupabase, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, getCurrentUser, getProfile, markOnboardingDone } from "../lib/supabaseClient";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === 'development';
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -215,7 +215,15 @@ const Onboarding: React.FC = () => {
     getSupabase();
     (async () => {
       const user = await getCurrentUser();
-      if (user) setCurrentStep("permissions");
+      if (!user) return;
+      try {
+        const profile = await getProfile();
+        if (profile?.onboarding_done) {
+          await window.electron?.onboardingComplete();
+          return;
+        }
+      } catch {}
+      setCurrentStep("permissions");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog('[Auth] onCallback URL:', url);
@@ -227,6 +235,13 @@ const Onboarding: React.FC = () => {
         setAuthError(res.error || "Login failed");
         return;
       }
+      try {
+        const profile = await getProfile();
+        if (profile?.onboarding_done) {
+          await window.electron?.onboardingComplete();
+          return;
+        }
+      } catch {}
       setCurrentStep("permissions");
     });
     return () => { off && off(); };
@@ -592,6 +607,7 @@ const Onboarding: React.FC = () => {
     try {
       // Route PTT to main app after onboarding
       window.electron?.setPttTarget?.("main");
+      try { await markOnboardingDone(); } catch {}
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);

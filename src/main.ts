@@ -88,6 +88,9 @@ let micDevices: MicDevice[] = [
 ];
 let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
+// Onboarding persistence (local flag)
+let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
+let onboardingPrefs: { done?: boolean } = {};
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -1255,7 +1258,17 @@ app.whenReady().then(async () => {
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
-  
+  // Load onboarding flag BEFORE startup flow decision
+  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
+  try {
+    if (fs.existsSync(onboardingPrefsPath)) {
+      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
+      onboardingPrefs = JSON.parse(raw);
+    }
+  } catch {
+    onboardingPrefs = {};
+  }
+
   const isDev = !app.isPackaged;
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -1316,8 +1329,9 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Startup flow: respect SKIP_ONBOARDING for development
-  if (SKIP_ONBOARDING) {
+  // Startup flow: skip onboarding when either SKIP_ONBOARDING is set
+  // or we have a local onboarding done flag
+  if (SKIP_ONBOARDING || onboardingPrefs?.done === true) {
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
@@ -1400,6 +1414,19 @@ app.whenReady().then(async () => {
     return { url: "sonicflow://auth/callback" };
   });
 
+  // Initialize paths after app is ready to avoid keychain dialog
+  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
+  // Load onboarding flag (best-effort)
+  try {
+    if (fs.existsSync(onboardingPrefsPath)) {
+      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
+      onboardingPrefs = JSON.parse(raw);
+    }
+  } catch {
+    onboardingPrefs = {};
+  }
+
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
     console.log(`[IPC] Setting PTT target to: ${target}`);
     pttTarget = target;
@@ -1411,6 +1438,11 @@ app.whenReady().then(async () => {
     if (onboardingWindow) {
       onboardingWindow.close();
     }
+    // Persist local onboarding flag so future launches can skip onboarding entirely
+    try {
+      onboardingPrefs = { ...onboardingPrefs, done: true };
+      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+    } catch {}
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
     } else {
