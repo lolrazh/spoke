@@ -866,14 +866,30 @@ function createOnboardingWindow() {
     onboardingWindow = null;
   });
 
-  // Flush pending auth deep links to the onboarding window only after content finishes loading
+  // Enhanced flush pending function with retry capability
   const flushPending = () => {
     try {
-      if (pendingAuthUrls.length > 0) {
-        for (const url of pendingAuthUrls) {
-          onboardingWindow?.webContents.send("auth:callback", { url });
-        }
+      if (pendingAuthUrls.length > 0 && onboardingWindow && !onboardingWindow.isDestroyed()) {
+        console.log(`[Auth] Flushing ${pendingAuthUrls.length} pending auth URLs`);
+        const urlsToProcess = [...pendingAuthUrls];
         pendingAuthUrls = [];
+        
+        for (const url of urlsToProcess) {
+          if (onboardingWindow.webContents.isLoading()) {
+            // Re-add to pending if still loading
+            console.log(`[Auth] Window still loading, re-adding URL to pending`);
+            pendingAuthUrls.push(url);
+          } else {
+            console.log(`[Auth] Sending pending auth callback: ${url.substring(0, 50)}...`);
+            onboardingWindow.webContents.send("auth:callback", { url });
+          }
+        }
+        
+        // Schedule retry if there are still pending URLs
+        if (pendingAuthUrls.length > 0) {
+          console.log(`[Auth] ${pendingAuthUrls.length} URLs still pending, scheduling retry in 1 second`);
+          setTimeout(flushPending, 1000); // Retry after 1 second
+        }
       }
     } catch (e) {
       console.error("[Auth] Failed to flush pending auth URLs:", e);
@@ -1925,18 +1941,45 @@ app.whenReady().then(async () => {
 // Handle deep links like sonicflow://auth/callback?code=...
 app.on("open-url", (event, url) => {
   event.preventDefault();
-  try {
-    console.log("[Auth] open-url received:", url);
-  } catch {}
+  console.log(`[Auth] Deep link received: ${url}`);
+  console.log(`[Auth] App packaged: ${app.isPackaged}`);
+  console.log(`[Auth] Onboarding window exists: ${!!onboardingWindow}`);
+  console.log(`[Auth] Main window exists: ${!!mainWindow}`);
+  
   try {
     const targetWindow = onboardingWindow || mainWindow;
     if (targetWindow && !targetWindow.isDestroyed()) {
-      targetWindow.webContents.send("auth:callback", { url });
+      console.log(`[Auth] Target window ready: ${!targetWindow.webContents.isLoading()}`);
+      console.log(`[Auth] Window visible: ${targetWindow.isVisible()}`);
+      
+      // Check if window content is loaded before sending auth callback
+      if (targetWindow.webContents.isLoading()) {
+        console.log(`[Auth] Window still loading, waiting for did-finish-load event`);
+        // Wait for content to finish loading
+        targetWindow.webContents.once('did-finish-load', () => {
+          console.log(`[Auth] Window finished loading, sending auth callback`);
+          targetWindow.webContents.send("auth:callback", { url });
+        });
+      } else {
+        console.log(`[Auth] Window ready, sending auth callback immediately`);
+        targetWindow.webContents.send("auth:callback", { url });
+      }
+      
+      // Ensure window is visible and focused for auth flow
+      if (!targetWindow.isVisible()) {
+        console.log(`[Auth] Showing hidden window`);
+        targetWindow.show();
+      }
+      targetWindow.focus();
     } else {
+      console.log(`[Auth] No ready window, adding to pending (${pendingAuthUrls.length + 1} total)`);
       pendingAuthUrls.push(url);
     }
   } catch (err) {
-    console.error("[Auth] open-url handler error:", err);
+    console.error("[Auth] Deep link handler error:", err);
+    // Fallback: add to pending URLs if direct send fails
+    console.log(`[Auth] Adding to pending URLs as fallback`);
+    pendingAuthUrls.push(url);
   }
 });
 
