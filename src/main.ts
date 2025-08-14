@@ -49,6 +49,34 @@ let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
 let devAuthServerUrl: string | null = null;
+// Duplicate callback prevention - track processed auth URLs
+const processedAuthUrls = new Set<string>();
+
+// Helper function to send auth callback with duplicate prevention
+function sendAuthCallback(url: string) {
+  // Extract the significant parts for deduplication (ignore minor differences)
+  const parsed = new URL(url);
+  const dedupeKey = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}?${parsed.searchParams.toString()}`;
+  
+  if (processedAuthUrls.has(dedupeKey)) {
+    console.log(`[Auth] Ignoring duplicate callback: ${url.substring(0, 50)}...`);
+    return false;
+  }
+  
+  processedAuthUrls.add(dedupeKey);
+  console.log(`[Auth] Processing new callback: ${url.substring(0, 50)}...`);
+  
+  const targetWindow = onboardingWindow || mainWindow;
+  if (targetWindow && !targetWindow.isDestroyed()) {
+    targetWindow.webContents.send("auth:callback", { url });
+    if (!targetWindow.isVisible()) targetWindow.show();
+    targetWindow.focus();
+    return true;
+  } else {
+    pendingAuthUrls.push(url);
+    return false;
+  }
+}
 
 // Ensure single instance so deep links route to the running app
 const gotTheLock = app.requestSingleInstanceLock();
@@ -62,14 +90,7 @@ if (!gotTheLock) {
           typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
       );
       if (maybeUrl) {
-        const targetWindow = onboardingWindow || mainWindow;
-        if (targetWindow && !targetWindow.isDestroyed()) {
-          targetWindow.webContents.send("auth:callback", { url: maybeUrl });
-          if (!targetWindow.isVisible()) targetWindow.show();
-          targetWindow.focus();
-        } else {
-          pendingAuthUrls.push(maybeUrl);
-        }
+        sendAuthCallback(maybeUrl);
       }
     } catch (e) {
       console.error("[Auth] second-instance handler error:", e);
@@ -880,8 +901,7 @@ function createOnboardingWindow() {
             console.log(`[Auth] Window still loading, re-adding URL to pending`);
             pendingAuthUrls.push(url);
           } else {
-            console.log(`[Auth] Sending pending auth callback: ${url.substring(0, 50)}...`);
-            onboardingWindow.webContents.send("auth:callback", { url });
+            sendAuthCallback(url);
           }
         }
         
@@ -1238,12 +1258,7 @@ app.whenReady().then(async () => {
       const server = http.createServer((req, res) => {
         const url = `http://${host}:${port}${req.url || ""}`;
         try {
-          const targetWindow = onboardingWindow || mainWindow;
-          if (targetWindow && !targetWindow.isDestroyed()) {
-            targetWindow.webContents.send("auth:callback", { url });
-          } else {
-            pendingAuthUrls.push(url);
-          }
+          sendAuthCallback(url);
         } catch (err) {
           console.error("[Auth] dev server callback error:", err);
         }
@@ -1266,12 +1281,7 @@ app.whenReady().then(async () => {
       (a) => typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
     );
     if (firstUrl) {
-      const targetWindow = onboardingWindow || mainWindow;
-      if (targetWindow && !targetWindow.isDestroyed()) {
-        targetWindow.webContents.send("auth:callback", { url: firstUrl });
-      } else {
-        pendingAuthUrls.push(firstUrl);
-      }
+      sendAuthCallback(firstUrl);
     }
   } catch (e) {
     console.error("[Auth] initial argv scan error:", e);
@@ -1430,29 +1440,34 @@ app.whenReady().then(async () => {
   });
 
   // Provide renderer with correct redirect URL (one per env)
-  ipcMain.handle("auth:get-redirect-url", () => {
+  ipcMain.handle("auth:get-redirect-url", async () => {
     const isDev = !app.isPackaged;
     if (isDev) {
-      if (devAuthServerUrl) return { url: devAuthServerUrl };
-      return { url: "sonicflow-dev://auth/callback" };
+      // Wait for HTTP server to be ready - no fallback to custom scheme
+      if (devAuthServerUrl) {
+        return { url: devAuthServerUrl };
+      }
+      
+      // Wait for server to be ready with timeout
+      const timeout = 10000; // 10 seconds timeout
+      const startTime = Date.now();
+      
+      while (!devAuthServerUrl && (Date.now() - startTime) < timeout) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Check every 100ms
+      }
+      
+      if (devAuthServerUrl) {
+        return { url: devAuthServerUrl };
+      } else {
+        console.error("[Auth] HTTP server failed to start within timeout");
+        return { error: "Development auth server failed to start" };
+      }
     }
     // In production, use the API site to complete OAuth, then deep-link to the app
     // This improves UX when the provider opens an external browser
     return { url: "https://auth.sonicflow.app/auth/callback" };
   });
 
-  // Initialize paths after app is ready to avoid keychain dialog
-  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
-  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
-  // Load onboarding flag (best-effort)
-  try {
-    if (fs.existsSync(onboardingPrefsPath)) {
-      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
-      onboardingPrefs = JSON.parse(raw);
-    }
-  } catch {
-    onboardingPrefs = {};
-  }
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
     console.log(`[IPC] Setting PTT target to: ${target}`);
@@ -1964,11 +1979,11 @@ app.on("open-url", (event, url) => {
         // Wait for content to finish loading
         targetWindow.webContents.once('did-finish-load', () => {
           console.log(`[Auth] Window finished loading, sending auth callback`);
-          targetWindow.webContents.send("auth:callback", { url });
+          sendAuthCallback(url);
         });
       } else {
         console.log(`[Auth] Window ready, sending auth callback immediately`);
-        targetWindow.webContents.send("auth:callback", { url });
+        sendAuthCallback(url);
       }
       
       // Ensure window is visible and focused for auth flow

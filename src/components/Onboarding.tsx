@@ -260,7 +260,7 @@ const Onboarding: React.FC = () => {
       if (url) {
         await window.electron?.openExternal(url);
       } else {
-        setAuthError("Could not start Google sign-in");
+        setAuthError("Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.");
       }
     } catch (e: any) {
       setAuthLoading(false);

@@ -34,6 +34,12 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
   // Ask Electron main which redirect to use
   const redirect = await (window.electron?.getAuthRedirectUrl?.() ?? Promise.resolve({ url: "sonicflow://auth/callback" }));
   
+  // Check if redirect URL request failed (dev server not ready)
+  if ('error' in redirect) {
+    console.error("[Auth] Failed to get redirect URL:", redirect.error);
+    return null;
+  }
+  
   console.log(`[Auth] Using redirect URL: ${redirect.url}`);
   console.log(`[Auth] Environment: ${import.meta.env.MODE || 'production'}`);
   
@@ -61,6 +67,12 @@ export async function startEmailOtp(email: string): Promise<{ ok: boolean; error
   
   const redirect = await (window.electron?.getAuthRedirectUrl?.() ?? Promise.resolve({ url: "sonicflow://auth/callback" }));
   
+  // Check if redirect URL request failed (dev server not ready)
+  if ('error' in redirect) {
+    console.error("[Auth] Failed to get redirect URL for email OTP:", redirect.error);
+    return { ok: false, error: "Authentication setup failed. Please try again." };
+  }
+  
   console.log(`[Auth] Starting email OTP for: ${email}`);
   console.log(`[Auth] Using email redirect URL: ${redirect.url}`);
   
@@ -79,13 +91,6 @@ export async function startEmailOtp(email: string): Promise<{ ok: boolean; error
   return { ok: true };
 }
 
-export async function verifyEmailOtp(email: string, token: string): Promise<{ ok: boolean; error?: string }> {
-  const supabase = getSupabase();
-  if (!supabase) return { ok: false, error: "Supabase not configured" };
-  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true };
-}
 
 export async function handleAuthCallbackUrl(url: string): Promise<{ ok: boolean; error?: string }> {
   const supabase = getSupabase();
