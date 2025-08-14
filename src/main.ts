@@ -1436,7 +1436,9 @@ app.whenReady().then(async () => {
       if (devAuthServerUrl) return { url: devAuthServerUrl };
       return { url: "sonicflow-dev://auth/callback" };
     }
-    return { url: "sonicflow://auth/callback" };
+    // In production, use the API site to complete OAuth, then deep-link to the app
+    // This improves UX when the provider opens an external browser
+    return { url: "https://auth.sonicflow.app/auth/callback" };
   });
 
   // Initialize paths after app is ready to avoid keychain dialog
