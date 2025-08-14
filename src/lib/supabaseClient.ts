@@ -100,11 +100,16 @@ export async function handleAuthCallbackUrl(url: string): Promise<{ ok: boolean;
     // Validate scheme and path to reduce accidental/hostile inputs
     const isCustomScheme = parsed.protocol === "sonicflow:" || parsed.protocol === "sonicflow-dev:";
     const isDevHttp = (parsed.protocol === "http:" || parsed.protocol === "https:") && (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
-    const isAuthPath = parsed.pathname === "/auth/callback";
+    // Accept both custom-scheme forms and the dev HTTP path
+    // - path form: sonicflow:///auth/callback -> pathname "/auth/callback"
+    // - host form: sonicflow://auth/callback   -> hostname "auth" and pathname "/callback"
+    const isPathForm = parsed.pathname === "/auth/callback";
+    const isHostForm = isCustomScheme && parsed.hostname === "auth" && parsed.pathname === "/callback";
+    const isAuthCallback = isPathForm || isHostForm;
     
-    console.log(`[Auth] URL validation - Custom scheme: ${isCustomScheme}, Dev HTTP: ${isDevHttp}, Auth path: ${isAuthPath}`);
+    console.log(`[Auth] URL validation - Custom scheme: ${isCustomScheme}, Dev HTTP: ${isDevHttp}, Path form: ${isPathForm}, Host form: ${isHostForm}`);
     
-    if (!(isAuthPath && (isCustomScheme || isDevHttp))) {
+    if (!((isAuthCallback && isCustomScheme) || (isPathForm && isDevHttp))) {
       console.error(`[Auth] Invalid auth callback URL - failed validation`);
       return { ok: false, error: "Invalid auth callback URL" };
     }

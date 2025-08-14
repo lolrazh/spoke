@@ -1429,9 +1429,13 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Provide renderer with correct redirect URL (dev: http callback; prod: custom scheme)
+  // Provide renderer with correct redirect URL (one per env)
   ipcMain.handle("auth:get-redirect-url", () => {
-    if (!app.isPackaged && devAuthServerUrl) return { url: devAuthServerUrl };
+    const isDev = !app.isPackaged;
+    if (isDev) {
+      if (devAuthServerUrl) return { url: devAuthServerUrl };
+      return { url: "sonicflow-dev://auth/callback" };
+    }
     return { url: "sonicflow://auth/callback" };
   });
 
