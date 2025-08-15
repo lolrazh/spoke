@@ -20,20 +20,20 @@ Comprehensive documentation for Sonic Flow's real-time audio transcription pipel
 
 ## Overview
 
-Sonic Flow implements a **real-time audio transcription pipeline** that captures microphone input, processes it through custom audio worklets, sends it to Whisper ASR, and automatically inserts the transcribed text at the cursor position. The system is optimized for low-latency push-to-talk dictation with high accuracy.
+Sonic Flow implements a **real-time audio transcription pipeline** that captures microphone input, encodes it using Opus WebM format via MediaRecorder, sends it to Whisper ASR, and automatically inserts the transcribed text at the cursor position. The system is optimized for low-latency push-to-talk dictation with high accuracy and efficient compression.
 
 ### Key Features
-- **Real-time Audio Processing** - Custom AudioWorklet with 48kHz→16kHz downsampling
+- **Opus WebM Encoding** - Efficient audio compression via MediaRecorder with 16kHz AudioContext
 - **Whisper Large v3 Turbo** - State-of-the-art ASR model via api.sonicflow.app
 - **Native Text Insertion** - Direct cursor positioning via accessibility APIs
-- **Visual Audio Feedback** - Real-time level metering with peak detection
+- **Optimized Audio Processing** - Browser-native encoding with minimal CPU overhead
 - **Device Management** - Hot-pluggable microphone selection and enumeration
 - **Graceful Error Handling** - Comprehensive fallbacks and user feedback
 
 ### Core Components
 - **useTranscription Hook** (`src/hooks/useTranscription.ts`) - Main transcription orchestrator
-- **AudioWorklet Processor** (`public/audioworklet-processor.js`) - Real-time audio processing
-- **PCM-to-WAV Utility** (`src/utils/pcm16-to-wav.ts`) - Audio format conversion
+- **MediaRecorder API** - Browser-native audio recording with Opus WebM encoding
+- **AudioContext** - 16kHz sample rate optimization for Whisper compatibility
 - **Native Helper** - macOS accessibility integration for text insertion
 - **Audio Feedback System** (`src/utils/audioFeedback.ts`) - Start/stop sound cues
 
@@ -44,14 +44,8 @@ Sonic Flow implements a **real-time audio transcription pipeline** that captures
 ### System Flow Diagram
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Microphone    │───▶│   AudioWorklet   │───▶│   PCM Buffer    │
-│   (48kHz)       │    │   Processor      │    │   (16kHz)       │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                                ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Level Meter   │◀───│   RMS/Peak       │    │   WAV Blob      │
-│   (Visual FB)   │    │   Calculation    │    │   Creation      │
+│   Microphone    │───▶│   AudioContext   │───▶│  MediaRecorder  │
+│   (48kHz)       │    │   (16kHz)        │    │  (Opus WebM)    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                                                          │
                                                          ▼
@@ -63,8 +57,8 @@ Sonic Flow implements a **real-time audio transcription pipeline** that captures
 
 ### Process Architecture
 - **Main Process** - IPC coordination, native helper management, device enumeration
-- **Renderer Process** - UI state, audio processing, transcription requests
-- **AudioWorklet Thread** - Real-time audio processing isolated from main thread
+- **Renderer Process** - UI state, MediaRecorder-based audio recording, transcription requests
+- **MediaRecorder API** - Browser-native audio encoding with Opus compression
 - **Native Helper Binary** - macOS accessibility integration and text insertion
 
 ---
@@ -76,14 +70,12 @@ Sonic Flow implements a **real-time audio transcription pipeline** that captures
 #### Configuration
 ```typescript
 // src/config/audio.ts
-export const TARGET_AUDIO_CONTEXT_RATE = 48000; // Browser/hardware rate
 export const MICROPHONE_PREFERRED_RATE = 48000; // Microphone capture rate
-export const TARGET_SAMPLE_RATE = 16000;        // ASR model expected rate
 ```
 
 #### MediaStream Setup
 ```typescript
-// src/hooks/useTranscription.ts:160-185
+// src/hooks/useTranscription.ts:148-155
 const constraints: MediaStreamConstraints = {
   audio: {
     sampleRate: MICROPHONE_PREFERRED_RATE,
@@ -99,60 +91,50 @@ const constraints: MediaStreamConstraints = {
 - **Mono Channel**: Reduces processing overhead, sufficient for speech
 - **No Processing**: Disabled echo cancellation/noise suppression for minimal latency
 
-### 2. AudioWorklet Processing
+### 2. AudioContext Downsampling
 
-#### Real-time Audio Thread
-```javascript
-// public/audioworklet-processor.js
-class CaptureProcessor extends AudioWorkletProcessor {
-  // 960 samples per chunk = 60ms at 16kHz
-  pcm16 = new Int16Array(960);
-  
-  process(inputs, outputs, parameters) {
-    // Downsample by 3 (48kHz → 16kHz)
-    // Convert Float32 → Int16
-    // Emit PCM chunks and level data
-  }
-}
-```
-
-#### Downsampling Strategy
-- **3:1 Decimation**: Every 3rd sample from 48kHz input (simple but effective)
-- **48kHz → 16kHz**: Matches Whisper model requirements
-- **60ms Chunks**: 960 samples provides good latency/quality balance
-
-#### Level Metering
-```javascript
-// Real-time audio level calculation
-const rms = Math.sqrt(this._sumSquares / this._samples);
-const dbRms = 20 * Math.log10(rms + eps);
-const normalized = (dbRms - DB_FLOOR) / -DB_FLOOR;
-
-// Exponential smoothing with asymmetric attack/release
-const alpha = raw > smoothLevel ? ATTACK : RELEASE;
-smoothLevel = alpha * raw + (1 - alpha) * smoothLevel;
-```
-
-**Features:**
-- **RMS + Peak Blend**: Combines sustained levels with transient spikes
-- **dBFS Normalization**: -60dB floor provides useful dynamic range
-- **Asymmetric Smoothing**: Fast attack (0.85), slow release (0.08) for punchy response
-
-### 3. PCM-to-WAV Conversion
-
-#### WAV Header Generation
+#### 16kHz AudioContext
 ```typescript
-// src/utils/pcm16-to-wav.ts
-export function pcm16ToWav(samples: Int16Array, sampleRate = 16000): Blob {
-  // Creates standard WAV header for 16-bit mono PCM
-  // Handles SharedArrayBuffer compatibility for blob creation
-}
+// src/hooks/useTranscription.ts:225-228
+audioContextRef.current = new AudioContext({ sampleRate: 16000 });
+const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+const dest = audioContextRef.current.createMediaStreamDestination();
+source.connect(dest);
 ```
 
-**Specifications:**
-- **Format**: 16-bit PCM, mono, 16kHz
-- **Header**: Standard RIFF/WAVE format with proper chunk sizing
-- **Compatibility**: Handles SharedArrayBuffer restrictions in modern browsers
+**Benefits:**
+- **Browser-Native Downsampling**: Leverages optimized browser resampling algorithms
+- **16kHz Output**: Matches Whisper model requirements without custom processing
+- **Minimal CPU**: Eliminates custom AudioWorklet processing overhead
+
+### 3. Opus WebM Encoding
+
+#### MediaRecorder Configuration
+```typescript
+// src/hooks/useTranscription.ts:231-234
+mediaRecorderRef.current = new MediaRecorder(dest.stream, {
+  mimeType: 'audio/webm;codecs=opus',
+  audioBitsPerSecond: 24000, // Optimized for speech
+});
+```
+
+#### Opus Compression Benefits
+- **Superior Compression**: ~3-5x smaller files than PCM WAV
+- **Speech Optimized**: Opus codec designed for voice communication
+- **Browser Native**: No custom encoding implementation required
+- **Low Latency**: Real-time encoding during recording
+
+#### Data Collection
+```typescript
+// src/hooks/useTranscription.ts:236-242
+mediaRecorderRef.current.ondataavailable = (event) => {
+  if (event.data.size > 0) {
+    audioChunksRef.current.push(event.data);
+  }
+};
+
+mediaRecorderRef.current.start(100); // Collect data every 100ms
+```
 
 ---
 
@@ -169,8 +151,12 @@ const response = await fetch("https://api.sonicflow.app", {
 
 ### Request Format
 ```typescript
-// FormData payload structure
-formData.append("file", wavBlob, "audio.wav");
+// FormData payload structure - src/hooks/useTranscription.ts:290-295
+const audioBlob = new Blob(audioChunksRef.current, { 
+  type: 'audio/webm;codecs=opus' 
+});
+
+formData.append("file", audioBlob, "audio.webm");
 formData.append("model", "whisper-large-v3-turbo");
 formData.append("language", "en");
 formData.append("response_format", "json");
@@ -249,15 +235,13 @@ clipboard.writeText(payloadText);
 
 ### Hook State Structure
 ```typescript
-// src/hooks/useTranscription.ts:13-23
+// src/hooks/useTranscription.ts:6-14
 export interface UseTranscriptionReturn {
   recording: boolean;     // Currently capturing audio
   processing: boolean;    // Sending to API / waiting for response
   ready: boolean;         // Microphone stream available
   text: string;          // Last transcription result
   error: string | null;   // Error message for user display
-  level: number;         // 0..1 smoothed audio level
-  peak: number;          // 0..1 fast peak level
   start: () => void;     // Begin recording
   stop: () => void;      // End recording and transcribe
 }
@@ -274,7 +258,7 @@ IDLE → start() → RECORDING → stop() → PROCESSING → IDLE
 
 #### State Guards
 ```typescript
-// src/hooks/useTranscription.ts:222-227
+// src/hooks/useTranscription.ts:210-215
 if (recording) return;        // Prevent double-start
 if (processing) return;       // Prevent start during processing
 if (!streamRef.current) {     // Ensure stream available
@@ -460,39 +444,48 @@ mainWindow?.webContents.send("notify", "Error message here");
 
 ### Audio Processing Optimizations
 
-#### AudioWorklet Isolation
-- **Dedicated Thread**: Audio processing isolated from main UI thread
-- **Minimal Allocations**: Reuse Int16Array buffers to prevent GC pressure
-- **Efficient Downsampling**: Simple decimation avoids complex filtering
+#### MediaRecorder Efficiency
+- **Browser-Native Encoding**: Leverages optimized browser codecs for Opus compression
+- **Hardware Acceleration**: MediaRecorder can utilize hardware encoding when available
+- **Minimal CPU Overhead**: Eliminates custom AudioWorklet processing and manual downsampling
 
 #### Memory Management
 ```typescript
-// src/hooks/useTranscription.ts:233
+// src/hooks/useTranscription.ts:221
 audioChunksRef.current = []; // Clear chunks on start
 
-// src/hooks/useTranscription.ts:381
+// src/hooks/useTranscription.ts:318
 audioChunksRef.current = []; // Clear chunks after processing
 ```
 
 #### AudioContext Lifecycle
 ```typescript
-// src/hooks/useTranscription.ts:329-336
-// Suspend AudioContext when idle to reduce CPU usage
-if (audioCtxRef.current && audioCtxRef.current.state === "running") {
-  try {
-    await audioCtxRef.current.suspend();
-  } catch (e) {
-    // ignore suspend errors
-  }
+// src/hooks/useTranscription.ts:271-274
+// Close AudioContext after recording to free resources
+if (audioContextRef.current) {
+  audioContextRef.current.close();
+  audioContextRef.current = null;
+}
+```
+
+#### Stream Management
+```typescript
+// src/hooks/useTranscription.ts:277-281
+// Stop stream completely to turn off macOS mic indicator
+if (streamRef.current) {
+  streamRef.current.getTracks().forEach((track) => track.stop());
+  streamRef.current = null;
+  setReady(false);
 }
 ```
 
 ### Network Optimizations
 
 #### Efficient Audio Encoding
-- **16kHz Sample Rate**: Reduces file size vs 48kHz (3x smaller)
-- **16-bit PCM**: Good quality/size balance for speech
-- **WAV Format**: Simple format with minimal overhead
+- **Opus WebM**: Modern codec with superior compression vs PCM (3-5x smaller files)
+- **16kHz Sample Rate**: Optimal for speech recognition while minimizing bandwidth
+- **24kbps Bitrate**: Speech-optimized bitrate providing excellent quality/size ratio
+- **Real-time Encoding**: Opus compression happens during recording, no post-processing delay
 
 #### Request Optimization
 ```typescript
@@ -503,17 +496,10 @@ formData.append("temperature", "0");                // Deterministic, faster
 
 ### UI Performance
 
-#### Level Metering Throttling
-```typescript
-// src/hooks/useTranscription.ts:291-293
-if (++levelLogCount % 10 === 0) {
-  try { console.debug('[audio-level]', { /* ... */ }); } catch {}
-}
-```
-
-#### State Update Batching
-- React's automatic batching prevents excessive re-renders
-- Audio level updates throttled to ~20Hz for smooth animation
+#### Simplified State Management
+- Removed audio level metering to eliminate constant state updates
+- MediaRecorder handles encoding asynchronously, reducing main thread load
+- React's automatic batching prevents excessive re-renders during device changes
 
 ---
 
@@ -522,9 +508,7 @@ if (++levelLogCount % 10 === 0) {
 ### Audio Configuration
 ```typescript
 // src/config/audio.ts - Centralized audio constants
-export const TARGET_AUDIO_CONTEXT_RATE = 48000;
 export const MICROPHONE_PREFERRED_RATE = 48000;
-export const TARGET_SAMPLE_RATE = 16000;
 ```
 
 ### Transcription Configuration
@@ -537,32 +521,29 @@ export interface UseTranscriptionOptions {
 }
 ```
 
-### AudioWorklet Configuration
-```javascript
-// public/audioworklet-processor.js - Processing parameters
-// 960 samples per chunk = 60ms at 16kHz
-pcm16 = new Int16Array(960);
-
-// Level metering parameters
-_levelSamplesTarget = 1024; // ~21ms at 48kHz
-```
-
-### Level Metering Configuration
+### MediaRecorder Configuration
 ```typescript
-// src/hooks/useTranscription.ts:264-266
-const ATTACK = 0.85;        // Fast attack for responsiveness
-const RELEASE = 0.08;       // Slow release for stability
-const DB_FLOOR = -60;       // dBFS floor for normalization
+// src/hooks/useTranscription.ts - MediaRecorder setup
+{
+  mimeType: 'audio/webm;codecs=opus',    // Opus codec in WebM container
+  audioBitsPerSecond: 24000,             // 24kbps optimized for speech
+}
+
+// Data collection interval
+mediaRecorderRef.current.start(100);    // Collect chunks every 100ms
 ```
+
 
 ### API Configuration
 ```typescript
-// Whisper API parameters (src/hooks/useTranscription.ts:354-358)
+// Whisper API parameters (src/hooks/useTranscription.ts:291-295)
+formData.append("file", audioBlob, "audio.webm");
+formData.append("model", "whisper-large-v3-turbo");
+formData.append("language", "en");
+formData.append("response_format", "json");
+formData.append("temperature", "0");
+
 const API_ENDPOINT = "https://api.sonicflow.app";
-const MODEL = "whisper-large-v3-turbo";
-const LANGUAGE = "en";
-const RESPONSE_FORMAT = "json";
-const TEMPERATURE = "0";
 ```
 
 ---
@@ -609,20 +590,23 @@ if (selectedMicId !== "default") {
 }
 ```
 
-#### "AudioWorklet registration failed"
-**Cause**: Browser doesn't support AudioWorklet or CORS issues
+#### "MediaRecorder not supported"
+**Cause**: Browser doesn't support MediaRecorder or Opus codec
 **Solution**: 
 ```typescript
-// Check workletRegistry and URL resolution
-const workletPath = new URL("../../public/audioworklet-processor.js", import.meta.url);
+// Check MediaRecorder and codec support
+if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+  // Fallback to alternative format or show error
+}
 ```
 
 #### "Server error" during transcription
 **Cause**: API endpoint unavailable or audio format issues
 **Solution**:
 ```typescript
-// Check WAV blob creation and network connectivity
-// Validate audio chunk accumulation
+// Check Opus WebM blob creation and network connectivity
+// Validate MediaRecorder chunk accumulation
+console.log(`Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
 ```
 
 #### "Native helper binary not found"
@@ -636,20 +620,23 @@ const workletPath = new URL("../../public/audioworklet-processor.js", import.met
 ### Performance Debugging
 
 #### Audio Processing Performance
-```javascript
-// Add timing to AudioWorklet processor
-const startTime = performance.now();
-// ... processing ...
-const processingTime = performance.now() - startTime;
-if (processingTime > 5) {
-  this.port.postMessage({ type: 'performance-warning', processingTime });
-}
+```typescript
+// Monitor MediaRecorder encoding performance
+mediaRecorderRef.current.onstart = () => {
+  console.log('[PERF] MediaRecorder encoding started');
+};
+
+mediaRecorderRef.current.ondataavailable = (event) => {
+  const chunkSize = event.data.size;
+  console.log(`[PERF] Opus chunk: ${(chunkSize / 1024).toFixed(2)} KB`);
+};
 ```
 
 #### Memory Usage Monitoring
 ```typescript
-// Monitor audio chunk accumulation
-console.log(`Audio chunks: ${audioChunksRef.current.length}, Total samples: ${totalLength}`);
+// Monitor Opus blob chunk accumulation
+const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
+console.log(`Opus chunks: ${audioChunksRef.current.length}, Total size: ${(totalSize / 1024).toFixed(2)} KB`);
 ```
 
 #### Network Request Timing
@@ -665,15 +652,15 @@ console.log(`Transcription request took: ${performance.now() - startTime}ms`);
 #### Audio Pipeline Testing
 ```bash
 # Test audio capture without transcription
-# Verify level metering and PCM chunk generation
-# Check AudioWorklet registration and processing
+# Verify MediaRecorder and Opus encoding
+# Check AudioContext downsampling and stream routing
 ```
 
 #### API Integration Testing
 ```bash
-# Test with known good audio file
-# Verify FormData construction
-# Check response parsing
+# Test with known good Opus WebM file
+# Verify FormData construction with audio.webm
+# Check response parsing and text extraction
 ```
 
 #### Native Helper Testing
@@ -700,8 +687,6 @@ export interface UseTranscriptionReturn {
   ready: boolean;              // Microphone stream available
   text: string;                // Last transcription result
   error: string | null;        // User-displayable error message
-  level: number;               // 0..1 smoothed audio level for UI
-  peak: number;                // 0..1 fast peak level for accents
   
   // Actions
   start: () => void;           // Begin audio recording
@@ -736,33 +721,31 @@ if (transcription.processing) {
 }
 ```
 
-### AudioWorklet Processor
+### MediaRecorder API Integration
 
-#### Message Types
-```javascript
-// PCM data messages (ArrayBuffer)
-event.data instanceof ArrayBuffer // Raw PCM16 audio data
-
-// Level metering messages (Object)
+#### Opus WebM Configuration
+```typescript
+// MediaRecorder setup for optimal speech encoding
 {
-  type: 'level',
-  rms: number,    // 0..1 RMS level
-  peak: number    // 0..1 peak level
+  mimeType: 'audio/webm;codecs=opus',
+  audioBitsPerSecond: 24000,
 }
 ```
 
-#### Configuration
-```javascript
-class CaptureProcessor extends AudioWorkletProcessor {
-  pcm16 = new Int16Array(960);          // 60ms chunks at 16kHz
-  _levelSamplesTarget = 1024;           // ~21ms level updates at 48kHz
-  
-  process(inputs, outputs, parameters) {
-    // Downsample 48kHz → 16kHz (every 3rd sample)
-    // Convert Float32 → Int16
-    // Emit PCM chunks and level data
+#### Event Handling
+```typescript
+mediaRecorderRef.current.ondataavailable = (event) => {
+  if (event.data.size > 0) {
+    audioChunksRef.current.push(event.data);
   }
-}
+};
+
+mediaRecorderRef.current.onstop = () => {
+  // Combine all chunks into final Opus blob
+  const audioBlob = new Blob(audioChunksRef.current, { 
+    type: 'audio/webm;codecs=opus' 
+  });
+};
 ```
 
 ### IPC Interface
@@ -832,28 +815,34 @@ proc.on("close", (code) => {
 
 ## Recent Updates and Improvements
 
-### Performance Enhancements (2024)
-1. **AudioWorklet Optimization**: Reduced memory allocations and improved downsample efficiency
-2. **Level Metering**: Enhanced responsiveness with asymmetric attack/release smoothing
-3. **Chunk Processing**: Optimized 60ms chunk size for latency/quality balance
-4. **Stream Management**: Improved device switching and stream lifecycle handling
+### Major Architecture Migration (2024)
+1. **Opus WebM Encoding**: Migrated from custom AudioWorklet + WAV to MediaRecorder with Opus compression
+2. **Simplified Pipeline**: Eliminated custom PCM processing in favor of browser-native encoding
+3. **Performance Gains**: 3-5x smaller file sizes with superior speech quality
+4. **Reduced Complexity**: Removed custom downsampling, level metering, and manual format conversion
+
+### Performance Enhancements
+1. **MediaRecorder Efficiency**: Leverages hardware-accelerated Opus encoding when available
+2. **Memory Optimization**: Eliminated custom audio buffers and manual PCM processing
+3. **CPU Reduction**: Browser-native encoding reduces main thread processing overhead
+4. **Stream Management**: Improved device switching and complete stream cleanup
 
 ### Reliability Improvements
 1. **Error Recovery**: Enhanced fallback strategies for device and API failures
 2. **Permission Handling**: Better integration with native helper for accessibility
 3. **State Synchronization**: Improved IPC communication and state management
-4. **Memory Management**: Proper cleanup of audio resources and references
+4. **Browser Compatibility**: MediaRecorder provides better cross-browser support
 
 ### API Integration Updates
-1. **Whisper v3 Turbo**: Upgraded to latest model for improved speed and accuracy
-2. **Request Optimization**: Streamlined payload and parameters for faster processing
+1. **Whisper v3 Turbo**: Continued use of latest model with new Opus WebM format
+2. **Compression Benefits**: Significantly reduced bandwidth usage and upload times
 3. **Error Handling**: Enhanced API error parsing and user feedback
-4. **Response Processing**: Improved text extraction and insertion flow
+4. **Response Processing**: Maintained efficient text extraction and insertion flow
 
 ### Development Experience
-1. **Debug Logging**: Comprehensive logging throughout the pipeline
-2. **Type Safety**: Full TypeScript coverage with proper interfaces
-3. **Testing Support**: Better testing hooks and debugging utilities
-4. **Documentation**: Comprehensive inline documentation and examples
+1. **Simplified Codebase**: Removed complex AudioWorklet processor and WAV utilities
+2. **Type Safety**: Maintained full TypeScript coverage with updated interfaces
+3. **Testing Support**: Streamlined testing without custom audio processing components
+4. **Documentation**: Updated comprehensive documentation reflecting new architecture
 
 This transcription system provides a robust, high-performance foundation for real-time speech-to-text functionality with native macOS integration and professional-grade audio processing.

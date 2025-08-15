@@ -230,7 +230,7 @@ export function useTranscription(
       // Use MediaRecorder with pre-downsampled 16kHz stream
       mediaRecorderRef.current = new MediaRecorder(dest.stream, {
         mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000, // Optimized for speech
+        audioBitsPerSecond: 24000, // Optimized for speech
       });
 
       mediaRecorderRef.current.ondataavailable = (event) => {
