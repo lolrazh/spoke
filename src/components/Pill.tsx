@@ -228,8 +228,10 @@ const Pill: React.FC<PillProps> = ({
     const isReturningToIdle = pillState === "IDLE" && previousStateRef.current !== "IDLE";
     switch (pillState) {
       case "HOVER_PREVIEW":
-      case "LISTENING":
         return { type: "spring" as const, ...MOTION.springs.lively };
+      case "LISTENING":
+        // Ultra-snappy expansion for immediate feedback
+        return { type: "spring" as const, ...MOTION.springs.instant };
       case "PROCESSING":
       case "NOTIFICATION":
         return { type: "spring" as const, ...MOTION.springs.quick };

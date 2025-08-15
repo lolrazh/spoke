@@ -13,6 +13,8 @@ export const MOTION = {
     slow: 0.5,
   },
   springs: {
+    // Ultra-fast response for critical interactions (sub-50ms)
+    instant: { stiffness: 1000, damping: 15, mass: 0.5 } as SpringToken,
     // General purpose spring for quick transitions
     quick: { stiffness: 520, damping: 26 } as SpringToken,
     // Slightly bouncier for hover/active interactions
