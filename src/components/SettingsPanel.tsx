@@ -13,7 +13,7 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { getCurrentUser, getGoogleOAuthUrl, startEmailOtp, handleAuthCallbackUrl, signOut as supaSignOut } from "../lib/supabaseClient";
+import { getCurrentUser, signOut as supaSignOut } from "../lib/supabaseClient";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -108,10 +108,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   const [playSounds, setPlaySounds] = useState<boolean>(true);
   // Auth state for settings panel
   // Remove inline login from Settings Panel — this surface should only show when signed in
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authEmailRequested, setAuthEmailRequested] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
@@ -456,47 +452,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
       try {
         await supaSignOut();
       } catch (e: any) {
-        setAuthError(e?.message || "Failed to sign out");
+        console.error("Failed to sign out:", e?.message || e);
       }
       // Regardless of signOut outcome, route user into onboarding
       try { await window.electron?.showOnboarding?.(); } catch {}
       setUserEmail(null);
       setUserName(null);
       setUserAvatarUrl(null);
-      setAuthEmail("");
-      setAuthEmailRequested(false);
-      setAuthError(null);
     })();
   };
 
-  const handleGoogle = async () => {
-    try {
-      setAuthLoading(true);
-      setAuthError(null);
-      const url = await getGoogleOAuthUrl();
-      setAuthLoading(false);
-      if (url) {
-        await window.electron?.openExternal(url);
-      } else {
-        setAuthError("Could not start Google sign-in");
-      }
-    } catch (e: any) {
-      setAuthLoading(false);
-      setAuthError(e?.message || "Could not start Google sign-in");
-    }
-  };
 
-  const handleEmailStart = async () => {
-    setAuthLoading(true);
-    setAuthError(null);
-    const res = await startEmailOtp(authEmail.trim());
-    setAuthLoading(false);
-    if (!res.ok) {
-      setAuthError(res.error || "Failed to send code");
-      return;
-    }
-    setAuthEmailRequested(true);
-  };
 
   // Remove login handling from Settings Panel: onboarding is the sole login surface
 
@@ -666,7 +632,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                   <div className="text-[12px] text-subtle">You are signed out.</div>
                   <Button
                     className="w-full onboarding-cta"
-                    disabled={authLoading}
                     onClick={async () => {
                       try { await window.electron?.showOnboarding?.(); } catch {}
                     }}
