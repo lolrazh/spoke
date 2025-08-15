@@ -40,6 +40,7 @@ export function useTranscription(
     requestLabelPermissionForEnumeration = false,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -220,8 +221,14 @@ export function useTranscription(
     audioChunksRef.current = [];
 
     try {
-      // Use MediaRecorder with Opus codec for much smaller files
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+      // Create 16kHz AudioContext for real-time downsampling
+      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
+      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+      const dest = audioContextRef.current.createMediaStreamDestination();
+      source.connect(dest);
+
+      // Use MediaRecorder with pre-downsampled 16kHz stream
+      mediaRecorderRef.current = new MediaRecorder(dest.stream, {
         mimeType: 'audio/webm;codecs=opus',
         audioBitsPerSecond: 16000, // Optimized for speech
       });
@@ -258,6 +265,12 @@ export function useTranscription(
         
         mediaRecorderRef.current.stop();
         await stopPromise;
+      }
+
+      // Clean up AudioContext
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
       }
 
       // Stop capturing audio completely so macOS mic indicator turns off
@@ -304,6 +317,10 @@ export function useTranscription(
       setProcessing(false);
       audioChunksRef.current = [];
       mediaRecorderRef.current = null;
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
     }
   }, [recording]);
 
