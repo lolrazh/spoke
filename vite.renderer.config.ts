@@ -18,6 +18,11 @@ export default defineConfig({
           dest: "assets", // copies icon files to dist/assets/
         },
         {
+          // Ensure symbol JSON is available in packaged renderer
+          src: [join(__dirname, "public/assets/sf-symbols.json")],
+          dest: "assets",
+        },
+        {
           // Copy any self-hosted fonts into the packaged renderer
           src: [join(__dirname, "public/fonts/*")],
           dest: "fonts",

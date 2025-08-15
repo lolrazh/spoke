@@ -22,7 +22,8 @@ function resetSymbolsCache() {
 async function loadSymbols(): Promise<SymbolsJson> {
   if (symbolsCache) return symbolsCache;
   if (!symbolsPromise) {
-    symbolsPromise = fetch("/assets/sf-symbols.json", { cache: "no-store" })
+    // Use relative path so it works under file:// protocol in packaged builds
+    symbolsPromise = fetch("./assets/sf-symbols.json", { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Failed to load sf-symbols.json: ${res.status}`);
         return (await res.json()) as SymbolsJson;
