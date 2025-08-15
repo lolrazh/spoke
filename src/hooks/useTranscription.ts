@@ -11,6 +11,7 @@ export interface UseTranscriptionReturn {
   error: string | null;
   start: () => void;
   stop: () => void;
+  cancel: () => void;
 }
 
 export interface UseTranscriptionOptions {
@@ -324,6 +325,56 @@ export function useTranscription(
     }
   }, [recording]);
 
+  const cancel = useCallback(async () => {
+    // Cancel only affects active recordings; it does not send audio to the API
+    if (!recording && !mediaRecorderRef.current && !audioContextRef.current && !streamRef.current) {
+      return;
+    }
+
+    try {
+      // Stop MediaRecorder without using the captured audio
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        const stopPromise = new Promise<void>((resolve) => {
+          const mr = mediaRecorderRef.current;
+          if (mr) {
+            mr.onstop = () => resolve();
+          } else {
+            resolve();
+          }
+        });
+        mediaRecorderRef.current.stop();
+        await stopPromise;
+      }
+
+      // Clean up AudioContext
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+
+      // Stop capturing audio completely
+      if (streamRef.current) {
+        try {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+        } catch {}
+        streamRef.current = null;
+        setReady(false);
+      }
+
+      // Discard any accumulated audio chunks (scrap the audio)
+      audioChunksRef.current = [];
+    } finally {
+      // Ensure UI reflects cancellation immediately
+      setRecording(false);
+      setProcessing(false);
+      mediaRecorderRef.current = null;
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+    }
+  }, [recording]);
+
   return {
     recording,
     processing,
@@ -332,5 +383,6 @@ export function useTranscription(
     error,
     start,
     stop,
+    cancel,
   };
 }

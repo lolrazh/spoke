@@ -23,6 +23,7 @@ export type PillStateType =
 export type PillEvent =
   | { type: "PTT_START" }
   | { type: "PTT_STOP" }
+  | { type: "CANCEL" }
   | { type: "NOTIFY"; msg: string }
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
@@ -58,6 +59,7 @@ const pillReducer = (
       return state;
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
+      if (event.type === "CANCEL") return { ...state, state: "IDLE" };
       if (event.type === "NOTIFY")
         return {
           ...state,
@@ -65,6 +67,7 @@ const pillReducer = (
         };
       return state;
     case "PROCESSING":
+      if (event.type === "CANCEL") return { ...state, state: "IDLE" };
       if (event.type === "PROCESSING_COMPLETE") {
         if (state.context.pendingNotif) {
           return {
@@ -353,6 +356,22 @@ const App: React.FC = () => {
 
   // During onboarding we avoid fighting with onboarding's request to expand the pill.
   // Keep native window stationary here; expansion is driven by renderer UI state.
+
+  // Debug-only: allow ESC to trigger cancel for local verification
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const debug = params.has("debugPill");
+    if (!debug) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        trans.cancel();
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("Debug cancel via Escape");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pillDispatch, trans]);
 
   // Notification duration for NOTIFICATION, and optional post-notification hide
   useEffect(() => {
