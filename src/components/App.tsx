@@ -435,7 +435,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
-    const HOLD_DURATION_MS = 180;
+    const HOLD_DURATION_MS = 110;
 
     const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);

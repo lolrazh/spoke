@@ -176,7 +176,7 @@ const Pill: React.FC<PillProps> = ({
         onStartDictation();
       }
       clickTimeoutRef.current = null;
-    }, 200); // 200ms delay to distinguish from double-click
+    }, 80); // 80ms delay to distinguish from double-click
   };
 
   // Handle double-click to expand/collapse
