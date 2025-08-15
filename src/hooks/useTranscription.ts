@@ -1,13 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
-import {
-  TARGET_AUDIO_CONTEXT_RATE,
-  MICROPHONE_PREFERRED_RATE,
-} from "../config/audio";
-import { pcm16ToWav } from "../utils/pcm16-to-wav";
-
-// Global worklet registry to prevent double registration
-const workletRegistry = new Set<string>();
+import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -46,11 +39,9 @@ export function useTranscription(
     autoInitStream = true,
     requestLabelPermissionForEnumeration = false,
   } = options ?? {};
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const microphoneSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioChunksRef = useRef<Int16Array[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -229,37 +220,19 @@ export function useTranscription(
     audioChunksRef.current = [];
 
     try {
-      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
-        audioCtxRef.current = new AudioContext({
-          sampleRate: TARGET_AUDIO_CONTEXT_RATE,
-        });
-      }
-      if (audioCtxRef.current.state === "suspended") {
-        await audioCtxRef.current.resume();
-      }
+      // Use MediaRecorder with Opus codec for much smaller files
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 16000, // Optimized for speech
+      });
 
-      const workletPath = new URL(
-        "../../public/audioworklet-processor.js",
-        import.meta.url,
-      ).toString();
-      if (!workletRegistry.has(workletPath)) {
-        await audioCtxRef.current.audioWorklet.addModule(workletPath);
-        workletRegistry.add(workletPath);
-      }
-
-      microphoneSourceRef.current = audioCtxRef.current.createMediaStreamSource(
-        streamRef.current,
-      );
-      workletNodeRef.current = new AudioWorkletNode(
-        audioCtxRef.current,
-        "capture-processor",
-      );
-
-      workletNodeRef.current.port.onmessage = (event) => {
-        audioChunksRef.current.push(new Int16Array(event.data));
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
-      microphoneSourceRef.current.connect(workletNodeRef.current);
+      mediaRecorderRef.current.start(100); // Collect data every 100ms
     } catch (err) {
       setError((err as Error).message);
       setRecording(false);
@@ -274,10 +247,18 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      microphoneSourceRef.current?.disconnect();
-      workletNodeRef.current?.disconnect();
-      microphoneSourceRef.current = null;
-      workletNodeRef.current = null;
+      // Stop MediaRecorder and wait for final data
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        // Wait for the MediaRecorder to finish and emit final data
+        const stopPromise = new Promise<void>((resolve) => {
+          if (mediaRecorderRef.current) {
+            mediaRecorderRef.current.onstop = () => resolve();
+          }
+        });
+        
+        mediaRecorderRef.current.stop();
+        await stopPromise;
+      }
 
       // Stop capturing audio completely so macOS mic indicator turns off
       if (streamRef.current) {
@@ -286,30 +267,15 @@ export function useTranscription(
         setReady(false);
       }
 
-      // Suspend the AudioContext to reduce CPU when idle
-      if (audioCtxRef.current && audioCtxRef.current.state === "running") {
-        try {
-          await audioCtxRef.current.suspend();
-        } catch (e) {
-          // ignore suspend errors
-        }
-      }
+      // Combine all recorded chunks into a single blob
+      const audioBlob = new Blob(audioChunksRef.current, { 
+        type: 'audio/webm;codecs=opus' 
+      });
 
-      const totalLength = audioChunksRef.current.reduce(
-        (acc, chunk) => acc + chunk.length,
-        0,
-      );
-      const concatenated = new Int16Array(totalLength);
-      let offset = 0;
-      for (const chunk of audioChunksRef.current) {
-        concatenated.set(chunk, offset);
-        offset += chunk.length;
-      }
-
-      const wavBlob = pcm16ToWav(concatenated);
+      console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
 
       const formData = new FormData();
-      formData.append("file", wavBlob, "audio.wav");
+      formData.append("file", audioBlob, "audio.webm");
       formData.append("model", "whisper-large-v3-turbo");
       formData.append("language", "en");
       formData.append("response_format", "json");
@@ -337,6 +303,7 @@ export function useTranscription(
     } finally {
       setProcessing(false);
       audioChunksRef.current = [];
+      mediaRecorderRef.current = null;
     }
   }, [recording]);
 
