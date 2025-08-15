@@ -24,6 +24,7 @@ declare global {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
       onReady: (cb: () => void) => () => void;
+      onCancel: (cb: () => void) => () => void;
     };
     island: {
       slideTo: (y: number) => void;

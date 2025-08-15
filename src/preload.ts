@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld("ptt", {
     ipcRenderer.on("ptt-ready", listener);
     return () => ipcRenderer.removeListener("ptt-ready", listener);
   },
+  onCancel: (cb: () => void) => {
+    ipcRenderer.removeAllListeners("ptt-cancel");
+    ipcRenderer.on("ptt-cancel", cb);
+    return () => ipcRenderer.removeAllListeners("ptt-cancel");
+  },
 });
 
 // Microphone device management bridge

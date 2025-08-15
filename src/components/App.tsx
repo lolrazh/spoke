@@ -312,6 +312,26 @@ const App: React.FC = () => {
     }
   }, [pillState]);
 
+  // Subscribe to a global cancel signal (Option key via native helper; wired later)
+  useEffect(() => {
+    const onCancel = () => {
+      // If we're recording, perform a true cancel and snap UI back to IDLE
+      if (latestTransRef.current.recording) {
+        latestTransRef.current.cancel();
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("PTT cancel (recording)");
+        return;
+      }
+      // If processing, just snap UI back to IDLE (Milestone 2 may add abort)
+      if (latestTransRef.current.processing) {
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("PTT cancel (processing)");
+      }
+    };
+    const cleanup = window.ptt?.onCancel ? window.ptt.onCancel(onCancel) : undefined;
+    return () => { if (cleanup) cleanup(); };
+  }, [pillDispatch]);
+
   // Handle click outside to collapse when expanded (only works when click-through is disabled)
   useEffect(() => {
     if (pillState !== "EXPANDED") return;
