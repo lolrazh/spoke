@@ -173,7 +173,7 @@
 
   /* Animated dots for processing state */
   .dot.animated {
-    animation: wave 1.5s infinite ease-in-out;
+    animation: loading-pulse 600ms infinite ease-in-out;
     will-change: transform, opacity;
     backface-visibility: hidden;
     transform: translateZ(0);
@@ -181,29 +181,29 @@
   }
 
   .dot.animated:nth-child(2n) {
-    animation-delay: 0.15s;
+    animation-delay: 80ms;
   }
 
   .dot.animated:nth-child(3n) {
-    animation-delay: 0.3s;
+    animation-delay: 160ms;
   }
 
   .dot.animated:nth-child(4n) {
-    animation-delay: 0.45s;
+    animation-delay: 240ms;
   }
 
   .dot.animated:nth-child(5n) {
-    animation-delay: 0.6s;
+    animation-delay: 320ms;
   }
 
-  @keyframes wave {
+  @keyframes loading-pulse {
     0%,
     100% {
-      transform: translateY(0) scaleY(1);
-      opacity: 0.8;
+      transform: scale(1);
+      opacity: 0.6;
     }
     50% {
-      transform: translateY(-4px) scaleY(1.2);
+      transform: scale(1.4);
       opacity: 1;
     }
   }
@@ -212,7 +212,7 @@
   .waveform-bar {
     width: 3px;
     border-radius: 1px;
-    animation: pulse 1.5s infinite ease-in-out;
+    animation: pulse 600ms infinite ease-in-out;
     will-change: height, opacity;
     background: linear-gradient(to top, #a0a0a0, #cccccc);
     opacity: 1;
@@ -222,7 +222,7 @@
   @keyframes pulse {
     0%,
     100% {
-      height: 3px;
+      height: 5px;
       opacity: 0.7;
     }
     50% {
