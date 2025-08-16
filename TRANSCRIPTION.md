@@ -114,7 +114,7 @@ source.connect(dest);
 // src/hooks/useTranscription.ts:231-234
 mediaRecorderRef.current = new MediaRecorder(dest.stream, {
   mimeType: 'audio/webm;codecs=opus',
-  audioBitsPerSecond: 24000, // Optimized for speech
+  audioBitsPerSecond: 16000, // Optimized for speech
 });
 ```
 
@@ -526,7 +526,7 @@ export interface UseTranscriptionOptions {
 // src/hooks/useTranscription.ts - MediaRecorder setup
 {
   mimeType: 'audio/webm;codecs=opus',    // Opus codec in WebM container
-  audioBitsPerSecond: 24000,             // 24kbps optimized for speech
+  audioBitsPerSecond: 16000,             // 24kbps optimized for speech
 }
 
 // Data collection interval
@@ -728,7 +728,7 @@ if (transcription.processing) {
 // MediaRecorder setup for optimal speech encoding
 {
   mimeType: 'audio/webm;codecs=opus',
-  audioBitsPerSecond: 24000,
+  audioBitsPerSecond: 16000,
 }
 ```
 
