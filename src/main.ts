@@ -98,10 +98,12 @@ if (!gotTheLock) {
   });
 }
 
-// Dev helper: allow skipping onboarding for faster iteration
+// Dev helper: allow skipping onboarding/auth for faster iteration
 const SKIP_ONBOARDING =
   process.env.SKIP_ONBOARDING === "1" ||
-  process.env.SKIP_ONBOARDING === "true";
+  process.env.SKIP_ONBOARDING === "true" ||
+  process.env.SKIP_AUTH === "1" ||
+  process.env.SKIP_AUTH === "true";
 
 // Microphone management state
 let micDevices: MicDevice[] = [

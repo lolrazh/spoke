@@ -4,6 +4,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveDisplayPayload } from "./types/shared";
 
+// Expose dev flags so renderer can bypass auth/onboarding in development
+contextBridge.exposeInMainWorld("devFlags", {
+  skipAuth:
+    process.env.SKIP_AUTH === "1" || process.env.SKIP_AUTH === "true" || false,
+  skipOnboarding:
+    process.env.SKIP_ONBOARDING === "1" ||
+    process.env.SKIP_ONBOARDING === "true" ||
+    false,
+});
+
 contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
 });

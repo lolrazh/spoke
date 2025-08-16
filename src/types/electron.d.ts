@@ -5,6 +5,10 @@
 declare global {
   interface Window {
     app: never; // removed unused bridge
+    devFlags: {
+      skipAuth: boolean;
+      skipOnboarding: boolean;
+    };
     contextMenu: {
       showPill: () => void;
     };

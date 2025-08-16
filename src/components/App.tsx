@@ -172,15 +172,16 @@ const App: React.FC = () => {
     (async () => {
       try {
         const { getSupabase, getCurrentUser } = await import("../lib/supabaseClient");
-        const user = await getCurrentUser();
-        if (!user) {
+        const skipAuth = !!window.devFlags?.skipAuth;
+        const user = skipAuth ? { id: "dev" } : await getCurrentUser();
+        if (!user && !skipAuth) {
           try { await window.electron?.showOnboarding?.(); } catch {}
           try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
         }
         const supabase = getSupabase();
         if (supabase) {
           const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!session?.user) {
+            if (!session?.user && !skipAuth) {
               (async () => {
                 try { await window.electron?.showOnboarding?.(); } catch {}
                 try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
