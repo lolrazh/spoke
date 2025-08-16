@@ -2179,6 +2179,11 @@ function startFnListener() {
           targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up") {
           targetWindow?.webContents.send("ptt-up");
+        } else if (trimmedLine === "opt-down") {
+          // Emit a cancel signal on Option press
+          targetWindow?.webContents.send("ptt-cancel");
+        } else if (trimmedLine === "opt-up") {
+          // Currently unused, but kept for symmetry and future features
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 

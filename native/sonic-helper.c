@@ -445,7 +445,8 @@ extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
 #define kCGListenEventAccessGranted (1)
 #endif
 
-#define FN_MASK kCGEventFlagMaskSecondaryFn // 0x00800000
+#define FN_MASK  kCGEventFlagMaskSecondaryFn // 0x00800000
+#define OPT_MASK kCGEventFlagMaskAlternate   // Option/Alt modifier
 
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
@@ -487,19 +488,37 @@ bool check_permissions() {
     return true;
 }
 
+typedef struct {
+    bool fn;
+    bool opt;
+} KeyState;
+
 CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
     if (t == kCGEventFlagsChanged) {
-        bool *prev = (bool *)ctx;
-        bool now = (CGEventGetFlags(e) & FN_MASK) != 0;
-        if (now && !*prev) {
+        KeyState *state = (KeyState *)ctx;
+        CGEventFlags flags = CGEventGetFlags(e);
+        bool fnNow = (flags & FN_MASK) != 0;
+        bool optNow = (flags & OPT_MASK) != 0;
+
+        if (fnNow && !state->fn) {
             puts("down");
             fflush(stdout);
         }
-        if (!now && *prev) {
+        if (!fnNow && state->fn) {
             puts("up");
             fflush(stdout);
         }
-        *prev = now;
+        if (optNow && !state->opt) {
+            puts("opt-down");
+            fflush(stdout);
+        }
+        if (!optNow && state->opt) {
+            puts("opt-up");
+            fflush(stdout);
+        }
+
+        state->fn = fnNow;
+        state->opt = optNow;
     }
     return e;
 }
@@ -648,7 +667,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    bool s = false;
+    KeyState s = { false, false };
     CGEventMask m = 1ULL << kCGEventFlagsChanged;
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, m, cb, &s);
