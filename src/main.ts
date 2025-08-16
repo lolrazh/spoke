@@ -2177,9 +2177,9 @@ function startFnListener() {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
-        } else if (trimmedLine === "down") {
+        } else if (trimmedLine === "down" || trimmedLine === "fn-down") {
           targetWindow?.webContents.send("ptt-down");
-        } else if (trimmedLine === "up") {
+        } else if (trimmedLine === "up" || trimmedLine === "fn-up") {
           targetWindow?.webContents.send("ptt-up");
         } else if (trimmedLine === "opt-down") {
           // Emit a cancel signal on Option press

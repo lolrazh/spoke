@@ -12,6 +12,7 @@
 // Forward declarations for functions defined later in this file
 static void requireAX(void);
 static void cmdV(void);
+static void hid_input_cb(void *context, IOReturn result, void *sender, IOHIDValueRef value);
 
 // ==== Accessibility (AX) paste verification utilities ====
 // We keep Cmd+V for insertion, and use AX to read/observe for verification.
@@ -448,6 +449,14 @@ extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
 #define FN_MASK  kCGEventFlagMaskSecondaryFn // 0x00800000
 #define OPT_MASK kCGEventFlagMaskAlternate   // Option/Alt modifier
 
+// Some SDKs don't expose virtual keycodes; define the ones we need for Option
+#ifndef kVK_Option
+#define kVK_Option      58
+#endif
+#ifndef kVK_RightOption
+#define kVK_RightOption 61
+#endif
+
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
     // Use IOHIDCheckAccess for accurate permission checking on all supported macOS versions
@@ -493,34 +502,104 @@ typedef struct {
     bool opt;
 } KeyState;
 
+static bool g_debug_keys = false;
+
+// ==== IOHID-based fallback for Option detection (left/right Alt) ====
+static IOHIDManagerRef g_hidManager = NULL;
+
+static void emit_opt_state(KeyState *state, bool now, const char *src) {
+    if (g_debug_keys) {
+        fprintf(stderr, "[OPT:%s] now=%d prev=%d\n", src ? src : "?", (int)now, (int)state->opt);
+    }
+    if (now != state->opt) {
+        state->opt = now;
+        if (now) {
+            puts("opt-down");
+        } else {
+            puts("opt-up");
+        }
+        fflush(stdout);
+    }
+}
+
+static void start_hid_option_listener(KeyState *state) {
+    if (g_hidManager) return;
+    g_hidManager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
+    if (!g_hidManager) return;
+    // Match keyboard devices (Generic Desktop / Keyboard)
+    CFMutableDictionaryRef match = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+        &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (match) {
+        int usagePage = 0x01; // Generic Desktop
+        int usageKeyboard = 0x06; // Keyboard
+        CFNumberRef pg = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usagePage);
+        CFNumberRef us = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &usageKeyboard);
+        if (pg && us) {
+            CFDictionarySetValue(match, CFSTR(kIOHIDDeviceUsagePageKey), pg);
+            CFDictionarySetValue(match, CFSTR(kIOHIDDeviceUsageKey), us);
+        }
+        if (pg) CFRelease(pg);
+        if (us) CFRelease(us);
+        IOHIDManagerSetDeviceMatching(g_hidManager, match);
+        CFRelease(match);
+    }
+    IOHIDManagerRegisterInputValueCallback(g_hidManager, hid_input_cb, state);
+    IOHIDManagerScheduleWithRunLoop(g_hidManager, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+    IOReturn openRc = IOHIDManagerOpen(g_hidManager, kIOHIDOptionsTypeNone);
+    if (g_debug_keys) fprintf(stderr, "[HID] manager open rc=%d\n", openRc);
+}
+
 CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
     if (t == kCGEventFlagsChanged) {
         KeyState *state = (KeyState *)ctx;
         CGEventFlags flags = CGEventGetFlags(e);
         bool fnNow = (flags & FN_MASK) != 0;
         bool optNow = (flags & OPT_MASK) != 0;
+        CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
 
-        if (fnNow && !state->fn) {
-            puts("down");
-            fflush(stdout);
-        }
-        if (!fnNow && state->fn) {
-            puts("up");
-            fflush(stdout);
-        }
-        if (optNow && !state->opt) {
-            puts("opt-down");
-            fflush(stdout);
-        }
-        if (!optNow && state->opt) {
-            puts("opt-up");
-            fflush(stdout);
+        if (g_debug_keys && ((flags & OPT_MASK) || code == kVK_Option || code == kVK_RightOption)) {
+            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx fnNow=%d optNow=%d prevOpt=%d\n",
+                    (unsigned)code, (unsigned long long)flags, (int)fnNow, (int)optNow, (int)state->opt);
         }
 
-        state->fn = fnNow;
-        state->opt = optNow;
+        if (fnNow != state->fn) {
+            state->fn = fnNow;
+            if (fnNow) puts("fn-down"); else puts("fn-up");
+            fflush(stdout);
+        }
+        emit_opt_state(state, optNow, "CG");
+    }
+    else if (t == kCGEventKeyDown || t == kCGEventKeyUp) {
+        CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
+        bool isOpt = (code == kVK_Option) || (code == kVK_RightOption);
+        if (isOpt) {
+            if (g_debug_keys) {
+                CGEventFlags flags = CGEventGetFlags(e);
+                fprintf(stderr, "[KEY] key%s code=%u flags=0x%llx\n",
+                        (t == kCGEventKeyDown ? "Down" : "Up"), (unsigned)code, (unsigned long long)flags);
+            }
+            emit_opt_state((KeyState *)ctx, (t == kCGEventKeyDown), "KEY");
+        }
     }
     return e;
+}
+
+static void hid_input_cb(void *context, IOReturn result, void *sender, IOHIDValueRef value) {
+    (void)result; (void)sender;
+    if (!value || !context) return;
+    KeyState *state = (KeyState *)context;
+    IOHIDElementRef element = IOHIDValueGetElement(value);
+    if (!element) return;
+    uint32_t page = IOHIDElementGetUsagePage(element);
+    uint32_t usage = IOHIDElementGetUsage(element);
+    if (page == 0x07 && (usage == 0xE2 || usage == 0xE6)) {
+        CFIndex v = IOHIDValueGetIntegerValue(value);
+        bool pressed = (v != 0);
+        if (g_debug_keys) {
+            fprintf(stderr, "[HID] usagePage=0x%X usage=0x%X pressed=%d prevOpt=%d\n", page, usage, (int)pressed, (int)state->opt);
+        }
+        emit_opt_state(state, pressed, "HID");
+    }
 }
 
 // Asks for Accessibility permissions and provides explicit logging.
@@ -578,6 +657,12 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);   // respond to normal shutdown
     signal(SIGINT,  handle_signal);
     watch_parent();                   // respond to crashes / force-quit
+    // Enable key debug tracing with env var
+    const char *dbg = getenv("SF_NATIVE_DEBUG_KEYS");
+    if (dbg && (strcmp(dbg, "1") == 0 || strcasecmp(dbg, "true") == 0 || strcasecmp(dbg, "yes") == 0)) {
+        g_debug_keys = true;
+        fprintf(stderr, "[KEY] Debug key logging enabled\n");
+    }
     if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
         requireAX();
         cmdV();
@@ -668,7 +753,9 @@ int main(int argc, char *argv[]) {
     }
 
     KeyState s = { false, false };
-    CGEventMask m = 1ULL << kCGEventFlagsChanged;
+    // Start HID fallback for Option in case CGEvent flagsChanged/key events miss Alt (some keyboards/Spaces configs)
+    start_hid_option_listener(&s);
+    CGEventMask m = (1ULL << kCGEventFlagsChanged) | (1ULL << kCGEventKeyDown) | (1ULL << kCGEventKeyUp);
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, m, cb, &s);
 
