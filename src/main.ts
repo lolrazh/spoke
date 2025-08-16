@@ -98,10 +98,12 @@ if (!gotTheLock) {
   });
 }
 
-// Dev helper: allow skipping onboarding for faster iteration
+// Dev helper: allow skipping onboarding/auth for faster iteration
 const SKIP_ONBOARDING =
   process.env.SKIP_ONBOARDING === "1" ||
-  process.env.SKIP_ONBOARDING === "true";
+  process.env.SKIP_ONBOARDING === "true" ||
+  process.env.SKIP_AUTH === "1" ||
+  process.env.SKIP_AUTH === "true";
 
 // Microphone management state
 let micDevices: MicDevice[] = [
@@ -2175,10 +2177,15 @@ function startFnListener() {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
-        } else if (trimmedLine === "down") {
+        } else if (trimmedLine === "down" || trimmedLine === "fn-down") {
           targetWindow?.webContents.send("ptt-down");
-        } else if (trimmedLine === "up") {
+        } else if (trimmedLine === "up" || trimmedLine === "fn-up") {
           targetWindow?.webContents.send("ptt-up");
+        } else if (trimmedLine === "opt-down") {
+          // Emit a cancel signal on Option press
+          targetWindow?.webContents.send("ptt-cancel");
+        } else if (trimmedLine === "opt-up") {
+          // Currently unused, but kept for symmetry and future features
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 

@@ -5,6 +5,10 @@
 declare global {
   interface Window {
     app: never; // removed unused bridge
+    devFlags: {
+      skipAuth: boolean;
+      skipOnboarding: boolean;
+    };
     contextMenu: {
       showPill: () => void;
     };
@@ -24,6 +28,7 @@ declare global {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
       onReady: (cb: () => void) => () => void;
+      onCancel: (cb: () => void) => () => void;
     };
     island: {
       slideTo: (y: number) => void;

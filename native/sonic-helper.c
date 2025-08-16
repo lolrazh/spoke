@@ -445,7 +445,16 @@ extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
 #define kCGListenEventAccessGranted (1)
 #endif
 
-#define FN_MASK kCGEventFlagMaskSecondaryFn // 0x00800000
+#define FN_MASK  kCGEventFlagMaskSecondaryFn // 0x00800000
+#define OPT_MASK kCGEventFlagMaskAlternate   // Option/Alt modifier
+
+// Some SDKs don't expose virtual keycodes; define the ones we need for Option
+#ifndef kVK_Option
+#define kVK_Option      58
+#endif
+#ifndef kVK_RightOption
+#define kVK_RightOption 61
+#endif
 
 // Modern function to check Input Monitoring permissions using IOHIDManager
 bool check_input_monitoring_permission() {
@@ -487,20 +496,55 @@ bool check_permissions() {
     return true;
 }
 
+typedef struct {
+    bool fn;
+    bool opt;
+} KeyState;
+
+static bool g_debug_keys = false;
+
+static void emit_opt_state(KeyState *state, bool now, const char *src) {
+    if (g_debug_keys) {
+        fprintf(stderr, "[OPT:%s] now=%d prev=%d\n", src ? src : "?", (int)now, (int)state->opt);
+    }
+    if (now != state->opt) {
+        state->opt = now;
+        if (now) {
+            puts("opt-down");
+        } else {
+            puts("opt-up");
+        }
+        fflush(stdout);
+    }
+}
+
 CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
     if (t == kCGEventFlagsChanged) {
-        bool *prev = (bool *)ctx;
-        bool now = (CGEventGetFlags(e) & FN_MASK) != 0;
-        if (now && !*prev) {
-            puts("down");
+        KeyState *state = (KeyState *)ctx;
+        CGEventFlags flags = CGEventGetFlags(e);
+        bool fnNow = (flags & FN_MASK) != 0;
+        CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
+
+        if (g_debug_keys && (code == kVK_Option || code == kVK_RightOption)) {
+            bool optNowDbg = (flags & kCGEventFlagMaskAlternate) != 0;
+            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx fnNow=%d optNow=%d prevOpt=%d\n",
+                    (unsigned)code, (unsigned long long)flags, (int)fnNow, (int)optNowDbg, (int)state->opt);
+        }
+
+        // Fn follows its flag transitions directly
+        if (fnNow != state->fn) {
+            state->fn = fnNow;
+            if (fnNow) puts("fn-down"); else puts("fn-up");
             fflush(stdout);
         }
-        if (!now && *prev) {
-            puts("up");
-            fflush(stdout);
+
+        // Option: only update when the Option key is the one that changed (code 58/61)
+        if (code == kVK_Option || code == kVK_RightOption) {
+            bool optNow = (flags & kCGEventFlagMaskAlternate) != 0;
+            emit_opt_state(state, optNow, "CG");
         }
-        *prev = now;
     }
+    // Ignore keyDown/Up for modifiers; they are not reliable sources for Option state
     return e;
 }
 
@@ -559,6 +603,12 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);   // respond to normal shutdown
     signal(SIGINT,  handle_signal);
     watch_parent();                   // respond to crashes / force-quit
+    // Enable key debug tracing with env var
+    const char *dbg = getenv("SF_NATIVE_DEBUG_KEYS");
+    if (dbg && (strcmp(dbg, "1") == 0 || strcasecmp(dbg, "true") == 0 || strcasecmp(dbg, "yes") == 0)) {
+        g_debug_keys = true;
+        fprintf(stderr, "[KEY] Debug key logging enabled\n");
+    }
     if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
         requireAX();
         cmdV();
@@ -648,8 +698,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    bool s = false;
-    CGEventMask m = 1ULL << kCGEventFlagsChanged;
+    KeyState s = { false, false };
+    // Only listen to flagsChanged; modifiers are canonical via flagsChanged + keycode
+    CGEventMask m = (1ULL << kCGEventFlagsChanged);
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, m, cb, &s);
 

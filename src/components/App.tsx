@@ -23,6 +23,7 @@ export type PillStateType =
 export type PillEvent =
   | { type: "PTT_START" }
   | { type: "PTT_STOP" }
+  | { type: "CANCEL" }
   | { type: "NOTIFY"; msg: string }
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
@@ -58,6 +59,7 @@ const pillReducer = (
       return state;
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
+      if (event.type === "CANCEL") return { ...state, state: "IDLE" };
       if (event.type === "NOTIFY")
         return {
           ...state,
@@ -65,6 +67,7 @@ const pillReducer = (
         };
       return state;
     case "PROCESSING":
+      if (event.type === "CANCEL") return { ...state, state: "IDLE" };
       if (event.type === "PROCESSING_COMPLETE") {
         if (state.context.pendingNotif) {
           return {
@@ -169,15 +172,16 @@ const App: React.FC = () => {
     (async () => {
       try {
         const { getSupabase, getCurrentUser } = await import("../lib/supabaseClient");
-        const user = await getCurrentUser();
-        if (!user) {
+        const skipAuth = !!window.devFlags?.skipAuth;
+        const user = skipAuth ? { id: "dev" } : await getCurrentUser();
+        if (!user && !skipAuth) {
           try { await window.electron?.showOnboarding?.(); } catch {}
           try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
         }
         const supabase = getSupabase();
         if (supabase) {
           const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!session?.user) {
+            if (!session?.user && !skipAuth) {
               (async () => {
                 try { await window.electron?.showOnboarding?.(); } catch {}
                 try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
@@ -309,6 +313,35 @@ const App: React.FC = () => {
     }
   }, [pillState]);
 
+  // Subscribe to a global cancel signal (Option key via native helper; wired later)
+  useEffect(() => {
+    const onCancel = () => {
+      // Treat cancel as concluding the current PTT gesture: prevent pending long-press start
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      // Force the key-up handler to take the long-press branch (which is a no-op when not recording)
+      isLongPressRef.current = true;
+      // If we're recording, perform a true cancel and snap UI back to IDLE
+      if (latestTransRef.current.recording) {
+        latestTransRef.current.cancel();
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("PTT cancel (recording)");
+        return;
+      }
+      // If processing, just snap UI back to IDLE (Milestone 2 may add abort)
+      if (latestTransRef.current.processing) {
+        // Abort in-flight network if any, then snap to IDLE
+        latestTransRef.current.cancel();
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("PTT cancel (processing)");
+      }
+    };
+    const cleanup = window.ptt?.onCancel ? window.ptt.onCancel(onCancel) : undefined;
+    return () => { if (cleanup) cleanup(); };
+  }, [pillDispatch]);
+
   // Handle click outside to collapse when expanded (only works when click-through is disabled)
   useEffect(() => {
     if (pillState !== "EXPANDED") return;
@@ -353,6 +386,22 @@ const App: React.FC = () => {
 
   // During onboarding we avoid fighting with onboarding's request to expand the pill.
   // Keep native window stationary here; expansion is driven by renderer UI state.
+
+  // Debug-only: allow ESC to trigger cancel for local verification
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const debug = params.has("debugPill");
+    if (!debug) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        trans.cancel();
+        pillDispatch({ type: "CANCEL" });
+        pushTrace("Debug cancel via Escape");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pillDispatch, trans]);
 
   // Notification duration for NOTIFICATION, and optional post-notification hide
   useEffect(() => {
