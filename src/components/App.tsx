@@ -316,6 +316,13 @@ const App: React.FC = () => {
   // Subscribe to a global cancel signal (Option key via native helper; wired later)
   useEffect(() => {
     const onCancel = () => {
+      // Treat cancel as concluding the current PTT gesture: prevent pending long-press start
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      // Force the key-up handler to take the long-press branch (which is a no-op when not recording)
+      isLongPressRef.current = true;
       // If we're recording, perform a true cancel and snap UI back to IDLE
       if (latestTransRef.current.recording) {
         latestTransRef.current.cancel();
@@ -325,6 +332,8 @@ const App: React.FC = () => {
       }
       // If processing, just snap UI back to IDLE (Milestone 2 may add abort)
       if (latestTransRef.current.processing) {
+        // Abort in-flight network if any, then snap to IDLE
+        latestTransRef.current.cancel();
         pillDispatch({ type: "CANCEL" });
         pushTrace("PTT cancel (processing)");
       }

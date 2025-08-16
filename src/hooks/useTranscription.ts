@@ -44,6 +44,7 @@ export function useTranscription(
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -295,9 +296,12 @@ export function useTranscription(
       formData.append("response_format", "json");
       formData.append("temperature", "0");
 
+      // Wire an abort signal so cancel() can abort processing in-flight
+      abortControllerRef.current = new AbortController();
       const response = await fetch("https://api.sonicflow.app", {
         method: "POST",
         body: formData,
+        signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok) {
@@ -313,11 +317,17 @@ export function useTranscription(
         window.clipboard.insertText(result.text);
       }
     } catch (err) {
-      setError((err as Error).message);
+      // Swallow aborts quietly; surface other errors
+      if ((err as DOMException)?.name === "AbortError") {
+        // No-op: canceled by user
+      } else {
+        setError((err as Error).message);
+      }
     } finally {
       setProcessing(false);
       audioChunksRef.current = [];
       mediaRecorderRef.current = null;
+      abortControllerRef.current = null;
       if (audioContextRef.current) {
         audioContextRef.current.close();
         audioContextRef.current = null;
@@ -328,6 +338,11 @@ export function useTranscription(
   const cancel = useCallback(async () => {
     // Cancel only affects active recordings; it does not send audio to the API
     if (!recording && !mediaRecorderRef.current && !audioContextRef.current && !streamRef.current) {
+      // Also abort any in-flight processing if present
+      if (abortControllerRef.current) {
+        try { abortControllerRef.current.abort(); } catch {}
+        abortControllerRef.current = null;
+      }
       return;
     }
 
@@ -363,6 +378,11 @@ export function useTranscription(
 
       // Discard any accumulated audio chunks (scrap the audio)
       audioChunksRef.current = [];
+      // Abort any in-flight processing (if cancel is invoked during processing)
+      if (abortControllerRef.current) {
+        try { abortControllerRef.current.abort(); } catch {}
+        abortControllerRef.current = null;
+      }
     } finally {
       // Ensure UI reflects cancellation immediately
       setRecording(false);
