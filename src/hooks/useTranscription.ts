@@ -292,6 +292,7 @@ export function useTranscription(
       const formData = new FormData();
       formData.append("file", audioBlob, "audio.webm");
       formData.append("model", "whisper-large-v3-turbo");
+      formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
       formData.append("language", "en");
       formData.append("response_format", "json");
       formData.append("temperature", "0");
