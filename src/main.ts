@@ -1139,72 +1139,31 @@ ipcMain.handle(
 
       console.log(`[PasteHelper] Executing from: ${helperPath}`);
 
-      // Run enhanced paste with AX verification and await completion
-      const result = await new Promise<{ success: boolean; error?: string; verified?: boolean }>((resolve) => {
-        const proc = spawnHelper(helperPath, ["--paste-and-verify", payloadText], false);
+      // Always paste unconditionally; skip AX-gated verification
+      const proc = spawnHelper(helperPath, ["--mode=paste"], false);
 
-        let stdoutBuffer = "";
+      // Restore original clipboard regardless of outcome
+      setTimeout(() => {
+        try { clipboard.writeText(originalClipboardText); } catch {}
+      }, 300);
+
+      // Await process exit for logging only; don't gate success
+      await new Promise<void>((resolve) => {
         let stderrBuffer = "";
-
-        proc.stdout.on("data", (data) => {
-          stdoutBuffer += data.toString();
-        });
-        proc.stderr.on("data", (data) => {
-          stderrBuffer += data.toString();
+        proc.stderr.on("data", (data) => { stderrBuffer += data.toString(); });
+        proc.on("close", (code) => {
+          if (stderrBuffer) console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
+          console.log(`[PasteHelper] paste helper exited with code ${code}`);
+          resolve();
         });
         proc.on("error", (error) => {
           console.error("[PasteHelper] Error executing paste-helper:", error);
-          resolve({ success: false, error: error.message });
-        });
-        proc.on("close", (code) => {
-          const out = stdoutBuffer.trim();
-          if (out) console.log(`[PasteHelper stdout]: ${out}`);
-          if (stderrBuffer) console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
-
-          const ok = (out.includes("paste:ok:") || out.includes("paste:ok-sel:") || out.includes("paste:ok-unverified:")) && code === 0;
-          const definiteNoFocus = out.includes("paste:err:no-focus") || out.includes("paste:err:no-app");
-          const secureField = out.includes("paste:err:secure-field");
-          const unreadable = out.includes("paste:err:unreadable");
-          const verifyUnknown = out.includes("paste:verify:unknown") || code === 10;
-          const mismatch = out.includes("paste:mismatch") || code === 11;
-
-          if (ok) {
-            resolve({ success: true, verified: true });
-            return;
-          }
-
-          // Only treat these as hard failures for UX notification
-          if (definiteNoFocus || secureField) {
-            let reason = secureField ? "Secure field" : "No focused text field";
-            resolve({ success: false, error: reason });
-            return;
-          }
-
-          // Inconclusive AX read due to unreadable/unknown => treat as failure (no detectable text)
-          if (verifyUnknown || unreadable) {
-            resolve({ success: false, error: verifyUnknown ? "Verification unavailable" : "Unreadable" });
-            return;
-          }
-
-          // Mismatch (readable but content differs). Treat as unverified success since we did detect text.
-          if (mismatch) {
-            resolve({ success: true, verified: false });
-            return;
-          }
-
-          // Default: assume success but unverified to avoid noisy false negatives
-          resolve({ success: true, verified: false });
+          resolve();
         });
       });
 
-      if (result.success) {
-        setTimeout(() => clipboard.writeText(originalClipboardText), 300);
-      } else {
-        mainWindow?.webContents.send("notify", "Text copied to clipboard.");
-      }
-
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
-      return result;
+      return { success: true, verified: false };
     } catch (error) {
       console.error("=== TEXT INSERTION PROCESS FAILED (Exception) ===");
       console.error("Error during text insertion:", error);
