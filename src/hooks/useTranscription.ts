@@ -30,6 +30,12 @@ export interface UseTranscriptionOptions {
    * Defaults to false to avoid opening the mic until dictation starts.
    */
   requestLabelPermissionForEnumeration?: boolean;
+  /** Enable WebSocket streaming path (default: false). */
+  useWebSocket?: boolean;
+  /** WebSocket URL for transcription (default: wss://api.sonicflow.app/transcribe). */
+  wsUrl?: string;
+  /** Chunk interval in ms for MediaRecorder when WS is enabled (default: 100). */
+  wsChunkMs?: number;
 }
 
 export function useTranscription(
@@ -39,12 +45,19 @@ export function useTranscription(
     autoEnumerateDevices = true,
     autoInitStream = true,
     requestLabelPermissionForEnumeration = false,
+    useWebSocket = false,
+    wsUrl = "wss://api.sonicflow.app/transcribe",
+    wsChunkMs = 100,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReadyRef = useRef<boolean>(false);
+  const wsFinalResolverRef = useRef<(() => void) | null>(null);
+  const wsClosedRef = useRef<boolean>(false);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -232,21 +245,89 @@ export function useTranscription(
       // Use MediaRecorder with pre-downsampled 16kHz stream
       mediaRecorderRef.current = new MediaRecorder(dest.stream, {
         mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000, // Optimized for speech
+        audioBitsPerSecond: 16000,
       });
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
+      if (useWebSocket) {
+        // Establish WS session
+        wsClosedRef.current = false;
+        wsReadyRef.current = false;
+        wsRef.current = new WebSocket(wsUrl);
+        wsRef.current.addEventListener('open', () => {
+          // send start meta on open
+          try {
+            wsRef.current?.send(JSON.stringify({
+              type: 'start',
+              model: 'whisper-large-v3-turbo',
+              language: 'en',
+              mime: 'audio/webm;codecs=opus',
+              chunkMs: wsChunkMs,
+            }));
+          } catch {}
+        });
+        wsRef.current.addEventListener('message', (evt) => {
+          try {
+            const msg = JSON.parse(String(evt.data));
+            if (msg?.type === 'ready') {
+              wsReadyRef.current = true;
+              // Flush any buffered chunks captured before WS was ready
+              if (audioChunksRef.current.length > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                (async () => {
+                  const pending = audioChunksRef.current.slice();
+                  audioChunksRef.current = [];
+                  for (const blob of pending) {
+                    try {
+                      const buf = await blob.arrayBuffer();
+                      wsRef.current?.send(buf);
+                    } catch {}
+                  }
+                })();
+              }
+            }
+            if (msg?.type === 'final') {
+              setText(String(msg.text || ''));
+              if (msg.text) {
+                try { window.transcript?.update(String(msg.text)); } catch {}
+                try { window.clipboard.insertText(String(msg.text)); } catch {}
+              }
+              if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+            }
+            if (msg?.type === 'error') {
+              setError(String(msg.message || 'WebSocket error'));
+              if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+            }
+          } catch {}
+        });
+        wsRef.current.addEventListener('close', () => { wsClosedRef.current = true; });
+        wsRef.current.addEventListener('error', () => { setError('WebSocket error'); if (wsFinalResolverRef.current) wsFinalResolverRef.current(); });
 
-      mediaRecorderRef.current.start(100); // Collect data every 100ms
+        mediaRecorderRef.current.ondataavailable = async (event) => {
+          if (event.data.size > 0) {
+            // send as binary frame when WS is ready
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsReadyRef.current) {
+              try {
+                const buf = await event.data.arrayBuffer();
+                wsRef.current.send(buf);
+              } catch {}
+            } else {
+              audioChunksRef.current.push(event.data);
+            }
+          }
+        };
+        mediaRecorderRef.current.start(wsChunkMs);
+      } else {
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        mediaRecorderRef.current.start(100);
+      }
     } catch (err) {
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording, processing, openStreamForSelectedDevice]);
+  }, [recording, processing, openStreamForSelectedDevice, useWebSocket, wsUrl, wsChunkMs]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
@@ -282,40 +363,47 @@ export function useTranscription(
         setReady(false);
       }
 
-      // Combine all recorded chunks into a single blob
-      const audioBlob = new Blob(audioChunksRef.current, { 
-        type: 'audio/webm;codecs=opus' 
-      });
+      if (useWebSocket && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        // Send end and wait for final
+        const finalPromise = new Promise<void>((resolve) => { wsFinalResolverRef.current = resolve; });
+        try { wsRef.current.send(JSON.stringify({ type: 'end' })); } catch {}
+        await finalPromise;
+      } else {
+        // Combine all recorded chunks into a single blob
+        const audioBlob = new Blob(audioChunksRef.current, { 
+          type: 'audio/webm;codecs=opus' 
+        });
 
-      console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+        console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
 
-      const formData = new FormData();
-      formData.append("file", audioBlob, "audio.webm");
-      formData.append("model", "whisper-large-v3-turbo");
-      formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
-      formData.append("language", "en");
-      formData.append("response_format", "json");
-      formData.append("temperature", "0");
+        const formData = new FormData();
+        formData.append("file", audioBlob, "audio.webm");
+        formData.append("model", "whisper-large-v3-turbo");
+        formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
+        formData.append("language", "en");
+        formData.append("response_format", "json");
+        formData.append("temperature", "0");
 
-      // Wire an abort signal so cancel() can abort processing in-flight
-      abortControllerRef.current = new AbortController();
-      const response = await fetch("https://api.sonicflow.app", {
-        method: "POST",
-        body: formData,
-        signal: abortControllerRef.current.signal,
-      });
+        // Wire an abort signal so cancel() can abort processing in-flight
+        abortControllerRef.current = new AbortController();
+        const response = await fetch("https://api.sonicflow.app", {
+          method: "POST",
+          body: formData,
+          signal: abortControllerRef.current.signal,
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Server error: ${errorText}`);
-      }
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Server error: ${errorText}`);
+        }
 
-      const result = await response.json();
-      setText(result.text);
-      if (result.text) {
-        // Send transcript to main process for context menu copy functionality
-        window.transcript?.update(result.text);
-        window.clipboard.insertText(result.text);
+        const result = await response.json();
+        setText(result.text);
+        if (result.text) {
+          // Send transcript to main process for context menu copy functionality
+          window.transcript?.update(result.text);
+          window.clipboard.insertText(result.text);
+        }
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
@@ -333,8 +421,15 @@ export function useTranscription(
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
+      // Gracefully close WS if used
+      if (useWebSocket && wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
+        wsReadyRef.current = false;
+        wsFinalResolverRef.current = null;
+      }
     }
-  }, [recording]);
+  }, [recording, useWebSocket]);
 
   const cancel = useCallback(async () => {
     // Cancel only affects active recordings; it does not send audio to the API
