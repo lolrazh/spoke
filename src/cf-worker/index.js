@@ -30,7 +30,7 @@ function markWarm(colo) {
 async function warmUpGroq(env) {
   const start = Date.now();
   try {
-    const resp = await fetch("https://api.groq.com/openai/v1/models", {
+    const resp = await fetch("https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions", {
       method: "GET",
       headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
       signal: AbortSignal.timeout(1500),
