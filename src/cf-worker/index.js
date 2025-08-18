@@ -57,6 +57,107 @@ export default {
       });
     }
 
+    // WebSocket entrypoint for transcription streaming
+    const upgradeHeader = req.headers.get("Upgrade");
+    if (
+      upgradeHeader && upgradeHeader.toLowerCase() === "websocket" &&
+      pathname.startsWith("/transcribe")
+    ) {
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+
+      // Session state
+      let sessionMeta = null; // { model, language, mime, chunkMs }
+      const audioChunks = []; // Uint8Array[]
+      let receivedBytes = 0;
+      const MEMORY_CAP_BYTES = 15 * 1024 * 1024; // 15 MB safety cap
+      let closed = false;
+
+      function sendJson(obj) {
+        try { server.send(JSON.stringify(obj)); } catch { /* noop */ }
+      }
+      function closeSocket(code = 1000, reason = "") {
+        if (closed) return;
+        closed = true;
+        try { server.close(code, reason); } catch {}
+      }
+
+      server.accept();
+      sendJson({ type: "ack", requestId, colo });
+
+      server.addEventListener("message", (event) => {
+        if (closed) return;
+        const data = event.data;
+        // Handle JSON control frames
+        if (typeof data === "string") {
+          let msg;
+          try {
+            msg = JSON.parse(data);
+          } catch {
+            sendJson({ type: "error", code: "bad_json", message: "Invalid JSON" });
+            return closeSocket(1003, "invalid json");
+          }
+
+          if (!msg || typeof msg.type !== "string") {
+            sendJson({ type: "error", code: "bad_message", message: "Missing type" });
+            return closeSocket(1003, "bad message");
+          }
+
+          switch (msg.type) {
+            case "start": {
+              sessionMeta = {
+                model: msg.model || "whisper-large-v3-turbo",
+                language: msg.language || "en",
+                mime: msg.mime || "audio/webm;codecs=opus",
+                chunkMs: Number(msg.chunkMs) || 500,
+              };
+              sendJson({ type: "ready" });
+              break;
+            }
+            case "ping": {
+              sendJson({ type: "pong" });
+              break;
+            }
+            case "end": {
+              // Milestone 2: no upstream yet. Return stub final and close.
+              sendJson({ type: "final", text: "" });
+              return closeSocket(1000, "completed");
+            }
+            default: {
+              sendJson({ type: "error", code: "unknown_type", message: `Unknown type: ${msg.type}` });
+              return closeSocket(1003, "unknown control message");
+            }
+          }
+          return;
+        }
+
+        // Handle binary audio chunk
+        if (data instanceof ArrayBuffer) {
+          const chunk = new Uint8Array(data);
+          receivedBytes += chunk.byteLength;
+          if (receivedBytes > MEMORY_CAP_BYTES) {
+            sendJson({ type: "error", code: "memory_cap", message: "Audio exceeds memory cap" });
+            return closeSocket(1009, "message too big");
+          }
+          audioChunks.push(chunk);
+          return;
+        }
+
+        // Unknown frame type
+        sendJson({ type: "error", code: "unsupported_frame", message: "Unsupported frame type" });
+        return closeSocket(1003, "unsupported frame");
+      });
+
+      server.addEventListener("close", () => {
+        closed = true;
+      });
+      server.addEventListener("error", () => {
+        closeSocket(1011, "server error");
+      });
+
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
     if (req.method === "HEAD" && pathname === "/ping") {
       const t0 = Date.now();
       const headers = new Headers(corsHeaders);
