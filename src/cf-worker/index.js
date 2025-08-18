@@ -119,9 +119,71 @@ export default {
               break;
             }
             case "end": {
-              // Milestone 2: no upstream yet. Return stub final and close.
-              sendJson({ type: "final", text: "" });
-              return closeSocket(1000, "completed");
+              if (!sessionMeta) {
+                sendJson({ type: "error", code: "no_start", message: "Session not initialized" });
+                return closeSocket(1002, "no start");
+              }
+              if (audioChunks.length === 0) {
+                sendJson({ type: "error", code: "no_audio", message: "No audio received" });
+                return closeSocket(1002, "no audio");
+              }
+
+              // Finalize asynchronously to avoid blocking the event handler
+              (async () => {
+                try {
+                  // Concatenate Uint8Array chunks into a single Blob/File
+                  const totalBytes = audioChunks.reduce((sum, arr) => sum + arr.byteLength, 0);
+                  const merged = new Uint8Array(totalBytes);
+                  let offset = 0;
+                  for (const arr of audioChunks) {
+                    merged.set(arr, offset);
+                    offset += arr.byteLength;
+                  }
+
+                  const filename = sessionMeta.mime && sessionMeta.mime.includes("webm") ? "audio.webm" : "audio.bin";
+                  const file = new File([merged], filename, { type: sessionMeta.mime || "application/octet-stream" });
+
+                  const form = new FormData();
+                  form.append("file", file, filename);
+                  form.append("model", sessionMeta.model || "whisper-large-v3-turbo");
+                  if (sessionMeta.language) form.append("language", sessionMeta.language);
+                  form.append("response_format", "json");
+                  form.append("temperature", "0");
+
+                  // Use Cloudflare AI Gateway (provider-specific path for Groq)
+                  const gatewayUrl = "https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions";
+
+                  const tStart = Date.now();
+                  const resp = await fetch(gatewayUrl, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+                    body: form,
+                  });
+
+                  const tDone = Date.now();
+                  if (!resp.ok) {
+                    const errText = await resp.text().catch(() => "");
+                    sendJson({ type: "error", code: "upstream", status: resp.status, message: errText || "Upstream error" });
+                    return closeSocket(1011, "upstream error");
+                  }
+
+                  let result;
+                  try {
+                    result = await resp.json();
+                  } catch (e) {
+                    sendJson({ type: "error", code: "bad_upstream_json", message: "Failed to parse upstream JSON" });
+                    return closeSocket(1011, "bad upstream json");
+                  }
+
+                  const text = (result && (result.text || result.transcription || result.result)) || "";
+                  sendJson({ type: "final", text, durationMs: tDone - tStart });
+                  return closeSocket(1000, "completed");
+                } catch (e) {
+                  sendJson({ type: "error", code: "finalize_failed", message: (e && (e.message || String(e))) || "unknown" });
+                  return closeSocket(1011, "finalize failed");
+                }
+              })();
+              break;
             }
             default: {
               sendJson({ type: "error", code: "unknown_type", message: `Unknown type: ${msg.type}` });
