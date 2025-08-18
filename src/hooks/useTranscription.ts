@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import { ConnectionManager } from "../services/connectionManager";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -12,6 +13,8 @@ export interface UseTranscriptionReturn {
   start: () => void;
   stop: () => void;
   cancel: () => void;
+  connectionManager?: ConnectionManager | null;
+  connectionStatus?: () => any;
 }
 
 export interface UseTranscriptionOptions {
@@ -34,8 +37,10 @@ export interface UseTranscriptionOptions {
   useWebSocket?: boolean;
   /** WebSocket URL for transcription (default: wss://api.sonicflow.app/transcribe). */
   wsUrl?: string;
-  /** Chunk interval in ms for MediaRecorder when WS is enabled (default: 100). */
+  /** Chunk interval in ms for MediaRecorder when WS is enabled (default: 500). */
   wsChunkMs?: number;
+  /** Enable real-time transcription updates (default: true). */
+  realTimeUpdates?: boolean;
 }
 
 export function useTranscription(
@@ -47,7 +52,8 @@ export function useTranscription(
     requestLabelPermissionForEnumeration = false,
     useWebSocket = false,
     wsUrl = "wss://api.sonicflow.app/transcribe",
-    wsChunkMs = 100,
+    wsChunkMs = 500,
+    realTimeUpdates = true,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -58,6 +64,8 @@ export function useTranscription(
   const wsReadyRef = useRef<boolean>(false);
   const wsFinalResolverRef = useRef<(() => void) | null>(null);
   const wsClosedRef = useRef<boolean>(false);
+  const connectionManagerRef = useRef<ConnectionManager | null>(null);
+  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -65,6 +73,25 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+
+  // Initialize connection manager
+  useEffect(() => {
+    if (useWebSocket) {
+      connectionManagerRef.current = new ConnectionManager({
+        wsUrl,
+        maxConnections: 2,
+        reconnectDelay: 1000,
+        maxReconnectAttempts: 3
+      });
+      
+      // Pre-warm connections on initialization
+      connectionManagerRef.current.warmConnections(1);
+    }
+    
+    return () => {
+      connectionManagerRef.current?.cleanup();
+    };
+  }, [useWebSocket, wsUrl]);
 
   // Device enumeration function
   const enumerateAndSendDevices = useCallback(async () => {
@@ -249,57 +276,97 @@ export function useTranscription(
       });
 
       if (useWebSocket) {
-        // Establish WS session
-        wsClosedRef.current = false;
-        wsReadyRef.current = false;
-        wsRef.current = new WebSocket(wsUrl);
-        wsRef.current.addEventListener('open', () => {
-          // send start meta on open
-          try {
-            wsRef.current?.send(JSON.stringify({
-              type: 'start',
-              model: 'whisper-large-v3-turbo',
-              language: 'en',
-              mime: 'audio/webm;codecs=opus',
-              chunkMs: wsChunkMs,
-            }));
-          } catch {}
-        });
-        wsRef.current.addEventListener('message', (evt) => {
-          try {
-            const msg = JSON.parse(String(evt.data));
-            if (msg?.type === 'ready') {
-              wsReadyRef.current = true;
-              // Flush any buffered chunks captured before WS was ready
-              if (audioChunksRef.current.length > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                (async () => {
-                  const pending = audioChunksRef.current.slice();
-                  audioChunksRef.current = [];
-                  for (const blob of pending) {
-                    try {
-                      const buf = await blob.arrayBuffer();
-                      wsRef.current?.send(buf);
-                    } catch {}
-                  }
-                })();
+        try {
+          // Get connection from manager
+          wsClosedRef.current = false;
+          wsReadyRef.current = false;
+          wsRef.current = await connectionManagerRef.current?.getConnection() || null;
+          
+          if (!wsRef.current) {
+            throw new Error('Failed to get WebSocket connection');
+          }
+
+          // Start keepalive to prevent 10-second timeout
+          keepAliveIntervalRef.current = setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              try {
+                wsRef.current.send(JSON.stringify({ type: 'keepalive' }));
+              } catch {}
+            }
+          }, 5000); // Send every 5 seconds
+
+          // Don't send start immediately - wait for user to actually start recording
+          wsReadyRef.current = true; // Connection is ready after we get it from manager
+          // Enhanced message handling with real-time updates
+          wsRef.current.addEventListener('message', (evt) => {
+            try {
+              const msg = JSON.parse(String(evt.data));
+              
+              if (msg?.type === 'ready') {
+                wsReadyRef.current = true;
+                // Flush any buffered chunks captured before WS was ready
+                if (audioChunksRef.current.length > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  (async () => {
+                    const pending = audioChunksRef.current.slice();
+                    audioChunksRef.current = [];
+                    for (const blob of pending) {
+                      try {
+                        const buf = await blob.arrayBuffer();
+                        wsRef.current?.send(buf);
+                      } catch {}
+                    }
+                  })();
+                }
               }
-            }
-            if (msg?.type === 'final') {
-              setText(String(msg.text || ''));
-              if (msg.text) {
-                try { window.transcript?.update(String(msg.text)); } catch {}
-                try { window.clipboard.insertText(String(msg.text)); } catch {}
+              
+              if (msg?.type === 'partial' && realTimeUpdates) {
+                // Real-time transcription updates
+                setText(String(msg.text || ''));
               }
-              if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+              
+              if (msg?.type === 'final') {
+                setText(String(msg.text || ''));
+                if (msg.text) {
+                  try { window.transcript?.update(String(msg.text)); } catch {}
+                  try { window.clipboard.insertText(String(msg.text)); } catch {}
+                }
+                if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+              }
+              
+              if (msg?.type === 'error') {
+                setError(String(msg.message || 'WebSocket error'));
+                if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+              }
+            } catch (error) {
+              console.warn('[useTranscription] Failed to parse WebSocket message:', error);
             }
-            if (msg?.type === 'error') {
-              setError(String(msg.message || 'WebSocket error'));
-              if (wsFinalResolverRef.current) wsFinalResolverRef.current();
-            }
-          } catch {}
-        });
-        wsRef.current.addEventListener('close', () => { wsClosedRef.current = true; });
-        wsRef.current.addEventListener('error', () => { setError('WebSocket error'); if (wsFinalResolverRef.current) wsFinalResolverRef.current(); });
+          });
+          wsRef.current.addEventListener('close', () => { 
+            wsClosedRef.current = true;
+            console.log('[useTranscription] WebSocket connection closed');
+          });
+          
+          wsRef.current.addEventListener('error', (error) => { 
+            console.error('[useTranscription] WebSocket error:', error);
+            setError('WebSocket connection error'); 
+            if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+          });
+
+        } catch (error) {
+          console.error('[useTranscription] Failed to establish WebSocket connection:', error);
+          setError('Failed to connect to transcription service');
+          setRecording(false);
+          return;
+        }
+
+        // Send start message when recording actually begins
+        wsRef.current.send(JSON.stringify({
+          type: 'start',
+          model: 'whisper-large-v3-turbo',
+          language: 'en',
+          mime: 'audio/webm;codecs=opus',
+          chunkMs: wsChunkMs,
+        }));
 
         mediaRecorderRef.current.ondataavailable = async (event) => {
           if (event.data.size > 0) {
@@ -315,6 +382,7 @@ export function useTranscription(
           }
         };
         mediaRecorderRef.current.start(wsChunkMs);
+        console.log(`[useTranscription] Started WebSocket transcription with ${wsChunkMs}ms chunks`);
       } else {
         mediaRecorderRef.current.ondataavailable = (event) => {
           if (event.data.size > 0) {
@@ -421,9 +489,23 @@ export function useTranscription(
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
-      // Gracefully close WS if used
+      // Cleanup WebSocket and return connection to pool
       if (useWebSocket && wsRef.current) {
-        try { wsRef.current.close(); } catch {}
+        try {
+          // Clear keepalive
+          if (keepAliveIntervalRef.current) {
+            clearInterval(keepAliveIntervalRef.current);
+            keepAliveIntervalRef.current = null;
+          }
+          
+          // Return connection to pool if it's still good
+          if (wsRef.current.readyState === WebSocket.OPEN) {
+            connectionManagerRef.current?.returnConnection(wsRef.current);
+          } else {
+            wsRef.current.close();
+          }
+        } catch {}
+        
         wsRef.current = null;
         wsReadyRef.current = false;
         wsFinalResolverRef.current = null;
@@ -500,5 +582,7 @@ export function useTranscription(
     start,
     stop,
     cancel,
+    connectionManager: connectionManagerRef.current,
+    connectionStatus: () => connectionManagerRef.current?.getStatus(),
   };
 }
