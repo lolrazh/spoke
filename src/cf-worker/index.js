@@ -1,343 +1,270 @@
 /**
- * Cloudflare Worker proxy for Groq audio transcriptions
- * - CORS handled for Electron renderer
- * - Pass-through streaming: forwards the request body directly to Groq
- * - Adds Server-Timing for simple latency visibility
+ * Sonic Flow - Clean WebSocket-only Worker
+ * Streams audio to Groq via AI Gateway
  */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Mode",
-  "Access-Control-Expose-Headers": "Server-Timing, CF-Worker-Colo, X-Request-Id, X-Upstream-Status, X-Request-Size, X-Warm-Triggered",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Upgrade, Connection, Sec-WebSocket-Key, Sec-WebSocket-Version",
 };
 
-const lastWarmAtByColo = Object.create(null);
-const WARM_TTL_MS = 20000;
-const WARM_JITTER_MS = 3000;
-
-function shouldTriggerWarm(colo) {
-  const now = Date.now();
-  const last = lastWarmAtByColo[colo] || 0;
-  const jitter = (Math.random() * 2 - 1) * WARM_JITTER_MS;
-  const effectiveTtl = WARM_TTL_MS + jitter;
-  return now - last >= effectiveTtl;
-}
-
-function markWarm(colo) {
-  lastWarmAtByColo[colo] = Date.now();
-}
-
-async function warmUpGroq(env) {
-  const start = Date.now();
-  try {
-    const resp = await fetch("https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions", {
-      method: "GET",
-      headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
-      signal: AbortSignal.timeout(1500),
-    });
-    // Drain headers only; body not needed
-    return Date.now() - start;
-  } catch {
-    return -1;
-  }
-}
+// Clean configuration
+const AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions";
+const MAX_AUDIO_BYTES = 15 * 1024 * 1024; // 15 MB safety cap
 
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const pathname = url.pathname;
-    const colo = (req.cf && req.cf.colo) || "unknown";
-    const requestId = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const contentLength = req.headers.get("content-length");
+    
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders,
-      });
+      return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // WebSocket entrypoint for transcription streaming
+    // WebSocket transcription endpoint
     const upgradeHeader = req.headers.get("Upgrade");
-    if (
-      upgradeHeader && upgradeHeader.toLowerCase() === "websocket" &&
-      pathname.startsWith("/transcribe")
-    ) {
-      const pair = new WebSocketPair();
-      const [client, server] = Object.values(pair);
+    if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket" && 
+        pathname.startsWith("/transcribe")) {
+      
+      return this.handleWebSocketTranscription(req, env);
+    }
 
-      // Session state
-      let sessionMeta = null; // { model, language, mime, chunkMs }
-      const audioChunks = []; // Uint8Array[]
-      let receivedBytes = 0;
-      const MEMORY_CAP_BYTES = 15 * 1024 * 1024; // 15 MB safety cap
-      let closed = false;
-
-      function sendJson(obj) {
-        try { server.send(JSON.stringify(obj)); } catch { /* noop */ }
-      }
-      function closeSocket(code = 1000, reason = "") {
-        if (closed) return;
-        closed = true;
-        try { server.close(code, reason); } catch {}
-      }
-
-      server.accept();
-      sendJson({ type: "ack", requestId, colo });
-
-      server.addEventListener("message", (event) => {
-        if (closed) return;
-        const data = event.data;
-        // Handle JSON control frames
-        if (typeof data === "string") {
-          let msg;
-          try {
-            msg = JSON.parse(data);
-          } catch {
-            sendJson({ type: "error", code: "bad_json", message: "Invalid JSON" });
-            return closeSocket(1003, "invalid json");
-          }
-
-          if (!msg || typeof msg.type !== "string") {
-            sendJson({ type: "error", code: "bad_message", message: "Missing type" });
-            return closeSocket(1003, "bad message");
-          }
-
-          switch (msg.type) {
-            case "start": {
-              sessionMeta = {
-                model: msg.model || "whisper-large-v3-turbo",
-                language: msg.language || "en",
-                mime: msg.mime || "audio/webm;codecs=opus",
-                chunkMs: Number(msg.chunkMs) || 500,
-              };
-              sendJson({ type: "ready" });
-              break;
-            }
-            case "ping": {
-              sendJson({ type: "pong" });
-              break;
-            }
-            case "end": {
-              if (!sessionMeta) {
-                sendJson({ type: "error", code: "no_start", message: "Session not initialized" });
-                return closeSocket(1002, "no start");
-              }
-              if (audioChunks.length === 0) {
-                sendJson({ type: "error", code: "no_audio", message: "No audio received" });
-                return closeSocket(1002, "no audio");
-              }
-
-              // Finalize asynchronously to avoid blocking the event handler
-              (async () => {
-                try {
-                  // Concatenate Uint8Array chunks into a single Blob/File
-                  const totalBytes = audioChunks.reduce((sum, arr) => sum + arr.byteLength, 0);
-                  const merged = new Uint8Array(totalBytes);
-                  let offset = 0;
-                  for (const arr of audioChunks) {
-                    merged.set(arr, offset);
-                    offset += arr.byteLength;
-                  }
-
-                  const filename = sessionMeta.mime && sessionMeta.mime.includes("webm") ? "audio.webm" : "audio.bin";
-                  const file = new File([merged], filename, { type: sessionMeta.mime || "application/octet-stream" });
-
-                  const form = new FormData();
-                  form.append("file", file, filename);
-                  form.append("model", sessionMeta.model || "whisper-large-v3-turbo");
-                  if (sessionMeta.language) form.append("language", sessionMeta.language);
-                  form.append("response_format", "json");
-                  form.append("temperature", "0");
-
-                  // Use Cloudflare AI Gateway (provider-specific path for Groq)
-                  const gatewayUrl = "https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions";
-
-                  const tStart = Date.now();
-                  const resp = await fetch(gatewayUrl, {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
-                    body: form,
-                  });
-
-                  const tDone = Date.now();
-                  if (!resp.ok) {
-                    const errText = await resp.text().catch(() => "");
-                    sendJson({ type: "error", code: "upstream", status: resp.status, message: errText || "Upstream error" });
-                    return closeSocket(1011, "upstream error");
-                  }
-
-                  let result;
-                  try {
-                    result = await resp.json();
-                  } catch (e) {
-                    sendJson({ type: "error", code: "bad_upstream_json", message: "Failed to parse upstream JSON" });
-                    return closeSocket(1011, "bad upstream json");
-                  }
-
-                  const text = (result && (result.text || result.transcription || result.result)) || "";
-                  sendJson({ type: "final", text, durationMs: tDone - tStart });
-                  return closeSocket(1000, "completed");
-                } catch (e) {
-                  sendJson({ type: "error", code: "finalize_failed", message: (e && (e.message || String(e))) || "unknown" });
-                  return closeSocket(1011, "finalize failed");
-                }
-              })();
-              break;
-            }
-            default: {
-              sendJson({ type: "error", code: "unknown_type", message: `Unknown type: ${msg.type}` });
-              return closeSocket(1003, "unknown control message");
-            }
-          }
-          return;
-        }
-
-        // Handle binary audio chunk
-        if (data instanceof ArrayBuffer) {
-          const chunk = new Uint8Array(data);
-          receivedBytes += chunk.byteLength;
-          if (receivedBytes > MEMORY_CAP_BYTES) {
-            sendJson({ type: "error", code: "memory_cap", message: "Audio exceeds memory cap" });
-            return closeSocket(1009, "message too big");
-          }
-          audioChunks.push(chunk);
-          return;
-        }
-
-        // Unknown frame type
-        sendJson({ type: "error", code: "unsupported_frame", message: "Unsupported frame type" });
-        return closeSocket(1003, "unsupported frame");
+    // Health check endpoint
+    if (req.method === "GET" && pathname === "/health") {
+      return new Response(JSON.stringify({ 
+        status: "ok", 
+        timestamp: Date.now(),
+        service: "sonic-flow-websocket" 
+      }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
       });
-
-      server.addEventListener("close", () => {
-        closed = true;
-      });
-      server.addEventListener("error", () => {
-        closeSocket(1011, "server error");
-      });
-
-      return new Response(null, { status: 101, webSocket: client });
     }
 
-    if (req.method === "HEAD" && pathname === "/ping") {
-      const t0 = Date.now();
-      const headers = new Headers(corsHeaders);
-      headers.set("Cache-Control", "no-store");
-      headers.set("CF-Worker-Colo", colo);
-      headers.set("X-Request-Id", requestId);
-      if (contentLength) headers.set("X-Request-Size", contentLength);
-
-      let warmTriggered = false;
-      if (shouldTriggerWarm(colo)) {
-        warmTriggered = true;
-        markWarm(colo);
-        if (ctx && ctx.waitUntil) ctx.waitUntil(warmUpGroq(env));
-        else warmUpGroq(env); // best-effort if ctx not available
-      }
-
-      headers.set("X-Warm-Triggered", warmTriggered ? "1" : "0");
-      headers.set("Server-Timing", `ping;dur=${Date.now() - t0}`);
-      return new Response(null, { status: 204, headers });
-    }
-
-    if (req.method === "GET" && pathname === "/warm") {
-      const headers = new Headers(corsHeaders);
-      headers.set("Cache-Control", "no-store");
-      headers.set("CF-Worker-Colo", colo);
-      headers.set("X-Request-Id", requestId);
-      if (contentLength) headers.set("X-Request-Size", contentLength);
-
-      let serverTiming = "";
-      let warmTriggered = false;
-      if (shouldTriggerWarm(colo)) {
-        markWarm(colo);
-        warmTriggered = true;
-        const ttfb = await warmUpGroq(env);
-        if (ttfb >= 0) serverTiming = `warm_ttfb;dur=${ttfb}`;
-      }
-      headers.set("X-Warm-Triggered", warmTriggered ? "1" : "0");
-      if (serverTiming) headers.set("Server-Timing", serverTiming);
-      return new Response(null, { status: 204, headers });
-    }
-
-    if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method Not Allowed. Please use POST." }),
-        {
-          status: 405,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-    }
-
-    // Pass-through: do not parse form-data; forward body stream directly
-    const upstreamUrl = "https://api.groq.com/openai/v1/audio/transcriptions";
-
-    const outgoingHeaders = new Headers();
-    outgoingHeaders.set("Authorization", `Bearer ${env.GROQ_API_KEY}`);
-    const contentType = req.headers.get("content-type");
-    if (contentType) {
-      outgoingHeaders.set("Content-Type", contentType);
-    }
-
-    const t0 = Date.now();
-    let ttfbMs = 0;
-    let groqResponse;
-    try {
-      const tFetchStart = Date.now();
-      groqResponse = await fetch(upstreamUrl, {
-        method: "POST",
-        headers: outgoingHeaders,
-        body: req.body,
-      });
-      ttfbMs = Date.now() - tFetchStart; // upstream TTFB
-    } catch (err) {
-      return new Response(
-        JSON.stringify({
-          error: "Upstream request failed",
-          details: (err && (err.message || String(err))) || "unknown",
-        }),
-        {
-          status: 502,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-            "CF-Worker-Colo": colo,
-            "X-Request-Id": requestId,
-            "X-Request-Size": contentLength || "unknown",
-          },
-        },
-      );
-    }
-
-    const t1 = Date.now();
-    const totalMs = t1 - t0;
-    const serverTiming = [
-      `groq_ttfb;dur=${ttfbMs}`,
-      `worker_total;dur=${totalMs}`,
-    ].join(", ");
-
-    // Forward Groq response body as-is; keep status and content-type
-    const respHeaders = new Headers(corsHeaders);
-    const upstreamContentType = groqResponse.headers.get("content-type");
-    if (upstreamContentType) {
-      respHeaders.set("Content-Type", upstreamContentType);
-    }
-    respHeaders.set("Server-Timing", serverTiming);
-    respHeaders.set("Cache-Control", "no-store");
-    respHeaders.set("CF-Worker-Colo", colo);
-    respHeaders.set("X-Request-Id", requestId);
-    respHeaders.set("X-Upstream-Status", String(groqResponse.status));
-    if (contentLength) respHeaders.set("X-Request-Size", contentLength);
-
-    // For non-2xx, still stream the body back so the client can see upstream error payload
-    return new Response(groqResponse.body, {
-      status: groqResponse.status,
-      headers: respHeaders,
+    // Everything else gets 404
+    return new Response(JSON.stringify({ 
+      error: "Not found",
+      message: "WebSocket endpoint: /transcribe" 
+    }), { 
+      status: 404,
+      headers: { "Content-Type": "application/json", ...corsHeaders }
     });
   },
+
+  async handleWebSocketTranscription(req, env) {
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    const sessionId = crypto.randomUUID();
+
+    console.log(`[${sessionId}] New WebSocket connection`);
+
+    // Session state
+    let sessionMeta = null;
+    const audioChunks = [];
+    let receivedBytes = 0;
+    let closed = false;
+
+    // Helper functions
+    const sendJson = (obj) => {
+      try { 
+        server.send(JSON.stringify(obj)); 
+      } catch (e) {
+        console.warn(`[${sessionId}] Failed to send message:`, e);
+      }
+    };
+
+    const closeSocket = (code = 1000, reason = "") => {
+      if (closed) return;
+      closed = true;
+      console.log(`[${sessionId}] Closing: ${code} ${reason}`);
+      try { server.close(code, reason); } catch {}
+    };
+
+    // Accept connection and send ack
+    server.accept();
+    sendJson({ 
+      type: "ack", 
+      sessionId,
+      timestamp: Date.now() 
+    });
+
+    // Handle messages
+    server.addEventListener("message", (event) => {
+      if (closed) return;
+      
+      const data = event.data;
+
+      // Handle control messages (JSON)
+      if (typeof data === "string") {
+        let msg;
+        try {
+          msg = JSON.parse(data);
+        } catch {
+          sendJson({ type: "error", message: "Invalid JSON" });
+          return closeSocket(1003, "invalid json");
+        }
+
+        if (!msg?.type) {
+          sendJson({ type: "error", message: "Missing message type" });
+          return closeSocket(1003, "bad message");
+        }
+
+        switch (msg.type) {
+          case "start":
+            sessionMeta = {
+              model: msg.model || "whisper-large-v3-turbo",
+              language: msg.language || "en",
+              mime: msg.mime || "audio/webm;codecs=opus"
+            };
+            console.log(`[${sessionId}] Session started:`, sessionMeta);
+            sendJson({ type: "ready" });
+            break;
+
+          case "ping":
+            sendJson({ type: "pong" });
+            break;
+
+          case "end":
+            this.finalizeTranscription(sessionId, sessionMeta, audioChunks, env)
+              .then((result) => {
+                if (result.success) {
+                  sendJson({ type: "final", text: result.text });
+                  closeSocket(1000, "completed");
+                } else {
+                  sendJson({ type: "error", message: result.error });
+                  closeSocket(1011, "transcription failed");
+                }
+              });
+            break;
+
+          default:
+            sendJson({ type: "error", message: `Unknown type: ${msg.type}` });
+            closeSocket(1003, "unknown control message");
+        }
+        return;
+      }
+
+      // Handle binary audio data
+      if (data instanceof ArrayBuffer) {
+        if (!sessionMeta) {
+          sendJson({ type: "error", message: "Send 'start' before audio data" });
+          return closeSocket(1002, "no start");
+        }
+
+        const chunk = new Uint8Array(data);
+        receivedBytes += chunk.byteLength;
+        
+        if (receivedBytes > MAX_AUDIO_BYTES) {
+          sendJson({ type: "error", message: "Audio exceeds 15MB limit" });
+          return closeSocket(1009, "message too big");
+        }
+
+        audioChunks.push(chunk);
+        console.log(`[${sessionId}] Received audio: ${chunk.byteLength} bytes (total: ${receivedBytes})`);
+        
+        // Debug first chunk to see if it looks like WebM
+        if (audioChunks.length === 1) {
+          const firstBytes = chunk.slice(0, 8);
+          const hex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+          console.log(`[${sessionId}] First audio chunk header (hex): ${hex}`);
+        }
+        return;
+      }
+
+      // Unknown data type
+      sendJson({ type: "error", message: "Unsupported data type" });
+      closeSocket(1003, "unsupported frame");
+    });
+
+    server.addEventListener("close", () => {
+      closed = true;
+      console.log(`[${sessionId}] Connection closed`);
+    });
+
+    server.addEventListener("error", (e) => {
+      console.error(`[${sessionId}] WebSocket error:`, e);
+      closeSocket(1011, "server error");
+    });
+
+    return new Response(null, { status: 101, webSocket: client });
+  },
+
+  async finalizeTranscription(sessionId, sessionMeta, audioChunks, env) {
+    try {
+      if (!sessionMeta) {
+        return { success: false, error: "Session not initialized" };
+      }
+      
+      if (audioChunks.length === 0) {
+        return { success: false, error: "No audio received" };
+      }
+
+      console.log(`[${sessionId}] Finalizing transcription: ${audioChunks.length} chunks`);
+
+      // Combine audio chunks
+      const totalBytes = audioChunks.reduce((sum, arr) => sum + arr.byteLength, 0);
+      const merged = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const arr of audioChunks) {
+        merged.set(arr, offset);
+        offset += arr.byteLength;
+      }
+
+      // Debug: Check if this looks like valid WebM data
+      const firstBytes = merged.slice(0, 8);
+      const firstBytesHex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      console.log(`[${sessionId}] First 8 bytes (hex): ${firstBytesHex}`);
+      
+      // WebM files should start with specific bytes
+      const isValidWebM = firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && firstBytes[2] === 0xDF && firstBytes[3] === 0xA3;
+      console.log(`[${sessionId}] Looks like valid WebM: ${isValidWebM}`);
+
+      // Create form data for Groq
+      const filename = sessionMeta.mime?.includes("webm") ? "audio.webm" : "audio.bin";
+      const file = new File([merged], filename, { 
+        type: sessionMeta.mime || "application/octet-stream" 
+      });
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("model", sessionMeta.model);
+      form.append("language", sessionMeta.language);
+      form.append("response_format", "json");
+      form.append("temperature", "0");
+
+      // Send to AI Gateway → Groq
+      console.log(`[${sessionId}] Sending to AI Gateway: ${totalBytes} bytes, ${audioChunks.length} chunks, mime: ${sessionMeta.mime}`);
+      console.log(`[${sessionId}] File info: name=${filename}, size=${file.size}, type=${file.type}`);
+      const response = await fetch(AI_GATEWAY_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+        body: form,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        console.error(`[${sessionId}] AI Gateway error: ${response.status}`);
+        console.error(`[${sessionId}] Error details: ${errorText}`);
+        
+        // Try to parse error as JSON for better debugging
+        try {
+          const errorObj = JSON.parse(errorText);
+          console.error(`[${sessionId}] Parsed error:`, errorObj);
+        } catch {}
+        
+        return { success: false, error: `Transcription failed: ${response.status}` };
+      }
+
+      const result = await response.json();
+      const text = result?.text || "";
+      
+      console.log(`[${sessionId}] Transcription complete: "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}"`);
+      return { success: true, text };
+
+    } catch (error) {
+      console.error(`[${sessionId}] Finalization error:`, error);
+      return { success: false, error: error.message || "Unknown error" };
+    }
+  }
 };
