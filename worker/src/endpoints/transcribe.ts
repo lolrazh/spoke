@@ -50,7 +50,9 @@ export class Transcribe extends OpenAPIRoute {
 
   async handle(c: Context) {
     try {
+      const startTime = (c.get("startTime") as number) || Date.now();
       const form = await c.req.raw.formData();
+      const uploadMs = Date.now() - startTime;
 
       let base64: string | null = null;
       const file = form.get("file");
@@ -73,11 +75,46 @@ export class Transcribe extends OpenAPIRoute {
         ? { id: (c.env as any).AI_GATEWAY_ID }
         : undefined;
 
+      const aiStart = Date.now();
       const result: any = await (c.env as any).AI.run(
         "@cf/openai/whisper-large-v3-turbo",
         { audio: base64, task, language, vad_filter, initial_prompt },
         gateway ? { gateway } : undefined,
       );
+      const aiMs = Date.now() - aiStart;
+
+      // Attach timing segments and structured log fields
+      try {
+        const timings = (c.get("serverTimings") as string[]) || [];
+        timings.push(`upload;dur=${uploadMs}`);
+        timings.push(`ai;dur=${aiMs}`);
+        const rtt = (c.req.raw as any)?.cf?.clientTcpRtt;
+        if (typeof rtt === "number") timings.push(`rtt;dur=${rtt}`);
+        c.set("serverTimings", timings);
+
+        const sizeBytes = (() => {
+          const f = form.get("file");
+          if (f && f instanceof Blob) return (f as Blob).size;
+          const audio = form.get("audio");
+          if (typeof audio === "string") {
+            const len = audio.length - (audio.endsWith("==") ? 2 : audio.endsWith("=") ? 1 : 0);
+            return Math.floor((len * 3) / 4);
+          }
+          return undefined;
+        })();
+
+        const tls = (c.req.raw as any)?.cf?.tlsVersion;
+        const proto = (c.req.raw as any)?.cf?.httpProtocol;
+
+        c.set("log", {
+          uploadMs,
+          aiMs,
+          sizeBytes,
+          tls,
+          proto,
+          gateway: Boolean((c.env as any)?.AI_GATEWAY_ID),
+        });
+      } catch {}
 
       return c.json({
         text: result?.text ?? "",

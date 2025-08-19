@@ -22,16 +22,16 @@ app.use("*", async (c, next) => {
   const started = Date.now();
   const reqId = (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
   c.set("reqId", reqId);
+  c.set("startTime", started);
+  c.set("serverTimings", [] as string[]);
 
   // Handle CORS preflight early
   if (c.req.method === "OPTIONS") {
     c.header("Access-Control-Allow-Origin", "*");
     c.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, HEAD");
     c.header("Access-Control-Allow-Headers", "Content-Type, X-Mode");
-    c.header(
-      "Access-Control-Expose-Headers",
-      "Server-Timing, CF-Worker-Colo, X-Request-Id",
-    );
+    c.header("Access-Control-Expose-Headers", "Server-Timing, CF-Worker-Colo, X-Request-Id");
+    c.header("Timing-Allow-Origin", "*");
     c.header("Cache-Control", "no-store");
     return c.body(null, 204);
   }
@@ -39,12 +39,35 @@ app.use("*", async (c, next) => {
   await next();
 
   // Apply response headers
+  const colo = (c.req.raw as any)?.cf?.colo ?? "unknown";
   c.header("Access-Control-Allow-Origin", "*");
   c.header("Access-Control-Expose-Headers", "Server-Timing, CF-Worker-Colo, X-Request-Id");
+  c.header("Timing-Allow-Origin", "*");
   c.header("Cache-Control", "no-store");
   c.header("X-Request-Id", reqId);
-  c.header("CF-Worker-Colo", (c.req.raw as any)?.cf?.colo ?? "unknown");
-  c.header("Server-Timing", `total;dur=${Date.now() - started}`);
+  c.header("CF-Worker-Colo", colo);
+  const timings = (c.get("serverTimings") as string[]) || [];
+  timings.unshift(`total;dur=${Date.now() - started}`);
+  c.header("Server-Timing", timings.join(", "));
+
+  // Minimal structured log
+  try {
+    const log = (c.get("log") as Record<string, unknown>) || {};
+    const status = c.res?.status ?? 200;
+    const path = new URL(c.req.url).pathname;
+    const base: Record<string, unknown> = {
+      t: new Date().toISOString(),
+      reqId,
+      colo,
+      method: c.req.method,
+      path,
+      status,
+      totalMs: Date.now() - started,
+    };
+    // Merge limited route-specific metrics
+    const merged = { ...base, ...log };
+    console.log(JSON.stringify(merged));
+  } catch {}
 });
 
 // Central error handling

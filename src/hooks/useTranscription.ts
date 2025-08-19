@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import { getTranscribeUrl } from "../config/api";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -302,7 +303,7 @@ export function useTranscription(
 
       // Wire an abort signal so cancel() can abort processing in-flight
       abortControllerRef.current = new AbortController();
-      const response = await fetch("https://api.sonicflow.app/transcribe", {
+      const response = await fetch(getTranscribeUrl(), {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal,
