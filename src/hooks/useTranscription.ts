@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
-import { ConnectionManager } from "../services/connectionManager";
+// Lean WS-only path: no connection manager, no keepalive
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -13,8 +13,6 @@ export interface UseTranscriptionReturn {
   start: () => void;
   stop: () => void;
   cancel: () => void;
-  connectionManager?: ConnectionManager | null;
-  connectionStatus?: () => any;
 }
 
 export interface UseTranscriptionOptions {
@@ -57,15 +55,16 @@ export function useTranscription(
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const wsReadyRef = useRef<boolean>(false);
   const wsFinalResolverRef = useRef<(() => void) | null>(null);
   const wsClosedRef = useRef<boolean>(false);
-  const connectionManagerRef = useRef<ConnectionManager | null>(null);
-  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // AudioWorklet path refs (PCM16LE streaming)
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const pcmAggregateRef = useRef<Uint8Array[]>([]);
+  const pcmBytesRef = useRef<number>(0);
+  const pcmTargetBytesRef = useRef<number>(0);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -74,24 +73,7 @@ export function useTranscription(
   const [error, setError] = useState<string | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
-  // Initialize connection manager
-  useEffect(() => {
-    if (useWebSocket) {
-      connectionManagerRef.current = new ConnectionManager({
-        wsUrl,
-        maxConnections: 2,
-        reconnectDelay: 1000,
-        maxReconnectAttempts: 3
-      });
-      
-      // Pre-warm connections on initialization
-      connectionManagerRef.current.warmConnections(1);
-    }
-    
-    return () => {
-      connectionManagerRef.current?.cleanup();
-    };
-  }, [useWebSocket, wsUrl]);
+  // No connection warming in lean mode
 
   // Device enumeration function
   const enumerateAndSendDevices = useCallback(async () => {
@@ -260,137 +242,112 @@ export function useTranscription(
     setError(null);
     setText("");
     setRecording(true);
-    audioChunksRef.current = [];
+    pcmAggregateRef.current = [];
+    pcmBytesRef.current = 0;
 
     try {
-      // Create 16kHz AudioContext for real-time downsampling
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      const dest = audioContextRef.current.createMediaStreamDestination();
-      source.connect(dest);
+      if (!useWebSocket) {
+        throw new Error('WebSocket transcription is disabled');
+      }
 
-      // Use MediaRecorder with pre-downsampled 16kHz stream
-      mediaRecorderRef.current = new MediaRecorder(dest.stream, {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000,
+      // Open a fresh WebSocket connection (lean: no pooling, no keepalive)
+      wsClosedRef.current = false;
+      wsReadyRef.current = false;
+      wsRef.current = new WebSocket(wsUrl);
+
+      // Handle server messages
+      wsRef.current.addEventListener('message', (evt) => {
+        try {
+          const msg = JSON.parse(String(evt.data));
+          if (msg?.type === 'ready') {
+            wsReadyRef.current = true;
+          }
+          if (msg?.type === 'final') {
+            setText(String(msg.text || ''));
+            if (msg.text) {
+              try { window.transcript?.update(String(msg.text)); } catch {}
+              try { window.clipboard.insertText(String(msg.text)); } catch {}
+            }
+            if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+          }
+          if (msg?.type === 'error') {
+            setError(String(msg.message || 'WebSocket error'));
+            if (wsFinalResolverRef.current) wsFinalResolverRef.current();
+          }
+        } catch {
+          // Ignore non-JSON frames (we only expect JSON control)
+        }
+      });
+      wsRef.current.addEventListener('close', () => { 
+        wsClosedRef.current = true;
+        console.log('[useTranscription] WebSocket connection closed');
+      });
+      wsRef.current.addEventListener('error', (error) => { 
+        console.error('[useTranscription] WebSocket error:', error);
+        setError('WebSocket connection error'); 
+        if (wsFinalResolverRef.current) wsFinalResolverRef.current();
       });
 
-      if (useWebSocket) {
+      // When socket opens, send start meta, then begin AudioWorklet capture
+      wsRef.current.addEventListener('open', async () => {
         try {
-          // Get connection from manager
-          wsClosedRef.current = false;
-          wsReadyRef.current = false;
-          wsRef.current = await connectionManagerRef.current?.getConnection() || null;
-          
-          if (!wsRef.current) {
-            throw new Error('Failed to get WebSocket connection');
-          }
+          wsRef.current?.send(JSON.stringify({
+            type: 'start',
+            model: 'whisper-large-v3-turbo',
+            language: 'en',
+            format: 'pcm16le',
+            sampleRate: 16000,
+            channels: 1,
+            bits: 16,
+          }));
 
-          // Start keepalive to prevent 10-second timeout
-          keepAliveIntervalRef.current = setInterval(() => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              try {
-                wsRef.current.send(JSON.stringify({ type: 'keepalive' }));
-              } catch {}
+          // Prepare AudioWorklet at 48kHz input; processor downsamples to 16kHz
+          audioContextRef.current = new AudioContext({ sampleRate: 48000 });
+          await audioContextRef.current.audioWorklet.addModule('/audioworklet-processor.js');
+          const source = audioContextRef.current.createMediaStreamSource(streamRef.current!);
+          const worklet = new AudioWorkletNode(audioContextRef.current, 'capture-processor');
+          source.connect(worklet);
+          // Ensure the graph is pulled without audible output
+          const silent = audioContextRef.current.createGain();
+          silent.gain.value = 0;
+          worklet.connect(silent);
+          silent.connect(audioContextRef.current.destination);
+          sourceNodeRef.current = source;
+          workletNodeRef.current = worklet;
+
+          // Batch PCM frames to roughly wsChunkMs
+          const bytesPerSecond = 16000 * 1 * (16 / 8);
+          pcmTargetBytesRef.current = Math.max(1, Math.floor(bytesPerSecond * (wsChunkMs / 1000)));
+
+          const flushIfReady = () => {
+            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+            if (!wsReadyRef.current) return;
+            const total = pcmBytesRef.current;
+            if (total <= 0) return;
+            // Concatenate and send
+            const out = new Uint8Array(total);
+            let off = 0;
+            for (const c of pcmAggregateRef.current) { out.set(c, off); off += c.length; }
+            pcmAggregateRef.current = [];
+            pcmBytesRef.current = 0;
+            try { wsRef.current.send(out.buffer); } catch {}
+          };
+
+          worklet.port.onmessage = (evt) => {
+            const buf = evt.data as ArrayBuffer;
+            const chunk = new Uint8Array(buf);
+            pcmAggregateRef.current.push(chunk);
+            pcmBytesRef.current += chunk.byteLength;
+            if (pcmBytesRef.current >= pcmTargetBytesRef.current) {
+              flushIfReady();
             }
-          }, 5000); // Send every 5 seconds
-
-          // Don't send start immediately - wait for user to actually start recording
-          wsReadyRef.current = true; // Connection is ready after we get it from manager
-          // Enhanced message handling with real-time updates
-          wsRef.current.addEventListener('message', (evt) => {
-            try {
-              const msg = JSON.parse(String(evt.data));
-              
-              if (msg?.type === 'ready') {
-                wsReadyRef.current = true;
-                // Flush any buffered chunks captured before WS was ready
-                if (audioChunksRef.current.length > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  (async () => {
-                    const pending = audioChunksRef.current.slice();
-                    audioChunksRef.current = [];
-                    for (const blob of pending) {
-                      try {
-                        const buf = await blob.arrayBuffer();
-                        wsRef.current?.send(buf);
-                      } catch {}
-                    }
-                  })();
-                }
-              }
-              
-              if (msg?.type === 'partial' && realTimeUpdates) {
-                // Real-time transcription updates
-                setText(String(msg.text || ''));
-              }
-              
-              if (msg?.type === 'final') {
-                setText(String(msg.text || ''));
-                if (msg.text) {
-                  try { window.transcript?.update(String(msg.text)); } catch {}
-                  try { window.clipboard.insertText(String(msg.text)); } catch {}
-                }
-                if (wsFinalResolverRef.current) wsFinalResolverRef.current();
-              }
-              
-              if (msg?.type === 'error') {
-                setError(String(msg.message || 'WebSocket error'));
-                if (wsFinalResolverRef.current) wsFinalResolverRef.current();
-              }
-            } catch (error) {
-              console.warn('[useTranscription] Failed to parse WebSocket message:', error);
-            }
-          });
-          wsRef.current.addEventListener('close', () => { 
-            wsClosedRef.current = true;
-            console.log('[useTranscription] WebSocket connection closed');
-          });
-          
-          wsRef.current.addEventListener('error', (error) => { 
-            console.error('[useTranscription] WebSocket error:', error);
-            setError('WebSocket connection error'); 
-            if (wsFinalResolverRef.current) wsFinalResolverRef.current();
-          });
-
-        } catch (error) {
-          console.error('[useTranscription] Failed to establish WebSocket connection:', error);
-          setError('Failed to connect to transcription service');
+          };
+        } catch (e) {
+          console.error('[useTranscription] Failed to initialize AudioWorklet/WS:', e);
+          setError('Audio initialization failed');
           setRecording(false);
-          return;
         }
-
-        // Send start message when recording actually begins
-        wsRef.current.send(JSON.stringify({
-          type: 'start',
-          model: 'whisper-large-v3-turbo',
-          language: 'en',
-          mime: 'audio/webm;codecs=opus',
-          chunkMs: wsChunkMs,
-        }));
-
-        mediaRecorderRef.current.ondataavailable = async (event) => {
-          if (event.data.size > 0) {
-            // send as binary frame when WS is ready
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsReadyRef.current) {
-              try {
-                const buf = await event.data.arrayBuffer();
-                wsRef.current.send(buf);
-              } catch {}
-            } else {
-              audioChunksRef.current.push(event.data);
-            }
-          }
-        };
-        mediaRecorderRef.current.start(wsChunkMs);
-        console.log(`[useTranscription] Started WebSocket transcription with ${wsChunkMs}ms chunks`);
-      } else {
-        mediaRecorderRef.current.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-        mediaRecorderRef.current.start(100);
-      }
+      });
     } catch (err) {
       setError((err as Error).message);
       setRecording(false);
@@ -405,107 +362,50 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      // Stop MediaRecorder and wait for final data
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        // Wait for the MediaRecorder to finish and emit final data
-        const stopPromise = new Promise<void>((resolve) => {
-          if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.onstop = () => resolve();
-          }
-        });
-        
-        mediaRecorderRef.current.stop();
-        await stopPromise;
-      }
-
-      // Clean up AudioContext
+      // Disconnect AudioWorklet and close context
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
+      sourceNodeRef.current = null;
+      workletNodeRef.current = null;
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
 
-      // Stop capturing audio completely so macOS mic indicator turns off
+      // Stop mic completely
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+        try { streamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
         streamRef.current = null;
         setReady(false);
       }
 
+      // Flush any pending PCM data
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsReadyRef.current) {
+        const total = pcmBytesRef.current;
+        if (total > 0) {
+          const out = new Uint8Array(total);
+          let off = 0;
+          for (const c of pcmAggregateRef.current) { out.set(c, off); off += c.length; }
+          pcmAggregateRef.current = [];
+          pcmBytesRef.current = 0;
+          try { wsRef.current.send(out.buffer); } catch {}
+        }
+      }
+
+      // Send end and wait for final
       if (useWebSocket && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        // Send end and wait for final
         const finalPromise = new Promise<void>((resolve) => { wsFinalResolverRef.current = resolve; });
         try { wsRef.current.send(JSON.stringify({ type: 'end' })); } catch {}
         await finalPromise;
-      } else {
-        // Combine all recorded chunks into a single blob
-        const audioBlob = new Blob(audioChunksRef.current, { 
-          type: 'audio/webm;codecs=opus' 
-        });
-
-        console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
-
-        const formData = new FormData();
-        formData.append("file", audioBlob, "audio.webm");
-        formData.append("model", "whisper-large-v3-turbo");
-        formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
-        formData.append("language", "en");
-        formData.append("response_format", "json");
-        formData.append("temperature", "0");
-
-        // Wire an abort signal so cancel() can abort processing in-flight
-        abortControllerRef.current = new AbortController();
-        const response = await fetch("https://api.sonicflow.app", {
-          method: "POST",
-          body: formData,
-          signal: abortControllerRef.current.signal,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Server error: ${errorText}`);
-        }
-
-        const result = await response.json();
-        setText(result.text);
-        if (result.text) {
-          // Send transcript to main process for context menu copy functionality
-          window.transcript?.update(result.text);
-          window.clipboard.insertText(result.text);
-        }
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
-      if ((err as DOMException)?.name === "AbortError") {
-        // No-op: canceled by user
-      } else {
-        setError((err as Error).message);
-      }
+      setError((err as Error).message);
     } finally {
       setProcessing(false);
-      audioChunksRef.current = [];
-      mediaRecorderRef.current = null;
-      abortControllerRef.current = null;
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-      // Cleanup WebSocket and return connection to pool
+      // Cleanup WebSocket
       if (useWebSocket && wsRef.current) {
-        try {
-          // Clear keepalive
-          if (keepAliveIntervalRef.current) {
-            clearInterval(keepAliveIntervalRef.current);
-            keepAliveIntervalRef.current = null;
-          }
-          
-          // Return connection to pool if it's still good
-          if (wsRef.current.readyState === WebSocket.OPEN) {
-            connectionManagerRef.current?.returnConnection(wsRef.current);
-          } else {
-            wsRef.current.close();
-          }
-        } catch {}
-        
+        try { if (wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close(); } catch {}
         wsRef.current = null;
         wsReadyRef.current = false;
         wsFinalResolverRef.current = null;
@@ -515,37 +415,20 @@ export function useTranscription(
 
   const cancel = useCallback(async () => {
     // Cancel only affects active recordings; it does not send audio to the API
-    if (!recording && !mediaRecorderRef.current && !audioContextRef.current && !streamRef.current) {
-      // Also abort any in-flight processing if present
-      if (abortControllerRef.current) {
-        try { abortControllerRef.current.abort(); } catch {}
-        abortControllerRef.current = null;
-      }
+    if (!recording && !audioContextRef.current && !streamRef.current) {
       return;
     }
 
     try {
-      // Stop MediaRecorder without using the captured audio
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        const stopPromise = new Promise<void>((resolve) => {
-          const mr = mediaRecorderRef.current;
-          if (mr) {
-            mr.onstop = () => resolve();
-          } else {
-            resolve();
-          }
-        });
-        mediaRecorderRef.current.stop();
-        await stopPromise;
-      }
-
-      // Clean up AudioContext
+      // Disconnect audio and stop mic
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
+      sourceNodeRef.current = null;
+      workletNodeRef.current = null;
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
-
-      // Stop capturing audio completely
       if (streamRef.current) {
         try {
           streamRef.current.getTracks().forEach((track) => track.stop());
@@ -553,19 +436,10 @@ export function useTranscription(
         streamRef.current = null;
         setReady(false);
       }
-
-      // Discard any accumulated audio chunks (scrap the audio)
-      audioChunksRef.current = [];
-      // Abort any in-flight processing (if cancel is invoked during processing)
-      if (abortControllerRef.current) {
-        try { abortControllerRef.current.abort(); } catch {}
-        abortControllerRef.current = null;
-      }
     } finally {
       // Ensure UI reflects cancellation immediately
       setRecording(false);
       setProcessing(false);
-      mediaRecorderRef.current = null;
       if (audioContextRef.current) {
         try { audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
@@ -582,7 +456,5 @@ export function useTranscription(
     start,
     stop,
     cancel,
-    connectionManager: connectionManagerRef.current,
-    connectionStatus: () => connectionManagerRef.current?.getStatus(),
   };
 }

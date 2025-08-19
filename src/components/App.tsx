@@ -199,9 +199,9 @@ const App: React.FC = () => {
     autoEnumerateDevices: true,
     autoInitStream: false,
     requestLabelPermissionForEnumeration: false,
-    useWebSocket: true, // Enable WebSocket by default
-    wsChunkMs: 500, // Use 500ms chunks for optimal API usage
-    realTimeUpdates: true, // Enable real-time transcription updates
+    useWebSocket: true,
+    wsChunkMs: 500,
+    realTimeUpdates: true,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -506,17 +506,6 @@ const App: React.FC = () => {
         return;
       }
       
-      // Warm WebSocket connection on hotkey press
-      try {
-        if (latestTransRef.current.connectionManager && !latestTransRef.current.recording) {
-          await latestTransRef.current.connectionManager.getConnection();
-          pushTrace('Connection warmed');
-        }
-      } catch (error) {
-        console.warn('[App] Failed to warm connection:', error);
-        pushTrace(`Connection warm failed: ${error}`);
-      }
-      
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
@@ -663,7 +652,7 @@ const App: React.FC = () => {
             Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
           </p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
-          <p>WebSocket Status: {JSON.stringify(trans.connectionStatus?.() || 'N/A')}</p>
+          <p>WebSocket Status: N/A</p>
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>
             <ul style={{ listStyle: "none", padding: 0 }}>

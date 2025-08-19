@@ -115,14 +115,14 @@ export default {
             sessionMeta = {
               model: msg.model || "whisper-large-v3-turbo",
               language: msg.language || "en",
-              mime: msg.mime || "audio/webm;codecs=opus"
+              // PCM-first protocol (lean): default to 16kHz mono PCM16LE
+              format: msg.format || "pcm16le",
+              sampleRate: Number(msg.sampleRate) || 16000,
+              channels: Number(msg.channels) || 1,
+              bits: Number(msg.bits) || 16,
             };
             console.log(`[${sessionId}] Session started:`, sessionMeta);
             sendJson({ type: "ready" });
-            break;
-
-          case "ping":
-            sendJson({ type: "pong" });
             break;
 
           case "end":
@@ -162,13 +162,6 @@ export default {
 
         audioChunks.push(chunk);
         console.log(`[${sessionId}] Received audio: ${chunk.byteLength} bytes (total: ${receivedBytes})`);
-        
-        // Debug first chunk to see if it looks like WebM
-        if (audioChunks.length === 1) {
-          const firstBytes = chunk.slice(0, 8);
-          const hex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
-          console.log(`[${sessionId}] First audio chunk header (hex): ${hex}`);
-        }
         return;
       }
 
@@ -202,29 +195,56 @@ export default {
 
       console.log(`[${sessionId}] Finalizing transcription: ${audioChunks.length} chunks`);
 
-      // Combine audio chunks
+      // Combine audio chunks (raw PCM16LE expected)
       const totalBytes = audioChunks.reduce((sum, arr) => sum + arr.byteLength, 0);
-      const merged = new Uint8Array(totalBytes);
+      const mergedPcm = new Uint8Array(totalBytes);
       let offset = 0;
       for (const arr of audioChunks) {
-        merged.set(arr, offset);
+        mergedPcm.set(arr, offset);
         offset += arr.byteLength;
       }
 
-      // Debug: Check if this looks like valid WebM data
-      const firstBytes = merged.slice(0, 8);
-      const firstBytesHex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      console.log(`[${sessionId}] First 8 bytes (hex): ${firstBytesHex}`);
-      
-      // WebM files should start with specific bytes
-      const isValidWebM = firstBytes[0] === 0x1A && firstBytes[1] === 0x45 && firstBytes[2] === 0xDF && firstBytes[3] === 0xA3;
-      console.log(`[${sessionId}] Looks like valid WebM: ${isValidWebM}`);
+      // Build WAV from PCM when using pcm16le format (lean path)
+      if ((sessionMeta.format || "pcm16le").toLowerCase() !== "pcm16le") {
+        console.warn(`[${sessionId}] Unsupported audio format: ${sessionMeta.format}`);
+        return { success: false, error: `Unsupported format: ${sessionMeta.format}` };
+      }
+
+      const wavBytes = new Uint8Array(44 + mergedPcm.byteLength);
+      // Write 44-byte WAV header
+      const dv = new DataView(wavBytes.buffer);
+      const channels = sessionMeta.channels || 1;
+      const sampleRate = sessionMeta.sampleRate || 16000;
+      const bitsPerSample = sessionMeta.bits || 16;
+      const blockAlign = channels * (bitsPerSample >> 3);
+      const byteRate = sampleRate * blockAlign;
+
+      // RIFF header
+      writeAscii(dv, 0, "RIFF");
+      dv.setUint32(4, 36 + mergedPcm.byteLength, true);
+      writeAscii(dv, 8, "WAVE");
+      // fmt chunk
+      writeAscii(dv, 12, "fmt ");
+      dv.setUint32(16, 16, true); // Subchunk1Size
+      dv.setUint16(20, 1, true);  // AudioFormat = PCM
+      dv.setUint16(22, channels, true);
+      dv.setUint32(24, sampleRate, true);
+      dv.setUint32(28, byteRate, true);
+      dv.setUint16(32, blockAlign, true);
+      dv.setUint16(34, bitsPerSample, true);
+      // data chunk
+      writeAscii(dv, 36, "data");
+      dv.setUint32(40, mergedPcm.byteLength, true);
+
+      // Copy PCM payload
+      wavBytes.set(mergedPcm, 44);
+
+      function writeAscii(view, offset, str) {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      }
 
       // Create form data for Groq
-      const filename = sessionMeta.mime?.includes("webm") ? "audio.webm" : "audio.bin";
-      const file = new File([merged], filename, { 
-        type: sessionMeta.mime || "application/octet-stream" 
-      });
+      const file = new File([wavBytes], "audio.wav", { type: "audio/wav" });
 
       const form = new FormData();
       form.append("file", file);
@@ -234,8 +254,8 @@ export default {
       form.append("temperature", "0");
 
       // Send to AI Gateway → Groq
-      console.log(`[${sessionId}] Sending to AI Gateway: ${totalBytes} bytes, ${audioChunks.length} chunks, mime: ${sessionMeta.mime}`);
-      console.log(`[${sessionId}] File info: name=${filename}, size=${file.size}, type=${file.type}`);
+      console.log(`[${sessionId}] Sending to AI Gateway: ${totalBytes} bytes (PCM), chunks=${audioChunks.length}`);
+      console.log(`[${sessionId}] File info: name=audio.wav, size=${file.size}, type=${file.type}`);
       const response = await fetch(AI_GATEWAY_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
