@@ -1272,7 +1272,6 @@ app.whenReady().then(async () => {
     const connect = [
       "connect-src 'self'",
       "https://api.sonicflow.app",
-      "wss://api.sonicflow.app",
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
       "https://*.supabase.co",

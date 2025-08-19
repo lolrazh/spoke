@@ -194,14 +194,11 @@ const App: React.FC = () => {
     })();
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
-  // Only open mic during dictation with WebSocket enabled
+  // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
     autoInitStream: false,
     requestLabelPermissionForEnumeration: false,
-    useWebSocket: true,
-    wsFrameBatchMs: 100,
-    realTimeUpdates: true,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -489,12 +486,11 @@ const App: React.FC = () => {
 
     const HOLD_DURATION_MS = 110;
 
-    const handleFunctionKeyDown = async () => {
+    const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }
-      
       // Add processing guard
       if (latestTransRef.current.processing) {
         if (window.notifications?.send) {
@@ -505,7 +501,6 @@ const App: React.FC = () => {
       if (latestTransRef.current.recording) {
         return;
       }
-      
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
@@ -652,7 +647,6 @@ const App: React.FC = () => {
             Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
           </p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
-          <p>WebSocket Status: N/A</p>
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>
             <ul style={{ listStyle: "none", padding: 0 }}>
