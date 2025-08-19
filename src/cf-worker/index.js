@@ -13,6 +13,9 @@ const corsHeaders = {
 const AI_GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions";
 const MAX_AUDIO_BYTES = 15 * 1024 * 1024; // 15 MB safety cap
 
+// Debug storage for last WAV
+let __lastWav = null;
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
@@ -40,6 +43,20 @@ export default {
       });
       return new Response(req.method === "HEAD" ? null : body, {
         headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    // Debug endpoint to download last WAV file for validation
+    if (req.method === "GET" && pathname === "/debug/last-wav") {
+      if (!__lastWav) {
+        return new Response("no wav yet", { status: 404 });
+      }
+      return new Response(__lastWav, {
+        headers: { 
+          "Content-Type": "audio/wav", 
+          "Content-Disposition": "inline; filename=last.wav",
+          ...corsHeaders
+        }
       });
     }
 
@@ -72,6 +89,7 @@ async function handleWebSocketTranscription(req, env, ctx) {
 
     // Helper functions
     const sendJson = (obj) => {
+      if (closed) return;
       try { 
         server.send(JSON.stringify(obj)); 
       } catch (e) {
@@ -235,61 +253,80 @@ async function finalizeTranscription(sessionId, sessionMeta, audioChunks, env) {
         return { success: false, error: `Unsupported format: ${sessionMeta.format}` };
       }
 
-      // Build WAV buffer with improved reliability
-      const wav = new Uint8Array(44 + mergedPcm.byteLength);
-      const dv = new DataView(wav.buffer);
+      // Build WAV with explicit little-endian (fixes endianness issues)
+      // Ensure proper alignment by copying to a new buffer if needed
+      let pcmSamples;
+      if (mergedPcm.byteOffset % 2 === 0) {
+        // Already aligned, can use directly
+        pcmSamples = new Int16Array(mergedPcm.buffer, mergedPcm.byteOffset, mergedPcm.byteLength / 2);
+      } else {
+        // Not aligned, need to copy to aligned buffer
+        const alignedBuffer = new ArrayBuffer(mergedPcm.byteLength);
+        new Uint8Array(alignedBuffer).set(mergedPcm);
+        pcmSamples = new Int16Array(alignedBuffer);
+      }
+      
+      const wavBuffer = new ArrayBuffer(44 + pcmSamples.length * 2);
+      const dv = new DataView(wavBuffer);
+
       const channels = sessionMeta.channels || 1;
       const sampleRate = sessionMeta.sampleRate || 16000;
-      const bits = sessionMeta.bits || 16;
-      const bytesPerSample = bits >> 3;
-      const blockAlign = channels * bytesPerSample;
+      const bitsPerSample = sessionMeta.bits || 16;
+      const blockAlign = channels * (bitsPerSample >> 3);
       const byteRate = sampleRate * blockAlign;
 
       // Helper function for ASCII writing
-      function wascii(off, s) {
-        for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i));
+      function writeAscii(view, offset, str) {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
       }
 
-      // RIFF header
-      wascii(0, "RIFF");
-      dv.setUint32(4, 36 + mergedPcm.byteLength, true);
-      wascii(8, "WAVE");
-      // fmt chunk
-      wascii(12, "fmt ");
-      dv.setUint32(16, 16, true);
-      dv.setUint16(20, 1, true);              // PCM
+      // RIFF/WAVE header (little-endian)
+      writeAscii(dv, 0, "RIFF");
+      dv.setUint32(4, 36 + pcmSamples.length * 2, true);
+      writeAscii(dv, 8, "WAVE");
+      writeAscii(dv, 12, "fmt ");
+      dv.setUint32(16, 16, true); // PCM fmt chunk size
+      dv.setUint16(20, 1, true);  // PCM
       dv.setUint16(22, channels, true);
       dv.setUint32(24, sampleRate, true);
       dv.setUint32(28, byteRate, true);
       dv.setUint16(32, blockAlign, true);
-      dv.setUint16(34, bits, true);
-      // data chunk
-      wascii(36, "data");
-      dv.setUint32(40, mergedPcm.byteLength, true);
+      dv.setUint16(34, bitsPerSample, true);
+      writeAscii(dv, 36, "data");
+      dv.setUint32(40, pcmSamples.length * 2, true);
 
-      // Copy PCM payload
-      wav.set(mergedPcm, 44);
+      // Write PCM samples with explicit little-endian
+      for (let i = 0; i < pcmSamples.length; i++) {
+        dv.setInt16(44 + i * 2, pcmSamples[i], true);
+      }
+
+      const wavBytes = new Uint8Array(wavBuffer);
 
       // Debug logging - show ASCII header and sizes
-      const headerAscii = String.fromCharCode(...wav.slice(0, 12));
-      const headerHex = Array.from(wav.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const headerAscii = String.fromCharCode(...wavBytes.slice(0, 12));
+      const headerHex = Array.from(wavBytes.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const first64Hex = Array.from(wavBytes.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' ');
       console.log(`[${sessionId}] WAV header ASCII: "${headerAscii}"`);
       console.log(`[${sessionId}] WAV header hex: ${headerHex}`);
-      console.log(`[${sessionId}] WAV sizes: data=${mergedPcm.byteLength}, total=${wav.byteLength}, sr=${sampleRate}, ch=${channels}, bits=${bits}`);
+      console.log(`[${sessionId}] First 64 bytes hex: ${first64Hex}`);
+      console.log(`[${sessionId}] WAV sizes: data=${pcmSamples.length * 2}, total=${wavBytes.byteLength}, sr=${sampleRate}, ch=${channels}, bits=${bitsPerSample}`);
+      console.log(`[${sessionId}] PCM samples count: ${pcmSamples.length}, original bytes: ${mergedPcm.byteLength}`);
+      
+      // Store for debug endpoint
+      __lastWav = wavBytes;
 
-      // Make a Blob from the *buffer*, and append with a filename
-      const blob = new Blob([wav.buffer], { type: "audio/wav" });
-
+      // Create FormData with explicit Blob + filename for reliable multipart
       const form = new FormData();
-      form.append("file", blob, "audio.wav");
-      form.append("model", sessionMeta.model);
+      const wavBlob = new Blob([wavBytes.buffer], { type: "audio/wav" });
+      form.append("file", wavBlob, "audio.wav");
+      form.append("model", sessionMeta.model || "whisper-large-v3-turbo");
       if (sessionMeta.language) form.append("language", sessionMeta.language);
       form.append("response_format", "json");
-      form.append("temperature", 0); // number, not string
+      // Remove temperature - not needed for transcriptions and can cause validation errors
 
       // Send to AI Gateway → Groq
       console.log(`[${sessionId}] Sending to AI Gateway: ${totalBytes} bytes (PCM), chunks=${audioChunks.length}`);
-      console.log(`[${sessionId}] File info: name=audio.wav, size=${blob.size}, type=${blob.type}`);
+      console.log(`[${sessionId}] File info: name=audio.wav, size=${wavBlob.size}, type=${wavBlob.type}`);
       const response = await fetch(AI_GATEWAY_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
