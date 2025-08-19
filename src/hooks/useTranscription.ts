@@ -392,6 +392,45 @@ export function useTranscription(
         streamRef.current = null;
         setReady(false);
       }
+
+      // Combine all recorded chunks into a single blob
+      const audioBlob = new Blob(audioChunksRef.current, { 
+        type: 'audio/webm;codecs=opus' 
+      });
+
+      console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.webm");
+      // Cloudflare Workers AI whisper-large-v3-turbo expects native params
+      formData.append("language", "en"); // or detect per session
+      formData.append(
+        "initial_prompt",
+        "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite",
+      );
+      formData.append("task", "transcribe"); // or "translate"
+      formData.append("vad_filter", "true");
+
+      // Wire an abort signal so cancel() can abort processing in-flight
+      abortControllerRef.current = new AbortController();
+      const response = await fetch("https://api.sonicflow.app/transcribe", {
+        method: "POST",
+        body: formData,
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${errorText}`);
+      }
+
+      const result = await response.json();
+      setText(result.text);
+      if (result.text) {
+        // Send transcript to main process for context menu copy functionality
+        window.transcript?.update(result.text);
+        window.clipboard.insertText(result.text);
+      }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
       setError((err as Error).message);
