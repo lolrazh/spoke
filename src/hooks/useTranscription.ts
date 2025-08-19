@@ -291,15 +291,18 @@ export function useTranscription(
 
       const formData = new FormData();
       formData.append("file", audioBlob, "audio.webm");
-      formData.append("model", "whisper-large-v3-turbo");
-      formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
-      formData.append("language", "en");
-      formData.append("response_format", "json");
-      formData.append("temperature", "0");
+      // Cloudflare Workers AI whisper-large-v3-turbo expects native params
+      formData.append("language", "en"); // or detect per session
+      formData.append(
+        "initial_prompt",
+        "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite",
+      );
+      formData.append("task", "transcribe"); // or "translate"
+      formData.append("vad_filter", "true");
 
       // Wire an abort signal so cancel() can abort processing in-flight
       abortControllerRef.current = new AbortController();
-      const response = await fetch("https://api.sonicflow.app", {
+      const response = await fetch("https://api.sonicflow.app/transcribe", {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal,
