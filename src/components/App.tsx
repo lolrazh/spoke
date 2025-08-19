@@ -200,7 +200,7 @@ const App: React.FC = () => {
     autoInitStream: false,
     requestLabelPermissionForEnumeration: false,
     useWebSocket: true,
-    wsChunkMs: 500,
+    wsFrameBatchMs: 100,
     realTimeUpdates: true,
   });
   // Width for notification (measured offscreen)

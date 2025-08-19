@@ -105,7 +105,7 @@ export default {
               closeSocket(1011, "transcription failed");
             }
           });
-      }, 200); // 200ms quiet window
+      }, 150); // 150ms quiet window
     };
 
     // Handle messages

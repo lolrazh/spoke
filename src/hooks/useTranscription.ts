@@ -35,8 +35,8 @@ export interface UseTranscriptionOptions {
   useWebSocket?: boolean;
   /** WebSocket URL for transcription (default: wss://api.sonicflow.app/transcribe). */
   wsUrl?: string;
-  /** Chunk interval in ms for MediaRecorder when WS is enabled (default: 500). */
-  wsChunkMs?: number;
+  /** PCM batching window in ms for WS messages (default: 100). */
+  wsFrameBatchMs?: number;
   /** Enable real-time transcription updates (default: true). */
   realTimeUpdates?: boolean;
 }
@@ -50,7 +50,7 @@ export function useTranscription(
     requestLabelPermissionForEnumeration = false,
     useWebSocket = false,
     wsUrl = "wss://api.sonicflow.app/transcribe",
-    wsChunkMs = 500,
+    wsFrameBatchMs = 100,
     realTimeUpdates = true,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
@@ -315,9 +315,9 @@ export function useTranscription(
           sourceNodeRef.current = source;
           workletNodeRef.current = worklet;
 
-          // Batch PCM frames to roughly wsChunkMs
+          // Batch PCM frames to roughly wsFrameBatchMs
           const bytesPerSecond = 16000 * 1 * (16 / 8);
-          pcmTargetBytesRef.current = Math.max(1, Math.floor(bytesPerSecond * (wsChunkMs / 1000)));
+          pcmTargetBytesRef.current = Math.max(1, Math.floor(bytesPerSecond * (wsFrameBatchMs / 1000)));
 
           const flushIfReady = () => {
             if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -352,7 +352,7 @@ export function useTranscription(
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording, processing, openStreamForSelectedDevice, useWebSocket, wsUrl, wsChunkMs]);
+  }, [recording, processing, openStreamForSelectedDevice, useWebSocket, wsUrl, wsFrameBatchMs]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
@@ -392,6 +392,8 @@ export function useTranscription(
         }
       }
 
+      // Client-side drain: give ~150ms to flush any remaining frames
+      await new Promise((r) => setTimeout(r, 150));
       // Send end and wait for final
       if (useWebSocket && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const finalPromise = new Promise<void>((resolve) => { wsFinalResolverRef.current = resolve; });
