@@ -255,6 +255,11 @@ export default {
       // Copy PCM payload
       wavBytes.set(mergedPcm, 44);
 
+      // Debug header and sizes
+      const headerHex = Array.from(wavBytes.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      console.log(`[${sessionId}] WAV header (first 12 bytes): ${headerHex}`);
+      console.log(`[${sessionId}] WAV sizes: data=${mergedPcm.byteLength}, total=${wavBytes.byteLength}, sr=${sampleRate}, ch=${channels}, bits=${bitsPerSample}`);
+
       function writeAscii(view, offset, str) {
         for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
       }

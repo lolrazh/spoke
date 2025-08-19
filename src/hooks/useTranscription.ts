@@ -362,24 +362,10 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      // Disconnect AudioWorklet and close context
-      try { sourceNodeRef.current?.disconnect(); } catch {}
-      try { workletNodeRef.current?.disconnect(); } catch {}
-      sourceNodeRef.current = null;
-      workletNodeRef.current = null;
-      if (audioContextRef.current) {
-        try { await audioContextRef.current.close(); } catch {}
-        audioContextRef.current = null;
-      }
+      // Client-side drain: give ~150ms to flush any remaining frames while graph is still alive
+      await new Promise((r) => setTimeout(r, 150));
 
-      // Stop mic completely
-      if (streamRef.current) {
-        try { streamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
-        streamRef.current = null;
-        setReady(false);
-      }
-
-      // Flush any pending PCM data
+      // Flush any pending PCM data before signaling end
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsReadyRef.current) {
         const total = pcmBytesRef.current;
         if (total > 0) {
@@ -392,13 +378,26 @@ export function useTranscription(
         }
       }
 
-      // Client-side drain: give ~150ms to flush any remaining frames
-      await new Promise((r) => setTimeout(r, 150));
       // Send end and wait for final
       if (useWebSocket && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const finalPromise = new Promise<void>((resolve) => { wsFinalResolverRef.current = resolve; });
         try { wsRef.current.send(JSON.stringify({ type: 'end' })); } catch {}
         await finalPromise;
+      }
+
+      // Now tear down audio graph and stop mic
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
+      sourceNodeRef.current = null;
+      workletNodeRef.current = null;
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+      if (streamRef.current) {
+        try { streamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+        streamRef.current = null;
+        setReady(false);
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
