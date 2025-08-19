@@ -1,4 +1,6 @@
-import type { Context, Hono } from "hono";
+import { OpenAPIRoute, Bool, Str } from "chanfana";
+import { z } from "zod";
+import type { Context } from "hono";
 import { Buffer } from "node:buffer";
 
 const CORS: Record<string, string> = {
@@ -9,19 +11,61 @@ const CORS: Record<string, string> = {
   "Cache-Control": "no-store",
 };
 
-export function registerTranscribe(app: Hono<{ Bindings: Env }>) {
-  // Preflight
-  app.options("/transcribe", () => new Response(null, { status: 204, headers: CORS }));
+export class Transcribe extends OpenAPIRoute {
+  schema = {
+    tags: ["Transcription"],
+    summary: "Transcribe audio with Workers AI (Whisper v3 Turbo)",
+    request: {
+      body: {
+        content: {
+          "multipart/form-data": {
+            schema: z.object({
+              file: z.any().optional(),
+              audio: Str({ required: false, description: "Base64 audio string" }),
+              language: Str({ required: false, description: "Language code, e.g., en" }),
+              initial_prompt: Str({ required: false }),
+              task: Str({ required: false, example: "transcribe" }),
+              vad_filter: Bool({ required: false }),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      "200": {
+        description: "Transcription result",
+        content: {
+          "application/json": {
+            schema: z.object({
+              text: Str({ description: "Final transcript" }),
+              vtt: Str({ required: false, description: "WebVTT captions" }),
+              segments: z
+                .array(
+                  z.object({
+                    start: z.number().optional(),
+                    end: z.number().optional(),
+                    text: Str(),
+                  }),
+                )
+                .optional(),
+              info: z.any().optional(),
+            }),
+          },
+        },
+      },
+    },
+  };
 
-  // Transcribe endpoint
-  app.post("/transcribe", async (c) => {
+  async handle(c: Context) {
+    if (c.req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+
     const colo = (c.req.raw as any)?.cf?.colo ?? "unknown";
     const reqId = (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
     const t0 = Date.now();
+
     try {
       const form = await c.req.raw.formData();
 
-      // Accept Blob in "file" or base64 string in "audio"
       let base64: string | null = null;
       const file = form.get("file");
       if (file && file instanceof Blob) {
@@ -32,7 +76,7 @@ export function registerTranscribe(app: Hono<{ Bindings: Env }>) {
         if (typeof audio === "string" && audio.trim()) base64 = audio.trim();
       }
 
-      if (!base64) return withJson(c, { error: "No audio provided" }, 400);
+      if (!base64) return withJson({ error: "No audio provided" }, 400);
 
       const language = str(form.get("language"));
       const initial_prompt = str(form.get("initial_prompt"));
@@ -63,12 +107,12 @@ export function registerTranscribe(app: Hono<{ Bindings: Env }>) {
         { status: 200, headers },
       );
     } catch (err: any) {
-      return withJson(c, { error: err?.message || String(err) }, 500);
+      return withJson({ error: err?.message || String(err) }, 500);
     }
-  });
+  }
 }
 
-function withJson(c: Context, body: unknown, status = 200): Response {
+function withJson(body: unknown, status = 200): Response {
   const headers = new Headers(CORS);
   headers.set("Content-Type", "application/json");
   return new Response(JSON.stringify(body), { status, headers });
@@ -85,4 +129,3 @@ function bool(x: FormDataEntryValue | null): boolean | undefined {
   if (v === "0" || v === "false") return false;
   return undefined;
 }
-
