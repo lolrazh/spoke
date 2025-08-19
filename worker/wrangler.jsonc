@@ -7,6 +7,8 @@
 	"name": "sonic-flow",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-08-19",
+	"compatibility_flags": ["nodejs_compat"],
+	"ai": { "binding": "AI" },
 	"observability": {
 		"enabled": true
 	}
