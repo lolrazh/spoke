@@ -230,6 +230,13 @@ export function useTranscription(
       const dest = audioContextRef.current.createMediaStreamDestination();
       source.connect(dest);
 
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] AudioContext", {
+          requestedRate: 16000,
+          actualRate: audioContextRef.current.sampleRate,
+        });
+      }
+
       // Use MediaRecorder with pre-downsampled 16kHz stream
       mediaRecorderRef.current = new MediaRecorder(dest.stream, {
         mimeType: 'audio/webm;codecs=opus',
@@ -288,7 +295,12 @@ export function useTranscription(
         type: 'audio/webm;codecs=opus' 
       });
 
-      console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] Audio blob", {
+          sizeKB: Number((audioBlob.size / 1024).toFixed(2)),
+          type: audioBlob.type,
+        });
+      }
 
       const formData = new FormData();
       formData.append("file", audioBlob, "audio.webm");
@@ -303,7 +315,12 @@ export function useTranscription(
 
       // Wire an abort signal so cancel() can abort processing in-flight
       abortControllerRef.current = new AbortController();
-      const response = await fetch(getTranscribeUrl(), {
+      const endpoint = getTranscribeUrl();
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] Transcribe request", { url: endpoint });
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal,
@@ -311,7 +328,29 @@ export function useTranscription(
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (window.devFlags?.devConsoleLogs) {
+          console.error("[SF] Transcribe response error", {
+            status: response.status,
+            body: errorText?.slice(0, 200),
+          });
+        }
         throw new Error(`Server error: ${errorText}`);
+      }
+
+      // Dev console timings from Server-Timing
+      if (window.devFlags?.devConsoleLogs) {
+        const st = response.headers.get("Server-Timing") || "";
+        const reqId = response.headers.get("X-Request-Id") || undefined;
+        const colo = response.headers.get("CF-Worker-Colo") || undefined;
+        const parsed: Record<string, number> = {};
+        st.split(",").forEach((seg) => {
+          const [namePart, durPart] = seg.trim().split(";");
+          const name = namePart?.trim();
+          const durMatch = /dur=(.*)/.exec(durPart || "");
+          const dur = durMatch ? Number(durMatch[1]) : undefined;
+          if (name && typeof dur === "number" && !Number.isNaN(dur)) parsed[name] = dur;
+        });
+        console.info("[SF] Transcribe timings", { url: endpoint, reqId, colo, ...parsed });
       }
 
       const result = await response.json();
@@ -320,12 +359,20 @@ export function useTranscription(
         // Send transcript to main process for context menu copy functionality
         window.transcript?.update(result.text);
         window.clipboard.insertText(result.text);
+
+        if (window.devFlags?.devConsoleLogs) {
+          const preview = typeof result.text === "string" ? result.text.slice(0, 120) : "";
+          console.info("[SF] Transcribe result", { chars: result.text?.length ?? 0, preview });
+        }
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
+        if (window.devFlags?.devConsoleLogs) {
+          console.error("[SF] Transcribe exception", { error: (err as Error)?.message });
+        }
         setError((err as Error).message);
       }
     } finally {

@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("devFlags", {
     process.env.SKIP_ONBOARDING === "1" ||
     process.env.SKIP_ONBOARDING === "true" ||
     false,
+  devConsoleLogs:
+    process.env.SF_DEVTOOLS === "1" || process.env.SF_DEVTOOLS === "true" || false,
 });
 
 contextBridge.exposeInMainWorld("contextMenu", {
