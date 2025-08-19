@@ -301,8 +301,8 @@ export function useTranscription(
             bits: 16,
           }));
 
-          // Prepare AudioWorklet at 48kHz input; processor downsamples to 16kHz
-          audioContextRef.current = new AudioContext({ sampleRate: 48000 });
+          // Prepare AudioWorklet; processor handles resampling to 16kHz automatically
+          audioContextRef.current = new AudioContext();
           await audioContextRef.current.audioWorklet.addModule('/audioworklet-processor.js');
           const source = audioContextRef.current.createMediaStreamSource(streamRef.current!);
           const worklet = new AudioWorkletNode(audioContextRef.current, 'capture-processor');
@@ -362,21 +362,10 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      // Client-side drain: give ~150ms to flush any remaining frames while graph is still alive
+      // Client-side drain: give ~150ms to send any buffered complete frames
       await new Promise((r) => setTimeout(r, 150));
 
-      // Flush any pending PCM data before signaling end
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && wsReadyRef.current) {
-        const total = pcmBytesRef.current;
-        if (total > 0) {
-          const out = new Uint8Array(total);
-          let off = 0;
-          for (const c of pcmAggregateRef.current) { out.set(c, off); off += c.length; }
-          pcmAggregateRef.current = [];
-          pcmBytesRef.current = 0;
-          try { wsRef.current.send(out.buffer); } catch {}
-        }
-      }
+      // With the new worklet, we only receive complete frames, so no partial flushing needed
 
       // Send end and wait for final
       if (useWebSocket && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

@@ -105,7 +105,7 @@ export default {
               closeSocket(1011, "transcription failed");
             }
           });
-      }, 150); // 150ms quiet window
+      }, 450); // 450ms quiet window for better reliability
     };
 
     // Handle messages
@@ -264,11 +264,11 @@ export default {
         for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
       }
 
-      // Create form data for Groq
-      const file = new File([wavBytes], "audio.wav", { type: "audio/wav" });
+      // Create form data for Groq using Blob with explicit filename (more reliable in Workers)
+      const wavBlob = new Blob([wavBytes.buffer], { type: "audio/wav" });
 
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", wavBlob, "audio.wav");
       form.append("model", sessionMeta.model);
       form.append("language", sessionMeta.language);
       form.append("response_format", "json");
