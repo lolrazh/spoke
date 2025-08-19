@@ -28,16 +28,17 @@ export default {
     if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket" && 
         pathname.startsWith("/transcribe")) {
       
-      return this.handleWebSocketTranscription(req, env);
+      return handleWebSocketTranscription(req, env, ctx);
     }
 
     // Health check endpoint
-    if (req.method === "GET" && pathname === "/health") {
-      return new Response(JSON.stringify({ 
+    if ((req.method === "GET" || req.method === "HEAD") && pathname === "/health") {
+      const body = JSON.stringify({ 
         status: "ok", 
         timestamp: Date.now(),
         service: "sonic-flow-websocket" 
-      }), {
+      });
+      return new Response(req.method === "HEAD" ? null : body, {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
@@ -50,9 +51,11 @@ export default {
       status: 404,
       headers: { "Content-Type": "application/json", ...corsHeaders }
     });
-  },
+  }
+};
 
-  async handleWebSocketTranscription(req, env) {
+// Standalone function to handle WebSocket transcription
+async function handleWebSocketTranscription(req, env, ctx) {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const sessionId = crypto.randomUUID();
@@ -93,10 +96,10 @@ export default {
 
     // Helper to schedule finalize after a quiet period (drain window)
     const scheduleFinalize = () => {
-      try { if (finalizeTimer) clearTimeout(finalizeTimer); } catch {}
+      if (finalizeTimer) clearTimeout(finalizeTimer);
       finalizeTimer = setTimeout(() => {
-        this.finalizeTranscription(sessionId, sessionMeta, audioChunks, env)
-          .then((result) => {
+        const p = finalizeTranscription(sessionId, sessionMeta, audioChunks, env)
+          .then(result => {
             if (result.success) {
               sendJson({ type: "final", text: result.text });
               closeSocket(1000, "completed");
@@ -104,8 +107,13 @@ export default {
               sendJson({ type: "error", message: result.error });
               closeSocket(1011, "transcription failed");
             }
+          })
+          .catch(err => {
+            sendJson({ type: "error", message: String(err?.message || err) });
+            closeSocket(1011, "finalize error");
           });
-      }, 450); // 450ms quiet window for better reliability
+        ctx.waitUntil(p);
+      }, 0); // finalize immediately after 'end'
     };
 
     // Handle messages
@@ -197,9 +205,10 @@ export default {
     });
 
     return new Response(null, { status: 101, webSocket: client });
-  },
+}
 
-  async finalizeTranscription(sessionId, sessionMeta, audioChunks, env) {
+// Standalone function to finalize transcription
+async function finalizeTranscription(sessionId, sessionMeta, audioChunks, env) {
     try {
       if (!sessionMeta) {
         return { success: false, error: "Session not initialized" };
@@ -226,57 +235,61 @@ export default {
         return { success: false, error: `Unsupported format: ${sessionMeta.format}` };
       }
 
-      const wavBytes = new Uint8Array(44 + mergedPcm.byteLength);
-      // Write 44-byte WAV header
-      const dv = new DataView(wavBytes.buffer);
+      // Build WAV buffer with improved reliability
+      const wav = new Uint8Array(44 + mergedPcm.byteLength);
+      const dv = new DataView(wav.buffer);
       const channels = sessionMeta.channels || 1;
       const sampleRate = sessionMeta.sampleRate || 16000;
-      const bitsPerSample = sessionMeta.bits || 16;
-      const blockAlign = channels * (bitsPerSample >> 3);
+      const bits = sessionMeta.bits || 16;
+      const bytesPerSample = bits >> 3;
+      const blockAlign = channels * bytesPerSample;
       const byteRate = sampleRate * blockAlign;
 
+      // Helper function for ASCII writing
+      function wascii(off, s) {
+        for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i));
+      }
+
       // RIFF header
-      writeAscii(dv, 0, "RIFF");
+      wascii(0, "RIFF");
       dv.setUint32(4, 36 + mergedPcm.byteLength, true);
-      writeAscii(dv, 8, "WAVE");
+      wascii(8, "WAVE");
       // fmt chunk
-      writeAscii(dv, 12, "fmt ");
-      dv.setUint32(16, 16, true); // Subchunk1Size
-      dv.setUint16(20, 1, true);  // AudioFormat = PCM
+      wascii(12, "fmt ");
+      dv.setUint32(16, 16, true);
+      dv.setUint16(20, 1, true);              // PCM
       dv.setUint16(22, channels, true);
       dv.setUint32(24, sampleRate, true);
       dv.setUint32(28, byteRate, true);
       dv.setUint16(32, blockAlign, true);
-      dv.setUint16(34, bitsPerSample, true);
+      dv.setUint16(34, bits, true);
       // data chunk
-      writeAscii(dv, 36, "data");
+      wascii(36, "data");
       dv.setUint32(40, mergedPcm.byteLength, true);
 
       // Copy PCM payload
-      wavBytes.set(mergedPcm, 44);
+      wav.set(mergedPcm, 44);
 
-      // Debug header and sizes
-      const headerHex = Array.from(wavBytes.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      console.log(`[${sessionId}] WAV header (first 12 bytes): ${headerHex}`);
-      console.log(`[${sessionId}] WAV sizes: data=${mergedPcm.byteLength}, total=${wavBytes.byteLength}, sr=${sampleRate}, ch=${channels}, bits=${bitsPerSample}`);
+      // Debug logging - show ASCII header and sizes
+      const headerAscii = String.fromCharCode(...wav.slice(0, 12));
+      const headerHex = Array.from(wav.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      console.log(`[${sessionId}] WAV header ASCII: "${headerAscii}"`);
+      console.log(`[${sessionId}] WAV header hex: ${headerHex}`);
+      console.log(`[${sessionId}] WAV sizes: data=${mergedPcm.byteLength}, total=${wav.byteLength}, sr=${sampleRate}, ch=${channels}, bits=${bits}`);
 
-      function writeAscii(view, offset, str) {
-        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-      }
-
-      // Create form data for Groq using Blob with explicit filename (more reliable in Workers)
-      const wavBlob = new Blob([wavBytes.buffer], { type: "audio/wav" });
+      // Make a Blob from the *buffer*, and append with a filename
+      const blob = new Blob([wav.buffer], { type: "audio/wav" });
 
       const form = new FormData();
-      form.append("file", wavBlob, "audio.wav");
+      form.append("file", blob, "audio.wav");
       form.append("model", sessionMeta.model);
-      form.append("language", sessionMeta.language);
+      if (sessionMeta.language) form.append("language", sessionMeta.language);
       form.append("response_format", "json");
-      form.append("temperature", "0");
+      form.append("temperature", 0); // number, not string
 
       // Send to AI Gateway → Groq
       console.log(`[${sessionId}] Sending to AI Gateway: ${totalBytes} bytes (PCM), chunks=${audioChunks.length}`);
-      console.log(`[${sessionId}] File info: name=audio.wav, size=${file.size}, type=${file.type}`);
+      console.log(`[${sessionId}] File info: name=audio.wav, size=${blob.size}, type=${blob.type}`);
       const response = await fetch(AI_GATEWAY_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
@@ -294,7 +307,7 @@ export default {
           console.error(`[${sessionId}] Parsed error:`, errorObj);
         } catch {}
         
-        return { success: false, error: `Transcription failed: ${response.status}` };
+        return { success: false, error: `Transcription failed: ${response.status} - ${errorText}` };
       }
 
       const result = await response.json();
@@ -308,4 +321,3 @@ export default {
       return { success: false, error: error.message || "Unknown error" };
     }
   }
-};

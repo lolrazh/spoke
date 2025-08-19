@@ -281,6 +281,10 @@ export function useTranscription(
       wsRef.current.addEventListener('close', () => { 
         wsClosedRef.current = true;
         console.log('[useTranscription] WebSocket connection closed');
+        // Clean up WebSocket references when connection closes
+        wsRef.current = null;
+        wsReadyRef.current = false;
+        wsFinalResolverRef.current = null;
       });
       wsRef.current.addEventListener('error', (error) => { 
         console.error('[useTranscription] WebSocket error:', error);
@@ -393,12 +397,17 @@ export function useTranscription(
       setError((err as Error).message);
     } finally {
       setProcessing(false);
-      // Cleanup WebSocket
+      // Let the server close the WebSocket after sending final response
+      // Add safety timeout in case server doesn't respond
       if (useWebSocket && wsRef.current) {
-        try { if (wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close(); } catch {}
-        wsRef.current = null;
-        wsReadyRef.current = false;
-        wsFinalResolverRef.current = null;
+        setTimeout(() => {
+          try {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.close(1000, "client-timeout-after-final");
+            }
+          } catch {}
+          // Note: cleanup happens in close event handler
+        }, 8000); // 8 second safety timeout
       }
     }
   }, [recording, useWebSocket]);
