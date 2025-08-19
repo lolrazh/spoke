@@ -64,6 +64,8 @@ export default {
     const audioChunks = [];
     let receivedBytes = 0;
     let closed = false;
+    let endRequested = false;
+    let finalizeTimer = null;
 
     // Helper functions
     const sendJson = (obj) => {
@@ -88,6 +90,23 @@ export default {
       sessionId,
       timestamp: Date.now() 
     });
+
+    // Helper to schedule finalize after a quiet period (drain window)
+    const scheduleFinalize = () => {
+      try { if (finalizeTimer) clearTimeout(finalizeTimer); } catch {}
+      finalizeTimer = setTimeout(() => {
+        this.finalizeTranscription(sessionId, sessionMeta, audioChunks, env)
+          .then((result) => {
+            if (result.success) {
+              sendJson({ type: "final", text: result.text });
+              closeSocket(1000, "completed");
+            } else {
+              sendJson({ type: "error", message: result.error });
+              closeSocket(1011, "transcription failed");
+            }
+          });
+      }, 200); // 200ms quiet window
+    };
 
     // Handle messages
     server.addEventListener("message", (event) => {
@@ -126,16 +145,8 @@ export default {
             break;
 
           case "end":
-            this.finalizeTranscription(sessionId, sessionMeta, audioChunks, env)
-              .then((result) => {
-                if (result.success) {
-                  sendJson({ type: "final", text: result.text });
-                  closeSocket(1000, "completed");
-                } else {
-                  sendJson({ type: "error", message: result.error });
-                  closeSocket(1011, "transcription failed");
-                }
-              });
+            endRequested = true;
+            scheduleFinalize();
             break;
 
           default:
@@ -162,6 +173,10 @@ export default {
 
         audioChunks.push(chunk);
         console.log(`[${sessionId}] Received audio: ${chunk.byteLength} bytes (total: ${receivedBytes})`);
+        if (endRequested) {
+          // If end already requested, extend drain window
+          scheduleFinalize();
+        }
         return;
       }
 
@@ -172,6 +187,7 @@ export default {
 
     server.addEventListener("close", () => {
       closed = true;
+      try { if (finalizeTimer) clearTimeout(finalizeTimer); } catch {}
       console.log(`[${sessionId}] Connection closed`);
     });
 

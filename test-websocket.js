@@ -9,7 +9,7 @@
 
 const WebSocket = require('ws');
 
-const WS_URL = process.argv[2] || 'ws://localhost:8787/websocket';
+const WS_URL = process.argv[2] || 'ws://localhost:8787/transcribe';
 const TIMEOUT = 10000; // 10 seconds
 
 console.log(`🧪 Testing WebSocket connection to: ${WS_URL}\n`);
@@ -45,17 +45,17 @@ async function testWebSocketConnection() {
           initComplete = true;
           console.log('✅ Connection acknowledged successfully');
           
-          // Test ping/pong
-          console.log('📤 Testing ping/pong...');
-          ws.send(JSON.stringify({ type: 'ping' }));
-          
           // Test start transcription
           setTimeout(() => {
             console.log('📤 Testing transcription start...');
             ws.send(JSON.stringify({
               type: 'start',
               model: 'whisper-large-v3-turbo',
-              language: 'en'
+              language: 'en',
+              format: 'pcm16le',
+              sampleRate: 16000,
+              channels: 1,
+              bits: 16,
             }));
           }, 1000);
           
@@ -69,10 +69,6 @@ async function testWebSocketConnection() {
               ws.close();
             }, 2000);
           }, 3000);
-        }
-
-        if (message.type === 'pong') {
-          console.log('✅ Ping/pong working');
         }
 
       } catch (error) {
