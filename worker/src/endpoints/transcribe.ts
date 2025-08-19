@@ -3,14 +3,6 @@ import { z } from "zod";
 import type { Context } from "hono";
 import { Buffer } from "node:buffer";
 
-const CORS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS, GET, HEAD",
-  "Access-Control-Allow-Headers": "Content-Type, X-Mode",
-  "Access-Control-Expose-Headers": "Server-Timing, CF-Worker-Colo, X-Request-Id",
-  "Cache-Control": "no-store",
-};
-
 export class Transcribe extends OpenAPIRoute {
   schema = {
     tags: ["Transcription"],
@@ -57,12 +49,6 @@ export class Transcribe extends OpenAPIRoute {
   };
 
   async handle(c: Context) {
-    if (c.req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-
-    const colo = (c.req.raw as any)?.cf?.colo ?? "unknown";
-    const reqId = (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-    const t0 = Date.now();
-
     try {
       const form = await c.req.raw.formData();
 
@@ -76,46 +62,33 @@ export class Transcribe extends OpenAPIRoute {
         if (typeof audio === "string" && audio.trim()) base64 = audio.trim();
       }
 
-      if (!base64) return withJson({ error: "No audio provided" }, 400);
+      if (!base64) return c.json({ error: "No audio provided" }, 422);
 
       const language = str(form.get("language"));
       const initial_prompt = str(form.get("initial_prompt"));
       const task = str(form.get("task")) || "transcribe";
       const vad_filter = bool(form.get("vad_filter"));
 
-      const aiOptions: any = {};
-      if ((c.env as any).AI_GATEWAY_ID) aiOptions.gateway = { id: (c.env as any).AI_GATEWAY_ID };
+      const gateway = (c.env as any)?.AI_GATEWAY_ID
+        ? { id: (c.env as any).AI_GATEWAY_ID }
+        : undefined;
 
       const result: any = await (c.env as any).AI.run(
         "@cf/openai/whisper-large-v3-turbo",
         { audio: base64, task, language, vad_filter, initial_prompt },
-        aiOptions.gateway ? aiOptions : undefined,
+        gateway ? { gateway } : undefined,
       );
 
-      const headers = new Headers(CORS);
-      headers.set("CF-Worker-Colo", colo);
-      headers.set("X-Request-Id", reqId);
-      headers.set("Server-Timing", `ai_total;dur=${Date.now() - t0}`);
-
-      return new Response(
-        JSON.stringify({
-          text: result?.text ?? "",
-          vtt: result?.vtt ?? null,
-          segments: result?.segments ?? null,
-          info: result?.transcription_info ?? null,
-        }),
-        { status: 200, headers },
-      );
+      return c.json({
+        text: result?.text ?? "",
+        vtt: result?.vtt ?? null,
+        segments: result?.segments ?? null,
+        info: result?.transcription_info ?? null,
+      });
     } catch (err: any) {
-      return withJson({ error: err?.message || String(err) }, 500);
+      return c.json({ error: err?.message || String(err) }, 500);
     }
   }
-}
-
-function withJson(body: unknown, status = 200): Response {
-  const headers = new Headers(CORS);
-  headers.set("Content-Type", "application/json");
-  return new Response(JSON.stringify(body), { status, headers });
 }
 
 function str(x: FormDataEntryValue | null): string | undefined {
