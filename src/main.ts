@@ -12,6 +12,7 @@ import {
   dialog,
   systemPreferences,
 } from "electron";
+import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import process from "node:process";
 import { spawn, execFile, execSync } from "child_process";
@@ -33,6 +34,41 @@ import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems
 import type { ChildProcess } from "child_process";
 import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } from "./constants/display";
 import { logger } from "./utils/logger";
+
+// Initialize Sentry as early as possible in the main process
+Sentry.init({
+  // Use a single DSN variable for both main/renderer (Vite-injected)
+  dsn: (import.meta as any).env?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
+  // Default to 'prod' for packaged builds and 'dev' for development
+  environment: (import.meta as any).env?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
+  release: app.getVersion(),
+  beforeSend(event) {
+    try {
+      if (event.request?.url) {
+        try {
+          const u = new URL(event.request.url);
+          u.search = ""; // strip query params
+          event.request.url = u.toString();
+        } catch {}
+      }
+      if (event.request?.headers) {
+        const headers = event.request.headers as Record<string, string>;
+        for (const k of Object.keys(headers)) {
+          if (/authorization|api[-_]?key|token/i.test(k)) headers[k] = "[Filtered]";
+        }
+      }
+      if (event.breadcrumbs) {
+        event.breadcrumbs = event.breadcrumbs.map((b) => {
+          if (typeof b.message === "string") {
+            b.message = b.message.replace(/(supabase|apikey|token|authorization)=([^\s&]+)/gi, "$1=[Filtered]");
+          }
+          return b;
+        });
+      }
+    } catch {}
+    return event;
+  },
+});
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -1276,6 +1312,10 @@ app.whenReady().then(async () => {
       "https://cdn.jsdelivr.net",
       "https://*.supabase.co",
       "https://*.supabase.in",
+      // Sentry endpoints for error reporting
+      "https://*.sentry.io",
+      "https://*.ingest.sentry.io",
+      "https://*.ingest.us.sentry.io",
       "wss://*.supabase.co",
       "wss://*.supabase.in",
       "blob:",
@@ -1363,6 +1403,8 @@ app.whenReady().then(async () => {
     startFnListener();
     return { success: true };
   });
+
+  // (Removed) dev-only Sentry test hooks
 
   // Prepare the pill window and tray before onboarding completes
   ipcMain.handle("prepare-pill", () => {
@@ -2013,6 +2055,10 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  // Attempt to flush pending Sentry events before quitting (best-effort)
+  try {
+    void Sentry.close(2000);
+  } catch {}
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
@@ -2040,6 +2086,9 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
+  try {
+    void Sentry.close(2000);
+  } catch {}
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 

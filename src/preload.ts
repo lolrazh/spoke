@@ -134,6 +134,8 @@ contextBridge.exposeInMainWorld("electron", {
   getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
 });
 
+// (Removed) dev-only Sentry verification hooks
+
 // Auth bridge: receive deep link callback URLs
 contextBridge.exposeInMainWorld("auth", {
   onCallback: (cb: (payload: { url: string }) => void) => {
