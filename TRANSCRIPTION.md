@@ -1,848 +1,633 @@
-# Sonic Flow Transcription System
+# Sonic Flow Transcription Pipeline
 
-Comprehensive documentation for Sonic Flow's real-time audio transcription pipeline, from microphone input to text insertion.
+A comprehensive real-time audio transcription system built on Web Audio API, Cloudflare Workers AI, and optimized for push-to-talk dictation with sub-200ms latency.
 
 ## Table of Contents
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Audio Processing Pipeline](#audio-processing-pipeline)
-4. [Transcription Service Integration](#transcription-service-integration)
-5. [Text Insertion System](#text-insertion-system)
+1. [Overview & Architecture](#overview--architecture)
+2. [Audio Capture System](#audio-capture-system)
+3. [Real-Time Processing](#real-time-processing)
+4. [Device Management](#device-management)
+5. [Cloud Transcription](#cloud-transcription)
 6. [State Management](#state-management)
-7. [Device Management](#device-management)
-8. [Error Handling](#error-handling)
-9. [Performance Optimization](#performance-optimization)
-10. [Configuration](#configuration)
-11. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
-12. [API Reference](#api-reference)
+7. [Audio Feedback System](#audio-feedback-system)
+8. [Performance Optimization](#performance-optimization)
+9. [Error Handling & Recovery](#error-handling--recovery)
+10. [Implementation Guide](#implementation-guide)
 
 ---
 
-## Overview
+## Overview & Architecture
 
-Sonic Flow implements a **real-time audio transcription pipeline** that captures microphone input, encodes it using Opus WebM format via MediaRecorder, sends it to Whisper ASR, and automatically inserts the transcribed text at the cursor position. The system is optimized for low-latency push-to-talk dictation with high accuracy and efficient compression.
+### What is the Transcription Pipeline?
 
-### Key Features
-- **Opus WebM Encoding** - Efficient audio compression via MediaRecorder with 16kHz AudioContext
-- **Whisper Large v3 Turbo** - State-of-the-art ASR model via api.sonicflow.app
-- **Native Text Insertion** - Direct cursor positioning via accessibility APIs
-- **Optimized Audio Processing** - Browser-native encoding with minimal CPU overhead
-- **Device Management** - Hot-pluggable microphone selection and enumeration
-- **Graceful Error Handling** - Comprehensive fallbacks and user feedback
+Think of the transcription pipeline like a **smart listening assistant** that:
+- **Listens** to your microphone when you hold down a key
+- **Cleans up** the audio to make it crystal clear
+- **Sends** the audio to a super-smart AI brain in the cloud
+- **Gets back** perfectly typed text
+- **Inserts** that text wherever you were typing
 
-### Core Components
-- **useTranscription Hook** (`src/hooks/useTranscription.ts`) - Main transcription orchestrator
-- **MediaRecorder API** - Browser-native audio recording with Opus WebM encoding
-- **AudioContext** - 16kHz sample rate optimization for Whisper compatibility
-- **Native Helper** - macOS accessibility integration for text insertion
-- **Audio Feedback System** (`src/utils/audioFeedback.ts`) - Start/stop sound cues
+### High-Level Flow
 
----
+```
+🎙️ Microphone → 🔧 Audio Processing → ☁️ Cloud AI → 📝 Text Insertion
+```
 
-## Architecture
+The entire process is designed to feel instantaneous, taking less than 200 milliseconds from when you stop talking to when text appears on your screen.
 
-### System Flow Diagram
+### Core Architecture
+
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Microphone    │───▶│   AudioContext   │───▶│  MediaRecorder  │
-│   (48kHz)       │    │   (16kHz)        │    │  (Opus WebM)    │
+│   Microphone    │    │   Web Audio API  │    │   MediaRecorder │
+│   Selection &   │───▶│   Real-time      │───▶│   Opus Encoding │
+│   Permissions   │    │   Processing     │    │   & Upload      │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-                                                         │
-                                                         ▼
+         │                        │                       │
+         ▼                        ▼                       ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Text Editor   │◀───│   Native Helper  │◀───│   Sonic Flow    │
-│   (Cursor)      │    │   (AX APIs)      │    │   API (Whisper) │
+│   Device        │    │   AudioContext   │    │   Cloudflare    │
+│   Enumeration   │    │   48kHz → 16kHz  │    │   Workers AI    │
+│   & Selection   │    │   Downsampling   │    │   Whisper v3    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
+                                │                       │
+                                ▼                       ▼
+                    ┌──────────────────┐    ┌─────────────────┐
+                    │   AudioWorklet   │    │   Text Output   │
+                    │   PCM Processing │    │   & Insertion   │
+                    └──────────────────┘    └─────────────────┘
 ```
 
-### Process Architecture
-- **Main Process** - IPC coordination, native helper management, device enumeration
-- **Renderer Process** - UI state, MediaRecorder-based audio recording, transcription requests
-- **MediaRecorder API** - Browser-native audio encoding with Opus compression
-- **Native Helper Binary** - macOS accessibility integration and text insertion
+### Key Components
+
+- **useTranscription Hook** (`src/hooks/useTranscription.ts`) - Main transcription logic and state management
+- **AudioWorklet Processor** (`public/audioworklet-processor.js`) - Real-time audio processing
+- **Worker Endpoint** (`worker/src/endpoints/transcribe.ts`) - Cloud transcription service
+- **Audio Configuration** (`src/config/audio.ts`) - Centralized audio constants
+- **Audio Feedback** (`src/utils/audioFeedback.ts`) - User feedback sounds
 
 ---
 
-## Audio Processing Pipeline
+## Audio Capture System
 
-### 1. Microphone Capture
+### How Audio Capture Works (ELI5)
 
-#### Configuration
-```typescript
-// src/config/audio.ts
-export const MICROPHONE_PREFERRED_RATE = 48000; // Microphone capture rate
-```
+Imagine your computer's microphone is like a **digital ear**. When you speak, it "hears" thousands of tiny sound measurements every second (48,000 per second!). The capture system:
 
-#### MediaStream Setup
-```typescript
-// src/hooks/useTranscription.ts:148-155
-const constraints: MediaStreamConstraints = {
-  audio: {
-    sampleRate: MICROPHONE_PREFERRED_RATE,
-    channelCount: 1,
-    echoCancellation: false,
-    noiseSuppression: false,
-  },
-};
-```
+1. **Asks permission** to use your microphone
+2. **Finds all available** microphones on your system
+3. **Connects to your chosen** microphone
+4. **Starts listening** when you press the hotkey
+5. **Stops listening** when you release the hotkey
 
-**Key Design Decisions:**
-- **48kHz Capture**: Matches native hardware rate, prevents browser resampling artifacts
-- **Mono Channel**: Reduces processing overhead, sufficient for speech
-- **No Processing**: Disabled echo cancellation/noise suppression for minimal latency
+### Device Discovery and Management
 
-### 2. AudioContext Downsampling
+The system automatically discovers all your audio input devices:
 
-#### 16kHz AudioContext
-```typescript
-// src/hooks/useTranscription.ts:225-228
-audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-const dest = audioContextRef.current.createMediaStreamDestination();
-source.connect(dest);
-```
+#### Automatic Device Enumeration
+- **Scans** for all microphones when the app starts
+- **Updates** the list when you plug/unplug devices
+- **Remembers** your preferred microphone choice
+- **Sends** device info to the main process for the system tray menu
 
-**Benefits:**
-- **Browser-Native Downsampling**: Leverages optimized browser resampling algorithms
-- **16kHz Output**: Matches Whisper model requirements without custom processing
-- **Minimal CPU**: Eliminates custom AudioWorklet processing overhead
+#### Smart Permission Handling
+- **Avoids** requesting microphone permission until you actually start dictating
+- **Only asks** for device labels when explicitly needed
+- **Immediately releases** temporary streams to prevent persistent recording indicators
+- **Gracefully handles** permission denials with helpful error messages
 
-### 3. Opus WebM Encoding
+### Microphone Stream Initialization
 
-#### MediaRecorder Configuration
-```typescript
-// src/hooks/useTranscription.ts:231-234
-mediaRecorderRef.current = new MediaRecorder(dest.stream, {
-  mimeType: 'audio/webm;codecs=opus',
-  audioBitsPerSecond: 16000, // Optimized for speech
-});
-```
+#### Stream Configuration
+The system uses optimized audio constraints:
+- **Sample Rate**: 48,000 Hz (matches most hardware)
+- **Channels**: 1 (mono - perfect for speech)
+- **Echo Cancellation**: Disabled (preserves speech quality)
+- **Noise Suppression**: Disabled (lets AI handle it better)
 
-#### Opus Compression Benefits
-- **Superior Compression**: ~3-5x smaller files than PCM WAV
-- **Speech Optimized**: Opus codec designed for voice communication
-- **Browser Native**: No custom encoding implementation required
-- **Low Latency**: Real-time encoding during recording
+#### Device Selection
+- **Default Device**: Uses system default if none specified
+- **Specific Device**: Targets exact microphone by device ID
+- **Auto-Switching**: Handles device changes gracefully
+- **Fallback**: Falls back to system default if selected device unavailable
 
-#### Data Collection
-```typescript
-// src/hooks/useTranscription.ts:236-242
-mediaRecorderRef.current.ondataavailable = (event) => {
-  if (event.data.size > 0) {
-    audioChunksRef.current.push(event.data);
-  }
-};
+### Recording State Management
 
-mediaRecorderRef.current.start(100); // Collect data every 100ms
-```
+The recording system uses a simple but robust state machine:
+
+#### States
+- **Ready**: Microphone connected, waiting for input
+- **Recording**: Actively capturing audio
+- **Processing**: Sending audio to AI and waiting for response
+- **Error**: Something went wrong, showing user-friendly message
+
+#### State Transitions
+- **Idle → Recording**: User presses hotkey, starts capture
+- **Recording → Processing**: User releases hotkey, sends to AI
+- **Processing → Idle**: AI responds, text inserted
+- **Any → Error**: Problem occurs, shows error message
 
 ---
 
-## Transcription Service Integration
+## Real-Time Processing
 
-### API Endpoint Configuration
-```typescript
-// src/hooks/useTranscription.ts:360-363
-const response = await fetch("https://api.sonicflow.app", {
-  method: "POST",
-  body: formData,
-});
-```
+### Audio Processing Pipeline (ELI5)
 
-### Request Format
-```typescript
-// FormData payload structure - src/hooks/useTranscription.ts:290-295
-const audioBlob = new Blob(audioChunksRef.current, { 
-  type: 'audio/webm;codecs=opus' 
-});
+Your microphone captures sound at **48,000 samples per second**, but the AI brain works best with **16,000 samples per second**. Think of this like taking a 4K video and converting it to 1080p - we need to make it smaller while keeping the important details.
 
-formData.append("file", audioBlob, "audio.webm");
-formData.append("model", "whisper-large-v3-turbo");
-formData.append("language", "en");
-formData.append("response_format", "json");
-formData.append("temperature", "0");
-```
+### AudioContext Setup
 
-### Model Specifications
-- **Whisper Large v3 Turbo**: OpenAI's latest ASR model optimized for speed
-- **Language**: English (configurable for future multilingual support)
-- **Temperature 0**: Deterministic output for consistency
-- **JSON Response**: Structured response with transcribed text
+#### Dual-Rate Architecture
+The system runs two audio contexts simultaneously:
+- **Capture Context**: 48kHz for high-quality microphone input
+- **Processing Context**: 16kHz for AI-optimized output
 
-### Response Processing
-```typescript
-// src/hooks/useTranscription.ts:370-376
-const result = await response.json();
-setText(result.text);
-if (result.text) {
-  window.transcript?.update(result.text);  // Context menu functionality
-  window.clipboard.insertText(result.text); // Automatic insertion
-}
-```
+#### Real-Time Downsampling
+- **Creates** a 16kHz AudioContext for immediate downsampling
+- **Connects** microphone source to destination stream
+- **Maintains** audio quality while reducing file size
+- **Enables** real-time processing without post-processing delays
 
----
+### MediaRecorder Integration
 
-## Text Insertion System
+#### Optimized Recording Settings
+- **Format**: WebM with Opus codec (excellent compression)
+- **Bitrate**: 16,000 bps (optimized for speech)
+- **Collection**: 100ms chunks for responsive processing
+- **Quality**: Preserves speech clarity while minimizing file size
 
-### Native Helper Integration
+#### Chunk Management
+- **Collects** audio data every 100 milliseconds
+- **Stores** chunks in memory during recording
+- **Combines** all chunks when recording stops
+- **Sends** single blob to transcription service
 
-#### Binary Location
-```typescript
-// src/main.ts:1123-1125
-const helperPath = app.isPackaged
-  ? path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-  : path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
-```
+### AudioWorklet Processing
 
-#### Paste-and-Verify Process
-```typescript
-// src/main.ts:1141-1142
-const proc = spawnHelper(helperPath, ["--paste-and-verify", payloadText], false);
-```
+The AudioWorklet processor handles the most performance-critical audio operations:
 
-### Accessibility Integration
+#### Real-Time Decimation
+- **Processes** 48kHz input samples
+- **Takes** every 3rd sample (48kHz ÷ 3 = 16kHz)
+- **Converts** Float32 samples to 16-bit integers
+- **Buffers** 960 samples per chunk (60ms at 16kHz)
 
-#### Permission Requirements
-- **Accessibility Access**: Required for cursor positioning and text insertion
-- **Input Monitoring**: Required for hotkey detection (future feature)
-- **Microphone Access**: Required for audio capture
+#### Sample Format Conversion
+- **Clamps** samples to prevent audio clipping
+- **Converts** floating-point to signed 16-bit integers
+- **Handles** both positive and negative audio values
+- **Maintains** audio fidelity during conversion
 
-#### Text Insertion Flow
-```
-1. Store original clipboard content
-2. Copy transcribed text to clipboard
-3. Execute native helper with --paste-and-verify
-4. Helper uses AX APIs to:
-   - Find focused text field
-   - Insert text at cursor position
-   - Verify insertion success
-5. Restore original clipboard content
-```
-
-### Clipboard Management
-```typescript
-// src/main.ts:1114-1121
-const originalClipboardText = clipboard.readText();
-const payloadText = text.trimStart(); // Remove leading whitespace
-clipboard.writeText(payloadText);
-// ... paste operation ...
-// Restore original clipboard (handled by native helper)
-```
-
----
-
-## State Management
-
-### Hook State Structure
-```typescript
-// src/hooks/useTranscription.ts:6-14
-export interface UseTranscriptionReturn {
-  recording: boolean;     // Currently capturing audio
-  processing: boolean;    // Sending to API / waiting for response
-  ready: boolean;         // Microphone stream available
-  text: string;          // Last transcription result
-  error: string | null;   // Error message for user display
-  start: () => void;     // Begin recording
-  stop: () => void;      // End recording and transcribe
-}
-```
-
-### State Transitions
-
-#### Recording Flow
-```
-IDLE → start() → RECORDING → stop() → PROCESSING → IDLE
-  │                                        │
-  └── error handling ←─────────────────────┘
-```
-
-#### State Guards
-```typescript
-// src/hooks/useTranscription.ts:210-215
-if (recording) return;        // Prevent double-start
-if (processing) return;       // Prevent start during processing
-if (!streamRef.current) {     // Ensure stream available
-  const ok = await openStreamForSelectedDevice();
-  if (!ok) return;
-}
-```
-
-### Device State Management
-```typescript
-// State for device management
-const [selectedMicId, setSelectedMicId] = useState<string>("default");
-const [ready, setReady] = useState(false);
-
-// Auto-initialization options
-const {
-  autoEnumerateDevices = true,    // Discover devices on mount
-  autoInitStream = true,          // Open stream automatically
-  requestLabelPermissionForEnumeration = false, // Avoid permission prompt
-} = options ?? {};
-```
+#### Chunk Streaming
+- **Fills** 960-sample buffers efficiently
+- **Sends** completed buffers to main thread
+- **Flushes** partial buffers for short recordings
+- **Maintains** consistent 60ms chunk timing
 
 ---
 
 ## Device Management
 
-### Device Enumeration
+### Device Discovery Flow
 
-#### Automatic Discovery
-```typescript
-// src/hooks/useTranscription.ts:66-99
-const enumerateAndSendDevices = useCallback(async () => {
-  // Optional permission request for device labels
-  if (requestLabelPermissionForEnumeration) {
-    const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    tempStream.getTracks().forEach((track) => track.stop());
-  }
+The device management system handles the complexity of audio hardware:
 
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const audioInputs = devices
-    .filter((device) => device.kind === "audioinput")
-    .map((device) => ({
-      id: device.deviceId,
-      label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
-    }));
+#### Automatic Enumeration
+```
+App Start → Enumerate Devices → Send to Main Process → Update Tray Menu
+     ↓              ↓                    ↓                     ↓
+   Ready    →  Device List    →    IPC Message    →    User Selection
 ```
 
-#### Hot-plug Support
-```typescript
-// src/hooks/useTranscription.ts:108-127
-navigator.mediaDevices.addEventListener("devicechange", handleDeviceChange);
+#### Device Change Handling
+- **Listens** for device plug/unplug events
+- **Re-enumerates** devices after changes
+- **Updates** main process with new device list
+- **Handles** disappearing selected devices gracefully
 
-const handleDeviceChange = () => {
-  console.log("[useTranscription] Device change detected, re-enumerating...");
-  setTimeout(() => {
-    enumerateAndSendDevices();
-  }, 200); // Small delay for system settling
-};
-```
+### Device Selection Synchronization
 
-### IPC Device Communication
+#### Two-Way Communication
+- **Renderer to Main**: Reports available devices
+- **Main to Renderer**: Reports user's device selection
+- **Automatic Updates**: Changes propagate immediately
+- **Persistent Memory**: Remembers chosen device across restarts
 
-#### Main Process Integration
-```typescript
-// Device updates sent to main process for tray menu
-setTimeout(() => {
-  if (window.mic?.updateDevices) {
-    window.mic.updateDevices(audioInputs, selectedMicId);
-  }
-}, 500); // Delay ensures tray is ready
-```
+#### Selection Logic
+- **Default Behavior**: Uses system default microphone
+- **Explicit Selection**: Targets specific device by ID
+- **Fallback Strategy**: Reverts to default if selected device unavailable
+- **Error Recovery**: Provides clear feedback when devices fail
 
-#### Selection Changes
-```typescript
-// Listen for device selection from main process
-const unsubscribe = window.mic.onSelectedChanged(({ id }) => {
-  console.log("[useTranscription] Microphone selection changed to:", id);
-  setSelectedMicId(id);
-});
-```
+### Permission Management
 
-### Stream Management
+#### Progressive Permission Requests
+- **Initial Setup**: Enumerates without labels (no permission needed)
+- **On-Demand**: Requests mic access only when starting transcription
+- **Label Access**: Gets device names only when explicitly needed
+- **Immediate Cleanup**: Stops temporary streams to avoid persistent recording
 
-#### Device-Specific Constraints
-```typescript
-// src/hooks/useTranscription.ts:169-173
-if (selectedMicId !== "default") {
-  (constraints.audio as MediaTrackConstraints).deviceId = {
-    exact: selectedMicId,
-  };
-}
-```
-
-#### Stream Lifecycle
-```typescript
-// Automatic stream reinitialization on device change
-useEffect(() => {
-  const initializeMicrophone = async () => {
-    // Stop existing stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setReady(false);
-    }
-    
-    await openStreamForSelectedDevice();
-  };
-  
-  initializeMicrophone();
-}, [selectedMicId]); // Reinitialize when device changes
-```
+#### Permission States
+- **Unknown**: Haven't asked yet
+- **Granted**: User allowed access
+- **Denied**: User blocked access
+- **Error**: Technical problem occurred
 
 ---
 
-## Error Handling
+## Cloud Transcription
 
-### Error Categories
+### Cloudflare Workers AI Service
 
-#### 1. Microphone Access Errors
-```typescript
-// src/hooks/useTranscription.ts:186-193
-catch (err) {
-  console.error("[useTranscription] Failed to open microphone stream:", err);
-  setError(
-    "Microphone permissions denied or selected microphone not available."
-  );
-  setReady(false);
-  return false;
-}
-```
+The transcription happens on Cloudflare's global edge network using state-of-the-art AI:
 
-#### 2. Audio Processing Errors
-```typescript
-// src/hooks/useTranscription.ts:303-306
-catch (err) {
-  setError((err as Error).message);
-  setRecording(false);
-}
-```
+#### Whisper Large v3 Turbo
+- **Model**: OpenAI's latest and fastest speech-to-text AI
+- **Language**: Optimized for English (configurable)
+- **Speed**: Sub-second processing for most audio clips
+- **Accuracy**: Industry-leading transcription quality
 
-#### 3. API Communication Errors
-```typescript
-// src/hooks/useTranscription.ts:365-368
-if (!response.ok) {
-  const errorText = await response.text();
-  throw new Error(`Server error: ${errorText}`);
-}
-```
+#### Edge Computing Benefits
+- **Global**: Processes at the closest data center to you
+- **Fast**: Minimal network latency
+- **Reliable**: Built-in redundancy and failover
+- **Scalable**: Handles traffic spikes automatically
 
-#### 4. Text Insertion Errors
-```typescript
-// src/main.ts:1127-1136
-if (!fs.existsSync(helperPath)) {
-  console.error(`[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`);
-  mainWindow?.webContents.send(
-    "notify",
-    "Paste unavailable: binary missing. Copied to clipboard."
-  );
-  return { success: false, error: "Paste helper binary not found." };
-}
-```
+### API Communication
 
-### Error Recovery Strategies
+#### Request Format
+The system sends multipart form data:
+- **file**: WebM/Opus audio blob
+- **language**: "en" (English, configurable)
+- **initial_prompt**: Context hints for better accuracy
+- **task**: "transcribe" (vs. translate)
+- **vad_filter**: Voice activity detection for cleaner results
 
-#### Graceful Degradation
-1. **Microphone Unavailable**: Retry with different device or show error
-2. **API Failure**: Display error but maintain app functionality
-3. **Text Insertion Failure**: Fall back to clipboard copy
-4. **Permission Denied**: Guide user through permission setup
+#### Response Processing
+- **text**: Final transcript ready for insertion
+- **vtt**: WebVTT captions (not currently used)
+- **segments**: Timestamped word segments (not currently used)
+- **info**: Metadata about transcription process
 
-#### User Feedback
-```typescript
-// Error display in UI through state management
-const [error, setError] = useState<string | null>(null);
+### Quality Optimization
 
-// Notification system for non-blocking errors
-mainWindow?.webContents.send("notify", "Error message here");
-```
+#### Context Hints
+The system provides vocabulary hints to improve accuracy:
+- **Names**: "Sandheep Rajkumar, Sonic Flow"
+- **Tech Terms**: "Groq, Supabase, Gemini Flash Lite"
+- **Custom**: Expandable for user-specific vocabulary
+
+#### Audio Preprocessing
+- **Voice Activity Detection**: Removes silence and noise
+- **Format Optimization**: Opus codec ideal for speech
+- **Compression**: Reduces upload time without quality loss
+
+---
+
+## State Management
+
+### Hook-Based Architecture
+
+The transcription system uses React hooks for clean state management:
+
+#### State Variables
+- **recording**: Currently capturing audio
+- **processing**: Sending to AI and waiting for response
+- **ready**: Microphone connected and available
+- **text**: Latest transcription result
+- **error**: Current error message (if any)
+
+#### Control Methods
+- **start()**: Begin recording audio
+- **stop()**: End recording and send to AI
+- **cancel()**: Abort current operation
+- **Auto-management**: Handles device changes and errors
+
+### Configuration Options
+
+#### Hook Configuration
+- **autoEnumerateDevices**: Automatically scan for microphones
+- **autoInitStream**: Pre-connect to selected microphone
+- **requestLabelPermissionForEnumeration**: Ask for device names upfront
+
+#### Flexible Behavior
+- **Development**: More permissive for testing
+- **Production**: Conservative for user privacy
+- **Customizable**: Apps can adjust behavior as needed
+
+### Error State Handling
+
+#### User-Friendly Errors
+- **"Microphone permissions denied"**: Clear next steps
+- **"Selected microphone not available"**: Suggests alternatives
+- **"Network error"**: Explains temporary nature
+- **"Processing failed"**: Offers retry option
+
+#### Automatic Recovery
+- **Device switching**: Handles unplugged microphones
+- **Permission restoration**: Recovers from denied permissions
+- **Network resilience**: Retries failed requests
+- **State cleanup**: Always returns to consistent state
+
+---
+
+## Audio Feedback System
+
+### Why Audio Feedback Matters (ELI5)
+
+When you press a button on your phone, it makes a little click sound so you know you pressed it. Sonic Flow does the same thing - when you start or stop recording, it plays a subtle sound so you know the app heard you.
+
+### Feedback Sounds
+
+#### Toggle On Sound
+- **Timing**: Plays 25ms after recording starts
+- **Purpose**: Confirms recording has begun
+- **Volume**: 30% (subtle but noticeable)
+- **Preloading**: Ready instantly with no delay
+
+#### Toggle Off Sound
+- **Timing**: Plays 100ms after recording stops
+- **Purpose**: Confirms recording ended and processing started
+- **Volume**: 20% (slightly quieter)
+- **Feedback**: Signals that AI processing has begun
+
+### Smart Playback
+
+#### User Preferences
+- **Respects** system sound settings
+- **Honors** user's "Play Sounds" preference
+- **Stores** preference in localStorage
+- **Defaults** to enabled for best experience
+
+#### Performance Optimization
+- **Preloads** audio files to eliminate delays
+- **Prevents** overlapping sounds from rapid keypresses
+- **Handles** playback failures gracefully
+- **Uses** efficient HTMLAudioElement API
+
+### Sound File Management
+
+#### Asset Integration
+- **Vite Integration**: Sounds imported as URL assets
+- **Format**: WAV files for immediate playback
+- **Size**: Optimized for quick loading
+- **Quality**: Clear, professional feedback tones
 
 ---
 
 ## Performance Optimization
 
-### Audio Processing Optimizations
+### Latency Reduction Strategies
 
-#### MediaRecorder Efficiency
-- **Browser-Native Encoding**: Leverages optimized browser codecs for Opus compression
-- **Hardware Acceleration**: MediaRecorder can utilize hardware encoding when available
-- **Minimal CPU Overhead**: Eliminates custom AudioWorklet processing and manual downsampling
+#### Audio Path Optimization
+- **Direct Streaming**: AudioWorklet processes audio in real-time
+- **Minimal Buffering**: 60ms chunks for responsive feedback
+- **Efficient Encoding**: Opus codec optimized for speech
+- **Pre-downsampling**: 16kHz processing reduces upload time
 
-#### Memory Management
-```typescript
-// src/hooks/useTranscription.ts:221
-audioChunksRef.current = []; // Clear chunks on start
+#### Network Optimization
+- **Edge Computing**: Cloudflare's global network
+- **Request Compression**: Efficient form data encoding
+- **Parallel Processing**: Audio encoding while user is speaking
+- **Smart Timeouts**: Appropriate timeouts for different operations
 
-// src/hooks/useTranscription.ts:318
-audioChunksRef.current = []; // Clear chunks after processing
-```
+### Memory Management
 
-#### AudioContext Lifecycle
-```typescript
-// src/hooks/useTranscription.ts:271-274
-// Close AudioContext after recording to free resources
-if (audioContextRef.current) {
-  audioContextRef.current.close();
-  audioContextRef.current = null;
-}
-```
+#### Stream Cleanup
+- **Immediate Cleanup**: Stops tracks when recording ends
+- **Context Closure**: Properly closes AudioContext instances
+- **Reference Clearing**: Nullifies object references
+- **Memory Monitoring**: Prevents accumulation over time
 
-#### Stream Management
-```typescript
-// src/hooks/useTranscription.ts:277-281
-// Stop stream completely to turn off macOS mic indicator
-if (streamRef.current) {
-  streamRef.current.getTracks().forEach((track) => track.stop());
-  streamRef.current = null;
-  setReady(false);
-}
-```
+#### Buffer Management
+- **Fixed-Size Buffers**: 960-sample chunks prevent growth
+- **Automatic Flushing**: Clears buffers after processing
+- **Efficient Arrays**: Uses typed arrays for performance
+- **Garbage Collection**: Allows prompt memory reclamation
 
-### Network Optimizations
+### CPU Optimization
 
-#### Efficient Audio Encoding
-- **Opus WebM**: Modern codec with superior compression vs PCM (3-5x smaller files)
-- **16kHz Sample Rate**: Optimal for speech recognition while minimizing bandwidth
-- **24kbps Bitrate**: Speech-optimized bitrate providing excellent quality/size ratio
-- **Real-time Encoding**: Opus compression happens during recording, no post-processing delay
+#### AudioWorklet Benefits
+- **Separate Thread**: Doesn't block main UI thread
+- **Real-Time Priority**: OS gives high scheduling priority
+- **Efficient Processing**: Minimal per-sample overhead
+- **Hardware Acceleration**: Leverages audio hardware capabilities
 
-#### Request Optimization
-```typescript
-// Minimal API payload with optimal parameters
-formData.append("model", "whisper-large-v3-turbo"); // Fastest model
-formData.append("temperature", "0");                // Deterministic, faster
-```
-
-### UI Performance
-
-#### Simplified State Management
-- Removed audio level metering to eliminate constant state updates
-- MediaRecorder handles encoding asynchronously, reducing main thread load
-- React's automatic batching prevents excessive re-renders during device changes
+#### Efficient State Updates
+- **Batched Updates**: Reduces React re-renders
+- **Memoized Callbacks**: Prevents unnecessary function recreations
+- **Conditional Processing**: Only processes when needed
+- **Cleanup Scheduling**: Defers non-critical cleanup
 
 ---
 
-## Configuration
+## Error Handling & Recovery
 
-### Audio Configuration
-```typescript
-// src/config/audio.ts - Centralized audio constants
-export const MICROPHONE_PREFERRED_RATE = 48000;
-```
+### Robust Error Handling Strategy
 
-### Transcription Configuration
-```typescript
-// src/hooks/useTranscription.ts - Hook configuration options
-export interface UseTranscriptionOptions {
-  autoEnumerateDevices?: boolean;                    // Default: true
-  autoInitStream?: boolean;                          // Default: true
-  requestLabelPermissionForEnumeration?: boolean;    // Default: false
-}
-```
+#### Graceful Degradation
+- **Device Failures**: Falls back to system default
+- **Permission Denials**: Shows clear recovery instructions
+- **Network Issues**: Provides retry options
+- **Processing Errors**: Maintains app stability
 
-### MediaRecorder Configuration
-```typescript
-// src/hooks/useTranscription.ts - MediaRecorder setup
-{
-  mimeType: 'audio/webm;codecs=opus',    // Opus codec in WebM container
-  audioBitsPerSecond: 16000,             // 24kbps optimized for speech
-}
+#### User Communication
+- **Clear Messages**: Explains problems in plain language
+- **Action Items**: Tells users exactly what to do next
+- **Status Updates**: Shows progress during recovery
+- **Success Confirmation**: Confirms when issues are resolved
 
-// Data collection interval
-mediaRecorderRef.current.start(100);    // Collect chunks every 100ms
-```
+### Common Error Scenarios
 
+#### Microphone Issues
+- **Not Available**: Selected device unplugged or in use
+- **Permission Denied**: User blocked microphone access
+- **Hardware Failure**: Device malfunction or driver issues
+- **Format Unsupported**: Unusual device configurations
 
-### API Configuration
-```typescript
-// Whisper API parameters (src/hooks/useTranscription.ts:291-295)
-formData.append("file", audioBlob, "audio.webm");
-formData.append("model", "whisper-large-v3-turbo");
-formData.append("language", "en");
-formData.append("response_format", "json");
-formData.append("temperature", "0");
+#### Network Problems
+- **Connection Failed**: Internet connection issues
+- **Server Error**: Cloudflare Workers service problems
+- **Timeout**: Request took too long to complete
+- **Rate Limiting**: Too many requests in short time
 
-const API_ENDPOINT = "https://api.sonicflow.app";
-```
+#### Processing Failures
+- **Audio Format**: Unsupported or corrupted audio
+- **File Size**: Audio too large or too small
+- **AI Service**: Temporary service unavailability
+- **Response Parsing**: Malformed server response
 
----
+### Recovery Mechanisms
 
-## Debugging and Troubleshooting
+#### Automatic Recovery
+- **Device Re-scanning**: Detects when devices return
+- **Connection Retry**: Attempts reconnection after delays
+- **State Reset**: Returns to known good state
+- **Memory Cleanup**: Prevents resource leaks during errors
 
-### Debug Logging
-
-#### Console Logging Strategy
-```typescript
-// Structured logging throughout pipeline
-console.log("[useTranscription] Found audio input devices:", audioInputs);
-console.log("[useTranscription] Microphone selection changed to:", id);
-console.log("[useTranscription] Opening microphone stream with constraints:", constraints);
-console.debug('[audio-level]', { rms, peak, dbRms, dbPeak, smoothLevel });
-```
-
-#### IPC Debug Logging
-```typescript
-// src/main.ts:1690-1694
-console.log(
-  "[IPC] Received transcript update:",
-  text.slice(0, 50) + (text.length > 50 ? "..." : ""),
-);
-```
-
-### Common Issues and Solutions
-
-#### "Microphone permissions denied"
-**Cause**: Browser hasn't granted microphone access
-**Solution**: 
-```typescript
-// Check for permission grant in browser settings
-// Retry with getUserMedia() permission prompt
-```
-
-#### "Selected microphone not available"
-**Cause**: Device unplugged or changed
-**Solution**:
-```typescript
-// Device enumeration and fallback to default
-if (selectedMicId !== "default") {
-  // Try with exact device ID, fallback to default if fails
-}
-```
-
-#### "MediaRecorder not supported"
-**Cause**: Browser doesn't support MediaRecorder or Opus codec
-**Solution**: 
-```typescript
-// Check MediaRecorder and codec support
-if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-  // Fallback to alternative format or show error
-}
-```
-
-#### "Server error" during transcription
-**Cause**: API endpoint unavailable or audio format issues
-**Solution**:
-```typescript
-// Check Opus WebM blob creation and network connectivity
-// Validate MediaRecorder chunk accumulation
-console.log(`Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
-```
-
-#### "Native helper binary not found"
-**Cause**: Build process didn't copy helper or wrong path
-**Solution**:
-```typescript
-// Verify helper exists at expected path
-// Check build process and packaging configuration
-```
-
-### Performance Debugging
-
-#### Audio Processing Performance
-```typescript
-// Monitor MediaRecorder encoding performance
-mediaRecorderRef.current.onstart = () => {
-  console.log('[PERF] MediaRecorder encoding started');
-};
-
-mediaRecorderRef.current.ondataavailable = (event) => {
-  const chunkSize = event.data.size;
-  console.log(`[PERF] Opus chunk: ${(chunkSize / 1024).toFixed(2)} KB`);
-};
-```
-
-#### Memory Usage Monitoring
-```typescript
-// Monitor Opus blob chunk accumulation
-const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
-console.log(`Opus chunks: ${audioChunksRef.current.length}, Total size: ${(totalSize / 1024).toFixed(2)} KB`);
-```
-
-#### Network Request Timing
-```typescript
-// Add timing around fetch requests
-const startTime = performance.now();
-const response = await fetch("https://api.sonicflow.app", { /* ... */ });
-console.log(`Transcription request took: ${performance.now() - startTime}ms`);
-```
-
-### Testing and Validation
-
-#### Audio Pipeline Testing
-```bash
-# Test audio capture without transcription
-# Verify MediaRecorder and Opus encoding
-# Check AudioContext downsampling and stream routing
-```
-
-#### API Integration Testing
-```bash
-# Test with known good Opus WebM file
-# Verify FormData construction with audio.webm
-# Check response parsing and text extraction
-```
-
-#### Native Helper Testing
-```bash
-# Test helper binary directly
-./native/bin/Sonic\ Flow\ Helper.app/Contents/MacOS/Sonic\ Flow\ Helper --paste-and-verify "test text"
-
-# Check permissions
-./native/bin/Sonic\ Flow\ Helper.app/Contents/MacOS/Sonic\ Flow\ Helper --check-permissions
-```
+#### User-Initiated Recovery
+- **Manual Refresh**: Device enumeration button
+- **Permission Re-request**: Guides through permission flow
+- **Device Selection**: Easy switching to working device
+- **Settings Reset**: Factory defaults option
 
 ---
 
-## API Reference
+## Implementation Guide
 
-### useTranscription Hook
+### Getting Started with Transcription
 
-#### Interface
+#### Basic Usage
+The transcription system is designed to "just work" with minimal setup:
+
+- **Install Dependencies**: Web Audio API support (built into modern browsers)
+- **Initialize Hook**: Import and use `useTranscription`
+- **Handle State**: Monitor `recording`, `processing`, and `ready` states
+- **Manage Text**: Display and use the `text` result
+
+#### Hook Integration
 ```typescript
-export interface UseTranscriptionReturn {
-  // State
-  recording: boolean;           // Currently recording audio
-  processing: boolean;          // Awaiting transcription response
-  ready: boolean;              // Microphone stream available
-  text: string;                // Last transcription result
-  error: string | null;        // User-displayable error message
-  
-  // Actions
-  start: () => void;           // Begin audio recording
-  stop: () => void;            // End recording and start transcription
-}
-
-export interface UseTranscriptionOptions {
-  autoEnumerateDevices?: boolean;                    // Auto-discover devices
-  autoInitStream?: boolean;                          // Auto-open microphone
-  requestLabelPermissionForEnumeration?: boolean;    // Request mic for labels
-}
+const {
+  recording,    // Currently capturing audio
+  processing,   // Sending to AI
+  ready,       // Microphone available
+  text,        // Latest transcription
+  error,       // Any error message
+  start,       // Begin recording
+  stop,        // End recording and transcribe
+  cancel       // Abort operation
+} = useTranscription();
 ```
 
-#### Usage
+### Configuration Options
+
+#### Device Management
+- **Auto-enumerate**: Automatically find available microphones
+- **Auto-connect**: Pre-initialize microphone stream
+- **Permission Strategy**: When to request microphone access
+- **Label Access**: Whether to get device names immediately
+
+#### Audio Settings
+- **Sample Rates**: 48kHz capture, 16kHz processing
+- **Quality Settings**: Bitrate and compression preferences
+- **Buffer Sizes**: Chunk timing and memory usage
+- **Format Selection**: Codec and container choices
+
+### Integration Patterns
+
+#### State-Driven UI
 ```typescript
-const transcription = useTranscription({
-  autoEnumerateDevices: true,     // Discover devices on mount
-  autoInitStream: true,           // Open microphone stream
-  requestLabelPermissionForEnumeration: false, // Avoid permission prompt
-});
+// Recording indicator
+{recording && <RecordingIndicator />}
 
-// Recording flow
-const handleStart = () => transcription.start();
-const handleStop = () => transcription.stop();
+// Processing spinner
+{processing && <ProcessingSpinner />}
 
-// State monitoring
-if (transcription.error) {
-  // Display error to user
-}
-if (transcription.processing) {
-  // Show loading state
-}
-```
+// Error display
+{error && <ErrorMessage message={error} />}
 
-### MediaRecorder API Integration
-
-#### Opus WebM Configuration
-```typescript
-// MediaRecorder setup for optimal speech encoding
-{
-  mimeType: 'audio/webm;codecs=opus',
-  audioBitsPerSecond: 16000,
-}
+// Result text
+{text && <TranscriptionResult text={text} />}
 ```
 
 #### Event Handling
 ```typescript
-mediaRecorderRef.current.ondataavailable = (event) => {
-  if (event.data.size > 0) {
-    audioChunksRef.current.push(event.data);
-  }
-};
+// Start recording on hotkey press
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (e.key === 'F18' && !recording) {
+      start();
+    }
+  };
+  
+  const handleKeyUp = (e) => {
+    if (e.key === 'F18' && recording) {
+      stop();
+    }
+  };
 
-mediaRecorderRef.current.onstop = () => {
-  // Combine all chunks into final Opus blob
-  const audioBlob = new Blob(audioChunksRef.current, { 
-    type: 'audio/webm;codecs=opus' 
-  });
-};
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
+  
+  return () => {
+    window.removeEventListener('keydown', handleKeyDown);
+    window.removeEventListener('keyup', handleKeyUp);
+  };
+}, [recording, start, stop]);
 ```
 
-### IPC Interface
+### Best Practices
 
-#### Main Process Handlers
-```typescript
-// Microphone device management
-"mic:update-devices"    // Send device list to main
-"mic:get-selected"      // Get currently selected device
-"mic:on-selection"      // Listen for device selection changes
-"mic:refresh-request"   // Request device re-enumeration
+#### Performance
+- **Pre-initialize**: Connect to microphone early for instant recording
+- **Efficient Cleanup**: Always clean up streams and contexts
+- **Memory Monitoring**: Watch for accumulation over time
+- **Error Boundaries**: Wrap transcription UI in error boundaries
 
-// Text insertion
-"insert-text-at-cursor" // Insert transcribed text at cursor
+#### User Experience
+- **Clear Feedback**: Always show recording and processing states
+- **Graceful Errors**: Provide actionable error messages
+- **Device Management**: Handle device changes transparently
+- **Accessibility**: Support keyboard navigation and screen readers
 
-// Transcript management  
-"transcript:update"     // Send transcript to main for context menu
-```
+#### Development
+- **Environment Detection**: Different behavior for dev vs. production
+- **Debug Logging**: Comprehensive logging for troubleshooting
+- **Permission Testing**: Test various permission scenarios
+- **Device Testing**: Test with different microphone types
 
-#### Renderer Process Events
-```typescript
-window.mic = {
-  updateDevices: (devices, selectedId) => void,
-  onSelectedChanged: (callback) => unsubscribe,
-  onRefreshRequest: (callback) => unsubscribe,
-};
+### Troubleshooting
 
-window.clipboard = {
-  insertText: (text) => Promise<{success: boolean, error?: string}>,
-};
+#### Common Issues
+- **No Microphone Access**: Check browser permissions
+- **Poor Quality**: Verify microphone settings and position
+- **Slow Transcription**: Check network connection
+- **Missing Text**: Verify audio is being captured
 
-window.transcript = {
-  update: (text) => void,
-};
-```
+#### Debug Information
+- **Browser Console**: Detailed logging in development mode
+- **Network Tab**: Monitor API requests and responses
+- **Audio Analysis**: Visualize captured audio data
+- **State Inspection**: Monitor React state changes
 
-### Native Helper Binary
-
-#### Command Line Interface
-```bash
-# Check permissions
-./Sonic\ Flow\ Helper --check-permissions
-# Output: "ax-granted" and/or "im-granted"
-
-# Paste and verify text
-./Sonic\ Flow\ Helper --paste-and-verify "text to insert"
-# Returns: success/failure status with verification
-```
-
-#### Integration
-```typescript
-// Spawn helper process
-const proc = spawnHelper(helperPath, ["--paste-and-verify", text], false);
-
-// Parse output for success/failure
-let stdoutBuffer = "";
-proc.stdout.on("data", (data) => {
-  stdoutBuffer += data.toString();
-});
-
-proc.on("close", (code) => {
-  const success = code === 0 && stdoutBuffer.includes("SUCCESS");
-});
-```
+#### Development Tools
+- **Mock Permissions**: Test permission flows
+- **Simulated Errors**: Test error handling
+- **Audio Visualization**: Debug audio capture issues
+- **Network Simulation**: Test offline scenarios
 
 ---
 
-## Recent Updates and Improvements
+## Advanced Configuration
 
-### Major Architecture Migration (2024)
-1. **Opus WebM Encoding**: Migrated from custom AudioWorklet + WAV to MediaRecorder with Opus compression
-2. **Simplified Pipeline**: Eliminated custom PCM processing in favor of browser-native encoding
-3. **Performance Gains**: 3-5x smaller file sizes with superior speech quality
-4. **Reduced Complexity**: Removed custom downsampling, level metering, and manual format conversion
+### Custom Vocabulary
 
-### Performance Enhancements
-1. **MediaRecorder Efficiency**: Leverages hardware-accelerated Opus encoding when available
-2. **Memory Optimization**: Eliminated custom audio buffers and manual PCM processing
-3. **CPU Reduction**: Browser-native encoding reduces main thread processing overhead
-4. **Stream Management**: Improved device switching and complete stream cleanup
+You can improve transcription accuracy by providing context-specific vocabulary:
 
-### Reliability Improvements
-1. **Error Recovery**: Enhanced fallback strategies for device and API failures
-2. **Permission Handling**: Better integration with native helper for accessibility
-3. **State Synchronization**: Improved IPC communication and state management
-4. **Browser Compatibility**: MediaRecorder provides better cross-browser support
+#### Industry Terms
+- **Tech**: Framework names, API terms, programming languages
+- **Medical**: Drug names, procedure terms, anatomical references  
+- **Legal**: Case names, legal terminology, court procedures
+- **Business**: Company names, product names, industry jargon
 
-### API Integration Updates
-1. **Whisper v3 Turbo**: Continued use of latest model with new Opus WebM format
-2. **Compression Benefits**: Significantly reduced bandwidth usage and upload times
-3. **Error Handling**: Enhanced API error parsing and user feedback
-4. **Response Processing**: Maintained efficient text extraction and insertion flow
+#### Personal Names
+- **Colleagues**: First and last names of frequent contacts
+- **Clients**: Customer and client names
+- **Organizations**: Company names, department names
+- **Locations**: Office locations, city names, venue names
 
-### Development Experience
-1. **Simplified Codebase**: Removed complex AudioWorklet processor and WAV utilities
-2. **Type Safety**: Maintained full TypeScript coverage with updated interfaces
-3. **Testing Support**: Streamlined testing without custom audio processing components
-4. **Documentation**: Updated comprehensive documentation reflecting new architecture
+### Environment-Specific Behavior
 
-This transcription system provides a robust, high-performance foundation for real-time speech-to-text functionality with native macOS integration and professional-grade audio processing.
+#### Development Mode
+- **Permissive Settings**: More debugging, less privacy protection
+- **Mock Devices**: Simulated hardware for testing
+- **Extended Timeouts**: Longer waits for debugging
+- **Verbose Logging**: Detailed console output
+
+#### Production Mode
+- **Privacy First**: Minimal permission requests
+- **Optimized Performance**: Efficient resource usage
+- **Error Recovery**: Robust handling of edge cases
+- **User-Friendly**: Clear, helpful messaging
+
+This transcription pipeline provides a foundation for high-quality, real-time speech-to-text functionality that can be extended and customized for various use cases while maintaining excellent performance and user experience.

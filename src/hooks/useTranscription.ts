@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
 import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import { getTranscribeUrl } from "../config/api";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -229,6 +230,13 @@ export function useTranscription(
       const dest = audioContextRef.current.createMediaStreamDestination();
       source.connect(dest);
 
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] AudioContext", {
+          requestedRate: 16000,
+          actualRate: audioContextRef.current.sampleRate,
+        });
+      }
+
       // Use MediaRecorder with pre-downsampled 16kHz stream
       mediaRecorderRef.current = new MediaRecorder(dest.stream, {
         mimeType: 'audio/webm;codecs=opus',
@@ -287,19 +295,32 @@ export function useTranscription(
         type: 'audio/webm;codecs=opus' 
       });
 
-      console.log(`[useTranscription] Opus file size: ${(audioBlob.size / 1024).toFixed(2)} KB`);
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] Audio blob", {
+          sizeKB: Number((audioBlob.size / 1024).toFixed(2)),
+          type: audioBlob.type,
+        });
+      }
 
       const formData = new FormData();
       formData.append("file", audioBlob, "audio.webm");
-      formData.append("model", "whisper-large-v3-turbo");
-      formData.append("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
-      formData.append("language", "en");
-      formData.append("response_format", "json");
-      formData.append("temperature", "0");
+      // Cloudflare Workers AI whisper-large-v3-turbo expects native params
+      formData.append("language", "en"); // or detect per session
+      formData.append(
+        "initial_prompt",
+        "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite",
+      );
+      formData.append("task", "transcribe"); // or "translate"
+      formData.append("vad_filter", "true");
 
       // Wire an abort signal so cancel() can abort processing in-flight
       abortControllerRef.current = new AbortController();
-      const response = await fetch("https://api.sonicflow.app", {
+      const endpoint = getTranscribeUrl();
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] Transcribe request", { url: endpoint });
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
         signal: abortControllerRef.current.signal,
@@ -307,7 +328,29 @@ export function useTranscription(
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (window.devFlags?.devConsoleLogs) {
+          console.error("[SF] Transcribe response error", {
+            status: response.status,
+            body: errorText?.slice(0, 200),
+          });
+        }
         throw new Error(`Server error: ${errorText}`);
+      }
+
+      // Dev console timings from Server-Timing
+      if (window.devFlags?.devConsoleLogs) {
+        const st = response.headers.get("Server-Timing") || "";
+        const reqId = response.headers.get("X-Request-Id") || undefined;
+        const colo = response.headers.get("CF-Worker-Colo") || undefined;
+        const parsed: Record<string, number> = {};
+        st.split(",").forEach((seg) => {
+          const [namePart, durPart] = seg.trim().split(";");
+          const name = namePart?.trim();
+          const durMatch = /dur=(.*)/.exec(durPart || "");
+          const dur = durMatch ? Number(durMatch[1]) : undefined;
+          if (name && typeof dur === "number" && !Number.isNaN(dur)) parsed[name] = dur;
+        });
+        console.info("[SF] Transcribe timings", { url: endpoint, reqId, colo, ...parsed });
       }
 
       const result = await response.json();
@@ -316,12 +359,20 @@ export function useTranscription(
         // Send transcript to main process for context menu copy functionality
         window.transcript?.update(result.text);
         window.clipboard.insertText(result.text);
+
+        if (window.devFlags?.devConsoleLogs) {
+          const preview = typeof result.text === "string" ? result.text.slice(0, 120) : "";
+          console.info("[SF] Transcribe result", { chars: result.text?.length ?? 0, preview });
+        }
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
+        if (window.devFlags?.devConsoleLogs) {
+          console.error("[SF] Transcribe exception", { error: (err as Error)?.message });
+        }
         setError((err as Error).message);
       }
     } finally {
