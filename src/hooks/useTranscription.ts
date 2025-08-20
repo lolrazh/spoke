@@ -5,7 +5,7 @@ import {
   TARGET_SAMPLE_RATE,
   SAMPLES_PER_CHUNK,
 } from "../config/audio";
-import { getTranscribeUrl } from "../config/api";
+import { getTranscribeUrl, getTranscribeWsUrl } from "../config/api";
 import { concatInt16, encodeWavInt16 } from "../utils/pcm";
 
 // Define the hook's return type
@@ -319,69 +319,112 @@ export function useTranscription(
         });
       }
 
-      const formData = new FormData();
-      formData.append("file", audioBlob, "audio.wav");
-      // Cloudflare Workers AI whisper-large-v3-turbo expects native params
-      formData.append("language", "en"); // or detect per session
-      formData.append(
-        "initial_prompt",
-        "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite",
-      );
-      formData.append("task", "transcribe"); // or "translate"
-      formData.append("vad_filter", "true");
+      // Use WebSocket for transcription
+      const wsUrl = getTranscribeWsUrl();
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] Transcribe WebSocket request", { url: wsUrl });
+      }
+
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
 
       // Wire an abort signal so cancel() can abort processing in-flight
       abortControllerRef.current = new AbortController();
-      const endpoint = getTranscribeUrl();
-      if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] Transcribe request", { url: endpoint });
-      }
+      
+      // Promise to handle WebSocket communication
+      await new Promise<void>((resolve, reject) => {
+        let resolved = false;
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (window.devFlags?.devConsoleLogs) {
-          console.error("[SF] Transcribe response error", {
-            status: response.status,
-            body: errorText?.slice(0, 200),
-          });
-        }
-        throw new Error(`Server error: ${errorText}`);
-      }
-
-      // Dev console timings from Server-Timing
-      if (window.devFlags?.devConsoleLogs) {
-        const st = response.headers.get("Server-Timing") || "";
-        const reqId = response.headers.get("X-Request-Id") || undefined;
-        const colo = response.headers.get("CF-Worker-Colo") || undefined;
-        const parsed: Record<string, number> = {};
-        st.split(",").forEach((seg) => {
-          const [namePart, durPart] = seg.trim().split(";");
-          const name = namePart?.trim();
-          const durMatch = /dur=(.*)/.exec(durPart || "");
-          const dur = durMatch ? Number(durMatch[1]) : undefined;
-          if (name && typeof dur === "number" && !Number.isNaN(dur)) parsed[name] = dur;
+        // Handle abortion
+        abortControllerRef.current!.signal.addEventListener('abort', () => {
+          if (!resolved) {
+            resolved = true;
+            ws.close();
+            reject(new DOMException("Aborted", "AbortError"));
+          }
         });
-        console.info("[SF] Transcribe timings", { url: endpoint, reqId, colo, ...parsed });
-      }
 
-      const result = await response.json();
-      setText(result.text);
-      if (result.text) {
-        // Send transcript to main process for context menu copy functionality
-        window.transcript?.update(result.text);
-        window.clipboard.insertText(result.text);
+        ws.onopen = async () => {
+          try {
+            // Send metadata first
+            ws.send(JSON.stringify({ type: "start", language: "en" }));
+            
+            // Send audio data as binary
+            ws.send(await audioBlob.arrayBuffer());
+            
+            // Signal end of transmission
+            ws.send(JSON.stringify({ type: "end" }));
+            
+            if (window.devFlags?.devConsoleLogs) {
+              console.info("[SF] Audio sent via WebSocket", { 
+                sizeKB: Number((audioBlob.size / 1024).toFixed(2)) 
+              });
+            }
+          } catch (err) {
+            if (!resolved) {
+              resolved = true;
+              reject(err);
+            }
+          }
+        };
 
-        if (window.devFlags?.devConsoleLogs) {
-          const preview = typeof result.text === "string" ? result.text.slice(0, 120) : "";
-          console.info("[SF] Transcribe result", { chars: result.text?.length ?? 0, preview });
-        }
-      }
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(String(event.data));
+            
+            if (msg.type === "status" && msg.state === "processing") {
+              if (window.devFlags?.devConsoleLogs) {
+                console.info("[SF] Transcribe processing started");
+              }
+            } else if (msg.type === "final") {
+              if (!resolved) {
+                resolved = true;
+                
+                setText(msg.text || "");
+                if (msg.text) {
+                  // Send transcript to main process for context menu copy functionality
+                  window.transcript?.update(msg.text);
+                  window.clipboard.insertText(msg.text);
+
+                  if (window.devFlags?.devConsoleLogs) {
+                    const preview = typeof msg.text === "string" ? msg.text.slice(0, 120) : "";
+                    console.info("[SF] Transcribe result", { 
+                      chars: msg.text?.length ?? 0, 
+                      preview,
+                      segments: msg.segments?.length ?? 0 
+                    });
+                  }
+                }
+                resolve();
+              }
+            } else if (msg.type === "error") {
+              if (!resolved) {
+                resolved = true;
+                reject(new Error(`Server error: ${msg.body || 'Unknown error'}`));
+              }
+            }
+          } catch (err) {
+            // Ignore malformed messages
+            if (window.devFlags?.devConsoleLogs) {
+              console.warn("[SF] Ignoring malformed WebSocket message");
+            }
+          }
+        };
+
+        ws.onerror = () => {
+          if (!resolved) {
+            resolved = true;
+            reject(new Error("WebSocket connection error"));
+          }
+        };
+
+        ws.onclose = () => {
+          if (!resolved) {
+            resolved = true;
+            reject(new Error("WebSocket closed unexpectedly"));
+          }
+        };
+      });
     } catch (err) {
       // Swallow aborts quietly; surface other errors
       if ((err as DOMException)?.name === "AbortError") {
