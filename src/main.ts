@@ -37,9 +37,10 @@ import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
 Sentry.init({
-  dsn: process.env.SENTRY_DSN || (import.meta as any).env?.VITE_SENTRY_DSN || undefined,
-  environment:
-    process.env.SENTRY_ENVIRONMENT || (import.meta as any).env?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "alpha" : "development"),
+  // Use a single DSN variable for both main/renderer (Vite-injected)
+  dsn: (import.meta as any).env?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
+  // Default to 'prod' for packaged builds and 'dev' for development
+  environment: (import.meta as any).env?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
   release: app.getVersion(),
   beforeSend(event) {
     try {

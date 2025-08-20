@@ -13,8 +13,8 @@ initMicDevicesBridge();
 // Initialize Sentry in the renderer
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
-  environment:
-    import.meta.env.VITE_SENTRY_ENVIRONMENT || (import.meta.env.DEV ? "development" : "alpha"),
+  // Default to 'prod' for packaged builds and 'dev' for development
+  environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || (import.meta.env.DEV ? "dev" : "prod"),
   beforeSend(event) {
     try {
       if (event.request?.url) {
