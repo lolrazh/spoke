@@ -37,7 +37,36 @@ import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
 Sentry.init({
-  dsn: "https://1988d4ea27135775fc8653d6f9c11701@o4509875043565568.ingest.us.sentry.io/4509875045007360",
+  dsn: process.env.SENTRY_DSN || (import.meta as any).env?.VITE_SENTRY_DSN || undefined,
+  environment:
+    process.env.SENTRY_ENVIRONMENT || (import.meta as any).env?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "alpha" : "development"),
+  release: app.getVersion(),
+  beforeSend(event) {
+    try {
+      if (event.request?.url) {
+        try {
+          const u = new URL(event.request.url);
+          u.search = ""; // strip query params
+          event.request.url = u.toString();
+        } catch {}
+      }
+      if (event.request?.headers) {
+        const headers = event.request.headers as Record<string, string>;
+        for (const k of Object.keys(headers)) {
+          if (/authorization|api[-_]?key|token/i.test(k)) headers[k] = "[Filtered]";
+        }
+      }
+      if (event.breadcrumbs) {
+        event.breadcrumbs = event.breadcrumbs.map((b) => {
+          if (typeof b.message === "string") {
+            b.message = b.message.replace(/(supabase|apikey|token|authorization)=([^\s&]+)/gi, "$1=[Filtered]");
+          }
+          return b;
+        });
+      }
+    } catch {}
+    return event;
+  },
 });
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
@@ -2038,6 +2067,10 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  // Attempt to flush pending Sentry events before quitting (best-effort)
+  try {
+    void Sentry.close(2000);
+  } catch {}
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
@@ -2065,6 +2098,9 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
+  try {
+    void Sentry.close(2000);
+  } catch {}
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 

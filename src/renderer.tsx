@@ -12,7 +12,35 @@ initMicDevicesBridge();
 
 // Initialize Sentry in the renderer
 Sentry.init({
-  dsn: "https://1988d4ea27135775fc8653d6f9c11701@o4509875043565568.ingest.us.sentry.io/4509875045007360",
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  environment:
+    import.meta.env.VITE_SENTRY_ENVIRONMENT || (import.meta.env.DEV ? "development" : "alpha"),
+  beforeSend(event) {
+    try {
+      if (event.request?.url) {
+        try {
+          const u = new URL(event.request.url);
+          u.search = "";
+          event.request.url = u.toString();
+        } catch {}
+      }
+      if (event.request?.headers) {
+        const headers = event.request.headers as Record<string, string>;
+        for (const k of Object.keys(headers)) {
+          if (/authorization|api[-_]?key|token/i.test(k)) headers[k] = "[Filtered]";
+        }
+      }
+      if (event.breadcrumbs) {
+        event.breadcrumbs = event.breadcrumbs.map((b) => {
+          if (typeof b.message === "string") {
+            b.message = b.message.replace(/(supabase|apikey|token|authorization)=([^\s&]+)/gi, "$1=[Filtered]");
+          }
+          return b;
+        });
+      }
+    } catch {}
+    return event;
+  },
 });
 
 // Dev helper: expose a function to trigger an error to verify Sentry
