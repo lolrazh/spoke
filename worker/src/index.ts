@@ -96,6 +96,64 @@ app.get(
     const buffers: Uint8Array[] = [];
     const meta: { language?: string } = {};
     
+    const isWav = (bytes: Uint8Array) => {
+      if (bytes.length < 12) return false;
+      return (
+        bytes[0] === 0x52 && // R
+        bytes[1] === 0x49 && // I
+        bytes[2] === 0x46 && // F
+        bytes[3] === 0x46 && // F
+        bytes[8] === 0x57 && // W
+        bytes[9] === 0x41 && // A
+        bytes[10] === 0x56 && // V
+        bytes[11] === 0x45 // E
+      );
+    };
+
+    const wavifyPcm16le = (pcm: Uint8Array, sampleRate = 16000, channels = 1, bitsPerSample = 16) => {
+      // pcm is raw Int16LE mono at 16k; construct RIFF/WAVE header
+      const bytesPerSample = bitsPerSample / 8; // 2
+      const dataChunkSize = pcm.length; // already bytes
+      const blockAlign = channels * bytesPerSample; // 2
+      const byteRate = sampleRate * blockAlign; // 32000
+      const riffChunkSize = 36 + dataChunkSize;
+
+      const header = new ArrayBuffer(44);
+      const view = new DataView(header);
+
+      // ChunkID "RIFF"
+      view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46);
+      // ChunkSize
+      view.setUint32(4, riffChunkSize, true);
+      // Format "WAVE"
+      view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45);
+      // Subchunk1ID "fmt "
+      view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20);
+      // Subchunk1Size (16 for PCM)
+      view.setUint32(16, 16, true);
+      // AudioFormat (1 = PCM)
+      view.setUint16(20, 1, true);
+      // NumChannels
+      view.setUint16(22, channels, true);
+      // SampleRate
+      view.setUint32(24, sampleRate, true);
+      // ByteRate
+      view.setUint32(28, byteRate, true);
+      // BlockAlign
+      view.setUint16(32, blockAlign, true);
+      // BitsPerSample
+      view.setUint16(34, bitsPerSample, true);
+      // Subchunk2ID "data"
+      view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61);
+      // Subchunk2Size
+      view.setUint32(40, dataChunkSize, true);
+
+      const out = new Uint8Array(44 + dataChunkSize);
+      out.set(new Uint8Array(header), 0);
+      out.set(pcm, 44);
+      return out;
+    };
+
     const toBase64 = (bytes: Uint8Array) => {
       // efficient base64 without blowing the stack
       let s = "";
@@ -124,7 +182,11 @@ app.get(
             if (msg?.type === "end") {
               ws.send(JSON.stringify({ type: "status", state: "processing" }));
 
-              const bytes = concat(buffers);
+              let bytes = concat(buffers);
+              // If the stream is raw PCM Int16LE, wrap it as WAV for Groq
+              if (!isWav(bytes)) {
+                bytes = wavifyPcm16le(bytes, 16000, 1, 16);
+              }
 
               // If a Groq key exists, prefer Groq; else use Workers AI
               if (c.env.GROQ_API_KEY) {
