@@ -12,7 +12,7 @@ Track progress for migrating to PCM Int16@16k, GROQ STT, and WebSockets with 100
 
 ## Client Audio
 - [x] Add AudioWorklet to output Int16@16k in `process()`
-- [ ] 48k→16k: decimate-by-3 with light FIR
+- [x] 48k→16k: decimate-by-3 with light FIR
 - [x] 44.1k→16k: fractional resampler (linear)
 - [x] Normalize/clamp Float32→Int16 in Worklet
 - [x] Chunker: exact 100 ms frames (seq IDs)
