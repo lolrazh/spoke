@@ -5,7 +5,7 @@ import {
   TARGET_SAMPLE_RATE,
   SAMPLES_PER_CHUNK,
 } from "../config/audio";
-import { getTranscribeUrl, getTranscribeWsUrl } from "../config/api";
+import { getTranscribeWsUrl } from "../config/api";
 import { concatInt16, encodeWavInt16 } from "../utils/pcm";
 
 // Define the hook's return type
@@ -51,8 +51,6 @@ export function useTranscription(
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const pcmChunksRef = useRef<Int16Array[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null); // legacy path (unused after PCM switch)
-  const audioChunksRef = useRef<Blob[]>([]); // legacy path (unused after PCM switch)
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [recording, setRecording] = useState(false);
@@ -450,7 +448,7 @@ export function useTranscription(
 
   const cancel = useCallback(async () => {
     // Cancel only affects active recordings; it does not send audio to the API
-    if (!recording && !mediaRecorderRef.current && !audioContextRef.current && !streamRef.current) {
+    if (!recording && !audioContextRef.current && !streamRef.current) {
       // Also abort any in-flight processing if present
       if (abortControllerRef.current) {
         try { abortControllerRef.current.abort(); } catch {}
