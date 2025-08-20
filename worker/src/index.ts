@@ -1,8 +1,5 @@
-import { fromHono } from "chanfana";
 import { Hono } from "hono";
 import { upgradeWebSocket } from "hono/cloudflare-workers";
-import { Transcribe } from "./endpoints/transcribe";
-import { Ping } from "./endpoints/ping";
 
 // Minimal type for Workers AI binding
 type Ai = {
@@ -84,10 +81,7 @@ app.onError((err, c) => {
   return c.json({ error: err?.message ?? String(err) }, 500);
 });
 
-// Setup OpenAPI registry and mount endpoints
-const openapi = fromHono(app, { docs_url: "/" });
-openapi.get("/ping", Ping);
-openapi.post("/transcribe", Transcribe);
+// No HTTP endpoints: WS-only for realtime transcription
 
 // --- The WebSocket endpoint (no HTTP fallback) ---
 app.get(
