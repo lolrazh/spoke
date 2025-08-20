@@ -43,13 +43,7 @@ Sentry.init({
   },
 });
 
-// Dev helper: expose a function to trigger an error to verify Sentry
-if (import.meta.env.DEV) {
-  (window as any).triggerSentryError = () => {
-    // Intentionally call an undefined function to throw
-    (window as any).myUndefinedFunction();
-  };
-}
+// (Removed) dev-only renderer error trigger for Sentry
 
 function mountReact(root: HTMLElement) {
   const reactRoot = createRoot(root);

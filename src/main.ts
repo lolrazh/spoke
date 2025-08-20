@@ -1404,20 +1404,7 @@ app.whenReady().then(async () => {
     return { success: true };
   });
 
-  // Dev-only: simple IPC to trigger an unhandled error in main to verify Sentry
-  if (!app.isPackaged) {
-    ipcMain.handle("sentry:test-main-error", () => {
-      setTimeout(() => {
-        // Throw asynchronously so it is unhandled by the IPC promise chain
-        throw new Error("Sentry main test error");
-      }, 0);
-      return { ok: true };
-    });
-    ipcMain.handle("sentry:test-main-crash", () => {
-      process.crash();
-      return { ok: true };
-    });
-  }
+  // (Removed) dev-only Sentry test hooks
 
   // Prepare the pill window and tray before onboarding completes
   ipcMain.handle("prepare-pill", () => {
