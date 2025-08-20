@@ -12,6 +12,7 @@ import {
   dialog,
   systemPreferences,
 } from "electron";
+import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import process from "node:process";
 import { spawn, execFile, execSync } from "child_process";
@@ -33,6 +34,11 @@ import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems
 import type { ChildProcess } from "child_process";
 import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } from "./constants/display";
 import { logger } from "./utils/logger";
+
+// Initialize Sentry as early as possible in the main process
+Sentry.init({
+  dsn: "https://1988d4ea27135775fc8653d6f9c11701@o4509875043565568.ingest.us.sentry.io/4509875045007360",
+});
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -1276,6 +1282,10 @@ app.whenReady().then(async () => {
       "https://cdn.jsdelivr.net",
       "https://*.supabase.co",
       "https://*.supabase.in",
+      // Sentry endpoints for error reporting
+      "https://*.sentry.io",
+      "https://*.ingest.sentry.io",
+      "https://*.ingest.us.sentry.io",
       "wss://*.supabase.co",
       "wss://*.supabase.in",
       "blob:",
@@ -1363,6 +1373,21 @@ app.whenReady().then(async () => {
     startFnListener();
     return { success: true };
   });
+
+  // Dev-only: simple IPC to trigger an unhandled error in main to verify Sentry
+  if (!app.isPackaged) {
+    ipcMain.handle("sentry:test-main-error", () => {
+      setTimeout(() => {
+        // Throw asynchronously so it is unhandled by the IPC promise chain
+        throw new Error("Sentry main test error");
+      }, 0);
+      return { ok: true };
+    });
+    ipcMain.handle("sentry:test-main-crash", () => {
+      process.crash();
+      return { ok: true };
+    });
+  }
 
   // Prepare the pill window and tray before onboarding completes
   ipcMain.handle("prepare-pill", () => {

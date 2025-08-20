@@ -134,6 +134,12 @@ contextBridge.exposeInMainWorld("electron", {
   getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
 });
 
+// Dev helper: expose Sentry verification call for main process
+contextBridge.exposeInMainWorld("sentryTest", {
+  triggerMainError: () => ipcRenderer.invoke("sentry:test-main-error"),
+  triggerMainCrash: () => ipcRenderer.invoke("sentry:test-main-crash"),
+});
+
 // Auth bridge: receive deep link callback URLs
 contextBridge.exposeInMainWorld("auth", {
   onCallback: (cb: (payload: { url: string }) => void) => {

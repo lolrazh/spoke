@@ -53,6 +53,7 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.5",
+    "@sentry/electron": "^6.11.0",
     "@supabase/supabase-js": "^2.45.4",
     "@vitejs/plugin-react": "^4.3.4",
     "class-variance-authority": "^0.7.1",
