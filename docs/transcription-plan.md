@@ -5,17 +5,17 @@ Track progress for migrating to PCM Int16@16k, GROQ STT, and WebSockets with 100
 - 100 ms @ 16 kHz Int16 mono = 1,600 samples ≈ 3.2 KB
 
 ## Absolute First
-- [ ] Switch wire format to PCM Int16 mono @ 16,000 Hz
+- [x] Switch wire format to PCM Int16 mono @ 16,000 Hz
 - [ ] Configure GROQ STT model; add `GROQ_API_KEY` to `.env`
 - [ ] Establish WebSocket ingest (Hono route) and client connection
 - [ ] Send fixed 100 ms audio chunks to worker
 
 ## Client Audio
-- [ ] Add AudioWorklet to output Int16@16k in `process()`
+- [x] Add AudioWorklet to output Int16@16k in `process()`
 - [ ] 48k→16k: decimate-by-3 with light FIR
-- [ ] 44.1k→16k: fractional resampler (linear/polyphase)
-- [ ] Normalize/clamp Float32→Int16 in Worklet
-- [ ] Chunker: exact 100 ms frames (seq IDs)
+- [x] 44.1k→16k: fractional resampler (linear)
+- [x] Normalize/clamp Float32→Int16 in Worklet
+- [x] Chunker: exact 100 ms frames (seq IDs)
 - [ ] Ring buffer (SharedArrayBuffer) with message-passing fallback
 
 ## WebSocket Transport

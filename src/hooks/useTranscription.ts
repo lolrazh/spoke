@@ -1,7 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
-import { MICROPHONE_PREFERRED_RATE } from "../config/audio";
+import {
+  MICROPHONE_PREFERRED_RATE,
+  TARGET_SAMPLE_RATE,
+  SAMPLES_PER_CHUNK,
+} from "../config/audio";
 import { getTranscribeUrl } from "../config/api";
+import { concatInt16, encodeWavInt16 } from "../utils/pcm";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -43,8 +48,11 @@ export function useTranscription(
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const pcmChunksRef = useRef<Int16Array[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null); // legacy path (unused after PCM switch)
+  const audioChunksRef = useRef<Blob[]>([]); // legacy path (unused after PCM switch)
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [recording, setRecording] = useState(false);
@@ -221,35 +229,47 @@ export function useTranscription(
     setError(null);
     setText("");
     setRecording(true);
-    audioChunksRef.current = [];
+    pcmChunksRef.current = [];
 
     try {
-      // Create 16kHz AudioContext for real-time downsampling
-      audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      const dest = audioContextRef.current.createMediaStreamDestination();
-      source.connect(dest);
+      // Create AudioContext at device/hardware rate and attach downsampler worklet
+      audioContextRef.current = new AudioContext();
+      await audioContextRef.current.audioWorklet.addModule(
+        "/worklets/pcm16-downsampler.worklet.js",
+      );
 
-      if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] AudioContext", {
-          requestedRate: 16000,
-          actualRate: audioContextRef.current.sampleRate,
-        });
-      }
+      sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(
+        streamRef.current,
+      );
+      workletNodeRef.current = new AudioWorkletNode(
+        audioContextRef.current,
+        "pcm16-downsampler",
+        {
+          processorOptions: {
+            targetSampleRate: TARGET_SAMPLE_RATE,
+            frameSamples: SAMPLES_PER_CHUNK,
+          },
+        },
+      );
 
-      // Use MediaRecorder with pre-downsampled 16kHz stream
-      mediaRecorderRef.current = new MediaRecorder(dest.stream, {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 16000, // Optimized for speech
-      });
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      workletNodeRef.current.port.onmessage = (ev: MessageEvent) => {
+        const msg = ev.data as any;
+        if (msg?.type === "audio" && msg?.samples) {
+          const buf: ArrayBuffer = msg.samples as ArrayBuffer;
+          pcmChunksRef.current.push(new Int16Array(buf));
         }
       };
 
-      mediaRecorderRef.current.start(100); // Collect data every 100ms
+      // Connect source -> worklet (silent path)
+      sourceNodeRef.current.connect(workletNodeRef.current);
+
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] AudioContext (PCM capture)", {
+          actualRate: audioContextRef.current.sampleRate,
+          targetRate: TARGET_SAMPLE_RATE,
+          samplesPerChunk: SAMPLES_PER_CHUNK,
+        });
+      }
     } catch (err) {
       setError((err as Error).message);
       setRecording(false);
@@ -264,22 +284,17 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      // Stop MediaRecorder and wait for final data
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        // Wait for the MediaRecorder to finish and emit final data
-        const stopPromise = new Promise<void>((resolve) => {
-          if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.onstop = () => resolve();
-          }
-        });
-        
-        mediaRecorderRef.current.stop();
-        await stopPromise;
-      }
-
-      // Clean up AudioContext
+      // Disconnect nodes
+      try {
+        sourceNodeRef.current?.disconnect();
+      } catch {}
+      try {
+        workletNodeRef.current?.port.postMessage({ type: "reset" });
+        workletNodeRef.current?.disconnect();
+      } catch {}
+      // Close AudioContext to release mic indicator faster
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        await audioContextRef.current.close();
         audioContextRef.current = null;
       }
 
@@ -290,20 +305,22 @@ export function useTranscription(
         setReady(false);
       }
 
-      // Combine all recorded chunks into a single blob
-      const audioBlob = new Blob(audioChunksRef.current, { 
-        type: 'audio/webm;codecs=opus' 
-      });
+      // Combine all PCM Int16 frames and wrap to a small WAV for compatibility
+      const pcm = concatInt16(pcmChunksRef.current);
+      const wav = encodeWavInt16(pcm, TARGET_SAMPLE_RATE);
+      const audioBlob = new Blob([wav], { type: "audio/wav" });
 
       if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] Audio blob", {
+        console.info("[SF] Audio blob (PCM16/WAV)", {
           sizeKB: Number((audioBlob.size / 1024).toFixed(2)),
           type: audioBlob.type,
+          frames: pcmChunksRef.current.length,
+          samples: pcm.length,
         });
       }
 
       const formData = new FormData();
-      formData.append("file", audioBlob, "audio.webm");
+      formData.append("file", audioBlob, "audio.wav");
       // Cloudflare Workers AI whisper-large-v3-turbo expects native params
       formData.append("language", "en"); // or detect per session
       formData.append(
@@ -377,11 +394,12 @@ export function useTranscription(
       }
     } finally {
       setProcessing(false);
-      audioChunksRef.current = [];
-      mediaRecorderRef.current = null;
+      pcmChunksRef.current = [];
+      workletNodeRef.current = null;
+      sourceNodeRef.current = null;
       abortControllerRef.current = null;
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
     }
@@ -399,23 +417,11 @@ export function useTranscription(
     }
 
     try {
-      // Stop MediaRecorder without using the captured audio
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        const stopPromise = new Promise<void>((resolve) => {
-          const mr = mediaRecorderRef.current;
-          if (mr) {
-            mr.onstop = () => resolve();
-          } else {
-            resolve();
-          }
-        });
-        mediaRecorderRef.current.stop();
-        await stopPromise;
-      }
-
-      // Clean up AudioContext
+      // Disconnect nodes and clean up (discard captured audio)
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
 
@@ -428,8 +434,8 @@ export function useTranscription(
         setReady(false);
       }
 
-      // Discard any accumulated audio chunks (scrap the audio)
-      audioChunksRef.current = [];
+      // Discard any accumulated PCM frames (scrap the audio)
+      pcmChunksRef.current = [];
       // Abort any in-flight processing (if cancel is invoked during processing)
       if (abortControllerRef.current) {
         try { abortControllerRef.current.abort(); } catch {}
@@ -439,7 +445,8 @@ export function useTranscription(
       // Ensure UI reflects cancellation immediately
       setRecording(false);
       setProcessing(false);
-      mediaRecorderRef.current = null;
+      workletNodeRef.current = null;
+      sourceNodeRef.current = null;
       if (audioContextRef.current) {
         try { audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
