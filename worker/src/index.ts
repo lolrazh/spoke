@@ -1,242 +1,236 @@
-import { Hono } from "hono";
-import { upgradeWebSocket } from "hono/cloudflare-workers";
+import { Hono } from 'hono';
 
-// Minimal type for Workers AI binding
-type Ai = {
-  run: (model: string, input: unknown, options?: unknown) => Promise<any>;
+type Bindings = {
+  GROQ_API_KEY?: string;
+  GROQ_STT_MODEL?: string; // e.g., whisper-large-v3-turbo
 };
 
-// Cloudflare Bindings for this worker
-interface Env {
-  AI: Ai;
-  AI_GATEWAY_ID?: string;
-  GROQ_API_KEY?: string;
-  GROQ_STT_MODEL?: string;
+const app = new Hono<{ Bindings: Bindings }>();
+
+// Health
+app.get('/', (c) => c.text('ok'));
+
+// WebSocket ingest: 100 ms PCM16@16k frames
+app.get('/ws', (c) => {
+  if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
+    return c.text('Expected a websocket connection', 426);
+  }
+
+  const { GROQ_API_KEY, GROQ_STT_MODEL } = c.env;
+  const [client, server] = Object.values(new WebSocketPair());
+
+  let session = createEmptySession();
+
+  server.accept();
+  server.addEventListener('message', async (evt: MessageEvent) => {
+    try {
+      const data = evt.data;
+      if (typeof data === 'string') {
+        const msg = safeJson(data);
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.type === 'start') {
+          // Reset for a new session
+          session = createEmptySession();
+          session.startedAt = Date.now();
+          session.version = msg.version ?? 1;
+          session.format = msg.format ?? 'pcm16le';
+          session.rate = msg.rate ?? 16000;
+          // (optional) language = msg.language
+        } else if (msg.type === 'end') {
+          const t0 = Date.now();
+          // Signal processing started
+          server.send(JSON.stringify({ type: 'status', state: 'processing' }));
+
+          // If canceled or empty, short-circuit
+          if (session.canceled || session.totalBytes === 0) {
+            const text = '';
+            server.send(JSON.stringify({ type: 'final', text }));
+            session = createEmptySession();
+            return;
+          }
+
+          // Assemble PCM → WAV
+          const pcm = concat(session.chunks, session.totalBytes);
+          const wav = wrapWav(pcm, session.rate, 1, 16);
+
+          // Call GROQ STT if key available
+          let finalText = '';
+          try {
+            if (GROQ_API_KEY) {
+              const res = await groqTranscribe(wav, GROQ_API_KEY, GROQ_STT_MODEL || 'whisper-large-v3-turbo');
+              finalText = res?.text ?? '';
+            } else {
+              finalText = '';
+            }
+          } catch (e: any) {
+            server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' }));
+            session = createEmptySession();
+            return;
+          }
+
+          server.send(JSON.stringify({ type: 'final', text: finalText }));
+
+          const t1 = Date.now();
+          logSession('final', session, { assembleMs: t1 - t0, textLen: finalText.length });
+          session = createEmptySession();
+        } else if (msg.type === 'cancel') {
+          // Discard buffered audio, but keep the socket open for reuse
+          session = createEmptySession();
+          session.canceled = true;
+        }
+      } else if (data instanceof ArrayBuffer) {
+        // Binary frame: [16-byte header][payload]
+        const buf = new Uint8Array(data);
+        if (buf.byteLength < 16) return; // ignore
+        const { seq, nbytes } = parseFrameHeader(buf);
+        if (16 + nbytes > buf.byteLength) return; // malformed
+        const payload = buf.subarray(16, 16 + nbytes);
+
+        // Initialize first/last arrival tracking
+        const now = Date.now();
+        if (session.firstArrivalMs === null) session.firstArrivalMs = now;
+        session.lastArrivalMs = now;
+
+        // Track seq and gaps
+        if (session.lastSeq !== null && seq !== session.lastSeq + 1) {
+          session.seqGaps += 1;
+        }
+        session.lastSeq = seq;
+
+        // Enforce a max buffer size (~20 MB)
+        const MAX_BYTES = 20 * 1024 * 1024;
+        if (session.totalBytes + payload.byteLength > MAX_BYTES) {
+          server.send(JSON.stringify({ type: 'error', body: 'audio too large' }));
+          session = createEmptySession();
+          return;
+        }
+
+        // Append
+        session.chunks.push(payload);
+        session.totalBytes += payload.byteLength;
+        session.frames += 1;
+      }
+    } catch (e: any) {
+      server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+      session = createEmptySession();
+    }
+  });
+
+  server.addEventListener('close', () => {
+    // nothing
+  });
+
+  return new Response(null, { status: 101, webSocket: client });
+});
+
+export default {
+  fetch: (req: Request, env: Bindings, ctx: ExecutionContext) => app.fetch(req, env, ctx),
+};
+
+// ---- Helpers ----
+
+function safeJson(s: string) {
+  try { return JSON.parse(s); } catch { return null; }
 }
 
-// Start a Hono app
-const app = new Hono<{ Bindings: Env }>();
+function parseFrameHeader(buf: Uint8Array) {
+  // u32 seq | u32 nbytes | u64 ts
+  const view = new DataView(buf.buffer, buf.byteOffset, 16);
+  const seq = view.getUint32(0, true);
+  const nbytes = view.getUint32(4, true);
+  // const tsLo = view.getUint32(8, true); const tsHi = view.getUint32(12, true);
+  return { seq, nbytes };
+}
 
-// Global CORS and common headers middleware
-app.use("*", async (c, next) => {
-  const isWS = c.req.header("upgrade")?.toLowerCase() === "websocket";
-  const started = Date.now();
-  const reqId = (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
-  c.set("reqId", reqId);
-  c.set("startTime", started);
-  c.set("serverTimings", [] as string[]);
+function concat(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  const out = new Uint8Array(totalBytes);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  return out;
+}
 
-  if (isWS) {
-    // Do not modify headers on upgraded response
-    return next();
-  }
+function wrapWav(pcm: Uint8Array, rate = 16000, channels = 1, bitsPerSample = 16): Uint8Array {
+  const dataSize = pcm.byteLength;
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  // RIFF
+  writeStr(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(view, 8, 'WAVE');
+  // fmt
+  writeStr(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, rate, true);
+  const byteRate = (rate * channels * bitsPerSample) >> 3;
+  const blockAlign = (channels * bitsPerSample) >> 3;
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  // data
+  writeStr(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
 
-  // Handle CORS preflight early
-  if (c.req.method === "OPTIONS") {
-    c.header("Access-Control-Allow-Origin", "*");
-    c.header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, HEAD");
-    c.header("Access-Control-Allow-Headers", "Content-Type, X-Mode");
-    c.header("Access-Control-Expose-Headers", "Server-Timing, CF-Worker-Colo, X-Request-Id");
-    c.header("Timing-Allow-Origin", "*");
-    c.header("Cache-Control", "no-store");
-    return c.body(null, 204);
-  }
+  const out = new Uint8Array(44 + dataSize);
+  out.set(new Uint8Array(header), 0);
+  out.set(pcm, 44);
+  return out;
+}
 
-  await next();
+function writeStr(view: DataView, offset: number, s: string) {
+  for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+}
 
-  // Apply response headers
-  const colo = (c.req.raw as any)?.cf?.colo ?? "unknown";
-  c.header("Access-Control-Allow-Origin", "*");
-  c.header("Access-Control-Expose-Headers", "Server-Timing, CF-Worker-Colo, X-Request-Id");
-  c.header("Timing-Allow-Origin", "*");
-  c.header("Cache-Control", "no-store");
-  c.header("X-Request-Id", reqId);
-  c.header("CF-Worker-Colo", colo);
-  const timings = (c.get("serverTimings") as string[]) || [];
-  timings.unshift(`total;dur=${Date.now() - started}`);
-  c.header("Server-Timing", timings.join(", "));
+function createEmptySession() {
+  return {
+    version: 2,
+    format: 'pcm16le' as 'pcm16le',
+    rate: 16000,
+    startedAt: Date.now(),
+    frames: 0,
+    chunks: [] as Uint8Array[],
+    totalBytes: 0,
+    lastSeq: null as number | null,
+    seqGaps: 0,
+    firstArrivalMs: null as number | null,
+    lastArrivalMs: null as number | null,
+    canceled: false,
+  };
+}
 
-  // Minimal structured log
+function logSession(tag: string, s: ReturnType<typeof createEmptySession>, extra?: Record<string, unknown>) {
   try {
-    const log = (c.get("log") as Record<string, unknown>) || {};
-    const status = c.res?.status ?? 200;
-    const path = new URL(c.req.url).pathname;
-    const base: Record<string, unknown> = {
-      t: new Date().toISOString(),
-      reqId,
-      colo,
-      method: c.req.method,
-      path,
-      status,
-      totalMs: Date.now() - started,
+    const info = {
+      tag,
+      frames: s.frames,
+      bytesKB: Number((s.totalBytes / 1024).toFixed(2)),
+      seqGaps: s.seqGaps,
+      firstToLastArrivalMs: (s.firstArrivalMs && s.lastArrivalMs) ? (s.lastArrivalMs - s.firstArrivalMs) : null,
+      ...extra,
     };
-    // Merge limited route-specific metrics
-    const merged = { ...base, ...log };
-    console.log(JSON.stringify(merged));
+    console.log('[WS]', info);
   } catch {}
-});
+}
 
-// Central error handling
-app.onError((err, c) => {
-  return c.json({ error: err?.message ?? String(err) }, 500);
-});
+async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): Promise<{ text: string } | null> {
+  const form = new FormData();
+  const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
+  form.append('file', file);
+  form.append('model', model);
+  // Optional params: language, response_format, temperature, etc.
 
-// No HTTP endpoints: WS-only for realtime transcription
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`GROQ STT error: ${res.status} ${body}`);
+  }
+  const json = await res.json();
+  // OpenAI-compatible response shape: { text: string, ... }
+  return json as { text: string };
+}
 
-// --- The WebSocket endpoint (no HTTP fallback) ---
-app.get(
-  "/ws",
-  upgradeWebSocket((c) => {
-    const buffers: Uint8Array[] = [];
-    const meta: { language?: string } = {};
-    
-    const isWav = (bytes: Uint8Array) => {
-      if (bytes.length < 12) return false;
-      return (
-        bytes[0] === 0x52 && // R
-        bytes[1] === 0x49 && // I
-        bytes[2] === 0x46 && // F
-        bytes[3] === 0x46 && // F
-        bytes[8] === 0x57 && // W
-        bytes[9] === 0x41 && // A
-        bytes[10] === 0x56 && // V
-        bytes[11] === 0x45 // E
-      );
-    };
-
-    const wavifyPcm16le = (pcm: Uint8Array, sampleRate = 16000, channels = 1, bitsPerSample = 16) => {
-      // pcm is raw Int16LE mono at 16k; construct RIFF/WAVE header
-      const bytesPerSample = bitsPerSample / 8; // 2
-      const dataChunkSize = pcm.length; // already bytes
-      const blockAlign = channels * bytesPerSample; // 2
-      const byteRate = sampleRate * blockAlign; // 32000
-      const riffChunkSize = 36 + dataChunkSize;
-
-      const header = new ArrayBuffer(44);
-      const view = new DataView(header);
-
-      // ChunkID "RIFF"
-      view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46);
-      // ChunkSize
-      view.setUint32(4, riffChunkSize, true);
-      // Format "WAVE"
-      view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45);
-      // Subchunk1ID "fmt "
-      view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20);
-      // Subchunk1Size (16 for PCM)
-      view.setUint32(16, 16, true);
-      // AudioFormat (1 = PCM)
-      view.setUint16(20, 1, true);
-      // NumChannels
-      view.setUint16(22, channels, true);
-      // SampleRate
-      view.setUint32(24, sampleRate, true);
-      // ByteRate
-      view.setUint32(28, byteRate, true);
-      // BlockAlign
-      view.setUint16(32, blockAlign, true);
-      // BitsPerSample
-      view.setUint16(34, bitsPerSample, true);
-      // Subchunk2ID "data"
-      view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61);
-      // Subchunk2Size
-      view.setUint32(40, dataChunkSize, true);
-
-      const out = new Uint8Array(44 + dataChunkSize);
-      out.set(new Uint8Array(header), 0);
-      out.set(pcm, 44);
-      return out;
-    };
-
-    const toBase64 = (bytes: Uint8Array) => {
-      // efficient base64 without blowing the stack
-      let s = "";
-      const CHUNK = 0x8000;
-      for (let i = 0; i < bytes.length; i += CHUNK) {
-        s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK) as unknown as number[]);
-      }
-      return btoa(s);
-    };
-    
-    const concat = (chunks: Uint8Array[]) => {
-      const len = chunks.reduce((n, b) => n + b.length, 0);
-      const out = new Uint8Array(len);
-      let o = 0;
-      for (const b of chunks) { out.set(b, o); o += b.length; }
-      return out;
-    };
-
-    return {
-      onMessage: async (evt, ws) => {
-        // Strings are control/metadata; binary is audio
-        if (typeof evt.data === "string") {
-          try {
-            const msg = JSON.parse(evt.data);
-            if (msg?.type === "start" && msg.language) meta.language = String(msg.language);
-            if (msg?.type === "end") {
-              ws.send(JSON.stringify({ type: "status", state: "processing" }));
-
-              let bytes = concat(buffers);
-              // If the stream is raw PCM Int16LE, wrap it as WAV for Groq
-              if (!isWav(bytes)) {
-                bytes = wavifyPcm16le(bytes, 16000, 1, 16);
-              }
-
-              // If a Groq key exists, prefer Groq; else use Workers AI
-              if (c.env.GROQ_API_KEY) {
-                const file = new File([new Blob([bytes], { type: "audio/wav" })], "audio.wav", { type: "audio/wav" });
-                const fd = new FormData();
-                fd.set("file", file);
-                fd.set("model", c.env.GROQ_STT_MODEL || "whisper-large-v3");
-                if (meta.language) fd.set("language", meta.language);
-                fd.set("response_format", "verbose_json");
-                fd.set("prompt", "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite");
-
-                const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${c.env.GROQ_API_KEY}` },
-                  body: fd,
-                });
-                if (!resp.ok) {
-                  ws.send(JSON.stringify({ type: "error", status: resp.status, body: await resp.text() }));
-                  return ws.close(1011, "groq_error");
-                }
-                const groq = await resp.json();
-                ws.send(JSON.stringify({ type: "final", text: groq?.text ?? "", segments: groq?.segments ?? null }));
-                return ws.close(1000, "done");
-              } else {
-                const b64 = toBase64(bytes); // Workers AI wants base64
-                const res = await c.env.AI.run("@cf/openai/whisper-large-v3-turbo", {
-                  audio: b64,
-                  task: "transcribe",
-                  language: meta.language || "en",
-                  vad_filter: true,
-                  initial_prompt: "Vocabulary: Sandheep Rajkumar, Sonic Flow, Groq, Supabase, Gemini Flash Lite",
-                }, c.env.AI_GATEWAY_ID ? { gateway: { id: c.env.AI_GATEWAY_ID } } : undefined);
-
-                ws.send(JSON.stringify({ type: "final", text: res?.text ?? "", segments: res?.segments ?? null }));
-                return ws.close(1000, "done");
-              }
-            }
-          } catch {
-            // Ignore non-JSON text messages
-          }
-        } else {
-          // Binary frame (ArrayBuffer)
-          const ab: ArrayBuffer = (evt.data as ArrayBuffer);
-          buffers.push(new Uint8Array(ab));
-          // Optional progress acks
-          // ws.send(JSON.stringify({ type: "ack", bytes: buffers.at(-1)?.length ?? 0 }));
-        }
-      },
-      onError: (_e, ws) => { try { ws.close(1011, "internal_error"); } catch {} },
-      // onClose not needed for v1
-    };
-  })
-);
-
-// 404 handler
-app.notFound((c) => c.json({ error: "Not Found" }, 404));
-
-// Export the Hono app
-export default app;

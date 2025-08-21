@@ -14,3 +14,22 @@ export const PCM_CHANNELS = 1;
 export const CHUNK_MS = 100; // 100 ms chunks for now
 export const SAMPLES_PER_CHUNK = (TARGET_SAMPLE_RATE * CHUNK_MS) / 1000; // 1600 samples
 export const BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE / 8; // 2 bytes for Int16
+
+// WebSocket streaming config
+export const WS_MAX_BUFFERED_BYTES = 512 * 1024; // 512 KB backpressure threshold
+
+// Feature flag: streaming v2 (100 ms frames)
+export function streamingV2Enabled(): boolean {
+  try {
+    const env: any = (import.meta as any)?.env || {};
+    if (env?.VITE_WS_STREAMING_V2 === '1' || env?.VITE_WS_STREAMING_V2 === 'true') return true;
+  } catch {}
+  try {
+    if (typeof window !== 'undefined') {
+      const qp = new URLSearchParams(window.location.search);
+      if (qp.get('wsV2') === '1') return true;
+      if (window.localStorage?.getItem('sf.wsV2') === '1') return true;
+    }
+  } catch {}
+  return false;
+}

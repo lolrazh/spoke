@@ -4,9 +4,10 @@ import {
   MICROPHONE_PREFERRED_RATE,
   TARGET_SAMPLE_RATE,
   SAMPLES_PER_CHUNK,
+  WS_MAX_BUFFERED_BYTES,
 } from "../config/audio";
 import { getTranscribeWsUrl } from "../config/api";
-import { concatInt16, encodeWavInt16 } from "../utils/pcm";
+import { encodeFrameHeader } from "../utils/pcm";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -50,8 +51,133 @@ export function useTranscription(
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const pcmChunksRef = useRef<Int16Array[]>([]);
+  // Streaming-only: no client-side PCM accumulation
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Streaming v2 state
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReadyRef = useRef(false);
+  const wsErrorRef = useRef<string | null>(null);
+  const seqRef = useRef(0);
+  const sendQueueRef = useRef<ArrayBuffer[]>([]);
+  const flushTimerRef = useRef<number | null>(null);
+  // Streaming is always enabled
+  const startedMsRef = useRef<number>(0);
+  const wsEndpointLoggedRef = useRef<boolean>(false);
+  // Metrics
+  const metricsRef = useRef<{
+    sessionId: string;
+    pttDownMs: number;
+    wsOpenMs?: number;
+    firstFrameOutMs?: number;
+    lastFrameOutMs?: number;
+    wsEndMs?: number;
+    sttStartMs?: number;
+    sttEndMs?: number;
+    finalRenderMs?: number;
+    framesProduced: number;
+    bytesProduced: number;
+    framesQueued: number;
+    framesSentApprox: number;
+  } | null>(null);
+
+  const nowRelNs = () => {
+    try {
+      const relMs = Math.max(0, performance.now() - startedMsRef.current);
+      return BigInt(Math.round(relMs * 1e6));
+    } catch {
+      return BigInt(0);
+    }
+  };
+
+  const flushQueue = useCallback(() => {
+    if (!wsRef.current || !wsReadyRef.current) return;
+    const ws = wsRef.current;
+    while (sendQueueRef.current.length) {
+      if (ws.bufferedAmount > WS_MAX_BUFFERED_BYTES) break;
+      const next = sendQueueRef.current.shift()!;
+      try { ws.send(next); } catch {}
+    }
+    if (sendQueueRef.current.length && ws.bufferedAmount > WS_MAX_BUFFERED_BYTES) {
+      if (flushTimerRef.current == null) {
+        flushTimerRef.current = window.setTimeout(() => {
+          flushTimerRef.current = null;
+          flushQueue();
+        }, 10);
+      }
+    }
+  }, []);
+
+  const ensureStreamingSocket = useCallback(() => {
+    if (wsRef.current) return;
+    const wsUrl = getTranscribeWsUrl();
+    if (!wsEndpointLoggedRef.current) {
+      try { console.info('[SF] WS endpoint', { url: wsUrl }); } catch {}
+      wsEndpointLoggedRef.current = true;
+    }
+    const ws = new WebSocket(wsUrl);
+    ws.binaryType = "arraybuffer";
+    wsRef.current = ws;
+    wsReadyRef.current = false;
+    wsErrorRef.current = null;
+
+    ws.onopen = () => {
+      wsReadyRef.current = true;
+      if (metricsRef.current && !metricsRef.current.wsOpenMs) metricsRef.current.wsOpenMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      try {
+        const startMsg = { type: "start", version: 2 as const, format: "pcm16le" as const, rate: TARGET_SAMPLE_RATE, language: "en" };
+        ws.send(JSON.stringify(startMsg));
+      } catch {}
+      flushQueue();
+    };
+    ws.onerror = () => {
+      wsErrorRef.current = "WebSocket error";
+    };
+    ws.onclose = () => {
+      wsReadyRef.current = false;
+    };
+  }, [flushQueue]);
+
+  const streamFrame = useCallback((pcmBuf: ArrayBuffer) => {
+    // Build header + payload into a single ArrayBuffer
+    const payload = new Uint8Array(pcmBuf);
+    const header = encodeFrameHeader(seqRef.current++, payload.byteLength, nowRelNs());
+    const out = new Uint8Array((header.byteLength || 16) + payload.byteLength);
+    out.set(new Uint8Array(header), 0);
+    out.set(payload, (header.byteLength || 16));
+
+    // Metrics: count frames/bytes and first-frame timestamp
+    if (metricsRef.current) {
+      metricsRef.current.framesProduced += 1;
+      metricsRef.current.bytesProduced += payload.byteLength;
+      if (!metricsRef.current.firstFrameOutMs) metricsRef.current.firstFrameOutMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    }
+
+    const ws = wsRef.current;
+    if (ws && wsReadyRef.current && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES) {
+      try { ws.send(out.buffer); } catch { sendQueueRef.current.push(out.buffer); }
+      if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
+    } else {
+      sendQueueRef.current.push(out.buffer);
+      if (metricsRef.current) metricsRef.current.framesQueued += 1;
+      ensureStreamingSocket();
+      flushQueue();
+    }
+  }, [flushQueue, ensureStreamingSocket]);
+
+  const waitForAllFramesSent = useCallback(async (timeoutMs = 1500) => {
+    const start = Date.now();
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        flushQueue();
+        const ws = wsRef.current;
+        if (!ws || !wsReadyRef.current) return resolve();
+        if (sendQueueRef.current.length === 0 && ws.bufferedAmount === 0) return resolve();
+        if (Date.now() - start > timeoutMs) return resolve();
+        setTimeout(tick, 10);
+      };
+      tick();
+    });
+  }, [flushQueue]);
 
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -227,7 +353,20 @@ export function useTranscription(
     setError(null);
     setText("");
     setRecording(true);
-    pcmChunksRef.current = [];
+    // Reset streaming state
+    seqRef.current = 0;
+    sendQueueRef.current = [];
+    wsErrorRef.current = null;
+    // Keep an existing socket open to allow reuse across sessions
+    startedMsRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    metricsRef.current = {
+      sessionId: Math.random().toString(36).slice(2),
+      pttDownMs: startedMsRef.current,
+      framesProduced: 0,
+      bytesProduced: 0,
+      framesQueued: 0,
+      framesSentApprox: 0,
+    };
 
     try {
       // Create AudioContext at device/hardware rate and attach downsampler worklet
@@ -254,12 +393,21 @@ export function useTranscription(
         const msg = ev.data as any;
         if (msg?.type === "audio" && msg?.samples) {
           const buf: ArrayBuffer = msg.samples as ArrayBuffer;
-          pcmChunksRef.current.push(new Int16Array(buf));
+          // Stream immediately
+          streamFrame(buf);
         }
       };
 
       // Connect source -> worklet (silent path)
       sourceNodeRef.current.connect(workletNodeRef.current);
+      // Ensure WS is connected; if already open, send a fresh start for this session
+      ensureStreamingSocket();
+      if (wsRef.current && wsReadyRef.current) {
+        try {
+          const startMsg = { type: "start", version: 2 as const, format: "pcm16le" as const, rate: TARGET_SAMPLE_RATE, language: "en" };
+          wsRef.current.send(JSON.stringify(startMsg));
+        } catch {}
+      }
 
       if (window.devFlags?.devConsoleLogs) {
         console.info("[SF] AudioContext (PCM capture)", {
@@ -272,7 +420,7 @@ export function useTranscription(
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording, processing, openStreamForSelectedDevice]);
+  }, [recording, processing, openStreamForSelectedDevice, streamFrame]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
@@ -283,13 +431,14 @@ export function useTranscription(
 
     try {
       // Disconnect nodes
-      try {
-        sourceNodeRef.current?.disconnect();
-      } catch {}
-      try {
-        workletNodeRef.current?.port.postMessage({ type: "reset" });
-        workletNodeRef.current?.disconnect();
-      } catch {}
+      // Ask the worklet to flush any partial frame before tearing down
+      try { workletNodeRef.current?.port.postMessage({ type: "flush" }); } catch {}
+      // Record last-frame-out time right after requesting flush
+      if (metricsRef.current && !metricsRef.current.lastFrameOutMs) metricsRef.current.lastFrameOutMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      // Disconnect nodes
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
       // Close AudioContext to release mic indicator faster
       if (audioContextRef.current) {
         await audioContextRef.current.close();
@@ -302,127 +451,80 @@ export function useTranscription(
         streamRef.current = null;
         setReady(false);
       }
-
-      // Combine all PCM Int16 frames and wrap to a small WAV for compatibility
-      const pcm = concatInt16(pcmChunksRef.current);
-      const wav = encodeWavInt16(pcm, TARGET_SAMPLE_RATE);
-      const audioBlob = new Blob([wav], { type: "audio/wav" });
-
-      if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] Audio blob (PCM16/WAV)", {
-          sizeKB: Number((audioBlob.size / 1024).toFixed(2)),
-          type: audioBlob.type,
-          frames: pcmChunksRef.current.length,
-          samples: pcm.length,
-        });
-      }
-
-      // Use WebSocket for transcription
-      const wsUrl = getTranscribeWsUrl();
-      if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] Transcribe WebSocket request", { url: wsUrl });
-      }
-
-      const ws = new WebSocket(wsUrl);
-      ws.binaryType = "arraybuffer";
-
-      // Wire an abort signal so cancel() can abort processing in-flight
-      abortControllerRef.current = new AbortController();
-      
-      // Promise to handle WebSocket communication
-      await new Promise<void>((resolve, reject) => {
-        let resolved = false;
-
-        // Handle abortion
-        abortControllerRef.current!.signal.addEventListener('abort', () => {
-          if (!resolved) {
-            resolved = true;
-            ws.close();
-            reject(new DOMException("Aborted", "AbortError"));
-          }
-        });
-
-        ws.onopen = async () => {
-          try {
-            // Send metadata first
-            ws.send(JSON.stringify({ type: "start", language: "en" }));
-            
-            // Send audio data as binary
-            ws.send(await audioBlob.arrayBuffer());
-            
-            // Signal end of transmission
-            ws.send(JSON.stringify({ type: "end" }));
-            
-            if (window.devFlags?.devConsoleLogs) {
-              console.info("[SF] Audio sent via WebSocket", { 
-                sizeKB: Number((audioBlob.size / 1024).toFixed(2)) 
-              });
-            }
-          } catch (err) {
+      // Streaming-only: flush any queued frames and signal end; wait for final
+      if (wsRef.current && !wsErrorRef.current) {
+        abortControllerRef.current = new AbortController();
+        await new Promise<void>((resolve, reject) => {
+          let resolved = false;
+          const ws = wsRef.current!;
+          const onAbort = () => {
             if (!resolved) {
               resolved = true;
-              reject(err);
+              reject(new DOMException("Aborted", "AbortError"));
             }
-          }
-        };
+          };
+          abortControllerRef.current!.signal.addEventListener('abort', onAbort);
 
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(String(event.data));
-            
-            if (msg.type === "status" && msg.state === "processing") {
-              if (window.devFlags?.devConsoleLogs) {
-                console.info("[SF] Transcribe processing started");
-              }
-            } else if (msg.type === "final") {
-              if (!resolved) {
-                resolved = true;
-                
-                setText(msg.text || "");
-                if (msg.text) {
-                  // Send transcript to main process for context menu copy functionality
-                  window.transcript?.update(msg.text);
-                  window.clipboard.insertText(msg.text);
-
-                  if (window.devFlags?.devConsoleLogs) {
-                    const preview = typeof msg.text === "string" ? msg.text.slice(0, 120) : "";
-                    console.info("[SF] Transcribe result", { 
-                      chars: msg.text?.length ?? 0, 
-                      preview,
-                      segments: msg.segments?.length ?? 0 
-                    });
-                  }
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(String(event.data));
+              if (msg.type === "status" && msg.state === "processing") {
+                if (!metricsRef.current?.sttStartMs) {
+                  if (metricsRef.current) metricsRef.current.sttStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
                 }
-                resolve();
+                if (window.devFlags?.devConsoleLogs) console.info("[SF] Transcribe processing started");
+              } else if (msg.type === "final") {
+                if (!resolved) {
+                  resolved = true;
+                  setText(msg.text || "");
+                  if (msg.text) {
+                    window.transcript?.update(msg.text);
+                    window.clipboard.insertText(msg.text);
+                  }
+                  if (metricsRef.current) {
+                    metricsRef.current.sttEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                    metricsRef.current.finalRenderMs = metricsRef.current.sttEndMs;
+                    if (window.devFlags?.devConsoleLogs) {
+                      console.info("[SF] Session metrics", {
+                        sessionId: metricsRef.current.sessionId,
+                        framesProduced: metricsRef.current.framesProduced,
+                        framesQueued: metricsRef.current.framesQueued,
+                        framesSentApprox: metricsRef.current.framesSentApprox,
+                        bytesProducedKB: Number((metricsRef.current.bytesProduced/1024).toFixed(2)),
+                        pttDownToFirstFrameMs: metricsRef.current.firstFrameOutMs ? Math.round(metricsRef.current.firstFrameOutMs - metricsRef.current.pttDownMs) : null,
+                        firstToLastFrameMs: (metricsRef.current.firstFrameOutMs && metricsRef.current.lastFrameOutMs) ? Math.round(metricsRef.current.lastFrameOutMs - metricsRef.current.firstFrameOutMs) : null,
+                        wsOpenDeltaMs: metricsRef.current.wsOpenMs ? Math.round(metricsRef.current.wsOpenMs - metricsRef.current.pttDownMs) : null,
+                        wsEndDeltaMs: metricsRef.current.wsEndMs ? Math.round(metricsRef.current.wsEndMs - metricsRef.current.pttDownMs) : null,
+                        sttDurationMs: (metricsRef.current.sttStartMs && metricsRef.current.sttEndMs) ? Math.round(metricsRef.current.sttEndMs - metricsRef.current.sttStartMs) : null,
+                        totalMs: Math.round(metricsRef.current.sttEndMs - metricsRef.current.pttDownMs),
+                      });
+                    }
+                  }
+                  resolve();
+                }
+              } else if (msg.type === "error") {
+                if (!resolved) {
+                  resolved = true;
+                  reject(new Error(`Server error: ${msg.body || 'Unknown error'}`));
+                }
               }
-            } else if (msg.type === "error") {
-              if (!resolved) {
-                resolved = true;
-                reject(new Error(`Server error: ${msg.body || 'Unknown error'}`));
-              }
-            }
-          } catch (err) {
-            // Ignore malformed messages
-            if (window.devFlags?.devConsoleLogs) {
-              console.warn("[SF] Ignoring malformed WebSocket message");
-            }
-          }
-        };
-
-        ws.onerror = () => {
-          if (!resolved) {
-            resolved = true;
-            reject(new Error("WebSocket connection error"));
-          }
-        };
-
-        ws.onclose = () => {
-          if (!resolved) {
-            resolved = true;
-            reject(new Error("WebSocket closed unexpectedly"));
-          }
-        };
-      });
+            } catch {}
+          };
+          ws.onerror = () => {
+            if (!resolved) { resolved = true; reject(new Error("WebSocket connection error")); }
+          };
+          // Kick a final flush, wait for queue drain, then send end
+          (async () => {
+            try { await waitForAllFramesSent(); } catch {}
+            try {
+              if (metricsRef.current) metricsRef.current.wsEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+              ws.send(JSON.stringify({ type: "end" }));
+            } catch {}
+          })();
+        });
+      } else {
+        throw new Error("WebSocket not ready for streaming");
+      }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
       if ((err as DOMException)?.name === "AbortError") {
@@ -435,7 +537,6 @@ export function useTranscription(
       }
     } finally {
       setProcessing(false);
-      pcmChunksRef.current = [];
       workletNodeRef.current = null;
       sourceNodeRef.current = null;
       abortControllerRef.current = null;
@@ -443,18 +544,17 @@ export function useTranscription(
         try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
+      // Reset metrics
+      metricsRef.current = null;
     }
   }, [recording]);
 
   const cancel = useCallback(async () => {
-    // Cancel only affects active recordings; it does not send audio to the API
-    if (!recording && !audioContextRef.current && !streamRef.current) {
-      // Also abort any in-flight processing if present
-      if (abortControllerRef.current) {
-        try { abortControllerRef.current.abort(); } catch {}
-        abortControllerRef.current = null;
-      }
-      return;
+    // Cancel discards current capture, does not send audio, and does not close WS
+    // Also abort any in-flight processing if present
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch {}
+      abortControllerRef.current = null;
     }
 
     try {
@@ -465,25 +565,19 @@ export function useTranscription(
         try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
-
-      // Stop capturing audio completely
       if (streamRef.current) {
-        try {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-        } catch {}
+        try { streamRef.current.getTracks().forEach((track) => track.stop()); } catch {}
         streamRef.current = null;
         setReady(false);
       }
-
-      // Discard any accumulated PCM frames (scrap the audio)
-      pcmChunksRef.current = [];
-      // Abort any in-flight processing (if cancel is invoked during processing)
-      if (abortControllerRef.current) {
-        try { abortControllerRef.current.abort(); } catch {}
-        abortControllerRef.current = null;
+      // Reset streaming state (keep socket for reuse)
+      sendQueueRef.current = [];
+      seqRef.current = 0;
+      // Notify server to drop frames for this session without closing
+      if (wsRef.current && wsReadyRef.current) {
+        try { wsRef.current.send(JSON.stringify({ type: "cancel" })); } catch {}
       }
     } finally {
-      // Ensure UI reflects cancellation immediately
       setRecording(false);
       setProcessing(false);
       workletNodeRef.current = null;
@@ -492,6 +586,8 @@ export function useTranscription(
         try { audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
+      // Clear metrics for a fresh next session
+      metricsRef.current = null;
     }
   }, [recording]);
 

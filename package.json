@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "sh -c '(cd worker && npm run dev) & SF_DEVTOOLS=1 electron-forge start'",
     "dev:ws": "npm run dev --prefix worker",
-    "start": "electron-forge start",
+    "start": "SF_DEVTOOLS=1 electron-forge start",
     "package": "electron-forge package --arch=arm64",
     "make": "electron-forge make --arch=arm64",
     "publish": "electron-forge publish",

@@ -1298,6 +1298,12 @@ app.whenReady().then(async () => {
   }
 
   const isDev = !app.isPackaged;
+  // Log the WebSocket endpoint the app intends to use (terminal)
+  try {
+    const envWs = (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+    const wsUrlToLog = envWs || (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
+    console.log('[Main] WS endpoint', wsUrlToLog);
+  } catch {}
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
