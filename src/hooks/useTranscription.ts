@@ -455,17 +455,27 @@ export function useTranscription(
       if (wsRef.current && !wsErrorRef.current) {
         abortControllerRef.current = new AbortController();
         await new Promise<void>((resolve, reject) => {
-          let resolved = false;
+          let settled = false;
           const ws = wsRef.current!;
+
+          const cleanup = (abortOnly = false) => {
+            try { ws.removeEventListener('message', onMessage as any); } catch {}
+            try { ws.removeEventListener('error', onError as any); } catch {}
+            try { ws.removeEventListener('close', onClose as any); } catch {}
+            try { abortControllerRef.current?.signal.removeEventListener('abort', onAbort); } catch {}
+            try { if (!abortOnly && timeoutId) clearTimeout(timeoutId); } catch {}
+          };
+
           const onAbort = () => {
-            if (!resolved) {
-              resolved = true;
+            if (!settled) {
+              settled = true;
+              cleanup(true);
               reject(new DOMException("Aborted", "AbortError"));
             }
           };
           abortControllerRef.current!.signal.addEventListener('abort', onAbort);
 
-          ws.onmessage = (event) => {
+          const onMessage = (event: MessageEvent) => {
             try {
               const msg = JSON.parse(String(event.data));
               if (msg.type === "status" && msg.state === "processing") {
@@ -474,45 +484,68 @@ export function useTranscription(
                 }
                 if (window.devFlags?.devConsoleLogs) console.info("[SF] Transcribe processing started");
               } else if (msg.type === "final") {
-                if (!resolved) {
-                  resolved = true;
-                  setText(msg.text || "");
-                  if (msg.text) {
-                    window.transcript?.update(msg.text);
-                    window.clipboard.insertText(msg.text);
-                  }
-                  if (metricsRef.current) {
-                    metricsRef.current.sttEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-                    metricsRef.current.finalRenderMs = metricsRef.current.sttEndMs;
-                    if (window.devFlags?.devConsoleLogs) {
-                      console.info("[SF] Session metrics", {
-                        sessionId: metricsRef.current.sessionId,
-                        framesProduced: metricsRef.current.framesProduced,
-                        framesQueued: metricsRef.current.framesQueued,
-                        framesSentApprox: metricsRef.current.framesSentApprox,
-                        bytesProducedKB: Number((metricsRef.current.bytesProduced/1024).toFixed(2)),
-                        pttDownToFirstFrameMs: metricsRef.current.firstFrameOutMs ? Math.round(metricsRef.current.firstFrameOutMs - metricsRef.current.pttDownMs) : null,
-                        firstToLastFrameMs: (metricsRef.current.firstFrameOutMs && metricsRef.current.lastFrameOutMs) ? Math.round(metricsRef.current.lastFrameOutMs - metricsRef.current.firstFrameOutMs) : null,
-                        wsOpenDeltaMs: metricsRef.current.wsOpenMs ? Math.round(metricsRef.current.wsOpenMs - metricsRef.current.pttDownMs) : null,
-                        wsEndDeltaMs: metricsRef.current.wsEndMs ? Math.round(metricsRef.current.wsEndMs - metricsRef.current.pttDownMs) : null,
-                        sttDurationMs: (metricsRef.current.sttStartMs && metricsRef.current.sttEndMs) ? Math.round(metricsRef.current.sttEndMs - metricsRef.current.sttStartMs) : null,
-                        totalMs: Math.round(metricsRef.current.sttEndMs - metricsRef.current.pttDownMs),
-                      });
+                if (!settled) {
+                  settled = true;
+                  try {
+                    setText(msg.text || "");
+                    if (msg.text) {
+                      window.transcript?.update(msg.text);
+                      window.clipboard.insertText(msg.text);
                     }
-                  }
+                    if (metricsRef.current) {
+                      metricsRef.current.sttEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                      metricsRef.current.finalRenderMs = metricsRef.current.sttEndMs;
+                      if (window.devFlags?.devConsoleLogs) {
+                        console.info("[SF] Session metrics", {
+                          sessionId: metricsRef.current.sessionId,
+                          framesProduced: metricsRef.current.framesProduced,
+                          framesQueued: metricsRef.current.framesQueued,
+                          framesSentApprox: metricsRef.current.framesSentApprox,
+                          bytesProducedKB: Number((metricsRef.current.bytesProduced/1024).toFixed(2)),
+                          pttDownToFirstFrameMs: metricsRef.current.firstFrameOutMs ? Math.round(metricsRef.current.firstFrameOutMs - metricsRef.current.pttDownMs) : null,
+                          firstToLastFrameMs: (metricsRef.current.firstFrameOutMs && metricsRef.current.lastFrameOutMs) ? Math.round(metricsRef.current.lastFrameOutMs - metricsRef.current.firstFrameOutMs) : null,
+                          wsOpenDeltaMs: metricsRef.current.wsOpenMs ? Math.round(metricsRef.current.wsOpenMs - metricsRef.current.pttDownMs) : null,
+                          wsEndDeltaMs: metricsRef.current.wsEndMs ? Math.round(metricsRef.current.wsEndMs - metricsRef.current.pttDownMs) : null,
+                          sttDurationMs: (metricsRef.current.sttStartMs && metricsRef.current.sttEndMs) ? Math.round(metricsRef.current.sttEndMs - metricsRef.current.sttStartMs) : null,
+                          totalMs: Math.round(metricsRef.current.sttEndMs - metricsRef.current.pttDownMs),
+                        });
+                      }
+                    }
+                  } catch {}
+                  cleanup();
                   resolve();
                 }
               } else if (msg.type === "error") {
-                if (!resolved) {
-                  resolved = true;
+                if (!settled) {
+                  settled = true;
+                  cleanup();
                   reject(new Error(`Server error: ${msg.body || 'Unknown error'}`));
                 }
               }
             } catch {}
           };
-          ws.onerror = () => {
-            if (!resolved) { resolved = true; reject(new Error("WebSocket connection error")); }
+
+          const onError = () => {
+            if (!settled) { settled = true; cleanup(); reject(new Error("WebSocket connection error")); }
           };
+          const onClose = () => {
+            if (!settled) { settled = true; cleanup(); reject(new Error("WebSocket closed before final")); }
+          };
+
+          ws.addEventListener('message', onMessage as any);
+          ws.addEventListener('error', onError as any);
+          ws.addEventListener('close', onClose as any);
+
+          // Final safety timeout in case server never replies
+          const timeoutMs = 15000;
+          const timeoutId = setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              cleanup();
+              reject(new Error("Timed out waiting for transcription result"));
+            }
+          }, timeoutMs);
+
           // Kick a final flush, wait for queue drain, then send end
           (async () => {
             try { await waitForAllFramesSent(); } catch {}

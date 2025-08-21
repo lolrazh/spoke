@@ -85,6 +85,7 @@ let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
 let devAuthServerUrl: string | null = null;
+let devAuthServer: http.Server | null = null;
 // Duplicate callback prevention - track processed auth URLs
 const processedAuthUrls = new Set<string>();
 
@@ -1265,6 +1266,7 @@ app.whenReady().then(async () => {
       });
       server.listen(port, host, () => {
         devAuthServerUrl = `http://${host}:${port}/auth/callback`;
+        devAuthServer = server;
         console.log("[Auth] Dev auth server listening:", devAuthServerUrl);
       });
     }
@@ -1972,6 +1974,11 @@ app.whenReady().then(async () => {
       }
     }
   });
+});
+
+// Ensure local dev auth server is closed on quit to avoid EADDRINUSE on restart
+app.on('before-quit', () => {
+  try { devAuthServer?.close(); } catch {}
 });
 
 // Handle deep links like sonicflow://auth/callback?code=...
