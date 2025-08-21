@@ -62,6 +62,22 @@ export function useTranscription(
   const flushTimerRef = useRef<number | null>(null);
   const useStreamingRef = useRef<boolean>(false);
   const startedMsRef = useRef<number>(0);
+  // Metrics
+  const metricsRef = useRef<{
+    sessionId: string;
+    pttDownMs: number;
+    wsOpenMs?: number;
+    firstFrameOutMs?: number;
+    lastFrameOutMs?: number;
+    wsEndMs?: number;
+    sttStartMs?: number;
+    sttEndMs?: number;
+    finalRenderMs?: number;
+    framesProduced: number;
+    bytesProduced: number;
+    framesQueued: number;
+    framesSentApprox: number;
+  } | null>(null);
 
   const nowRelNs = () => {
     try {
@@ -101,6 +117,7 @@ export function useTranscription(
 
     ws.onopen = () => {
       wsReadyRef.current = true;
+      if (metricsRef.current && !metricsRef.current.wsOpenMs) metricsRef.current.wsOpenMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       try {
         const startMsg = { type: "start", version: 2 as const, format: "pcm16le" as const, rate: TARGET_SAMPLE_RATE, language: "en" };
         ws.send(JSON.stringify(startMsg));
@@ -124,11 +141,20 @@ export function useTranscription(
     out.set(new Uint8Array(header), 0);
     out.set(payload, (header.byteLength || 16));
 
+    // Metrics: count frames/bytes and first-frame timestamp
+    if (metricsRef.current) {
+      metricsRef.current.framesProduced += 1;
+      metricsRef.current.bytesProduced += payload.byteLength;
+      if (!metricsRef.current.firstFrameOutMs) metricsRef.current.firstFrameOutMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    }
+
     const ws = wsRef.current;
     if (ws && wsReadyRef.current && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES) {
       try { ws.send(out.buffer); } catch { sendQueueRef.current.push(out.buffer); }
+      if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
     } else {
       sendQueueRef.current.push(out.buffer);
+      if (metricsRef.current) metricsRef.current.framesQueued += 1;
       ensureStreamingSocket();
       flushQueue();
     }
@@ -332,6 +358,14 @@ export function useTranscription(
     wsReadyRef.current = false;
     if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
     startedMsRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    metricsRef.current = {
+      sessionId: Math.random().toString(36).slice(2),
+      pttDownMs: startedMsRef.current,
+      framesProduced: 0,
+      bytesProduced: 0,
+      framesQueued: 0,
+      framesSentApprox: 0,
+    };
 
     try {
       // Create AudioContext at device/hardware rate and attach downsampler worklet
@@ -394,6 +428,8 @@ export function useTranscription(
       // Disconnect nodes
       // Ask the worklet to flush any partial frame before tearing down
       try { workletNodeRef.current?.port.postMessage({ type: "flush" }); } catch {}
+      // Record last-frame-out time right after requesting flush
+      if (metricsRef.current && !metricsRef.current.lastFrameOutMs) metricsRef.current.lastFrameOutMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
       // Disconnect nodes
       try { sourceNodeRef.current?.disconnect(); } catch {}
       try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
@@ -436,6 +472,9 @@ export function useTranscription(
               try {
                 const msg = JSON.parse(String(event.data));
                 if (msg.type === "status" && msg.state === "processing") {
+                  if (!metricsRef.current?.sttStartMs) {
+                    if (metricsRef.current) metricsRef.current.sttStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                  }
                   if (window.devFlags?.devConsoleLogs) console.info("[SF] Transcribe processing started");
                 } else if (msg.type === "final") {
                   if (!resolved) {
@@ -444,6 +483,25 @@ export function useTranscription(
                     if (msg.text) {
                       window.transcript?.update(msg.text);
                       window.clipboard.insertText(msg.text);
+                    }
+                    if (metricsRef.current) {
+                      metricsRef.current.sttEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                      metricsRef.current.finalRenderMs = metricsRef.current.sttEndMs;
+                      if (window.devFlags?.devConsoleLogs) {
+                        console.info("[SF] Session metrics", {
+                          sessionId: metricsRef.current.sessionId,
+                          framesProduced: metricsRef.current.framesProduced,
+                          framesQueued: metricsRef.current.framesQueued,
+                          framesSentApprox: metricsRef.current.framesSentApprox,
+                          bytesProducedKB: Number((metricsRef.current.bytesProduced/1024).toFixed(2)),
+                          pttDownToFirstFrameMs: metricsRef.current.firstFrameOutMs ? Math.round(metricsRef.current.firstFrameOutMs - metricsRef.current.pttDownMs) : null,
+                          firstToLastFrameMs: (metricsRef.current.firstFrameOutMs && metricsRef.current.lastFrameOutMs) ? Math.round(metricsRef.current.lastFrameOutMs - metricsRef.current.firstFrameOutMs) : null,
+                          wsOpenDeltaMs: metricsRef.current.wsOpenMs ? Math.round(metricsRef.current.wsOpenMs - metricsRef.current.pttDownMs) : null,
+                          wsEndDeltaMs: metricsRef.current.wsEndMs ? Math.round(metricsRef.current.wsEndMs - metricsRef.current.pttDownMs) : null,
+                          sttDurationMs: (metricsRef.current.sttStartMs && metricsRef.current.sttEndMs) ? Math.round(metricsRef.current.sttEndMs - metricsRef.current.sttStartMs) : null,
+                          totalMs: Math.round(metricsRef.current.sttEndMs - metricsRef.current.pttDownMs),
+                        });
+                      }
                     }
                     resolve();
                   }
@@ -472,7 +530,10 @@ export function useTranscription(
               try {
                 await waitForAllFramesSent();
               } catch {}
-              try { ws.send(JSON.stringify({ type: "end" })); } catch {}
+              try {
+                if (metricsRef.current) metricsRef.current.wsEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                ws.send(JSON.stringify({ type: "end" }));
+              } catch {}
             })();
           });
           // Clean up WS after final
@@ -536,6 +597,29 @@ export function useTranscription(
                   window.transcript?.update(msg.text);
                   window.clipboard.insertText(msg.text);
                 }
+                if (metricsRef.current) {
+                  // In v1 fallback, estimate wsEnd and times if not set
+                  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                  if (!metricsRef.current.wsEndMs) metricsRef.current.wsEndMs = now;
+                  metricsRef.current.sttEndMs = now;
+                  if (!metricsRef.current.sttStartMs) metricsRef.current.sttStartMs = now;
+                  metricsRef.current.finalRenderMs = now;
+                  if (window.devFlags?.devConsoleLogs) {
+                    console.info("[SF] Session metrics (v1 fallback)", {
+                      sessionId: metricsRef.current.sessionId,
+                      framesProduced: metricsRef.current.framesProduced,
+                      framesQueued: metricsRef.current.framesQueued,
+                      framesSentApprox: metricsRef.current.framesSentApprox,
+                      bytesProducedKB: Number((metricsRef.current.bytesProduced/1024).toFixed(2)),
+                      pttDownToFirstFrameMs: metricsRef.current.firstFrameOutMs ? Math.round(metricsRef.current.firstFrameOutMs - metricsRef.current.pttDownMs) : null,
+                      firstToLastFrameMs: (metricsRef.current.firstFrameOutMs && metricsRef.current.lastFrameOutMs) ? Math.round(metricsRef.current.lastFrameOutMs - metricsRef.current.firstFrameOutMs) : null,
+                      wsOpenDeltaMs: metricsRef.current.wsOpenMs ? Math.round(metricsRef.current.wsOpenMs - metricsRef.current.pttDownMs) : null,
+                      wsEndDeltaMs: metricsRef.current.wsEndMs ? Math.round(metricsRef.current.wsEndMs - metricsRef.current.pttDownMs) : null,
+                      sttDurationMs: (metricsRef.current.sttStartMs && metricsRef.current.sttEndMs) ? Math.round(metricsRef.current.sttEndMs - metricsRef.current.sttStartMs) : null,
+                      totalMs: Math.round(now - metricsRef.current.pttDownMs),
+                    });
+                  }
+                }
                 resolve();
               }
             } else if (msg.type === "error") {
@@ -566,6 +650,8 @@ export function useTranscription(
         try { await audioContextRef.current.close(); } catch {}
         audioContextRef.current = null;
       }
+      // Reset metrics
+      metricsRef.current = null;
     }
   }, [recording]);
 
