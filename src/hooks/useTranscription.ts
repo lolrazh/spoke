@@ -537,7 +537,6 @@ export function useTranscription(
       }
     } finally {
       setProcessing(false);
-      pcmChunksRef.current = [];
       workletNodeRef.current = null;
       sourceNodeRef.current = null;
       abortControllerRef.current = null;
