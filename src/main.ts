@@ -1308,6 +1308,12 @@ app.whenReady().then(async () => {
     const connect = [
       "connect-src 'self'",
       "https://api.sonicflow.app",
+      "wss://api.sonicflow.app",
+      // Local development WebSocket
+      ...(isDev ? [
+        "ws://127.0.0.1:8787",
+        "ws://localhost:8787",
+      ] : []),
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
       "https://*.supabase.co",

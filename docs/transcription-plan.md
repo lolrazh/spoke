@@ -5,35 +5,35 @@ Track progress for migrating to PCM Int16@16k, GROQ STT, and WebSockets with 100
 - 100 ms @ 16 kHz Int16 mono = 1,600 samples ≈ 3.2 KB
 
 ## Absolute First
-- [ ] Switch wire format to PCM Int16 mono @ 16,000 Hz
-- [ ] Configure GROQ STT model; add `GROQ_API_KEY` to `.env`
-- [ ] Establish WebSocket ingest (Hono route) and client connection
-- [ ] Send fixed 100 ms audio chunks to worker
+- [x] Switch wire format to PCM Int16 mono @ 16,000 Hz
+- [x] Configure GROQ STT model (worker/.dev.vars; `GROQ_STT_MODEL`, `GROQ_API_KEY`)
+- [x] Establish WebSocket ingest (Hono `/ws`) and client connection
+- [ ] Stream fixed 100 ms audio chunks to worker (v2). Current v1 uploads a single WAV after PTT end.
 
 ## Client Audio
-- [ ] Add AudioWorklet to output Int16@16k in `process()`
-- [ ] 48k→16k: decimate-by-3 with light FIR
-- [ ] 44.1k→16k: fractional resampler (linear/polyphase)
-- [ ] Normalize/clamp Float32→Int16 in Worklet
-- [ ] Chunker: exact 100 ms frames (seq IDs)
+- [x] Add AudioWorklet to output Int16@16k in `process()`
+- [x] 48k→16k: decimate-by-3 with light FIR
+- [x] 44.1k→16k: fractional resampler (linear)
+- [x] Normalize/clamp Float32→Int16 in Worklet
+- [x] Chunker: exact 100 ms frames (seq IDs)
 - [ ] Ring buffer (SharedArrayBuffer) with message-passing fallback
 
 ## WebSocket Transport
-- [ ] Define messages: `start`, `audio`(binary+seq), `end`, `error`
-- [ ] Per-frame header: `u32 seq | u32 nbytes | u64 client_ts_ns`
-- [ ] Open on PTT start; stream frames; send `end` on release
+- [x] Define messages (v1): client `start` (JSON), binary audio payload(s), `end`; server `status:processing`, `final`, `error`.
+- [ ] Per-frame header for streaming: `u32 seq | u32 nbytes | u64 client_ts_ns` (not used in v1)
+- [x] Open on PTT end; upload single WAV; send `end`; close after `final` (v1 behavior)
 - [ ] Handle backpressure (pause/resume, buffer limits)
 
 ## Worker + GROQ
-- [ ] Hono `GET /realtime` WS upgrade; session map per connection
-- [ ] Buffer/order incoming frames; guard dup/out-of-order
-- [ ] On `end`: concat PCM; call GROQ STT (raw PCM or WAV wrap)
-- [ ] Send `final_transcript`; emit `error` on failures
-- [ ] Use `GROQ_API_KEY` from env; never expose to renderer
+- [x] Hono `GET /ws` WS upgrade
+- [x] Collect incoming binary fragments; concat in-memory on `end` (no seq mgmt in v1)
+- [x] On `end`: concat; wrap as WAV; call GROQ STT (fallback to Workers AI if no key)
+- [x] Send `final` (text, segments when available); emit `error` on failures
+- [x] Use `GROQ_API_KEY` from env; never expose to renderer
 
 ## Renderer UX
-- [ ] PTT controls: listening → processing states
-- [ ] Final-only transcript rendering; optional clipboard insert
+- [x] PTT controls: listening → processing states
+- [x] Final-only transcript rendering; clipboard insert to active app
 - [ ] Retry flow on WS failure (optional HTTP fallback later)
 
 ## Metrics & QA
@@ -42,10 +42,11 @@ Track progress for migrating to PCM Int16@16k, GROQ STT, and WebSockets with 100
 - [ ] Manual tests: 44.1k vs 48k, long utterances, noisy env, quick commands
 
 ## Cleanup
-- [ ] Remove MediaRecorder/Opus from hot path
-- [ ] Add constants/types: `src/constants/audio.ts`, `src/types/protocol.ts`
-- [ ] Update README/architecture; add protocol doc; `.env.example`
-- [ ] Lint/format; ensure Worklet builds with Vite/Electron
+- [x] Remove MediaRecorder/Opus code paths
+- [x] Add audio constants in `src/config/audio.ts`
+- [ ] Add protocol types in `src/types/protocol.ts` (or similar)
+- [ ] Update README/architecture; add protocol doc; `.env.example` (root). Worker has `.dev.vars.example`.
+- [x] Lint/format; ensure Worklet builds with Vite/Electron
 
 ## Future-Proofing
 - [ ] Server-side VAD to auto-finalize (250–400 ms silence)

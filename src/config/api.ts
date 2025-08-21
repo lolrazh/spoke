@@ -3,23 +3,49 @@
 // In the renderer (Vite), prefer VITE_* env. Fallback to sensible defaults.
 export function getTranscribeUrl(): string {
   try {
-    const mode = (import.meta as any)?.env?.MODE as string | undefined;
-    const isDev = mode && mode !== "production";
-    const override = (import.meta as any)?.env?.VITE_TRANSCRIBE_URL as string | undefined;
+    const env: any = (import.meta as any)?.env || {};
+    const override = env?.VITE_TRANSCRIBE_URL as string | undefined;
+    if (override && override.trim()) return override.trim();
 
-    if (override && typeof override === "string" && override.trim()) {
-      return override.trim();
-    }
+    const isViteDev = Boolean(env?.DEV);
+    const isHttpLocal = typeof window !== "undefined" &&
+      (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
+    const forceLocal = typeof window !== "undefined" && (
+      new URLSearchParams(window.location.search).has("localWs") ||
+      (typeof window.localStorage !== "undefined" && window.localStorage.getItem("sf.localWs") === "1")
+    );
 
-    // Default dev endpoint assumes `wrangler dev` on localhost
-    if (isDev) {
+    if (isViteDev || isHttpLocal || forceLocal) {
       return "http://127.0.0.1:8787/transcribe";
     }
 
-    // Production default
     return "https://api.sonicflow.app/transcribe";
   } catch {
     return "https://api.sonicflow.app/transcribe";
   }
 }
 
+// WebSocket endpoint for real-time transcription
+export function getTranscribeWsUrl(): string {
+  try {
+    const env: any = (import.meta as any)?.env || {};
+    const override = env?.VITE_TRANSCRIBE_WS_URL as string | undefined;
+    if (override && override.trim()) return override.trim();
+
+    const isViteDev = Boolean(env?.DEV);
+    const isHttpLocal = typeof window !== "undefined" &&
+      (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
+    const forceLocal = typeof window !== "undefined" && (
+      new URLSearchParams(window.location.search).has("localWs") ||
+      (typeof window.localStorage !== "undefined" && window.localStorage.getItem("sf.localWs") === "1")
+    );
+
+    if (isViteDev || isHttpLocal || forceLocal) {
+      return "ws://127.0.0.1:8787/ws";
+    }
+
+    return "wss://api.sonicflow.app/ws";
+  } catch {
+    return "wss://api.sonicflow.app/ws";
+  }
+}
