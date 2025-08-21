@@ -591,6 +591,46 @@ export function useTranscription(
     }
   }, [recording]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clean up WebSocket connection on component unmount
+      if (wsRef.current) {
+        try {
+          if (wsReadyRef.current) {
+            wsRef.current.send(JSON.stringify({ type: "cancel" }));
+          }
+          wsRef.current.close(1000, "component_unmount");
+        } catch {}
+        wsRef.current = null;
+        wsReadyRef.current = false;
+      }
+      
+      // Clean up audio resources
+      if (audioContextRef.current) {
+        try { audioContextRef.current.close(); } catch {}
+        audioContextRef.current = null;
+      }
+      
+      if (streamRef.current) {
+        try { streamRef.current.getTracks().forEach(track => track.stop()); } catch {}
+        streamRef.current = null;
+      }
+      
+      // Clear any pending timers
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+      
+      // Abort any pending operations
+      if (abortControllerRef.current) {
+        try { abortControllerRef.current.abort(); } catch {}
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
   return {
     recording,
     processing,

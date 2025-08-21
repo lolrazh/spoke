@@ -111,13 +111,21 @@ app.get('/ws', (c) => {
         session.frames += 1;
       }
     } catch (e: any) {
-      server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+      console.error('[Worker] WebSocket message error:', e);
+      try {
+        server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+      } catch {}
       session = createEmptySession();
     }
   });
 
-  server.addEventListener('close', () => {
-    // nothing
+  server.addEventListener('close', (evt) => {
+    // Clean up session on WebSocket close
+    logSession('ws_close', session, { 
+      code: (evt as any)?.code || 'unknown',
+      reason: (evt as any)?.reason || 'unknown'
+    });
+    session = createEmptySession();
   });
 
   return new Response(null, { status: 101, webSocket: client });
@@ -220,17 +228,32 @@ async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): P
   form.append('model', model);
   // Optional params: language, response_format, temperature, etc.
 
-  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`GROQ STT error: ${res.status} ${body}`);
+  // Add timeout to prevent hanging
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+  
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`GROQ STT error: ${res.status} ${body}`);
+      }
+      const json = await res.json();
+      // OpenAI-compatible response shape: { text: string, ... }
+      return json as { text: string };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Groq API request timed out after 25 seconds');
+    }
+    throw err;
   }
-  const json = await res.json();
-  // OpenAI-compatible response shape: { text: string, ... }
-  return json as { text: string };
 }
 
