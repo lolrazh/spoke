@@ -5,7 +5,6 @@ import {
   TARGET_SAMPLE_RATE,
   SAMPLES_PER_CHUNK,
   WS_MAX_BUFFERED_BYTES,
-  streamingV2Enabled,
 } from "../config/audio";
 import { getTranscribeWsUrl } from "../config/api";
 import { concatInt16, encodeWavInt16, encodeFrameHeader } from "../utils/pcm";
@@ -325,8 +324,8 @@ export function useTranscription(
     setText("");
     setRecording(true);
     pcmChunksRef.current = [];
-    // Reset streaming state
-    useStreamingRef.current = streamingV2Enabled();
+    // Reset streaming state (streaming always on by default)
+    useStreamingRef.current = true;
     seqRef.current = 0;
     sendQueueRef.current = [];
     wsErrorRef.current = null;
@@ -393,13 +392,12 @@ export function useTranscription(
 
     try {
       // Disconnect nodes
-      try {
-        sourceNodeRef.current?.disconnect();
-      } catch {}
-      try {
-        workletNodeRef.current?.port.postMessage({ type: "reset" });
-        workletNodeRef.current?.disconnect();
-      } catch {}
+      // Ask the worklet to flush any partial frame before tearing down
+      try { workletNodeRef.current?.port.postMessage({ type: "flush" }); } catch {}
+      // Disconnect nodes
+      try { sourceNodeRef.current?.disconnect(); } catch {}
+      try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
+      try { workletNodeRef.current?.disconnect(); } catch {}
       // Close AudioContext to release mic indicator faster
       if (audioContextRef.current) {
         await audioContextRef.current.close();

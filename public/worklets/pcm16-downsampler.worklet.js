@@ -64,6 +64,17 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._pos = 0.0;
         this._accum = [];
         this._seq = 0;
+      } else if (msg.type === 'flush') {
+        // Emit any remaining partial frame as-is (may be < frameSamples)
+        if (this._accum.length > 0) {
+          const out = new Int16Array(this._accum.length);
+          for (let k = 0; k < this._accum.length; k++) out[k] = this._accum[k];
+          this._accum.length = 0;
+          this.port.postMessage(
+            { type: 'audio', seq: this._seq++, rate: this.targetRate, samples: out.buffer },
+            [out.buffer]
+          );
+        }
       }
     };
   }
