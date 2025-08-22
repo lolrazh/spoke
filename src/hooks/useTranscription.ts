@@ -369,11 +369,21 @@ export function useTranscription(
     };
 
     try {
+      // Try to establish the WebSocket early so audio failures don't mask connectivity
+      ensureStreamingSocket();
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
-      await audioContextRef.current.audioWorklet.addModule(
-        "/worklets/pcm16-downsampler.worklet.js",
-      );
+      // Resolve worklet URL for both dev (http://localhost) and prod (file://)
+      const workletUrl = (() => {
+        try {
+          const base = (import.meta as any)?.env?.BASE_URL ?? './';
+          const rel = `${base.replace(/\/$/, '')}/worklets/pcm16-downsampler.worklet.js`;
+          return new URL(rel, (typeof window !== 'undefined' ? window.location.href : 'file://')).toString();
+        } catch {
+          return 'worklets/pcm16-downsampler.worklet.js';
+        }
+      })();
+      await audioContextRef.current.audioWorklet.addModule(workletUrl);
 
       sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(
         streamRef.current,

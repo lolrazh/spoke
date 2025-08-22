@@ -18,6 +18,11 @@ export default defineConfig({
           dest: "assets", // copies icon files to dist/assets/
         },
         {
+          // Ensure AudioWorklet scripts are available in packaged builds
+          src: [join(__dirname, "public/worklets/*")],
+          dest: "worklets",
+        },
+        {
           // Ensure symbol JSON is available in packaged renderer
           src: [join(__dirname, "public/assets/sf-symbols.json")],
           dest: "assets",

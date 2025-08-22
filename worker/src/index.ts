@@ -22,6 +22,9 @@ app.get('/ws', (c) => {
   let session = createEmptySession();
 
   server.accept();
+  try {
+    console.log("[WS] accepted");
+  } catch {}
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
       const data = evt.data;
@@ -29,6 +32,7 @@ app.get('/ws', (c) => {
         const msg = safeJson(data);
         if (!msg || typeof msg !== 'object') return;
         if (msg.type === 'start') {
+          try { console.log('[WS] start'); } catch {}
           // Reset for a new session
           session = createEmptySession();
           session.startedAt = Date.now();
@@ -256,4 +260,3 @@ async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): P
     throw err;
   }
 }
-
