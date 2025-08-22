@@ -15,6 +15,7 @@ import {
 import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { spawn, execFile, execSync } from "child_process";
 import http from "node:http";
 
@@ -783,9 +784,15 @@ const createWindow = () => {
       mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     }
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    const filePath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    try {
+      const u = pathToFileURL(filePath);
+      const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+      if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+      mainWindow.loadURL(u.toString());
+    } catch {
+      mainWindow.loadFile(filePath);
+    }
   }
 
   // Hide menu bar
@@ -857,10 +864,21 @@ function createOnboardingWindow() {
           if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
           return `${u.toString()}#/onboarding`;
         } catch { return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`; } })()
-    : `file://${path.join(
-        __dirname,
-        `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-      )}#/onboarding`;
+    : (() => { try {
+          const filePath = path.join(
+            __dirname,
+            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+          );
+          const u = pathToFileURL(filePath);
+          const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+          return `${u.toString()}#/onboarding`;
+        } catch {
+          return `file://${path.join(
+            __dirname,
+            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+          )}#/onboarding`;
+        } })();
 
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
