@@ -13,8 +13,7 @@
 		"enabled": true
 	},
 	"routes": [
-		{ "pattern": "api.sonicflow.app/", "custom_domain": true },
-		{ "pattern": "api.sonicflow.app/ws", "custom_domain": true }
+		{ "pattern": "api.sonicflow.app", "custom_domain": true }
 	]
 	/**
 	 * Smart Placement
