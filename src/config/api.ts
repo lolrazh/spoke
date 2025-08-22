@@ -29,8 +29,16 @@ export function getTranscribeUrl(): string {
 export function getTranscribeWsUrl(): string {
   try {
     const env: any = (import.meta as any)?.env || {};
+    // Highest priority: explicit URL from query param (?ws=...)
+    try {
+      if (typeof window !== 'undefined') {
+        const qs = new URLSearchParams(window.location.search);
+        const qp = qs.get('ws');
+        if (qp && qp.trim()) return normalize(qp.trim());
+      }
+    } catch {}
     const override = env?.VITE_TRANSCRIBE_WS_URL as string | undefined;
-    if (override && override.trim()) return override.trim();
+    if (override && override.trim()) return normalize(override.trim());
 
     const isViteDev = Boolean(env?.DEV);
     const isHttpLocal = typeof window !== "undefined" &&
@@ -47,5 +55,18 @@ export function getTranscribeWsUrl(): string {
     return "wss://api.sonicflow.app/ws";
   } catch {
     return "wss://api.sonicflow.app/ws";
+  }
+}
+
+function normalize(input: string): string {
+  try {
+    const hasScheme = /^([a-z]+):\/\//i.test(input);
+    const u = new URL(hasScheme ? input : `https://${input}`);
+    if (u.protocol === 'http:') u.protocol = 'ws:';
+    if (u.protocol === 'https:') u.protocol = 'wss:';
+    if (!u.pathname || u.pathname === '/') u.pathname = '/ws';
+    return u.toString();
+  } catch {
+    return input;
   }
 }
