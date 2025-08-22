@@ -36,11 +36,13 @@ import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } 
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
+const VITE_ENV: any = (import.meta as any)?.env || {};
+
 Sentry.init({
   // Use a single DSN variable for both main/renderer (Vite-injected)
-  dsn: (import.meta as any).env?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
+  dsn: VITE_ENV?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
   // Default to 'prod' for packaged builds and 'dev' for development
-  environment: (import.meta as any).env?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
+  environment: VITE_ENV?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
   release: app.getVersion(),
   beforeSend(event) {
     try {
@@ -713,15 +715,18 @@ const createWindow = () => {
       console.warn("Failed to top-align on ready-to-show:", e);
     }
 
-    // Suppress DevTools auto-open for transparent pill window to avoid overlays.
-    // Opt-in with SF_DEVTOOLS=1 if you explicitly need DevTools.
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL && process.env.SF_DEVTOOLS === "1") {
-      mainWindow.webContents.openDevTools({ mode: "detach" });
-      console.log("DevTools opened (opt-in).\nTip: unset SF_DEVTOOLS to suppress overlays on transparent window.");
+    // DevTools behavior:
+    // - In packaged staging builds: auto-open via VITE_SF_DEVTOOLS=1 (compile-time injected)
+    // - In Vite dev server: opt-in via SF_DEVTOOLS=1 (to avoid overlay issues on transparent window)
+    if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
+      try { mainWindow.webContents.openDevTools({ mode: "detach" }); } catch {}
+      console.log("DevTools opened (staging)");
+    } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL && process.env.SF_DEVTOOLS === "1") {
+      try { mainWindow.webContents.openDevTools({ mode: "detach" }); } catch {}
+      console.log("DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.");
     } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       console.log("DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)");
     }
-    // Note: DevTools disabled in production to maintain transparency on macOS
   });
 
   // Option 2 (as per suggestion): Use 'closed' event for logging after the fact
@@ -769,7 +774,14 @@ const createWindow = () => {
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    try {
+      const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+      const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+      if (wsOverride && String(wsOverride).trim()) url.searchParams.set('ws', String(wsOverride).trim());
+      mainWindow.loadURL(url.toString());
+    } catch {
+      mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    }
   } else {
     mainWindow.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
@@ -839,7 +851,12 @@ function createOnboardingWindow() {
   onboardingWindow.setMenuBarVisibility(false);
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
-    ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`
+    ? (() => { try {
+          const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+          const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+          return `${u.toString()}#/onboarding`;
+        } catch { return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`; } })()
     : `file://${path.join(
         __dirname,
         `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
@@ -909,6 +926,11 @@ function createOnboardingWindow() {
   // FIX 7: Backup using ready-to-show as fallback
   onboardingWindow.once('ready-to-show', () => {
     console.log("[Onboarding] Ready to show event fired");
+    // Auto-open DevTools in packaged staging builds for onboarding UI (compile-time flag)
+    if (VITE_ENV?.VITE_SF_DEVTOOLS === '1') {
+      try { onboardingWindow.webContents.openDevTools({ mode: 'detach' }); } catch {}
+      console.log('[Onboarding] DevTools opened (staging)');
+    }
     // Only show if not already shown by did-finish-load
     setTimeout(() => {
       if (onboardingWindow && !onboardingWindow.isDestroyed() && !onboardingWindow.isVisible()) {
@@ -1305,6 +1327,11 @@ app.whenReady().then(async () => {
     const envWs = (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
     const wsUrlToLog = envWs || (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
     console.log('[Main] WS endpoint', wsUrlToLog);
+    console.log('[Main] Flags', {
+      VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
+      VITE_ALLOW_DEV_WS: VITE_ENV?.VITE_ALLOW_DEV_WS,
+      VITE_SENTRY_ENVIRONMENT: VITE_ENV?.VITE_SENTRY_ENVIRONMENT,
+    });
   } catch {}
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
@@ -1313,12 +1340,15 @@ app.whenReady().then(async () => {
     // Loosen CSP for auth flows; explicitly allow Supabase and websockets
     const styleSrc = "style-src 'self' 'unsafe-inline'";
     const fontSrc = "font-src 'self' data:";
+    const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === '1';
     const connect = [
       "connect-src 'self'",
       "https://api.sonicflow.app",
       "wss://api.sonicflow.app",
-      // Local development WebSocket
-      ...(isDev ? [
+      // Local development HTTP/WS (dev or staging with flag)
+      ...(allowLocal ? [
+        "http://127.0.0.1:8787",
+        "http://localhost:8787",
         "ws://127.0.0.1:8787",
         "ws://localhost:8787",
       ] : []),
@@ -1351,8 +1381,11 @@ app.whenReady().then(async () => {
       ...details.responseHeaders,
       "Content-Security-Policy": csp,
     };
-    // COOP/COEP off in dev to avoid cross-origin issues; keep in prod if you want
-    if (!isDev) {
+    // Only enforce COOP/COEP in strict prod (not dev or staging)
+    const isStrictProd = app.isPackaged && !(
+      VITE_ENV?.VITE_SENTRY_ENVIRONMENT === 'staging' || VITE_ENV?.VITE_SENTRY_ENVIRONMENT === 'dev'
+    );
+    if (isStrictProd) {
       headers["Cross-Origin-Opener-Policy"] = "same-origin";
       headers["Cross-Origin-Embedder-Policy"] = "require-corp";
     }
