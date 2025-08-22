@@ -20,6 +20,9 @@ app.get('/ws', (c) => {
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
+  // Track if socket has closed and allow aborting any in-flight STT
+  let socketClosed = false;
+  let sttAbort: AbortController | null = null;
 
   server.accept();
   try {
@@ -43,7 +46,9 @@ app.get('/ws', (c) => {
         } else if (msg.type === 'end') {
           const t0 = Date.now();
           // Signal processing started
-          server.send(JSON.stringify({ type: 'status', state: 'processing' }));
+          if (!socketClosed) {
+            try { server.send(JSON.stringify({ type: 'status', state: 'processing' })); } catch {}
+          }
 
           // If canceled or empty, short-circuit
           if (session.canceled || session.totalBytes === 0) {
@@ -61,18 +66,30 @@ app.get('/ws', (c) => {
           let finalText = '';
           try {
             if (GROQ_API_KEY) {
-              const res = await groqTranscribe(wav, GROQ_API_KEY, GROQ_STT_MODEL || 'whisper-large-v3-turbo');
+              // Allow canceling if the client disconnects while STT is running
+              sttAbort?.abort();
+              sttAbort = new AbortController();
+              const res = await groqTranscribe(
+                wav,
+                GROQ_API_KEY,
+                GROQ_STT_MODEL || 'whisper-large-v3-turbo',
+                sttAbort.signal,
+              );
               finalText = res?.text ?? '';
             } else {
               finalText = '';
             }
           } catch (e: any) {
-            server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' }));
+            if (!socketClosed) {
+              try { server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })); } catch {}
+            }
             session = createEmptySession();
             return;
           }
 
-          server.send(JSON.stringify({ type: 'final', text: finalText }));
+          if (!socketClosed) {
+            try { server.send(JSON.stringify({ type: 'final', text: finalText })); } catch {}
+          }
 
           const t1 = Date.now();
           logSession('final', session, { assembleMs: t1 - t0, textLen: finalText.length });
@@ -81,6 +98,8 @@ app.get('/ws', (c) => {
           // Discard buffered audio, but keep the socket open for reuse
           session = createEmptySession();
           session.canceled = true;
+          // Abort any transcription in flight
+          try { sttAbort?.abort(); } catch {}
         }
       } else if (data instanceof ArrayBuffer) {
         // Binary frame: [16-byte header][payload]
@@ -129,6 +148,9 @@ app.get('/ws', (c) => {
       code: (evt as any)?.code || 'unknown',
       reason: (evt as any)?.reason || 'unknown'
     });
+    socketClosed = true;
+    try { sttAbort?.abort(); } catch {}
+    sttAbort = null;
     session = createEmptySession();
   });
 
@@ -225,7 +247,12 @@ function logSession(tag: string, s: ReturnType<typeof createEmptySession>, extra
   } catch {}
 }
 
-async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): Promise<{ text: string } | null> {
+async function groqTranscribe(
+  wav: Uint8Array,
+  apiKey: string,
+  model: string,
+  externalSignal?: AbortSignal,
+): Promise<{ text: string } | null> {
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
   form.append('file', file);
@@ -233,8 +260,14 @@ async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): P
   // Optional params: language, response_format, temperature, etc.
 
   // Add timeout to prevent hanging
+  // Compose a controller that aborts on either timeout or external signal
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort);
+  }
   
   try {
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -244,6 +277,7 @@ async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): P
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     
       if (!res.ok) {
         const body = await res.text();
@@ -254,8 +288,9 @@ async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): P
       return json as { text: string };
   } catch (err: any) {
     clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
     if (err.name === 'AbortError') {
-      throw new Error('Groq API request timed out after 25 seconds');
+      throw new Error('Transcription aborted or timed out');
     }
     throw err;
   }
