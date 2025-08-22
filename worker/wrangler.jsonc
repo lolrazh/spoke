@@ -6,14 +6,15 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "sonic-flow",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-08-19",
+	"compatibility_date": "2025-08-16",
 	"compatibility_flags": ["nodejs_compat"],
 	"ai": { "binding": "AI" },
 	"observability": {
 		"enabled": true
 	},
 	"routes": [
-		{ "pattern": "api.sonicflow.app", "custom_domain": true }
+		{ "pattern": "api.sonicflow.app/", "custom_domain": true },
+		{ "pattern": "api.sonicflow.app/ws", "custom_domain": true }
 	]
 	/**
 	 * Smart Placement

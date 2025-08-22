@@ -5,15 +5,16 @@
   "description": "A Lightweight AI Dictation App for macOS",
   "main": ".vite/build/main.js",
   "scripts": {
-    "dev": "sh -c '(cd worker && npm run dev) & SF_DEVTOOLS=1 electron-forge start'",
+    "dev": "SF_DEVTOOLS=1 electron-forge start",
     "dev:ws": "npm run dev --prefix worker",
-    "start": "SF_DEVTOOLS=1 electron-forge start",
+    "start": "electron-forge start",
     "package": "electron-forge package --arch=arm64",
     "make": "electron-forge make --arch=arm64",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "clean": "rimraf out",
-    "postinstall": "bash native/build-helper.sh"
+    "postinstall": "bash native/build-helper.sh",
+    "kill:port:8787": "node scripts/kill-port.js 8787"
   },
   "keywords": [],
   "author": {

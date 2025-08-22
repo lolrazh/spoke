@@ -20,8 +20,14 @@ app.get('/ws', (c) => {
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
+  // Track if socket has closed and allow aborting any in-flight STT
+  let socketClosed = false;
+  let sttAbort: AbortController | null = null;
 
   server.accept();
+  try {
+    console.log("[WS] accepted");
+  } catch {}
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
       const data = evt.data;
@@ -29,6 +35,7 @@ app.get('/ws', (c) => {
         const msg = safeJson(data);
         if (!msg || typeof msg !== 'object') return;
         if (msg.type === 'start') {
+          try { console.log('[WS] start'); } catch {}
           // Reset for a new session
           session = createEmptySession();
           session.startedAt = Date.now();
@@ -39,7 +46,9 @@ app.get('/ws', (c) => {
         } else if (msg.type === 'end') {
           const t0 = Date.now();
           // Signal processing started
-          server.send(JSON.stringify({ type: 'status', state: 'processing' }));
+          if (!socketClosed) {
+            try { server.send(JSON.stringify({ type: 'status', state: 'processing' })); } catch {}
+          }
 
           // If canceled or empty, short-circuit
           if (session.canceled || session.totalBytes === 0) {
@@ -57,18 +66,30 @@ app.get('/ws', (c) => {
           let finalText = '';
           try {
             if (GROQ_API_KEY) {
-              const res = await groqTranscribe(wav, GROQ_API_KEY, GROQ_STT_MODEL || 'whisper-large-v3-turbo');
+              // Allow canceling if the client disconnects while STT is running
+              sttAbort?.abort();
+              sttAbort = new AbortController();
+              const res = await groqTranscribe(
+                wav,
+                GROQ_API_KEY,
+                GROQ_STT_MODEL || 'whisper-large-v3-turbo',
+                sttAbort.signal,
+              );
               finalText = res?.text ?? '';
             } else {
               finalText = '';
             }
           } catch (e: any) {
-            server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' }));
+            if (!socketClosed) {
+              try { server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })); } catch {}
+            }
             session = createEmptySession();
             return;
           }
 
-          server.send(JSON.stringify({ type: 'final', text: finalText }));
+          if (!socketClosed) {
+            try { server.send(JSON.stringify({ type: 'final', text: finalText })); } catch {}
+          }
 
           const t1 = Date.now();
           logSession('final', session, { assembleMs: t1 - t0, textLen: finalText.length });
@@ -77,6 +98,8 @@ app.get('/ws', (c) => {
           // Discard buffered audio, but keep the socket open for reuse
           session = createEmptySession();
           session.canceled = true;
+          // Abort any transcription in flight
+          try { sttAbort?.abort(); } catch {}
         }
       } else if (data instanceof ArrayBuffer) {
         // Binary frame: [16-byte header][payload]
@@ -111,13 +134,24 @@ app.get('/ws', (c) => {
         session.frames += 1;
       }
     } catch (e: any) {
-      server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+      console.error('[Worker] WebSocket message error:', e);
+      try {
+        server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+      } catch {}
       session = createEmptySession();
     }
   });
 
-  server.addEventListener('close', () => {
-    // nothing
+  server.addEventListener('close', (evt) => {
+    // Clean up session on WebSocket close
+    logSession('ws_close', session, { 
+      code: (evt as any)?.code || 'unknown',
+      reason: (evt as any)?.reason || 'unknown'
+    });
+    socketClosed = true;
+    try { sttAbort?.abort(); } catch {}
+    sttAbort = null;
+    session = createEmptySession();
   });
 
   return new Response(null, { status: 101, webSocket: client });
@@ -213,24 +247,51 @@ function logSession(tag: string, s: ReturnType<typeof createEmptySession>, extra
   } catch {}
 }
 
-async function groqTranscribe(wav: Uint8Array, apiKey: string, model: string): Promise<{ text: string } | null> {
+async function groqTranscribe(
+  wav: Uint8Array,
+  apiKey: string,
+  model: string,
+  externalSignal?: AbortSignal,
+): Promise<{ text: string } | null> {
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
   form.append('file', file);
   form.append('model', model);
   // Optional params: language, response_format, temperature, etc.
 
-  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`GROQ STT error: ${res.status} ${body}`);
+  // Add timeout to prevent hanging
+  // Compose a controller that aborts on either timeout or external signal
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 second timeout
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort);
   }
-  const json = await res.json();
-  // OpenAI-compatible response shape: { text: string, ... }
-  return json as { text: string };
+  
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`GROQ STT error: ${res.status} ${body}`);
+      }
+      const json = await res.json();
+      // OpenAI-compatible response shape: { text: string, ... }
+      return json as { text: string };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    if (err.name === 'AbortError') {
+      throw new Error('Transcription aborted or timed out');
+    }
+    throw err;
+  }
 }
-
