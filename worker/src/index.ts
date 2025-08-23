@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 
 type Bindings = {
   GROQ_API_KEY?: string;
-  GROQ_STT_MODEL?: string; // e.g., whisper-large-v3-turbo
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -16,7 +15,7 @@ app.get('/ws', (c) => {
     return c.text('Expected a websocket connection', 426);
   }
 
-  const { GROQ_API_KEY, GROQ_STT_MODEL } = c.env;
+  const { GROQ_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
@@ -73,7 +72,6 @@ app.get('/ws', (c) => {
               const res = await groqTranscribe(
                 wav,
                 GROQ_API_KEY,
-                GROQ_STT_MODEL || 'whisper-large-v3-turbo',
                 sttAbort.signal,
               );
               finalText = res?.text ?? '';
@@ -275,14 +273,15 @@ function logSession(tag: string, s: ReturnType<typeof createEmptySession>, extra
 async function groqTranscribe(
   wav: Uint8Array,
   apiKey: string,
-  model: string,
   externalSignal?: AbortSignal,
 ): Promise<{ text: string } | null> {
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
   form.append('file', file);
-  form.append('model', model);
-  // Optional params: language, response_format, temperature, etc.
+  form.append('model', 'whisper-large-v3');
+  // Hardcoded parameters for production
+  form.append('language', 'en');
+  form.append('prompt', 'Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite');
 
   // Add timeout to prevent hanging
   // Compose a controller that aborts on either timeout or external signal
