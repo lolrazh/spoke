@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock static asset imports used by audioFeedback
-vi.mock('/assets/sonic-flow-toggle-on.wav?url', () => ({ default: 'on.wav' }));
-vi.mock('/assets/sonic-flow-toggle-off.wav?url', () => ({ default: 'off.wav' }));
+vi.mock("/assets/sonic-flow-toggle-on.wav?url", () => ({ default: "on.wav" }));
+vi.mock("/assets/sonic-flow-toggle-off.wav?url", () => ({
+  default: "off.wav",
+}));
 
-describe('utils/audioFeedback', () => {
+describe("utils/audioFeedback", () => {
   const plays: string[] = [];
   const pauses: string[] = [];
   let AudioMock: any;
@@ -17,14 +19,21 @@ describe('utils/audioFeedback', () => {
 
     // Stub Audio before importing the module under test
     AudioMock = class {
-      src = '';
+      src = "";
       volume = 1;
-      preload = 'auto';
+      preload = "auto";
       currentTime = 0;
-      constructor(src: string) { this.src = src; }
+      constructor(src: string) {
+        this.src = src;
+      }
       load() {}
-      pause() { pauses.push(this.src); }
-      play() { plays.push(this.src); return Promise.resolve(); }
+      pause() {
+        pauses.push(this.src);
+      }
+      play() {
+        plays.push(this.src);
+        return Promise.resolve();
+      }
     };
     // @ts-ignore
     globalThis.Audio = AudioMock;
@@ -37,23 +46,23 @@ describe('utils/audioFeedback', () => {
     globalThis.Audio = origAudio;
   });
 
-  it('plays toggle sounds by default after small delays', async () => {
-    const mod = await import('./audioFeedback');
+  it("plays toggle sounds by default after small delays", async () => {
+    const mod = await import("./audioFeedback");
     mod.playToggleOn();
     mod.playToggleOff();
 
     // Advance less than off delay but more than on delay
     vi.advanceTimersByTime(50);
-    expect(plays).toEqual(['on.wav']);
+    expect(plays).toEqual(["on.wav"]);
 
     // Advance to trigger off
     vi.advanceTimersByTime(100);
-    expect(plays).toEqual(['on.wav', 'off.wav']);
+    expect(plays).toEqual(["on.wav", "off.wav"]);
   });
 
-  it('respects user preference to disable sounds', async () => {
-    window.localStorage.setItem('sf.playSounds', 'false');
-    const mod = await import('./audioFeedback');
+  it("respects user preference to disable sounds", async () => {
+    window.localStorage.setItem("sf.playSounds", "false");
+    const mod = await import("./audioFeedback");
     mod.playToggleOn();
     mod.playToggleOff();
     vi.advanceTimersByTime(200);
@@ -61,8 +70,8 @@ describe('utils/audioFeedback', () => {
     expect(pauses).toEqual([]);
   });
 
-  it('restarts the audio so repeated clicks do not overlap', async () => {
-    const mod = await import('./audioFeedback');
+  it("restarts the audio so repeated clicks do not overlap", async () => {
+    const mod = await import("./audioFeedback");
     mod.playToggleOn();
     vi.advanceTimersByTime(25);
     mod.playToggleOn();
@@ -71,4 +80,3 @@ describe('utils/audioFeedback', () => {
     expect(plays.length).toBe(2);
   });
 });
-

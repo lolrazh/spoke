@@ -24,13 +24,17 @@ export const WS_MAX_BUFFERED_BYTES = 512 * 1024; // 512 KB backpressure threshol
 export function streamingV2Enabled(): boolean {
   try {
     const env: any = (import.meta as any)?.env || {};
-    if (env?.VITE_WS_STREAMING_V2 === '1' || env?.VITE_WS_STREAMING_V2 === 'true') return true;
+    if (
+      env?.VITE_WS_STREAMING_V2 === "1" ||
+      env?.VITE_WS_STREAMING_V2 === "true"
+    )
+      return true;
   } catch {}
   try {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const qp = new URLSearchParams(window.location.search);
-      if (qp.get('wsV2') === '1') return true;
-      if (window.localStorage?.getItem('sf.wsV2') === '1') return true;
+      if (qp.get("wsV2") === "1") return true;
+      if (window.localStorage?.getItem("sf.wsV2") === "1") return true;
     }
   } catch {}
   return false;

@@ -41,11 +41,7 @@ const Toggle: React.FC<{
   description?: string;
   icon?: React.ReactNode;
 }> = ({ enabled, onChange, label, description, icon }) => (
-  <SettingsCard
-    title={label}
-    description={description}
-    icon={icon}
-  >
+  <SettingsCard title={label} description={description} icon={icon}>
     <Switch checked={enabled} onCheckedChange={onChange} />
   </SettingsCard>
 );
@@ -98,7 +94,10 @@ interface SettingsPanelProps {
   onToggleFloatingBar?: (enabled: boolean) => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onToggleFloatingBar }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  embeddedMode = false,
+  onToggleFloatingBar,
+}) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
     [],
@@ -125,7 +124,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
     accessibility: { loading: false, justGranted: false },
   });
   const { schedule, cancel, cancelAll } = useIntervalManager();
-  const pollRefs = useRef<{ mic?: NodeJS.Timeout | null; im?: NodeJS.Timeout | null; ax?: NodeJS.Timeout | null }>({});
+  const pollRefs = useRef<{
+    mic?: NodeJS.Timeout | null;
+    im?: NodeJS.Timeout | null;
+    ax?: NodeJS.Timeout | null;
+  }>({});
   const axDeepLinkOpenedRef = useRef(false);
 
   // Initialize from main visibility state (source of truth)
@@ -134,11 +137,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
       try {
         // Prefer persisted intent if available; fallback to current visibility
         const pref = await window.electron?.getFloatingBarEnabled?.();
-        if (pref && typeof pref.enabled === 'boolean') {
+        if (pref && typeof pref.enabled === "boolean") {
           setShowFloatingBar(pref.enabled);
         } else {
           const vis = await window.electron?.isFloatingBarVisible?.();
-          if (vis && typeof vis.visible === 'boolean') {
+          if (vis && typeof vis.visible === "boolean") {
             setShowFloatingBar(vis.visible);
           }
         }
@@ -160,8 +163,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
           if (fastUser) {
             setUserEmail(fastUser.email ?? null);
             setUserName((fastUser.user_metadata as any)?.name ?? null);
-            setUserAvatarUrl((fastUser.user_metadata as any)?.avatar_url ?? null);
-            if (fastUser.email) localStorage.setItem("sf.lastUserEmail", fastUser.email);
+            setUserAvatarUrl(
+              (fastUser.user_metadata as any)?.avatar_url ?? null,
+            );
+            if (fastUser.email)
+              localStorage.setItem("sf.lastUserEmail", fastUser.email);
           }
         } catch {}
         // Authoritative fetch
@@ -188,7 +194,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
     if (!authReady) return;
     if (!userEmail) {
       (async () => {
-        try { await window.electron?.showOnboarding?.(); } catch {}
+        try {
+          await window.electron?.showOnboarding?.();
+        } catch {}
       })();
     }
   }, [authReady, userEmail]);
@@ -202,7 +210,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         const { getSupabase } = await import("../lib/supabaseClient");
         const supabase = getSupabase();
         if (!supabase) return;
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
           const u = session?.user;
           if (u) {
             setUserEmail(u.email ?? null);
@@ -219,7 +229,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         unsubscribe = () => subscription.unsubscribe();
       } catch {}
     })();
-    return () => { unsubscribe && unsubscribe(); };
+    return () => {
+      unsubscribe && unsubscribe();
+    };
   }, []);
 
   // Persist preferences when they change
@@ -346,12 +358,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
   // Permission handlers
   const handleRequestMicrophone = async () => {
     try {
-      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: true },
+      }));
       const result = await window.electron?.requestMicrophonePermission();
       if (result?.success && result?.granted) {
         setPermissions((p) => ({ ...p, microphone: true }));
-        setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
-        setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+        setUi((prev) => ({
+          ...prev,
+          microphone: { loading: false, justGranted: true },
+        }));
+        setTimeout(
+          () =>
+            setUi((prev) => ({
+              ...prev,
+              microphone: { ...prev.microphone, justGranted: false },
+            })),
+          800,
+        );
       } else {
         // Open System Settings and poll
         await window.electron?.openSystemPreferences("microphone");
@@ -368,20 +393,39 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
               pollRefs.current.mic = null;
             }
             setPermissions((p) => ({ ...p, microphone: true }));
-            setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
-            setTimeout(() => setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } })), 800);
+            setUi((prev) => ({
+              ...prev,
+              microphone: { loading: false, justGranted: true },
+            }));
+            setTimeout(
+              () =>
+                setUi((prev) => ({
+                  ...prev,
+                  microphone: { ...prev.microphone, justGranted: false },
+                })),
+              800,
+            );
           }
         }, 1000);
-        setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+        setUi((prev) => ({
+          ...prev,
+          microphone: { ...prev.microphone, loading: false },
+        }));
       }
     } catch (e) {
-      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: false },
+      }));
     }
   };
 
   const handleRequestAccessibility = async () => {
     try {
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: true },
+      }));
       await window.electron?.requestAccessibilityPermission();
       // Poll until granted; deep-link once after grace period
       const startedAt = Date.now();
@@ -398,28 +442,60 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             pollRefs.current.ax = null;
           }
           setPermissions((p) => ({ ...p, accessibility: true }));
-          setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
-          setTimeout(() => setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } })), 800);
-        } else if (!axDeepLinkOpenedRef.current && Date.now() - startedAt > 4000) {
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          setTimeout(
+            () =>
+              setUi((prev) => ({
+                ...prev,
+                accessibility: { ...prev.accessibility, justGranted: false },
+              })),
+            800,
+          );
+        } else if (
+          !axDeepLinkOpenedRef.current &&
+          Date.now() - startedAt > 4000
+        ) {
           // open the pane once as fallback
           axDeepLinkOpenedRef.current = true;
           await window.electron?.openSystemPreferences("accessibility");
         }
       }, 1000);
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: false },
+      }));
     } catch (e) {
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: false },
+      }));
     }
   };
 
   const handleRequestInputMonitoring = async () => {
     try {
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: true },
+      }));
       const result = await window.electron?.askIM();
       if (result?.success && result.status === "authorized") {
         setPermissions((p) => ({ ...p, inputMonitoring: true }));
-        setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
-        setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+        setUi((prev) => ({
+          ...prev,
+          inputMonitoring: { loading: false, justGranted: true },
+        }));
+        setTimeout(
+          () =>
+            setUi((prev) => ({
+              ...prev,
+              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
+            })),
+          800,
+        );
         return;
       }
       // Open System Settings and poll until granted
@@ -437,13 +513,32 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
             pollRefs.current.im = null;
           }
           setPermissions((p) => ({ ...p, inputMonitoring: true }));
-          setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
-          setTimeout(() => setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } })), 800);
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { loading: false, justGranted: true },
+          }));
+          setTimeout(
+            () =>
+              setUi((prev) => ({
+                ...prev,
+                inputMonitoring: {
+                  ...prev.inputMonitoring,
+                  justGranted: false,
+                },
+              })),
+            800,
+          );
         }
       }, 1000);
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: false },
+      }));
     } catch (e) {
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: false },
+      }));
     }
   };
 
@@ -455,14 +550,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
         console.error("Failed to sign out:", e?.message || e);
       }
       // Regardless of signOut outcome, route user into onboarding
-      try { await window.electron?.showOnboarding?.(); } catch {}
+      try {
+        await window.electron?.showOnboarding?.();
+      } catch {}
       setUserEmail(null);
       setUserName(null);
       setUserAvatarUrl(null);
     })();
   };
-
-
 
   // Remove login handling from Settings Panel: onboarding is the sole login surface
 
@@ -522,7 +617,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                     setShowFloatingBar(enabled);
                     if (onToggleFloatingBar) onToggleFloatingBar(enabled);
                   }}
-                  icon={<SfIcon name="eye.fill" size={16} className="text-primary/70" />}
+                  icon={
+                    <SfIcon
+                      name="eye.fill"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
                 />
 
                 <Toggle
@@ -530,7 +631,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                   description="Audio feedback for dictation start/stop"
                   enabled={playSounds}
                   onChange={setPlaySounds}
-                  icon={<SfIcon name="speaker.wave.3.fill" size={16} className="text-primary/70" />}
+                  icon={
+                    <SfIcon
+                      name="speaker.wave.3.fill"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
                 />
               </div>
             </motion.div>
@@ -544,10 +651,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                 <SettingsCard
                   title="Microphone"
                   description="Capture your voice for dictation"
-                  icon={<SfIcon name="mic.fill" size={16} className="text-primary/70" />}
+                  icon={
+                    <SfIcon
+                      name="mic.fill"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
                 >
                   {!permissions.microphone ? (
-                    <Button size="sm" onClick={handleRequestMicrophone} disabled={ui.microphone.loading} className="text-xs onboarding-cta">
+                    <Button
+                      size="sm"
+                      onClick={handleRequestMicrophone}
+                      disabled={ui.microphone.loading}
+                      className="text-xs onboarding-cta"
+                    >
                       <div className="relative flex items-center justify-center h-4 w-14">
                         {ui.microphone.loading ? (
                           <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
@@ -557,8 +675,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                       </div>
                     </Button>
                   ) : (
-                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
-                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      className="text-white/80"
+                    >
+                      <path
+                        d="M5 13l4 4L19 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   )}
                 </SettingsCard>
@@ -567,10 +697,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                 <SettingsCard
                   title="Accessibility"
                   description="Insert recognized text into your apps"
-                  icon={<SfIcon name="accessibility" size={16} className="text-primary/70" />}
+                  icon={
+                    <SfIcon
+                      name="accessibility"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
                 >
                   {!permissions.accessibility ? (
-                    <Button size="sm" onClick={handleRequestAccessibility} disabled={ui.accessibility.loading} className="text-xs onboarding-cta">
+                    <Button
+                      size="sm"
+                      onClick={handleRequestAccessibility}
+                      disabled={ui.accessibility.loading}
+                      className="text-xs onboarding-cta"
+                    >
                       <div className="relative flex items-center justify-center h-4 w-14">
                         {ui.accessibility.loading ? (
                           <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
@@ -580,8 +721,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                       </div>
                     </Button>
                   ) : (
-                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
-                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      className="text-white/80"
+                    >
+                      <path
+                        d="M5 13l4 4L19 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   )}
                 </SettingsCard>
@@ -590,10 +743,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                 <SettingsCard
                   title="Input Monitoring"
                   description="Detect the Fn key to start and stop dictation"
-                  icon={<SfIcon name="keyboard.badge.eye.fill" size={16} className="text-primary/70" />}
+                  icon={
+                    <SfIcon
+                      name="keyboard.badge.eye.fill"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
                 >
                   {!permissions.inputMonitoring ? (
-                    <Button size="sm" onClick={handleRequestInputMonitoring} disabled={ui.inputMonitoring.loading} className="text-xs onboarding-cta">
+                    <Button
+                      size="sm"
+                      onClick={handleRequestInputMonitoring}
+                      disabled={ui.inputMonitoring.loading}
+                      className="text-xs onboarding-cta"
+                    >
                       <div className="relative flex items-center justify-center h-4 w-14">
                         {ui.inputMonitoring.loading ? (
                           <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
@@ -603,8 +767,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                       </div>
                     </Button>
                   ) : (
-                    <svg width="22" height="22" viewBox="0 0 24 24" className="text-white/80">
-                      <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      className="text-white/80"
+                    >
+                      <path
+                        d="M5 13l4 4L19 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   )}
                 </SettingsCard>
@@ -624,16 +800,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                     </span>
                   }
                 >
-                  <Button variant="secondary" size="sm" onClick={handleSignOut}>Sign Out</Button>
+                  <Button variant="secondary" size="sm" onClick={handleSignOut}>
+                    Sign Out
+                  </Button>
                 </SettingsCard>
               ) : (
                 // If not signed in, do not render login UI here — redirect to onboarding
                 <div className="space-y-3">
-                  <div className="text-[12px] text-subtle">You are signed out.</div>
+                  <div className="text-[12px] text-subtle">
+                    You are signed out.
+                  </div>
                   <Button
                     className="w-full onboarding-cta"
                     onClick={async () => {
-                      try { await window.electron?.showOnboarding?.(); } catch {}
+                      try {
+                        await window.electron?.showOnboarding?.();
+                      } catch {}
                     }}
                   >
                     Open Onboarding to Sign In
@@ -653,7 +835,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-muted-foreground opacity-70">v0.0.1</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">
+                  v0.0.1
+                </p>
               </motion.footer>
             )}
           </motion.div>
@@ -664,5 +848,3 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ embeddedMode = false, onT
 };
 
 export default React.memo(SettingsPanel);
-
-

@@ -2,7 +2,11 @@
 
 // Encode a per-frame header used for streaming PCM frames over WebSocket.
 // Layout (little-endian): u32 seq | u32 nbytes | u64 client_ts_ns
-export function encodeFrameHeader(seq: number, nbytes: number, tsNs: bigint): ArrayBuffer {
+export function encodeFrameHeader(
+  seq: number,
+  nbytes: number,
+  tsNs: bigint,
+): ArrayBuffer {
   const buf = new ArrayBuffer(16);
   const view = new DataView(buf);
   // u32 seq

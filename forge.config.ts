@@ -8,7 +8,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     appBundleId: "com.sonicflow.app",
     appCategoryType: "public.app-category.productivity",
-    
+
     asar: true,
     // Register custom URL scheme for OAuth deep-link callbacks in packaged builds
     protocols: [
@@ -41,8 +41,8 @@ const config: ForgeConfig = {
         // The main app has its own entitlements.
         // The helper bundle is signed separately by our build script.
         return {};
-      }
-    }
+      },
+    },
     // No notarization needed for internal testing
   },
   rebuildConfig: {},

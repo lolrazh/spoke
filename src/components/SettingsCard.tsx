@@ -30,12 +30,17 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
         <div className="text-left min-w-0">
           <div className="text-xs font-medium text-white truncate">{title}</div>
           {description && (
-            <div className="text-[10px] text-subtle mt-0.5 truncate">{description}</div>
+            <div className="text-[10px] text-subtle mt-0.5 truncate">
+              {description}
+            </div>
           )}
         </div>
       </div>
       {children && (
-        <div className="flex items-center shrink-0" style={{ WebkitAppRegion: "no-drag" }}>
+        <div
+          className="flex items-center shrink-0"
+          style={{ WebkitAppRegion: "no-drag" }}
+        >
           {children}
         </div>
       )}
@@ -44,5 +49,3 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
 };
 
 export default SettingsCard;
-
-

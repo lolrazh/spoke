@@ -1,8 +1,10 @@
 /* Self-hosted font faces (preferred in production). Place .woff2 files in public/fonts/ */
 @font-face {
   font-family: "DM Serif Display";
-  src: local("DM Serif Display Regular"), local("DMSerifDisplay-Regular"),
-       url("../fonts/DMSerifDisplay-Regular.woff2") format("woff2");
+  src:
+    local("DM Serif Display Regular"),
+    local("DMSerifDisplay-Regular"),
+    url("../fonts/DMSerifDisplay-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -11,8 +13,10 @@
 /* Lexend Deca variable font (100–900) */
 @font-face {
   font-family: "Lexend Deca";
-  src: local("Lexend Deca"), local("LexendDeca-VariableFont_wght"),
-       url("../fonts/LexendDeca-VariableFont_wght.woff2") format("woff2");
+  src:
+    local("Lexend Deca"),
+    local("LexendDeca-VariableFont_wght"),
+    url("../fonts/LexendDeca-VariableFont_wght.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -87,7 +91,9 @@
 
   /* Expanded state styling - make it look like a proper window */
   .pill-core.expanded {
-    border-radius: var(--radius-window); /* Larger radius for window appearance */
+    border-radius: var(
+      --radius-window
+    ); /* Larger radius for window appearance */
     background: rgba(20, 20, 30, 0.98); /* More opaque background */
     border: 1px solid rgba(255, 255, 255, 0.12);
     /* Use layered window-strength shadow for soft, glass-friendly falloff */
@@ -329,7 +335,13 @@ body {
 
 body {
   font-family:
-    "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    "Lexend Deca",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -337,7 +349,15 @@ body {
 
 /* Font family utilities */
 .font-sans {
-  font-family: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    "Lexend Deca",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -370,12 +390,12 @@ body {
 }
 
 /* Add very light surface tint for text contrast without fighting wallpaper */
-  .onboarding-window::before {
-  content: '';
+.onboarding-window::before {
+  content: "";
   position: absolute;
   inset: 0;
-    background: rgba(10, 10, 10, 0.35); /* neutral tint - no color cast */
-    border-radius: var(--radius-window);
+  background: rgba(10, 10, 10, 0.35); /* neutral tint - no color cast */
+  border-radius: var(--radius-window);
   pointer-events: none;
   z-index: -1;
 }
@@ -421,7 +441,7 @@ body {
     --pill-resting-height: 9px;
 
     /* Unified design system - optimized for native vibrancy */
-    --background: 0 0% 3.9%; 
+    --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
     --card: 0 0% 3.9%;
     --card-foreground: 0 0% 98%;
@@ -458,8 +478,11 @@ body {
     --text-secondary: #c0c0c0;
 
     /* Typography tokens - match website scale */
-    --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-family-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
+    --font-family-body:
+      "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    --font-family-heading:
+      "DM Serif Display", Georgia, "Times New Roman", serif;
     --font-weight-heading: 400; /* Match website hero (DM Serif Display 400) */
     --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
     --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
@@ -467,19 +490,19 @@ body {
     --letter-spacing-heading: 0; /* match site hero tracking-normal */
 
     /* Spacing tokens */
-    --spacing-xs: 0.25rem;  /* 4px */
-    --spacing-sm: 0.5rem;   /* 8px */
-    --spacing-md: 1rem;     /* 16px */
-    --spacing-lg: 1.5rem;   /* 24px */
-    --spacing-xl: 2rem;     /* 32px */
+    --spacing-xs: 0.25rem; /* 4px */
+    --spacing-sm: 0.5rem; /* 8px */
+    --spacing-md: 1rem; /* 16px */
+    --spacing-lg: 1.5rem; /* 24px */
+    --spacing-xl: 2rem; /* 32px */
 
     /* Surface and effect tokens */
     --surface-base-rgb: 15, 15, 15;
-    --surface-alpha-xxs: 0.2;  /* very light */
-    --surface-alpha-xs: 0.25;  /* light */
-    --surface-alpha-sm: 0.3;   /* subtle */
-    --surface-alpha-md: 0.35;  /* medium */
-    --surface-alpha-lg: 0.4;   /* strong */
+    --surface-alpha-xxs: 0.2; /* very light */
+    --surface-alpha-xs: 0.25; /* light */
+    --surface-alpha-sm: 0.3; /* subtle */
+    --surface-alpha-md: 0.35; /* medium */
+    --surface-alpha-lg: 0.4; /* strong */
 
     --blur-md: 16px;
     --blur-lg: 32px;
@@ -493,8 +516,10 @@ body {
     /* Shadow tokens */
     --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
     --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
-    --shadow-interactive: 0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
-    --shadow-interactive-hover: 0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+    --shadow-interactive:
+      0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
+    --shadow-interactive-hover:
+      0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
 
     /* Motion tokens (CSS) */
     --duration-instant: 0s;
@@ -553,9 +578,10 @@ body {
     border: 1px solid var(--stroke-fg-mid);
     border-radius: var(--radius-window);
     box-shadow: var(--shadow-elevated);
-    transition: background-color var(--duration-standard) var(--ease-standard),
-                border-color var(--duration-standard) var(--ease-standard),
-                box-shadow var(--duration-standard) var(--ease-standard);
+    transition:
+      background-color var(--duration-standard) var(--ease-standard),
+      border-color var(--duration-standard) var(--ease-standard),
+      box-shadow var(--duration-standard) var(--ease-standard);
   }
 
   .onboarding-card:hover {
@@ -604,11 +630,15 @@ body {
     flex-direction: column;
   }
   .heading-stack > * + * {
-    margin-top: var(--spacing-sm); /* tighter gap between heading and subheading */
+    margin-top: var(
+      --spacing-sm
+    ); /* tighter gap between heading and subheading */
   }
   .subheading {
     font-weight: 500; /* stronger subheading */
-    margin-bottom: var(--spacing-lg); /* extra space below subheading pushes content down */
+    margin-bottom: var(
+      --spacing-lg
+    ); /* extra space below subheading pushes content down */
   }
 
   /* Keycap visual for Fn key */
@@ -623,10 +653,22 @@ body {
     border-radius: var(--radius-md);
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     border: 1px solid var(--stroke-fg);
-    transition: background-color 220ms var(--ease-emphasized), border-color 220ms var(--ease-emphasized), box-shadow 220ms var(--ease-emphasized), transform 220ms var(--ease-emphasized);
+    transition:
+      background-color 220ms var(--ease-emphasized),
+      border-color 220ms var(--ease-emphasized),
+      box-shadow 220ms var(--ease-emphasized),
+      transform 220ms var(--ease-emphasized);
   }
-  .keycap-lg { width: 56px; height: 56px; padding: 0; }
-  .keycap-label { position: absolute; bottom: 6px; right: 8px; }
+  .keycap-lg {
+    width: 56px;
+    height: 56px;
+    padding: 0;
+  }
+  .keycap-label {
+    position: absolute;
+    bottom: 6px;
+    right: 8px;
+  }
   .keycap.keycap-active {
     background-color: rgba(255, 255, 255, 0.005);
     border-color: var(--stroke-fg-xstrong);
@@ -634,7 +676,9 @@ body {
     transform: translateY(0.5px);
   }
   .font-system {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+      sans-serif;
   }
 
   .onboarding-close {
@@ -648,12 +692,12 @@ body {
     border: 1px solid var(--stroke-fg);
     backdrop-filter: blur(var(--blur-md));
     box-shadow: var(--shadow-floating);
-    color: rgba(255,255,255,0.8);
+    color: rgba(255, 255, 255, 0.8);
     transition: all var(--duration-standard) var(--ease-standard);
   }
   .onboarding-close:hover {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    color: rgba(255,255,255,0.95);
+    color: rgba(255, 255, 255, 0.95);
     border-color: var(--stroke-fg-strong);
   }
 
@@ -789,20 +833,42 @@ body {
     border: none; /* tertiary element, no stroke */
     box-shadow: none; /* ultra-clean */
     flex-basis: 0; /* allow flex-grow to define width */
-    transition: flex-grow 260ms var(--ease-emphasized), background-color 260ms var(--ease-emphasized), height 260ms var(--ease-emphasized), opacity 260ms var(--ease-emphasized);
+    transition:
+      flex-grow 260ms var(--ease-emphasized),
+      background-color 260ms var(--ease-emphasized),
+      height 260ms var(--ease-emphasized),
+      opacity 260ms var(--ease-emphasized);
     will-change: transform, flex-grow;
   }
   @keyframes barSpring {
-    0% { transform: scaleY(0.92); }
-    60% { transform: scaleY(1.08); }
-    100% { transform: scaleY(1); }
+    0% {
+      transform: scaleY(0.92);
+    }
+    60% {
+      transform: scaleY(1.08);
+    }
+    100% {
+      transform: scaleY(1);
+    }
   }
-  .onboarding-progress-bar.grow-active { flex-grow: 6; }
-  .onboarding-progress-bar.grow-inactive { flex-grow: 2; }
+  .onboarding-progress-bar.grow-active {
+    flex-grow: 6;
+  }
+  .onboarding-progress-bar.grow-inactive {
+    flex-grow: 2;
+  }
   /* Active and completed share the same neutral tone; completed is distinguished by width only */
-  .onboarding-progress-bar.bar-active { background-color: rgba(255, 255, 255, 0.85); height: 3px; animation: barSpring 260ms var(--ease-emphasized); }
-  .onboarding-progress-bar.bar-complete { background-color: rgba(255, 255, 255, 0.45); }
-  .onboarding-progress-bar.bar-upcoming { background-color: rgba(255, 255, 255, 0.18); }
+  .onboarding-progress-bar.bar-active {
+    background-color: rgba(255, 255, 255, 0.85);
+    height: 3px;
+    animation: barSpring 260ms var(--ease-emphasized);
+  }
+  .onboarding-progress-bar.bar-complete {
+    background-color: rgba(255, 255, 255, 0.45);
+  }
+  .onboarding-progress-bar.bar-upcoming {
+    background-color: rgba(255, 255, 255, 0.18);
+  }
 
   .text-subtle {
     color: rgba(255, 255, 255, 0.6);
@@ -822,7 +888,9 @@ body {
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
     /* FIX 10: Prevent button artifacts with proper containment */
     isolation: isolate;
-    transform: translateZ(0); /* Force hardware acceleration for smooth rendering */
+    transform: translateZ(
+      0
+    ); /* Force hardware acceleration for smooth rendering */
     -webkit-font-smoothing: subpixel-antialiased;
     /* FIX 11: Ensure proper stacking context */
     position: relative;
@@ -886,9 +954,10 @@ body {
     border: 1px solid var(--stroke-fg);
     box-shadow: var(--shadow-floating);
     backdrop-filter: blur(var(--blur-md));
-    transition: background-color var(--duration-fast) var(--ease-standard),
-                border-color var(--duration-fast) var(--ease-standard),
-                box-shadow var(--duration-fast) var(--ease-standard);
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
   }
 
   .switch-track:hover {
@@ -923,17 +992,27 @@ body {
   .switch-thumb {
     /* Match button text tonality (subtle like secondary text) */
     background-color: rgba(255, 255, 255, 0.6); /* ~btn-secondary text */
-    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+    background-image: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0)
+    );
     border: 1px solid var(--stroke-fg);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
-    transition: background-color var(--duration-fast) var(--ease-standard),
-                border-color var(--duration-fast) var(--ease-standard),
-                transform var(--duration-fast) var(--ease-standard),
-                box-shadow var(--duration-fast) var(--ease-standard);
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      border-color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
   }
 
   .switch-track:hover .switch-thumb {
-    background-color: rgba(255, 255, 255, 0.8); /* hover like button text brightening */
+    background-color: rgba(
+      255,
+      255,
+      255,
+      0.8
+    ); /* hover like button text brightening */
     border-color: var(--stroke-fg-mid);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
   }
@@ -956,18 +1035,26 @@ body {
   body {
     background-color: transparent !important;
   }
-  
+
   /* Typography utilities for proper font rendering */
   .text-breathe {
     overflow: visible !important;
     line-height: 1.3 !important;
   }
-  
+
   /* Opt-in utilities for targeted will-change usage */
-  .will-change-transform { will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
-  .will-change-opacity { will-change: opacity; }
-  .will-change-bg-pos { will-change: background-position; }
-  
+  .will-change-transform {
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+  .will-change-opacity {
+    will-change: opacity;
+  }
+  .will-change-bg-pos {
+    will-change: background-position;
+  }
+
   /* Ensure native traffic lights work properly */
   .onboarding-window {
     /* Allow native traffic lights to be visible and clickable */

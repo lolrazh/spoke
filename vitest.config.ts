@@ -1,23 +1,22 @@
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-import { fileURLToPath } from 'node:url';
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   test: {
-    environment: 'happy-dom',
+    environment: "happy-dom",
     globals: true,
-    setupFiles: ['src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'worker/**/*.{test,spec}.ts'],
+    setupFiles: ["src/test/setup.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "worker/**/*.{test,spec}.ts"],
     coverage: {
-      provider: 'v8',
-      reports: ['text', 'lcov'],
+      provider: "v8",
+      reports: ["text", "lcov"],
     },
   },
 });
-

@@ -39,5 +39,3 @@ export function useIntervalManager() {
 
   return { schedule, cancel, cancelAll } as const;
 }
-
-

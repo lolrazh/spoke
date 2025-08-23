@@ -8,7 +8,12 @@ import React, {
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y, CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
+import {
+  ISLAND_HIDDEN_Y,
+  ISLAND_VISIBLE_Y,
+  CONTENT_WIDTH,
+  CONTENT_HEIGHT,
+} from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 
 // Pill State Machine Types
@@ -171,20 +176,32 @@ const App: React.FC = () => {
     let unsubscribe: (() => void) | undefined;
     (async () => {
       try {
-        const { getSupabase, getCurrentUser } = await import("../lib/supabaseClient");
+        const { getSupabase, getCurrentUser } = await import(
+          "../lib/supabaseClient"
+        );
         const skipAuth = !!window.devFlags?.skipAuth;
         const user = skipAuth ? { id: "dev" } : await getCurrentUser();
         if (!user && !skipAuth) {
-          try { await window.electron?.showOnboarding?.(); } catch {}
-          try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+          try {
+            await window.electron?.showOnboarding?.();
+          } catch {}
+          try {
+            await window.electron?.hideFloatingBarIndefinitely?.();
+          } catch {}
         }
         const supabase = getSupabase();
         if (supabase) {
-          const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          const {
+            data: { subscription },
+          } = supabase.auth.onAuthStateChange((_event, session) => {
             if (!session?.user && !skipAuth) {
               (async () => {
-                try { await window.electron?.showOnboarding?.(); } catch {}
-                try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+                try {
+                  await window.electron?.showOnboarding?.();
+                } catch {}
+                try {
+                  await window.electron?.hideFloatingBarIndefinitely?.();
+                } catch {}
               })();
             }
           });
@@ -192,7 +209,9 @@ const App: React.FC = () => {
         }
       } catch {}
     })();
-    return () => { if (unsubscribe) unsubscribe(); };
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
   // Only open mic during dictation
   const trans = useTranscription({
@@ -302,7 +321,6 @@ const App: React.FC = () => {
     // Note: No cleanup needed as this is a one-time setup
   }, []);
 
-
   // Ensure click-through is properly managed based on pill state
   useEffect(() => {
     if (pillState === "EXPANDED") {
@@ -338,8 +356,12 @@ const App: React.FC = () => {
         pushTrace("PTT cancel (processing)");
       }
     };
-    const cleanup = window.ptt?.onCancel ? window.ptt.onCancel(onCancel) : undefined;
-    return () => { if (cleanup) cleanup(); };
+    const cleanup = window.ptt?.onCancel
+      ? window.ptt.onCancel(onCancel)
+      : undefined;
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [pillDispatch]);
 
   // Handle click outside to collapse when expanded (only works when click-through is disabled)
@@ -409,7 +431,7 @@ const App: React.FC = () => {
       const shouldHideAfter = pendingHideAfterCollapse.active;
       const timeout = setTimeout(async () => {
         pillDispatch({ type: "ANIM_DONE" });
-        
+
         // If we need to hide after notification, add a small delay to ensure
         // pill state machine completes its transition to IDLE cleanly
         if (shouldHideAfter) {
@@ -563,7 +585,14 @@ const App: React.FC = () => {
         pillContext={pillContext}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
-        dims={{ baseW: BASE_W, baseH: BASE_H, restingH: RESTING_H, expandedW: EXPANDED_W, expandedH: EXPANDED_H, maxW: MAX_W }}
+        dims={{
+          baseW: BASE_W,
+          baseH: BASE_H,
+          restingH: RESTING_H,
+          expandedW: EXPANDED_W,
+          expandedH: EXPANDED_H,
+          maxW: MAX_W,
+        }}
         onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
           const allowed = await canProceedWithStartBasedOnMicPermission();
@@ -585,7 +614,10 @@ const App: React.FC = () => {
         onCollapse={() => {
           pillDispatch({ type: "COLLAPSE" });
           // If a deferred hide is pending (from toggle while expanded), show the heads-up now
-          if (pendingHideAfterCollapse.active && pendingHideAfterCollapse.message) {
+          if (
+            pendingHideAfterCollapse.active &&
+            pendingHideAfterCollapse.message
+          ) {
             setTimeout(() => {
               try {
                 window.notifications?.send?.(pendingHideAfterCollapse.message);

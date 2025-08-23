@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -7,12 +7,12 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 // Health
-app.get('/', (c) => c.text('ok'));
+app.get("/", (c) => c.text("ok"));
 
 // WebSocket ingest: 100 ms PCM16@16k frames
-app.get('/ws', (c) => {
-  if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
-    return c.text('Expected a websocket connection', 426);
+app.get("/ws", (c) => {
+  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+    return c.text("Expected a websocket connection", 426);
   }
 
   const { GROQ_API_KEY } = c.env;
@@ -27,33 +27,39 @@ app.get('/ws', (c) => {
   try {
     console.log("[WS] accepted");
   } catch {}
-  server.addEventListener('message', async (evt: MessageEvent) => {
+  server.addEventListener("message", async (evt: MessageEvent) => {
     try {
       const data = evt.data;
-      if (typeof data === 'string') {
+      if (typeof data === "string") {
         const msg = safeJson(data);
-        if (!msg || typeof msg !== 'object') return;
-        if (msg.type === 'start') {
-          try { console.log('[WS] start'); } catch {}
+        if (!msg || typeof msg !== "object") return;
+        if (msg.type === "start") {
+          try {
+            console.log("[WS] start");
+          } catch {}
           // Reset for a new session
           session = createEmptySession();
           session.startedAt = Date.now();
           session.version = msg.version ?? 1;
-          session.format = msg.format ?? 'pcm16le';
+          session.format = msg.format ?? "pcm16le";
           session.rate = msg.rate ?? 16000;
           // (optional) language = msg.language
-        } else if (msg.type === 'end') {
+        } else if (msg.type === "end") {
           const t0 = Date.now();
           // Signal processing started
           if (!socketClosed) {
-            try { server.send(JSON.stringify({ type: 'status', state: 'processing' })); } catch {}
+            try {
+              server.send(
+                JSON.stringify({ type: "status", state: "processing" }),
+              );
+            } catch {}
           }
 
           // If canceled or empty, short-circuit
           if (session.canceled || session.totalBytes === 0) {
-            const text = '';
-            server.send(JSON.stringify({ type: 'final', text }));
-            safeClose(server, 1000, 'done');
+            const text = "";
+            server.send(JSON.stringify({ type: "final", text }));
+            safeClose(server, 1000, "done");
             session = createEmptySession();
             return;
           }
@@ -63,7 +69,7 @@ app.get('/ws', (c) => {
           const wav = wrapWav(pcm, session.rate, 1, 16);
 
           // Call GROQ STT if key available
-          let finalText = '';
+          let finalText = "";
           try {
             if (GROQ_API_KEY) {
               // Allow canceling if the client disconnects while STT is running
@@ -74,33 +80,47 @@ app.get('/ws', (c) => {
                 GROQ_API_KEY,
                 sttAbort.signal,
               );
-              finalText = res?.text ?? '';
+              finalText = res?.text ?? "";
             } else {
-              finalText = '';
+              finalText = "";
             }
           } catch (e: any) {
             if (!socketClosed) {
-              try { server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })); } catch {}
-              safeClose(server, 1011, 'stt error');
+              try {
+                server.send(
+                  JSON.stringify({
+                    type: "error",
+                    body: e?.message || "Transcription error",
+                  }),
+                );
+              } catch {}
+              safeClose(server, 1011, "stt error");
             }
             session = createEmptySession();
             return;
           }
 
           if (!socketClosed) {
-            try { server.send(JSON.stringify({ type: 'final', text: finalText })); } catch {}
-            safeClose(server, 1000, 'done');
+            try {
+              server.send(JSON.stringify({ type: "final", text: finalText }));
+            } catch {}
+            safeClose(server, 1000, "done");
           }
 
           const t1 = Date.now();
-          logSession('final', session, { assembleMs: t1 - t0, textLen: finalText.length });
+          logSession("final", session, {
+            assembleMs: t1 - t0,
+            textLen: finalText.length,
+          });
           session = createEmptySession();
-        } else if (msg.type === 'cancel') {
+        } else if (msg.type === "cancel") {
           // Discard buffered audio, but keep the socket open for reuse
           session = createEmptySession();
           session.canceled = true;
           // Abort any transcription in flight
-          try { sttAbort?.abort(); } catch {}
+          try {
+            sttAbort?.abort();
+          } catch {}
         }
       } else if (data instanceof ArrayBuffer) {
         // Binary frame: [16-byte header][payload]
@@ -124,8 +144,10 @@ app.get('/ws', (c) => {
         // Enforce a max buffer size (~20 MB)
         const MAX_BYTES = 20 * 1024 * 1024;
         if (session.totalBytes + payload.byteLength > MAX_BYTES) {
-          server.send(JSON.stringify({ type: 'error', body: 'audio too large' }));
-          safeClose(server, 1009, 'payload too large');
+          server.send(
+            JSON.stringify({ type: "error", body: "audio too large" }),
+          );
+          safeClose(server, 1009, "payload too large");
           session = createEmptySession();
           return;
         }
@@ -136,58 +158,73 @@ app.get('/ws', (c) => {
         session.frames += 1;
       }
     } catch (e: any) {
-      console.error('[Worker] WebSocket message error:', e);
+      console.error("[Worker] WebSocket message error:", e);
       try {
-        server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
-        safeClose(server, 1011, 'message processing error');
+        server.send(
+          JSON.stringify({ type: "error", body: e?.message || "ws error" }),
+        );
+        safeClose(server, 1011, "message processing error");
       } catch {}
       session = createEmptySession();
     }
   });
 
-  server.addEventListener('close', (evt) => {
+  server.addEventListener("close", (evt) => {
     // Clean up session on WebSocket close
-    logSession('ws_close', session, { 
-      code: (evt as any)?.code || 'unknown',
-      reason: (evt as any)?.reason || 'unknown'
+    logSession("ws_close", session, {
+      code: (evt as any)?.code || "unknown",
+      reason: (evt as any)?.reason || "unknown",
     });
     socketClosed = true;
-    try { sttAbort?.abort(); } catch {}
+    try {
+      sttAbort?.abort();
+    } catch {}
     sttAbort = null;
     session = createEmptySession();
     // Acknowledge/ensure closure (per CF docs to prevent hung request errors)
-    safeClose(server, (evt as any)?.code || 1000, (evt as any)?.reason || 'client closed');
+    safeClose(
+      server,
+      (evt as any)?.code || 1000,
+      (evt as any)?.reason || "client closed",
+    );
   });
 
-  server.addEventListener('error', (evt) => {
+  server.addEventListener("error", (evt) => {
     // Clean up session and close on socket errors
-    console.error('[WS] Socket error:', evt);
+    console.error("[WS] Socket error:", evt);
     socketClosed = true;
-    try { sttAbort?.abort(); } catch {}
+    try {
+      sttAbort?.abort();
+    } catch {}
     sttAbort = null;
     session = createEmptySession();
-    safeClose(server, 1011, 'socket error');
+    safeClose(server, 1011, "socket error");
   });
 
   return new Response(null, { status: 101, webSocket: client });
 });
 
 export default {
-  fetch: (req: Request, env: Bindings, ctx: ExecutionContext) => app.fetch(req, env, ctx),
+  fetch: (req: Request, env: Bindings, ctx: ExecutionContext) =>
+    app.fetch(req, env, ctx),
 };
 
 // ---- Helpers ----
 
-function safeClose(ws: WebSocket, code = 1000, reason = 'OK') {
-  try { 
-    ws.close(code, reason); 
+function safeClose(ws: WebSocket, code = 1000, reason = "OK") {
+  try {
+    ws.close(code, reason);
   } catch (e) {
     // Ignore errors when closing (socket may already be closed)
   }
 }
 
 function safeJson(s: string) {
-  try { return JSON.parse(s); } catch { return null; }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
 }
 
 function parseFrameHeader(buf: Uint8Array) {
@@ -202,20 +239,28 @@ function parseFrameHeader(buf: Uint8Array) {
 function concat(chunks: Uint8Array[], totalBytes: number): Uint8Array {
   const out = new Uint8Array(totalBytes);
   let off = 0;
-  for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
   return out;
 }
 
-function wrapWav(pcm: Uint8Array, rate = 16000, channels = 1, bitsPerSample = 16): Uint8Array {
+function wrapWav(
+  pcm: Uint8Array,
+  rate = 16000,
+  channels = 1,
+  bitsPerSample = 16,
+): Uint8Array {
   const dataSize = pcm.byteLength;
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
   // RIFF
-  writeStr(view, 0, 'RIFF');
+  writeStr(view, 0, "RIFF");
   view.setUint32(4, 36 + dataSize, true);
-  writeStr(view, 8, 'WAVE');
+  writeStr(view, 8, "WAVE");
   // fmt
-  writeStr(view, 12, 'fmt ');
+  writeStr(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, channels, true);
@@ -226,7 +271,7 @@ function wrapWav(pcm: Uint8Array, rate = 16000, channels = 1, bitsPerSample = 16
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
   // data
-  writeStr(view, 36, 'data');
+  writeStr(view, 36, "data");
   view.setUint32(40, dataSize, true);
 
   const out = new Uint8Array(44 + dataSize);
@@ -242,7 +287,7 @@ function writeStr(view: DataView, offset: number, s: string) {
 function createEmptySession() {
   return {
     version: 2,
-    format: 'pcm16le' as 'pcm16le',
+    format: "pcm16le" as "pcm16le",
     rate: 16000,
     startedAt: Date.now(),
     frames: 0,
@@ -256,17 +301,24 @@ function createEmptySession() {
   };
 }
 
-function logSession(tag: string, s: ReturnType<typeof createEmptySession>, extra?: Record<string, unknown>) {
+function logSession(
+  tag: string,
+  s: ReturnType<typeof createEmptySession>,
+  extra?: Record<string, unknown>,
+) {
   try {
     const info = {
       tag,
       frames: s.frames,
       bytesKB: Number((s.totalBytes / 1024).toFixed(2)),
       seqGaps: s.seqGaps,
-      firstToLastArrivalMs: (s.firstArrivalMs && s.lastArrivalMs) ? (s.lastArrivalMs - s.firstArrivalMs) : null,
+      firstToLastArrivalMs:
+        s.firstArrivalMs && s.lastArrivalMs
+          ? s.lastArrivalMs - s.firstArrivalMs
+          : null,
       ...extra,
     };
-    console.log('[WS]', info);
+    console.log("[WS]", info);
   } catch {}
 }
 
@@ -276,12 +328,15 @@ async function groqTranscribe(
   externalSignal?: AbortSignal,
 ): Promise<{ text: string } | null> {
   const form = new FormData();
-  const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
-  form.append('file', file);
-  form.append('model', 'whisper-large-v3');
+  const file = new File([wav], "audio.wav", { type: "audio/wav" });
+  form.append("file", file);
+  form.append("model", "whisper-large-v3");
   // Hardcoded parameters for production
-  form.append('language', 'en');
-  form.append('prompt', 'Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite');
+  form.append("language", "en");
+  form.append(
+    "prompt",
+    "Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite",
+  );
 
   // Add timeout to prevent hanging
   // Compose a controller that aborts on either timeout or external signal
@@ -290,31 +345,36 @@ async function groqTranscribe(
   const onExternalAbort = () => controller.abort();
   if (externalSignal) {
     if (externalSignal.aborted) controller.abort();
-    else externalSignal.addEventListener('abort', onExternalAbort);
+    else externalSignal.addEventListener("abort", onExternalAbort);
   }
-  
+
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      "https://api.groq.com/openai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+        signal: controller.signal,
+      },
+    );
     clearTimeout(timeoutId);
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
-    
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`GROQ STT error: ${res.status} ${body}`);
-      }
-      const json = await res.json();
-      // OpenAI-compatible response shape: { text: string, ... }
-      return json as { text: string };
+    if (externalSignal)
+      externalSignal.removeEventListener("abort", onExternalAbort);
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`GROQ STT error: ${res.status} ${body}`);
+    }
+    const json = await res.json();
+    // OpenAI-compatible response shape: { text: string, ... }
+    return json as { text: string };
   } catch (err: any) {
     clearTimeout(timeoutId);
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
-    if (err.name === 'AbortError') {
-      throw new Error('Transcription aborted or timed out');
+    if (externalSignal)
+      externalSignal.removeEventListener("abort", onExternalAbort);
+    if (err.name === "AbortError") {
+      throw new Error("Transcription aborted or timed out");
     }
     throw err;
   }

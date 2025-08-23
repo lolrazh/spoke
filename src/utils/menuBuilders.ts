@@ -1,7 +1,11 @@
 import { app, clipboard, MenuItemConstructorOptions, shell } from "electron";
 import type { MicDevice } from "../types/shared";
 
-export function buildMicrophoneSubmenu(devices: MicDevice[], selectedId: string, onSelect: (id: string) => void): MenuItemConstructorOptions[] {
+export function buildMicrophoneSubmenu(
+  devices: MicDevice[],
+  selectedId: string,
+  onSelect: (id: string) => void,
+): MenuItemConstructorOptions[] {
   const submenu: MenuItemConstructorOptions[] = [];
   if (!devices || devices.length === 0) {
     submenu.push({ label: "No microphones detected", enabled: false });
@@ -18,7 +22,9 @@ export function buildMicrophoneSubmenu(devices: MicDevice[], selectedId: string,
   return submenu;
 }
 
-export function buildCommonAppItems(openSettings: () => void): MenuItemConstructorOptions[] {
+export function buildCommonAppItems(
+  openSettings: () => void,
+): MenuItemConstructorOptions[] {
   return [
     {
       label: "Open Settings",
@@ -53,7 +59,10 @@ export function buildFeedbackAndAboutItems(): MenuItemConstructorOptions[] {
   ];
 }
 
-export function buildCopyTranscriptItem(getText: () => string, onCopied?: (text: string) => void): MenuItemConstructorOptions {
+export function buildCopyTranscriptItem(
+  getText: () => string,
+  onCopied?: (text: string) => void,
+): MenuItemConstructorOptions {
   const text = getText();
   return {
     label: "Copy Last Transcript",
@@ -67,5 +76,3 @@ export function buildCopyTranscriptItem(getText: () => string, onCopied?: (text:
     },
   };
 }
-
-

@@ -39,16 +39,39 @@ declare global {
       setFocusable: (focusable: boolean) => void;
       focusWindow: () => void;
       expandPill: (callback: () => void) => void;
-      checkPermissions: () => Promise<{ needAX: boolean; needIM: boolean; isDev: boolean }>;
+      checkPermissions: () => Promise<{
+        needAX: boolean;
+        needIM: boolean;
+        isDev: boolean;
+      }>;
       requestAccessibilityPermission: () => Promise<void>;
-      requestInputMonitoringPermission: () => Promise<{ success: boolean; isDev: boolean; alreadyGranted?: boolean; error?: string }>;
-      askIM: () => Promise<{ success: boolean; status?: string; isDev: boolean; error?: string }>;
-      requestMicrophonePermission: () => Promise<{ success: boolean; granted?: boolean; error?: string }>;
-      checkMicrophonePermission: () => Promise<{ status: string; granted: boolean }>;
+      requestInputMonitoringPermission: () => Promise<{
+        success: boolean;
+        isDev: boolean;
+        alreadyGranted?: boolean;
+        error?: string;
+      }>;
+      askIM: () => Promise<{
+        success: boolean;
+        status?: string;
+        isDev: boolean;
+        error?: string;
+      }>;
+      requestMicrophonePermission: () => Promise<{
+        success: boolean;
+        granted?: boolean;
+        error?: string;
+      }>;
+      checkMicrophonePermission: () => Promise<{
+        status: string;
+        granted: boolean;
+      }>;
       openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
       preparePill: () => Promise<{ success: boolean; error?: string } | void>;
-      setPttTarget: (target: "auto" | "onboarding" | "main") => Promise<{ success: boolean }>;
+      setPttTarget: (
+        target: "auto" | "onboarding" | "main",
+      ) => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;
@@ -60,7 +83,10 @@ declare global {
       // Floating bar visibility helpers
       isFloatingBarVisible: () => Promise<{ visible: boolean }>;
       getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;
-      hideFloatingBarIndefinitely: () => Promise<{ ok: boolean; error?: string }>;
+      hideFloatingBarIndefinitely: () => Promise<{
+        ok: boolean;
+        error?: string;
+      }>;
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       getAuthRedirectUrl: () => Promise<{ url: string }>;

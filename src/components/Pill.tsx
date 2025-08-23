@@ -218,14 +218,16 @@ const Pill: React.FC<PillProps> = ({
   })();
 
   // Micro-physics: tiny overshoot on every state transition (except expanded)
-  const shouldImpactPulse = previousStateRef.current !== pillState && !isExpanded;
+  const shouldImpactPulse =
+    previousStateRef.current !== pillState && !isExpanded;
   const animateWithImpact = shouldImpactPulse
     ? { ...animateForState, scale: [1, 1.006, 1] }
     : { ...animateForState, scale: 1 };
 
   // State-specific spring feel
   const transitionForState = (() => {
-    const isReturningToIdle = pillState === "IDLE" && previousStateRef.current !== "IDLE";
+    const isReturningToIdle =
+      pillState === "IDLE" && previousStateRef.current !== "IDLE";
     switch (pillState) {
       case "HOVER_PREVIEW":
         return { type: "spring" as const, ...MOTION.springs.lively };
@@ -252,7 +254,12 @@ const Pill: React.FC<PillProps> = ({
     ? {
         ...transitionForState,
         // Use a snappy spring for the tiny scale pulse
-        scale: { type: "spring" as const, stiffness: 820, damping: 28, mass: 0.75 },
+        scale: {
+          type: "spring" as const,
+          stiffness: 820,
+          damping: 28,
+          mass: 0.75,
+        },
         // Spring chain: width leads, height follows by a hair
         width: { ...(transitionForState as any) },
         height: { ...(transitionForState as any), delay: 0.015 },
@@ -309,7 +316,10 @@ const Pill: React.FC<PillProps> = ({
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.standard }}
               >
-                <SettingsPanel embeddedMode={true} onToggleFloatingBar={onToggleFloatingBar} />
+                <SettingsPanel
+                  embeddedMode={true}
+                  onToggleFloatingBar={onToggleFloatingBar}
+                />
                 {/* Collapse chevron at bottom */}
                 <button
                   className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-10 h-8 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"

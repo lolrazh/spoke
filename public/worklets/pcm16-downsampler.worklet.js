@@ -18,11 +18,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this.ratio = this.inputRate / this.targetRate;
 
     // Choose mode: passthrough (16k), decimate-by-3 (48k->16k), or generic linear
-    this.mode = 'linear';
+    this.mode = "linear";
     if (Math.abs(this.inputRate - this.targetRate) < 1) {
-      this.mode = 'passthrough';
+      this.mode = "passthrough";
     } else if (Math.abs(this.ratio - 3) < 1e-6) {
-      this.mode = 'decimate3';
+      this.mode = "decimate3";
     }
 
     // Resampler state
@@ -30,7 +30,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this._pos = 0.0; // for linear
 
     // Decimator-by-3 state (small FIR low-pass, Hamming windowed-sinc)
-    if (this.mode === 'decimate3') {
+    if (this.mode === "decimate3") {
       // Design a 31-tap low-pass with fc = 8k/48k = 1/6
       const TAPS = 31;
       const fc = 1 / 6; // normalized to sample rate
@@ -39,7 +39,8 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       let sum = 0;
       for (let n = 0; n < TAPS; n++) {
         const k = n - M / 2;
-        const sinc = k === 0 ? 1 : Math.sin(2 * Math.PI * fc * k) / (Math.PI * k);
+        const sinc =
+          k === 0 ? 1 : Math.sin(2 * Math.PI * fc * k) / (Math.PI * k);
         const w = 0.54 - 0.46 * Math.cos((2 * Math.PI * n) / M); // Hamming
         const h = 2 * fc * sinc * w;
         taps[n] = h;
@@ -60,20 +61,25 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Respond to parameter updates from node if needed later
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
-      if (msg.type === 'reset') {
+      if (msg.type === "reset") {
         this._last = 0.0;
         this._pos = 0.0;
         this._accum = [];
         this._seq = 0;
-      } else if (msg.type === 'flush') {
+      } else if (msg.type === "flush") {
         // Emit any remaining partial frame as-is (may be < frameSamples)
         if (this._accum.length > 0) {
           const out = new Int16Array(this._accum.length);
           for (let k = 0; k < this._accum.length; k++) out[k] = this._accum[k];
           this._accum.length = 0;
           this.port.postMessage(
-            { type: 'audio', seq: this._seq++, rate: this.targetRate, samples: out.buffer },
-            [out.buffer]
+            {
+              type: "audio",
+              seq: this._seq++,
+              rate: this.targetRate,
+              samples: out.buffer,
+            },
+            [out.buffer],
           );
         }
       }
@@ -90,8 +96,13 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._accum = this._accum.slice(this.frameSamples);
       }
       this.port.postMessage(
-        { type: 'audio', seq: this._seq++, rate: this.targetRate, samples: out.buffer },
-        [out.buffer]
+        {
+          type: "audio",
+          seq: this._seq++,
+          rate: this.targetRate,
+          samples: out.buffer,
+        },
+        [out.buffer],
       );
     }
   }
@@ -109,12 +120,13 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       const a = window[i];
       const b = window[i + 1];
       let s = a + (b - a) * t;
-      if (s > 1) s = 1; else if (s < -1) s = -1;
+      if (s > 1) s = 1;
+      else if (s < -1) s = -1;
       this._accum.push((s * 0x7fff) | 0);
       this._flushFramesIfReady();
       this._pos += this.ratio;
     }
-    this._pos -= (windowLen - 1);
+    this._pos -= windowLen - 1;
     this._last = window[windowLen - 1];
   }
 
@@ -137,7 +149,8 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
           di = (di - 1 + TAPS) % TAPS;
         }
         // Clamp and convert
-        if (acc > 1) acc = 1; else if (acc < -1) acc = -1;
+        if (acc > 1) acc = 1;
+        else if (acc < -1) acc = -1;
         this._accum.push((acc * 0x7fff) | 0);
         this._flushFramesIfReady();
         phase = 0;
@@ -150,7 +163,8 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   _passthrough(input) {
     for (let i = 0; i < input.length; i++) {
       let s = input[i];
-      if (s > 1) s = 1; else if (s < -1) s = -1;
+      if (s > 1) s = 1;
+      else if (s < -1) s = -1;
       this._accum.push((s * 0x7fff) | 0);
       this._flushFramesIfReady();
     }
@@ -163,12 +177,12 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     }
     const ch0 = input[0]; // mono expected
     if (ch0 && ch0.length) {
-      if (this.mode === 'passthrough') this._passthrough(ch0);
-      else if (this.mode === 'decimate3') this._decimateBy3(ch0);
+      if (this.mode === "passthrough") this._passthrough(ch0);
+      else if (this.mode === "decimate3") this._decimateBy3(ch0);
       else this._linearResample(ch0);
     }
     return true; // keep alive
   }
 }
 
-registerProcessor('pcm16-downsampler', Pcm16DownsamplerProcessor);
+registerProcessor("pcm16-downsampler", Pcm16DownsamplerProcessor);

@@ -22,9 +22,7 @@ const SelectTrigger = React.forwardRef<
     )}
     {...props}
   >
-    <div className="flex-1 truncate text-left">
-      {children}
-    </div>
+    <div className="flex-1 truncate text-left">{children}</div>
     <SelectPrimitive.Icon asChild>
       <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
     </SelectPrimitive.Icon>
@@ -131,7 +129,9 @@ const SelectItem = React.forwardRef<
       </SelectPrimitive.ItemIndicator>
     </span>
 
-    <SelectPrimitive.ItemText className="truncate">{children}</SelectPrimitive.ItemText>
+    <SelectPrimitive.ItemText className="truncate">
+      {children}
+    </SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ));
 SelectItem.displayName = SelectPrimitive.Item.displayName;

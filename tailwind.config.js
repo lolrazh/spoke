@@ -22,12 +22,7 @@ module.exports = {
           "Arial",
           "sans-serif",
         ],
-        serif: [
-          "DM Serif Display",
-          "Georgia",
-          "Times New Roman",
-          "serif",
-        ],
+        serif: ["DM Serif Display", "Georgia", "Times New Roman", "serif"],
       },
       colors: {
         // Design system colors (CSS variables)
@@ -70,7 +65,7 @@ module.exports = {
       },
       borderRadius: {
         xl: "1rem",
-        "2xl": "1.5rem", 
+        "2xl": "1.5rem",
         "3xl": "2rem",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
@@ -80,8 +75,10 @@ module.exports = {
         card: "0 4px 20px rgba(0, 0, 0, 0.25)",
         pill: "0 4px 10px rgba(0, 0, 0, 0.15)",
         // Glassmorphic shadows from website
-        elevated: "0 5px 15px rgba(0, 0, 0, 0.3), 0 18px 45px rgba(0, 0, 0, 0.2)",
-        floating: "0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25)",
+        elevated:
+          "0 5px 15px rgba(0, 0, 0, 0.3), 0 18px 45px rgba(0, 0, 0, 0.2)",
+        floating:
+          "0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25)",
       },
       keyframes: {
         wave: {

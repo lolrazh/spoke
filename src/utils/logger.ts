@@ -21,5 +21,3 @@ export const logger = {
   main: createLogger("Main Process"),
   pill: createLogger("Pill Menu"),
 };
-
-

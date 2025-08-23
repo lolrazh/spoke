@@ -27,5 +27,3 @@ export const MOTION = {
 } as const;
 
 export type MotionTokens = typeof MOTION;
-
-

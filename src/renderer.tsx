@@ -14,7 +14,9 @@ initMicDevicesBridge();
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
   // Default to 'prod' for packaged builds and 'dev' for development
-  environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || (import.meta.env.DEV ? "dev" : "prod"),
+  environment:
+    import.meta.env.VITE_SENTRY_ENVIRONMENT ||
+    (import.meta.env.DEV ? "dev" : "prod"),
   beforeSend(event) {
     try {
       if (event.request?.url) {
@@ -27,13 +29,17 @@ Sentry.init({
       if (event.request?.headers) {
         const headers = event.request.headers as Record<string, string>;
         for (const k of Object.keys(headers)) {
-          if (/authorization|api[-_]?key|token/i.test(k)) headers[k] = "[Filtered]";
+          if (/authorization|api[-_]?key|token/i.test(k))
+            headers[k] = "[Filtered]";
         }
       }
       if (event.breadcrumbs) {
         event.breadcrumbs = event.breadcrumbs.map((b) => {
           if (typeof b.message === "string") {
-            b.message = b.message.replace(/(supabase|apikey|token|authorization)=([^\s&]+)/gi, "$1=[Filtered]");
+            b.message = b.message.replace(
+              /(supabase|apikey|token|authorization)=([^\s&]+)/gi,
+              "$1=[Filtered]",
+            );
           }
           return b;
         });

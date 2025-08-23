@@ -9,10 +9,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "btn-primary",
-        secondary:
-          "btn-secondary",
+        default: "btn-primary",
+        secondary: "btn-secondary",
         destructive:
           "bg-gradient-to-t from-red-600 to-red-500 text-white hover:from-red-700 hover:to-red-600",
       },

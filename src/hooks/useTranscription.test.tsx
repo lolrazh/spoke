@@ -1,12 +1,12 @@
-import React from 'react';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { act } from 'react-dom/test-utils';
-import { createRoot } from 'react-dom/client';
-import { useTranscription } from './useTranscription';
+import React from "react";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { act } from "react-dom/test-utils";
+import { createRoot } from "react-dom/client";
+import { useTranscription } from "./useTranscription";
 
 // Mock modules the hook imports
-vi.mock('../config/api', () => ({ getTranscribeWsUrl: () => 'ws://test/ws' }));
-vi.mock('../utils/audioFeedback', () => ({
+vi.mock("../config/api", () => ({ getTranscribeWsUrl: () => "ws://test/ws" }));
+vi.mock("../utils/audioFeedback", () => ({
   playToggleOn: vi.fn(),
   playToggleOff: vi.fn(),
 }));
@@ -22,14 +22,17 @@ class FakeAudioContext {
 }
 
 class FakeAudioWorkletNode {
-  port: { onmessage: ((ev: MessageEvent) => void) | null; postMessage: (msg: any) => void };
+  port: {
+    onmessage: ((ev: MessageEvent) => void) | null;
+    postMessage: (msg: any) => void;
+  };
   constructor(_ctx: any, _name: string, _opts: any) {
     this.port = {
       onmessage: null,
       postMessage: (_msg: any) => {},
     };
     // expose for tests
-    ;(globalThis as any).__lastWorklet = this;
+    (globalThis as any).__lastWorklet = this;
   }
   connect() {}
   disconnect() {}
@@ -42,21 +45,29 @@ class FakeWS {
   onopen: ((ev?: any) => void) | null = null;
   onerror: ((ev?: any) => void) | null = null;
   onclose: ((ev?: any) => void) | null = null;
-  binaryType = 'arraybuffer';
+  binaryType = "arraybuffer";
   bufferedAmount = 0;
   sent: any[] = [];
-  private listeners: Record<string, Function[]> = { message: [], error: [], close: [] };
+  private listeners: Record<string, Function[]> = {
+    message: [],
+    error: [],
+    close: [],
+  };
   constructor(url: string) {
     this.url = url;
     FakeWS.instances.push(this);
     // Open on next macrotask to allow assignment of onopen
-    setTimeout(() => { this.onopen && this.onopen({}); }, 0);
+    setTimeout(() => {
+      this.onopen && this.onopen({});
+    }, 0);
   }
-  send(data: any) { this.sent.push(data); }
-  addEventListener(type: 'message' | 'error' | 'close', cb: Function) {
+  send(data: any) {
+    this.sent.push(data);
+  }
+  addEventListener(type: "message" | "error" | "close", cb: Function) {
     (this.listeners[type] ||= []).push(cb);
   }
-  removeEventListener(type: 'message' | 'error' | 'close', cb: Function) {
+  removeEventListener(type: "message" | "error" | "close", cb: Function) {
     this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== cb);
   }
   close(code?: number, reason?: string) {
@@ -70,26 +81,39 @@ class FakeWS {
 
 // Helper to render the hook
 function renderUseTranscription(opts?: any) {
-  const container = document.createElement('div');
+  const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const out: { current: ReturnType<typeof useTranscription> | null } = { current: null };
+  const out: { current: ReturnType<typeof useTranscription> | null } = {
+    current: null,
+  };
   function Test() {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     const hook = useTranscription(opts);
     out.current = hook;
     return null;
   }
-  act(() => { root.render(React.createElement(Test)); });
+  act(() => {
+    root.render(React.createElement(Test));
+  });
   return {
-    get hook() { return out.current!; },
+    get hook() {
+      return out.current!;
+    },
     container,
-    unmount: () => { act(() => root.unmount()); container.remove(); },
+    unmount: () => {
+      act(() => root.unmount());
+      container.remove();
+    },
   };
 }
 
-describe('hooks/useTranscription', () => {
-  const orig = { AC: (globalThis as any).AudioContext, AWN: (globalThis as any).AudioWorkletNode, WS: (globalThis as any).WebSocket };
+describe("hooks/useTranscription", () => {
+  const orig = {
+    AC: (globalThis as any).AudioContext,
+    AWN: (globalThis as any).AudioWorkletNode,
+    WS: (globalThis as any).WebSocket,
+  };
   let insertTextSpy: any;
   let transcriptSpy: any;
 
@@ -102,7 +126,8 @@ describe('hooks/useTranscription', () => {
     // @ts-ignore
     navigator.mediaDevices = navigator.mediaDevices || {};
     // @ts-ignore
-    navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => {} }] }) as any;
+    navigator.mediaDevices.getUserMedia = async () =>
+      ({ getTracks: () => [{ stop: () => {} }] }) as any;
     // Spies for side-effects
     insertTextSpy = vi.fn(async () => ({ success: true }));
     transcriptSpy = vi.fn();
@@ -117,46 +142,74 @@ describe('hooks/useTranscription', () => {
     FakeWS.instances.length = 0;
   });
 
-  it('starts recording, opens WS, and exchanges control messages', async () => {
-    const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
+  it("starts recording, opens WS, and exchanges control messages", async () => {
+    const r = renderUseTranscription({
+      autoEnumerateDevices: false,
+      autoInitStream: false,
+    });
     // Start
-    await act(async () => { await r.hook.start(); });
+    await act(async () => {
+      await r.hook.start();
+    });
     // Ensure pending onopen (macrotask) and microtasks are flushed
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
 
     // Should have created a WS and sent at least one start message
     expect(FakeWS.instances.length).toBe(1);
     const ws = FakeWS.instances[0];
-    const startMsgs = ws.sent.filter((m) => typeof m === 'string').map((s) => JSON.parse(String(s))).filter((j) => j.type === 'start');
+    const startMsgs = ws.sent
+      .filter((m) => typeof m === "string")
+      .map((s) => JSON.parse(String(s)))
+      .filter((j) => j.type === "start");
     expect(startMsgs.length).toBeGreaterThan(0);
 
     // Stop: should send 'end' and resolve after server final
     const p = r.hook.stop();
     // Ensure stop has time to attach listeners
     await new Promise((r) => setTimeout(r, 0));
-    ws.emitMessage(JSON.stringify({ type: 'status', state: 'processing' }));
-    ws.emitMessage(JSON.stringify({ type: 'final', text: 'hello world' }));
-    await act(async () => { await p; await new Promise((r) => setTimeout(r, 0)); });
+    ws.emitMessage(JSON.stringify({ type: "status", state: "processing" }));
+    ws.emitMessage(JSON.stringify({ type: "final", text: "hello world" }));
+    await act(async () => {
+      await p;
+      await new Promise((r) => setTimeout(r, 0));
+    });
 
     // Verify final text applied and clipboard updated
-    expect(r.hook.text).toBe('hello world');
-    expect(insertTextSpy).toHaveBeenCalledWith('hello world');
+    expect(r.hook.text).toBe("hello world");
+    expect(insertTextSpy).toHaveBeenCalledWith("hello world");
 
     // Verify an 'end' control message was sent
-    const endMsgs = ws.sent.filter((m) => typeof m === 'string').map((s) => JSON.parse(String(s))).filter((j) => j.type === 'end');
+    const endMsgs = ws.sent
+      .filter((m) => typeof m === "string")
+      .map((s) => JSON.parse(String(s)))
+      .filter((j) => j.type === "end");
     expect(endMsgs.length).toBe(1);
 
     r.unmount();
   });
 
-  it('cancel sends cancel without waiting for final', async () => {
-    const r2 = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
-    await act(async () => { await r2.hook.start(); });
-    await act(async () => { await Promise.resolve(); });
+  it("cancel sends cancel without waiting for final", async () => {
+    const r2 = renderUseTranscription({
+      autoEnumerateDevices: false,
+      autoInitStream: false,
+    });
+    await act(async () => {
+      await r2.hook.start();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
     const ws = FakeWS.instances[0];
-    await act(async () => { await r2.hook.cancel(); });
+    await act(async () => {
+      await r2.hook.cancel();
+    });
     // After cancel, there should be no 'end' message and recording stops
-    const endMsgs = ws.sent.filter((m) => typeof m === 'string').map((s) => JSON.parse(String(s))).filter((j) => j.type === 'end');
+    const endMsgs = ws.sent
+      .filter((m) => typeof m === "string")
+      .map((s) => JSON.parse(String(s)))
+      .filter((j) => j.type === "end");
     expect(endMsgs.length).toBe(0);
     expect(r2.hook.recording).toBe(false);
     r2.unmount();

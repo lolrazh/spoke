@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { encodeFrameHeader } from './pcm';
+import { describe, it, expect } from "vitest";
+import { encodeFrameHeader } from "./pcm";
 
-describe('encodeFrameHeader', () => {
-  it('encodes seq, nbytes, and tsNs in little-endian', () => {
+describe("encodeFrameHeader", () => {
+  it("encodes seq, nbytes, and tsNs in little-endian", () => {
     const seq = 42;
     const nbytes = 1024;
     const tsNs = (BigInt(1) << BigInt(40)) + BigInt(12345); // ensure hi/lo parts
@@ -22,4 +22,3 @@ describe('encodeFrameHeader', () => {
     expect(gotTs).toBe(tsNs);
   });
 });
-

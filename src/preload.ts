@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld("devFlags", {
     process.env.SKIP_ONBOARDING === "true" ||
     false,
   devConsoleLogs:
-    process.env.SF_DEVTOOLS === "1" || process.env.SF_DEVTOOLS === "true" || false,
+    process.env.SF_DEVTOOLS === "1" ||
+    process.env.SF_DEVTOOLS === "true" ||
+    false,
 });
 
 contextBridge.exposeInMainWorld("contextMenu", {
@@ -74,7 +76,8 @@ contextBridge.exposeInMainWorld("mic", {
   /** Ask main to change the selected microphone (persist + broadcast). */
   select: (id: string) => ipcRenderer.invoke("mic:select", { id }),
   /** Get the currently selected microphone id from main. */
-  getSelected: (): Promise<{ id: string }> => ipcRenderer.invoke("mic:get-selected"),
+  getSelected: (): Promise<{ id: string }> =>
+    ipcRenderer.invoke("mic:get-selected"),
   /** Subscribe to selection changes coming from main. */
   onSelectedChanged: (cb: (payload: { id: string }) => void) => {
     ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
@@ -94,7 +97,8 @@ contextBridge.exposeInMainWorld("island", {
 contextBridge.exposeInMainWorld("electron", {
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),
-  setFocusable: (focusable: boolean) => ipcRenderer.send("set-focusable", focusable),
+  setFocusable: (focusable: boolean) =>
+    ipcRenderer.send("set-focusable", focusable),
   focusWindow: () => ipcRenderer.send("focus-window"),
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
@@ -102,15 +106,21 @@ contextBridge.exposeInMainWorld("electron", {
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
   // Onboarding APIs
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
-  requestAccessibilityPermission: () => ipcRenderer.invoke("request-accessibility-permission"),
-  requestInputMonitoringPermission: () => ipcRenderer.invoke("request-input-monitoring-permission"),
+  requestAccessibilityPermission: () =>
+    ipcRenderer.invoke("request-accessibility-permission"),
+  requestInputMonitoringPermission: () =>
+    ipcRenderer.invoke("request-input-monitoring-permission"),
   askIM: () => ipcRenderer.invoke("ask-im"),
-  requestMicrophonePermission: () => ipcRenderer.invoke("request-microphone-permission"),
-  checkMicrophonePermission: () => ipcRenderer.invoke("check-microphone-permission"),
-  openSystemPreferences: (pane: string) => ipcRenderer.invoke("open-system-preferences", pane),
+  requestMicrophonePermission: () =>
+    ipcRenderer.invoke("request-microphone-permission"),
+  checkMicrophonePermission: () =>
+    ipcRenderer.invoke("check-microphone-permission"),
+  openSystemPreferences: (pane: string) =>
+    ipcRenderer.invoke("open-system-preferences", pane),
   startHelper: () => ipcRenderer.invoke("helper:start"),
   preparePill: () => ipcRenderer.invoke("prepare-pill"),
-  setPttTarget: (target: "auto" | "onboarding" | "main") => ipcRenderer.invoke("ptt:set-target", target),
+  setPttTarget: (target: "auto" | "onboarding" | "main") =>
+    ipcRenderer.invoke("ptt:set-target", target),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
@@ -139,22 +149,31 @@ contextBridge.exposeInMainWorld("electron", {
 // Auth bridge: receive deep link callback URLs
 contextBridge.exposeInMainWorld("auth", {
   onCallback: (cb: (payload: { url: string }) => void) => {
-    const listener = (_e: Electron.IpcRendererEvent, payload: { url: string }) => cb(payload);
+    const listener = (
+      _e: Electron.IpcRendererEvent,
+      payload: { url: string },
+    ) => cb(payload);
     ipcRenderer.on("auth:callback", listener);
     return () => ipcRenderer.removeListener("auth:callback", listener);
   },
 });
 
 // Event bridge for active display updates
-contextBridge.exposeInMainWorld("onActiveDisplay", (cb: (payload: ActiveDisplayPayload) => void) => {
-  const listener = (_event: Electron.IpcRendererEvent, payload: ActiveDisplayPayload) => cb(payload);
-  ipcRenderer.on("active-display", listener);
-});
+contextBridge.exposeInMainWorld(
+  "onActiveDisplay",
+  (cb: (payload: ActiveDisplayPayload) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: ActiveDisplayPayload,
+    ) => cb(payload);
+    ipcRenderer.on("active-display", listener);
+  },
+);
 
 // Forward collapse-request from main to the renderer via a window message
 ipcRenderer.on("collapse-request", () => {
   try {
-    window.postMessage('collapse-request', '*');
+    window.postMessage("collapse-request", "*");
   } catch {
     // ignore
   }

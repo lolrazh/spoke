@@ -99,3 +99,9 @@ repomix.config.json
 repomix-output.xml
 
 public/assets/icon.iconset
+
+worker/.dev.vars*
+worker/!.dev.vars.example
+worker/.env*
+worker/!.env.example
+worker/.wrangler/

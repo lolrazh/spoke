@@ -25,7 +25,8 @@ async function loadSymbols(): Promise<SymbolsJson> {
     // Use relative path so it works under file:// protocol in packaged builds
     symbolsPromise = fetch("./assets/sf-symbols.json", { cache: "no-store" })
       .then(async (res) => {
-        if (!res.ok) throw new Error(`Failed to load sf-symbols.json: ${res.status}`);
+        if (!res.ok)
+          throw new Error(`Failed to load sf-symbols.json: ${res.status}`);
         return (await res.json()) as SymbolsJson;
       })
       .then((json) => {
@@ -48,7 +49,13 @@ export interface SfIconProps {
   title?: string;
 }
 
-const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, className = "", title }) => {
+const SfIcon: React.FC<SfIconProps> = ({
+  name,
+  weight = "bold",
+  size = 16,
+  className = "",
+  title,
+}) => {
   const [symbols, setSymbols] = useState<SymbolsJson | null>(symbolsCache);
 
   useEffect(() => {
@@ -78,7 +85,9 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
   const spec = useMemo(() => {
     const entry = symbols?.[name];
     if (!entry) return null;
-    const chosen = (entry[weight] || entry["bold"] || Object.values(entry)[0]) as
+    const chosen = (entry[weight] ||
+      entry["bold"] ||
+      Object.values(entry)[0]) as
       | { path: string; geometry: { width: number; height: number } }
       | undefined;
     return chosen || null;
@@ -86,7 +95,13 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
 
   if (!spec) {
     // Fallback: empty box to preserve layout
-    return <span className={className} style={{ display: "inline-block", width: size, height: size }} aria-hidden />;
+    return (
+      <span
+        className={className}
+        style={{ display: "inline-block", width: size, height: size }}
+        aria-hidden
+      />
+    );
   }
 
   const viewBox = `0 0 ${spec.geometry.width} ${spec.geometry.height}`;
@@ -109,5 +124,3 @@ const SfIcon: React.FC<SfIconProps> = ({ name, weight = "bold", size = 16, class
 };
 
 export default SfIcon;
-
-

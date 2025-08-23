@@ -4,5 +4,3 @@ export const MAX_UI_SCALE = 1.0;
 
 // Polling interval for following the cursor/display changes
 export const CURSOR_POLL_INTERVAL_MS = 100;
-
-

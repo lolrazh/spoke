@@ -21,10 +21,23 @@ import http from "node:http";
 
 import fs from "node:fs";
 
-import { ISLAND_HIDDEN_Y, ISLAND_WIDTH, ISLAND_HEIGHT, ISLAND_VISIBLE_Y, SHADOW_PAD, CONTENT_WIDTH, CONTENT_HEIGHT } from "./constants/window";
+import {
+  ISLAND_HIDDEN_Y,
+  ISLAND_WIDTH,
+  ISLAND_HEIGHT,
+  ISLAND_VISIBLE_Y,
+  SHADOW_PAD,
+  CONTENT_WIDTH,
+  CONTENT_HEIGHT,
+} from "./constants/window";
 import { ONBOARDING_WIDTH, ONBOARDING_HEIGHT } from "./constants/onboarding";
 import type { MicDevice, MicPreferences, PttTarget } from "./types/shared";
-import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems, buildCopyTranscriptItem } from "./utils/menuBuilders";
+import {
+  buildMicrophoneSubmenu,
+  buildCommonAppItems,
+  buildFeedbackAndAboutItems,
+  buildCopyTranscriptItem,
+} from "./utils/menuBuilders";
 
 // Types moved to ./types/shared
 
@@ -33,7 +46,12 @@ import { buildMicrophoneSubmenu, buildCommonAppItems, buildFeedbackAndAboutItems
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 import type { ChildProcess } from "child_process";
-import { CURSOR_POLL_INTERVAL_MS, REFERENCE_WIDTH, MIN_UI_SCALE, MAX_UI_SCALE } from "./constants/display";
+import {
+  CURSOR_POLL_INTERVAL_MS,
+  REFERENCE_WIDTH,
+  MIN_UI_SCALE,
+  MAX_UI_SCALE,
+} from "./constants/display";
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
@@ -43,7 +61,8 @@ Sentry.init({
   // Use a single DSN variable for both main/renderer (Vite-injected)
   dsn: VITE_ENV?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
   // Default to 'prod' for packaged builds and 'dev' for development
-  environment: VITE_ENV?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
+  environment:
+    VITE_ENV?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
   release: app.getVersion(),
   beforeSend(event) {
     try {
@@ -57,13 +76,17 @@ Sentry.init({
       if (event.request?.headers) {
         const headers = event.request.headers as Record<string, string>;
         for (const k of Object.keys(headers)) {
-          if (/authorization|api[-_]?key|token/i.test(k)) headers[k] = "[Filtered]";
+          if (/authorization|api[-_]?key|token/i.test(k))
+            headers[k] = "[Filtered]";
         }
       }
       if (event.breadcrumbs) {
         event.breadcrumbs = event.breadcrumbs.map((b) => {
           if (typeof b.message === "string") {
-            b.message = b.message.replace(/(supabase|apikey|token|authorization)=([^\s&]+)/gi, "$1=[Filtered]");
+            b.message = b.message.replace(
+              /(supabase|apikey|token|authorization)=([^\s&]+)/gi,
+              "$1=[Filtered]",
+            );
           }
           return b;
         });
@@ -97,15 +120,17 @@ function sendAuthCallback(url: string) {
   // Extract the significant parts for deduplication (ignore minor differences)
   const parsed = new URL(url);
   const dedupeKey = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}?${parsed.searchParams.toString()}`;
-  
+
   if (processedAuthUrls.has(dedupeKey)) {
-    console.log(`[Auth] Ignoring duplicate callback: ${url.substring(0, 50)}...`);
+    console.log(
+      `[Auth] Ignoring duplicate callback: ${url.substring(0, 50)}...`,
+    );
     return false;
   }
-  
+
   processedAuthUrls.add(dedupeKey);
   console.log(`[Auth] Processing new callback: ${url.substring(0, 50)}...`);
-  
+
   const targetWindow = onboardingWindow || mainWindow;
   if (targetWindow && !targetWindow.isDestroyed()) {
     targetWindow.webContents.send("auth:callback", { url });
@@ -127,7 +152,8 @@ if (!gotTheLock) {
     try {
       const maybeUrl = argv.find(
         (a) =>
-          typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+          typeof a === "string" &&
+          (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
       );
       if (maybeUrl) {
         sendAuthCallback(maybeUrl);
@@ -176,7 +202,9 @@ function getDisplayForPoint(point: Electron.Point): Electron.Display {
 
 function getActiveDisplay(): Electron.Display {
   if (activeDisplayId != null) {
-    const existing = screen.getAllDisplays().find((d) => d.id === activeDisplayId);
+    const existing = screen
+      .getAllDisplays()
+      .find((d) => d.id === activeDisplayId);
     if (existing) return existing;
   }
   return getDisplayForPoint(screen.getCursorScreenPoint());
@@ -196,14 +224,24 @@ function getDisplayForWindow(): Electron.Display {
   return screen.getDisplayNearestPoint({ x: cx, y: cy });
 }
 
-function centerWindowOnDisplay(display: Electron.Display, preserveRelativeY = true): void {
+function centerWindowOnDisplay(
+  display: Electron.Display,
+  preserveRelativeY = true,
+): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const currentBounds = mainWindow.getBounds();
-  const newX = display.bounds.x + Math.round((display.size.width - currentBounds.width) / 2);
+  const newX =
+    display.bounds.x +
+    Math.round((display.size.width - currentBounds.width) / 2);
   // Always snap to safe top of target display to keep pill flush to menu bar/notch
   const newY = display.workArea.y + ISLAND_VISIBLE_Y;
   if (currentBounds.x !== newX || currentBounds.y !== newY) {
-    coalescedSetBounds({ x: newX, y: newY, width: currentBounds.width, height: currentBounds.height });
+    coalescedSetBounds({
+      x: newX,
+      y: newY,
+      width: currentBounds.width,
+      height: currentBounds.height,
+    });
     logBounds("centerWindowOnDisplay");
   }
 }
@@ -219,7 +257,9 @@ function computeScaleForDisplay(display: Electron.Display): number {
   return clamp(raw, MIN_UI_SCALE, MAX_UI_SCALE);
 }
 
-function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; width: number; height: number } | null {
+function ensureEnvelopeForDisplay(
+  display: Electron.Display,
+): { scale: number; width: number; height: number } | null {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
   const scale = computeScaleForDisplay(display);
 
@@ -230,11 +270,17 @@ function ensureEnvelopeForDisplay(display: Electron.Display): { scale: number; w
   const targetH = Math.max(ISLAND_HEIGHT, targetContentH + SHADOW_PAD * 2);
 
   const current = mainWindow.getBounds();
-  const newX = display.bounds.x + Math.round((display.size.width - targetW) / 2);
+  const newX =
+    display.bounds.x + Math.round((display.size.width - targetW) / 2);
   // Snap Y to the top safe area of the target display (stick to menu bar/notch)
   const newY = display.workArea.y + ISLAND_VISIBLE_Y;
 
-  if (current.width !== targetW || current.height !== targetH || current.x !== newX || current.y !== newY) {
+  if (
+    current.width !== targetW ||
+    current.height !== targetH ||
+    current.x !== newX ||
+    current.y !== newY
+  ) {
     coalescedSetBounds({ x: newX, y: newY, width: targetW, height: targetH });
     logBounds("ensureEnvelopeForDisplay");
   }
@@ -300,7 +346,9 @@ function syncToCurrentDisplay(reason: string): void {
     const sized = ensureEnvelopeForDisplay(display);
     const scale = sized?.scale ?? computeScaleForDisplay(display);
     emitActiveDisplayInfo(display, scale);
-    console.log(`[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`);
+    console.log(
+      `[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`,
+    );
   } catch (e) {
     logger.main.warn("syncToCurrentDisplay failed", e);
   }
@@ -336,11 +384,7 @@ function coalescedSetBounds(bounds: Electron.Rectangle): void {
   }, 16);
 }
 
-function spawnHelper(
-  path: string,
-  args: string[] = [],
-  isFnHelper: boolean,
-) {
+function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   const proc = spawn(path, args, { stdio: "pipe", detached: false });
   const helperSet = isFnHelper ? fnHelpers : pasteHelpers;
   helperSet.add(proc);
@@ -709,7 +753,15 @@ const createWindow = () => {
       const currentDisplay = screen.getDisplayMatching(current);
       activeDisplayId = currentDisplay.id;
       const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
-      mainWindow.setBounds({ x: current.x, y: targetY, width: current.width, height: current.height }, false);
+      mainWindow.setBounds(
+        {
+          x: current.x,
+          y: targetY,
+          width: current.width,
+          height: current.height,
+        },
+        false,
+      );
       if (process.platform === "darwin") mainWindow.invalidateShadow();
       logBounds("ready-to-show -> top-align");
     } catch (e) {
@@ -720,13 +772,24 @@ const createWindow = () => {
     // - In packaged staging builds: auto-open via VITE_SF_DEVTOOLS=1 (compile-time injected)
     // - In Vite dev server: opt-in via SF_DEVTOOLS=1 (to avoid overlay issues on transparent window)
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
-      try { mainWindow.webContents.openDevTools({ mode: "detach" }); } catch {}
+      try {
+        mainWindow.webContents.openDevTools({ mode: "detach" });
+      } catch {}
       console.log("DevTools opened (staging)");
-    } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL && process.env.SF_DEVTOOLS === "1") {
-      try { mainWindow.webContents.openDevTools({ mode: "detach" }); } catch {}
-      console.log("DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.");
+    } else if (
+      MAIN_WINDOW_VITE_DEV_SERVER_URL &&
+      process.env.SF_DEVTOOLS === "1"
+    ) {
+      try {
+        mainWindow.webContents.openDevTools({ mode: "detach" });
+      } catch {}
+      console.log(
+        "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
+      );
     } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-      console.log("DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)");
+      console.log(
+        "DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)",
+      );
     }
   });
 
@@ -750,19 +813,31 @@ const createWindow = () => {
   });
 
   // Position window centered on the cursor's display and hidden under the notch
-  const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const cursorDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
   activeDisplayId = cursorDisplay.id;
-  const initialX = cursorDisplay.bounds.x + Math.round((cursorDisplay.size.width - ISLAND_WIDTH) / 2);
+  const initialX =
+    cursorDisplay.bounds.x +
+    Math.round((cursorDisplay.size.width - ISLAND_WIDTH) / 2);
   // Start aligned to safe top so the pill is always flush when shown
   const initialY = cursorDisplay.workArea.y + ISLAND_VISIBLE_Y;
   console.log(
     `[Window Creation] Display=${cursorDisplay.id} width=${cursorDisplay.size.width}px, Initial X=${initialX}, Y=${initialY}`,
   );
-  mainWindow.setBounds({ x: initialX, y: initialY, width: ISLAND_WIDTH, height: ISLAND_HEIGHT });
+  mainWindow.setBounds({
+    x: initialX,
+    y: initialY,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT,
+  });
   logBounds("createWindow");
   // Immediately size envelope for display scale and notify renderer
   const sized = ensureEnvelopeForDisplay(cursorDisplay);
-  emitActiveDisplayInfo(cursorDisplay, sized?.scale ?? computeScaleForDisplay(cursorDisplay));
+  emitActiveDisplayInfo(
+    cursorDisplay,
+    sized?.scale ?? computeScaleForDisplay(cursorDisplay),
+  );
 
   // Collapse request on blur: if user clicks outside our window, renderer can decide to collapse
   mainWindow.on("blur", () => {
@@ -777,18 +852,25 @@ const createWindow = () => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     try {
       const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-      const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-      if (wsOverride && String(wsOverride).trim()) url.searchParams.set('ws', String(wsOverride).trim());
+      const wsOverride =
+        VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+      if (wsOverride && String(wsOverride).trim())
+        url.searchParams.set("ws", String(wsOverride).trim());
       mainWindow.loadURL(url.toString());
     } catch {
       mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     }
   } else {
-    const filePath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    const filePath = path.join(
+      __dirname,
+      `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+    );
     try {
       const u = pathToFileURL(filePath);
-      const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-      if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+      const wsOverride =
+        VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
+      if (wsOverride && String(wsOverride).trim())
+        u.searchParams.set("ws", String(wsOverride).trim());
       mainWindow.loadURL(u.toString());
     } catch {
       mainWindow.loadFile(filePath);
@@ -842,99 +924,126 @@ function createOnboardingWindow() {
   };
 
   // Add native macOS vibrancy for true glassmorphic effect
-  if (process.platform === 'darwin') {
-    onboardingWindowOptions.vibrancy = 'hud'; // 'sidebar' or 'fullscreen-ui' also work
-    onboardingWindowOptions.visualEffectState = 'active'; // window remains vibrant when focused
-    onboardingWindowOptions.titleBarStyle = 'hiddenInset'; // ① keep it frameless — we still get traffic-lights
+  if (process.platform === "darwin") {
+    onboardingWindowOptions.vibrancy = "hud"; // 'sidebar' or 'fullscreen-ui' also work
+    onboardingWindowOptions.visualEffectState = "active"; // window remains vibrant when focused
+    onboardingWindowOptions.titleBarStyle = "hiddenInset"; // ① keep it frameless — we still get traffic-lights
     onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 }; // ③ nudge them if your design needs it (same numbers Raycast uses)
   } else {
     // Fallback for non-macOS platforms
-    onboardingWindowOptions.backgroundColor = '#0f0f0f';
+    onboardingWindowOptions.backgroundColor = "#0f0f0f";
   }
 
-  console.log("[Debug] Creating BrowserWindow with options:", onboardingWindowOptions);
+  console.log(
+    "[Debug] Creating BrowserWindow with options:",
+    onboardingWindowOptions,
+  );
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
   console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
-    ? (() => { try {
+    ? (() => {
+        try {
           const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-          const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+          const wsOverride =
+            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+            process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim())
+            u.searchParams.set("ws", String(wsOverride).trim());
           return `${u.toString()}#/onboarding`;
-        } catch { return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`; } })()
-    : (() => { try {
+        } catch {
+          return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
+        }
+      })()
+    : (() => {
+        try {
           const filePath = path.join(
             __dirname,
             `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
           );
           const u = pathToFileURL(filePath);
-          const wsOverride = VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim()) u.searchParams.set('ws', String(wsOverride).trim());
+          const wsOverride =
+            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+            process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim())
+            u.searchParams.set("ws", String(wsOverride).trim());
           return `${u.toString()}#/onboarding`;
         } catch {
           return `file://${path.join(
             __dirname,
             `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
           )}#/onboarding`;
-        } })();
+        }
+      })();
 
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
   console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
   console.log("[Debug] About to load URL in onboarding window");
-  
-  onboardingWindow.loadURL(onboardingUrl).catch(error => {
+
+  onboardingWindow.loadURL(onboardingUrl).catch((error) => {
     console.error("[Debug] Error loading URL:", error);
   });
   console.log("[Debug] URL load initiated");
-  
-  // Add comprehensive error handling 
-  onboardingWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.error("[Onboarding] Failed to load:", errorCode, errorDescription, validatedURL);
-  });
-  
-  onboardingWindow.webContents.on('render-process-gone', (_event, details) => {
+
+  // Add comprehensive error handling
+  onboardingWindow.webContents.on(
+    "did-fail-load",
+    (event, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        "[Onboarding] Failed to load:",
+        errorCode,
+        errorDescription,
+        validatedURL,
+      );
+    },
+  );
+
+  onboardingWindow.webContents.on("render-process-gone", (_event, details) => {
     console.error("[Onboarding] Renderer process gone:", details);
   });
-  
-  onboardingWindow.on('unresponsive', () => {
+
+  onboardingWindow.on("unresponsive", () => {
     console.error("[Onboarding] Window became unresponsive");
   });
-  
-  onboardingWindow.on('closed', () => {
+
+  onboardingWindow.on("closed", () => {
     console.log("[Debug] Onboarding window was closed");
   });
 
   // FIX 3: Wait for DOM and full rendering before showing window
-  onboardingWindow.webContents.on('dom-ready', () => {
+  onboardingWindow.webContents.on("dom-ready", () => {
     console.log("[Onboarding] DOM ready");
   });
 
   // FIX 4: Use did-finish-load to ensure all resources are ready
-  onboardingWindow.webContents.once('did-finish-load', () => {
+  onboardingWindow.webContents.once("did-finish-load", () => {
     console.log("[Onboarding] Content finished loading");
-    
+
     // FIX 8: Force hardware acceleration settings for better vibrancy
-    if (process.platform === 'darwin') {
-      onboardingWindow.webContents.executeJavaScript(`
+    if (process.platform === "darwin") {
+      onboardingWindow.webContents
+        .executeJavaScript(
+          `
         // Ensure proper rendering context
         document.documentElement.style.transform = 'translateZ(0)';
         console.log('[Vibrancy] Hardware acceleration enabled for rendering');
-      `).catch((err) => {
-        console.warn('[Vibrancy] Could not set hardware acceleration:', err);
-      });
+      `,
+        )
+        .catch((err) => {
+          console.warn("[Vibrancy] Could not set hardware acceleration:", err);
+        });
     }
-    
+
     // FIX 5: Add small delay to ensure vibrancy effect is ready
     setTimeout(() => {
       if (onboardingWindow && !onboardingWindow.isDestroyed()) {
         console.log("[Onboarding] Showing window after vibrancy delay");
         onboardingWindow.show();
-        
+
         // FIX 6: Force invalidate shadow to clear any artifacts
-        if (process.platform === 'darwin') {
+        if (process.platform === "darwin") {
           onboardingWindow.invalidateShadow();
         }
       }
@@ -942,20 +1051,26 @@ function createOnboardingWindow() {
   });
 
   // FIX 7: Backup using ready-to-show as fallback
-  onboardingWindow.once('ready-to-show', () => {
+  onboardingWindow.once("ready-to-show", () => {
     console.log("[Onboarding] Ready to show event fired");
     // Auto-open DevTools in packaged staging builds for onboarding UI (compile-time flag)
-    if (VITE_ENV?.VITE_SF_DEVTOOLS === '1') {
-      try { onboardingWindow.webContents.openDevTools({ mode: 'detach' }); } catch {}
-      console.log('[Onboarding] DevTools opened (staging)');
+    if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
+      try {
+        onboardingWindow.webContents.openDevTools({ mode: "detach" });
+      } catch {}
+      console.log("[Onboarding] DevTools opened (staging)");
     }
     // Only show if not already shown by did-finish-load
     setTimeout(() => {
-      if (onboardingWindow && !onboardingWindow.isDestroyed() && !onboardingWindow.isVisible()) {
+      if (
+        onboardingWindow &&
+        !onboardingWindow.isDestroyed() &&
+        !onboardingWindow.isVisible()
+      ) {
         console.log("[Onboarding] Showing window via ready-to-show fallback");
         onboardingWindow.show();
-        
-        if (process.platform === 'darwin') {
+
+        if (process.platform === "darwin") {
           onboardingWindow.invalidateShadow();
         }
       }
@@ -969,24 +1084,34 @@ function createOnboardingWindow() {
   // Enhanced flush pending function with retry capability
   const flushPending = () => {
     try {
-      if (pendingAuthUrls.length > 0 && onboardingWindow && !onboardingWindow.isDestroyed()) {
-        console.log(`[Auth] Flushing ${pendingAuthUrls.length} pending auth URLs`);
+      if (
+        pendingAuthUrls.length > 0 &&
+        onboardingWindow &&
+        !onboardingWindow.isDestroyed()
+      ) {
+        console.log(
+          `[Auth] Flushing ${pendingAuthUrls.length} pending auth URLs`,
+        );
         const urlsToProcess = [...pendingAuthUrls];
         pendingAuthUrls = [];
-        
+
         for (const url of urlsToProcess) {
           if (onboardingWindow.webContents.isLoading()) {
             // Re-add to pending if still loading
-            console.log(`[Auth] Window still loading, re-adding URL to pending`);
+            console.log(
+              `[Auth] Window still loading, re-adding URL to pending`,
+            );
             pendingAuthUrls.push(url);
           } else {
             sendAuthCallback(url);
           }
         }
-        
+
         // Schedule retry if there are still pending URLs
         if (pendingAuthUrls.length > 0) {
-          console.log(`[Auth] ${pendingAuthUrls.length} URLs still pending, scheduling retry in 1 second`);
+          console.log(
+            `[Auth] ${pendingAuthUrls.length} URLs still pending, scheduling retry in 1 second`,
+          );
           setTimeout(flushPending, 1000); // Retry after 1 second
         }
       }
@@ -994,7 +1119,7 @@ function createOnboardingWindow() {
       console.error("[Auth] Failed to flush pending auth URLs:", e);
     }
   };
-  onboardingWindow.webContents.once('did-finish-load', () => {
+  onboardingWindow.webContents.once("did-finish-load", () => {
     setTimeout(flushPending, 0);
   });
 }
@@ -1007,7 +1132,9 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) =>
+    selectMicDevice(id),
+  );
 
   return [
     ...buildCommonAppItems(() => {
@@ -1044,7 +1171,9 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = micPreferences.selectedMicId || "default";
 
-  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) => selectMicDevice(id));
+  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) =>
+    selectMicDevice(id),
+  );
 
   return [
     ...buildCommonAppItems(() => {
@@ -1059,9 +1188,15 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
       submenu: micSubmenu,
     },
     { type: "separator" },
-    buildCopyTranscriptItem(() => lastTranscript, () => {
-      mainWindow?.webContents.send("notify", "Transcript copied to clipboard");
-    }),
+    buildCopyTranscriptItem(
+      () => lastTranscript,
+      () => {
+        mainWindow?.webContents.send(
+          "notify",
+          "Transcript copied to clipboard",
+        );
+      },
+    ),
     ...buildFloatingBarMenuItems(),
     { type: "separator" },
     ...buildFeedbackAndAboutItems(),
@@ -1200,8 +1335,22 @@ ipcMain.handle(
       console.log("Transcription text copied to clipboard for pasting.");
 
       const helperPath = app.isPackaged
-        ? path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-        : path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
+        ? path.join(
+            process.resourcesPath,
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          )
+        : path.join(
+            app.getAppPath(),
+            "native",
+            "bin",
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          );
 
       if (!fs.existsSync(helperPath)) {
         console.error(
@@ -1221,15 +1370,20 @@ ipcMain.handle(
 
       // Restore original clipboard regardless of outcome
       setTimeout(() => {
-        try { clipboard.writeText(originalClipboardText); } catch {}
+        try {
+          clipboard.writeText(originalClipboardText);
+        } catch {}
       }, 300);
 
       // Await process exit for logging only; don't gate success
       await new Promise<void>((resolve) => {
         let stderrBuffer = "";
-        proc.stderr.on("data", (data) => { stderrBuffer += data.toString(); });
+        proc.stderr.on("data", (data) => {
+          stderrBuffer += data.toString();
+        });
         proc.on("close", (code) => {
-          if (stderrBuffer) console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
+          if (stderrBuffer)
+            console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
           console.log(`[PasteHelper] paste helper exited with code ${code}`);
           resolve();
         });
@@ -1275,13 +1429,23 @@ app.whenReady().then(async () => {
       // Always register with explicit exe and app path in dev
       const exe = process.execPath;
       const appPath = path.resolve(process.argv[1] || "");
-      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
-      console.log(`[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`);
-      console.log(`[Auth] isDefaultProtocolClient(dev):`, app.isDefaultProtocolClient("sonicflow-dev"));
+      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [
+        appPath,
+      ]);
+      console.log(
+        `[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`,
+      );
+      console.log(
+        `[Auth] isDefaultProtocolClient(dev):`,
+        app.isDefaultProtocolClient("sonicflow-dev"),
+      );
     } else {
       const ok = app.setAsDefaultProtocolClient("sonicflow");
       console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
-      console.log(`[Auth] isDefaultProtocolClient(prod):`, app.isDefaultProtocolClient("sonicflow"));
+      console.log(
+        `[Auth] isDefaultProtocolClient(prod):`,
+        app.isDefaultProtocolClient("sonicflow"),
+      );
     }
   } catch (e) {
     console.error("[Auth] Failed to register protocol client:", e);
@@ -1302,7 +1466,9 @@ app.whenReady().then(async () => {
         }
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end("<html><body><p>Authentication complete. You can close this window.</p></body></html>");
+        res.end(
+          "<html><body><p>Authentication complete. You can close this window.</p></body></html>",
+        );
       });
       server.listen(port, host, () => {
         devAuthServerUrl = `http://${host}:${port}/auth/callback`;
@@ -1317,7 +1483,9 @@ app.whenReady().then(async () => {
   // Handle protocol URL passed at first launch (Windows/Linux)
   try {
     const firstUrl = process.argv.find(
-      (a) => typeof a === "string" && (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+      (a) =>
+        typeof a === "string" &&
+        (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
     );
     if (firstUrl) {
       sendAuthCallback(firstUrl);
@@ -1342,10 +1510,14 @@ app.whenReady().then(async () => {
   const isDev = !app.isPackaged;
   // Log the WebSocket endpoint the app intends to use (terminal)
   try {
-    const envWs = (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-    const wsUrlToLog = envWs || (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
-    console.log('[Main] WS endpoint', wsUrlToLog);
-    console.log('[Main] Flags', {
+    const envWs =
+      (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL ||
+      process.env.VITE_TRANSCRIBE_WS_URL;
+    const wsUrlToLog =
+      envWs ||
+      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
+    console.log("[Main] WS endpoint", wsUrlToLog);
+    console.log("[Main] Flags", {
       VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
       VITE_ALLOW_DEV_WS: VITE_ENV?.VITE_ALLOW_DEV_WS,
       VITE_SENTRY_ENVIRONMENT: VITE_ENV?.VITE_SENTRY_ENVIRONMENT,
@@ -1358,18 +1530,20 @@ app.whenReady().then(async () => {
     // Loosen CSP for auth flows; explicitly allow Supabase and websockets
     const styleSrc = "style-src 'self' 'unsafe-inline'";
     const fontSrc = "font-src 'self' data:";
-    const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === '1';
+    const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === "1";
     const connect = [
       "connect-src 'self'",
       "https://api.sonicflow.app",
       "wss://api.sonicflow.app",
       // Local development HTTP/WS (dev or staging with flag)
-      ...(allowLocal ? [
-        "http://127.0.0.1:8787",
-        "http://localhost:8787",
-        "ws://127.0.0.1:8787",
-        "ws://localhost:8787",
-      ] : []),
+      ...(allowLocal
+        ? [
+            "http://127.0.0.1:8787",
+            "http://localhost:8787",
+            "ws://127.0.0.1:8787",
+            "ws://localhost:8787",
+          ]
+        : []),
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
       "https://*.supabase.co",
@@ -1382,7 +1556,7 @@ app.whenReady().then(async () => {
       "wss://*.supabase.in",
       "blob:",
       "data:",
-    ].join(' ');
+    ].join(" ");
 
     const scriptSrc = `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`;
     const imgSrc = "img-src 'self' data:";
@@ -1400,9 +1574,12 @@ app.whenReady().then(async () => {
       "Content-Security-Policy": csp,
     };
     // Only enforce COOP/COEP in strict prod (not dev or staging)
-    const isStrictProd = app.isPackaged && !(
-      VITE_ENV?.VITE_SENTRY_ENVIRONMENT === 'staging' || VITE_ENV?.VITE_SENTRY_ENVIRONMENT === 'dev'
-    );
+    const isStrictProd =
+      app.isPackaged &&
+      !(
+        VITE_ENV?.VITE_SENTRY_ENVIRONMENT === "staging" ||
+        VITE_ENV?.VITE_SENTRY_ENVIRONMENT === "dev"
+      );
     if (isStrictProd) {
       headers["Cross-Origin-Opener-Policy"] = "same-origin";
       headers["Cross-Origin-Embedder-Policy"] = "require-corp";
@@ -1486,7 +1663,15 @@ app.whenReady().then(async () => {
         const currentBounds = mainWindow.getBounds();
         const display = screen.getDisplayMatching(currentBounds);
         const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
-        mainWindow.setBounds({ x: currentBounds.x, y: hideY, width: currentBounds.width, height: currentBounds.height }, false);
+        mainWindow.setBounds(
+          {
+            x: currentBounds.x,
+            y: hideY,
+            width: currentBounds.width,
+            height: currentBounds.height,
+          },
+          false,
+        );
         logBounds("prepare-pill -> hide");
       }
       return { success: true };
@@ -1515,15 +1700,15 @@ app.whenReady().then(async () => {
       if (devAuthServerUrl) {
         return { url: devAuthServerUrl };
       }
-      
+
       // Wait for server to be ready with timeout
       const timeout = 10000; // 10 seconds timeout
       const startTime = Date.now();
-      
-      while (!devAuthServerUrl && (Date.now() - startTime) < timeout) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Check every 100ms
+
+      while (!devAuthServerUrl && Date.now() - startTime < timeout) {
+        await new Promise((resolve) => setTimeout(resolve, 100)); // Check every 100ms
       }
-      
+
       if (devAuthServerUrl) {
         return { url: devAuthServerUrl };
       } else {
@@ -1535,7 +1720,6 @@ app.whenReady().then(async () => {
     // This improves UX when the provider opens an external browser
     return { url: "https://auth.sonicflow.app/auth/callback" };
   });
-
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
     console.log(`[IPC] Setting PTT target to: ${target}`);
@@ -1551,7 +1735,11 @@ app.whenReady().then(async () => {
     // Persist local onboarding flag so future launches can skip onboarding entirely
     try {
       onboardingPrefs = { ...onboardingPrefs, done: true };
-      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
     } catch {}
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
@@ -1569,7 +1757,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("auth:set-signed-in", () => {
     try {
       onboardingPrefs = { ...onboardingPrefs };
-      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
     } catch {}
     return { ok: true };
   });
@@ -1577,10 +1769,16 @@ app.whenReady().then(async () => {
   ipcMain.handle("auth:show-onboarding", () => {
     try {
       onboardingPrefs = { ...onboardingPrefs };
-      fs.writeFileSync(onboardingPrefsPath, JSON.stringify(onboardingPrefs, null, 2), "utf8");
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
     } catch {}
     // Hide pill/main, show onboarding
-    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); } catch {}
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    } catch {}
     if (onboardingWindow && !onboardingWindow.isDestroyed()) {
       onboardingWindow.show();
     } else {
@@ -1621,7 +1819,9 @@ app.whenReady().then(async () => {
   // React to OS display changes to keep the pill consistent
   screen.on("display-added", () => syncToCurrentDisplay("display-added"));
   screen.on("display-removed", () => syncToCurrentDisplay("display-removed"));
-  screen.on("display-metrics-changed", () => syncToCurrentDisplay("display-metrics-changed"));
+  screen.on("display-metrics-changed", () =>
+    syncToCurrentDisplay("display-metrics-changed"),
+  );
 
   // Handle pill expansion requests
   ipcMain.on("expand-pill", () => {
@@ -1644,7 +1844,11 @@ app.whenReady().then(async () => {
   // Floating bar visibility controls for renderer-driven UX flows
   ipcMain.handle("floating-bar:is-visible", () => {
     try {
-      const visible = !!(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible());
+      const visible = !!(
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        mainWindow.isVisible()
+      );
       return { visible };
     } catch {
       return { visible: false };
@@ -1723,7 +1927,12 @@ app.whenReady().then(async () => {
       const current = mainWindow.getBounds();
       const newY = display.bounds.y + y; // slide offset relative to target display
       // Only change Y during slide to avoid compositor thrash; X is handled on display change/envelope resize
-      const target = { x: current.x, y: newY, width: current.width, height: current.height };
+      const target = {
+        x: current.x,
+        y: newY,
+        width: current.width,
+        height: current.height,
+      };
       coalescedSetBounds(target);
     }
   });
@@ -1767,34 +1976,55 @@ app.whenReady().then(async () => {
     try {
       const isDev = !app.isPackaged;
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
-      
+
       // Always use the helper binary for consistent permission checking in both dev and prod
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
-      
+        ? path.join(
+            app.getAppPath(),
+            "native",
+            "bin",
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          )
+        : path.join(
+            process.resourcesPath,
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          );
+
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
-        console.error("Sonic Flow Helper binary not found at path:", helperPath);
+        console.error(
+          "Sonic Flow Helper binary not found at path:",
+          helperPath,
+        );
         return { needAX, needIM: true, isDev };
       }
-      
+
       // Run the helper with --check-permissions flag
       return new Promise((resolve) => {
         const helper = spawn(helperPath, ["--check-permissions"]);
-        
+
         let output = "";
         helper.stdout.on("data", (data) => {
           output += data.toString();
         });
-        
+
         helper.on("close", () => {
           // Parse the output to determine if permissions are granted
           const hasAXPermission = output.includes("ax-granted");
           const hasIMPermission = output.includes("im-granted");
-          resolve({ needAX: !hasAXPermission, needIM: !hasIMPermission, isDev });
+          resolve({
+            needAX: !hasAXPermission,
+            needIM: !hasIMPermission,
+            isDev,
+          });
         });
-        
+
         // Timeout after 5 seconds
         setTimeout(() => {
           helper.kill();
@@ -1845,21 +2075,24 @@ app.whenReady().then(async () => {
     try {
       const { shell } = await import("electron");
       let url = "";
-      
+
       switch (pane) {
         case "microphone":
-          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+          url =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
           break;
         case "accessibility":
-          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+          url =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
           break;
         case "input-monitoring":
-          url = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+          url =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
           break;
         default:
           url = "x-apple.systempreferences:com.apple.preference.security";
       }
-      
+
       await shell.openExternal(url);
       console.log(`[IPC] Opened System Preferences: ${pane}`);
     } catch (error) {
@@ -1867,64 +2100,94 @@ app.whenReady().then(async () => {
     }
   });
 
-    ipcMain.handle("request-input-monitoring-permission", async () => {
+  ipcMain.handle("request-input-monitoring-permission", async () => {
     try {
       const isDev = !app.isPackaged;
-      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Requesting input monitoring permission...`);
-      
+      console.log(
+        `[${isDev ? "Dev" : "Prod"} Mode] Requesting input monitoring permission...`,
+      );
+
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
-      
+        ? path.join(
+            app.getAppPath(),
+            "native",
+            "bin",
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          )
+        : path.join(
+            process.resourcesPath,
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          );
+
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
         // Still open System Preferences even if helper is missing
-        shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
+        shell.openExternal(
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+        );
         return { success: false, error: "Helper binary not found", isDev };
       }
 
       // Use our new registration functionality
       return new Promise((resolve) => {
-        const helper = spawn(helperPath, ["--register-input-monitoring"], { 
-          stdio: ['pipe', 'pipe', 'pipe'],
-          detached: false 
+        const helper = spawn(helperPath, ["--register-input-monitoring"], {
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: false,
         });
-          
-        let stdout = '';
-        let stderr = '';
-        
-        helper.stdout.on('data', (data) => {
+
+        let stdout = "";
+        let stderr = "";
+
+        helper.stdout.on("data", (data) => {
           stdout += data.toString();
-          console.log('[Helper Output]:', data.toString());
+          console.log("[Helper Output]:", data.toString());
         });
-        
-        helper.stderr.on('data', (data) => {
+
+        helper.stderr.on("data", (data) => {
           stderr += data.toString();
-          console.log('[Helper Error]:', data.toString());
+          console.log("[Helper Error]:", data.toString());
         });
-        
-        helper.on('close', (code) => {
+
+        helper.on("close", (code) => {
           console.log(`[Helper] Registration process exited with code ${code}`);
-          
-          if (stdout.includes('registered-granted')) {
-            console.log('[Helper] Input Monitoring permission already granted');
+
+          if (stdout.includes("registered-granted")) {
+            console.log("[Helper] Input Monitoring permission already granted");
             resolve({ success: true, isDev, alreadyGranted: true });
-          } else if (stdout.includes('registered-denied')) {
-            console.log('[Helper] Input Monitoring permission not granted - user needs to enable in Settings');
+          } else if (stdout.includes("registered-denied")) {
+            console.log(
+              "[Helper] Input Monitoring permission not granted - user needs to enable in Settings",
+            );
             // Open System Preferences to Input Monitoring AFTER registration
-            console.log('[Helper] Opening System Preferences to Input Monitoring...');
-            shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent");
-            console.log('[Helper] System Preferences opened');
+            console.log(
+              "[Helper] Opening System Preferences to Input Monitoring...",
+            );
+            shell.openExternal(
+              "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            );
+            console.log("[Helper] System Preferences opened");
             resolve({ success: true, isDev, alreadyGranted: false });
           } else {
-            console.error('[Helper] Unexpected output from registration process');
-            resolve({ success: false, error: "Unexpected helper output", isDev });
+            console.error(
+              "[Helper] Unexpected output from registration process",
+            );
+            resolve({
+              success: false,
+              error: "Unexpected helper output",
+              isDev,
+            });
           }
         });
-        
-        helper.on('error', (error) => {
-          console.error('[Helper] Error running registration process:', error);
+
+        helper.on("error", (error) => {
+          console.error("[Helper] Error running registration process:", error);
           resolve({ success: false, error: error.message, isDev });
         });
       });
@@ -1938,53 +2201,73 @@ app.whenReady().then(async () => {
   ipcMain.handle("ask-im", async () => {
     try {
       const isDev = !app.isPackaged;
-      console.log(`[${isDev ? 'Dev' : 'Prod'} Mode] Asking for Input Monitoring permission...`);
-      
+      console.log(
+        `[${isDev ? "Dev" : "Prod"} Mode] Asking for Input Monitoring permission...`,
+      );
+
       const helperPath = isDev
-        ? path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-        : path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
-      
+        ? path.join(
+            app.getAppPath(),
+            "native",
+            "bin",
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          )
+        : path.join(
+            process.resourcesPath,
+            "Sonic Flow Helper.app",
+            "Contents",
+            "MacOS",
+            "Sonic Flow Helper",
+          );
+
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
         return { success: false, error: "Helper binary not found", isDev };
       }
 
       return new Promise((resolve) => {
-        const helper = spawn(helperPath, ["--ask-im"], { 
-          stdio: ['pipe', 'pipe', 'pipe'],
-          detached: false 
+        const helper = spawn(helperPath, ["--ask-im"], {
+          stdio: ["pipe", "pipe", "pipe"],
+          detached: false,
         });
-          
-        let stdout = '';
-        let stderr = '';
-        
-        helper.stdout.on('data', (data) => {
+
+        let stdout = "";
+        let stderr = "";
+
+        helper.stdout.on("data", (data) => {
           stdout += data.toString();
-          console.log('[Ask-IM Output]:', data.toString());
+          console.log("[Ask-IM Output]:", data.toString());
         });
-        
-        helper.stderr.on('data', (data) => {
+
+        helper.stderr.on("data", (data) => {
           stderr += data.toString();
-          console.log('[Ask-IM Error]:', data.toString());
+          console.log("[Ask-IM Error]:", data.toString());
         });
-        
-        helper.on('close', (code) => {
+
+        helper.on("close", (code) => {
           console.log(`[Ask-IM] Process exited with code ${code}`);
-          
-          if (stdout.includes('im-granted')) {
-            console.log('[Ask-IM] Input Monitoring permission granted');
+
+          if (stdout.includes("im-granted")) {
+            console.log("[Ask-IM] Input Monitoring permission granted");
             resolve({ success: true, status: "authorized", isDev });
-          } else if (stdout.includes('im-denied')) {
-            console.log('[Ask-IM] Input Monitoring permission denied');
+          } else if (stdout.includes("im-denied")) {
+            console.log("[Ask-IM] Input Monitoring permission denied");
             resolve({ success: true, status: "denied", isDev });
           } else {
-            console.error('[Ask-IM] Unexpected output from helper');
-            resolve({ success: false, error: "Unexpected helper output", isDev });
+            console.error("[Ask-IM] Unexpected output from helper");
+            resolve({
+              success: false,
+              error: "Unexpected helper output",
+              isDev,
+            });
           }
         });
-        
-        helper.on('error', (error) => {
-          console.error('[Ask-IM] Error running helper:', error);
+
+        helper.on("error", (error) => {
+          console.error("[Ask-IM] Error running helper:", error);
           resolve({ success: false, error: error.message, isDev });
         });
       });
@@ -2028,8 +2311,10 @@ app.whenReady().then(async () => {
 });
 
 // Ensure local dev auth server is closed on quit to avoid EADDRINUSE on restart
-app.on('before-quit', () => {
-  try { devAuthServer?.close(); } catch {}
+app.on("before-quit", () => {
+  try {
+    devAuthServer?.close();
+  } catch {}
 });
 
 // Handle deep links like sonicflow://auth/callback?code=...
@@ -2039,18 +2324,22 @@ app.on("open-url", (event, url) => {
   console.log(`[Auth] App packaged: ${app.isPackaged}`);
   console.log(`[Auth] Onboarding window exists: ${!!onboardingWindow}`);
   console.log(`[Auth] Main window exists: ${!!mainWindow}`);
-  
+
   try {
     const targetWindow = onboardingWindow || mainWindow;
     if (targetWindow && !targetWindow.isDestroyed()) {
-      console.log(`[Auth] Target window ready: ${!targetWindow.webContents.isLoading()}`);
+      console.log(
+        `[Auth] Target window ready: ${!targetWindow.webContents.isLoading()}`,
+      );
       console.log(`[Auth] Window visible: ${targetWindow.isVisible()}`);
-      
+
       // Check if window content is loaded before sending auth callback
       if (targetWindow.webContents.isLoading()) {
-        console.log(`[Auth] Window still loading, waiting for did-finish-load event`);
+        console.log(
+          `[Auth] Window still loading, waiting for did-finish-load event`,
+        );
         // Wait for content to finish loading
-        targetWindow.webContents.once('did-finish-load', () => {
+        targetWindow.webContents.once("did-finish-load", () => {
           console.log(`[Auth] Window finished loading, sending auth callback`);
           sendAuthCallback(url);
         });
@@ -2058,7 +2347,7 @@ app.on("open-url", (event, url) => {
         console.log(`[Auth] Window ready, sending auth callback immediately`);
         sendAuthCallback(url);
       }
-      
+
       // Ensure window is visible and focused for auth flow
       if (!targetWindow.isVisible()) {
         console.log(`[Auth] Showing hidden window`);
@@ -2066,7 +2355,9 @@ app.on("open-url", (event, url) => {
       }
       targetWindow.focus();
     } else {
-      console.log(`[Auth] No ready window, adding to pending (${pendingAuthUrls.length + 1} total)`);
+      console.log(
+        `[Auth] No ready window, adding to pending (${pendingAuthUrls.length + 1} total)`,
+      );
       pendingAuthUrls.push(url);
     }
   } catch (err) {
@@ -2104,9 +2395,7 @@ app.on("activate", () => {
 
     // If no windows exist at all, create the main window
     if (allWindows.length === 0) {
-      console.log(
-        "[App Event] activate: No windows exist, creating window",
-      );
+      console.log("[App Event] activate: No windows exist, creating window");
       if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
       else createOnboardingWindow();
     }
@@ -2208,8 +2497,22 @@ function startFnListener() {
   }
 
   const helperPath = app.isPackaged
-    ? path.join(process.resourcesPath, "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper")
-    : path.join(app.getAppPath(), "native", "bin", "Sonic Flow Helper.app", "Contents", "MacOS", "Sonic Flow Helper");
+    ? path.join(
+        process.resourcesPath,
+        "Sonic Flow Helper.app",
+        "Contents",
+        "MacOS",
+        "Sonic Flow Helper",
+      )
+    : path.join(
+        app.getAppPath(),
+        "native",
+        "bin",
+        "Sonic Flow Helper.app",
+        "Contents",
+        "MacOS",
+        "Sonic Flow Helper",
+      );
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
@@ -2226,8 +2529,14 @@ function startFnListener() {
   }
 
   try {
-    console.log(`[FnListener] Starting Sonic Flow Helper helper from: ${helperPath}`);
-    fnProc = spawnHelper(helperPath, [], true) as import("child_process").ChildProcessWithoutNullStreams;
+    console.log(
+      `[FnListener] Starting Sonic Flow Helper helper from: ${helperPath}`,
+    );
+    fnProc = spawnHelper(
+      helperPath,
+      [],
+      true,
+    ) as import("child_process").ChildProcessWithoutNullStreams;
 
     fnProc.stdout.setEncoding("utf8");
     fnProc.stdout.on("data", (chunk: string) => {
@@ -2248,8 +2557,10 @@ function startFnListener() {
         console.log(`[FnListener] Received command: "${trimmedLine}"`);
 
         let targetWindow: BrowserWindow | null = null;
-        if (pttTarget === "onboarding") targetWindow = onboardingWindow || mainWindow;
-        else if (pttTarget === "main") targetWindow = mainWindow || onboardingWindow;
+        if (pttTarget === "onboarding")
+          targetWindow = onboardingWindow || mainWindow;
+        else if (pttTarget === "main")
+          targetWindow = mainWindow || onboardingWindow;
         else targetWindow = onboardingWindow || mainWindow;
         if (trimmedLine === "ready") {
           // Signal to both windows that PTT is ready
@@ -2316,7 +2627,9 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(`[FnListener] Sonic Flow Helper stderr: ${chunk.toString()}`);
+      console.error(
+        `[FnListener] Sonic Flow Helper stderr: ${chunk.toString()}`,
+      );
     });
 
     fnProc.on("error", (error: Error) => {
@@ -2326,15 +2639,22 @@ function startFnListener() {
       );
       fnProc = null;
 
-      const targetWindow = pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow);
+      const targetWindow =
+        pttTarget === "main"
+          ? mainWindow || onboardingWindow
+          : onboardingWindow || mainWindow;
       if (error.message.includes("ENOENT")) {
-        console.error("[FnListener] Sonic Flow Helper binary not found or not executable");
+        console.error(
+          "[FnListener] Sonic Flow Helper binary not found or not executable",
+        );
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
-        console.error("[FnListener] Sonic Flow Helper binary lacks execution permissions");
+        console.error(
+          "[FnListener] Sonic Flow Helper binary lacks execution permissions",
+        );
         targetWindow?.webContents.send(
           "notify",
           "Fn key detection unavailable: permission denied",
@@ -2344,7 +2664,10 @@ function startFnListener() {
           "[FnListener] Unknown error starting Sonic Flow Helper:",
           error.message,
         );
-        (pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow))?.webContents.send(
+        (pttTarget === "main"
+          ? mainWindow || onboardingWindow
+          : onboardingWindow || mainWindow
+        )?.webContents.send(
           "notify",
           "Fn key detection unavailable: startup error",
         );
@@ -2370,10 +2693,16 @@ function startFnListener() {
       );
     });
   } catch (error) {
-    console.error("[FnListener] Exception when spawning Sonic Flow Helper helper:", error);
+    console.error(
+      "[FnListener] Exception when spawning Sonic Flow Helper helper:",
+      error,
+    );
     fnProc = null;
 
-    const targetWindow = pttTarget === "main" ? (mainWindow || onboardingWindow) : (onboardingWindow || mainWindow);
+    const targetWindow =
+      pttTarget === "main"
+        ? mainWindow || onboardingWindow
+        : onboardingWindow || mainWindow;
     targetWindow?.webContents.send(
       "notify",
       "Fn key detection unavailable: spawn failed",
