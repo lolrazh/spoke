@@ -20,7 +20,10 @@
     "lint": "eslint --ext .ts,.tsx .",
     "clean": "rimraf out",
     "postinstall": "bash native/build-helper.sh",
-    "kill:port:8787": "node scripts/kill-port.js 8787"
+    "kill:port:8787": "node scripts/kill-port.js 8787",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": {
@@ -43,11 +46,13 @@
     "@types/react-dom": "^18.0.11",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "autoprefixer": "^10.4.16",
     "electron": "35.0.1",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.31.0",
     "execa": "^9.6.0",
+    "happy-dom": "^14.12.3",
     "postcss": "^8.4.31",
     "prettier": "3.6.1",
     "rimraf": "^6.0.1",
@@ -56,6 +61,7 @@
     "typescript": "^5.6.3",
     "vite": "^6.2.1",
     "vite-plugin-static-copy": "^3.0.0",
+    "vitest": "^1.6.1",
     "wrangler": "^4.31.0"
   },
   "dependencies": {
