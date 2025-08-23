@@ -310,7 +310,38 @@ export function encodeFrameHeader(seq: number, nbytes: number, tsNs: bigint): Ar
 }
 ```
 
-### Connection Management
+### Connection Management & Reliability
+
+#### WebSocket Lifecycle Management
+
+**Robust Connection Closure** - Every termination path explicitly closes the WebSocket:
+
+```typescript
+// Safe closure helper - prevents "hung request" errors in Cloudflare
+function safeClose(ws: WebSocket, code = 1000, reason = 'OK') {
+  try { 
+    ws.close(code, reason); 
+  } catch (e) {
+    // Ignore errors when closing (socket may already be closed)
+  }
+}
+
+// Server-side event handlers ensure proper cleanup
+server.addEventListener('close', (evt) => {
+  // Acknowledge client-initiated closes
+  safeClose(server, evt.code || 1000, evt.reason || 'client closed');
+});
+
+server.addEventListener('error', (evt) => {
+  // Handle socket errors gracefully
+  safeClose(server, 1011, 'socket error');
+});
+```
+
+**WebSocket Close Codes Used:**
+- `1000` - Normal closure (successful transcription, cancel, etc.)
+- `1009` - Message too large (audio payload exceeds limit)
+- `1011` - Server error (transcription failure, processing error, socket error)
 
 #### Environment-Based Endpoint Selection (`src/config/api.ts`)
 ```typescript
@@ -335,6 +366,7 @@ export function getTranscribeWsUrl(): string {
 - **Sequence Gap Tracking** - Detect dropped frames via sequence numbers
 - **Reconnection Logic** - Exponential backoff with maximum delay
 - **Session Isolation** - Each PTT session uses fresh connection state
+- **Cloudflare Compatibility** - Explicit WebSocket closure prevents "hung request" errors
 
 ## Server-Side Processing (Cloudflare Worker)
 
@@ -346,6 +378,7 @@ The Cloudflare Worker provides a WebSocket endpoint that:
 3. Converts accumulated PCM to WAV format
 4. Submits to Groq API for transcription
 5. Returns results to client
+6. **Explicitly closes WebSocket connections** to prevent "hung request" errors
 
 #### WebSocket Handler Setup
 ```typescript
@@ -424,19 +457,29 @@ server.addEventListener('message', async (evt) => {
 const pcm = concat(session.chunks, session.totalBytes);   // Combine all chunks
 const wav = wrapWav(pcm, session.rate, 1, 16);          // Convert to WAV
 
-// Send to Groq API
-const result = await groqTranscribe(
-  wav, 
-  GROQ_API_KEY, 
-  GROQ_STT_MODEL || 'whisper-large-v3-turbo',
-  abortSignal
-);
+try {
+  // Send to Groq API
+  const result = await groqTranscribe(
+    wav, 
+    GROQ_API_KEY, 
+    GROQ_STT_MODEL || 'whisper-large-v3-turbo',
+    abortSignal
+  );
 
-// Return transcription
-server.send(JSON.stringify({ 
-  type: 'final', 
-  text: result?.text ?? '' 
-}));
+  // Return transcription and close connection
+  server.send(JSON.stringify({ 
+    type: 'final', 
+    text: result?.text ?? '' 
+  }));
+  safeClose(server, 1000, 'done');
+} catch (e: any) {
+  // Send error response and close connection
+  server.send(JSON.stringify({ 
+    type: 'error', 
+    body: e?.message || 'Transcription error' 
+  }));
+  safeClose(server, 1011, 'stt error');
+}
 ```
 
 ### WAV Format Conversion
@@ -1094,6 +1137,17 @@ This comprehensive transcription system provides robust, real-time speech-to-tex
 
 ---
 
-**Last Updated**: 2025-01-23  
-**Version**: 2.0.0  
+**Last Updated**: 2025-08-23  
+**Version**: 2.1.0 - Enhanced WebSocket Reliability  
 **Maintainers**: Sonic Flow Team
+
+## Recent Updates (v2.1.0)
+
+### WebSocket Reliability Enhancements
+- ✅ **Fixed Cloudflare "hung request" errors** - Added explicit WebSocket closure on all termination paths
+- ✅ **Enhanced error handling** - Server-side error and close event handlers with proper cleanup
+- ✅ **Improved client stability** - Client proactively closes socket after receiving error responses
+- ✅ **Standardized close codes** - Proper WebSocket close codes for different scenarios
+- ✅ **Eliminated dashboard errors** - Production monitoring now shows clean success/error states
+
+These changes make the transcription pipeline significantly more robust and production-ready.
