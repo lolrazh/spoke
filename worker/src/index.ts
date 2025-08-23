@@ -54,6 +54,7 @@ app.get('/ws', (c) => {
           if (session.canceled || session.totalBytes === 0) {
             const text = '';
             server.send(JSON.stringify({ type: 'final', text }));
+            safeClose(server, 1000, 'done');
             session = createEmptySession();
             return;
           }
@@ -82,6 +83,7 @@ app.get('/ws', (c) => {
           } catch (e: any) {
             if (!socketClosed) {
               try { server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })); } catch {}
+              safeClose(server, 1011, 'stt error');
             }
             session = createEmptySession();
             return;
@@ -89,6 +91,7 @@ app.get('/ws', (c) => {
 
           if (!socketClosed) {
             try { server.send(JSON.stringify({ type: 'final', text: finalText })); } catch {}
+            safeClose(server, 1000, 'done');
           }
 
           const t1 = Date.now();
@@ -124,6 +127,7 @@ app.get('/ws', (c) => {
         const MAX_BYTES = 20 * 1024 * 1024;
         if (session.totalBytes + payload.byteLength > MAX_BYTES) {
           server.send(JSON.stringify({ type: 'error', body: 'audio too large' }));
+          safeClose(server, 1009, 'payload too large');
           session = createEmptySession();
           return;
         }
@@ -137,6 +141,7 @@ app.get('/ws', (c) => {
       console.error('[Worker] WebSocket message error:', e);
       try {
         server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+        safeClose(server, 1011, 'message processing error');
       } catch {}
       session = createEmptySession();
     }
@@ -152,6 +157,18 @@ app.get('/ws', (c) => {
     try { sttAbort?.abort(); } catch {}
     sttAbort = null;
     session = createEmptySession();
+    // Acknowledge/ensure closure (per CF docs to prevent hung request errors)
+    safeClose(server, (evt as any)?.code || 1000, (evt as any)?.reason || 'client closed');
+  });
+
+  server.addEventListener('error', (evt) => {
+    // Clean up session and close on socket errors
+    console.error('[WS] Socket error:', evt);
+    socketClosed = true;
+    try { sttAbort?.abort(); } catch {}
+    sttAbort = null;
+    session = createEmptySession();
+    safeClose(server, 1011, 'socket error');
   });
 
   return new Response(null, { status: 101, webSocket: client });
@@ -162,6 +179,14 @@ export default {
 };
 
 // ---- Helpers ----
+
+function safeClose(ws: WebSocket, code = 1000, reason = 'OK') {
+  try { 
+    ws.close(code, reason); 
+  } catch (e) {
+    // Ignore errors when closing (socket may already be closed)
+  }
+}
 
 function safeJson(s: string) {
   try { return JSON.parse(s); } catch { return null; }

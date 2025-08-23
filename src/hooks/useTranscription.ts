@@ -587,6 +587,8 @@ export function useTranscription(
               } else if (msg.type === "error") {
                 if (!settled) {
                   settled = true;
+                  // Close after receiving error response
+                  try { ws.close(1011, 'server error'); } catch {}
                   cleanup();
                   reject(new Error(`Server error: ${msg.body || 'Unknown error'}`));
                 }
