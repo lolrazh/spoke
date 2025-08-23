@@ -57,8 +57,11 @@ export function useTranscription(
   const wsRef = useRef<WebSocket | null>(null);
   const wsReadyRef = useRef(false);
   const wsErrorRef = useRef<string | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef<number>(0);
   const seqRef = useRef(0);
   const sendQueueRef = useRef<ArrayBuffer[]>([]);
+  const sendQueueBytesRef = useRef<number>(0);
   const flushTimerRef = useRef<number | null>(null);
   // Streaming is always enabled
   const startedMsRef = useRef<number>(0);
@@ -89,13 +92,36 @@ export function useTranscription(
     }
   };
 
+  const MAX_CLIENT_BUFFER_BYTES = 20 * 1024 * 1024; // align with server cap (20 MB)
+
+  const resetReconnectBackoff = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptRef.current = 0;
+  };
+
+  const scheduleReconnect = () => {
+    if (wsRef.current) return; // socket exists (OPEN/CONNECTING)
+    if (!recording && sendQueueRef.current.length === 0) return; // nothing to send
+    if (reconnectTimerRef.current != null) return;
+    const base = 150;
+    const attempt = reconnectAttemptRef.current++;
+    const delay = Math.min(base * Math.pow(2, attempt), 2000);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      ensureStreamingSocket();
+    }, delay);
+  };
+
   const flushQueue = useCallback(() => {
     if (!wsRef.current || !wsReadyRef.current) return;
     const ws = wsRef.current;
     while (sendQueueRef.current.length) {
       if (ws.bufferedAmount > WS_MAX_BUFFERED_BYTES) break;
       const next = sendQueueRef.current.shift()!;
-      try { ws.send(next); } catch {}
+      try { ws.send(next); sendQueueBytesRef.current -= next.byteLength; } catch {}
     }
     if (sendQueueRef.current.length && ws.bufferedAmount > WS_MAX_BUFFERED_BYTES) {
       if (flushTimerRef.current == null) {
@@ -134,10 +160,15 @@ export function useTranscription(
         const startMsg = { type: "start", version: 2 as const, format: "pcm16le" as const, rate: TARGET_SAMPLE_RATE, language: "en" };
         ws.send(JSON.stringify(startMsg));
       } catch {}
+      resetReconnectBackoff();
       flushQueue();
     };
     ws.onerror = () => {
       wsErrorRef.current = "WebSocket error";
+      if (ws.readyState !== WebSocket.OPEN) {
+        if (wsRef.current === ws) wsRef.current = null;
+        scheduleReconnect();
+      }
     };
     ws.onclose = () => {
       wsReadyRef.current = false;
@@ -145,6 +176,7 @@ export function useTranscription(
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
+      scheduleReconnect();
     };
   }, [flushQueue]);
 
@@ -168,9 +200,21 @@ export function useTranscription(
       try { ws.send(out.buffer); } catch { sendQueueRef.current.push(out.buffer); }
       if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
     } else {
+      // Virtual gate: buffer locally until WS can accept
       sendQueueRef.current.push(out.buffer);
+      sendQueueBytesRef.current += out.byteLength;
+      if (sendQueueBytesRef.current > MAX_CLIENT_BUFFER_BYTES) {
+        setError('Network unavailable: buffered audio limit reached');
+        // Stop capture to prevent unbounded growth
+        try { sourceNodeRef.current?.disconnect(); } catch {}
+        try { workletNodeRef.current?.disconnect(); } catch {}
+        if (audioContextRef.current) { try { audioContextRef.current.close(); } catch {} audioContextRef.current = null; }
+        setRecording(false);
+        return;
+      }
       if (metricsRef.current) metricsRef.current.framesQueued += 1;
       ensureStreamingSocket();
+      scheduleReconnect();
       flushQueue();
     }
   }, [flushQueue, ensureStreamingSocket]);
@@ -367,6 +411,8 @@ export function useTranscription(
     // Reset streaming state
     seqRef.current = 0;
     sendQueueRef.current = [];
+    sendQueueBytesRef.current = 0;
+    resetReconnectBackoff();
     wsErrorRef.current = null;
     // Keep an existing socket open to allow reuse across sessions
     startedMsRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -421,14 +467,8 @@ export function useTranscription(
 
       // Connect source -> worklet (silent path)
       sourceNodeRef.current.connect(workletNodeRef.current);
-      // Ensure WS is connected; if already open, send a fresh start for this session
+      // Ensure WS is connected; start is sent on open
       ensureStreamingSocket();
-      if (wsRef.current && wsReadyRef.current) {
-        try {
-          const startMsg = { type: "start", version: 2 as const, format: "pcm16le" as const, rate: TARGET_SAMPLE_RATE, language: "en" };
-          wsRef.current.send(JSON.stringify(startMsg));
-        } catch {}
-      }
 
       if (window.devFlags?.devConsoleLogs) {
         console.info("[SF] AudioContext (PCM capture)", {
@@ -539,6 +579,8 @@ export function useTranscription(
                       }
                     }
                   } catch {}
+                  // Close per-session to avoid stale sockets
+                  try { ws.close(1000, 'session_complete'); } catch {}
                   cleanup();
                   resolve();
                 }
@@ -615,6 +657,10 @@ export function useTranscription(
       }
       // Reset metrics
       metricsRef.current = null;
+      // Reset client-side queue/backoff
+      sendQueueRef.current = [];
+      sendQueueBytesRef.current = 0;
+      resetReconnectBackoff();
     }
   }, [recording]);
 
@@ -639,12 +685,15 @@ export function useTranscription(
         streamRef.current = null;
         setReady(false);
       }
-      // Reset streaming state (keep socket for reuse)
+      // Reset streaming state and proactively close the socket
       sendQueueRef.current = [];
+      sendQueueBytesRef.current = 0;
       seqRef.current = 0;
-      // Notify server to drop frames for this session without closing
-      if (wsRef.current && wsReadyRef.current) {
-        try { wsRef.current.send(JSON.stringify({ type: "cancel" })); } catch {}
+      if (wsRef.current) {
+        try { if (wsReadyRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ type: "cancel" })); } catch {}
+        try { wsRef.current.close(1000, 'cancel'); } catch {}
+        wsRef.current = null;
+        wsReadyRef.current = false;
       }
     } finally {
       setRecording(false);
@@ -657,6 +706,7 @@ export function useTranscription(
       }
       // Clear metrics for a fresh next session
       metricsRef.current = null;
+      resetReconnectBackoff();
     }
   }, [recording]);
 
@@ -690,6 +740,10 @@ export function useTranscription(
       if (flushTimerRef.current) {
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
       
       // Abort any pending operations
