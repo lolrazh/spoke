@@ -108,7 +108,14 @@ export function useTranscription(
   }, []);
 
   const ensureStreamingSocket = useCallback(() => {
-    if (wsRef.current) return;
+    // If there's an existing socket, only keep it if it's OPEN or CONNECTING.
+    // After idle timeouts, the socket may be CLOSED but non-null; recreate in that case.
+    if (wsRef.current) {
+      const rs = wsRef.current.readyState;
+      if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
     const wsUrl = getTranscribeWsUrl();
     if (!wsEndpointLoggedRef.current) {
       try { console.info('[SF] WS endpoint', { url: wsUrl }); } catch {}
@@ -134,6 +141,10 @@ export function useTranscription(
     };
     ws.onclose = () => {
       wsReadyRef.current = false;
+      // Ensure future sessions can recreate the socket after idle closes
+      if (wsRef.current === ws) {
+        wsRef.current = null;
+      }
     };
   }, [flushQueue]);
 
@@ -153,7 +164,7 @@ export function useTranscription(
     }
 
     const ws = wsRef.current;
-    if (ws && wsReadyRef.current && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES) {
+    if (ws && wsReadyRef.current && ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES) {
       try { ws.send(out.buffer); } catch { sendQueueRef.current.push(out.buffer); }
       if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
     } else {
@@ -480,6 +491,12 @@ export function useTranscription(
             if (!settled) {
               settled = true;
               cleanup(true);
+              // Inform server to drop the session if the socket is still open
+              try {
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "cancel" }));
+                }
+              } catch {}
               reject(new DOMException("Aborted", "AbortError"));
             }
           };
@@ -561,7 +578,16 @@ export function useTranscription(
             try { await waitForAllFramesSent(); } catch {}
             try {
               if (metricsRef.current) metricsRef.current.wsEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-              ws.send(JSON.stringify({ type: "end" }));
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "end" }));
+              } else if (ws.readyState === WebSocket.CONNECTING) {
+                // If still connecting, send on open
+                const sendOnOpen = () => { try { ws.send(JSON.stringify({ type: "end" })); } catch {} ws.removeEventListener('open', sendOnOpen as any); };
+                ws.addEventListener('open', sendOnOpen as any, { once: true } as any);
+              } else {
+                // Socket closed: request a fresh one for next session and fail fast
+                try { ws.close(); } catch {}
+              }
             } catch {}
           })();
         });
