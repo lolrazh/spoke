@@ -106,16 +106,16 @@ jobs:
 ## TODO Roadmap
 
 ### Core Setup
-- [ ] Add devDeps: vitest, Testing Library, happy-dom, @vitejs/plugin-react.
-- [ ] Add `vitest.config.ts` with alias `@` and happy-dom.
-- [ ] Create `src/test/setup.ts` with DOM matchers and audio/Electron shims.
-- [ ] Add npm scripts: `test`, `test:watch`, `coverage`.
+- [X] Add devDeps: vitest, Testing Library, happy-dom, @vitejs/plugin-react.
+- [x] Add `vitest.config.ts` with alias `@` and happy-dom.
+- [x] Create `src/test/setup.ts` with DOM matchers and audio/Electron shims.
+- [x] Add npm scripts: `test`, `test:watch`, `coverage`.
 
 ### Unit Tests (Utils & Hooks)
-- [ ] Seed tests for `pcm.ts` edge cases.
-- [ ] Seed tests for `micDevices.ts` (permissions, no devices).
-- [ ] Seed tests for `useTranscription` with mocked `WebSocket` and fake timers.
-- [ ] Seed tests for `audioFeedback.ts` lifecycle behavior.
+- [x] Seed tests for `pcm.ts` edge cases.
+- [x] Seed tests for `micDevices.ts` (permissions, no devices).
+- [x] Seed tests for `useTranscription` with mocked `WebSocket` and fake timers.
+- [x] Seed tests for `audioFeedback.ts` lifecycle behavior.
 
 ### Renderer Components
 - [ ] Install `@testing-library/react` + `user-event`.
@@ -139,7 +139,7 @@ jobs:
 - [ ] Upload `coverage/lcov.info` as artifact; wire to codecov/coveralls if desired.
 
 ### DX & Maintenance
-- [ ] Document test conventions in `AGENTS.md`/this file.
+- [x] Document test conventions in `AGENTS.md`/this file.
 - [ ] Add fast path in pre-commit (optional): `lint-staged` to run vitest on changed files.
 
 ---
