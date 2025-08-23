@@ -3,7 +3,8 @@
   - Accepts mono Float32 input at the AudioContext sampleRate (typically 48k or 44.1k)
   - Resamples to 16,000 Hz using linear interpolation (cheap, good for speech)
   - Converts to signed Int16
-  - Buffers exactly 100 ms (1600 samples) and posts frames to the main thread as transferable ArrayBuffers
+  - Buffers a configurable frame length (frameSamples), default 100 ms (1600 samples at 16k),
+    and posts frames to the main thread as transferable ArrayBuffers
 */
 
 class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
@@ -11,7 +12,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     super();
     const opts = (options && options.processorOptions) || {};
     this.targetRate = opts.targetSampleRate || 16000;
-    this.frameSamples = opts.frameSamples || 1600; // 100 ms @ 16k
+    this.frameSamples = opts.frameSamples || 1600; // default 100 ms @ 16k; overridden by node options
 
     this.inputRate = sampleRate; // AudioContext's rate
     this.ratio = this.inputRate / this.targetRate;

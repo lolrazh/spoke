@@ -11,8 +11,10 @@ export const TARGET_SAMPLE_RATE = 16000; // The rate the ASR model expects
 // PCM/Chunking
 export const PCM_BITS_PER_SAMPLE = 16;
 export const PCM_CHANNELS = 1;
-export const CHUNK_MS = 100; // 100 ms chunks for now
-export const SAMPLES_PER_CHUNK = (TARGET_SAMPLE_RATE * CHUNK_MS) / 1000; // 1600 samples
+// Larger chunks improve WS reliability by reducing frame count (fewer chances for gaps)
+// 400 ms is a good balance: aligns to 10 ms windows (40x) and keeps tail low due to explicit flush on stop
+export const CHUNK_MS = 400; // was 100 ms
+export const SAMPLES_PER_CHUNK = (TARGET_SAMPLE_RATE * CHUNK_MS) / 1000; // 6400 samples at 16k
 export const BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE / 8; // 2 bytes for Int16
 
 // WebSocket streaming config
