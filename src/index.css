@@ -179,7 +179,8 @@
 
   /* Animated dots for processing state */
   .dot.animated {
-    animation: loading-pulse 600ms infinite ease-in-out;
+    /* Faster but still smooth pulse for loading state */
+    animation: loading-pulse 480ms infinite ease-in-out;
     will-change: transform, opacity;
     backface-visibility: hidden;
     transform: translateZ(0);
@@ -187,19 +188,19 @@
   }
 
   .dot.animated:nth-child(2n) {
-    animation-delay: 80ms;
+    animation-delay: 60ms;
   }
 
   .dot.animated:nth-child(3n) {
-    animation-delay: 160ms;
+    animation-delay: 120ms;
   }
 
   .dot.animated:nth-child(4n) {
-    animation-delay: 240ms;
+    animation-delay: 180ms;
   }
 
   .dot.animated:nth-child(5n) {
-    animation-delay: 320ms;
+    animation-delay: 240ms;
   }
 
   @keyframes loading-pulse {

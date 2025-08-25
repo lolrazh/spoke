@@ -138,7 +138,7 @@ const Pill: React.FC<PillProps> = ({
         className={`dot ${type}`}
         style={
           type === "animated"
-            ? { animationDelay: `${index * 0.12}s` }
+            ? { animationDelay: `${index * 0.06}s` }
             : undefined
         }
       />
