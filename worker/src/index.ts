@@ -330,7 +330,7 @@ async function groqTranscribe(
   const form = new FormData();
   const file = new File([wav], "audio.wav", { type: "audio/wav" });
   form.append("file", file);
-  form.append("model", "whisper-large-v3");
+  form.append("model", "whisper-large-v3-turbo");
   // Hardcoded parameters for production
   form.append("language", "en");
   form.append(
