@@ -5,6 +5,7 @@ import {
   TARGET_SAMPLE_RATE,
   SAMPLES_PER_CHUNK,
   WS_MAX_BUFFERED_BYTES,
+  POST_ROLL_MS,
 } from "../config/audio";
 import { getTranscribeWsUrl } from "../config/api";
 import { encodeFrameHeader } from "../utils/pcm";
@@ -580,37 +581,6 @@ export function useTranscription(
     setProcessing(true);
 
     try {
-      // Disconnect nodes
-      // Ask the worklet to flush any partial frame before tearing down
-      try {
-        workletNodeRef.current?.port.postMessage({ type: "flush" });
-      } catch {}
-      // Record last-frame-out time right after requesting flush
-      if (metricsRef.current && !metricsRef.current.lastFrameOutMs)
-        metricsRef.current.lastFrameOutMs =
-          typeof performance !== "undefined" ? performance.now() : Date.now();
-      // Disconnect nodes
-      try {
-        sourceNodeRef.current?.disconnect();
-      } catch {}
-      try {
-        workletNodeRef.current?.port.postMessage({ type: "reset" });
-      } catch {}
-      try {
-        workletNodeRef.current?.disconnect();
-      } catch {}
-      // Close AudioContext to release mic indicator faster
-      if (audioContextRef.current) {
-        await audioContextRef.current.close();
-        audioContextRef.current = null;
-      }
-
-      // Stop capturing audio completely so macOS mic indicator turns off
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        setReady(false);
-      }
       // Streaming-only: flush any queued frames and signal end; wait for final
       if (wsRef.current && !wsErrorRef.current) {
         abortControllerRef.current = new AbortController();
@@ -789,38 +759,77 @@ export function useTranscription(
             }
           }, timeoutMs);
 
-          // Kick a final flush, wait for queue drain, then send end
+          // Tail capture, then final flush and 'end'
           (async () => {
             try {
-              await waitForAllFramesSent();
-            } catch {}
-            try {
-              if (metricsRef.current)
-                metricsRef.current.wsEndMs =
+              // Capture a short post-roll tail to avoid clipping the last syllable
+              if (POST_ROLL_MS > 0) {
+                await new Promise((r) => setTimeout(r, POST_ROLL_MS));
+              }
+
+              // Ask the worklet to flush any partial frame before tearing down
+              try {
+                workletNodeRef.current?.port.postMessage({ type: "flush" });
+              } catch {}
+              // Record last-frame-out time right after requesting flush
+              if (metricsRef.current && !metricsRef.current.lastFrameOutMs)
+                metricsRef.current.lastFrameOutMs =
                   typeof performance !== "undefined"
                     ? performance.now()
                     : Date.now();
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "end" }));
-              } else if (ws.readyState === WebSocket.CONNECTING) {
-                // If still connecting, send on open
-                const sendOnOpen = () => {
-                  try {
-                    ws.send(JSON.stringify({ type: "end" }));
-                  } catch {}
-                  ws.removeEventListener("open", sendOnOpen as any);
-                };
-                ws.addEventListener(
-                  "open",
-                  sendOnOpen as any,
-                  { once: true } as any,
-                );
-              } else {
-                // Socket closed: request a fresh one for next session and fail fast
+
+              await waitForAllFramesSent();
+
+              // Disconnect nodes after frames drain
+              try {
+                sourceNodeRef.current?.disconnect();
+              } catch {}
+              try {
+                workletNodeRef.current?.port.postMessage({ type: "reset" });
+              } catch {}
+              try {
+                workletNodeRef.current?.disconnect();
+              } catch {}
+              if (audioContextRef.current) {
                 try {
-                  ws.close();
+                  await audioContextRef.current.close();
                 } catch {}
+                audioContextRef.current = null;
               }
+              if (streamRef.current) {
+                try {
+                  streamRef.current.getTracks().forEach((track) => track.stop());
+                } catch {}
+                streamRef.current = null;
+                setReady(false);
+              }
+
+              try {
+                if (metricsRef.current)
+                  metricsRef.current.wsEndMs =
+                    typeof performance !== "undefined"
+                      ? performance.now()
+                      : Date.now();
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "end" }));
+                } else if (ws.readyState === WebSocket.CONNECTING) {
+                  // If still connecting, send on open
+                  const sendOnOpen = () => {
+                    try {
+                      ws.send(JSON.stringify({ type: "end" }));
+                    } catch {}
+                    ws.removeEventListener("open", sendOnOpen as any);
+                  };
+                  ws.addEventListener("open", sendOnOpen as any, {
+                    once: true,
+                  } as any);
+                } else {
+                  // Socket closed: request a fresh one for next session and fail fast
+                  try {
+                    ws.close();
+                  } catch {}
+                }
+              } catch {}
             } catch {}
           })();
         });

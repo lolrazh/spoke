@@ -20,6 +20,10 @@ export const BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE / 8; // 2 bytes for Int16
 // WebSocket streaming config
 export const WS_MAX_BUFFERED_BYTES = 512 * 1024; // 512 KB backpressure threshold
 
+// Post-roll tail capture to avoid clipping final syllables when user releases PTT
+// Keep small to balance responsiveness vs. completeness
+export const POST_ROLL_MS = 160;
+
 // Feature flag: streaming v2 (100 ms frames)
 export function streamingV2Enabled(): boolean {
   try {
