@@ -585,11 +585,11 @@ static void cmdV(void) {
 
     // Post all four events with small delays between them.
     CGEventPost(kCGHIDEventTap, cmdDown);
-    usleep(10000); // 10ms
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, vDown);
-    usleep(10000);
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, vUp);
-    usleep(10000);
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, cmdUp);
 
     CFRelease(cmdDown);
