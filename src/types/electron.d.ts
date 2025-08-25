@@ -90,6 +90,8 @@ declare global {
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       getAuthRedirectUrl: () => Promise<{ url: string }>;
+      // Renderer lifecycle
+      rendererReady: () => void;
       // Auth helpers
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke?: (channel: string, ...args: any[]) => Promise<unknown>;

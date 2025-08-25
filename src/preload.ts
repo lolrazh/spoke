@@ -142,6 +142,8 @@ contextBridge.exposeInMainWorld("electron", {
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Return the active redirect URL the renderer should use
   getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
+  // Renderer lifecycle
+  rendererReady: () => ipcRenderer.send("renderer-ready"),
 });
 
 // (Removed) dev-only Sentry verification hooks

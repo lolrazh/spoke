@@ -801,10 +801,8 @@ const createWindow = () => {
     mainWindow.setVisibleOnAllWorkspaces(true);
   }
 
-  // Show window inactive only when it's ready to prevent focus stealing
+  // Prepare DevTools behavior; actual show happens on renderer-ready handshake
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-    console.log("Main window shown.");
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
       const current = mainWindow.getBounds();
@@ -827,8 +825,6 @@ const createWindow = () => {
     }
 
     // DevTools behavior:
-    // - In packaged staging builds: auto-open via VITE_SF_DEVTOOLS=1 (compile-time injected)
-    // - In Vite dev server: opt-in via SF_DEVTOOLS=1 (to avoid overlay issues on transparent window)
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -954,6 +950,31 @@ const createWindow = () => {
     },
   );
 };
+
+// Show the floating bar only after the renderer signals that it's visually ready
+ipcMain.on("renderer-ready", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    // Align to current display's safe top before revealing (guard)
+    const current = mainWindow.getBounds();
+    const currentDisplay = screen.getDisplayMatching(current);
+    activeDisplayId = currentDisplay.id;
+    const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
+    mainWindow.setBounds(
+      { x: current.x, y: targetY, width: current.width, height: current.height },
+      false,
+    );
+    if (process.platform === "darwin") mainWindow.invalidateShadow();
+  } catch (e) {
+    console.warn("[renderer-ready] Top-align failed:", e);
+  }
+  try {
+    mainWindow.show();
+    logBounds("renderer-ready -> show");
+  } catch (e) {
+    console.warn("[renderer-ready] Failed to show:", e);
+  }
+});
 
 function createOnboardingWindow() {
   console.log("[Debug] Inside createOnboardingWindow function");
