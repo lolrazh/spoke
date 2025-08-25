@@ -394,18 +394,8 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   return proc;
 }
 
-function preSpawnPasteHelper() {
-  // Clean up any existing pre-spawned helper
-  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-    try {
-      preSpawnedPasteHelper.kill();
-    } catch (e) {
-      // ignore
-    }
-    preSpawnedPasteHelper = null;
-  }
-
-  const helperPath = app.isPackaged
+function getHelperPath(): string {
+  return app.isPackaged
     ? path.join(
         process.resourcesPath,
         "Sonic Flow Helper.app",
@@ -422,7 +412,20 @@ function preSpawnPasteHelper() {
         "MacOS",
         "Sonic Flow Helper",
       );
+}
 
+function preSpawnPasteHelper() {
+  // Clean up any existing pre-spawned helper
+  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+    try {
+      preSpawnedPasteHelper.kill();
+    } catch (e) {
+      // ignore
+    }
+    preSpawnedPasteHelper = null;
+  }
+
+  const helperPath = getHelperPath();
   if (!fs.existsSync(helperPath)) {
     console.error(
       `[PreSpawn] Paste helper binary not found at path: ${helperPath}`,
@@ -1389,24 +1392,7 @@ ipcMain.handle(
       clipboard.writeText(payloadText);
       console.log("Transcription text copied to clipboard for pasting.");
 
-      const helperPath = app.isPackaged
-        ? path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
-
+      const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
         console.error(
           `[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`,
@@ -2063,23 +2049,7 @@ app.whenReady().then(async () => {
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
 
       // Always use the helper binary for consistent permission checking in both dev and prod
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -2192,23 +2162,7 @@ app.whenReady().then(async () => {
         `[${isDev ? "Dev" : "Prod"} Mode] Requesting input monitoring permission...`,
       );
 
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -2290,23 +2244,7 @@ app.whenReady().then(async () => {
         `[${isDev ? "Dev" : "Prod"} Mode] Asking for Input Monitoring permission...`,
       );
 
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
@@ -2604,23 +2542,7 @@ function startFnListener() {
     fnProc = null;
   }
 
-  const helperPath = app.isPackaged
-    ? path.join(
-        process.resourcesPath,
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      )
-    : path.join(
-        app.getAppPath(),
-        "native",
-        "bin",
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      );
+  const helperPath = getHelperPath();
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {

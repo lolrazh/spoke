@@ -133,34 +133,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Initialize from main visibility state (source of truth)
   useEffect(() => {
+    let isMounted = true;
+    
     (async () => {
       try {
         // Prefer persisted intent if available; fallback to current visibility
         const pref = await window.electron?.getFloatingBarEnabled?.();
         if (pref && typeof pref.enabled === "boolean") {
-          setShowFloatingBar(pref.enabled);
+          if (isMounted) setShowFloatingBar(pref.enabled);
         } else {
           const vis = await window.electron?.isFloatingBarVisible?.();
           if (vis && typeof vis.visible === "boolean") {
-            setShowFloatingBar(vis.visible);
+            if (isMounted) setShowFloatingBar(vis.visible);
           }
         }
       } catch {}
       try {
         const storedPlay = localStorage.getItem("sf.playSounds");
-        if (storedPlay != null) setPlaySounds(storedPlay === "true");
+        if (storedPlay != null && isMounted) setPlaySounds(storedPlay === "true");
       } catch {}
       try {
         // Initialize auth view – optimistic seed from cache to reduce flicker
         const cachedEmail = localStorage.getItem("sf.lastUserEmail");
-        if (cachedEmail) setUserEmail(cachedEmail);
+        if (cachedEmail && isMounted) setUserEmail(cachedEmail);
         // Fast path: hydrate from local session first to avoid UI flicker
         try {
           const { getSupabase } = await import("../lib/supabaseClient");
           const sb = getSupabase();
           const sess = await sb?.auth.getSession();
           const fastUser = sess?.data.session?.user;
-          if (fastUser) {
+          if (fastUser && isMounted) {
             setUserEmail(fastUser.email ?? null);
             setUserName((fastUser.user_metadata as any)?.name ?? null);
             setUserAvatarUrl(
@@ -172,21 +174,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         } catch {}
         // Authoritative fetch
         const u = await getCurrentUser();
-        if (u) {
+        if (u && isMounted) {
           setUserEmail(u.email ?? null);
           setUserName((u.user_metadata as any)?.name ?? null);
           setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
           if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
-        } else {
+        } else if (isMounted) {
           setUserEmail(null);
           setUserName(null);
           setUserAvatarUrl(null);
         }
-        setAuthReady(true);
+        if (isMounted) setAuthReady(true);
       } catch {
-        setAuthReady(true);
+        if (isMounted) setAuthReady(true);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // If not signed in, automatically route to onboarding
