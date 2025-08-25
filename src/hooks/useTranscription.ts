@@ -483,12 +483,13 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording) return;
     if (processing) return; // Prevent starting while processing
+    // Play feedback immediately to reduce perceived latency
+    playToggleOn();
+
     if (!streamRef.current) {
       const ok = await openStreamForSelectedDevice();
       if (!ok) return;
     }
-
-    playToggleOn();
     setError(null);
     setText("");
     setRecording(true);

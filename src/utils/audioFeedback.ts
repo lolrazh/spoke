@@ -39,5 +39,5 @@ function play(el: HTMLAudioElement) {
   el.play().catch(() => {});
 }
 
-export const playToggleOn = () => setTimeout(() => play(audioOn), 25);
+export const playToggleOn = () => play(audioOn);
 export const playToggleOff = () => setTimeout(() => play(audioOff), 100);
