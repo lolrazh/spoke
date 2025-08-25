@@ -614,6 +614,29 @@ int main(int argc, char *argv[]) {
         cmdV();
         return 0;
     }
+    
+    // New: daemon mode for pre-spawned paste helper
+    if (argc > 1 && strcmp(argv[1], "--mode=paste-daemon") == 0) {
+        requireAX();
+        puts("paste-daemon-ready");
+        fflush(stdout);
+        
+        // Wait for paste command via stdin
+        char command[1024];
+        while (fgets(command, sizeof(command), stdin)) {
+            // Trim newline
+            command[strcspn(command, "\n")] = 0;
+            
+            if (strcmp(command, "paste") == 0) {
+                cmdV();
+                puts("paste-done");
+                fflush(stdout);
+            } else if (strcmp(command, "exit") == 0) {
+                break;
+            }
+        }
+        return 0;
+    }
     // New: paste and verify with AX (reads/observes)
     if (argc > 1 && strcmp(argv[1], "--paste-and-verify") == 0) {
         // The UI should set the clipboard and pass the payload (optional but recommended for exact comparison)
