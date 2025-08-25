@@ -6,6 +6,34 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// Simple in-memory connection tracking per IP
+const connectionTracker = new Map<string, number>();
+const MAX_CONNECTIONS_PER_IP = 5;
+
+function getClientIP(request: Request): string {
+  return request.headers.get("cf-connecting-ip") || 
+         request.headers.get("x-forwarded-for")?.split(",")[0] || 
+         "unknown";
+}
+
+function trackConnection(ip: string): boolean {
+  const current = connectionTracker.get(ip) || 0;
+  if (current >= MAX_CONNECTIONS_PER_IP) {
+    return false; // Reject
+  }
+  connectionTracker.set(ip, current + 1);
+  return true;
+}
+
+function releaseConnection(ip: string): void {
+  const current = connectionTracker.get(ip) || 0;
+  if (current <= 1) {
+    connectionTracker.delete(ip);
+  } else {
+    connectionTracker.set(ip, current - 1);
+  }
+}
+
 // Health
 app.get("/", (c) => c.text("ok"));
 
@@ -15,6 +43,12 @@ app.get("/ws", (c) => {
     return c.text("Expected a websocket connection", 426);
   }
 
+  // Check connection limits
+  const clientIP = getClientIP(c.req.raw);
+  if (!trackConnection(clientIP)) {
+    return c.text("Too many connections from your IP. Please try again later.", 429);
+  }
+
   const { GROQ_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
@@ -22,11 +56,10 @@ app.get("/ws", (c) => {
   // Track if socket has closed and allow aborting any in-flight STT
   let socketClosed = false;
   let sttAbort: AbortController | null = null;
+  let sessionActive = false; // Prevent duplicate session starts
 
   server.accept();
-  try {
-    console.log("[WS] accepted");
-  } catch {}
+  console.log("[WS] accepted");
   server.addEventListener("message", async (evt: MessageEvent) => {
     try {
       const data = evt.data;
@@ -34,9 +67,15 @@ app.get("/ws", (c) => {
         const msg = safeJson(data);
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "start") {
-          try {
-            console.log("[WS] start");
-          } catch {}
+          // Ignore duplicate start messages during active session
+          if (sessionActive) {
+            console.warn("[WS] Ignoring duplicate start message - session already active");
+            return;
+          }
+          
+          console.log("[WS] start");
+          sessionActive = true;
+          
           // Reset for a new session
           session = createEmptySession();
           session.startedAt = Date.now();
@@ -52,7 +91,9 @@ app.get("/ws", (c) => {
               server.send(
                 JSON.stringify({ type: "status", state: "processing" }),
               );
-            } catch {}
+            } catch (error) {
+              console.error("[WS] Failed to send processing status:", error);
+            }
           }
 
           // If canceled or empty, short-circuit
@@ -93,17 +134,23 @@ app.get("/ws", (c) => {
                     body: e?.message || "Transcription error",
                   }),
                 );
-              } catch {}
+              } catch (sendError) {
+                console.error("[WS] Failed to send error message:", sendError);
+              }
               safeClose(server, 1011, "stt error");
             }
+            console.error("[WS] Transcription error:", e);
             session = createEmptySession();
+            sessionActive = false;
             return;
           }
 
           if (!socketClosed) {
             try {
               server.send(JSON.stringify({ type: "final", text: finalText }));
-            } catch {}
+            } catch (error) {
+              console.error("[WS] Failed to send final result:", error);
+            }
             safeClose(server, 1000, "done");
           }
 
@@ -113,14 +160,18 @@ app.get("/ws", (c) => {
             textLen: finalText.length,
           });
           session = createEmptySession();
+          sessionActive = false;
         } else if (msg.type === "cancel") {
           // Discard buffered audio, but keep the socket open for reuse
           session = createEmptySession();
           session.canceled = true;
+          sessionActive = false;
           // Abort any transcription in flight
           try {
             sttAbort?.abort();
-          } catch {}
+          } catch (error) {
+            console.error("[WS] Failed to abort transcription:", error);
+          }
         }
       } else if (data instanceof ArrayBuffer) {
         // Binary frame: [16-byte header][payload]
@@ -181,6 +232,11 @@ app.get("/ws", (c) => {
     } catch {}
     sttAbort = null;
     session = createEmptySession();
+    sessionActive = false;
+    
+    // Release connection tracking
+    releaseConnection(clientIP);
+    
     // Acknowledge/ensure closure (per CF docs to prevent hung request errors)
     safeClose(
       server,
@@ -198,6 +254,11 @@ app.get("/ws", (c) => {
     } catch {}
     sttAbort = null;
     session = createEmptySession();
+    sessionActive = false;
+    
+    // Release connection tracking
+    releaseConnection(clientIP);
+    
     safeClose(server, 1011, "socket error");
   });
 
@@ -319,7 +380,9 @@ function logSession(
       ...extra,
     };
     console.log("[WS]", info);
-  } catch {}
+  } catch (error) {
+    console.error("[WS] Failed to log session:", error);
+  }
 }
 
 async function groqTranscribe(

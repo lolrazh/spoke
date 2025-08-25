@@ -102,13 +102,33 @@ export function useTranscription(
     reconnectAttemptRef.current = 0;
   };
 
+  const MAX_RECONNECT_ATTEMPTS = 10;
+  const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
+
   const scheduleReconnect = () => {
     if (wsRef.current) return; // socket exists (OPEN/CONNECTING)
     if (!recording && sendQueueRef.current.length === 0) return; // nothing to send
     if (reconnectTimerRef.current != null) return;
+    
+    // Circuit breaker: stop trying after max attempts
+    if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn("[useTranscription] Max reconnect attempts exceeded, entering circuit breaker mode");
+      setError("Connection failed. Please check your internet connection and try again.");
+      
+      // Set a longer timeout before allowing reconnect attempts again
+      reconnectTimerRef.current = window.setTimeout(() => {
+        console.info("[useTranscription] Circuit breaker reset, allowing reconnect attempts");
+        reconnectAttemptRef.current = 0;
+        reconnectTimerRef.current = null;
+      }, CIRCUIT_BREAKER_TIMEOUT);
+      return;
+    }
+    
     const base = 150;
     const attempt = reconnectAttemptRef.current++;
     const delay = Math.min(base * Math.pow(2, attempt), 2000);
+    console.debug(`[useTranscription] Scheduling reconnect attempt ${attempt} in ${delay}ms`);
+    
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
       ensureStreamingSocket();
@@ -230,11 +250,19 @@ export function useTranscription(
         ws.bufferedAmount <= WS_MAX_BUFFERED_BYTES
       ) {
         try {
-          ws.send(out.buffer);
-        } catch {
+          // Double-check state right before sending to prevent race condition
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(out.buffer);
+            if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
+          } else {
+            // State changed between checks, queue it
+            sendQueueRef.current.push(out.buffer);
+          }
+        } catch (error) {
+          // Connection might have closed during send
+          console.warn("[useTranscription] Failed to send frame, queuing:", error);
           sendQueueRef.current.push(out.buffer);
         }
-        if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
       } else {
         // Virtual gate: buffer locally until WS can accept
         sendQueueRef.current.push(out.buffer);
