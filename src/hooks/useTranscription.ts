@@ -71,13 +71,20 @@ export function useTranscription(
   const metricsRef = useRef<{
     sessionId: string;
     pttDownMs: number;
+    stopInvokedMs?: number;
     wsOpenMs?: number;
     firstFrameOutMs?: number;
     lastFrameOutMs?: number;
-    wsEndMs?: number;
+    wsEndMs?: number; // maintained for backward compat; equals endSentMs
+    endSentMs?: number;
     sttStartMs?: number;
     sttEndMs?: number;
     finalRenderMs?: number;
+    pasteStartMs?: number;
+    pasteDoneMs?: number;
+    postRollStartMs?: number;
+    postRollEndMs?: number;
+    drainDoneMs?: number;
     framesProduced: number;
     bytesProduced: number;
     framesQueued: number;
@@ -196,6 +203,7 @@ export function useTranscription(
           format: "pcm16le" as const,
           rate: TARGET_SAMPLE_RATE,
           language: "en",
+          traceId: metricsRef.current?.sessionId,
         };
         ws.send(JSON.stringify(startMsg));
       } catch {}
@@ -579,6 +587,10 @@ export function useTranscription(
     playToggleOff();
     setRecording(false);
     setProcessing(true);
+    if (metricsRef.current && !metricsRef.current.stopInvokedMs) {
+      metricsRef.current.stopInvokedMs =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+    }
 
     try {
       // Streaming-only: flush any queued frames and signal end; wait for final
@@ -624,7 +636,7 @@ export function useTranscription(
           };
           abortControllerRef.current!.signal.addEventListener("abort", onAbort);
 
-          const onMessage = (event: MessageEvent) => {
+          const onMessage = async (event: MessageEvent) => {
             try {
               const msg = JSON.parse(String(event.data));
               if (msg.type === "status" && msg.state === "processing") {
@@ -644,7 +656,19 @@ export function useTranscription(
                     setText(msg.text || "");
                     if (msg.text) {
                       window.transcript?.update(msg.text);
-                      window.clipboard.insertText(msg.text);
+                      if (metricsRef.current)
+                        metricsRef.current.pasteStartMs =
+                          typeof performance !== "undefined"
+                            ? performance.now()
+                            : Date.now();
+                      try {
+                        await window.clipboard.insertText(msg.text);
+                        if (metricsRef.current)
+                          metricsRef.current.pasteDoneMs =
+                            typeof performance !== "undefined"
+                              ? performance.now()
+                              : Date.now();
+                      } catch {}
                     }
                     if (metricsRef.current) {
                       metricsRef.current.sttEndMs =
@@ -653,58 +677,117 @@ export function useTranscription(
                           : Date.now();
                       metricsRef.current.finalRenderMs =
                         metricsRef.current.sttEndMs;
-                      if (window.devFlags?.devConsoleLogs) {
-                        console.info("[SF] Session metrics", {
-                          sessionId: metricsRef.current.sessionId,
-                          framesProduced: metricsRef.current.framesProduced,
-                          framesQueued: metricsRef.current.framesQueued,
-                          framesSentApprox: metricsRef.current.framesSentApprox,
-                          bytesProducedKB: Number(
-                            (metricsRef.current.bytesProduced / 1024).toFixed(
-                              2,
-                            ),
-                          ),
-                          pttDownToFirstFrameMs: metricsRef.current
-                            .firstFrameOutMs
-                            ? Math.round(
-                                metricsRef.current.firstFrameOutMs -
-                                  metricsRef.current.pttDownMs,
-                              )
-                            : null,
-                          firstToLastFrameMs:
-                            metricsRef.current.firstFrameOutMs &&
-                            metricsRef.current.lastFrameOutMs
-                              ? Math.round(
-                                  metricsRef.current.lastFrameOutMs -
-                                    metricsRef.current.firstFrameOutMs,
-                                )
-                              : null,
-                          wsOpenDeltaMs: metricsRef.current.wsOpenMs
-                            ? Math.round(
-                                metricsRef.current.wsOpenMs -
-                                  metricsRef.current.pttDownMs,
-                              )
-                            : null,
-                          wsEndDeltaMs: metricsRef.current.wsEndMs
-                            ? Math.round(
-                                metricsRef.current.wsEndMs -
-                                  metricsRef.current.pttDownMs,
-                              )
-                            : null,
-                          sttDurationMs:
-                            metricsRef.current.sttStartMs &&
-                            metricsRef.current.sttEndMs
-                              ? Math.round(
-                                  metricsRef.current.sttEndMs -
-                                    metricsRef.current.sttStartMs,
-                                )
-                              : null,
-                          totalMs: Math.round(
-                            metricsRef.current.sttEndMs -
-                              metricsRef.current.pttDownMs,
-                          ),
-                        });
-                      }
+                      try {
+                        // Unified timeline: client + worker (if provided)
+                        const m = metricsRef.current;
+                        const client = {
+                          sessionId: m.sessionId,
+                          pttDownMs: m.pttDownMs,
+                          stopInvokedMs: m.stopInvokedMs ?? null,
+                          wsOpenMs: m.wsOpenMs ?? null,
+                          firstFrameOutMs: m.firstFrameOutMs ?? null,
+                          lastFrameOutMs: m.lastFrameOutMs ?? null,
+                          endSentMs: m.endSentMs ?? m.wsEndMs ?? null,
+                          statusRecvMs: m.sttStartMs ?? null,
+                          finalRecvMs: m.sttEndMs ?? null,
+                          pasteStartMs: m.pasteStartMs ?? null,
+                          pasteDoneMs: m.pasteDoneMs ?? null,
+                        } as const;
+
+                        const worker = (msg?.metrics?.worker ?? null) as
+                          | {
+                              traceId?: string;
+                              wsAcceptAt?: number | null;
+                              startedAt?: number | null;
+                              processingStartAt?: number | null;
+                              frames?: number;
+                              bytes?: number;
+                              seqGaps?: number;
+                              firstArrivalMs?: number | null;
+                              lastArrivalMs?: number | null;
+                              firstToLastArrivalMs?: number | null;
+                              assembleMs?: number | null;
+                              groq?: {
+                                startAt?: number | null;
+                                headersAt?: number | null;
+                                bodyDoneAt?: number | null;
+                                ttfbMs?: number | null;
+                                bodyMs?: number | null;
+                                totalMs?: number | null;
+                              } | null;
+                              finalSentAt?: number | null;
+                            }
+                          | null;
+
+                        const endSent = client.endSentMs ?? null;
+                        const statusRecv = client.statusRecvMs ?? null;
+                        const finalRecv = client.finalRecvMs ?? null;
+                        const pasteDone = client.pasteDoneMs ?? null;
+
+                        const wsOpenDeltaMs =
+                          client.wsOpenMs != null
+                            ? Math.round(client.wsOpenMs - client.pttDownMs)
+                            : null;
+                        const pttUpToEndSendMs =
+                          client.stopInvokedMs != null && endSent != null
+                            ? Math.round(endSent - client.stopInvokedMs)
+                            : null;
+                        const endSendToStatusMs =
+                          endSent != null && statusRecv != null
+                            ? Math.round(statusRecv - endSent)
+                            : null;
+                        const statusToFinalRecvMs =
+                          statusRecv != null && finalRecv != null
+                            ? Math.round(finalRecv - statusRecv)
+                            : null;
+                        const finalToPasteDoneMs =
+                          pasteDone != null && finalRecv != null
+                            ? Math.round(pasteDone - finalRecv)
+                            : null;
+                        const totalPttDownToPasteMs =
+                          pasteDone != null
+                            ? Math.round(pasteDone - client.pttDownMs)
+                            : finalRecv != null
+                              ? Math.round(finalRecv - client.pttDownMs)
+                              : null;
+
+                        // Compute deliver latency without relying on cross-host clock sync:
+                        // estimate = (finalRecv - statusRecv) - sttMs
+                        const deliverMs =
+                          statusRecv != null && finalRecv != null && sttMs != null
+                            ? Math.max(0, Math.round(finalRecv - statusRecv - (sttMs || 0)))
+                            : null;
+                        const captureMs = (() => {
+                          const pr =
+                            (m.postRollEndMs ?? 0) - (m.postRollStartMs ?? 0);
+                          const drain =
+                            (m.drainDoneMs ?? 0) - (m.lastFrameOutMs ?? 0);
+                          const sum = (pr > 0 ? pr : 0) + (drain > 0 ? drain : 0);
+                          return sum > 0 ? Math.round(sum) : null;
+                        })();
+                        const sttMs =
+                          worker?.groq?.totalMs != null
+                            ? Math.round(worker.groq.totalMs)
+                            : statusToFinalRecvMs;
+
+                        // Compact single-line breakdown
+                        const breakdown = {
+                          traceId:
+                            (msg?.traceId as string | undefined) || m.sessionId,
+                          e2eMs: totalPttDownToPasteMs,
+                          wsOpenMs: wsOpenDeltaMs,
+                          captureMs,
+                          endToStatusMs: endSendToStatusMs,
+                          sttMs,
+                          deliverMs,
+                          pasteMs: finalToPasteDoneMs,
+                          frames: m.framesProduced,
+                          bytesKB: Number((m.bytesProduced / 1024).toFixed(1)),
+                          seqGaps: (msg?.metrics?.worker?.seqGaps as number) ?? 0,
+                        };
+
+                        console.log("[SF] E2E", breakdown);
+                      } catch {}
                     }
                   } catch {}
                   // Close per-session to avoid stale sockets
@@ -764,7 +847,17 @@ export function useTranscription(
             try {
               // Capture a short post-roll tail to avoid clipping the last syllable
               if (POST_ROLL_MS > 0) {
+                if (metricsRef.current && !metricsRef.current.postRollStartMs)
+                  metricsRef.current.postRollStartMs =
+                    typeof performance !== "undefined"
+                      ? performance.now()
+                      : Date.now();
                 await new Promise((r) => setTimeout(r, POST_ROLL_MS));
+                if (metricsRef.current && !metricsRef.current.postRollEndMs)
+                  metricsRef.current.postRollEndMs =
+                    typeof performance !== "undefined"
+                      ? performance.now()
+                      : Date.now();
               }
 
               // Ask the worklet to flush any partial frame before tearing down
@@ -779,8 +872,43 @@ export function useTranscription(
                     : Date.now();
 
               await waitForAllFramesSent();
+              if (metricsRef.current && !metricsRef.current.drainDoneMs)
+                metricsRef.current.drainDoneMs =
+                  typeof performance !== "undefined"
+                    ? performance.now()
+                    : Date.now();
 
-              // Disconnect nodes after frames drain
+              // Send 'end' immediately after drain completes to minimize latency.
+              try {
+                if (metricsRef.current)
+                  metricsRef.current.wsEndMs =
+                    typeof performance !== "undefined"
+                      ? performance.now()
+                      : Date.now();
+                if (metricsRef.current)
+                  metricsRef.current.endSentMs = metricsRef.current.wsEndMs;
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "end" }));
+                } else if (ws.readyState === WebSocket.CONNECTING) {
+                  // If still connecting, send on open
+                  const sendOnOpen = () => {
+                    try {
+                      ws.send(JSON.stringify({ type: "end" }));
+                    } catch {}
+                    ws.removeEventListener("open", sendOnOpen as any);
+                  };
+                  ws.addEventListener("open", sendOnOpen as any, {
+                    once: true,
+                  } as any);
+                } else {
+                  // Socket closed: request a fresh one for next session and fail fast
+                  try {
+                    ws.close();
+                  } catch {}
+                }
+              } catch {}
+
+              // Disconnect nodes after signaling end (do not block end send on audio teardown)
               try {
                 sourceNodeRef.current?.disconnect();
               } catch {}
@@ -803,33 +931,6 @@ export function useTranscription(
                 streamRef.current = null;
                 setReady(false);
               }
-
-              try {
-                if (metricsRef.current)
-                  metricsRef.current.wsEndMs =
-                    typeof performance !== "undefined"
-                      ? performance.now()
-                      : Date.now();
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: "end" }));
-                } else if (ws.readyState === WebSocket.CONNECTING) {
-                  // If still connecting, send on open
-                  const sendOnOpen = () => {
-                    try {
-                      ws.send(JSON.stringify({ type: "end" }));
-                    } catch {}
-                    ws.removeEventListener("open", sendOnOpen as any);
-                  };
-                  ws.addEventListener("open", sendOnOpen as any, {
-                    once: true,
-                  } as any);
-                } else {
-                  // Socket closed: request a fresh one for next session and fail fast
-                  try {
-                    ws.close();
-                  } catch {}
-                }
-              } catch {}
             } catch {}
           })();
         });

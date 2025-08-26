@@ -53,6 +53,7 @@ app.get("/ws", (c) => {
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
+  session.wsAcceptAt = Date.now();
   // Track if socket has closed and allow aborting any in-flight STT
   let socketClosed = false;
   let sttAbort: AbortController | null = null;
@@ -82,14 +83,21 @@ app.get("/ws", (c) => {
           session.version = msg.version ?? 1;
           session.format = msg.format ?? "pcm16le";
           session.rate = msg.rate ?? 16000;
+          session.traceId = typeof msg.traceId === "string" ? msg.traceId : undefined;
           // (optional) language = msg.language
         } else if (msg.type === "end") {
           const t0 = Date.now();
+          session.processingStartAt = t0;
           // Signal processing started
           if (!socketClosed) {
             try {
               server.send(
-                JSON.stringify({ type: "status", state: "processing" }),
+                JSON.stringify({
+                  type: "status",
+                  state: "processing",
+                  traceId: session.traceId,
+                  serverTs: Date.now(),
+                }),
               );
             } catch (error) {
               console.error("[WS] Failed to send processing status:", error);
@@ -106,26 +114,71 @@ app.get("/ws", (c) => {
           }
 
           // Assemble PCM → WAV
+          const assembleStart = Date.now();
           const pcm = concat(session.chunks, session.totalBytes);
           const wav = wrapWav(pcm, session.rate, 1, 16);
+          const assembleEnd = Date.now();
+          const assembleMs = assembleEnd - assembleStart;
 
           // Call GROQ STT if key available
           let finalText = "";
+          let groqStart = 0;
+          let groqHeaders = 0;
+          let groqBodyDone = 0;
           try {
             if (GROQ_API_KEY) {
               // Allow canceling if the client disconnects while STT is running
               sttAbort?.abort();
               sttAbort = new AbortController();
-              const res = await groqTranscribe(
-                wav,
-                GROQ_API_KEY,
-                sttAbort.signal,
+              groqStart = Date.now();
+              const controller = new AbortController();
+              const onExternalAbort = () => controller.abort();
+              const timeoutId = setTimeout(() => controller.abort(), 25000);
+              if (sttAbort.signal.aborted) controller.abort();
+              else sttAbort.signal.addEventListener("abort", onExternalAbort);
+
+              const res = await fetch(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+                  body: (() => {
+                    const form = new FormData();
+                    const file = new File([wav], "audio.wav", { type: "audio/wav" });
+                    form.append("file", file);
+                    form.append("model", "whisper-large-v3-turbo");
+                    form.append("language", "en");
+                    form.append(
+                      "prompt",
+                      "Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite",
+                    );
+                    return form;
+                  })(),
+                  signal: controller.signal,
+                },
               );
-              finalText = res?.text ?? "";
+              groqHeaders = Date.now();
+              if (!res.ok) {
+                const body = await res.text();
+                throw new Error(`GROQ STT error: ${res.status} ${body}`);
+              }
+              const json = (await res.json()) as { text?: string };
+              groqBodyDone = Date.now();
+              finalText = json?.text ?? "";
+              clearTimeout(timeoutId);
+              sttAbort.signal.removeEventListener("abort", onExternalAbort);
             } else {
               finalText = "";
             }
           } catch (e: any) {
+            try {
+              // Best-effort cleanup for timeout composition
+              // @ts-ignore
+              if (typeof timeoutId !== "undefined") clearTimeout(timeoutId);
+              // @ts-ignore
+              if (onExternalAbort)
+                sttAbort?.signal?.removeEventListener("abort", onExternalAbort);
+            } catch {}
             if (!socketClosed) {
               try {
                 server.send(
@@ -147,7 +200,40 @@ app.get("/ws", (c) => {
 
           if (!socketClosed) {
             try {
-              server.send(JSON.stringify({ type: "final", text: finalText }));
+              const workerMetrics = {
+                traceId: session.traceId,
+                wsAcceptAt: session.wsAcceptAt ?? null,
+                startedAt: session.startedAt ?? null,
+                processingStartAt: session.processingStartAt ?? null,
+                frames: session.frames,
+                bytes: session.totalBytes,
+                seqGaps: session.seqGaps,
+                firstArrivalMs: session.firstArrivalMs,
+                lastArrivalMs: session.lastArrivalMs,
+                firstToLastArrivalMs:
+                  session.firstArrivalMs && session.lastArrivalMs
+                    ? session.lastArrivalMs - session.firstArrivalMs
+                    : null,
+                assembleMs,
+                groq: {
+                  startAt: groqStart || null,
+                  headersAt: groqHeaders || null,
+                  bodyDoneAt: groqBodyDone || null,
+                  ttfbMs: groqStart && groqHeaders ? groqHeaders - groqStart : null,
+                  bodyMs:
+                    groqHeaders && groqBodyDone ? groqBodyDone - groqHeaders : null,
+                  totalMs: groqStart && groqBodyDone ? groqBodyDone - groqStart : null,
+                },
+                finalSentAt: Date.now(),
+              };
+              server.send(
+                JSON.stringify({
+                  type: "final",
+                  text: finalText,
+                  traceId: session.traceId,
+                  metrics: { worker: workerMetrics },
+                }),
+              );
             } catch (error) {
               console.error("[WS] Failed to send final result:", error);
             }
@@ -359,6 +445,9 @@ function createEmptySession() {
     firstArrivalMs: null as number | null,
     lastArrivalMs: null as number | null,
     canceled: false,
+    traceId: undefined as string | undefined,
+    wsAcceptAt: undefined as number | undefined,
+    processingStartAt: undefined as number | undefined,
   };
 }
 
@@ -370,6 +459,7 @@ function logSession(
   try {
     const info = {
       tag,
+      traceId: (s as any).traceId ?? null,
       frames: s.frames,
       bytesKB: Number((s.totalBytes / 1024).toFixed(2)),
       seqGaps: s.seqGaps,
