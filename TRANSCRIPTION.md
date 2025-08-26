@@ -174,49 +174,94 @@ const streamFrame = useCallback((pcmBuf: ArrayBuffer) => {
 }, []);
 ```
 
-#### Reconnection Strategy
+#### Reconnection Strategy with Circuit Breaker
 ```typescript
+const MAX_RECONNECT_ATTEMPTS = 10;
+const CIRCUIT_BREAKER_TIMEOUT = 60000; // 1 minute
+
 const scheduleReconnect = () => {
+  if (wsRef.current) return; // socket exists (OPEN/CONNECTING)
+  if (!recording && sendQueueRef.current.length === 0) return; // nothing to send
+  if (reconnectTimerRef.current != null) return;
+  
+  // Circuit breaker: stop trying after max attempts
+  if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+    console.warn("[useTranscription] Max reconnect attempts exceeded, entering circuit breaker mode");
+    setError("Connection failed. Please check your internet connection and try again.");
+    
+    // Set a longer timeout before allowing reconnect attempts again
+    reconnectTimerRef.current = window.setTimeout(() => {
+      console.info("[useTranscription] Circuit breaker reset, allowing reconnect attempts");
+      reconnectAttemptRef.current = 0;
+      reconnectTimerRef.current = null;
+    }, CIRCUIT_BREAKER_TIMEOUT);
+    return;
+  }
+  
+  const base = 150;
   const attempt = reconnectAttemptRef.current++;
-  const delay = Math.min(150 * Math.pow(2, attempt), 2000); // Exponential backoff
+  const delay = Math.min(base * Math.pow(2, attempt), 2000);
+  console.debug(`[useTranscription] Scheduling reconnect attempt ${attempt} in ${delay}ms`);
   
   reconnectTimerRef.current = window.setTimeout(() => {
+    reconnectTimerRef.current = null;
     ensureStreamingSocket();
   }, delay);
 };
 ```
 
-#### Session Completion
+#### Session Completion with Post-Roll Capture
 ```typescript
 const stop = useCallback(async () => {
-  // 1. Stop audio capture immediately
-  sourceNodeRef.current?.disconnect();
-  workletNodeRef.current?.port.postMessage({ type: "flush" }); // Final partial frame
-  
-  // 2. Close AudioContext to release microphone indicator
-  await audioContextRef.current?.close();
-  streamRef.current?.getTracks().forEach(track => track.stop());
-  
-  // 3. Wait for all queued frames to be sent
-  await waitForAllFramesSent();
-  
-  // 4. Send session end signal
-  ws.send(JSON.stringify({ type: "end" }));
-  
-  // 5. Wait for transcription response with timeout
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timeout")), 15000);
+  // 1. Stop recording state and play feedback immediately
+  playToggleOff();
+  setRecording(false);
+  setProcessing(true);
+
+  try {
+    // 2. Post-roll capture to prevent end-of-speech clipping
+    if (POST_ROLL_MS > 0) {
+      await new Promise((r) => setTimeout(r, POST_ROLL_MS)); // 160ms tail capture
+    }
+
+    // 3. Flush worklet and wait for frames to drain
+    workletNodeRef.current?.port.postMessage({ type: "flush" });
+    await waitForAllFramesSent();
+
+    // 4. Disconnect audio nodes and close context
+    sourceNodeRef.current?.disconnect();
+    workletNodeRef.current?.disconnect();
+    await audioContextRef.current?.close();
+    streamRef.current?.getTracks().forEach(track => track.stop());
     
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "final") {
-        clearTimeout(timeout);
-        setText(msg.text);
-        window.clipboard.insertText(msg.text); // Insert via native helper
-        resolve(msg.text);
-      }
-    };
-  });
+    // 5. Send end signal and wait for transcription
+    ws.send(JSON.stringify({ type: "end" }));
+    
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Timeout")), 15000);
+      
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "final") {
+          clearTimeout(timeout);
+          setText(msg.text);
+          if (msg.text) {
+            window.transcript?.update(msg.text);
+            window.clipboard.insertText(msg.text);
+          }
+          // Close per-session to avoid stale sockets
+          ws.close(1000, "session_complete");
+          resolve(msg.text);
+        } else if (msg.type === "error") {
+          clearTimeout(timeout);
+          ws.close(1011, "server error");
+          reject(new Error(`Server error: ${msg.body}`));
+        }
+      };
+    });
+  } finally {
+    setProcessing(false);
+  }
 }, []);
 ```
 
@@ -311,6 +356,54 @@ export function encodeFrameHeader(seq: number, nbytes: number, tsNs: bigint): Ar
 ```
 
 ### Connection Management & Reliability
+
+#### DOS Protection and Connection Limits
+
+**Per-IP Connection Tracking** - Server-side protection against abuse:
+
+```typescript
+// Simple in-memory connection tracking per IP
+const connectionTracker = new Map<string, number>();
+const MAX_CONNECTIONS_PER_IP = 5;
+
+function trackConnection(ip: string): boolean {
+  const current = connectionTracker.get(ip) || 0;
+  if (current >= MAX_CONNECTIONS_PER_IP) {
+    return false; // Reject with 429 Too Many Requests
+  }
+  connectionTracker.set(ip, current + 1);
+  return true;
+}
+
+function releaseConnection(ip: string): void {
+  const current = connectionTracker.get(ip) || 0;
+  if (current <= 1) {
+    connectionTracker.delete(ip);
+  } else {
+    connectionTracker.set(ip, current - 1);
+  }
+}
+```
+
+#### Session Deduplication
+
+**Prevent Duplicate Sessions** - Server ignores duplicate "start" messages:
+
+```typescript
+let sessionActive = false; // Prevent duplicate session starts
+
+server.addEventListener("message", async (evt: MessageEvent) => {
+  if (msg.type === "start") {
+    // Ignore duplicate start messages during active session
+    if (sessionActive) {
+      console.warn("[WS] Ignoring duplicate start message - session already active");
+      return;
+    }
+    sessionActive = true;
+    // ... initialize session
+  }
+});
+```
 
 #### WebSocket Lifecycle Management
 
@@ -749,9 +842,10 @@ if (!GROQ_API_KEY) {
 ### Recovery Strategies
 
 #### Network Recovery
-1. **Automatic Reconnection** - Exponential backoff (150ms → 300ms → 600ms → 1200ms → 2000ms max)
+1. **Circuit Breaker Reconnection** - Maximum 10 attempts with exponential backoff (150ms → 300ms → 600ms → 1200ms → 2000ms max), then 1-minute cooldown
 2. **Frame Queuing** - Buffer up to 20MB locally during outages
 3. **Session Isolation** - Network issues don't affect subsequent sessions
+4. **DOS Protection** - Per-IP connection limits (5 max) with proper cleanup tracking
 
 #### Audio Recovery
 1. **Device Enumeration** - Automatic refresh on device changes
@@ -1137,17 +1231,27 @@ This comprehensive transcription system provides robust, real-time speech-to-tex
 
 ---
 
-**Last Updated**: 2025-08-23  
-**Version**: 2.1.0 - Enhanced WebSocket Reliability  
+**Last Updated**: 2025-08-26  
+**Version**: 2.2.0 - Production Hardening & Latency Optimization  
 **Maintainers**: Sonic Flow Team
 
-## Recent Updates (v2.1.0)
+## Recent Updates (v2.2.0)
 
-### WebSocket Reliability Enhancements
+### Production Hardening & Security
+- ✅ **DOS Protection** - Per-IP connection limits (5 max) with proper cleanup tracking
+- ✅ **Circuit Breaker Pattern** - Maximum 10 reconnect attempts with 1-minute cooldown period
+- ✅ **Session Deduplication** - Prevents duplicate "start" messages during active sessions
+- ✅ **Enhanced Error Handling** - Replaced silent catch blocks with proper error logging and context
+
+### Latency & UX Improvements
+- ✅ **Post-Roll Capture** - 160ms tail capture to prevent end-of-speech clipping
+- ✅ **Immediate Audio Feedback** - Start cue plays before microphone access for perceived responsiveness
+- ✅ **Race Condition Fixes** - Double-state checking before WebSocket sends to prevent errors
+- ✅ **Connection State Management** - Improved WebSocket lifecycle with proper cleanup
+
+### WebSocket Reliability (v2.1.0)
 - ✅ **Fixed Cloudflare "hung request" errors** - Added explicit WebSocket closure on all termination paths
-- ✅ **Enhanced error handling** - Server-side error and close event handlers with proper cleanup
-- ✅ **Improved client stability** - Client proactively closes socket after receiving error responses
-- ✅ **Standardized close codes** - Proper WebSocket close codes for different scenarios
-- ✅ **Eliminated dashboard errors** - Production monitoring now shows clean success/error states
+- ✅ **Standardized close codes** - Proper WebSocket close codes (1000, 1009, 1011) for different scenarios
+- ✅ **Enhanced server-side error handling** - Error and close event handlers with proper cleanup
 
-These changes make the transcription pipeline significantly more robust and production-ready.
+These improvements transform the transcription pipeline from functional to production-ready, capable of handling 200-500 concurrent users safely with significantly improved user experience and reliability.

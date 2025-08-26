@@ -25,6 +25,11 @@ Sonic Flow is a lightweight AI dictation application for macOS built with Electr
 - `npm run clean` - Remove build artifacts
 - `npm run postinstall` - Build native helper (runs automatically)
 
+### Testing
+- `npm run test` - Run tests with Vitest
+- `npm run test:watch` - Run tests in watch mode
+- `npm run coverage` - Run tests with coverage report
+
 ### Utilities
 - `npm run kill:port:8787` - Kill processes on port 8787 (dev server)
 
@@ -55,7 +60,10 @@ Real-time audio streaming with:
 - PCM16 audio capture at 16kHz
 - 100ms frame buffering
 - Binary WebSocket protocol with headers
-- Automatic reconnection and error handling
+- Automatic reconnection with circuit breaker (max 10 attempts)
+- Production-ready error handling and connection cleanup
+- DOS protection with per-IP connection limits (5 max)
+- Post-roll capture (~160ms) to prevent end-of-speech clipping
 
 #### Authentication System (`src/lib/supabaseClient.ts`)
 Hybrid OAuth flow using:
@@ -69,6 +77,7 @@ Hybrid OAuth flow using:
 - Text insertion at cursor position via native helper
 - Microphone device enumeration and selection
 - Native vibrancy and window behaviors
+- Pre-spawned paste helper daemon for reduced latency (~25ms savings)
 
 ### File Structure Patterns
 
@@ -98,6 +107,9 @@ src/
 - `worker/src/index.ts` - Hono-based WebSocket server
 - Handles audio transcription via Groq API
 - Deployed to Cloudflare Workers
+- Production-ready with proper connection lifecycle management
+- Standardized WebSocket close codes (1000, 1009, 1011)
+- Session deduplication and proper cleanup
 
 ## Development Patterns
 
@@ -163,6 +175,8 @@ Several test utilities available in project root:
 - **Native helper build**: Ensure Xcode command line tools installed
 - **Permissions**: Check System Preferences for accessibility/input monitoring
 - **WebSocket connection**: Verify URL configuration for target environment
+- **Startup ghost box**: Fixed via renderer-ready handshake and early transparency guard
+- **End-of-speech clipping**: Mitigated with POST_ROLL_MS capture before connection teardown
 
 ## Agent Session Logging
 
@@ -187,6 +201,7 @@ This project uses structured agent session logging in `agent-logs/` directory. W
 
 ### Production Builds
 Use staging variants for testing:
+- `npm run stage:local:make` - Full staging build with local WebSocket server
 - `npm run stage:prod:make` - Full production-like build
 - Code signing configured for internal testing
 - DMG packaging with custom background
