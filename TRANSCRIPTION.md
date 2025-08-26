@@ -555,7 +555,7 @@ try {
   const result = await groqTranscribe(
     wav, 
     GROQ_API_KEY, 
-    GROQ_STT_MODEL || 'whisper-large-v3-turbo-turbo',
+    GROQ_STT_MODEL || 'whisper-large-v3-turbo',
     abortSignal
   );
 
@@ -708,15 +708,15 @@ async function groqTranscribe(
 ### Model Configuration
 
 #### Supported Models
-- **whisper-large-v3-turbo-turbo** (default) - Fast, high-quality transcription
-- **whisper-large-v3-turbo** - Highest accuracy, slower processing
-- **distil-whisper-large-v3-turbo-en** - English-optimized, faster processing
+- **whisper-large-v3-turbo** (default) - Fast, high-quality transcription
+- **whisper-large-v3** - Highest accuracy, slower processing
+- **distil-whisper-large-v3-en** - English-optimized, faster processing
 
 #### Environment Variables
 ```bash
 # Cloudflare Worker secrets
 GROQ_API_KEY=gsk_... # Required: Groq API key
-GROQ_STT_MODEL=whisper-large-v3-turbo-turbo # Optional: model override
+GROQ_STT_MODEL=whisper-large-v3-turbo # Optional: model override
 ```
 
 ### Response Processing

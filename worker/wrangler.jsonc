@@ -12,6 +12,7 @@
     "enabled": true,
   },
   "routes": [{ "pattern": "api.sonicflow.app", "custom_domain": true }],
+  "placement": { "mode": "smart" },
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

@@ -140,21 +140,21 @@ app.get("/ws", (c) => {
               const res = await fetch(
                 "https://api.groq.com/openai/v1/audio/transcriptions",
                 {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
-                  body: (() => {
-                    const form = new FormData();
-                    const file = new File([wav], "audio.wav", { type: "audio/wav" });
-                    form.append("file", file);
-                    form.append("model", "whisper-large-v3-turbo");
-                    form.append("language", "en");
-                    form.append(
-                      "prompt",
-                      "Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite",
-                    );
-                    return form;
-                  })(),
-                  signal: controller.signal,
+                method: "POST",
+                headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+                body: (() => {
+                  const form = new FormData();
+                  const file = new File([wav], "audio.wav", { type: "audio/wav" });
+                  form.append("file", file);
+                    form.append("model", "whisper-large-v3");
+                  form.append("language", "en");
+                  form.append(
+                    "prompt",
+                    "Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite",
+                  );
+                  return form;
+                })(),
+                signal: controller.signal,
                 },
               );
               groqHeaders = Date.now();
@@ -241,8 +241,23 @@ app.get("/ws", (c) => {
           }
 
           const t1 = Date.now();
+          const sttTtfbMs = groqStart && groqHeaders ? groqHeaders - groqStart : null;
+          const sttBodyMs = groqHeaders && groqBodyDone ? groqBodyDone - groqHeaders : null;
+          const sttTotalMs = groqStart && groqBodyDone ? groqBodyDone - groqStart : null;
+          const finalizationMs = t1 - t0; // total time spent handling 'end' -> send final
+          const overheadMs =
+            sttTotalMs != null
+              ? Math.max(0, finalizationMs - assembleMs - sttTotalMs)
+              : Math.max(0, finalizationMs - assembleMs);
           logSession("final", session, {
-            assembleMs: t1 - t0,
+            assembleMs,
+            stt: {
+              ttfbMs: sttTtfbMs,
+              bodyMs: sttBodyMs,
+              totalMs: sttTotalMs,
+            },
+            finalizationMs,
+            overheadMs,
             textLen: finalText.length,
           });
           session = createEmptySession();
@@ -483,7 +498,7 @@ async function groqTranscribe(
   const form = new FormData();
   const file = new File([wav], "audio.wav", { type: "audio/wav" });
   form.append("file", file);
-  form.append("model", "whisper-large-v3-turbo");
+  form.append("model", "whisper-large-v3");
   // Hardcoded parameters for production
   form.append("language", "en");
   form.append(
