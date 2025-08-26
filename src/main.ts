@@ -104,6 +104,8 @@ const pasteHelpers = new Set<ChildProcess>();
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
+let preSpawnedPasteHelper: import("child_process").ChildProcessWithoutNullStreams | null =
+  null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
@@ -390,6 +392,62 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   helperSet.add(proc);
   proc.once("exit", () => helperSet.delete(proc));
   return proc;
+}
+
+function getHelperPath(): string {
+  return app.isPackaged
+    ? path.join(
+        process.resourcesPath,
+        "Sonic Flow Helper.app",
+        "Contents",
+        "MacOS",
+        "Sonic Flow Helper",
+      )
+    : path.join(
+        app.getAppPath(),
+        "native",
+        "bin",
+        "Sonic Flow Helper.app",
+        "Contents",
+        "MacOS",
+        "Sonic Flow Helper",
+      );
+}
+
+function preSpawnPasteHelper() {
+  // Clean up any existing pre-spawned helper
+  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+    try {
+      preSpawnedPasteHelper.kill();
+    } catch (e) {
+      // ignore
+    }
+    preSpawnedPasteHelper = null;
+  }
+
+  const helperPath = getHelperPath();
+  if (!fs.existsSync(helperPath)) {
+    console.error(
+      `[PreSpawn] Paste helper binary not found at path: ${helperPath}`,
+    );
+    return;
+  }
+
+  console.log(`[PreSpawn] Starting paste helper daemon for dictation`);
+  
+  // Spawn the helper in daemon mode - it will wait for paste commands via stdin
+  preSpawnedPasteHelper = spawn(helperPath, ["--mode=paste-daemon"], { 
+    stdio: "pipe", 
+    detached: false 
+  });
+  
+  pasteHelpers.add(preSpawnedPasteHelper);
+  preSpawnedPasteHelper.once("exit", () => {
+    if (preSpawnedPasteHelper) {
+      pasteHelpers.delete(preSpawnedPasteHelper);
+      preSpawnedPasteHelper = null;
+    }
+  });
 }
 
 function logBounds(tag: string) {
@@ -743,10 +801,8 @@ const createWindow = () => {
     mainWindow.setVisibleOnAllWorkspaces(true);
   }
 
-  // Show window inactive only when it's ready to prevent focus stealing
+  // Prepare DevTools behavior; actual show happens on renderer-ready handshake
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-    console.log("Main window shown.");
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
       const current = mainWindow.getBounds();
@@ -769,8 +825,6 @@ const createWindow = () => {
     }
 
     // DevTools behavior:
-    // - In packaged staging builds: auto-open via VITE_SF_DEVTOOLS=1 (compile-time injected)
-    // - In Vite dev server: opt-in via SF_DEVTOOLS=1 (to avoid overlay issues on transparent window)
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -896,6 +950,31 @@ const createWindow = () => {
     },
   );
 };
+
+// Show the floating bar only after the renderer signals that it's visually ready
+ipcMain.on("renderer-ready", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    // Align to current display's safe top before revealing (guard)
+    const current = mainWindow.getBounds();
+    const currentDisplay = screen.getDisplayMatching(current);
+    activeDisplayId = currentDisplay.id;
+    const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
+    mainWindow.setBounds(
+      { x: current.x, y: targetY, width: current.width, height: current.height },
+      false,
+    );
+    if (process.platform === "darwin") mainWindow.invalidateShadow();
+  } catch (e) {
+    console.warn("[renderer-ready] Top-align failed:", e);
+  }
+  try {
+    mainWindow.show();
+    logBounds("renderer-ready -> show");
+  } catch (e) {
+    console.warn("[renderer-ready] Failed to show:", e);
+  }
+});
 
 function createOnboardingWindow() {
   console.log("[Debug] Inside createOnboardingWindow function");
@@ -1334,24 +1413,7 @@ ipcMain.handle(
       clipboard.writeText(payloadText);
       console.log("Transcription text copied to clipboard for pasting.");
 
-      const helperPath = app.isPackaged
-        ? path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
-
+      const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
         console.error(
           `[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`,
@@ -1363,10 +1425,58 @@ ipcMain.handle(
         return { success: false, error: "Paste helper binary not found." };
       }
 
-      console.log(`[PasteHelper] Executing from: ${helperPath}`);
+      console.log(`[PasteHelper] Using pre-spawned paste helper`);
 
-      // Always paste unconditionally; skip AX-gated verification
-      const proc = spawnHelper(helperPath, ["--mode=paste"], false);
+      // Use pre-spawned helper if available, otherwise fallback to direct spawn
+      if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+        // Send paste command to daemon
+        preSpawnedPasteHelper.stdin?.write("paste\n");
+        
+        // Wait for paste completion
+        await new Promise<void>((resolve) => {
+          const onData = (data: Buffer) => {
+            const output = data.toString().trim();
+            if (output === "paste-done") {
+              preSpawnedPasteHelper?.stdout?.off("data", onData);
+              console.log(`[PasteHelper] Pre-spawned helper completed paste`);
+              resolve();
+            }
+          };
+          preSpawnedPasteHelper?.stdout?.on("data", onData);
+          
+          // Fallback timeout
+          setTimeout(() => {
+            preSpawnedPasteHelper?.stdout?.off("data", onData);
+            console.log(`[PasteHelper] Pre-spawned helper timeout, assuming success`);
+            resolve();
+          }, 1000);
+        });
+        
+        // Clean up the helper after use
+        preSpawnedPasteHelper.stdin?.write("exit\n");
+        preSpawnedPasteHelper = null;
+      } else {
+        // Fallback: spawn new helper if pre-spawn failed
+        console.log(`[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`);
+        const proc = spawnHelper(helperPath, ["--mode=paste"], false);
+        
+        await new Promise<void>((resolve) => {
+          let stderrBuffer = "";
+          proc.stderr.on("data", (data) => {
+            stderrBuffer += data.toString();
+          });
+          proc.on("close", (code) => {
+            if (stderrBuffer)
+              console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
+            console.log(`[PasteHelper] fallback paste helper exited with code ${code}`);
+            resolve();
+          });
+          proc.on("error", (error) => {
+            console.error("[PasteHelper] Error executing fallback paste-helper:", error);
+            resolve();
+          });
+        });
+      }
 
       // Restore original clipboard regardless of outcome
       setTimeout(() => {
@@ -1374,24 +1484,6 @@ ipcMain.handle(
           clipboard.writeText(originalClipboardText);
         } catch {}
       }, 300);
-
-      // Await process exit for logging only; don't gate success
-      await new Promise<void>((resolve) => {
-        let stderrBuffer = "";
-        proc.stderr.on("data", (data) => {
-          stderrBuffer += data.toString();
-        });
-        proc.on("close", (code) => {
-          if (stderrBuffer)
-            console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
-          console.log(`[PasteHelper] paste helper exited with code ${code}`);
-          resolve();
-        });
-        proc.on("error", (error) => {
-          console.error("[PasteHelper] Error executing paste-helper:", error);
-          resolve();
-        });
-      });
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
       return { success: true, verified: false };
@@ -1978,23 +2070,7 @@ app.whenReady().then(async () => {
       const needAX = !systemPreferences.isTrustedAccessibilityClient(false);
 
       // Always use the helper binary for consistent permission checking in both dev and prod
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -2107,23 +2183,7 @@ app.whenReady().then(async () => {
         `[${isDev ? "Dev" : "Prod"} Mode] Requesting input monitoring permission...`,
       );
 
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       // First check if the helper exists
       if (!fs.existsSync(helperPath)) {
@@ -2205,23 +2265,7 @@ app.whenReady().then(async () => {
         `[${isDev ? "Dev" : "Prod"} Mode] Asking for Input Monitoring permission...`,
       );
 
-      const helperPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            "native",
-            "bin",
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          )
-        : path.join(
-            process.resourcesPath,
-            "Sonic Flow Helper.app",
-            "Contents",
-            "MacOS",
-            "Sonic Flow Helper",
-          );
+      const helperPath = getHelperPath();
 
       if (!fs.existsSync(helperPath)) {
         console.error("Helper binary not found at:", helperPath);
@@ -2421,6 +2465,17 @@ app.on("before-quit", () => {
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
+  // Clean up pre-spawned paste helper
+  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+    try {
+      preSpawnedPasteHelper.stdin?.write("exit\n");
+      if (preSpawnedPasteHelper.pid) process.kill(preSpawnedPasteHelper.pid, "SIGKILL");
+    } catch (e) {
+      // ignore
+    }
+    preSpawnedPasteHelper = null;
+  }
+
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
@@ -2456,6 +2511,18 @@ app.on("will-quit", () => {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
   }
+  
+  // Clean up pre-spawned paste helper
+  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+    try {
+      preSpawnedPasteHelper.stdin?.write("exit\n");
+      preSpawnedPasteHelper.kill("SIGKILL");
+    } catch (e) {
+      // ignore
+    }
+    preSpawnedPasteHelper = null;
+  }
+  
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
       p.kill("SIGKILL");
@@ -2496,23 +2563,7 @@ function startFnListener() {
     fnProc = null;
   }
 
-  const helperPath = app.isPackaged
-    ? path.join(
-        process.resourcesPath,
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      )
-    : path.join(
-        app.getAppPath(),
-        "native",
-        "bin",
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      );
+  const helperPath = getHelperPath();
 
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
@@ -2567,6 +2618,8 @@ function startFnListener() {
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
         } else if (trimmedLine === "down" || trimmedLine === "fn-down") {
+          // Pre-spawn paste helper when dictation starts to hide latency
+          preSpawnPasteHelper();
           targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up" || trimmedLine === "fn-up") {
           targetWindow?.webContents.send("ptt-up");

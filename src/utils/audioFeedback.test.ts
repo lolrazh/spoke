@@ -46,16 +46,15 @@ describe("utils/audioFeedback", () => {
     globalThis.Audio = origAudio;
   });
 
-  it("plays toggle sounds by default after small delays", async () => {
+  it("plays on immediately and off after small delay", async () => {
     const mod = await import("./audioFeedback");
     mod.playToggleOn();
     mod.playToggleOff();
 
-    // Advance less than off delay but more than on delay
-    vi.advanceTimersByTime(50);
+    // On plays immediately
     expect(plays).toEqual(["on.wav"]);
 
-    // Advance to trigger off
+    // Advance to trigger off (100ms)
     vi.advanceTimersByTime(100);
     expect(plays).toEqual(["on.wav", "off.wav"]);
   });
@@ -73,9 +72,7 @@ describe("utils/audioFeedback", () => {
   it("restarts the audio so repeated clicks do not overlap", async () => {
     const mod = await import("./audioFeedback");
     mod.playToggleOn();
-    vi.advanceTimersByTime(25);
     mod.playToggleOn();
-    vi.advanceTimersByTime(25);
     // First call pauses then plays, second call pauses then plays again
     expect(plays.length).toBe(2);
   });

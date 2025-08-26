@@ -73,4 +73,19 @@ if (existing) {
   mountReact(created);
 }
 
+// Signal main when UI is visually ready to reveal (styles and fonts applied)
+;(async () => {
+  try {
+    if ((document as any).fonts?.ready) {
+      await (document as any).fonts.ready;
+    }
+  } catch {}
+  // Next frame to ensure first paint with styles is committed
+  requestAnimationFrame(() => {
+    try {
+      window.electron?.rendererReady?.();
+    } catch {}
+  });
+})();
+
 console.log("🎤 Sonic Flow is running");

@@ -776,7 +776,7 @@ const Onboarding: React.FC = () => {
     }
 
     devFlags.methods.devLog("PTT API available, setting up Fn key handlers");
-    const HOLD_MS = 180;
+    const HOLD_MS = 90;
     const handleDown = () => {
       devFlags.methods.devLog("Fn key pressed down");
       setFnKeyPressed(true); // Immediate visual feedback
@@ -804,8 +804,8 @@ const Onboarding: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const cleanupDown = window.ptt.onDown(debounce(handleDown, 50));
-    const cleanupUp = window.ptt.onUp(debounce(handleUp, 50));
+    const cleanupDown = window.ptt.onDown(debounce(handleDown, 25));
+    const cleanupUp = window.ptt.onUp(debounce(handleUp, 25));
     return () => {
       cleanupDown?.();
       cleanupUp?.();

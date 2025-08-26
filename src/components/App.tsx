@@ -506,7 +506,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
-    const HOLD_DURATION_MS = 110;
+    const HOLD_DURATION_MS = 80;
 
     const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);
@@ -566,8 +566,8 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const debouncedKeyDown = debounce(handleFunctionKeyDown, 50);
-    const debouncedKeyUp = debounce(handleFunctionKeyUp, 50);
+    const debouncedKeyDown = debounce(handleFunctionKeyDown, 25);
+    const debouncedKeyUp = debounce(handleFunctionKeyUp, 25);
 
     const cleanupOnDown = window.ptt.onDown(debouncedKeyDown);
     const cleanupOnUp = window.ptt.onUp(debouncedKeyUp);

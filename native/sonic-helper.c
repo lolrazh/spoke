@@ -585,11 +585,11 @@ static void cmdV(void) {
 
     // Post all four events with small delays between them.
     CGEventPost(kCGHIDEventTap, cmdDown);
-    usleep(10000); // 10ms
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, vDown);
-    usleep(10000);
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, vUp);
-    usleep(10000);
+    usleep(1000); // 1ms
     CGEventPost(kCGHIDEventTap, cmdUp);
 
     CFRelease(cmdDown);
@@ -612,6 +612,29 @@ int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
         requireAX();
         cmdV();
+        return 0;
+    }
+    
+    // New: daemon mode for pre-spawned paste helper
+    if (argc > 1 && strcmp(argv[1], "--mode=paste-daemon") == 0) {
+        requireAX();
+        puts("paste-daemon-ready");
+        fflush(stdout);
+        
+        // Wait for paste command via stdin
+        char command[1024];
+        while (fgets(command, sizeof(command), stdin)) {
+            // Trim newline
+            command[strcspn(command, "\n")] = 0;
+            
+            if (strcmp(command, "paste") == 0) {
+                cmdV();
+                puts("paste-done");
+                fflush(stdout);
+            } else if (strcmp(command, "exit") == 0) {
+                break;
+            }
+        }
         return 0;
     }
     // New: paste and verify with AX (reads/observes)
