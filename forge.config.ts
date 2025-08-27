@@ -24,8 +24,6 @@ const config: ForgeConfig = {
       "./public/assets/icon.png",
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
-      "./public/assets/dmg-background@1x.png",
-      "./public/assets/dmg-background@2x.png",
       "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing configuration for internal testing
