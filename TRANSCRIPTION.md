@@ -1,17 +1,17 @@
 # TRANSCRIPTION.md
 
-This file provides comprehensive documentation for Sonic Flow's transcription pipeline, covering real-time audio streaming, WebSocket protocols, server-side processing, and AI transcription using the Groq API.
+This file provides comprehensive documentation for Sonic Flow's transcription pipeline, covering real-time audio streaming, WebSocket protocols, server-side processing, and provider-agnostic AI transcription (Groq or Fireworks).
 
 ## Overview
 
-Sonic Flow implements a **real-time streaming transcription system** that captures audio from the user's microphone, processes it through a sophisticated audio pipeline, streams it via WebSocket to a Cloudflare Worker, converts it to WAV format, and transcribes it using Groq's Whisper models. The entire pipeline is optimized for low latency, reliability, and high-quality speech recognition.
+Sonic Flow implements a **real-time streaming transcription system** that captures audio from the user's microphone, processes it through a sophisticated audio pipeline, streams it via WebSocket to a Cloudflare Worker, converts it to WAV format, and transcribes it using Whisper models (Groq or Fireworks). The entire pipeline is optimized for low latency, reliability, and high-quality speech recognition.
 
 ### Key Features
 - **Real-time Audio Streaming** - 400ms PCM16 chunks streamed over WebSocket
 - **High-Quality Audio Processing** - Professional resampling and format conversion
 - **Reliable WebSocket Protocol** - Custom binary protocol with sequencing and reconnection
 - **Edge Computing** - Cloudflare Workers for global low-latency processing
-- **AI Transcription** - Groq Whisper models for fast, accurate speech-to-text
+- **AI Transcription** - Whisper models (Groq/Fireworks) for fast, accurate speech-to-text
 - **Robust Error Handling** - Network failures, audio issues, and transcription errors
 - **Performance Optimization** - Hardware acceleration and efficient buffering
 
@@ -31,8 +31,8 @@ Sonic Flow implements a **real-time streaming transcription system** that captur
                                                          │
                                                          ▼ (WebSocket)
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Groq Whisper │◀───│   WAV Encoding   │◀───│   Cloudflare    │
-│   API           │    │   (Server)       │    │   Worker        │
+│  STT (Whisper)  │◀───│   WAV Encoding   │◀───│   Cloudflare    │
+│  API            │    │   (Server)       │    │   Worker        │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
@@ -42,7 +42,7 @@ Sonic Flow implements a **real-time streaming transcription system** that captur
 - **AudioWorklet** (`pcm16-downsampler.worklet.js`) - Hardware-accelerated audio resampling
 - **WebSocket Protocol** - Custom binary frames with headers and sequencing
 - **Cloudflare Worker** (`worker/src/index.ts`) - Frame assembly, WAV conversion, API orchestration
-- **Groq Integration** - Whisper model transcription with timeout and error handling
+- **STT Integration** - Whisper model transcription (Groq or Fireworks) with timeout and error handling
 
 ## Client-Side Audio Pipeline
 
@@ -551,13 +551,8 @@ const pcm = concat(session.chunks, session.totalBytes);   // Combine all chunks
 const wav = wrapWav(pcm, session.rate, 1, 16);          // Convert to WAV
 
 try {
-  // Send to Groq API
-  const result = await groqTranscribe(
-    wav, 
-    GROQ_API_KEY, 
-    GROQ_STT_MODEL || 'whisper-large-v3-turbo',
-    abortSignal
-  );
+  // Send to STT provider (Fireworks or Groq)
+  const result = await /* sttTranscribe */ fetch(/* provider-specific URL and headers */);
 
   // Return transcription and close connection
   server.send(JSON.stringify({ 
@@ -652,7 +647,7 @@ const metricsRef = useRef<{
 }>(null);
 ```
 
-## Groq API Integration
+## STT API Integration (Groq / Fireworks)
 
 ### Transcription Request (`worker/src/index.ts`)
 
@@ -714,9 +709,17 @@ async function groqTranscribe(
 
 #### Environment Variables
 ```bash
-# Cloudflare Worker secrets
-GROQ_API_KEY=gsk_... # Required: Groq API key
-GROQ_STT_MODEL=whisper-large-v3-turbo # Optional: model override
+# Cloudflare Worker env (set via dashboard)
+STT_PROVIDER=fireworks                # or 'groq'
+
+# Fireworks (pre-recorded transcription)
+FIREWORKS_API_KEY=fwk_...
+FIREWORKS_BASE_URL=https://audio-turbo.us-virginia-1.direct.fireworks.ai
+FIREWORKS_MODEL=whisper-v3-turbo
+
+# Groq (rollback / alt provider)
+GROQ_API_KEY=gsk_...
+GROQ_STT_MODEL=whisper-large-v3-turbo
 ```
 
 ### Response Processing

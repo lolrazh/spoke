@@ -759,10 +759,11 @@ export function useTranscription(
                           const sum = (pr > 0 ? pr : 0) + (drain > 0 ? drain : 0);
                           return sum > 0 ? Math.round(sum) : null;
                         })();
-                        const sttMs =
-                          worker?.groq?.totalMs != null
-                            ? Math.round(worker.groq.totalMs)
-                            : statusToFinalRecvMs;
+                        const sttMs = (() => {
+                          const total =
+                            (worker as any)?.stt?.totalMs ?? (worker as any)?.groq?.totalMs;
+                          return total != null ? Math.round(total) : statusToFinalRecvMs;
+                        })();
                         // Compute deliver latency without relying on cross-host clock sync:
                         // estimate = (finalRecv - statusRecv) - sttMs
                         const deliverMs =

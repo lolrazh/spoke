@@ -29,13 +29,15 @@ Captured in `worker/src/index.ts` and returned in the `final` message under `met
 - Session: `wsAcceptAt`, `startedAt`, `processingStartAt`, `frames`, `bytes`, `seqGaps`.
 - Arrival spread: `firstArrivalMs`, `lastArrivalMs`, `firstToLastArrivalMs`.
 - Assembly: `assembleMs` for PCM→WAV.
-- Groq HTTP:
+- STT HTTP (provider-agnostic):
   - `startAt`, `headersAt`, `bodyDoneAt`
   - `ttfbMs` = time-to-first-byte (headers) from request start
   - `bodyMs` = headers→body parse duration
-  - `totalMs` = full Groq request (start→body)
+  - `totalMs` = end-to-end for the STT HTTP request
 
-Note: Cloudflare Workers do not expose TLS handshake separately from `fetch`; `ttfbMs` therefore bundles DNS/TCP/TLS + Groq server processing until headers.
+Notes:
+- Cloudflare Workers do not expose TLS handshake separately from `fetch`; `ttfbMs` therefore bundles DNS/TCP/TLS + provider server processing until headers.
+- For compatibility, we also include a legacy `metrics.worker.groq.*` mirror of the same values; the renderer prefers `metrics.worker.stt.*`.
 
 ## Unified timeline log
 
@@ -55,5 +57,4 @@ Use `traceId` to correlate with Worker logs if needed.
 ## Next steps and deeper visibility
 
 - If you need timings from the native hotkey -> renderer IPC boundary, add timestamps around the `ptt-down`/`ptt-up` emission in `src/main.ts` and include them in the IPC payload for correlation.
-- If you need transport-level breakdown for Groq beyond TTFB/body, use external observability (e.g., reverse proxy logs) or Groq-side dashboards.
-
+- If you need transport-level breakdown beyond TTFB/body, use external observability (e.g., reverse proxy logs) or provider-side dashboards.
