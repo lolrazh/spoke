@@ -649,6 +649,16 @@ export function useTranscription(
                 }
                 if (window.devFlags?.devConsoleLogs)
                   console.info("[SF] Transcribe processing started");
+              } else if (msg.type === "llm_status" && msg.state === "llm_processing") {
+                if (window.devFlags?.devConsoleLogs)
+                  console.info("[SF] LLM post-process started");
+              } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
+                // Progressive UI update only; paste remains on final
+                setText((prev) => {
+                  const next = (prev || "") + msg.delta;
+                  try { window.transcript?.update(next); } catch {}
+                  return next;
+                });
               } else if (msg.type === "final") {
                 if (!settled) {
                   settled = true;

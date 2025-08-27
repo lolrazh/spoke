@@ -22,6 +22,13 @@ export type ServerStatusMessage = {
   serverTs: number;
 };
 
+export type ServerLlmStatusMessage = {
+  type: 'llm_status';
+  state: 'llm_processing';
+  traceId?: string;
+  serverTs: number;
+};
+
 export type ServerFinalMessage = {
   type: 'final';
   text: string;
@@ -34,10 +41,18 @@ export type ServerErrorMessage = {
   body: string;
 };
 
+export type ServerLlmDeltaMessage = {
+  type: 'llm_delta';
+  delta: string;
+  traceId?: string;
+};
+
 export type ServerMessage =
   | ServerStatusMessage
   | ServerFinalMessage
-  | ServerErrorMessage;
+  | ServerErrorMessage
+  | ServerLlmStatusMessage
+  | ServerLlmDeltaMessage;
 
 export function parseClientMessage(msg: unknown): ClientMessage | null {
   if (!msg || typeof msg !== 'object') return null;
@@ -55,4 +70,3 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
   if (t === 'cancel') return { type: 'cancel' };
   return null;
 }
-
