@@ -125,6 +125,8 @@ app.get("/ws", (c) => {
           let groqStart = 0;
           let groqHeaders = 0;
           let groqBodyDone = 0;
+          let onExternalAbort: (() => void) | null = null;
+          let timeoutId: NodeJS.Timeout | null = null;
           try {
             if (GROQ_API_KEY) {
               // Allow canceling if the client disconnects while STT is running
@@ -132,8 +134,8 @@ app.get("/ws", (c) => {
               sttAbort = new AbortController();
               groqStart = Date.now();
               const controller = new AbortController();
-              const onExternalAbort = () => controller.abort();
-              const timeoutId = setTimeout(() => controller.abort(), 25000);
+              onExternalAbort = () => controller.abort();
+              timeoutId = setTimeout(() => controller.abort(), 25000);
               if (sttAbort.signal.aborted) controller.abort();
               else sttAbort.signal.addEventListener("abort", onExternalAbort);
 
@@ -165,7 +167,7 @@ app.get("/ws", (c) => {
               const json = (await res.json()) as { text?: string };
               groqBodyDone = Date.now();
               finalText = json?.text ?? "";
-              clearTimeout(timeoutId);
+              if (timeoutId) clearTimeout(timeoutId);
               sttAbort.signal.removeEventListener("abort", onExternalAbort);
             } else {
               finalText = "";
@@ -173,9 +175,7 @@ app.get("/ws", (c) => {
           } catch (e: any) {
             try {
               // Best-effort cleanup for timeout composition
-              // @ts-ignore
-              if (typeof timeoutId !== "undefined") clearTimeout(timeoutId);
-              // @ts-ignore
+              if (timeoutId) clearTimeout(timeoutId);
               if (onExternalAbort)
                 sttAbort?.signal?.removeEventListener("abort", onExternalAbort);
             } catch {}
@@ -538,7 +538,7 @@ async function groqTranscribe(
     // OpenAI-compatible response shape: { text: string, ... }
     return json as { text: string };
   } catch (err: any) {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     if (externalSignal)
       externalSignal.removeEventListener("abort", onExternalAbort);
     if (err.name === "AbortError") {

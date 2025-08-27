@@ -751,12 +751,6 @@ export function useTranscription(
                               ? Math.round(finalRecv - client.pttDownMs)
                               : null;
 
-                        // Compute deliver latency without relying on cross-host clock sync:
-                        // estimate = (finalRecv - statusRecv) - sttMs
-                        const deliverMs =
-                          statusRecv != null && finalRecv != null && sttMs != null
-                            ? Math.max(0, Math.round(finalRecv - statusRecv - (sttMs || 0)))
-                            : null;
                         const captureMs = (() => {
                           const pr =
                             (m.postRollEndMs ?? 0) - (m.postRollStartMs ?? 0);
@@ -769,6 +763,12 @@ export function useTranscription(
                           worker?.groq?.totalMs != null
                             ? Math.round(worker.groq.totalMs)
                             : statusToFinalRecvMs;
+                        // Compute deliver latency without relying on cross-host clock sync:
+                        // estimate = (finalRecv - statusRecv) - sttMs
+                        const deliverMs =
+                          statusRecv != null && finalRecv != null && sttMs != null
+                            ? Math.max(0, Math.round(finalRecv - statusRecv - (sttMs || 0)))
+                            : null;
 
                         // Compact single-line breakdown
                         const breakdown = {
