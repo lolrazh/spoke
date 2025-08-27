@@ -1634,6 +1634,9 @@ app.whenReady().then(async () => {
             "http://localhost:8787",
             "ws://127.0.0.1:8787",
             "ws://localhost:8787",
+            // Vite dev server (HMR)
+            "http://localhost:*",
+            "ws://localhost:*",
           ]
         : []),
       "https://huggingface.co",
@@ -1650,7 +1653,8 @@ app.whenReady().then(async () => {
       "data:",
     ].join(" ");
 
-    const scriptSrc = `script-src 'self' 'unsafe-eval' ${isDev ? "'unsafe-inline'" : ""}`;
+    // Avoid 'unsafe-eval' to satisfy Electron security recommendations
+    const scriptSrc = `script-src 'self' ${isDev ? "'unsafe-inline'" : ""}`;
     const imgSrc = "img-src 'self' data:";
     const csp = [
       "default-src 'self'",
