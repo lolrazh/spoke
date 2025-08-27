@@ -7,8 +7,15 @@ import { safeClose, safeJson } from '../utils/ws';
 import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
+import { chatComplete } from '../services/llm/groq';
 
-type Bindings = { GROQ_API_KEY?: string };
+type Bindings = {
+  GROQ_API_KEY?: string;
+  ENABLE_LLM?: string; // '1' | 'true' to enable
+  LLM_STREAM?: string; // '1' | 'true' to stream deltas
+  LLM_MODEL?: string; // default gpt-oss-20b
+  LLM_REASONING?: string; // low|medium|high
+};
 
 export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
@@ -88,6 +95,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
           let finalText = '';
           let timings: { startAt: number; headersAt: number; bodyDoneAt: number } | null = null;
+          let llmText = '';
+          let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
           try {
             if (GROQ_API_KEY) {
               sttAbort?.abort();
@@ -95,6 +104,45 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               const res = await transcribeWav(wav, GROQ_API_KEY, { signal: sttAbort.signal });
               finalText = res.text;
               timings = res.timings;
+              // Optional LLM post-process
+              const enableLLM = (c.env.ENABLE_LLM ?? '1').toLowerCase() === '1' || (c.env.ENABLE_LLM ?? 'true').toLowerCase() === 'true';
+              if (enableLLM && finalText) {
+                // Notify client that LLM processing starts
+                try {
+                  server.send(
+                    JSON.stringify({
+                      type: 'llm_status',
+                      state: 'llm_processing',
+                      traceId: session.traceId,
+                      serverTs: Date.now(),
+                    }),
+                  );
+                } catch {}
+
+                const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
+                const model = c.env.LLM_MODEL || 'openai/gpt-oss-20b';
+                const reasoning = ((c.env.LLM_REASONING || 'medium').toLowerCase() as 'low' | 'medium' | 'high');
+
+                const llmRes = await chatComplete({
+                  apiKey: GROQ_API_KEY,
+                  model,
+                  reasoningEffort: reasoning,
+                  userContent: finalText,
+                  stream: streamLLM,
+                  signal: sttAbort.signal,
+                  onDelta: (delta) => {
+                    if (!socketClosed && streamLLM && delta) {
+                      try {
+                        server.send(
+                          JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                        );
+                      } catch {}
+                    }
+                  },
+                });
+                llmText = llmRes.text || '';
+                llmTimings = llmRes.timings;
+              }
             } else {
               finalText = '';
             }
@@ -141,12 +189,23 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       totalMs: timings.bodyDoneAt - timings.startAt,
                     }
                   : null,
+                llm: llmTimings
+                  ? {
+                      startAt: llmTimings.startAt,
+                      headersAt: llmTimings.headersAt,
+                      firstDeltaAt: llmTimings.firstDeltaAt ?? null,
+                      bodyDoneAt: llmTimings.bodyDoneAt,
+                      ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
+                      bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
+                      totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
+                    }
+                  : null,
                 finalSentAt: Date.now(),
               };
               server.send(
                 JSON.stringify({
                   type: 'final',
-                  text: finalText,
+                  text: llmText || finalText,
                   traceId: session.traceId,
                   metrics: { worker: workerMetrics },
                 }),
@@ -161,17 +220,21 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const sttTtfbMs = timings ? timings.headersAt - timings.startAt : null;
           const sttBodyMs = timings ? timings.bodyDoneAt - timings.headersAt : null;
           const sttTotalMs = timings ? timings.bodyDoneAt - timings.startAt : null;
+          const llmTtfbMs = llmTimings ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt : null;
+          const llmBodyMs = llmTimings ? llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt) : null;
+          const llmTotalMs = llmTimings ? llmTimings.bodyDoneAt - llmTimings.startAt : null;
           const finalizationMs = t1 - t0;
           const overheadMs =
             sttTotalMs != null
-              ? Math.max(0, finalizationMs - assembleMs - sttTotalMs)
+              ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
           logSession(connLog.info, 'final', session, {
             assembleMs,
             stt: { ttfbMs: sttTtfbMs, bodyMs: sttBodyMs, totalMs: sttTotalMs },
+            llm: { ttfbMs: llmTtfbMs, bodyMs: llmBodyMs, totalMs: llmTotalMs },
             finalizationMs,
             overheadMs,
-            textLen: finalText.length,
+            textLen: (llmText || finalText).length,
           });
           session = createEmptySession();
           sessionActive = false;
@@ -247,4 +310,3 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
   return new Response(null, { status: 101, webSocket: client });
 }
-

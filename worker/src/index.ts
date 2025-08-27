@@ -3,6 +3,10 @@ import { wsRoute } from './handlers/ws';
 
 type Bindings = {
   GROQ_API_KEY?: string;
+  ENABLE_LLM?: string;
+  LLM_STREAM?: string;
+  LLM_MODEL?: string;
+  LLM_REASONING?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
