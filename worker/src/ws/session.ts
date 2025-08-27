@@ -1,0 +1,47 @@
+export type AudioSession = ReturnType<typeof createEmptySession>;
+
+export function createEmptySession() {
+  return {
+    version: 2,
+    format: 'pcm16le' as 'pcm16le',
+    rate: 16000,
+    startedAt: Date.now(),
+    frames: 0,
+    chunks: [] as Uint8Array[],
+    totalBytes: 0,
+    lastSeq: null as number | null,
+    seqGaps: 0,
+    firstArrivalMs: null as number | null,
+    lastArrivalMs: null as number | null,
+    canceled: false,
+    traceId: undefined as string | undefined,
+    wsAcceptAt: undefined as number | undefined,
+    processingStartAt: undefined as number | undefined,
+  };
+}
+
+export function logSession(
+  log: (msg: string, ctx?: Record<string, unknown>) => void,
+  tag: string,
+  s: AudioSession,
+  extra?: Record<string, unknown>,
+) {
+  try {
+    const info = {
+      tag,
+      traceId: (s as any).traceId ?? null,
+      frames: s.frames,
+      bytesKB: Number((s.totalBytes / 1024).toFixed(2)),
+      seqGaps: s.seqGaps,
+      firstToLastArrivalMs:
+        s.firstArrivalMs && s.lastArrivalMs
+          ? s.lastArrivalMs - s.firstArrivalMs
+          : null,
+      ...extra,
+    };
+    log('session', info);
+  } catch (error) {
+    log('logSession error', { error: String(error) });
+  }
+}
+
