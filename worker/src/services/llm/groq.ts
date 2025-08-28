@@ -25,7 +25,7 @@ export type ChatCompleteOptions = {
 export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatResult> {
   const {
     apiKey,
-    model = 'openai/gpt-oss-20b',
+    model = 'openai/gpt-oss-120b',
     reasoningEffort,
     systemPrompt =
       'You are a fast editor for ASR output. Preserve meaning, fix punctuation and casing, split into readable sentences, and keep names/terms intact. Do not summarize.',

@@ -121,7 +121,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 } catch {}
 
                 const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
-                const model = c.env.LLM_MODEL || 'openai/gpt-oss-20b';
+                const model = c.env.LLM_MODEL || 'openai/gpt-oss-120b';
                 const reasoning = ((c.env.LLM_REASONING || 'medium').toLowerCase() as 'low' | 'medium' | 'high');
 
                 const llmRes = await chatComplete({
