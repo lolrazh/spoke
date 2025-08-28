@@ -430,8 +430,9 @@ export function useTranscription(
           audio: {
             sampleRate: MICROPHONE_PREFERRED_RATE,
             channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
           },
         };
 
@@ -447,6 +448,33 @@ export function useTranscription(
         );
         streamRef.current =
           await navigator.mediaDevices.getUserMedia(constraints);
+
+        // Log actual audio track settings that were applied
+        const audioTracks = streamRef.current.getAudioTracks();
+        if (audioTracks.length > 0) {
+          const track = audioTracks[0];
+          const settings = track.getSettings();
+          const capabilities = track.getCapabilities?.() || {};
+          
+          console.log("[useTranscription] Actual audio track settings:", {
+            sampleRate: settings.sampleRate,
+            channelCount: settings.channelCount,
+            echoCancellation: settings.echoCancellation,
+            noiseSuppression: settings.noiseSuppression,
+            autoGainControl: settings.autoGainControl,
+            deviceId: settings.deviceId,
+            groupId: settings.groupId,
+          });
+          
+          console.log("[useTranscription] Audio track capabilities:", {
+            sampleRate: capabilities.sampleRate,
+            channelCount: capabilities.channelCount,
+            echoCancellation: capabilities.echoCancellation,
+            noiseSuppression: capabilities.noiseSuppression,
+            autoGainControl: capabilities.autoGainControl,
+          });
+        }
+        
         setReady(true);
         setError(null);
         console.log("[useTranscription] Microphone stream opened successfully");
