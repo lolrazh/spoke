@@ -12,7 +12,6 @@
     "enabled": true,
   },
   "routes": [{ "pattern": "api.sonicflow.app", "custom_domain": true }],
-  "placement": { "mode": "smart" },
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
@@ -20,7 +19,7 @@
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
    */
-  // "placement": { "mode": "smart" }
+  "placement": { "mode": "smart" },
   /**
    * Bindings
    * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
@@ -31,7 +30,7 @@
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    */
-  // "vars": { "MY_VARIABLE": "production_value" }
+  "vars": { "SENTRY_DSN": "f71ef10f01a756f1829d16a32d38ce12@o4509875043565568", "SENTRY_ENVIRONMENT": "production" }
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
