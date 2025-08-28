@@ -8,6 +8,7 @@ import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
 import { chatComplete } from '../services/llm/groq';
+import { DEFAULT_LLM_SYSTEM_PROMPT } from '../services/llm/prompt';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -127,6 +128,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   apiKey: GROQ_API_KEY,
                   model,
                   reasoningEffort: reasoning,
+                  systemPrompt: DEFAULT_LLM_SYSTEM_PROMPT,
                   userContent: finalText,
                   stream: streamLLM,
                   signal: sttAbort.signal,
