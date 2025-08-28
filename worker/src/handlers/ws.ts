@@ -120,16 +120,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 'processing.assemble_ms': assembleMs,
               },
             }, async (sessionSpan) => {
-              // Set trace context so console logs correlate with this span
-              Sentry.configureScope((scope) => {
-                scope.setTag('session.trace_id', session.traceId);
-                scope.setContext('session', {
-                  traceId: session.traceId,
-                  clientIP: clientIP,
-                  frames: session.frames,
-                  totalBytes: session.totalBytes,
-                });
-              });
+              // Add session context directly to the span using setAttribute
+              sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               
               if (GROQ_API_KEY) {
                 sttAbort?.abort();
@@ -295,6 +287,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
+          // Use regular logger for now - Sentry context logger is within the span
           logSession(connLog.info, 'final', session, {
             assembleMs,
             stt: { ttfbMs: sttTtfbMs, bodyMs: sttBodyMs, totalMs: sttTotalMs },
