@@ -103,17 +103,34 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           try {
             await Sentry.startSpan({
               op: 'transcription.session',
-              name: 'Audio Transcription Session',
+              name: `Audio Transcription Session ${session.traceId}`,
               attributes: {
-                'session.id': session.traceId,
+                'session.trace_id': session.traceId,
                 'client.ip': clientIP,
                 'audio.frames': session.frames,
                 'audio.total_bytes': session.totalBytes,
+                'audio.bytes_kb': Number((session.totalBytes / 1024).toFixed(2)),
                 'audio.sample_rate': session.rate,
                 'audio.format': session.format,
+                'audio.seq_gaps': session.seqGaps,
+                'audio.first_to_last_arrival_ms': 
+                  session.firstArrivalMs && session.lastArrivalMs
+                    ? session.lastArrivalMs - session.firstArrivalMs
+                    : null,
                 'processing.assemble_ms': assembleMs,
               },
             }, async (sessionSpan) => {
+              // Set trace context so console logs correlate with this span
+              Sentry.configureScope((scope) => {
+                scope.setTag('session.trace_id', session.traceId);
+                scope.setContext('session', {
+                  traceId: session.traceId,
+                  clientIP: clientIP,
+                  frames: session.frames,
+                  totalBytes: session.totalBytes,
+                });
+              });
+              
               if (GROQ_API_KEY) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
@@ -162,17 +179,35 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   llmTimings = llmRes.timings;
                 }
                 
-                // Set final session attributes
+                // Set final session attributes with all timing data  
                 sessionSpan.setAttribute('stt.text_length', finalText.length);
                 sessionSpan.setAttribute('stt.success', true);
+                if (timings) {
+                  sessionSpan.setAttribute('stt.ttfb_ms', timings.headersAt - timings.startAt);
+                  sessionSpan.setAttribute('stt.body_ms', timings.bodyDoneAt - timings.headersAt);
+                  sessionSpan.setAttribute('stt.total_ms', timings.bodyDoneAt - timings.startAt);
+                }
+                
                 if (llmText) {
                   sessionSpan.setAttribute('llm.text_length', llmText.length);
                   sessionSpan.setAttribute('llm.enabled', true);
                   sessionSpan.setAttribute('llm.success', true);
+                  if (llmTimings) {
+                    sessionSpan.setAttribute('llm.ttfb_ms', (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt);
+                    sessionSpan.setAttribute('llm.body_ms', llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt));
+                    sessionSpan.setAttribute('llm.total_ms', llmTimings.bodyDoneAt - llmTimings.startAt);
+                  }
                 } else {
                   sessionSpan.setAttribute('llm.enabled', enableLLM);
                 }
+                
+                // Add overall session timing
+                const finalizationMs = Date.now() - t0;
+                const overheadMs = Math.max(0, finalizationMs - assembleMs - (timings ? (timings.bodyDoneAt - timings.startAt) : 0) - (llmTimings ? (llmTimings.bodyDoneAt - llmTimings.startAt) : 0));
+                sessionSpan.setAttribute('session.finalization_ms', finalizationMs);
+                sessionSpan.setAttribute('session.overhead_ms', overheadMs);
                 sessionSpan.setAttribute('session.final_text', llmText || finalText);
+                sessionSpan.setAttribute('session.final_text_length', (llmText || finalText).length);
               } else {
                 finalText = '';
                 sessionSpan.setAttribute('groq.api_key_missing', true);

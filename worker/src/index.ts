@@ -31,6 +31,13 @@ export default Sentry.withSentry(
       release: versionId,
       sendDefaultPii: true,
       tracesSampleRate: env.SENTRY_ENVIRONMENT === 'production' ? 0.1 : 1.0,
+      integrations: [
+        // Connect your structured console logs to Sentry
+        Sentry.consoleLoggingIntegration({ 
+          levels: ["info", "warn", "error"] 
+        }),
+      ],
+      enableLogs: true,
     };
   },
   app
