@@ -30,7 +30,7 @@
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    */
-  "vars": { "SENTRY_DSN": "f71ef10f01a756f1829d16a32d38ce12@o4509875043565568", "SENTRY_ENVIRONMENT": "production" }
+  "vars": { "SENTRY_DSN": "https://f71ef10f01a756f1829d16a32d38ce12@o4509875043565568.ingest.us.sentry.io/4509922651144192", "SENTRY_ENVIRONMENT": "production" }
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/

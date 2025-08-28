@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import * as Sentry from '@sentry/cloudflare';
 import { parseClientMessage } from '../types/messages';
 import { getClientIP } from '../utils/ip';
 import { trackConnection, releaseConnection } from '../utils/connLimit';
@@ -98,56 +99,85 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let timings: { startAt: number; headersAt: number; bodyDoneAt: number } | null = null;
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
+          
           try {
-            if (GROQ_API_KEY) {
-              sttAbort?.abort();
-              sttAbort = new AbortController();
-              const res = await transcribeWav(wav, GROQ_API_KEY, { signal: sttAbort.signal });
-              finalText = res.text;
-              timings = res.timings;
-              // Optional LLM post-process
-              const enableLLM = (c.env.ENABLE_LLM ?? '1').toLowerCase() === '1' || (c.env.ENABLE_LLM ?? 'true').toLowerCase() === 'true';
-              if (enableLLM && finalText) {
-                // Notify client that LLM processing starts
-                try {
-                  server.send(
-                    JSON.stringify({
-                      type: 'llm_status',
-                      state: 'llm_processing',
-                      traceId: session.traceId,
-                      serverTs: Date.now(),
-                    }),
-                  );
-                } catch {}
+            await Sentry.startSpan({
+              op: 'transcription.session',
+              name: 'Audio Transcription Session',
+              attributes: {
+                'session.id': session.traceId,
+                'client.ip': clientIP,
+                'audio.frames': session.frames,
+                'audio.total_bytes': session.totalBytes,
+                'audio.sample_rate': session.rate,
+                'audio.format': session.format,
+                'processing.assemble_ms': assembleMs,
+              },
+            }, async (sessionSpan) => {
+              if (GROQ_API_KEY) {
+                sttAbort?.abort();
+                sttAbort = new AbortController();
+                const res = await transcribeWav(wav, GROQ_API_KEY, { signal: sttAbort.signal });
+                finalText = res.text;
+                timings = res.timings;
+                
+                // Optional LLM post-process
+                const enableLLM = (c.env.ENABLE_LLM ?? '1').toLowerCase() === '1' || (c.env.ENABLE_LLM ?? 'true').toLowerCase() === 'true';
+                if (enableLLM && finalText) {
+                  // Notify client that LLM processing starts
+                  try {
+                    server.send(
+                      JSON.stringify({
+                        type: 'llm_status',
+                        state: 'llm_processing',
+                        traceId: session.traceId,
+                        serverTs: Date.now(),
+                      }),
+                    );
+                  } catch {}
 
-                const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
-                const model = c.env.LLM_MODEL || 'openai/gpt-oss-120b';
-                const reasoning = ((c.env.LLM_REASONING || 'medium').toLowerCase() as 'low' | 'medium' | 'high');
+                  const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
+                  const model = c.env.LLM_MODEL || 'openai/gpt-oss-120b';
+                  const reasoning = ((c.env.LLM_REASONING || 'medium').toLowerCase() as 'low' | 'medium' | 'high');
 
-                const llmRes = await chatComplete({
-                  apiKey: GROQ_API_KEY,
-                  model,
-                  reasoningEffort: reasoning,
-                  systemPrompt: DEFAULT_LLM_SYSTEM_PROMPT,
-                  userContent: finalText,
-                  stream: streamLLM,
-                  signal: sttAbort.signal,
-                  onDelta: (delta) => {
-                    if (!socketClosed && streamLLM && delta) {
-                      try {
-                        server.send(
-                          JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                        );
-                      } catch {}
-                    }
-                  },
-                });
-                llmText = llmRes.text || '';
-                llmTimings = llmRes.timings;
+                  const llmRes = await chatComplete({
+                    apiKey: GROQ_API_KEY,
+                    model,
+                    reasoningEffort: reasoning,
+                    systemPrompt: DEFAULT_LLM_SYSTEM_PROMPT,
+                    userContent: finalText,
+                    stream: streamLLM,
+                    signal: sttAbort.signal,
+                    onDelta: (delta) => {
+                      if (!socketClosed && streamLLM && delta) {
+                        try {
+                          server.send(
+                            JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                          );
+                        } catch {}
+                      }
+                    },
+                  });
+                  llmText = llmRes.text || '';
+                  llmTimings = llmRes.timings;
+                }
+                
+                // Set final session attributes
+                sessionSpan.setAttribute('stt.text_length', finalText.length);
+                sessionSpan.setAttribute('stt.success', true);
+                if (llmText) {
+                  sessionSpan.setAttribute('llm.text_length', llmText.length);
+                  sessionSpan.setAttribute('llm.enabled', true);
+                  sessionSpan.setAttribute('llm.success', true);
+                } else {
+                  sessionSpan.setAttribute('llm.enabled', enableLLM);
+                }
+                sessionSpan.setAttribute('session.final_text', llmText || finalText);
+              } else {
+                finalText = '';
+                sessionSpan.setAttribute('groq.api_key_missing', true);
               }
-            } else {
-              finalText = '';
-            }
+            });
           } catch (e: any) {
             try { sttAbort?.abort(); } catch {}
             if (!socketClosed) {

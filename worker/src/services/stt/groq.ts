@@ -9,6 +9,8 @@ export type GroqTranscriptionResult = {
   timings: GroqTranscriptionTimings;
 };
 
+import * as Sentry from '@sentry/cloudflare';
+
 export async function transcribeWav(
   wav: Uint8Array,
   apiKey: string,
@@ -37,23 +39,53 @@ export async function transcribeWav(
   }
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: controller.signal,
+    return await Sentry.startSpan({
+      op: 'http.client',
+      name: 'POST https://api.groq.com/openai/v1/audio/transcriptions',
+      attributes: {
+        'http.request.method': 'POST',
+        'server.address': 'api.groq.com',
+        'server.port': 443,
+        'groq.model': model,
+        'groq.language': language,
+        'audio.size_bytes': wav.length,
+        'groq.timeout_ms': timeoutMs,
+      },
+    }, async (span) => {
+      const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+        signal: controller.signal,
+      });
+      const headersAt = Date.now();
+      
+      // Set HTTP response attributes
+      span.setAttribute('http.response.status_code', res.status);
+      span.setAttribute('http.response_content_length', 
+        Number(res.headers.get('content-length')) || 0);
+      span.setAttribute('groq.ttfb_ms', headersAt - startAt);
+      
+      if (!res.ok) {
+        const body = await res.text();
+        span.setAttribute('groq.error_body', body);
+        throw new Error(`GROQ STT error: ${res.status} ${body}`);
+      }
+      
+      const json = (await res.json()) as { text?: string };
+      const bodyDoneAt = Date.now();
+      
+      // Set transcription result attributes
+      const transcriptionText = json?.text ?? '';
+      span.setAttribute('groq.transcription_text', transcriptionText);
+      span.setAttribute('groq.total_duration_ms', bodyDoneAt - startAt);
+      span.setAttribute('groq.body_processing_ms', bodyDoneAt - headersAt);
+      
+      return {
+        text: transcriptionText,
+        timings: { startAt, headersAt, bodyDoneAt },
+      };
     });
-    const headersAt = Date.now();
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`GROQ STT error: ${res.status} ${body}`);
-    }
-    const json = (await res.json()) as { text?: string };
-    const bodyDoneAt = Date.now();
-    return {
-      text: json?.text ?? '',
-      timings: { startAt, headersAt, bodyDoneAt },
-    };
   } catch (err) {
     throw err;
   } finally {
