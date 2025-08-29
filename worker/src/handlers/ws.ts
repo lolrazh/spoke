@@ -150,7 +150,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
                   const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
                   const model = c.env.LLM_MODEL || 'openai/gpt-oss-20b';
-                  const reasoning = ((c.env.LLM_REASONING || 'medium').toLowerCase() as 'low' | 'medium' | 'high');
+                  const reasoning = ((c.env.LLM_REASONING || 'low').toLowerCase() as 'low' | 'medium' | 'high');
 
                   const llmRes = await chatComplete({
                     apiKey: GROQ_API_KEY,
