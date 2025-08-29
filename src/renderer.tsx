@@ -17,6 +17,8 @@ Sentry.init({
   environment:
     import.meta.env.VITE_SENTRY_ENVIRONMENT ||
     (import.meta.env.DEV ? "dev" : "prod"),
+  // Enable performance tracing (tune in prod via env)
+  tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
   beforeSend(event) {
     try {
       if (event.request?.url) {

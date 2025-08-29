@@ -64,6 +64,8 @@ Sentry.init({
   environment:
     VITE_ENV?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
   release: app.getVersion(),
+  // Enable performance tracing (tune in prod)
+  tracesSampleRate: (VITE_ENV?.DEV || !app.isPackaged) ? 1.0 : 0.1,
   beforeSend(event) {
     try {
       if (event.request?.url) {

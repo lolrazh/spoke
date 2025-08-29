@@ -38,11 +38,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   let socketClosed = false;
   let sttAbort: AbortController | null = null;
   let sessionActive = false;
+  let finalSent = false;
 
   const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
 
   server.accept();
   connLog.info('[WS] accepted');
+  try { Sentry.logger.info('ws.accepted', { ip: clientIP }); } catch {}
 
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
@@ -63,6 +65,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.format = parsed.format ?? 'pcm16le';
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
+          try { Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }); } catch {}
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -287,15 +290,67 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
-          // Use regular logger for now - Sentry context logger is within the span
-          logSession(connLog.info, 'final', session, {
-            assembleMs,
-            stt: { ttfbMs: sttTtfbMs, bodyMs: sttBodyMs, totalMs: sttTotalMs },
-            llm: { ttfbMs: llmTtfbMs, bodyMs: llmBodyMs, totalMs: llmTotalMs },
-            finalizationMs,
-            overheadMs,
-            textLen: (llmText || finalText).length,
-          });
+          // Compose a single session_summary (server-only) and attach to Sentry logs/span
+          try {
+            const wsAccept = session.wsAcceptAt ?? null;
+            const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
+            const pipeline = llmTotalMs != null ? 'stt+llm' : 'stt';
+            const summary = {
+              event: 'transcription.session_summary',
+              id: session.traceId ?? null,
+              pipeline,
+              durations: {
+                wsAcceptToFinalMs,
+                assembleMs,
+                sttMs: sttTotalMs,
+                llmMs: llmTotalMs,
+                serverProcessingMs: (sttTotalMs ?? 0) + (llmTotalMs ?? 0),
+                overheadMs,
+                e2eMs: null,
+                captureMs: null,
+                deliverMs: null,
+                pasteMs: null,
+              },
+              traffic: {
+                frames: session.frames,
+                bytesKB: Number((session.totalBytes / 1024).toFixed(2)),
+                seqGaps: session.seqGaps,
+                firstToLastArrivalMs:
+                  session.firstArrivalMs && session.lastArrivalMs
+                    ? session.lastArrivalMs - session.firstArrivalMs
+                    : null,
+              },
+              result: { textLen: (llmText || finalText).length },
+              ws: { closeCode: 1000, closeReason: 'done' },
+              env: {},
+              containsClientMetrics: false,
+            } as const;
+            // Log as single-line JSON
+            try { console.log(JSON.stringify(summary)); } catch {}
+            // Also send to Sentry logs for Logs product and enrich span
+            try {
+              Sentry.logger.info('session.summary', { 'session.trace_id': session.traceId ?? '', ...summary });
+            } catch {}
+            // Enrich the Sentry span (we are still inside the span callback)
+            await Sentry.startSpan({
+              op: 'transcription.session_summary',
+              name: `Session Summary ${session.traceId ?? ''}`,
+              attributes: { 'session.trace_id': session.traceId ?? '' },
+            }, async (span) => {
+              span.setAttribute('pipeline', pipeline);
+              span.setAttribute('dur.wsAcceptToFinalMs', wsAcceptToFinalMs ?? 0);
+              span.setAttribute('dur.assembleMs', assembleMs);
+              if (sttTotalMs != null) span.setAttribute('dur.sttMs', sttTotalMs);
+              if (llmTotalMs != null) span.setAttribute('dur.llmMs', llmTotalMs);
+              span.setAttribute('dur.serverProcessingMs', (sttTotalMs ?? 0) + (llmTotalMs ?? 0));
+              span.setAttribute('dur.overheadMs', overheadMs);
+              span.setAttribute('traffic.frames', session.frames);
+              span.setAttribute('traffic.bytesKB', Number((session.totalBytes / 1024).toFixed(2)));
+              span.setAttribute('traffic.seqGaps', session.seqGaps);
+              span.setAttribute('result.text_len', (llmText || finalText).length);
+            });
+          } catch {}
+          finalSent = true;
           session = createEmptySession();
           sessionActive = false;
         } else if (parsed.type === 'cancel') {
@@ -344,10 +399,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   });
 
   server.addEventListener('close', (evt) => {
-    logSession(connLog.info, 'ws_close', session, {
-      code: (evt as any)?.code || 'unknown',
-      reason: (evt as any)?.reason || 'unknown',
-    });
+    const code = (evt as any)?.code || 1000;
+    const reason = (evt as any)?.reason || 'unknown';
+    // Only log ws_close when abnormal or no final was sent (to reduce noise)
+    if (!finalSent || code !== 1000) {
+      logSession(connLog.info, 'ws_close', session, {
+        code,
+        reason,
+      });
+      try { Sentry.logger.warn('session.ws_close', { 'session.trace_id': session.traceId ?? '', code, reason }); } catch {}
+    }
     socketClosed = true;
     try { sttAbort?.abort(); } catch {}
     sttAbort = null;

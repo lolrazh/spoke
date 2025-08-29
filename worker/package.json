@@ -9,7 +9,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@sentry/cloudflare": "^10.7.0",
+    "@sentry/cloudflare": "^10.8.0",
     "hono": "^4.6.20"
   },
   "devDependencies": {
