@@ -24,18 +24,21 @@ export type ChatCompleteOptions = {
 
 import * as Sentry from '@sentry/cloudflare';
 import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
+import { LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
+import { safeJson } from '../../utils/ws';
+import { safely } from '../../utils/safely';
 
 export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatResult> {
   const {
     apiKey,
-    model = 'openai/gpt-oss-20b',
+    model = LLM_DEFAULT_MODEL,
     reasoningEffort,
     // Default to shared system prompt, but allow override
     systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
     userContent,
     stream = false,
     onDelta,
-    timeoutMs = 25_000,
+    timeoutMs = LLM_DEFAULT_TIMEOUT_MS,
     signal,
   } = opts;
 
@@ -51,7 +54,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: 'POST https://api.groq.com/openai/v1/chat/completions',
+      name: `POST ${LLM_ENDPOINT}`,
       attributes: {
         'http.request.method': 'POST',
         'server.address': 'api.groq.com',
@@ -71,14 +74,14 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
           { role: 'user', content: userContent },
         ],
         stream,
-        temperature: 0.2,
+        temperature: LLM_DEFAULT_TEMPERATURE,
       };
       if (reasoningEffort) {
         // Groq uses top-level `reasoning_effort`
         body.reasoning_effort = reasoningEffort;
       }
 
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const res = await fetch(LLM_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -142,21 +145,16 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
               // end
               continue;
             }
-            try {
-              const obj = JSON.parse(data);
-              const choice = obj?.choices?.[0];
-              const delta = choice?.delta?.content ?? '';
-              if (delta) {
-                if (!firstDeltaAt) firstDeltaAt = Date.now();
-                out += delta;
-                if (onDelta) {
-                  try { onDelta(delta); } catch (e) {
-                    try { Sentry.logger.warn('llm.onDelta_error', { error: String(e) }); } catch {}
-                  }
-                }
+            const obj = safeJson<any>(data);
+            if (!obj) continue;
+            const choice = obj?.choices?.[0];
+            const delta = choice?.delta?.content ?? '';
+            if (delta) {
+              if (!firstDeltaAt) firstDeltaAt = Date.now();
+              out += delta;
+              if (onDelta) {
+                safely(() => onDelta(delta));
               }
-            } catch (e) {
-              // ignore parse errors for keep-alive or non-data lines
             }
           }
         }

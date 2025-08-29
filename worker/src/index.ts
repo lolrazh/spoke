@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import * as Sentry from '@sentry/cloudflare';
 import { wsRoute } from './handlers/ws';
+import { safely } from './utils/safely';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -86,9 +87,7 @@ app.post('/metrics/session', async (c) => {
     } as const;
 
     // Log one-line JSON summary
-    try {
-      console.log(JSON.stringify(summary));
-    } catch {}
+    safely(() => console.log(JSON.stringify(summary)));
 
     // Also record to Sentry for correlation
     await Sentry.startSpan({
@@ -113,9 +112,7 @@ app.post('/metrics/session', async (c) => {
 
 // Simple test endpoint to verify Sentry Logs ingestion
 app.get('/logs/test', (c) => {
-  try {
-    Sentry.logger.info('User triggered test log', { action: 'test_log', route: '/logs/test' });
-  } catch {}
+  safely(() => Sentry.logger.info('User triggered test log', { action: 'test_log', route: '/logs/test' }));
   return c.json({ ok: true });
 });
 

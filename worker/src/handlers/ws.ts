@@ -10,6 +10,8 @@ import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
 import { chatComplete } from '../services/llm/groq';
 import { DEFAULT_LLM_SYSTEM_PROMPT } from '../services/llm/prompt';
+import { LLM_DEFAULT_MODEL } from '../config';
+import { safely } from '../utils/safely';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -44,7 +46,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
   server.accept();
   connLog.info('[WS] accepted');
-  try { Sentry.logger.info('ws.accepted', { ip: clientIP }); } catch {}
+  safely(() => Sentry.logger.info('ws.accepted', { ip: clientIP }));
 
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
@@ -65,12 +67,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.format = parsed.format ?? 'pcm16le';
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
-          try { Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }); } catch {}
+          safely(() => Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }));
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
           if (!socketClosed) {
-            try {
+            const ok = safely(() =>
               server.send(
                 JSON.stringify({
                   type: 'status',
@@ -78,10 +80,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   traceId: session.traceId,
                   serverTs: Date.now(),
                 }),
-              );
-            } catch (error) {
-              connLog.error('[WS] status send failed', { error: String(error) });
-            }
+              ),
+            );
+            if (!ok) connLog.error('[WS] status send failed');
           }
 
           if (session.canceled || session.totalBytes === 0) {
@@ -136,8 +137,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 // Optional LLM post-process
                 const enableLLM = (c.env.ENABLE_LLM ?? '1').toLowerCase() === '1' || (c.env.ENABLE_LLM ?? 'true').toLowerCase() === 'true';
                 if (enableLLM && finalText) {
-                  // Notify client that LLM processing starts
-                  try {
+              // Notify client that LLM processing starts
+                  safely(() =>
                     server.send(
                       JSON.stringify({
                         type: 'llm_status',
@@ -145,11 +146,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         traceId: session.traceId,
                         serverTs: Date.now(),
                       }),
-                    );
-                  } catch {}
+                    ),
+                  );
 
                   const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
-                  const model = c.env.LLM_MODEL || 'openai/gpt-oss-20b';
+                  const model = c.env.LLM_MODEL || LLM_DEFAULT_MODEL;
                   const reasoning = ((c.env.LLM_REASONING || 'low').toLowerCase() as 'low' | 'medium' | 'high');
 
                   const llmRes = await chatComplete({
@@ -162,11 +163,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     signal: sttAbort.signal,
                     onDelta: (delta) => {
                       if (!socketClosed && streamLLM && delta) {
-                        try {
+                        safely(() =>
                           server.send(
                             JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                          );
-                        } catch {}
+                          ),
+                        );
                       }
                     },
                   });
@@ -209,13 +210,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               }
             });
           } catch (e: any) {
-            try { sttAbort?.abort(); } catch {}
+            safely(() => sttAbort?.abort());
             if (!socketClosed) {
-              try {
-                server.send(JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' }));
-              } catch (sendError) {
-                connLog.error('[WS] error send failed', { error: String(sendError) });
-              }
+              const ok = safely(() => server.send(
+                JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })
+              ));
+              if (!ok) connLog.error('[WS] error send failed');
               safeClose(server, 1011, 'stt error');
             }
             connLog.error('[WS] Transcription error', { error: String(e) });
@@ -326,11 +326,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               containsClientMetrics: false,
             } as const;
             // Log as single-line JSON
-            try { console.log(JSON.stringify(summary)); } catch {}
+            safely(() => console.log(JSON.stringify(summary)));
             // Also send to Sentry logs for Logs product and enrich span
-            try {
+            safely(() => {
               Sentry.logger.info('session.summary', { 'session.trace_id': session.traceId ?? '', ...summary });
-            } catch {}
+            });
             // Enrich the Sentry span (we are still inside the span callback)
             await Sentry.startSpan({
               op: 'transcription.session_summary',
@@ -349,7 +349,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               span.setAttribute('traffic.seqGaps', session.seqGaps);
               span.setAttribute('result.text_len', (llmText || finalText).length);
             });
-          } catch {}
+          } catch (err) {
+            connLog.error('[WS] session summary failed', { error: String(err) });
+          }
           finalSent = true;
           session = createEmptySession();
           sessionActive = false;
@@ -390,10 +392,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
       }
     } catch (e: any) {
       connLog.error('[WS] message error', { error: String(e) });
-      try {
+      safely(() => {
         server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
         safeClose(server, 1011, 'message processing error');
-      } catch {}
+      });
       session = createEmptySession();
     }
   });
@@ -407,10 +409,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         code,
         reason,
       });
-      try { Sentry.logger.warn('session.ws_close', { 'session.trace_id': session.traceId ?? '', code, reason }); } catch {}
+      safely(() => Sentry.logger.warn('session.ws_close', { 'session.trace_id': session.traceId ?? '', code, reason }));
     }
     socketClosed = true;
-    try { sttAbort?.abort(); } catch {}
+    safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();
     sessionActive = false;
@@ -421,7 +423,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('error', (evt) => {
     connLog.error('[WS] socket error', { error: String(evt) });
     socketClosed = true;
-    try { sttAbort?.abort(); } catch {}
+    safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();
     sessionActive = false;
