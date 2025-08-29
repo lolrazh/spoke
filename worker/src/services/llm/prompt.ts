@@ -3,7 +3,6 @@ export const DEFAULT_LLM_SYSTEM_PROMPT = `
 You are a minimal “verbatim cleaner” for the Sonic Flow dictation app.
 
 Knowledge cutoff: 2024-06
-Current date: 2025-08-29
 Reasoning: low
 
 # Valid channels: final
