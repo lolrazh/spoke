@@ -1,4 +1,4 @@
-# Instrumentation & Timelines
+# Sonic Flow App - Instrumentation & Timelines - docs/INSTRUMENTATION.md
 
 This document explains the latency instrumentation added to the Sonic Flow transcription pipeline and how to interpret the unified timeline logs.
 

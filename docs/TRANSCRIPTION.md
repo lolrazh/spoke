@@ -1,4 +1,4 @@
-# TRANSCRIPTION.md
+# Sonic Flow App - Transcription Pipeline - docs/TRANSCRIPTION.md
 
 This document provides a comprehensive technical overview of Sonic Flow's real-time audio transcription pipeline, from microphone capture to text insertion.
 

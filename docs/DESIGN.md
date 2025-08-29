@@ -1,4 +1,4 @@
-# Sonic Flow Design System
+# Sonic Flow App - Design System - docs/DESIGN.md
 
 A comprehensive glassmorphic design system for Electron applications, optimized for native macOS vibrancy and accessibility.
 

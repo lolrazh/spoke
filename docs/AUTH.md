@@ -1,4 +1,4 @@
-# AUTH.md
+# Sonic Flow App - Auth Flow - docs/AUTH.md
 
 This file provides comprehensive documentation for Sonic Flow's authentication system, including OAuth flows, deep link handling, and environment-specific configurations.
 
