@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import * as Sentry from '@sentry/cloudflare';
 import { wsRoute } from './handlers/ws';
 
@@ -20,6 +21,9 @@ app.get('/', (c) => c.text('ok'));
 
 // WebSocket ingest: 500 ms PCM16@16k frames
 app.get('/ws', wsRoute);
+
+// CORS for metrics endpoint (dev: Vite on localhost:5173; prod: Electron file:// origin)
+app.use('/metrics/*', cors({ origin: '*' }));
 
 // Metrics ingest from client: merges client-side E2E timings into a single summary
 app.post('/metrics/session', async (c) => {
