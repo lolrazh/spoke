@@ -12,12 +12,29 @@ export interface Logger {
 
 function log(level: LogLevel, msg: string, ctx?: LogContext) {
   try {
-    const entry = { level, msg, ts: Date.now(), ...ctx };
-    // Prefer structured JSON to make logs machine-parseable
-    console.log(JSON.stringify(entry));
+    const entry = { level, msg, ts: Date.now(), ...ctx } as const;
+    // Prefer native console methods so Sentry logs integration classifies levels correctly
+    const line = JSON.stringify(entry);
+    switch (level) {
+      case 'debug':
+        (console.debug || console.log)(line);
+        break;
+      case 'info':
+        (console.info || console.log)(line);
+        break;
+      case 'warn':
+        (console.warn || console.log)(line);
+        break;
+      case 'error':
+        (console.error || console.log)(line);
+        break;
+      default:
+        console.log(line);
+    }
   } catch (e) {
     // Fallback
-    console.log(`[${level}] ${msg}`, ctx);
+    const fn = (level === 'error' && console.error) || (level === 'warn' && console.warn) || console.log;
+    fn(`[${level}] ${msg} ${ctx ? JSON.stringify(ctx) : ''}`);
   }
 }
 
@@ -31,4 +48,3 @@ export function createLogger(base?: LogContext): Logger {
     with: (ctx) => createLogger(bind(ctx)),
   };
 }
-

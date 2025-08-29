@@ -111,6 +111,14 @@ app.post('/metrics/session', async (c) => {
   }
 });
 
+// Simple test endpoint to verify Sentry Logs ingestion
+app.get('/logs/test', (c) => {
+  try {
+    Sentry.logger.info('User triggered test log', { action: 'test_log', route: '/logs/test' });
+  } catch {}
+  return c.json({ ok: true });
+});
+
 export default Sentry.withSentry(
   (env: Bindings) => {
     const { id: versionId } = env.CF_VERSION_METADATA || { id: 'unknown' };
@@ -122,9 +130,9 @@ export default Sentry.withSentry(
       sendDefaultPii: true,
       tracesSampleRate: env.SENTRY_ENVIRONMENT === 'production' ? 0.1 : 1.0,
       integrations: [
-        // Connect your structured console logs to Sentry
+        // Connect your console logs to Sentry Logs
         Sentry.consoleLoggingIntegration({ 
-          levels: ["info", "warn", "error"] 
+          levels: ["log", "info", "warn", "error", "debug"]
         }),
       ],
       enableLogs: true,

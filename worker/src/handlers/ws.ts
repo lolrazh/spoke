@@ -44,6 +44,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
   server.accept();
   connLog.info('[WS] accepted');
+  try { Sentry.logger.info('ws.accepted', { ip: clientIP }); } catch {}
 
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
@@ -64,6 +65,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.format = parsed.format ?? 'pcm16le';
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
+          try { Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }); } catch {}
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -288,7 +290,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
-          // Compose a single session_summary (server-only) and attach to Sentry span via event
+          // Compose a single session_summary (server-only) and attach to Sentry logs/span
           try {
             const wsAccept = session.wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
@@ -325,7 +327,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             } as const;
             // Log as single-line JSON
             try { console.log(JSON.stringify(summary)); } catch {}
-            // Also enrich the Sentry span (we are still inside the span callback)
+            // Also send to Sentry logs for Logs product and enrich span
+            try {
+              Sentry.logger.info('session.summary', { 'session.trace_id': session.traceId ?? '', ...summary });
+            } catch {}
+            // Enrich the Sentry span (we are still inside the span callback)
             await Sentry.startSpan({
               op: 'transcription.session_summary',
               name: `Session Summary ${session.traceId ?? ''}`,
@@ -401,6 +407,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         code,
         reason,
       });
+      try { Sentry.logger.warn('session.ws_close', { 'session.trace_id': session.traceId ?? '', code, reason }); } catch {}
     }
     socketClosed = true;
     try { sttAbort?.abort(); } catch {}
