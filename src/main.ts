@@ -106,6 +106,9 @@ let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
 let fnRestartTimeout: NodeJS.Timeout | null = null;
 let preSpawnedPasteHelper: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
+// Track readiness of the pre-spawned paste helper (daemon)
+let preSpawnReady: Promise<void> | null = null;
+let resolvePreSpawnReady: (() => void) | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
 let fnPermissionDialogShown = false;
@@ -423,6 +426,8 @@ function preSpawnPasteHelper() {
       // ignore
     }
     preSpawnedPasteHelper = null;
+    preSpawnReady = null;
+    resolvePreSpawnReady = null;
   }
 
   const helperPath = getHelperPath();
@@ -434,18 +439,44 @@ function preSpawnPasteHelper() {
   }
 
   console.log(`[PreSpawn] Starting paste helper daemon for dictation`);
-  
+
   // Spawn the helper in daemon mode - it will wait for paste commands via stdin
-  preSpawnedPasteHelper = spawn(helperPath, ["--mode=paste-daemon"], { 
-    stdio: "pipe", 
-    detached: false 
+  preSpawnedPasteHelper = spawn(helperPath, ["--mode=paste-daemon"], {
+    stdio: "pipe",
+    detached: false,
   });
-  
+
+  // Initialize readiness promise and resolve when daemon prints ready token
+  preSpawnReady = new Promise<void>((resolve) => {
+    resolvePreSpawnReady = resolve;
+  });
+
+  try {
+    preSpawnedPasteHelper.stdout.setEncoding("utf8");
+    const onData = (data: string | Buffer) => {
+      const out = data.toString().trim();
+      // Daemon emits this once ready to accept commands
+      if (out.includes("paste-daemon-ready") && resolvePreSpawnReady) {
+        resolvePreSpawnReady();
+        resolvePreSpawnReady = null;
+      }
+    };
+    preSpawnedPasteHelper.stdout.on("data", onData);
+    // Ensure listener is cleaned up on exit
+    preSpawnedPasteHelper.once("exit", () => {
+      try {
+        preSpawnedPasteHelper?.stdout?.off("data", onData as any);
+      } catch {}
+    });
+  } catch {}
+
   pasteHelpers.add(preSpawnedPasteHelper);
   preSpawnedPasteHelper.once("exit", () => {
     if (preSpawnedPasteHelper) {
       pasteHelpers.delete(preSpawnedPasteHelper);
       preSpawnedPasteHelper = null;
+      preSpawnReady = null;
+      resolvePreSpawnReady = null;
     }
   });
 }
@@ -1425,10 +1456,18 @@ ipcMain.handle(
         return { success: false, error: "Paste helper binary not found." };
       }
 
-      console.log(`[PasteHelper] Using pre-spawned paste helper`);
-
       // Use pre-spawned helper if available, otherwise fallback to direct spawn
       if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+        console.log(`[PasteHelper] Using pre-spawned paste helper`);
+        // Ensure the daemon is ready before sending commands (short timeout)
+        try {
+          if (preSpawnReady) {
+            await Promise.race([
+              preSpawnReady,
+              new Promise<void>((resolve) => setTimeout(resolve, 300)),
+            ]);
+          }
+        } catch {}
         // Send paste command to daemon
         preSpawnedPasteHelper.stdin?.write("paste\n");
         
@@ -1451,10 +1490,6 @@ ipcMain.handle(
             resolve();
           }, 1000);
         });
-        
-        // Clean up the helper after use
-        preSpawnedPasteHelper.stdin?.write("exit\n");
-        preSpawnedPasteHelper = null;
       } else {
         // Fallback: spawn new helper if pre-spawn failed
         console.log(`[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`);
@@ -2626,6 +2661,15 @@ function startFnListener() {
           preSpawnPasteHelper();
           targetWindow?.webContents.send("ptt-down");
         } else if (trimmedLine === "up" || trimmedLine === "fn-up") {
+          // End of dictation session: clean up pre-spawned paste helper
+          try {
+            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+              preSpawnedPasteHelper.stdin?.write("exit\n");
+            }
+          } catch {}
+          preSpawnedPasteHelper = null;
+          preSpawnReady = null;
+          resolvePreSpawnReady = null;
           targetWindow?.webContents.send("ptt-up");
         } else if (trimmedLine === "opt-down") {
           // Emit a cancel signal on Option press
