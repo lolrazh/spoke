@@ -64,6 +64,22 @@ export function getTranscribeWsUrl(): string {
   }
 }
 
+// Metrics endpoint for unified session summaries
+export function getMetricsUrl(): string {
+  try {
+    // Reuse the same base as the REST transcribe endpoint
+    const base = getTranscribeUrl();
+    const u = new URL(base);
+    // Point to /metrics/session on the same origin
+    u.pathname = '/metrics/session';
+    u.search = '';
+    return u.toString();
+  } catch {
+    // Fallback to production API domain
+    return 'https://api.sonicflow.app/metrics/session';
+  }
+}
+
 function normalize(input: string): string {
   try {
     const hasScheme = /^([a-z]+):\/\//i.test(input);

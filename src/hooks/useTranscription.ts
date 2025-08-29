@@ -7,7 +7,7 @@ import {
   WS_MAX_BUFFERED_BYTES,
   POST_ROLL_MS,
 } from "../config/audio";
-import { getTranscribeWsUrl } from "../config/api";
+import { getTranscribeWsUrl, getMetricsUrl } from "../config/api";
 import { encodeFrameHeader } from "../utils/pcm";
 
 // Define the hook's return type
@@ -826,6 +826,44 @@ export function useTranscription(
                         };
 
                         console.log("[SF] E2E", breakdown);
+                        // Post client metrics to the API for a unified summary
+                        try {
+                          const payload = {
+                            traceId: breakdown.traceId,
+                            client: {
+                              sessionId: m.sessionId,
+                              pttDownMs: m.pttDownMs,
+                              stopInvokedMs: m.stopInvokedMs ?? null,
+                              wsOpenMs: m.wsOpenMs ?? null,
+                              firstFrameOutMs: m.firstFrameOutMs ?? null,
+                              lastFrameOutMs: m.lastFrameOutMs ?? null,
+                              endSentMs: m.endSentMs ?? m.wsEndMs ?? null,
+                              statusRecvMs: m.sttStartMs ?? null,
+                              finalRecvMs: m.sttEndMs ?? null,
+                              pasteStartMs: m.pasteStartMs ?? null,
+                              pasteDoneMs: m.pasteDoneMs ?? null,
+                              framesProduced: m.framesProduced,
+                              bytesProduced: m.bytesProduced,
+                            },
+                            worker: msg?.metrics?.worker ?? null,
+                            derived: {
+                              e2eMs: breakdown.e2eMs,
+                              captureMs: breakdown.captureMs,
+                              deliverMs: breakdown.deliverMs,
+                              pasteMs: breakdown.pasteMs,
+                            },
+                            meta: {
+                              appVersion: (window as any)?.electronAppVersion || undefined,
+                              platform: navigator.userAgent,
+                            },
+                          };
+                          const url = getMetricsUrl();
+                          fetch(url, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload),
+                          }).catch(() => {});
+                        } catch {}
                       } catch {}
                     }
                   } catch {}
