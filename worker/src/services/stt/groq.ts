@@ -86,11 +86,8 @@ export async function transcribeWav(
         timings: { startAt, headersAt, bodyDoneAt },
       };
     });
-  } catch (err) {
-    throw err;
   } finally {
     clearTimeout(timeoutId);
     if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);
   }
 }
-

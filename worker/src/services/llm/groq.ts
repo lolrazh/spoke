@@ -23,14 +23,15 @@ export type ChatCompleteOptions = {
 };
 
 import * as Sentry from '@sentry/cloudflare';
+import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
 
 export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatResult> {
   const {
     apiKey,
     model = 'openai/gpt-oss-20b',
     reasoningEffort,
-    systemPrompt =
-      'You are a fast editor for ASR output. Preserve meaning, fix punctuation and casing, split into readable sentences, and keep names/terms intact. Do not summarize.',
+    // Default to shared system prompt, but allow override
+    systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
     userContent,
     stream = false,
     onDelta,
@@ -149,7 +150,9 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
                 if (!firstDeltaAt) firstDeltaAt = Date.now();
                 out += delta;
                 if (onDelta) {
-                  try { onDelta(delta); } catch {}
+                  try { onDelta(delta); } catch (e) {
+                    try { Sentry.logger.warn('llm.onDelta_error', { error: String(e) }); } catch {}
+                  }
                 }
               }
             } catch (e) {
