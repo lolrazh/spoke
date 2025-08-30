@@ -23,7 +23,7 @@ export type ChatCompleteOptions = {
 };
 
 import * as Sentry from '@sentry/cloudflare';
-import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
+import { DEFAULT_LLM_SYSTEM_PROMPT, buildLLMSystemPrompt } from './prompt';
 import { LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
 import { safeJson } from '../../utils/ws';
 import { safely } from '../../utils/safely';

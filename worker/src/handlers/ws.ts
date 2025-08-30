@@ -9,8 +9,9 @@ import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
 import { chatComplete } from '../services/llm/groq';
-import { DEFAULT_LLM_SYSTEM_PROMPT } from '../services/llm/prompt';
-import { LLM_DEFAULT_MODEL } from '../config';
+import { buildLLMSystemPrompt } from '../services/llm/prompt';
+import { buildSTTPrompt } from '../services/stt/prompt';
+import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
 
 type Bindings = {
@@ -48,6 +49,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   connLog.info('[WS] accepted');
   safely(() => Sentry.logger.info('ws.accepted', { ip: clientIP }));
 
+  // Track optional language from client
+  let clientLanguage: string | undefined = undefined;
+
   server.addEventListener('message', async (evt: MessageEvent) => {
     try {
       const data = evt.data;
@@ -67,6 +71,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.format = parsed.format ?? 'pcm16le';
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
+          clientLanguage = parsed.language;
           safely(() => Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }));
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
@@ -128,14 +133,21 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               
               if (GROQ_API_KEY) {
+                const runtime = getRuntimeConfig(c.env);
                 sttAbort?.abort();
                 sttAbort = new AbortController();
-                const res = await transcribeWav(wav, GROQ_API_KEY, { signal: sttAbort.signal });
+                const res = await transcribeWav(wav, GROQ_API_KEY, {
+                  signal: sttAbort.signal,
+                  model: runtime.stt.model,
+                  language: clientLanguage || runtime.stt.language,
+                  prompt: runtime.stt.prompt || buildSTTPrompt(),
+                  timeoutMs: runtime.stt.timeoutMs,
+                });
                 finalText = res.text;
                 timings = res.timings;
                 
                 // Optional LLM post-process
-                const enableLLM = (c.env.ENABLE_LLM ?? '1').toLowerCase() === '1' || (c.env.ENABLE_LLM ?? 'true').toLowerCase() === 'true';
+                const enableLLM = runtime.llm.enabled;
                 if (enableLLM && finalText) {
               // Notify client that LLM processing starts
                   safely(() =>
@@ -149,15 +161,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ),
                   );
 
-                  const streamLLM = (c.env.LLM_STREAM ?? '1').toLowerCase() === '1' || (c.env.LLM_STREAM ?? 'true').toLowerCase() === 'true';
-                  const model = c.env.LLM_MODEL || LLM_DEFAULT_MODEL;
-                  const reasoning = ((c.env.LLM_REASONING || 'low').toLowerCase() as 'low' | 'medium' | 'high');
+                  const streamLLM = runtime.llm.stream;
+                  const model = runtime.llm.model;
+                  const reasoning = runtime.llm.reasoning;
 
                   const llmRes = await chatComplete({
                     apiKey: GROQ_API_KEY,
                     model,
                     reasoningEffort: reasoning,
-                    systemPrompt: DEFAULT_LLM_SYSTEM_PROMPT,
+                    systemPrompt: buildLLMSystemPrompt({ reasoning, model }),
                     userContent: finalText,
                     stream: streamLLM,
                     signal: sttAbort.signal,

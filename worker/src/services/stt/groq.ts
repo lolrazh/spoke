@@ -10,13 +10,8 @@ export type GroqTranscriptionResult = {
 };
 
 import * as Sentry from '@sentry/cloudflare';
-import {
-  STT_ENDPOINT,
-  STT_DEFAULT_MODEL,
-  STT_DEFAULT_LANGUAGE,
-  STT_DEFAULT_TIMEOUT_MS,
-  STT_DEFAULT_VOCAB_PROMPT,
-} from '../../config';
+import { STT_ENDPOINT, STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../config';
+import { DEFAULT_STT_PROMPT } from './prompt';
 
 export async function transcribeWav(
   wav: Uint8Array,
@@ -27,7 +22,7 @@ export async function transcribeWav(
   const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
   const model = opts?.model ?? STT_DEFAULT_MODEL;
   const language = opts?.language ?? STT_DEFAULT_LANGUAGE;
-  const prompt = opts?.prompt ?? STT_DEFAULT_VOCAB_PROMPT;
+  const prompt = opts?.prompt ?? DEFAULT_STT_PROMPT;
 
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });

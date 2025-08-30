@@ -1,0 +1,70 @@
+import {
+  LLM_DEFAULT_MODEL,
+  LLM_DEFAULT_REASONING,
+  LLM_DEFAULT_STREAM,
+  LLM_DEFAULT_TEMPERATURE,
+  LLM_DEFAULT_TIMEOUT_MS,
+  STT_DEFAULT_LANGUAGE,
+  STT_DEFAULT_MODEL,
+  STT_DEFAULT_TIMEOUT_MS,
+} from '../config';
+
+type Boolish = string | undefined | null | boolean;
+
+function toBool(v: Boolish, fallback: boolean): boolean {
+  if (typeof v === 'boolean') return v;
+  const s = (v ?? '').toString().toLowerCase();
+  if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
+  if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
+  return fallback;
+}
+
+function toReasoning(v: string | undefined): 'low' | 'medium' | 'high' {
+  const s = (v ?? '').toLowerCase();
+  if (s === 'low' || s === 'medium' || s === 'high') return s;
+  return LLM_DEFAULT_REASONING;
+}
+
+export type RuntimeConfig = {
+  llm: {
+    enabled: boolean;
+    stream: boolean;
+    model: string;
+    reasoning: 'low' | 'medium' | 'high';
+    temperature: number;
+    timeoutMs: number;
+  };
+  stt: {
+    model: string;
+    language: string;
+    prompt?: string;
+    timeoutMs: number;
+  };
+};
+
+export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
+  // LLM
+  const enabled = toBool(env.ENABLE_LLM, true);
+  const stream = toBool(env.LLM_STREAM, LLM_DEFAULT_STREAM);
+  const model = env.LLM_MODEL || LLM_DEFAULT_MODEL;
+  const reasoning = toReasoning(env.LLM_REASONING || undefined);
+  const temperature = Number.isFinite(Number(env.LLM_TEMPERATURE))
+    ? Number(env.LLM_TEMPERATURE)
+    : LLM_DEFAULT_TEMPERATURE;
+  const llmTimeoutMs = Number.isFinite(Number(env.LLM_TIMEOUT_MS))
+    ? Number(env.LLM_TIMEOUT_MS)
+    : LLM_DEFAULT_TIMEOUT_MS;
+
+  // STT
+  const sttModel = env.STT_MODEL || STT_DEFAULT_MODEL;
+  const sttLanguage = env.STT_LANGUAGE || STT_DEFAULT_LANGUAGE;
+  const sttPrompt = env.STT_PROMPT || undefined;
+  const sttTimeoutMs = Number.isFinite(Number(env.STT_TIMEOUT_MS))
+    ? Number(env.STT_TIMEOUT_MS)
+    : STT_DEFAULT_TIMEOUT_MS;
+
+  return {
+    llm: { enabled, stream, model, reasoning, temperature, timeoutMs: llmTimeoutMs },
+    stt: { model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
+  };
+}

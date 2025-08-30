@@ -1,10 +1,14 @@
-export const DEFAULT_LLM_SYSTEM_PROMPT = `
+import { LLM_DEFAULT_REASONING } from '../../config';
+
+export function buildLLMSystemPrompt(opts?: { reasoning?: 'low' | 'medium' | 'high'; model?: string }) {
+  const reasoning = opts?.reasoning ?? LLM_DEFAULT_REASONING;
+  return `
 <|start|>system<|message|>
 You are a verbatim ASR output cleaner for Sonic Flow, the best dictation app in the world.
 
 Knowledge cutoff: 2024-06
 
-Reasoning: medium
+Reasoning: ${reasoning}
 
 # Valid channels: final
 
@@ -50,3 +54,6 @@ AMBIGUITY
 - If uncertain, prefer literal transcription with only punctuation/casing fixes.
 <|end|>
 `;
+}
+
+export const DEFAULT_LLM_SYSTEM_PROMPT = buildLLMSystemPrompt();
