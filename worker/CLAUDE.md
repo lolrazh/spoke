@@ -26,13 +26,14 @@ The worker implements a real-time audio transcription pipeline:
 2. **Binary Audio Protocol** - Receives PCM16@16kHz audio in 16-byte header frames
 3. **Audio Processing** (`src/audio/codec.ts`) - Concatenates chunks and wraps as WAV format
 4. **Speech-to-Text** (`src/services/stt/groq.ts`) - Transcribes via Groq's Whisper API
-5. **Session Management** (`src/ws/session.ts`) - Tracks connection state and metrics
+5. **LLM Post-Processing** (`src/services/llm/groq.ts`) - Optional AI enhancement using Groq chat models
+6. **Session Management** (`src/ws/session.ts`) - Tracks connection state and metrics
 
 ### Key Components
 
 #### WebSocket Protocol (`src/types/messages.ts`)
 - **Client Messages**: `start`, `end`, `cancel` with session configuration
-- **Server Messages**: `status` (processing), `final` (transcription result), `error`
+- **Server Messages**: `status` (processing), `llm_status` (LLM processing), `llm_delta` (streaming LLM output), `final` (transcription result), `error`
 - **Binary Frames**: 16-byte headers containing sequence, payload size, and timestamp
 
 #### Audio Processing (`src/audio/codec.ts`)
@@ -60,7 +61,11 @@ The worker implements a real-time audio transcription pipeline:
 ## Configuration
 
 ### Environment Variables
-- `GROQ_API_KEY` - Required for transcription (configured in Cloudflare dashboard)
+- `GROQ_API_KEY` - Required for transcription and LLM processing (configured in Cloudflare dashboard)
+- `ENABLE_LLM` - Enable LLM post-processing (default: '1', set to '0' to disable)
+- `LLM_STREAM` - Enable streaming LLM responses (default: '1', set to '0' to disable)
+- `LLM_MODEL` - LLM model to use (default: from config.ts)
+- `LLM_REASONING` - Reasoning effort level: 'low', 'medium', or 'high' (default: 'low')
 
 ### Wrangler Configuration (`wrangler.jsonc`)
 - Custom domain: `api.sonicflow.app`
@@ -79,8 +84,10 @@ The worker implements a real-time audio transcription pipeline:
 1. Client sends `start` message with session config
 2. Client streams binary audio frames with headers
 3. Client sends `end` to trigger transcription
-4. Worker processes audio and returns `final` result
-5. Connection closes with appropriate status code
+4. Worker transcribes audio via Groq STT API
+5. Optional: Worker processes transcription through LLM for enhancement
+6. Worker sends streaming LLM deltas (if enabled) and final result
+7. Connection closes with appropriate status code
 
 ### Error Recovery
 - Session state reset on errors
@@ -104,8 +111,9 @@ The worker implements a real-time audio transcription pipeline:
 ### Logging and Metrics
 - Structured logging with IP and trace ID context
 - Comprehensive session metrics (frames, bytes, timing)
-- Groq API timing breakdown (TTFB, body processing)
+- Groq API timing breakdown (TTFB, body processing) for both STT and LLM
 - Automatic session lifecycle logging
+- Sentry integration for error tracking and performance monitoring
 
 ### Connection Testing
 - Test connection limits by opening multiple WebSocket connections
@@ -124,3 +132,5 @@ The worker implements a real-time audio transcription pipeline:
 - Cloudflare Workers analytics for request metrics
 - Built-in observability for error tracking
 - Custom metrics via session logging for transcription performance
+- Session summary endpoint at `/metrics/session` for client-side E2E metrics correlation
+- Sentry logs integration with structured logging for debugging

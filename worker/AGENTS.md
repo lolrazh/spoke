@@ -1,37 +1,42 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- App code: `src/` — Electron `main.ts`, `preload.ts`, React entry `renderer.tsx`, plus `components/`, `hooks/`, `utils/`, `types/`.
-- Worker: `worker/` — Cloudflare Worker (API + WebSocket); run independently in dev.
-- Assets: `public/` (static files); styles in `src/index.css` (Tailwind).
-- Native: `native/` (C helper, build scripts). Build artifacts: `.vite/`, `out/`, `build/`.
-- Tests: colocated `*.{test,spec}.ts(x)` under `src/` and `worker/`.
+- `src/`: Electron app — `main.ts` (main process), `preload.ts` (secure bridges), `renderer.tsx`, plus `components/`, `hooks/`, `utils/`, `types/`.
+- `worker/`: Cloudflare Worker for API/WebSocket transcription. See `worker/README.md`.
+- `public/`: Static assets bundled by Vite. Styles in `src/index.css`.
+- `native/`: Native build helpers invoked on `postinstall`.
+- `scripts/`: Utility scripts (e.g., `scripts/kill-port.js`).
+- Build config: `forge.config.ts`, `vite.*.config.ts`, `vitest.config.ts`.
 
 ## Build, Test, and Development Commands
 - `npm run dev`: Start Electron + Vite with devtools.
-- `npm run dev:local` | `dev:prod`: Electron pointing to local or production WS.
-- `npm run dev:ws`: Run the Worker locally (same as `npm run dev --prefix worker`).
-- `npm run test` | `test:watch` | `coverage`: Run Vitest once, in watch mode, or with coverage.
-- `npm run lint`: ESLint over `.ts/.tsx` sources.
-- `npm run make` | `package`: Electron Forge build/package for macOS (arm64).
+- `npm run dev:local`: Start app pointing to local WS (`VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws`).
+- `npm run dev:ws`: Run the Worker locally (from `worker/`).
+- `npm run make` | `npm run package`: Build distributables via Electron Forge (macOS arm64).
+- `npm test` | `npm run test:watch`: Run Vitest once or in watch mode.
+- `npm run coverage`: Generate coverage (text + lcov).
+- `npm run lint`: ESLint TypeScript/React linting.
 
 ## Coding Style & Naming Conventions
-- Language: TypeScript (ES2020). Format with Prettier; lint with ESLint + `@typescript-eslint` + `import` rules.
-- Indentation: 2 spaces; semicolons on; single quotes (Prettier defaults).
-- Naming: Components `PascalCase` (`src/components/`), hooks `useX` (`src/hooks/`), utilities `camelCase` (`src/utils/`).
-- Imports: prefer `@/` alias for `src/` (see `vitest.config.ts`).
+- Language: TypeScript, React 18, Electron 35.
+- Formatting: Prettier — 2‑space indent, double quotes, semicolons.
+- Linting: ESLint with `@typescript-eslint` and `import` rules; keep zero warnings.
+- Names: Components `PascalCase` (e.g., `SettingsPanel.tsx`); hooks `useX`; utilities `camelCase`.
+- Imports: Prefer `@/` alias for `src/` (see `vitest.config.ts`).
 
 ## Testing Guidelines
-- Runner: Vitest with `happy-dom` for renderer tests.
-- Include: `src/**/*.{test,spec}.{ts,tsx}`, `worker/**/*.{test,spec}.ts`.
-- Setup: `src/test/setup.ts` (DOM matchers, shims). Output text + lcov.
-- Write unit tests for utils/hooks/components; mock `electron`, audio, and network. Name tests after the module (e.g., `pcm.test.ts`).
+- Runner: Vitest with `happy-dom` for renderer tests; global setup in `src/test/setup.ts`.
+- Locations: `src/**/*.{test,spec}.{ts,tsx}` and `worker/**/*.{test,spec}.ts`.
+- Aim for meaningful coverage; prioritize utils, hooks, and component behavior.
+- Common mocks: `electron`, audio, and network calls.
+- Examples: `npm test`, `npm run coverage`.
 
 ## Commit & Pull Request Guidelines
-- Commits: imperative and concise; scope when helpful (e.g., `fix: trim startup flicker`). Run `npm run lint` and `npm run test` before pushing.
-- PRs: include purpose, summary of changes, testing instructions, and screenshots for UI tweaks. Link issues and ensure CI passes (lint + tests + coverage).
+- Commits: Imperative mood; prefer Conventional Commits (`feat:`, `fix:`, `chore:`).
+- Before pushing: `npm run lint && npm test` should pass locally.
+- PRs: Include purpose, summary of changes, testing steps, and screenshots/GIFs for UI tweaks; link issues. Note relevant envs (e.g., `VITE_TRANSCRIBE_WS_URL`, `VITE_SENTRY_ENVIRONMENT`).
 
 ## Security & Configuration Tips
-- Env: use `.env` for local secrets; runtime via `VITE_*` and `SF_DEVTOOLS` (e.g., `VITE_TRANSCRIBE_WS_URL`, `VITE_SENTRY_ENVIRONMENT`).
-- Do not commit secrets or generated artifacts. For native changes, update `native/build-helper.sh` as needed.
-
+- Do not commit secrets or generated artifacts. Use `.env` (app) and `worker/.dev.vars` (worker) locally.
+- Sentry: Configure `VITE_SENTRY_DSN` and `VITE_SENTRY_ENVIRONMENT`.
+- Preload: Expose renderer bridges only via `preload.ts`; avoid direct Node APIs.
