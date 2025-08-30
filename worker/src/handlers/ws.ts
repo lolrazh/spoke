@@ -169,7 +169,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     apiKey: GROQ_API_KEY,
                     model,
                     reasoningEffort: reasoning,
-                    systemPrompt: buildLLMSystemPrompt({ reasoning, model }),
+                    systemPrompt: buildLLMSystemPrompt({ reasoning, model, currentDate: runtime.llm.currentDate }),
                     userContent: finalText,
                     stream: streamLLM,
                     signal: sttAbort.signal,

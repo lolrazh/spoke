@@ -32,6 +32,7 @@ Set these environment variables in `.dev.vars` or your Worker settings:
 - `ENABLE_LLM`: `true|false` to enable post-LLM cleanup (default: true).
 - `LLM_MODEL`: Chat model id (default from `src/config.ts`).
 - `LLM_REASONING`: `low|medium|high` reasoning effort (default: `medium`).
+- `LLM_CURRENT_DATE`: Optional current date string (YYYY-MM-DD) injected into the LLM system prompt; defaults to today's UTC date.
 - `LLM_STREAM`: `true|false` stream deltas to client (default: true).
 - `LLM_TIMEOUT_MS`: Request timeout override.
 - `STT_MODEL`: STT model id (default from `src/config.ts`).

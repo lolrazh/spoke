@@ -33,6 +33,7 @@ export type RuntimeConfig = {
     reasoning: 'low' | 'medium' | 'high';
     temperature: number;
     timeoutMs: number;
+    currentDate: string;
   };
   stt: {
     model: string;
@@ -54,6 +55,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   const llmTimeoutMs = Number.isFinite(Number(env.LLM_TIMEOUT_MS))
     ? Number(env.LLM_TIMEOUT_MS)
     : LLM_DEFAULT_TIMEOUT_MS;
+  const currentDate = (env.LLM_CURRENT_DATE || new Date().toISOString().slice(0, 10)) as string;
 
   // STT
   const sttModel = env.STT_MODEL || STT_DEFAULT_MODEL;
@@ -64,7 +66,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     : STT_DEFAULT_TIMEOUT_MS;
 
   return {
-    llm: { enabled, stream, model, reasoning, temperature, timeoutMs: llmTimeoutMs },
+    llm: { enabled, stream, model, reasoning, temperature, timeoutMs: llmTimeoutMs, currentDate },
     stt: { model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
   };
 }

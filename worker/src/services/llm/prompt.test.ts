@@ -8,5 +8,9 @@ describe('services/llm/prompt.buildLLMSystemPrompt', () => {
     expect(low).toContain('Reasoning: low');
     expect(high).toContain('Reasoning: high');
   });
-});
 
+  it('injects current date when provided', () => {
+    const p = buildLLMSystemPrompt({ reasoning: 'medium', currentDate: '2025-01-02' });
+    expect(p).toContain('Current date: 2025-01-02');
+  });
+});

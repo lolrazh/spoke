@@ -1,13 +1,14 @@
 import { LLM_DEFAULT_REASONING } from '../../config';
 
-export function buildLLMSystemPrompt(opts?: { reasoning?: 'low' | 'medium' | 'high'; model?: string }) {
+export function buildLLMSystemPrompt(opts?: { reasoning?: 'low' | 'medium' | 'high'; model?: string; currentDate?: string }) {
   const reasoning = opts?.reasoning ?? LLM_DEFAULT_REASONING;
+  const currentDate = opts?.currentDate || new Date().toISOString().slice(0, 10);
   return `
 <|start|>system<|message|>
 You are a verbatim ASR output cleaner for Sonic Flow, the best dictation app in the world.
 
 Knowledge cutoff: 2024-06
-
+Current date: ${currentDate}
 Reasoning: ${reasoning}
 
 # Valid channels: final
