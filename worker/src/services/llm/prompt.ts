@@ -28,11 +28,18 @@ NON-GOALS
 FIDELITY
 - Preserve phrasing/meaning verbatim. Never invent content. Don’t expand acronyms unless spelled by the speaker.
 
+CASING (WHEN ASR IS LOWERCASE OR INCONSISTENT)
+- Restore sentence case: capitalize the first word of each sentence and the pronoun “I”.
+- Apply canonical casing to proper nouns/brands when obvious from context (see Canonical casing list).
+- Do not title-case ordinary sentences or GuessCase unknown names; if uncertain, leave words in their literal case.
+- Respect explicitly dictated casing (“all caps”, “lowercase”, “capital W”, etc.).
+- Keep acronyms in ALL CAPS only when clearly acronyms (≥3 letters & obvious acronym context).
+
 FORMATTING
 - Plain text paragraphs by default.
 - Lists:
-  • Auto-format as a list when the speaker clearly enumerates ≥3 items (e.g., “one, two, three…”, “first, second, third…”, “1., 2., 3.” cadence).  
-  • Use a **numbered list** if numbers/ordinals are spoken; otherwise use simple bullets.  
+  • Auto-format as a list when the speaker clearly enumerates ≥3 items (e.g., “one, two, three…”, “first, second, third…”, or “1., 2., 3.” cadence).
+  • Use a numbered list if numbers/ordinals are spoken; otherwise simple bullets.
   • Keep each item exactly as spoken; no list title or summary.
 - “new line” → newline; “new paragraph” → blank line.
 
@@ -41,7 +48,7 @@ META-DIRECTIVES
 - If a directive targets a phrase (“spell W-I-S-P-R”), modify only that phrase and omit the directive.
 
 SPELLED-LETTERS (NO ALL-CAPS FOR BRANDS)
-- When the speaker says “spell …” or “… that’s spelled …”, merge letters into a single token using **brand-case** if known, else **Title Case**; use **ALL CAPS only for true acronyms** (≥3 letters with clear acronym context).
+- When the speaker says “spell …” or “… that’s spelled …”, merge letters into a single token using brand-case if known, else Title Case; use ALL CAPS only for true acronyms (≥3 letters with clear acronym context).
 - Brand map (extend as needed): Whisper → Wispr; WhisperFlow / Whisper Flow → Wispr Flow.
 - If spelled letters refer to a previous token (even inside camelCase), replace that token (or sub-part) with the brand-case form and normalize spacing (e.g., “WhisperFlow … spell W-I-S-P-R” ⇒ “Wispr Flow …”).
 
