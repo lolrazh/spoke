@@ -1,6 +1,5 @@
 import {
   LLM_DEFAULT_MODEL,
-  LLM_DEFAULT_REASONING,
   LLM_DEFAULT_STREAM,
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
@@ -19,18 +18,13 @@ function toBool(v: Boolish, fallback: boolean): boolean {
   return fallback;
 }
 
-function toReasoning(v: string | undefined): 'low' | 'medium' | 'high' {
-  const s = (v ?? '').toLowerCase();
-  if (s === 'low' || s === 'medium' || s === 'high') return s;
-  return LLM_DEFAULT_REASONING;
-}
+
 
 export type RuntimeConfig = {
   llm: {
     enabled: boolean;
     stream: boolean;
     model: string;
-    reasoning: 'low' | 'medium' | 'high';
     temperature: number;
     timeoutMs: number;
     currentDate: string;
@@ -48,7 +42,6 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   const enabled = toBool(env.ENABLE_LLM, true);
   const stream = toBool(env.LLM_STREAM, LLM_DEFAULT_STREAM);
   const model = env.LLM_MODEL || LLM_DEFAULT_MODEL;
-  const reasoning = toReasoning(env.LLM_REASONING || undefined);
   const temperature = Number.isFinite(Number(env.LLM_TEMPERATURE))
     ? Number(env.LLM_TEMPERATURE)
     : LLM_DEFAULT_TEMPERATURE;
@@ -66,7 +59,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     : STT_DEFAULT_TIMEOUT_MS;
 
   return {
-    llm: { enabled, stream, model, reasoning, temperature, timeoutMs: llmTimeoutMs, currentDate },
+    llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate },
     stt: { model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
   };
 }

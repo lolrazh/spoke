@@ -13,7 +13,6 @@ export type GroqChatResult = {
 export type ChatCompleteOptions = {
   apiKey: string;
   model?: string;
-  reasoningEffort?: 'low' | 'medium' | 'high';
   systemPrompt?: string;
   userContent: string;
   stream?: boolean;
@@ -32,7 +31,6 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
   const {
     apiKey,
     model = LLM_DEFAULT_MODEL,
-    reasoningEffort,
     // Default to shared system prompt, but allow override
     systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
     userContent,
@@ -60,7 +58,6 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
         'server.address': 'api.groq.com',
         'server.port': 443,
         'llm.model': model,
-        'llm.reasoning_effort': reasoningEffort || 'none',
         'llm.stream': stream,
         'llm.temperature': 0.2,
         'llm.user_content_length': userContent.length,
@@ -76,10 +73,6 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
         stream,
         temperature: LLM_DEFAULT_TEMPERATURE,
       };
-      if (reasoningEffort) {
-        // Groq uses top-level `reasoning_effort`
-        body.reasoning_effort = reasoningEffort;
-      }
 
       const res = await fetch(LLM_ENDPOINT, {
         method: 'POST',

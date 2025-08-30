@@ -163,13 +163,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
-                  const reasoning = runtime.llm.reasoning;
 
                   const llmRes = await chatComplete({
                     apiKey: GROQ_API_KEY,
                     model,
-                    reasoningEffort: reasoning,
-                    systemPrompt: buildLLMSystemPrompt({ reasoning, model, currentDate: runtime.llm.currentDate }),
+                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate }),
                     userContent: finalText,
                     stream: streamLLM,
                     signal: sttAbort.signal,

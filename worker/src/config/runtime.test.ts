@@ -6,17 +6,15 @@ describe('config/runtime.getRuntimeConfig', () => {
     const cfg = getRuntimeConfig({});
     expect(cfg.llm.enabled).toBe(true);
     expect(cfg.llm.stream).toBe(true);
-    expect(['low', 'medium', 'high']).toContain(cfg.llm.reasoning);
     expect(typeof cfg.llm.model).toBe('string');
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
   });
 
-  it('coerces booleans and reasoning values', () => {
-    const cfg = getRuntimeConfig({ ENABLE_LLM: '0', LLM_STREAM: 'false', LLM_REASONING: 'high' });
+  it('coerces booleans (reasoning removed)', () => {
+    const cfg = getRuntimeConfig({ ENABLE_LLM: '0', LLM_STREAM: 'false' });
     expect(cfg.llm.enabled).toBe(false);
     expect(cfg.llm.stream).toBe(false);
-    expect(cfg.llm.reasoning).toBe('high');
   });
 
   it('applies STT overrides', () => {
