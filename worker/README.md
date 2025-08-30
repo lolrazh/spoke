@@ -41,3 +41,26 @@ Set these environment variables in `.dev.vars` or your Worker settings:
 - `STT_TIMEOUT_MS`: STT request timeout override.
 
 See `src/config/runtime.ts` for parsing and defaults, and `src/services/*/prompt.ts` for prompt builders.
+
+### Runtime Config Loader
+- Use `getRuntimeConfig(env)` to read and normalize env values once per request.
+- LLM prompt: use `buildLLMSystemPrompt({ reasoning, model, currentDate })`.
+- STT prompt: use `buildSTTPrompt()` or pass `STT_PROMPT`.
+
+Example `.dev.vars` (add as needed):
+
+```
+# LLM
+# ENABLE_LLM=true
+# LLM_MODEL=openai/gpt-oss-20b
+# LLM_REASONING=medium
+# LLM_STREAM=true
+# LLM_CURRENT_DATE=2025-09-01
+# LLM_TIMEOUT_MS=25000
+
+# STT
+# STT_MODEL=whisper-large-v3
+# STT_LANGUAGE=en
+# STT_PROMPT=Your vocabulary includes: Sonic Flow, Sandheep...
+# STT_TIMEOUT_MS=25000
+```

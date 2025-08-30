@@ -61,11 +61,17 @@ The worker implements a real-time audio transcription pipeline:
 ## Configuration
 
 ### Environment Variables
-- `GROQ_API_KEY` - Required for transcription and LLM processing (configured in Cloudflare dashboard)
-- `ENABLE_LLM` - Enable LLM post-processing (default: '1', set to '0' to disable)
-- `LLM_STREAM` - Enable streaming LLM responses (default: '1', set to '0' to disable)
-- `LLM_MODEL` - LLM model to use (default: from config.ts)
-- `LLM_REASONING` - Reasoning effort level: 'low', 'medium', or 'high' (default: 'low')
+- `GROQ_API_KEY` — Required for STT and LLM (dashboard secret)
+- `ENABLE_LLM` — Enable post-LLM cleanup (`true|false`, default: true)
+- `LLM_STREAM` — Stream deltas to client (`true|false`, default: true)
+- `LLM_MODEL` — Chat model id (default from `src/config.ts`)
+- `LLM_REASONING` — `low|medium|high` (default: `medium`)
+- `LLM_CURRENT_DATE` — Optional ISO date (YYYY-MM-DD) inserted in system prompt; defaults to today (UTC)
+- `LLM_TIMEOUT_MS` — LLM request timeout override
+- `STT_MODEL` — STT model id (default from `src/config.ts`)
+- `STT_LANGUAGE` — Default language (client may override in `start`)
+- `STT_PROMPT` — Optional STT vocab/prompt override
+- `STT_TIMEOUT_MS` — STT request timeout override
 
 ### Wrangler Configuration (`wrangler.jsonc`)
 - Custom domain: `api.sonicflow.app`
@@ -85,7 +91,7 @@ The worker implements a real-time audio transcription pipeline:
 2. Client streams binary audio frames with headers
 3. Client sends `end` to trigger transcription
 4. Worker transcribes audio via Groq STT API
-5. Optional: Worker processes transcription through LLM for enhancement
+5. Optional: Worker processes transcription through LLM for enhancement using `buildLLMSystemPrompt({ reasoning, currentDate })`
 6. Worker sends streaming LLM deltas (if enabled) and final result
 7. Connection closes with appropriate status code
 
@@ -111,7 +117,7 @@ The worker implements a real-time audio transcription pipeline:
 ### Logging and Metrics
 - Structured logging with IP and trace ID context
 - Comprehensive session metrics (frames, bytes, timing)
-- Groq API timing breakdown (TTFB, body processing) for both STT and LLM
+- Groq API timing breakdown (TTFB, body processing) for both STT and LLM (Sentry spans unchanged by config refactors)
 - Automatic session lifecycle logging
 - Sentry integration for error tracking and performance monitoring
 
