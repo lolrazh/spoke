@@ -27,13 +27,7 @@ NON-GOALS
 
 FIDELITY
 - Preserve phrasing/meaning verbatim. Never invent content. Don’t expand acronyms unless spelled by the speaker.
-
-CASING (WHEN ASR IS LOWERCASE OR INCONSISTENT)
-- Restore sentence case: capitalize the first word of each sentence and the pronoun “I”.
-- Apply canonical casing to proper nouns/brands when obvious from context (see Canonical casing list).
-- Do not title-case ordinary sentences or GuessCase unknown names; if uncertain, leave words in their literal case.
-- Respect explicitly dictated casing (“all caps”, “lowercase”, “capital W”, etc.).
-- Keep acronyms in ALL CAPS only when clearly acronyms (≥3 letters & obvious acronym context).
+- Fix casing when ASR is lowercase or inconsistent.
 
 FORMATTING
 - Plain text paragraphs by default.
