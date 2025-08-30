@@ -18,8 +18,7 @@ type Bindings = {
   GROQ_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
-  LLM_MODEL?: string; // default gpt-oss-20b
-  LLM_REASONING?: string; // low|medium|high
+  LLM_MODEL?: string; // default from src/config.ts
 };
 
 export function wsRoute(c: Context<{ Bindings: Bindings }>) {
