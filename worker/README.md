@@ -23,3 +23,44 @@ This is an example project made to be used as a quick start into building OpenAP
 1. Run `wrangler dev` to start a local instance of the API.
 2. Open `http://localhost:8787/` in your browser to see the Swagger interface where you can try the endpoints.
 3. Changes made in the `src/` folder will automatically trigger the server to reload, you only need to refresh the Swagger interface.
+
+## Sonic Flow Worker Configuration
+
+Set these environment variables in `.dev.vars` or your Worker settings:
+
+- `GROQ_API_KEY`: API key for Groq.
+- `ENABLE_LLM`: `true|false` to enable post-LLM cleanup (default: true).
+- `LLM_MODEL`: Chat model id (default from `src/config.ts`).
+- `LLM_REASONING`: `low|medium|high` reasoning effort (default: `medium`).
+- `LLM_CURRENT_DATE`: Optional current date string (YYYY-MM-DD) injected into the LLM system prompt; defaults to today's UTC date.
+- `LLM_STREAM`: `true|false` stream deltas to client (default: true).
+- `LLM_TIMEOUT_MS`: Request timeout override.
+- `STT_MODEL`: STT model id (default from `src/config.ts`).
+- `STT_LANGUAGE`: Default language code (client may override on `start`).
+- `STT_PROMPT`: Optional STT vocab/prompt override.
+- `STT_TIMEOUT_MS`: STT request timeout override.
+
+See `src/config/runtime.ts` for parsing and defaults, and `src/services/*/prompt.ts` for prompt builders.
+
+### Runtime Config Loader
+- Use `getRuntimeConfig(env)` to read and normalize env values once per request.
+- LLM prompt: use `buildLLMSystemPrompt({ reasoning, model, currentDate })`.
+- STT prompt: use `buildSTTPrompt()` or pass `STT_PROMPT`.
+
+Example `.dev.vars` (add as needed):
+
+```
+# LLM
+# ENABLE_LLM=true
+# LLM_MODEL=openai/gpt-oss-20b
+# LLM_REASONING=medium
+# LLM_STREAM=true
+# LLM_CURRENT_DATE=2025-09-01
+# LLM_TIMEOUT_MS=25000
+
+# STT
+# STT_MODEL=whisper-large-v3
+# STT_LANGUAGE=en
+# STT_PROMPT=Your vocabulary includes: Sonic Flow, Sandheep...
+# STT_TIMEOUT_MS=25000
+```

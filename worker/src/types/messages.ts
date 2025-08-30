@@ -29,11 +29,47 @@ export type ServerLlmStatusMessage = {
   serverTs: number;
 };
 
+export type SttTimingsMetrics = {
+  startAt: number;
+  headersAt: number;
+  bodyDoneAt: number;
+  ttfbMs: number;
+  bodyMs: number;
+  totalMs: number;
+};
+
+export type LlmTimingsMetrics = {
+  startAt: number;
+  headersAt: number;
+  firstDeltaAt: number | null;
+  bodyDoneAt: number;
+  ttfbMs: number;
+  bodyMs: number;
+  totalMs: number;
+};
+
+export type WorkerMetrics = {
+  traceId?: string;
+  wsAcceptAt: number | null | undefined;
+  startedAt: number | null | undefined;
+  processingStartAt: number | null | undefined;
+  frames: number;
+  bytes: number;
+  seqGaps: number;
+  firstArrivalMs: number | null;
+  lastArrivalMs: number | null;
+  firstToLastArrivalMs: number | null;
+  assembleMs: number;
+  groq: SttTimingsMetrics | null;
+  llm: LlmTimingsMetrics | null;
+  finalSentAt: number;
+};
+
 export type ServerFinalMessage = {
   type: 'final';
   text: string;
   traceId?: string;
-  metrics?: any;
+  metrics?: { worker: WorkerMetrics };
 };
 
 export type ServerErrorMessage = {

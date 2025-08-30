@@ -10,6 +10,8 @@ export type GroqTranscriptionResult = {
 };
 
 import * as Sentry from '@sentry/cloudflare';
+import { STT_ENDPOINT, STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../config';
+import { DEFAULT_STT_PROMPT } from './prompt';
 
 export async function transcribeWav(
   wav: Uint8Array,
@@ -17,11 +19,10 @@ export async function transcribeWav(
   opts?: { timeoutMs?: number; signal?: AbortSignal; language?: string; prompt?: string; model?: string },
 ): Promise<GroqTranscriptionResult> {
   const startAt = Date.now();
-  const timeoutMs = opts?.timeoutMs ?? 25_000;
-  const model = opts?.model ?? 'whisper-large-v3';
-  const language = opts?.language ?? 'en';
-  const prompt = opts?.prompt ??
-    'Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite';
+  const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
+  const model = opts?.model ?? STT_DEFAULT_MODEL;
+  const language = opts?.language ?? STT_DEFAULT_LANGUAGE;
+  const prompt = opts?.prompt ?? DEFAULT_STT_PROMPT;
 
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
@@ -41,7 +42,7 @@ export async function transcribeWav(
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: 'POST https://api.groq.com/openai/v1/audio/transcriptions',
+      name: `POST ${STT_ENDPOINT}`,
       attributes: {
         'http.request.method': 'POST',
         'server.address': 'api.groq.com',
@@ -52,7 +53,7 @@ export async function transcribeWav(
         'groq.timeout_ms': timeoutMs,
       },
     }, async (span) => {
-      const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      const res = await fetch(STT_ENDPOINT, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
@@ -86,11 +87,8 @@ export async function transcribeWav(
         timings: { startAt, headersAt, bodyDoneAt },
       };
     });
-  } catch (err) {
-    throw err;
   } finally {
     clearTimeout(timeoutId);
     if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);
   }
 }
-
