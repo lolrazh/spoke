@@ -31,7 +31,6 @@ Set these environment variables in `.dev.vars` or your Worker settings:
 - `GROQ_API_KEY`: API key for Groq.
 - `ENABLE_LLM`: `true|false` to enable post-LLM cleanup (default: true).
 - `LLM_MODEL`: Chat model id (default from `src/config.ts`).
-- `LLM_REASONING`: `low|medium|high` reasoning effort (default: `medium`).
 - `LLM_CURRENT_DATE`: Optional current date string (YYYY-MM-DD) injected into the LLM system prompt; defaults to today's UTC date.
 - `LLM_STREAM`: `true|false` stream deltas to client (default: true).
 - `LLM_TIMEOUT_MS`: Request timeout override.
@@ -44,7 +43,7 @@ See `src/config/runtime.ts` for parsing and defaults, and `src/services/*/prompt
 
 ### Runtime Config Loader
 - Use `getRuntimeConfig(env)` to read and normalize env values once per request.
-- LLM prompt: use `buildLLMSystemPrompt({ reasoning, model, currentDate })`.
+- LLM prompt: use `buildLLMSystemPrompt({ model, currentDate })`.
 - STT prompt: use `buildSTTPrompt()` or pass `STT_PROMPT`.
 
 Example `.dev.vars` (add as needed):
@@ -52,8 +51,7 @@ Example `.dev.vars` (add as needed):
 ```
 # LLM
 # ENABLE_LLM=true
-# LLM_MODEL=openai/gpt-oss-20b
-# LLM_REASONING=medium
+# LLM_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 # LLM_STREAM=true
 # LLM_CURRENT_DATE=2025-09-01
 # LLM_TIMEOUT_MS=25000

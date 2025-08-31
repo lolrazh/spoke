@@ -340,8 +340,8 @@ The worker includes optional LLM enhancement of transcription results:
 ```typescript
 ENABLE_LLM: '1'                    // Enable post-processing
 LLM_STREAM: '1'                    // Stream progressive updates
-LLM_MODEL: 'openai/gpt-oss-120b'   // Model selection
-LLM_REASONING: 'medium'            // Reasoning effort level
+LLM_MODEL: 'meta-llama/llama-4-scout-17b-16e-instruct' // Model selection
+LLM_CURRENT_DATE: 'YYYY-MM-DD'     // Optional; defaults to today (UTC)
 ```
 
 #### Progressive Streaming
@@ -612,7 +612,7 @@ VITE_SENTRY_DSN=...                     # Error reporting
 GROQ_API_KEY=...                        # Required for transcription
 ENABLE_LLM=1                            # Enable post-processing
 LLM_STREAM=1                            # Stream progressive updates
-LLM_MODEL=openai/gpt-oss-120b           # LLM model selection
+LLM_MODEL=meta-llama/llama-4-scout-17b-16e-instruct  # LLM model selection
 ```
 
 ### Performance Tuning

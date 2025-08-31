@@ -2,10 +2,9 @@
 
 // LLM (Chat Completions)
 export const LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-export const LLM_DEFAULT_MODEL = 'openai/gpt-oss-20b';
+export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
-export const LLM_DEFAULT_REASONING: 'low' | 'medium' | 'high' = 'medium';
 export const LLM_DEFAULT_STREAM = true;
 
 // STT (Audio Transcriptions)

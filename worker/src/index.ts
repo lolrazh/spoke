@@ -9,7 +9,6 @@ type Bindings = {
   ENABLE_LLM?: string;
   LLM_STREAM?: string;
   LLM_MODEL?: string;
-  LLM_REASONING?: string;
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: any;

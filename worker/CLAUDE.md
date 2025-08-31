@@ -65,7 +65,6 @@ The worker implements a real-time audio transcription pipeline:
 - `ENABLE_LLM` — Enable post-LLM cleanup (`true|false`, default: true)
 - `LLM_STREAM` — Stream deltas to client (`true|false`, default: true)
 - `LLM_MODEL` — Chat model id (default from `src/config.ts`)
-- `LLM_REASONING` — `low|medium|high` (default: `medium`)
 - `LLM_CURRENT_DATE` — Optional ISO date (YYYY-MM-DD) inserted in system prompt; defaults to today (UTC)
 - `LLM_TIMEOUT_MS` — LLM request timeout override
 - `STT_MODEL` — STT model id (default from `src/config.ts`)
@@ -91,7 +90,7 @@ The worker implements a real-time audio transcription pipeline:
 2. Client streams binary audio frames with headers
 3. Client sends `end` to trigger transcription
 4. Worker transcribes audio via Groq STT API
-5. Optional: Worker processes transcription through LLM for enhancement using `buildLLMSystemPrompt({ reasoning, currentDate })`
+5. Optional: Worker processes transcription through LLM for enhancement using `buildLLMSystemPrompt({ model, currentDate })`
 6. Worker sends streaming LLM deltas (if enabled) and final result
 7. Connection closes with appropriate status code
 

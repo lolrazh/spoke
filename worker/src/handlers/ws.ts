@@ -18,8 +18,7 @@ type Bindings = {
   GROQ_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
-  LLM_MODEL?: string; // default gpt-oss-20b
-  LLM_REASONING?: string; // low|medium|high
+  LLM_MODEL?: string; // default from src/config.ts
 };
 
 export function wsRoute(c: Context<{ Bindings: Bindings }>) {
@@ -136,11 +135,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 const runtime = getRuntimeConfig(c.env);
                 sttAbort?.abort();
                 sttAbort = new AbortController();
+                const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
                 const res = await transcribeWav(wav, GROQ_API_KEY, {
                   signal: sttAbort.signal,
                   model: runtime.stt.model,
                   language: clientLanguage || runtime.stt.language,
-                  prompt: runtime.stt.prompt || buildSTTPrompt(),
+                  prompt: sttPrompt,
                   timeoutMs: runtime.stt.timeoutMs,
                 });
                 finalText = res.text;
@@ -163,15 +163,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
-                  const reasoning = runtime.llm.reasoning;
 
                   const llmRes = await chatComplete({
                     apiKey: GROQ_API_KEY,
                     model,
-                    reasoningEffort: reasoning,
-                    systemPrompt: buildLLMSystemPrompt({ reasoning, model, currentDate: runtime.llm.currentDate }),
+                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
                     userContent: finalText,
                     stream: streamLLM,
+                    temperature: runtime.llm.temperature,
                     signal: sttAbort.signal,
                     onDelta: (delta) => {
                       if (!socketClosed && streamLLM && delta) {
