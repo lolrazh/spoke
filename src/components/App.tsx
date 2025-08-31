@@ -236,13 +236,15 @@ const App: React.FC = () => {
             pollId = window.setInterval(async () => {
               if (skipAuth) return;
               try {
-                const u = await getCurrentUser();
-                if (!u) {
-                  // Mirror the sign-out UX if session is gone
+                if (!supabase) return; // No client available; skip this tick
+                const { data, error } = await supabase.auth.getUser();
+                // Only treat as signed-out when there is NO error and NO user
+                if (!error && !data?.user) {
                   try { latestTransRef.current?.cancel?.(); } catch {}
                   try { await window.electron?.showOnboarding?.(); } catch {}
                   try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
                 }
+                // If error: likely network issue — ignore and retain current UX
               } catch {}
             }, 60000);
           } catch {}
