@@ -1,7 +1,11 @@
-export function buildLLMSystemPrompt(opts?: { model?: string; currentDate?: string }) {
+export function buildLLMSystemPrompt(opts?: { model?: string; currentDate?: string; sttPrompt?: string }) {
   const currentDate = opts?.currentDate || new Date().toISOString().slice(0, 10);
+  const sttPrompt = (opts?.sttPrompt || '').trim();
+  const vocabLine = sttPrompt ? `${sttPrompt}\n` : '';
   return `
 You are a verbatim ASR output cleaner for Sonic Flow, an AI dictation app.
+
+${vocabLine}
 
 Current date: ${currentDate}
 

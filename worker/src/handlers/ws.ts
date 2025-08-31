@@ -135,11 +135,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 const runtime = getRuntimeConfig(c.env);
                 sttAbort?.abort();
                 sttAbort = new AbortController();
+                const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
                 const res = await transcribeWav(wav, GROQ_API_KEY, {
                   signal: sttAbort.signal,
                   model: runtime.stt.model,
                   language: clientLanguage || runtime.stt.language,
-                  prompt: runtime.stt.prompt || buildSTTPrompt(),
+                  prompt: sttPrompt,
                   timeoutMs: runtime.stt.timeoutMs,
                 });
                 finalText = res.text;
@@ -166,7 +167,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const llmRes = await chatComplete({
                     apiKey: GROQ_API_KEY,
                     model,
-                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate }),
+                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
                     userContent: finalText,
                     stream: streamLLM,
                     signal: sttAbort.signal,
