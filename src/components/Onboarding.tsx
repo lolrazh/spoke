@@ -11,6 +11,7 @@ import {
   getCurrentUser,
   getProfile,
   markOnboardingDone,
+  ensureProfileRow,
 } from "../lib/supabaseClient";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -256,6 +257,10 @@ const Onboarding: React.FC = () => {
       const user = await getCurrentUser();
       if (!user) return;
       try {
+        // Ensure a profile row exists for returning users (or first login on this device)
+        try {
+          await ensureProfileRow();
+        } catch {}
         const profile = await getProfile();
         if (profile?.onboarding_done) {
           try {
@@ -285,6 +290,10 @@ const Onboarding: React.FC = () => {
         return;
       }
       try {
+        // Ensure a profile row exists as soon as login completes
+        try {
+          await ensureProfileRow();
+        } catch {}
         const profile = await getProfile();
         if (profile?.onboarding_done) {
           try {

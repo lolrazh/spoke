@@ -289,3 +289,49 @@ export async function markOnboardingDone(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Ensure a profiles row exists for the current auth user.
+ * Returns { ok: true, existed: boolean } where existed indicates whether the row was already present.
+ */
+export async function ensureProfileRow(): Promise<
+  | { ok: true; existed: boolean }
+  | { ok: false; error: string }
+> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "Supabase not configured" };
+  const u = await getCurrentUser();
+  if (!u) return { ok: false, error: "NO_USER" };
+
+  // Check if a profile already exists
+  const existing = await getProfileDetailed();
+  if ((existing as any)?.ok === true) return { ok: true, existed: true };
+  if ((existing as any)?.error && (existing as any).error !== "NOT_FOUND") {
+    // Unexpected error; surface it but attempt an insert optimistically anyway
+    // Fall through to insert; if it conflicts, treat as existed.
+  }
+
+  const md = (u.user_metadata as UserMetadata) || {};
+  const displayName = md.name || (u.email ? u.email.split("@")[0] : null);
+  try {
+    const { error, status } = await supabase.from("profiles").insert({
+      id: u.id,
+      email: u.email,
+      display_name: displayName,
+      avatar_url: md.avatar_url || null,
+      onboarding_done: false,
+    } as any);
+    if (error) {
+      const msg = (error as any)?.message || String(error);
+      const code = (error as any)?.code;
+      // Treat unique/duplicate conflicts as "already existed"
+      if (status === 409 || code === "23505" || /duplicate/i.test(msg)) {
+        return { ok: true, existed: true };
+      }
+      return { ok: false, error: msg };
+    }
+    return { ok: true, existed: false };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
