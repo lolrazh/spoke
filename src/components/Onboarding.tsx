@@ -389,7 +389,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       window.electron?.setPttTarget?.("main");
-      window.electron?.expandPill?.(() => {});
+      window.electron?.expandPill?.(() => undefined);
     }
   }, [currentStep]);
 

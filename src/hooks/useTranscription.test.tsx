@@ -88,7 +88,6 @@ function renderUseTranscription(opts?: any) {
     current: null,
   };
   function Test() {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     const hook = useTranscription(opts);
     out.current = hook;
     return null;

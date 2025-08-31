@@ -76,7 +76,7 @@ if (existing) {
 }
 
 // Signal main when UI is visually ready to reveal (styles and fonts applied)
-;(async () => {
+void (async () => {
   try {
     if ((document as any).fonts?.ready) {
       await (document as any).fonts.ready;

@@ -117,7 +117,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
     usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
   const { schedule, cancel, cancelAll } = useIntervalManager();
-  const pollRefs = useRef<{}>({});
+  const pollRefs = useRef<Record<string, never>>({});
 
   // Initialize from main visibility state (source of truth)
   useEffect(() => {

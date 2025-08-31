@@ -4,6 +4,12 @@
     "es6": true,
     "node": true
   },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": { "jsx": true }
+  },
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/eslint-recommended",
@@ -12,5 +18,36 @@
     "plugin:import/electron",
     "plugin:import/typescript"
   ],
-  "parser": "@typescript-eslint/parser"
+  "rules": {
+    "no-empty": ["error", { "allowEmptyCatch": true }]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.{test,spec}.ts",
+        "**/*.{test,spec}.tsx",
+        "src/test/setup.ts"
+      ],
+      "rules": {
+        "@typescript-eslint/ban-ts-comment": "off",
+        "@typescript-eslint/ban-types": "off",
+        "@typescript-eslint/no-empty-function": "off",
+        "@typescript-eslint/no-explicit-any": "off",
+        "no-empty": "off",
+        "import/no-unresolved": "off"
+      }
+    },
+    {
+      "files": ["vitest.config.ts"],
+      "rules": {
+        "import/no-unresolved": "off"
+      }
+    },
+    {
+      "files": ["worker/**"],
+      "rules": {
+        "import/no-unresolved": "off"
+      }
+    }
+  ]
 }

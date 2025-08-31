@@ -29,8 +29,7 @@ const config: ForgeConfig = {
     // Code signing configuration for internal testing
     osxSign: {
       identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
-      // @ts-ignore
-      hardenedRuntime: true,
+      hardenedRuntime: true as any,
       signatureFlags: "runtime",
       entitlements: "./build/entitlements/main.plist",
       entitlementsInherit: "./build/entitlements/inherit.plist",
