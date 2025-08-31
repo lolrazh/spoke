@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { playToggleOn, playToggleOff } from "../utils/audioFeedback";
+import { playToggleOff } from "../utils/audioFeedback";
 import {
   MICROPHONE_PREFERRED_RATE,
   TARGET_SAMPLE_RATE,
@@ -520,8 +520,7 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording) return;
     if (processing) return; // Prevent starting while processing
-    // Play feedback immediately to reduce perceived latency
-    playToggleOn();
+    // Start cue moved to PTT/button handlers for immediacy
 
     if (!streamRef.current) {
       const ok = await openStreamForSelectedDevice();
