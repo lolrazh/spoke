@@ -14,6 +14,7 @@ import {
   markOnboardingDone,
   ensureProfileRow,
 } from "../lib/supabaseClient";
+import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -63,36 +64,32 @@ const Onboarding: React.FC = () => {
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [permissions, setPermissions] = useState({
-    microphone: false,
-    inputMonitoring: false,
-    accessibility: false,
-  });
-  // UI state per-permission for loading + success animation
-  const [ui, setUi] = useState({
-    microphone: { loading: false, justGranted: false },
-    inputMonitoring: { loading: false, justGranted: false },
-    accessibility: { loading: false, justGranted: false },
-  });
-  const [errors, setErrors] = useState({
-    microphone: false,
-    inputMonitoring: false,
-    accessibility: false,
-  });
+  // Permissions via shared hook (deduplicated across surfaces)
+  const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
+    ? {
+        checkPermissions: mockPermissions.checkPermissions,
+        checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
+        requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
+        askIM: mockPermissions.askIM,
+        requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
+        openSystemPreferences: mockPermissions.openSystemPreferences,
+      }
+    : undefined;
+  const {
+    permissions,
+    ui,
+    init: initPermissions,
+    requestMicrophone,
+    requestAccessibility,
+    requestInputMonitoring,
+    setPermissions,
+  } = usePermissions(mockProvider, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
   const [fnKeyPressed, setFnKeyPressed] = useState(false);
-  // Poll timers for system permissions (cleared on unmount)
-  const pollRefs = useRef<{
-    mic?: NodeJS.Timeout | null;
-    im?: NodeJS.Timeout | null;
-    ax?: NodeJS.Timeout | null;
-  }>({});
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Prevent duplicate deep-links for Accessibility
-  const axDeepLinkOpenedRef = useRef(false);
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -114,40 +111,15 @@ const Onboarding: React.FC = () => {
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
 
-  // Function to check permissions (with mock support)
-  const checkPermissions = async () => {
-    try {
-      devFlags.methods.devLog("Checking permissions...");
-
-      const [systemPerms, micPerms] = await Promise.all([
-        devFlags.mockPermissionStates
-          ? mockPermissions.checkPermissions()
-          : window.electron?.checkPermissions(),
-        devFlags.mockPermissionStates
-          ? mockPermissions.checkMicrophonePermission()
-          : window.electron?.checkMicrophonePermission(),
-      ]);
-
-      setIsDev(systemPerms?.isDev || devFlags.isDevelopment);
-      setPermissions({
-        microphone: micPerms?.granted || false,
-        inputMonitoring: !systemPerms?.needIM,
-        accessibility: !systemPerms?.needAX,
-      });
-
-      devFlags.methods.devLog("Permissions checked:", {
-        microphone: micPerms?.granted || false,
-        inputMonitoring: !systemPerms?.needIM,
-        accessibility: !systemPerms?.needAX,
-        mock: (systemPerms as any)?.mock || (micPerms as any)?.mock,
-      });
-    } catch (error) {
-      if (isDevelopment) console.error("Error checking permissions:", error);
-    }
-  };
+  // Initial permission check via shared hook
+  useEffect(() => {
+    initPermissions();
+    // Mirror previous debug mode flag
+    setIsDev(devFlags.isDevelopment);
+  }, []);
 
   useEffect(() => {
-    checkPermissions();
+    initPermissions();
 
     // FIX 13: Ensure DOM is fully ready before showing content
     const handleDOMContentLoaded = () => {
@@ -208,21 +180,9 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
-  // Helper function to clear all polling timers
-  const clearAllPolling = () => {
-    Object.values(pollRefs.current).forEach((timer) => {
-      if (timer) {
-        clearInterval(timer);
-      }
-    });
-    // Reset the refs to null
-    pollRefs.current = { mic: null, im: null, ax: null };
-  };
-
   // Clear any active polling timers on unmount
   useEffect(() => {
     return () => {
-      clearAllPolling();
       setFnKeyPressed(false); // Reset Fn key state
       isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
@@ -442,267 +402,18 @@ const Onboarding: React.FC = () => {
     return () => clearTimeout(id);
   }, [currentStep]);
 
-  // Permission handlers - now work within combined interface
-  const handleRequestMicrophone = async () => {
-    try {
-      devFlags.methods.devLog("Requesting microphone permission...");
-
-      const result = devFlags.mockPermissionStates
-        ? await mockPermissions.requestMicrophonePermission()
-        : await window.electron?.requestMicrophonePermission();
-
-      if (result?.success && result?.granted) {
-        setPermissions((prev) => ({ ...prev, microphone: true }));
-        setErrors((prev) => ({ ...prev, microphone: false }));
-        devFlags.methods.devLog("Microphone permission granted");
-        // Trigger success animation in-place where the button was
-        setUi((prev) => ({
-          ...prev,
-          microphone: { loading: false, justGranted: true },
-        }));
-        setTimeout(() => {
-          if (!isMountedRef.current) return;
-          setUi((prev) => ({
-            ...prev,
-            microphone: { ...prev.microphone, justGranted: false },
-          }));
-        }, 800);
-      } else {
-        // Open the correct System Settings pane and begin polling until granted
-        devFlags.methods.devLog("Opening System Settings for microphone…");
-        if (devFlags.mockPermissionStates) {
-          await mockPermissions.openSystemPreferences("microphone");
-        } else {
-          window.electron?.openSystemPreferences("microphone");
-        }
-        // Clear any existing microphone polling before starting new one
-        if (pollRefs.current.mic) {
-          clearInterval(pollRefs.current.mic);
-          pollRefs.current.mic = null;
-        }
-        pollRefs.current.mic = setInterval(async () => {
-          const status = devFlags.mockPermissionStates
-            ? await mockPermissions.checkMicrophonePermission()
-            : await window.electron?.checkMicrophonePermission();
-          if (status?.granted) {
-            if (pollRefs.current.mic) {
-              clearInterval(pollRefs.current.mic);
-              pollRefs.current.mic = null;
-            }
-            setPermissions((prev) => ({ ...prev, microphone: true }));
-            setUi((prev) => ({
-              ...prev,
-              microphone: { loading: false, justGranted: true },
-            }));
-            setTimeout(() => {
-              if (!isMountedRef.current) return;
-              setUi((prev) => ({
-                ...prev,
-                microphone: { ...prev.microphone, justGranted: false },
-              }));
-            }, 800);
-          }
-        }, 1000);
-      }
-    } catch (error) {
-      if (isDevelopment)
-        console.error("Error requesting microphone permission:", error);
-      setErrors((prev) => ({ ...prev, microphone: true }));
-    }
-  };
+  // Permission handlers are now provided by the shared hook
 
   const handleRequestInputMonitoring = async () => {
-    devFlags.methods.devLog("Starting Input Monitoring permission request...");
-    try {
-      // Use mock or real Input Monitoring request
-      const result = devFlags.mockPermissionStates
-        ? await mockPermissions.askIM()
-        : await window.electron?.askIM();
-
-      devFlags.methods.devLog(
-        "Input Monitoring permission request result:",
-        result,
-      );
-
-      if (result?.success) {
-        if (result.status === "authorized") {
-          devFlags.methods.devLog("Input Monitoring permission granted");
-          setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
-          setErrors((prev) => ({ ...prev, inputMonitoring: false }));
-          setUi((prev) => ({
-            ...prev,
-            inputMonitoring: { loading: false, justGranted: true },
-          }));
-          setTimeout(() => {
-            if (!isMountedRef.current) return;
-            setUi((prev) => ({
-              ...prev,
-              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
-            }));
-          }, 800);
-        } else if (result.status === "denied") {
-          devFlags.methods.devLog(
-            "Input Monitoring permission denied - opening System Settings",
-          );
-          if (devFlags.mockPermissionStates) {
-            await mockPermissions.openSystemPreferences("inputMonitoring");
-          } else {
-            window.electron?.openSystemPreferences("input-monitoring");
-          }
-          // Clear any existing input monitoring polling before starting new one
-          if (pollRefs.current.im) {
-            clearInterval(pollRefs.current.im);
-            pollRefs.current.im = null;
-          }
-          pollRefs.current.im = setInterval(async () => {
-            const sys = devFlags.mockPermissionStates
-              ? await mockPermissions.checkPermissions()
-              : await window.electron?.checkPermissions();
-            if (sys && !sys.needIM) {
-              if (pollRefs.current.im) {
-                clearInterval(pollRefs.current.im);
-                pollRefs.current.im = null;
-              }
-              setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
-              setUi((prev) => ({
-                ...prev,
-                inputMonitoring: { loading: false, justGranted: true },
-              }));
-              setTimeout(() => {
-                if (!isMountedRef.current) return;
-                setUi((prev) => ({
-                  ...prev,
-                  inputMonitoring: {
-                    ...prev.inputMonitoring,
-                    justGranted: false,
-                  },
-                }));
-              }, 800);
-            }
-          }, 1000);
-        }
-      } else {
-        devFlags.methods.devLog(
-          "Input Monitoring permission request failed:",
-          (result as any)?.error,
-        );
-        // Open pane and poll anyway
-        if (devFlags.mockPermissionStates) {
-          await mockPermissions.openSystemPreferences("inputMonitoring");
-        } else {
-          window.electron?.openSystemPreferences("input-monitoring");
-        }
-        // Clear any existing input monitoring polling before starting new one
-        if (pollRefs.current.im) {
-          clearInterval(pollRefs.current.im);
-          pollRefs.current.im = null;
-        }
-        pollRefs.current.im = setInterval(async () => {
-          const sys = devFlags.mockPermissionStates
-            ? await mockPermissions.checkPermissions()
-            : await window.electron?.checkPermissions();
-          if (sys && !sys.needIM) {
-            if (pollRefs.current.im) {
-              clearInterval(pollRefs.current.im);
-              pollRefs.current.im = null;
-            }
-            setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
-            setUi((prev) => ({
-              ...prev,
-              inputMonitoring: { loading: false, justGranted: true },
-            }));
-            setTimeout(() => {
-              if (!isMountedRef.current) return;
-              setUi((prev) => ({
-                ...prev,
-                inputMonitoring: {
-                  ...prev.inputMonitoring,
-                  justGranted: false,
-                },
-              }));
-            }, 800);
-          }
-        }, 1000);
-      }
-    } catch (error) {
-      if (isDevelopment)
-        console.error("Error requesting input monitoring permission:", error);
-      setErrors((prev) => ({ ...prev, inputMonitoring: true }));
-    }
+    await requestInputMonitoring();
   };
 
   const handleRequestAccessibility = async () => {
-    try {
-      devFlags.methods.devLog("Requesting accessibility permission...");
+    await requestAccessibility();
+  };
 
-      if (devFlags.mockPermissionStates) {
-        const result = await mockPermissions.requestAccessibilityPermission();
-        if (result && "success" in result && result.success) {
-          setPermissions((prev) => ({ ...prev, accessibility: true }));
-          setErrors((prev) => ({ ...prev, accessibility: false }));
-          setUi((prev) => ({
-            ...prev,
-            accessibility: { loading: false, justGranted: true },
-          }));
-          setTimeout(() => {
-            if (!isMountedRef.current) return;
-            setUi((prev) => ({
-              ...prev,
-              accessibility: { ...prev.accessibility, justGranted: false },
-            }));
-          }, 800);
-        }
-        return;
-      }
-
-      // Trigger OS prompt (may itself open System Settings upon user action)
-      await window.electron?.requestAccessibilityPermission();
-      // Do NOT immediately open System Settings to avoid duplicate prompts.
-      // We will poll and only deep-link as a fallback if still denied after a grace period.
-      axDeepLinkOpenedRef.current = false;
-      // Clear any existing accessibility polling before starting new one
-      if (pollRefs.current.ax) {
-        clearInterval(pollRefs.current.ax);
-        pollRefs.current.ax = null;
-      }
-      const startedAt = Date.now();
-      pollRefs.current.ax = setInterval(async () => {
-        const result = await window.electron?.checkPermissions();
-        if (result && !result.needAX) {
-          if (pollRefs.current.ax) {
-            clearInterval(pollRefs.current.ax);
-            pollRefs.current.ax = null;
-          }
-          setPermissions((prev) => ({ ...prev, accessibility: true }));
-          setErrors((prev) => ({ ...prev, accessibility: false }));
-          setUi((prev) => ({
-            ...prev,
-            accessibility: { loading: false, justGranted: true },
-          }));
-          setTimeout(() => {
-            if (!isMountedRef.current) return;
-            setUi((prev) => ({
-              ...prev,
-              accessibility: { ...prev.accessibility, justGranted: false },
-            }));
-          }, 800);
-        } else {
-          // After a short grace period, deep-link once as a fallback if permission still denied
-          const elapsedMs = Date.now() - startedAt;
-          if (!axDeepLinkOpenedRef.current && elapsedMs > 4000) {
-            devFlags.methods.devLog(
-              "AX still denied after grace period; opening System Settings (once).",
-            );
-            axDeepLinkOpenedRef.current = true;
-            window.electron?.openSystemPreferences("accessibility");
-          }
-        }
-      }, 1000);
-    } catch (error) {
-      if (isDevelopment)
-        console.error("Error requesting accessibility permission:", error);
-      setErrors((prev) => ({ ...prev, accessibility: true }));
-    }
+  const handleRequestMicrophone = async () => {
+    await requestMicrophone();
   };
 
   const handleComplete = async () => {
