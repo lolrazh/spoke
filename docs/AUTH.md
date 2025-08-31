@@ -40,6 +40,12 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 - **Hosted Callback** (`api-sonic-flow-site`) - Production web interface for OAuth callbacks
 - **Deep Link Handler** - Protocol registration and URL parsing across platforms
 
+### Returning User Skip Logic (2025 Update)
+
+- Uses `profiles.onboarding_done` in Supabase as cross-device source of truth to skip onboarding for returning users.
+- On login or renderer mount, the app ensures a `profiles` row exists and immediately closes onboarding if `onboarding_done` is true.
+- Local `onboarding.json` remains a fast local skip; the DB flag is authoritative across machines.
+
 ## Authentication Flow
 
 ### Complete OAuth Flow
@@ -118,6 +124,21 @@ export async function handleAuthCallbackUrl(url: string) {
 }
 ```
 
+### 8. Returning-User Short-Circuit (Renderer)
+
+After a successful session is set, onboarding performs a short-circuit check:
+
+```typescript
+// Onboarding.tsx
+await ensureProfileRow();
+const profile = await getProfile();
+if (profile?.onboarding_done) {
+  await window.electron?.setPttTarget?.("main");
+  await window.electron?.onboardingComplete();
+  return; // Skip onboarding UI entirely
+}
+```
+
 ## Environment Configuration
 
 ### Development Environment
@@ -192,7 +213,7 @@ src/
 ├── lib/
 │   └── supabaseClient.ts  # OAuth URL generation, token processing
 ├── components/
-│   └── Onboarding.tsx     # Auth UI and flow coordination
+│   └── Onboarding.tsx     # Auth UI, returning-user short-circuit, permissions
 └── types/
     └── electron.d.ts      # TypeScript definitions for auth IPC
 ```
@@ -218,6 +239,15 @@ Processes incoming auth callbacks:
 - Handles both PKCE (code) and implicit (token) flows
 - Exchanges codes for sessions or sets tokens directly
 - Returns detailed success/error information
+
+#### `ensureProfileRow()` (`supabaseClient.ts`)
+Creates a `profiles` row for the current user if missing to reliably store onboarding state:
+
+```typescript
+export async function ensureProfileRow() {
+  // Checks for existing profile; inserts { onboarding_done: false } if missing.
+}
+```
 
 ### IPC Communication
 
@@ -310,6 +340,10 @@ sonicflow://auth/callback?token_hash=xyz&type=email
 **Cause**: Multiple callback sources triggering simultaneously  
 **Solution**: Implemented deduplication in `sendAuthCallback()`
 
+#### "Onboarding repeats every login"
+**Cause**: Missing `profiles` row or `onboarding_done` never set to true for that user id.
+**Solution**: `ensureProfileRow()` on login; `markOnboardingDone()` at the end of onboarding; renderer short-circuits when `onboarding_done` is true.
+
 ### Debug Logging
 
 Enable detailed auth logging:
@@ -366,6 +400,19 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - Reduced redundant auth processing
 - Cleaner IPC communication with fewer duplicate calls
 - Better error recovery and user feedback
+
+## 2025 Updates
+
+### Behavior Changes
+- Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
+- Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
+- Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
+- Added light auth polling (60s) to detect server-side deletions until server-side JWT gating is added.
+- Returning users skip onboarding based on `profiles.onboarding_done`.
+- Onboarding email entry supports Enter-to-submit for OTP.
+
+### Deferred Backend Enforcement
+- JWT verification on the Cloudflare Worker WebSocket is deferred; backend remains open while the client enforces UX. Plan: include `Authorization: Bearer <access_token>` and verify on the Worker when ready.
 
 ## Testing and Validation
 
