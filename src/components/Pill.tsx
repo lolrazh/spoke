@@ -1,6 +1,5 @@
 import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { TOKENS } from "../config/uiTokens";
 import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
 import SfIcon from "./icons/SfIcon";
@@ -261,8 +260,8 @@ const Pill: React.FC<PillProps> = ({
           mass: 0.75,
         },
         // Spring chain: width leads, height follows by a hair
-        width: { ...(transitionForState as any) },
-        height: { ...(transitionForState as any), delay: 0.015 },
+        width: { ...(transitionForState as unknown as Record<string, unknown>) },
+        height: { ...(transitionForState as unknown as Record<string, unknown>), delay: 0.015 },
       }
     : transitionForState;
 

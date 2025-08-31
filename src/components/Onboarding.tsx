@@ -45,7 +45,7 @@ const mockPermissions = {
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
   askIM: async () => ({ success: true, status: "authorized" }),
   requestAccessibilityPermission: async () => ({ success: true }),
-  openSystemPreferences: async (_pane: string) => ({ success: true }),
+  openSystemPreferences: async () => ({ success: true }),
   resetPermissions: () => {
     if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
   },
@@ -283,9 +283,10 @@ const Onboarding: React.FC = () => {
           "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
         );
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setAuthLoading(false);
-      setAuthError(e?.message || "Could not start Google sign-in");
+      const msg = e instanceof Error ? e.message : String(e);
+      setAuthError(msg || "Could not start Google sign-in");
     }
   };
 

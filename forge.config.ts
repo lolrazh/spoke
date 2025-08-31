@@ -29,12 +29,12 @@ const config: ForgeConfig = {
     // Code signing configuration for internal testing
     osxSign: {
       identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
-      hardenedRuntime: true as any,
+      hardenedRuntime: true,
       signatureFlags: "runtime",
       entitlements: "./build/entitlements/main.plist",
       entitlementsInherit: "./build/entitlements/inherit.plist",
       preAutoEntitlements: false,
-      optionsForFile: (filePath) => {
+      optionsForFile: () => {
         // The main app has its own entitlements.
         // The helper bundle is signed separately by our build script.
         return {};

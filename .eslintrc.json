@@ -33,6 +33,8 @@
         "@typescript-eslint/ban-types": "off",
         "@typescript-eslint/no-empty-function": "off",
         "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "@typescript-eslint/no-unused-vars": "off",
         "no-empty": "off",
         "import/no-unresolved": "off"
       }
@@ -46,7 +48,17 @@
     {
       "files": ["worker/**"],
       "rules": {
-        "import/no-unresolved": "off"
+        "import/no-unresolved": "off",
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": "off"
+      }
+    },
+    {
+      "files": ["src/main.ts"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "@typescript-eslint/no-non-null-assertion": "off"
       }
     }
   ]

@@ -16,7 +16,7 @@ import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { spawn, execFile, execSync } from "child_process";
+import { spawn, execSync } from "child_process";
 import http from "node:http";
 
 import fs from "node:fs";
@@ -55,7 +55,8 @@ import {
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
-const VITE_ENV: any = (import.meta as any)?.env || {};
+const VITE_ENV = ((import.meta as unknown) as { env?: Record<string, unknown> })
+  .env || {};
 
 Sentry.init({
   // Use a single DSN variable for both main/renderer (Vite-injected)

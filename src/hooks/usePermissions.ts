@@ -19,7 +19,9 @@ export type PermissionProvider = {
     status: "authorized" | "denied" | string;
   }>;
   requestAccessibilityPermission: () => Promise<{ success: boolean }>;
-  openSystemPreferences: (pane: "microphone" | "input-monitoring" | "accessibility") => any;
+  openSystemPreferences: (
+    pane: "microphone" | "input-monitoring" | "accessibility",
+  ) => void | Promise<void>;
 };
 
 export type PermissionsState = {
@@ -39,28 +41,45 @@ type Options = {
   deepLinkGraceMs?: number;
 };
 
-const defaultProvider: PermissionProvider | null = typeof window !== "undefined" && (window as any).electron
-  ? {
-      checkPermissions: async () => (await (window as any).electron?.checkPermissions?.()) || {},
-      checkMicrophonePermission: async () =>
-        (await (window as any).electron?.checkMicrophonePermission?.()) || { granted: false },
-      requestMicrophonePermission: async () =>
-        (await (window as any).electron?.requestMicrophonePermission?.()) || {
-          success: false,
-          granted: false,
-        },
-      askIM: async () => (await (window as any).electron?.askIM?.()) || { success: false, status: "denied" },
-      requestAccessibilityPermission: async () =>
-        (await (window as any).electron?.requestAccessibilityPermission?.()) || { success: false },
-      openSystemPreferences: (pane) => (window as any).electron?.openSystemPreferences?.(pane),
-    }
-  : null;
+const defaultProvider: PermissionProvider | null =
+  typeof window !== "undefined" && window.electron
+    ? {
+        checkPermissions: async () =>
+          (await window.electron?.checkPermissions?.()) || {},
+        checkMicrophonePermission: async () =>
+          (await window.electron?.checkMicrophonePermission?.()) || {
+            granted: false,
+          },
+        requestMicrophonePermission: async () =>
+          (await window.electron?.requestMicrophonePermission?.()) || {
+            success: false,
+            granted: false,
+          },
+        askIM: async () =>
+          (await window.electron?.askIM?.()) || {
+            success: false,
+            status: "denied",
+          },
+        requestAccessibilityPermission: async () =>
+          (await window.electron?.requestAccessibilityPermission?.()) || {
+            success: false,
+          },
+        openSystemPreferences: (pane) =>
+          window.electron?.openSystemPreferences?.(pane),
+      }
+    : null;
 
-export function usePermissions(
-  provider?: PermissionProvider,
-  opts?: Options,
-) {
-  const p = provider || defaultProvider!;
+export function usePermissions(provider?: PermissionProvider, opts?: Options) {
+  const p: PermissionProvider =
+    provider ??
+    defaultProvider ?? {
+      checkPermissions: async () => ({ needAX: true, needIM: true, isDev: false }),
+      checkMicrophonePermission: async () => ({ granted: false, status: "unknown" }),
+      requestMicrophonePermission: async () => ({ success: false, granted: false }),
+      askIM: async () => ({ success: false, status: "denied" }),
+      requestAccessibilityPermission: async () => ({ success: false }),
+      openSystemPreferences: () => undefined,
+    };
   const pollMs = opts?.pollIntervalMs ?? 1000;
   const graceMs = opts?.deepLinkGraceMs ?? 4000;
 
@@ -75,18 +94,21 @@ export function usePermissions(
     accessibility: { loading: false, justGranted: false },
   });
 
-  const timersRef = useRef<{ mic?: any; im?: any; ax?: any }>({});
+  const timersRef = useRef<{
+    mic: ReturnType<typeof setInterval> | null;
+    im: ReturnType<typeof setInterval> | null;
+    ax: ReturnType<typeof setInterval> | null;
+  }>({ mic: null, im: null, ax: null });
   const axDeepLinkedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      for (const k of Object.keys(timersRef.current)) {
-        const t = (timersRef.current as any)[k];
-        if (t) clearInterval(t);
-      }
-      timersRef.current = {};
+      if (timersRef.current.mic) clearInterval(timersRef.current.mic);
+      if (timersRef.current.im) clearInterval(timersRef.current.im);
+      if (timersRef.current.ax) clearInterval(timersRef.current.ax);
+      timersRef.current = { mic: null, im: null, ax: null };
     };
   }, []);
 
@@ -216,4 +238,3 @@ export function usePermissions(
     [permissions, ui],
   );
 }
-

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useIntervalManager } from "../hooks/useIntervalManager";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
@@ -110,14 +110,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Remove inline login from Settings Panel — this surface should only show when signed in
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  // Avatar URL available in metadata, not currently displayed in UI
   const [authReady, setAuthReady] = useState(false);
 
   // Permissions (deduplicated via shared hook)
   const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
     usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
-  const { schedule, cancel, cancelAll } = useIntervalManager();
-  const pollRefs = useRef<Record<string, never>>({});
+  const { cancelAll } = useIntervalManager();
 
   // Initialize from main visibility state (source of truth)
   useEffect(() => {
@@ -152,10 +151,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           const fastUser = sess?.data.session?.user;
           if (fastUser && isMounted) {
             setUserEmail(fastUser.email ?? null);
-            setUserName((fastUser.user_metadata as any)?.name ?? null);
-            setUserAvatarUrl(
-              (fastUser.user_metadata as any)?.avatar_url ?? null,
-            );
+            const md = fastUser.user_metadata as unknown as {
+              name?: string;
+              avatar_url?: string;
+            };
+            setUserName(md?.name ?? null);
+            // avatar_url available via md if needed for future UI
             if (fastUser.email)
               localStorage.setItem("sf.lastUserEmail", fastUser.email);
           }
@@ -164,8 +165,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         const u = await getCurrentUser();
         if (u && isMounted) {
           setUserEmail(u.email ?? null);
-          setUserName((u.user_metadata as any)?.name ?? null);
-          setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+          const md = u.user_metadata as unknown as {
+            name?: string;
+            avatar_url?: string;
+          };
+          setUserName(md?.name ?? null);
+          // avatar_url available via md if needed for future UI
           if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
         } else if (isMounted) {
           setUserEmail(null);
@@ -210,8 +215,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           const u = session?.user;
           if (u) {
             setUserEmail(u.email ?? null);
-            setUserName((u.user_metadata as any)?.name ?? null);
-            setUserAvatarUrl((u.user_metadata as any)?.avatar_url ?? null);
+            const md = u.user_metadata as unknown as {
+              name?: string;
+              avatar_url?: string;
+            };
+            setUserName(md?.name ?? null);
+            // avatar_url available via md if needed for future UI
             if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
           } else {
             setUserEmail(null);
@@ -339,24 +348,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, []);
 
   // Permission handlers
-  const handleRequestMicrophone = async () => {
-    await requestMicrophone();
-  };
-
-  const handleRequestAccessibility = async () => {
-    await requestAccessibility();
-  };
-
-  const handleRequestInputMonitoring = async () => {
-    await requestInputMonitoring();
-  };
+  const handleRequestMicrophone = async () => { await requestMicrophone(); };
+  const handleRequestAccessibility = async () => { await requestAccessibility(); };
+  const handleRequestInputMonitoring = async () => { await requestInputMonitoring(); };
 
   const handleSignOut = () => {
     (async () => {
       try {
         await supaSignOut();
-      } catch (e: any) {
-        console.error("Failed to sign out:", e?.message || e);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("Failed to sign out:", msg);
       }
       // Regardless of signOut outcome, route user into onboarding and hide the pill
       try {
@@ -367,7 +369,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       } catch {}
       setUserEmail(null);
       setUserName(null);
-      setUserAvatarUrl(null);
+      // clear any derived avatar state if used in the future
     })();
   };
 

@@ -148,7 +148,8 @@ export function useTranscription(
     const ws = wsRef.current;
     while (sendQueueRef.current.length) {
       if (ws.bufferedAmount > WS_MAX_BUFFERED_BYTES) break;
-      const next = sendQueueRef.current.shift()!;
+      const next = sendQueueRef.current.shift();
+      if (!next) break;
       try {
         ws.send(next);
         sendQueueBytesRef.current -= next.byteLength;
@@ -555,7 +556,9 @@ export function useTranscription(
       // Resolve worklet URL for both dev (http://localhost) and prod (file://)
       const workletUrl = (() => {
         try {
-          const base = (import.meta as any)?.env?.BASE_URL ?? "./";
+          const base = (
+            (import.meta as unknown) as { env?: Record<string, unknown> }
+          )?.env?.BASE_URL ?? "./";
           const rel = `${base.replace(/\/$/, "")}/worklets/pcm16-downsampler.worklet.js`;
           return new URL(
             rel,
@@ -582,7 +585,7 @@ export function useTranscription(
       );
 
       workletNodeRef.current.port.onmessage = (ev: MessageEvent) => {
-        const msg = ev.data as any;
+        const msg = ev.data as unknown as { type?: string; samples?: ArrayBuffer };
         if (msg?.type === "audio" && msg?.samples) {
           const buf: ArrayBuffer = msg.samples as ArrayBuffer;
           // Stream immediately
@@ -625,18 +628,16 @@ export function useTranscription(
         abortControllerRef.current = new AbortController();
         await new Promise<void>((resolve, reject) => {
           let settled = false;
-          const ws = wsRef.current!;
+          const ws = wsRef.current;
+          if (!ws) {
+            reject(new Error("WebSocket not available"));
+            return;
+          }
 
           const cleanup = (abortOnly = false) => {
-            try {
-              ws.removeEventListener("message", onMessage as any);
-            } catch {}
-            try {
-              ws.removeEventListener("error", onError as any);
-            } catch {}
-            try {
-              ws.removeEventListener("close", onClose as any);
-            } catch {}
+            try { ws.removeEventListener("message", onMessage as EventListener); } catch {}
+            try { ws.removeEventListener("error", onError as EventListener); } catch {}
+            try { ws.removeEventListener("close", onClose as EventListener); } catch {}
             try {
               abortControllerRef.current?.signal.removeEventListener(
                 "abort",
@@ -661,7 +662,8 @@ export function useTranscription(
               reject(new DOMException("Aborted", "AbortError"));
             }
           };
-          abortControllerRef.current!.signal.addEventListener("abort", onAbort);
+          const signal = abortControllerRef.current?.signal;
+          signal?.addEventListener("abort", onAbort);
 
           const onMessage = async (event: MessageEvent) => {
             try {
@@ -744,6 +746,7 @@ export function useTranscription(
                               lastArrivalMs?: number | null;
                               firstToLastArrivalMs?: number | null;
                               assembleMs?: number | null;
+                              stt?: { totalMs?: number | null } | null;
                               groq?: {
                                 startAt?: number | null;
                                 headersAt?: number | null;
@@ -764,10 +767,6 @@ export function useTranscription(
                         const wsOpenDeltaMs =
                           client.wsOpenMs != null
                             ? Math.round(client.wsOpenMs - client.pttDownMs)
-                            : null;
-                        const pttUpToEndSendMs =
-                          client.stopInvokedMs != null && endSent != null
-                            ? Math.round(endSent - client.stopInvokedMs)
                             : null;
                         const endSendToStatusMs =
                           endSent != null && statusRecv != null
@@ -798,7 +797,7 @@ export function useTranscription(
                         })();
                         const sttMs = (() => {
                           const total =
-                            (worker as any)?.stt?.totalMs ?? (worker as any)?.groq?.totalMs;
+                            worker?.stt?.totalMs ?? worker?.groq?.totalMs ?? null;
                           return total != null ? Math.round(total) : statusToFinalRecvMs;
                         })();
                         // Compute deliver latency without relying on cross-host clock sync:
@@ -852,7 +851,12 @@ export function useTranscription(
                               pasteMs: breakdown.pasteMs,
                             },
                             meta: {
-                              appVersion: (window as any)?.electronAppVersion || undefined,
+                              appVersion:
+                                (
+                                  (window as unknown as {
+                                    electronAppVersion?: string;
+                                  }).electronAppVersion || undefined
+                                ),
                               platform: navigator.userAgent,
                             },
                           };
@@ -904,9 +908,9 @@ export function useTranscription(
             }
           };
 
-          ws.addEventListener("message", onMessage as any);
-          ws.addEventListener("error", onError as any);
-          ws.addEventListener("close", onClose as any);
+          ws.addEventListener("message", onMessage as EventListener);
+          ws.addEventListener("error", onError as EventListener);
+          ws.addEventListener("close", onClose as EventListener);
 
           // Final safety timeout in case server never replies
           const timeoutMs = 15000;
@@ -971,11 +975,11 @@ export function useTranscription(
                     try {
                       ws.send(JSON.stringify({ type: "end" }));
                     } catch {}
-                    ws.removeEventListener("open", sendOnOpen as any);
+                    ws.removeEventListener("open", sendOnOpen as EventListener);
                   };
-                  ws.addEventListener("open", sendOnOpen as any, {
+                  ws.addEventListener("open", sendOnOpen as EventListener, {
                     once: true,
-                  } as any);
+                  } as AddEventListenerOptions);
                 } else {
                   // Socket closed: request a fresh one for next session and fail fast
                   try {

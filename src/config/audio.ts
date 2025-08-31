@@ -27,7 +27,8 @@ export const POST_ROLL_MS = 160;
 // Feature flag: streaming v2 (100 ms frames)
 export function streamingV2Enabled(): boolean {
   try {
-    const env: any = (import.meta as any)?.env || {};
+    const env = ((import.meta as unknown) as { env?: Record<string, unknown> })
+      .env || {};
     if (
       env?.VITE_WS_STREAMING_V2 === "1" ||
       env?.VITE_WS_STREAMING_V2 === "true"
