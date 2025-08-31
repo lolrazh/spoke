@@ -13,7 +13,7 @@ import {
   systemPreferences,
 } from "electron";
 import * as Sentry from "@sentry/electron/main";
-import { updateElectronApp } from "update-electron-app";
+import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -105,8 +105,11 @@ try {
   if (app.isPackaged) {
     updateElectronApp({
       logger: console,
-      // Base URL only; updater appends /darwin/<arch>/RELEASES.json
-      staticStorageUrl: "https://releases.sonicflow.app",
+      updateSource: {
+        type: UpdateSourceType.StaticStorage,
+        // Fetch RELEASES.json from darwin/<arch>/
+        baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
+      },
       // You can temporarily set "1 minute" while testing updates
       updateInterval: "1 hour",
     });

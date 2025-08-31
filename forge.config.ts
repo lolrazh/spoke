@@ -96,8 +96,6 @@ const config: ForgeConfig = {
     new PublisherS3({
       // Required: your R2 bucket name (no protocol)
       bucket: process.env.R2_BUCKET || "releases",
-      // Make objects public-readable (equivalent to ACL public-read)
-      public: true,
       // R2 specifics
       endpoint: process.env.R2_ENDPOINT, // e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com
       region: process.env.R2_REGION || "auto",
