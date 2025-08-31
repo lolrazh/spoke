@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import * as Sentry from '@sentry/cloudflare';
 import { wsRoute } from './handlers/ws';
 import { safely } from './utils/safely';
+import { buildSessionSummary } from './utils/summary';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -28,62 +29,8 @@ app.use('/metrics/*', cors({ origin: '*' }));
 // Metrics ingest from client: merges client-side E2E timings into a single summary
 app.post('/metrics/session', async (c) => {
   try {
-    const body = await c.req.json<{
-      traceId: string;
-      client?: Record<string, unknown>;
-      worker?: Record<string, unknown> | null;
-      meta?: { appVersion?: string; platform?: string };
-      derived?: Record<string, unknown>;
-    }>();
-
-    const traceId = (body?.traceId ?? '').toString();
-    if (!traceId) {
-      return c.json({ error: 'traceId required' }, 400);
-    }
-
-    const pipeline = ((body?.worker as any)?.llm?.totalMs ?? null) != null ? 'stt+llm' : 'stt';
-
-    const summary = {
-      event: 'transcription.session_summary',
-      id: traceId,
-      pipeline,
-      durations: {
-        e2eMs: (body?.derived as any)?.e2eMs ?? null,
-        captureMs: (body?.derived as any)?.captureMs ?? null,
-        deliverMs: (body?.derived as any)?.deliverMs ?? null,
-        pasteMs: (body?.derived as any)?.pasteMs ?? null,
-        // Server-derived placeholders if present in worker metrics
-        wsAcceptToFinalMs: (body?.worker as any)?.finalSentAt && (body?.worker as any)?.wsAcceptAt
-          ? ((body?.worker as any)?.finalSentAt as number) - ((body?.worker as any)?.wsAcceptAt as number)
-          : null,
-        assembleMs: (body?.worker as any)?.assembleMs ?? null,
-        sttMs: (body?.worker as any)?.groq?.totalMs ?? (body?.worker as any)?.stt?.totalMs ?? null,
-        llmMs: (body?.worker as any)?.llm?.totalMs ?? null,
-        serverProcessingMs:
-          ((body?.worker as any)?.groq?.totalMs ?? (body?.worker as any)?.stt?.totalMs ?? 0) +
-          ((body?.worker as any)?.llm?.totalMs ?? 0),
-        overheadMs: (body?.worker as any)?.overheadMs ?? null,
-      },
-      traffic: {
-        frames: (body?.worker as any)?.frames ?? (body?.client as any)?.framesProduced ?? null,
-        bytesKB: Number((((body?.worker as any)?.bytes ?? 0) / 1024).toFixed(2)) ||
-          Number((((body?.client as any)?.bytesProduced ?? 0) / 1024).toFixed(2)) || 0,
-        seqGaps: (body?.worker as any)?.seqGaps ?? 0,
-        firstToLastArrivalMs: (body?.worker as any)?.firstToLastArrivalMs ?? null,
-      },
-      result: {
-        textLen: (body?.worker as any)?.textLen ?? null,
-      },
-      ws: {
-        closeCode: (body?.worker as any)?.closeCode ?? 1000,
-        closeReason: (body?.worker as any)?.closeReason ?? 'done',
-      },
-      env: {
-        environment: c.env.SENTRY_ENVIRONMENT || 'production',
-        release: (c.env as any)?.CF_VERSION_METADATA?.id || 'unknown',
-      },
-      containsClientMetrics: true,
-    } as const;
+    const body = await c.req.json<any>();
+    const summary = buildSessionSummary(body, c.env as any);
 
     // Log one-line JSON summary
     safely(() => console.log(JSON.stringify(summary)));
@@ -91,8 +38,8 @@ app.post('/metrics/session', async (c) => {
     // Also record to Sentry for correlation
     await Sentry.startSpan({
       op: 'transcription.session_summary',
-      name: `Session Summary ${traceId}`,
-      attributes: { 'session.trace_id': traceId },
+      name: `Session Summary ${summary.id}`,
+      attributes: { 'session.trace_id': summary.id },
     }, async (span) => {
       // Flatten some key attributes for searchability
       span.setAttribute('pipeline', summary.pipeline);

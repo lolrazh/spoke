@@ -45,6 +45,15 @@ if (!globalThis.window.electron) {
   } as any;
 }
 
+// Clipboard shim
+// @ts-ignore
+if (!globalThis.window.clipboard) {
+  // @ts-ignore
+  globalThis.window.clipboard = {
+    insertText: async (_text: string) => ({ success: true }),
+  } as any;
+}
+
 // Mic bridge shim used by utils/components
 // @ts-ignore
 if (!globalThis.window.mic) {

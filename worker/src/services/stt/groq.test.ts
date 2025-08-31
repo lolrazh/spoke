@@ -47,7 +47,8 @@ describe('services/stt/groq.transcribeWav', () => {
     vi.spyOn(globalThis, 'fetch' as any).mockImplementation((_: any, init: any) => {
       return new Promise((_resolve, reject) => {
         const signal: AbortSignal = init.signal;
-        const err = new (globalThis as any).DOMException?.('Aborted', 'AbortError') || new Error('AbortError');
+        const DomEx: any = (globalThis as any).DOMException;
+        const err = DomEx ? new DomEx('Aborted', 'AbortError') : new Error('AbortError');
         if (signal.aborted) return reject(err);
         const onAbort = () => reject(err);
         signal.addEventListener('abort', onAbort, { once: true });

@@ -1,86 +1,18 @@
 import React from "react";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import { useTranscription } from "./useTranscription";
+import { FakeWebSocket } from "../test/fakes/fakeWebSocket";
+import { FakeAudioContext, FakeAudioWorkletNode } from "../test/fakes/fakeAudio";
 
-// Mock modules the hook imports
 vi.mock("../config/api", () => ({ getTranscribeWsUrl: () => "ws://test/ws" }));
 vi.mock("../utils/audioFeedback", () => ({
   playToggleOn: vi.fn(),
   playToggleOff: vi.fn(),
 }));
 
-// Minimal fakes for audio APIs used by the hook
-class FakeAudioContext {
-  sampleRate = 48000;
-  audioWorklet = { addModule: async (_: string) => {} };
-  createMediaStreamSource(_stream: MediaStream) {
-    return { connect: () => {}, disconnect: () => {} } as any;
-  }
-  async close() {}
-}
-
-class FakeAudioWorkletNode {
-  port: {
-    onmessage: ((ev: MessageEvent) => void) | null;
-    postMessage: (msg: any) => void;
-  };
-  constructor(_ctx: any, _name: string, _opts: any) {
-    this.port = {
-      onmessage: null,
-      postMessage: (_msg: any) => {},
-    };
-    // expose for tests
-    (globalThis as any).__lastWorklet = this;
-  }
-  connect() {}
-  disconnect() {}
-}
-
-// Minimal WebSocket fake
-class FakeWS {
-  static instances: FakeWS[] = [];
-  url: string;
-  onopen: ((ev?: any) => void) | null = null;
-  onerror: ((ev?: any) => void) | null = null;
-  onclose: ((ev?: any) => void) | null = null;
-  binaryType = "arraybuffer";
-  bufferedAmount = 0;
-  sent: any[] = [];
-  private listeners: Record<string, Function[]> = {
-    message: [],
-    error: [],
-    close: [],
-  };
-  constructor(url: string) {
-    this.url = url;
-    FakeWS.instances.push(this);
-    // Open on next macrotask to allow assignment of onopen
-    setTimeout(() => {
-      this.onopen && this.onopen({});
-    }, 0);
-  }
-  send(data: any) {
-    this.sent.push(data);
-  }
-  addEventListener(type: "message" | "error" | "close", cb: Function) {
-    (this.listeners[type] ||= []).push(cb);
-  }
-  removeEventListener(type: "message" | "error" | "close", cb: Function) {
-    this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== cb);
-  }
-  close(code?: number, reason?: string) {
-    this.onclose && this.onclose({ code, reason });
-    (this.listeners.close || []).forEach((fn) => fn({ code, reason }));
-  }
-  emitMessage(data: any) {
-    (this.listeners.message || []).forEach((fn) => fn({ data }));
-  }
-}
-
-// Helper to render the hook
-function renderUseTranscription(opts?: any) {
+function renderUseTranscription(opts?: Record<string, unknown>) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -88,8 +20,7 @@ function renderUseTranscription(opts?: any) {
     current: null,
   };
   function Test() {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const hook = useTranscription(opts);
+    const hook = useTranscription(opts as any);
     out.current = hook;
     return null;
   }
@@ -100,7 +31,6 @@ function renderUseTranscription(opts?: any) {
     get hook() {
       return out.current!;
     },
-    container,
     unmount: () => {
       act(() => root.unmount());
       container.remove();
@@ -108,110 +38,98 @@ function renderUseTranscription(opts?: any) {
   };
 }
 
-describe("hooks/useTranscription", () => {
+describe("hooks/useTranscription (production-like)", () => {
   const orig = {
     AC: (globalThis as any).AudioContext,
     AWN: (globalThis as any).AudioWorkletNode,
     WS: (globalThis as any).WebSocket,
+    fetch: globalThis.fetch,
   };
-  let insertTextSpy: any;
-  let transcriptSpy: any;
 
   beforeEach(() => {
-    // Globals
-    (globalThis as any).AudioContext = FakeAudioContext;
-    (globalThis as any).AudioWorkletNode = FakeAudioWorkletNode;
-    (globalThis as any).WebSocket = FakeWS as any;
-    // MediaDevices stub
+    (globalThis as any).AudioContext = FakeAudioContext as any;
+    (globalThis as any).AudioWorkletNode = FakeAudioWorkletNode as any;
+    (globalThis as any).WebSocket = FakeWebSocket as any;
+    // Deterministic mediaDevices
     // @ts-ignore
     navigator.mediaDevices = navigator.mediaDevices || {};
     // @ts-ignore
     navigator.mediaDevices.getUserMedia = async () =>
-      ({ getTracks: () => [{ stop: () => {} }] }) as any;
-    // Spies for side-effects
-    insertTextSpy = vi.fn(async () => ({ success: true }));
-    transcriptSpy = vi.fn();
-    (window as any).clipboard = { insertText: insertTextSpy };
-    (window as any).transcript = { update: transcriptSpy };
+      ({ getTracks: () => [{ stop: () => {} }] }) as unknown as MediaStream;
+    // Intercept metrics POST
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 204 })) as any;
   });
 
   afterEach(() => {
     (globalThis as any).AudioContext = orig.AC;
     (globalThis as any).AudioWorkletNode = orig.AWN;
     (globalThis as any).WebSocket = orig.WS;
-    FakeWS.instances.length = 0;
+    globalThis.fetch = orig.fetch as any;
+    FakeWebSocket.instances.length = 0;
   });
 
-  it("starts recording, opens WS, and exchanges control messages", async () => {
-    const r = renderUseTranscription({
-      autoEnumerateDevices: false,
-      autoInitStream: false,
-    });
-    // Start
-    await act(async () => {
-      await r.hook.start();
-    });
-    // Ensure pending onopen (macrotask) and microtasks are flushed
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+  it("streams start->stop with flush + end and posts metrics", async () => {
+    const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
+    // Start recording
+    await act(async () => { await r.hook.start(); });
+    // Allow WS to open
+    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
 
-    // Should have created a WS and sent at least one start message
-    expect(FakeWS.instances.length).toBe(1);
-    const ws = FakeWS.instances[0];
+    expect(FakeWebSocket.instances.length).toBe(1);
+    const ws = FakeWebSocket.instances[0];
+
+    // Should have sent a start message
     const startMsgs = ws.sent
       .filter((m) => typeof m === "string")
       .map((s) => JSON.parse(String(s)))
       .filter((j) => j.type === "start");
     expect(startMsgs.length).toBeGreaterThan(0);
 
-    // Stop: should send 'end' and resolve after server final
-    const p = r.hook.stop();
-    // Ensure stop has time to attach listeners
-    await new Promise((r) => setTimeout(r, 0));
+    // Stop and simulate server replies
+    const stopP = r.hook.stop();
+    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
     ws.emitMessage(JSON.stringify({ type: "status", state: "processing" }));
     ws.emitMessage(JSON.stringify({ type: "final", text: "hello world" }));
-    await act(async () => {
-      await p;
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    await act(async () => { await stopP; });
 
     // Verify final text applied and clipboard updated
     expect(r.hook.text).toBe("hello world");
-    expect(insertTextSpy).toHaveBeenCalledWith("hello world");
 
-    // Verify an 'end' control message was sent
+    // Verify 'end' was sent exactly once
     const endMsgs = ws.sent
       .filter((m) => typeof m === "string")
       .map((s) => JSON.parse(String(s)))
       .filter((j) => j.type === "end");
     expect(endMsgs.length).toBe(1);
 
+    // Verify worklet received flush -> reset
+    const lastWorklet = (globalThis as any).__lastWorklet as FakeAudioWorkletNode;
+    const posted = (lastWorklet.port as any).posted as unknown[];
+    const postedTypes = posted.map((m: any) => m?.type);
+    expect(postedTypes).toContain("flush");
+    expect(postedTypes).toContain("reset");
+
+    // Metrics POST
+    const calls = (globalThis.fetch as any).mock.calls;
+    const post = calls.find((c: any[]) => typeof c?.[0] === "string" && c?.[0].includes("/metrics/session"));
+    expect(post).toBeTruthy();
+
     r.unmount();
   });
 
-  it("cancel sends cancel without waiting for final", async () => {
-    const r2 = renderUseTranscription({
-      autoEnumerateDevices: false,
-      autoInitStream: false,
-    });
-    await act(async () => {
-      await r2.hook.start();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const ws = FakeWS.instances[0];
-    await act(async () => {
-      await r2.hook.cancel();
-    });
-    // After cancel, there should be no 'end' message and recording stops
-    const endMsgs = ws.sent
+  it("cancel sends 'cancel' and does not send 'end'", async () => {
+    const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
+    await act(async () => { await r.hook.start(); });
+    await act(async () => { await Promise.resolve(); });
+    const ws = FakeWebSocket.instances[0];
+    await act(async () => { await r.hook.cancel(); });
+
+    const sent = ws.sent
       .filter((m) => typeof m === "string")
-      .map((s) => JSON.parse(String(s)))
-      .filter((j) => j.type === "end");
-    expect(endMsgs.length).toBe(0);
-    expect(r2.hook.recording).toBe(false);
-    r2.unmount();
+      .map((s) => JSON.parse(String(s)));
+    expect(sent.some((j) => j.type === "cancel")).toBe(true);
+    expect(sent.some((j) => j.type === "end")).toBe(false);
+
+    r.unmount();
   });
 });

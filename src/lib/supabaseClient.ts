@@ -196,9 +196,10 @@ export async function handleAuthCallbackUrl(
 
     console.error(`[Auth] Unrecognized auth callback format`);
     return { ok: false, error: "Unrecognized auth callback" };
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(`[Auth] Auth callback processing exception:`, e);
-    return { ok: false, error: e?.message || String(e) };
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
   }
 }
 
@@ -232,7 +233,13 @@ export async function getProfile(): Promise<{
     .eq("id", u.id)
     .single();
   if (error) return null;
-  return data as any;
+  return (data as unknown) as {
+    id: string;
+    email: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    onboarding_done: boolean | null;
+  };
 }
 
 export async function getProfileDetailed(): Promise<
@@ -267,9 +274,19 @@ export async function getProfileDetailed(): Promise<
       return { ok: false, error: error.message };
     }
     if (!data) return { ok: false, error: "NOT_FOUND" };
-    return { ok: true, data: data as any };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
+    return {
+      ok: true,
+      data: (data as unknown) as {
+        id: string;
+        email: string | null;
+        display_name: string | null;
+        avatar_url: string | null;
+        onboarding_done: boolean | null;
+      },
+    };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
   }
 }
 
@@ -305,8 +322,12 @@ export async function ensureProfileRow(): Promise<
 
   // Check if a profile already exists
   const existing = await getProfileDetailed();
-  if ((existing as any)?.ok === true) return { ok: true, existed: true };
-  if ((existing as any)?.error && (existing as any).error !== "NOT_FOUND") {
+  if ((existing as unknown as { ok: boolean }).ok === true)
+    return { ok: true, existed: true };
+  if (
+    (existing as unknown as { ok: boolean; error?: string }).ok === false &&
+    (existing as unknown as { error?: string }).error !== "NOT_FOUND"
+  ) {
     // Unexpected error; surface it but attempt an insert optimistically anyway
     // Fall through to insert; if it conflicts, treat as existed.
   }
@@ -320,10 +341,11 @@ export async function ensureProfileRow(): Promise<
       display_name: displayName,
       avatar_url: md.avatar_url || null,
       onboarding_done: false,
-    } as any);
+    });
     if (error) {
-      const msg = (error as any)?.message || String(error);
-      const code = (error as any)?.code;
+      const msg =
+        (error as unknown as { message?: string }).message || String(error);
+      const code = (error as unknown as { code?: string }).code;
       // Treat unique/duplicate conflicts as "already existed"
       if (status === 409 || code === "23505" || /duplicate/i.test(msg)) {
         return { ok: true, existed: true };
@@ -331,7 +353,8 @@ export async function ensureProfileRow(): Promise<
       return { ok: false, error: msg };
     }
     return { ok: true, existed: false };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || String(e) };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
   }
 }

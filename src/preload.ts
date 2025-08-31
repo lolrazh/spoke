@@ -2,7 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { ActiveDisplayPayload } from "./types/shared";
+import type { ActiveDisplayPayload, MicDevice } from "./types/shared";
 
 // Expose dev flags so renderer can bypass auth/onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
@@ -66,8 +66,6 @@ contextBridge.exposeInMainWorld("ptt", {
 });
 
 // Microphone device management bridge
-import type { MicDevice } from "./types/shared";
-
 contextBridge.exposeInMainWorld("mic", {
   /** Send the current discovered set of microphone devices to main. */
   updateDevices: (devices: MicDevice[], selectedId?: string) => {

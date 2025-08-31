@@ -8,12 +8,7 @@ import React, {
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
-import {
-  ISLAND_HIDDEN_Y,
-  ISLAND_VISIBLE_Y,
-  CONTENT_WIDTH,
-  CONTENT_HEIGHT,
-} from "../constants/window";
+import { CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 

@@ -76,10 +76,13 @@ if (existing) {
 }
 
 // Signal main when UI is visually ready to reveal (styles and fonts applied)
-;(async () => {
+void (async () => {
   try {
-    if ((document as any).fonts?.ready) {
-      await (document as any).fonts.ready;
+    const fonts = (document as unknown as {
+      fonts?: { ready?: Promise<void> };
+    }).fonts;
+    if (fonts?.ready) {
+      await fonts.ready;
     }
   } catch {}
   // Next frame to ensure first paint with styles is committed

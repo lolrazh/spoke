@@ -3,7 +3,8 @@ type Level = "info" | "warn" | "error";
 function emit(level: Level, scope: string, ...args: unknown[]) {
   const prefix = `[${scope}]`;
   // eslint-disable-next-line no-console
-  (console as any)[level](prefix, ...args);
+  const con = console as unknown as Record<Level, (...a: unknown[]) => void>;
+  con[level](prefix, ...args);
 }
 
 export function createLogger(scope: string) {

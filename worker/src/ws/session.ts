@@ -3,7 +3,7 @@ export type AudioSession = ReturnType<typeof createEmptySession>;
 export function createEmptySession() {
   return {
     version: 2,
-    format: 'pcm16le' as 'pcm16le',
+    format: 'pcm16le' as const,
     rate: 16000,
     startedAt: Date.now(),
     frames: 0,
@@ -29,7 +29,7 @@ export function logSession(
   try {
     const info = {
       tag,
-      traceId: (s as any).traceId ?? null,
+      traceId: s.traceId ?? null,
       frames: s.frames,
       bytesKB: Number((s.totalBytes / 1024).toFixed(2)),
       seqGaps: s.seqGaps,
@@ -44,4 +44,3 @@ export function logSession(
     log('logSession error', { error: String(error) });
   }
 }
-
