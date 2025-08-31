@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { getCurrentUser, signOut as supaSignOut } from "../lib/supabaseClient";
+import { usePermissions } from "../hooks/usePermissions";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -112,24 +113,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
 
-  // Permissions state (mirrors onboarding)
-  const [permissions, setPermissions] = useState({
-    microphone: false,
-    inputMonitoring: false,
-    accessibility: false,
-  });
-  const [ui, setUi] = useState({
-    microphone: { loading: false, justGranted: false },
-    inputMonitoring: { loading: false, justGranted: false },
-    accessibility: { loading: false, justGranted: false },
-  });
+  // Permissions (deduplicated via shared hook)
+  const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
+    usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
   const { schedule, cancel, cancelAll } = useIntervalManager();
-  const pollRefs = useRef<{
-    mic?: NodeJS.Timeout | null;
-    im?: NodeJS.Timeout | null;
-    ax?: NodeJS.Timeout | null;
-  }>({});
-  const axDeepLinkOpenedRef = useRef(false);
+  const pollRefs = useRef<{}>({});
 
   // Initialize from main visibility state (source of truth)
   useEffect(() => {
@@ -311,15 +299,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   useEffect(() => {
     const initPerms = async () => {
       try {
-        const [sys, mic] = await Promise.all([
-          window.electron?.checkPermissions?.(),
-          window.electron?.checkMicrophonePermission?.(),
-        ]);
-        setPermissions({
-          microphone: !!mic?.granted,
-          inputMonitoring: !(sys?.needIM ?? true),
-          accessibility: !(sys?.needAX ?? true),
-        });
+        await initPermissions();
       } catch (e) {
         // ignore
       }
@@ -351,10 +331,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return () => {
       // Cleanup all scheduled intervals (centralized)
       cancelAll();
-      if (pollRefs.current.mic) clearInterval(pollRefs.current.mic);
-      if (pollRefs.current.im) clearInterval(pollRefs.current.im);
-      if (pollRefs.current.ax) clearInterval(pollRefs.current.ax);
-      pollRefs.current = { mic: null, im: null, ax: null };
+      // Permission polling is managed by usePermissions; no local timers to clear
 
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
@@ -363,189 +340,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Permission handlers
   const handleRequestMicrophone = async () => {
-    try {
-      setUi((prev) => ({
-        ...prev,
-        microphone: { ...prev.microphone, loading: true },
-      }));
-      const result = await window.electron?.requestMicrophonePermission();
-      if (result?.success && result?.granted) {
-        setPermissions((p) => ({ ...p, microphone: true }));
-        setUi((prev) => ({
-          ...prev,
-          microphone: { loading: false, justGranted: true },
-        }));
-        setTimeout(
-          () =>
-            setUi((prev) => ({
-              ...prev,
-              microphone: { ...prev.microphone, justGranted: false },
-            })),
-          800,
-        );
-      } else {
-        // Open System Settings and poll
-        await window.electron?.openSystemPreferences("microphone");
-        cancel("mic");
-        if (pollRefs.current.mic) {
-          clearInterval(pollRefs.current.mic);
-          pollRefs.current.mic = null;
-        }
-        pollRefs.current.mic = setInterval(async () => {
-          const status = await window.electron?.checkMicrophonePermission();
-          if (status?.granted) {
-            if (pollRefs.current.mic) {
-              clearInterval(pollRefs.current.mic);
-              pollRefs.current.mic = null;
-            }
-            setPermissions((p) => ({ ...p, microphone: true }));
-            setUi((prev) => ({
-              ...prev,
-              microphone: { loading: false, justGranted: true },
-            }));
-            setTimeout(
-              () =>
-                setUi((prev) => ({
-                  ...prev,
-                  microphone: { ...prev.microphone, justGranted: false },
-                })),
-              800,
-            );
-          }
-        }, 1000);
-        setUi((prev) => ({
-          ...prev,
-          microphone: { ...prev.microphone, loading: false },
-        }));
-      }
-    } catch (e) {
-      setUi((prev) => ({
-        ...prev,
-        microphone: { ...prev.microphone, loading: false },
-      }));
-    }
+    await requestMicrophone();
   };
 
   const handleRequestAccessibility = async () => {
-    try {
-      setUi((prev) => ({
-        ...prev,
-        accessibility: { ...prev.accessibility, loading: true },
-      }));
-      await window.electron?.requestAccessibilityPermission();
-      // Poll until granted; deep-link once after grace period
-      const startedAt = Date.now();
-      cancel("ax");
-      if (pollRefs.current.ax) {
-        clearInterval(pollRefs.current.ax);
-        pollRefs.current.ax = null;
-      }
-      pollRefs.current.ax = setInterval(async () => {
-        const sys = await window.electron?.checkPermissions?.();
-        if (sys && !sys.needAX) {
-          if (pollRefs.current.ax) {
-            clearInterval(pollRefs.current.ax);
-            pollRefs.current.ax = null;
-          }
-          setPermissions((p) => ({ ...p, accessibility: true }));
-          setUi((prev) => ({
-            ...prev,
-            accessibility: { loading: false, justGranted: true },
-          }));
-          setTimeout(
-            () =>
-              setUi((prev) => ({
-                ...prev,
-                accessibility: { ...prev.accessibility, justGranted: false },
-              })),
-            800,
-          );
-        } else if (
-          !axDeepLinkOpenedRef.current &&
-          Date.now() - startedAt > 4000
-        ) {
-          // open the pane once as fallback
-          axDeepLinkOpenedRef.current = true;
-          await window.electron?.openSystemPreferences("accessibility");
-        }
-      }, 1000);
-      setUi((prev) => ({
-        ...prev,
-        accessibility: { ...prev.accessibility, loading: false },
-      }));
-    } catch (e) {
-      setUi((prev) => ({
-        ...prev,
-        accessibility: { ...prev.accessibility, loading: false },
-      }));
-    }
+    await requestAccessibility();
   };
 
   const handleRequestInputMonitoring = async () => {
-    try {
-      setUi((prev) => ({
-        ...prev,
-        inputMonitoring: { ...prev.inputMonitoring, loading: true },
-      }));
-      const result = await window.electron?.askIM();
-      if (result?.success && result.status === "authorized") {
-        setPermissions((p) => ({ ...p, inputMonitoring: true }));
-        setUi((prev) => ({
-          ...prev,
-          inputMonitoring: { loading: false, justGranted: true },
-        }));
-        setTimeout(
-          () =>
-            setUi((prev) => ({
-              ...prev,
-              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
-            })),
-          800,
-        );
-        return;
-      }
-      // Open System Settings and poll until granted
-      await window.electron?.openSystemPreferences("input-monitoring");
-      cancel("im");
-      if (pollRefs.current.im) {
-        clearInterval(pollRefs.current.im);
-        pollRefs.current.im = null;
-      }
-      pollRefs.current.im = setInterval(async () => {
-        const sys = await window.electron?.checkPermissions?.();
-        if (sys && !sys.needIM) {
-          if (pollRefs.current.im) {
-            clearInterval(pollRefs.current.im);
-            pollRefs.current.im = null;
-          }
-          setPermissions((p) => ({ ...p, inputMonitoring: true }));
-          setUi((prev) => ({
-            ...prev,
-            inputMonitoring: { loading: false, justGranted: true },
-          }));
-          setTimeout(
-            () =>
-              setUi((prev) => ({
-                ...prev,
-                inputMonitoring: {
-                  ...prev.inputMonitoring,
-                  justGranted: false,
-                },
-              })),
-            800,
-          );
-        }
-      }, 1000);
-      setUi((prev) => ({
-        ...prev,
-        inputMonitoring: { ...prev.inputMonitoring, loading: false },
-      }));
-    } catch (e) {
-      setUi((prev) => ({
-        ...prev,
-        inputMonitoring: { ...prev.inputMonitoring, loading: false },
-      }));
-    }
+    await requestInputMonitoring();
   };
 
   const handleSignOut = () => {
@@ -555,7 +358,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       } catch (e: any) {
         console.error("Failed to sign out:", e?.message || e);
       }
-      // Regardless of signOut outcome, route user into onboarding
+      // Regardless of signOut outcome, route user into onboarding and hide the pill
+      try {
+        await window.electron?.hideFloatingBarIndefinitely?.();
+      } catch {}
       try {
         await window.electron?.showOnboarding?.();
       } catch {}

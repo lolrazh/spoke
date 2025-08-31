@@ -40,6 +40,12 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 - **Hosted Callback** (`api-sonic-flow-site`) - Production web interface for OAuth callbacks
 - **Deep Link Handler** - Protocol registration and URL parsing across platforms
 
+### Returning User Skip Logic (2025 Update)
+
+- Uses `profiles.onboarding_done` in Supabase as cross-device source of truth to skip onboarding for returning users.
+- On login or renderer mount, the app ensures a `profiles` row exists and immediately closes onboarding if `onboarding_done` is true.
+- Local `onboarding.json` remains a fast local skip; the DB flag is authoritative across machines.
+
 ## Authentication Flow
 
 ### Complete OAuth Flow
@@ -118,6 +124,21 @@ export async function handleAuthCallbackUrl(url: string) {
 }
 ```
 
+### 8. Returning-User Short-Circuit (Renderer)
+
+After a successful session is set, onboarding performs a short-circuit check:
+
+```typescript
+// Onboarding.tsx
+await ensureProfileRow();
+const profile = await getProfile();
+if (profile?.onboarding_done) {
+  await window.electron?.setPttTarget?.("main");
+  await window.electron?.onboardingComplete();
+  return; // Skip onboarding UI entirely
+}
+```
+
 ## Environment Configuration
 
 ### Development Environment
@@ -192,7 +213,9 @@ src/
 ├── lib/
 │   └── supabaseClient.ts  # OAuth URL generation, token processing
 ├── components/
-│   └── Onboarding.tsx     # Auth UI and flow coordination
+│   └── Onboarding.tsx     # Auth UI, returning-user short-circuit, permissions
+├── hooks/
+│   └── usePermissions.ts  # Shared permissions hook (mic, accessibility, input monitoring)
 └── types/
     └── electron.d.ts      # TypeScript definitions for auth IPC
 ```
@@ -219,6 +242,33 @@ Processes incoming auth callbacks:
 - Exchanges codes for sessions or sets tokens directly
 - Returns detailed success/error information
 
+#### `ensureProfileRow()` (`supabaseClient.ts`)
+Creates a `profiles` row for the current user if missing to reliably store onboarding state:
+
+```typescript
+export async function ensureProfileRow() {
+  // Checks for existing profile; inserts { onboarding_done: false } if missing.
+}
+```
+
+### Shared Permissions Hook (`src/hooks/usePermissions.ts`)
+
+Centralizes permission UX for both Onboarding and Settings:
+
+- Provides: `permissions`, `ui`, `init()`, `requestMicrophone()`, `requestAccessibility()`, `requestInputMonitoring()`
+- Handles polling and a single deep-link to System Settings after a short grace period
+- Works with either the Electron preload provider or a mock provider (for development/testing)
+- Eliminates duplicated logic and keeps UI feedback consistent across surfaces
+
+Usage example:
+
+```ts
+const { permissions, ui, init, requestMicrophone, requestAccessibility, requestInputMonitoring } =
+  usePermissions();
+
+useEffect(() => { init(); }, []);
+```
+
 ### IPC Communication
 
 **Auth-related IPC channels**:
@@ -230,7 +280,6 @@ Processes incoming auth callbacks:
 // Renderer → Main  
 "auth:get-redirect-url"   // Requests callback URL for environment
 "open-external"          // Opens OAuth URL in browser
-"auth:set-signed-in"     // Persists auth state
 "onboarding-complete"    // Completes auth flow
 ```
 
@@ -310,6 +359,14 @@ sonicflow://auth/callback?token_hash=xyz&type=email
 **Cause**: Multiple callback sources triggering simultaneously  
 **Solution**: Implemented deduplication in `sendAuthCallback()`
 
+#### "Onboarding repeats every login"
+**Cause**: Missing `profiles` row or `onboarding_done` never set to true for that user id.
+**Solution**: `ensureProfileRow()` on login; `markOnboardingDone()` at the end of onboarding; renderer short-circuits when `onboarding_done` is true.
+
+#### "Signed out" during temporary network issues
+**Cause**: Polling treated network errors as `null` user, triggering sign-out UX.
+**Solution**: Poll uses `supabase.auth.getUser()` and only signs out when there is no error and no user. Network errors are ignored to avoid kicking users during blips.
+
 ### Debug Logging
 
 Enable detailed auth logging:
@@ -366,6 +423,21 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - Reduced redundant auth processing
 - Cleaner IPC communication with fewer duplicate calls
 - Better error recovery and user feedback
+
+## 2025 Updates
+
+### Behavior Changes
+- Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
+- Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
+- Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
+- Added light auth polling (60s) to detect server-side deletions until server-side JWT gating is added.
+- Poll ignores network errors; only treats "no error + no user" as sign-out.
+- Returning users skip onboarding based on `profiles.onboarding_done`.
+- Onboarding email entry supports Enter-to-submit for OTP.
+- Permissions logic is shared via `usePermissions` hook to eliminate duplication across Onboarding and Settings.
+
+### Deferred Backend Enforcement
+- JWT verification on the Cloudflare Worker WebSocket is deferred; backend remains open while the client enforces UX. Plan: include `Authorization: Bearer <access_token>` and verify on the Worker when ready.
 
 ## Testing and Validation
 

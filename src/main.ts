@@ -186,7 +186,7 @@ let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
-let onboardingPrefs: { done?: boolean; signedIn?: boolean } = {};
+let onboardingPrefs: { done?: boolean } = {};
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -984,28 +984,44 @@ const createWindow = () => {
   );
 };
 
-// Show the floating bar only after the renderer signals that it's visually ready
-ipcMain.on("renderer-ready", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  try {
-    // Align to current display's safe top before revealing (guard)
-    const current = mainWindow.getBounds();
-    const currentDisplay = screen.getDisplayMatching(current);
-    activeDisplayId = currentDisplay.id;
-    const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
-    mainWindow.setBounds(
-      { x: current.x, y: targetY, width: current.width, height: current.height },
-      false,
-    );
-    if (process.platform === "darwin") mainWindow.invalidateShadow();
-  } catch (e) {
-    console.warn("[renderer-ready] Top-align failed:", e);
+// Show windows only after their own renderers signal they are visually ready
+ipcMain.on("renderer-ready", (event) => {
+  const senderWin = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWin || senderWin.isDestroyed()) return;
+
+  // Only top-align and show if the pill (main) window is the sender
+  if (senderWin === mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      // Align to current display's safe top before revealing (guard)
+      const current = mainWindow.getBounds();
+      const currentDisplay = screen.getDisplayMatching(current);
+      activeDisplayId = currentDisplay.id;
+      const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
+      mainWindow.setBounds(
+        { x: current.x, y: targetY, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+    } catch (e) {
+      console.warn("[renderer-ready] Top-align failed:", e);
+    }
+    try {
+      mainWindow.show();
+      logBounds("renderer-ready -> show");
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to show:", e);
+    }
+    return;
   }
-  try {
-    mainWindow.show();
-    logBounds("renderer-ready -> show");
-  } catch (e) {
-    console.warn("[renderer-ready] Failed to show:", e);
+
+  // If the onboarding window reports ready, do not manipulate the pill.
+  if (senderWin === onboardingWindow) {
+    try {
+      if (!onboardingWindow?.isVisible()) onboardingWindow?.show();
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to show onboarding:", e);
+    }
   }
 });
 
@@ -1886,18 +1902,7 @@ app.whenReady().then(async () => {
     // (Removed) silent app location check after onboarding
   });
 
-  // Auth state persistence from renderer
-  ipcMain.handle("auth:set-signed-in", () => {
-    try {
-      onboardingPrefs = { ...onboardingPrefs };
-      fs.writeFileSync(
-        onboardingPrefsPath,
-        JSON.stringify(onboardingPrefs, null, 2),
-        "utf8",
-      );
-    } catch {}
-    return { ok: true };
-  });
+  // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
 
   ipcMain.handle("auth:show-onboarding", () => {
     try {

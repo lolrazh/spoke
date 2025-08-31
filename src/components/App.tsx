@@ -15,6 +15,7 @@ import {
   CONTENT_HEIGHT,
 } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
+import { playToggleOn } from "../utils/audioFeedback";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -148,12 +149,26 @@ const debounce = <T extends (...args: unknown[]) => void>(
   };
 };
 
-// Centralized microphone permission check with consistent error handling
-// Returns true if we should proceed with starting transcription.
-// Notifies and returns false if permission is explicitly not granted.
-// Swallows errors and returns true to allow downstream surfaces to report.
+// Centralized dictation gate: require auth (unless dev skip) and mic permission.
+// Returns true if dictation may proceed, else notifies and returns false.
 const canProceedWithStartBasedOnMicPermission = async (): Promise<boolean> => {
   try {
+    const skipAuth = !!window.devFlags?.skipAuth;
+    if (!skipAuth) {
+      try {
+        const { getCurrentUser } = await import("../lib/supabaseClient");
+        const user = await getCurrentUser();
+        if (!user) {
+          try {
+            window.notifications?.send?.("Sign in to dictate");
+          } catch {}
+          try {
+            await window.electron?.showOnboarding?.();
+          } catch {}
+          return false;
+        }
+      } catch {}
+    }
     const mic = await window.electron?.checkMicrophonePermission?.();
     if (!mic?.granted) {
       window.notifications?.send?.(
@@ -174,6 +189,7 @@ const App: React.FC = () => {
   // Ensure pill is not shown when signed out; route to onboarding instead
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let pollId: number | undefined;
     (async () => {
       try {
         const { getSupabase, getCurrentUser } = await import(
@@ -188,6 +204,10 @@ const App: React.FC = () => {
           try {
             await window.electron?.hideFloatingBarIndefinitely?.();
           } catch {}
+          try {
+            // Stop any active capture if present
+            latestTransRef.current?.cancel?.();
+          } catch {}
         }
         const supabase = getSupabase();
         if (supabase) {
@@ -196,6 +216,10 @@ const App: React.FC = () => {
           } = supabase.auth.onAuthStateChange((_event, session) => {
             if (!session?.user && !skipAuth) {
               (async () => {
+                try {
+                  // Cancel any active or in-flight transcription when signing out
+                  latestTransRef.current?.cancel?.();
+                } catch {}
                 try {
                   await window.electron?.showOnboarding?.();
                 } catch {}
@@ -206,11 +230,30 @@ const App: React.FC = () => {
             }
           });
           unsubscribe = () => subscription.unsubscribe();
+
+          // Light polling to detect server-side deletions or expired sessions
+          try {
+            pollId = window.setInterval(async () => {
+              if (skipAuth) return;
+              try {
+                if (!supabase) return; // No client available; skip this tick
+                const { data, error } = await supabase.auth.getUser();
+                // Only treat as signed-out when there is NO error and NO user
+                if (!error && !data?.user) {
+                  try { latestTransRef.current?.cancel?.(); } catch {}
+                  try { await window.electron?.showOnboarding?.(); } catch {}
+                  try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+                }
+                // If error: likely network issue — ignore and retain current UX
+              } catch {}
+            }, 60000);
+          } catch {}
         }
       } catch {}
     })();
     return () => {
       if (unsubscribe) unsubscribe();
+      if (pollId) clearInterval(pollId);
     };
   }, []);
   // Only open mic during dictation
@@ -523,6 +566,10 @@ const App: React.FC = () => {
       if (latestTransRef.current.recording) {
         return;
       }
+      // Immediate audio feedback on PTT down to reduce perceived latency
+      try {
+        playToggleOn();
+      } catch {}
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
@@ -595,6 +642,10 @@ const App: React.FC = () => {
         }}
         onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
+          // Immediate audio feedback on click start
+          try {
+            playToggleOn();
+          } catch {}
           const allowed = await canProceedWithStartBasedOnMicPermission();
           if (!allowed) return;
           trans.start();
