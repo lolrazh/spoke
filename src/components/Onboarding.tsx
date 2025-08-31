@@ -348,6 +348,18 @@ const Onboarding: React.FC = () => {
     setAuthEmailRequested(true);
   };
 
+  // Allow pressing Enter in the email field to submit
+  const handleEmailSubmit: React.FormEventHandler<HTMLFormElement> = async (
+    e,
+  ) => {
+    try {
+      e.preventDefault();
+    } catch {}
+    if (authLoading) return;
+    if (!authEmail || !authEmail.trim()) return;
+    await handleEmailStart();
+  };
+
   // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
   useEffect(() => {
     if (currentStep === "hotkey-info" && !pttApiReady) {
@@ -938,7 +950,7 @@ const Onboarding: React.FC = () => {
                   </Button>
                   <div className="text-[11px] text-subtle">or</div>
                   {!authEmailRequested ? (
-                    <div className="space-y-2">
+                    <form className="space-y-2" onSubmit={handleEmailSubmit}>
                       <input
                         type="email"
                         value={authEmail}
@@ -948,12 +960,12 @@ const Onboarding: React.FC = () => {
                       />
                       <Button
                         className="w-full"
+                        type="submit"
                         disabled={authLoading || !authEmail}
-                        onClick={handleEmailStart}
                       >
                         Send code
                       </Button>
-                    </div>
+                    </form>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[12px] text-subtle">
