@@ -42,6 +42,23 @@ const config: ForgeConfig = {
         return {};
       },
     },
+    // --- Switching to distribution later ---
+    // When you’re ready to distribute to external testers/users, switch the
+    // identity to your "Developer ID Application" certificate and enable
+    // notarization. Example template (uncomment + fill values):
+    // osxSign: {
+    //   identity: "Developer ID Application: Your Name (TEAMID)",
+    //   hardenedRuntime: true,
+    //   signatureFlags: "runtime",
+    //   entitlements: "./build/entitlements/main.plist",
+    //   entitlementsInherit: "./build/entitlements/inherit.plist",
+    //   preAutoEntitlements: false,
+    // },
+    // osxNotarize: {
+    //   appleId: process.env.APPLE_ID,
+    //   appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD, // or APPLE_PASSWORD
+    //   teamId: "TEAMID",
+    // },
     // No notarization needed for internal testing
   },
   rebuildConfig: {},

@@ -372,6 +372,9 @@ Verification:
 Troubleshooting:
 - If updates don’t trigger, check app logs and ensure the manifest and ZIP are public, reachable, and not overly cached. You can temporarily use a shorter interval in `src/main.ts`.
 
+See also:
+- docs/UPDATE_PIPELINE.md — full “Sonic Flow macOS Auto‑Update Pipeline” guide
+
 ## Deployment
 
 ### Staging Builds
