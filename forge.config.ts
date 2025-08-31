@@ -1,5 +1,6 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
@@ -80,6 +81,8 @@ const config: ForgeConfig = {
       },
       ["darwin"],
     ),
+    // Produce a ZIP for macOS auto-updates (read by update-electron-app)
+    new MakerZIP({}, ["darwin"]),
   ],
   plugins: [
     new VitePlugin({
