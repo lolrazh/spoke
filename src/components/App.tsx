@@ -15,6 +15,7 @@ import {
   CONTENT_HEIGHT,
 } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
+import { playToggleOn } from "../utils/audioFeedback";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -563,6 +564,10 @@ const App: React.FC = () => {
       if (latestTransRef.current.recording) {
         return;
       }
+      // Immediate audio feedback on PTT down to reduce perceived latency
+      try {
+        playToggleOn();
+      } catch {}
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
@@ -635,6 +640,10 @@ const App: React.FC = () => {
         }}
         onStartDictation={async () => {
           pillDispatch({ type: "PTT_START" });
+          // Immediate audio feedback on click start
+          try {
+            playToggleOn();
+          } catch {}
           const allowed = await canProceedWithStartBasedOnMicPermission();
           if (!allowed) return;
           trans.start();

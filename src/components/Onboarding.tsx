@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
 import { useTranscription } from "../hooks/useTranscription";
@@ -798,6 +799,8 @@ const Onboarding: React.FC = () => {
       if (currentStep !== "hotkey-test") return;
       if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
       if (trans.processing || trans.recording) return;
+      // Immediate audio feedback on key down to reduce perceived latency during onboarding test
+      try { playToggleOn(); } catch {}
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
