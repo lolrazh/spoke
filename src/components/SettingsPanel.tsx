@@ -175,7 +175,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         } else if (isMounted) {
           setUserEmail(null);
           setUserName(null);
-          setUserAvatarUrl(null);
         }
         if (isMounted) setAuthReady(true);
       } catch {
@@ -225,7 +224,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           } else {
             setUserEmail(null);
             setUserName(null);
-            setUserAvatarUrl(null);
           }
           setAuthReady(true);
         });
