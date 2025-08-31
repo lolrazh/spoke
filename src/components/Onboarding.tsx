@@ -268,11 +268,7 @@ const Onboarding: React.FC = () => {
           } catch (e) {
             console.warn("[Onboarding] setPttTarget failed:", e);
           }
-          try {
-            await (window.electron as any)?.invoke?.("auth:set-signed-in");
-          } catch (e) {
-            console.warn("[Onboarding] auth:set-signed-in invoke failed:", e);
-          }
+          // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
           return;
         }
@@ -301,11 +297,7 @@ const Onboarding: React.FC = () => {
           } catch (e) {
             console.warn("[Onboarding] setPttTarget failed:", e);
           }
-          try {
-            await (window.electron as any)?.invoke?.("auth:set-signed-in");
-          } catch (e) {
-            console.warn("[Onboarding] auth:set-signed-in invoke failed:", e);
-          }
+          // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
           return;
         }

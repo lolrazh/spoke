@@ -260,7 +260,6 @@ export async function ensureProfileRow() {
 // Renderer → Main  
 "auth:get-redirect-url"   // Requests callback URL for environment
 "open-external"          // Opens OAuth URL in browser
-"auth:set-signed-in"     // Persists auth state
 "onboarding-complete"    // Completes auth flow
 ```
 

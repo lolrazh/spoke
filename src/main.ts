@@ -186,7 +186,7 @@ let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
-let onboardingPrefs: { done?: boolean; signedIn?: boolean } = {};
+let onboardingPrefs: { done?: boolean } = {};
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -1902,18 +1902,7 @@ app.whenReady().then(async () => {
     // (Removed) silent app location check after onboarding
   });
 
-  // Auth state persistence from renderer
-  ipcMain.handle("auth:set-signed-in", () => {
-    try {
-      onboardingPrefs = { ...onboardingPrefs };
-      fs.writeFileSync(
-        onboardingPrefsPath,
-        JSON.stringify(onboardingPrefs, null, 2),
-        "utf8",
-      );
-    } catch {}
-    return { ok: true };
-  });
+  // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
 
   ipcMain.handle("auth:show-onboarding", () => {
     try {
