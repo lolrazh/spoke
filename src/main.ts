@@ -984,28 +984,44 @@ const createWindow = () => {
   );
 };
 
-// Show the floating bar only after the renderer signals that it's visually ready
-ipcMain.on("renderer-ready", () => {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  try {
-    // Align to current display's safe top before revealing (guard)
-    const current = mainWindow.getBounds();
-    const currentDisplay = screen.getDisplayMatching(current);
-    activeDisplayId = currentDisplay.id;
-    const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
-    mainWindow.setBounds(
-      { x: current.x, y: targetY, width: current.width, height: current.height },
-      false,
-    );
-    if (process.platform === "darwin") mainWindow.invalidateShadow();
-  } catch (e) {
-    console.warn("[renderer-ready] Top-align failed:", e);
+// Show windows only after their own renderers signal they are visually ready
+ipcMain.on("renderer-ready", (event) => {
+  const senderWin = BrowserWindow.fromWebContents(event.sender);
+  if (!senderWin || senderWin.isDestroyed()) return;
+
+  // Only top-align and show if the pill (main) window is the sender
+  if (senderWin === mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      // Align to current display's safe top before revealing (guard)
+      const current = mainWindow.getBounds();
+      const currentDisplay = screen.getDisplayMatching(current);
+      activeDisplayId = currentDisplay.id;
+      const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
+      mainWindow.setBounds(
+        { x: current.x, y: targetY, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+    } catch (e) {
+      console.warn("[renderer-ready] Top-align failed:", e);
+    }
+    try {
+      mainWindow.show();
+      logBounds("renderer-ready -> show");
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to show:", e);
+    }
+    return;
   }
-  try {
-    mainWindow.show();
-    logBounds("renderer-ready -> show");
-  } catch (e) {
-    console.warn("[renderer-ready] Failed to show:", e);
+
+  // If the onboarding window reports ready, do not manipulate the pill.
+  if (senderWin === onboardingWindow) {
+    try {
+      if (!onboardingWindow?.isVisible()) onboardingWindow?.show();
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to show onboarding:", e);
+    }
   }
 });
 

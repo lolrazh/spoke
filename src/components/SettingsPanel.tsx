@@ -555,7 +555,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       } catch (e: any) {
         console.error("Failed to sign out:", e?.message || e);
       }
-      // Regardless of signOut outcome, route user into onboarding
+      // Regardless of signOut outcome, route user into onboarding and hide the pill
+      try {
+        await window.electron?.hideFloatingBarIndefinitely?.();
+      } catch {}
       try {
         await window.electron?.showOnboarding?.();
       } catch {}
