@@ -16,6 +16,7 @@ export type ChatCompleteOptions = {
   systemPrompt?: string;
   userContent: string;
   stream?: boolean;
+  temperature?: number;
   onDelta?: (delta: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -35,6 +36,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
     systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
     userContent,
     stream = false,
+    temperature = LLM_DEFAULT_TEMPERATURE,
     onDelta,
     timeoutMs = LLM_DEFAULT_TIMEOUT_MS,
     signal,
@@ -59,7 +61,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
         'server.port': 443,
         'llm.model': model,
         'llm.stream': stream,
-        'llm.temperature': 0.2,
+        'llm.temperature': temperature,
         'llm.user_content_length': userContent.length,
         'llm.timeout_ms': timeoutMs,
       },
@@ -71,7 +73,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
           { role: 'user', content: userContent },
         ],
         stream,
-        temperature: LLM_DEFAULT_TEMPERATURE,
+        temperature,
       };
 
       const res = await fetch(LLM_ENDPOINT, {

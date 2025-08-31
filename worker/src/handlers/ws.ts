@@ -170,6 +170,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
                     userContent: finalText,
                     stream: streamLLM,
+                    temperature: runtime.llm.temperature,
                     signal: sttAbort.signal,
                     onDelta: (delta) => {
                       if (!socketClosed && streamLLM && delta) {
