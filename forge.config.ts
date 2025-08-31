@@ -4,6 +4,7 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { PublisherS3 } from "@electron-forge/publisher-s3";
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -82,7 +83,31 @@ const config: ForgeConfig = {
       ["darwin"],
     ),
     // Produce a ZIP for macOS auto-updates (read by update-electron-app)
-    new MakerZIP({}, ["darwin"]),
+    // Include absolute URLs in RELEASES.json for stable CDN behavior
+    new MakerZIP(
+      (arch) => ({
+        macUpdateManifestBaseUrl: `https://releases.sonicflow.app/darwin/${arch}`,
+      }),
+      ["darwin"],
+    ),
+  ],
+  // Auto-publish artifacts to Cloudflare R2 (S3-compatible)
+  publishers: [
+    new PublisherS3({
+      // Required: your R2 bucket name (no protocol)
+      bucket: process.env.R2_BUCKET || "releases",
+      // Make objects public-readable (equivalent to ACL public-read)
+      public: true,
+      // R2 specifics
+      endpoint: process.env.R2_ENDPOINT, // e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+      region: process.env.R2_REGION || "auto",
+      s3ForcePathStyle: true,
+      // Place artifacts where update-electron-app expects them
+      // Result: darwin/arm64/<filename> or darwin/x64/<filename>
+      keyResolver: (filename: string, platform: string, arch: string) => {
+        return `${platform}/${arch}/${filename}`;
+      },
+    }),
   ],
   plugins: [
     new VitePlugin({
