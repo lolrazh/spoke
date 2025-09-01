@@ -6,6 +6,25 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherS3 } from "@electron-forge/publisher-s3";
 
+// Local CI-style configuration from environment
+const distIdentity = process.env.APPLE_IDENTITY || process.env.APPLE_DIST_IDENTITY;
+const devIdentity =
+  process.env.APPLE_DEV_IDENTITY ||
+  "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)";
+const signIdentity = distIdentity || devIdentity;
+
+const appleId = process.env.APPLE_ID;
+const applePassword = process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
+const appleTeamId = process.env.APPLE_TEAM_ID || process.env.TEAM_ID;
+// Notarization control: APPLE_NOTARIZE=1 explicitly enables, =0 disables
+const notarizeFlag = (process.env.APPLE_NOTARIZE || process.env.FORGE_ENABLE_NOTARIZE || "").toLowerCase();
+const enableNotarize =
+  notarizeFlag === "1" || notarizeFlag === "true"
+    ? true
+    : notarizeFlag === "0" || notarizeFlag === "false"
+      ? false
+      : Boolean(distIdentity && appleId && applePassword && appleTeamId);
+
 const config: ForgeConfig = {
   packagerConfig: {
     appBundleId: "com.sonicflow.app",
@@ -28,9 +47,9 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/Sonic Flow Helper.app",
     ],
-    // Code signing configuration for internal testing
+    // Code signing: uses Developer ID if provided via env, else Apple Development
     osxSign: {
-      identity: "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)",
+      identity: signIdentity,
       hardenedRuntime: true,
       signatureFlags: "runtime",
       entitlements: "./build/entitlements/main.plist",
@@ -42,24 +61,16 @@ const config: ForgeConfig = {
         return {};
       },
     },
-    // --- Switching to distribution later ---
-    // When you’re ready to distribute to external testers/users, switch the
-    // identity to your "Developer ID Application" certificate and enable
-    // notarization. Example template (uncomment + fill values):
-    // osxSign: {
-    //   identity: "Developer ID Application: Your Name (TEAMID)",
-    //   hardenedRuntime: true,
-    //   signatureFlags: "runtime",
-    //   entitlements: "./build/entitlements/main.plist",
-    //   entitlementsInherit: "./build/entitlements/inherit.plist",
-    //   preAutoEntitlements: false,
-    // },
-    // osxNotarize: {
-    //   appleId: process.env.APPLE_ID,
-    //   appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD, // or APPLE_PASSWORD
-    //   teamId: "TEAMID",
-    // },
-    // No notarization needed for internal testing
+    // Notarization: automatically enabled when Developer ID + Apple credentials are present
+    ...(enableNotarize
+      ? {
+          osxNotarize: {
+            appleId,
+            appleIdPassword: applePassword,
+            teamId: appleTeamId!,
+          },
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [
@@ -111,6 +122,10 @@ const config: ForgeConfig = {
   // Auto-publish artifacts to Cloudflare R2 (S3-compatible)
   publishers: [
     new PublisherS3({
+      // Credentials from environment (CI-style, also works locally via dotenv-cli)
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      sessionToken: process.env.AWS_SESSION_TOKEN,
       // Required: your R2 bucket name (no protocol)
       bucket: process.env.R2_BUCKET || "releases",
       // R2 specifics
