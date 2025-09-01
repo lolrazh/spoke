@@ -13,6 +13,7 @@ import {
   systemPreferences,
 } from "electron";
 import * as Sentry from "@sentry/electron/main";
+import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -98,6 +99,24 @@ Sentry.init({
     return event;
   },
 });
+
+// Initialize auto-updates (packaged builds only)
+try {
+  if (app.isPackaged) {
+    updateElectronApp({
+      logger: console,
+      updateSource: {
+        type: UpdateSourceType.StaticStorage,
+        // Fetch RELEASES.json from darwin/<arch>/
+        baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
+      },
+      // You can temporarily set "1 minute" while testing updates
+      updateInterval: "1 hour",
+    });
+  }
+} catch (e) {
+  console.warn("[auto-update] init skipped:", e);
+}
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;

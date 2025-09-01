@@ -32,6 +32,7 @@
   },
   "license": "Proprietary",
   "devDependencies": {
+    "@electron-forge/publisher-s3": "^7.8.1",
     "@electron-forge/cli": "^7.8.1",
     "@electron-forge/core": "^7.8.1",
     "@electron-forge/maker-dmg": "^7.8.1",
@@ -65,6 +66,7 @@
     "wrangler": "^4.31.0"
   },
   "dependencies": {
+    "update-electron-app": "^3.0.0",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.5",

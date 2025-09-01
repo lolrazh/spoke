@@ -1,8 +1,10 @@
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
+import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { PublisherS3 } from "@electron-forge/publisher-s3";
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -40,6 +42,23 @@ const config: ForgeConfig = {
         return {};
       },
     },
+    // --- Switching to distribution later ---
+    // When you’re ready to distribute to external testers/users, switch the
+    // identity to your "Developer ID Application" certificate and enable
+    // notarization. Example template (uncomment + fill values):
+    // osxSign: {
+    //   identity: "Developer ID Application: Your Name (TEAMID)",
+    //   hardenedRuntime: true,
+    //   signatureFlags: "runtime",
+    //   entitlements: "./build/entitlements/main.plist",
+    //   entitlementsInherit: "./build/entitlements/inherit.plist",
+    //   preAutoEntitlements: false,
+    // },
+    // osxNotarize: {
+    //   appleId: process.env.APPLE_ID,
+    //   appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD, // or APPLE_PASSWORD
+    //   teamId: "TEAMID",
+    // },
     // No notarization needed for internal testing
   },
   rebuildConfig: {},
@@ -80,6 +99,30 @@ const config: ForgeConfig = {
       },
       ["darwin"],
     ),
+    // Produce a ZIP for macOS auto-updates (read by update-electron-app)
+    // Include absolute URLs in RELEASES.json for stable CDN behavior
+    new MakerZIP(
+      (arch) => ({
+        macUpdateManifestBaseUrl: `https://releases.sonicflow.app/darwin/${arch}`,
+      }),
+      ["darwin"],
+    ),
+  ],
+  // Auto-publish artifacts to Cloudflare R2 (S3-compatible)
+  publishers: [
+    new PublisherS3({
+      // Required: your R2 bucket name (no protocol)
+      bucket: process.env.R2_BUCKET || "releases",
+      // R2 specifics
+      endpoint: process.env.R2_ENDPOINT, // e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+      region: process.env.R2_REGION || "auto",
+      s3ForcePathStyle: true,
+      // Place artifacts where update-electron-app expects them
+      // Result: darwin/arm64/<filename> or darwin/x64/<filename>
+      keyResolver: (filename: string, platform: string, arch: string) => {
+        return `${platform}/${arch}/${filename}`;
+      },
+    }),
   ],
   plugins: [
     new VitePlugin({

@@ -318,6 +318,63 @@ The project includes several native testing utilities:
 ./check-editable
 ```
 
+## Publishing (Cloudflare R2)
+
+- Base URL: `https://releases.sonicflow.app`
+- Layout produced by Forge ZIP maker:
+  - `darwin/<arch>/RELEASES.json`
+  - `darwin/<arch>/Sonic Flow-<version>-mac.zip`
+
+### 1) Configure environment
+
+Copy `.env.example` to `.env` and fill in values:
+
+```
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+R2_BUCKET=releases
+R2_REGION=auto
+```
+
+Notes:
+- R2 does not support S3 ACLs; make the bucket or the public route public in R2 settings or via a bucket policy.
+- The S3 publisher uses your R2 endpoint with path-style addressing.
+
+### 2) Build artifacts
+
+```
+npm run make    # arm64 by default
+```
+
+Artifacts:
+- `out/make/zip/darwin/arm64/RELEASES.json`
+- `out/make/zip/darwin/arm64/Sonic Flow-<version>-mac.zip`
+
+### 3) Publish to R2 (automated)
+
+```
+npm run publish
+```
+
+This uploads ZIP + RELEASES.json to `darwin/<arch>/...` in your bucket.
+
+Verification:
+- `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
+- `curl -I "https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+
+### 4) Update flow (local test)
+
+1. Install `0.0.1` via DMG.
+2. Publish `0.0.2` ZIP + `RELEASES.json` (overwrite manifest) to the same path.
+3. Launch the app; it will update and relaunch to `0.0.2`.
+
+Troubleshooting:
+- If updates don’t trigger, check app logs and ensure the manifest and ZIP are public, reachable, and not overly cached. You can temporarily use a shorter interval in `src/main.ts`.
+
+See also:
+- docs/UPDATE_PIPELINE.md — full “Sonic Flow macOS Auto‑Update Pipeline” guide
+
 ## Deployment
 
 ### Staging Builds
