@@ -2,8 +2,8 @@
 
 // LLM (Chat Completions)
 export const LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
-export const LLM_DEFAULT_TEMPERATURE = 0.2;
+export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+export const LLM_DEFAULT_TEMPERATURE = 1.0;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
 

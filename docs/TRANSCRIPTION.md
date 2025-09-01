@@ -340,7 +340,7 @@ The worker includes optional LLM enhancement of transcription results:
 ```typescript
 ENABLE_LLM: '1'                    // Enable post-processing
 LLM_STREAM: '1'                    // Stream progressive updates
-LLM_MODEL: 'meta-llama/llama-4-scout-17b-16e-instruct' // Model selection
+LLM_MODEL: 'meta-llama/llama-4-maverick-17b-128e-instruct' // Model selection
 LLM_CURRENT_DATE: 'YYYY-MM-DD'     // Optional; defaults to today (UTC)
 ```
 
@@ -612,7 +612,7 @@ VITE_SENTRY_DSN=...                     # Error reporting
 GROQ_API_KEY=...                        # Required for transcription
 ENABLE_LLM=1                            # Enable post-processing
 LLM_STREAM=1                            # Stream progressive updates
-LLM_MODEL=meta-llama/llama-4-scout-17b-16e-instruct  # LLM model selection
+LLM_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct  # LLM model selection
 ```
 
 ### Performance Tuning
