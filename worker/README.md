@@ -51,7 +51,7 @@ Example `.dev.vars` (add as needed):
 ```
 # LLM
 # ENABLE_LLM=true
-# LLM_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct
+# LLM_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 # LLM_STREAM=true
 # LLM_CURRENT_DATE=2025-09-01
 # LLM_TIMEOUT_MS=25000
