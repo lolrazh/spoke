@@ -215,8 +215,15 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     getSupabase();
     (async () => {
-      const user = await getCurrentUser();
-      if (!user) return;
+      const skipAuth = !!window.devFlags?.skipAuth;
+      const forceOnboarding = !!window.devFlags?.forceOnboarding;
+      const user = skipAuth ? { id: "dev" } : await getCurrentUser();
+      // In FORCE_ONBOARDING mode, never auto-complete; start at permissions.
+      if (forceOnboarding) {
+        setCurrentStep("permissions");
+        return;
+      }
+      if (!user && !skipAuth) return; // stay on auth step
       try {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
@@ -252,7 +259,8 @@ const Onboarding: React.FC = () => {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
-        if (profile?.onboarding_done) {
+        const forceOnboarding = !!window.devFlags?.forceOnboarding;
+        if (!forceOnboarding && profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
           } catch (e) {
