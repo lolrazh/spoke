@@ -32,6 +32,16 @@ export default defineConfig({
           src: [join(__dirname, "public/fonts/*")],
           dest: "fonts",
         },
+        {
+          // Copy VAD model
+          src: [join(__dirname, "public/vad/silero_vad.onnx")],
+          dest: "vad",
+        },
+        {
+          // Copy ORT Web WASM binaries for VAD
+          src: [join(__dirname, "public/vad/ort-wasm/*")],
+          dest: "vad/ort-wasm",
+        },
       ],
     }),
   ],
