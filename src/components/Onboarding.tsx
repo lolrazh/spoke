@@ -64,6 +64,7 @@ type OnboardingStep =
   | "mic-check"
   | "hotkey-info"
   | "hotkey-test"
+  | "hotkey-tap-test"
   | "complete";
 
 const Onboarding: React.FC = () => {
@@ -110,6 +111,11 @@ const Onboarding: React.FC = () => {
     { id: "default", label: "System Default" },
   ]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+  // Sample prompts for tests
+  const sampleHoldText =
+    "Hi Sam — thanks for your note. I’d love to sync next week. Tuesday at 2 PM works for me. If not, share a couple alternatives. Thanks!";
+  const sampleTapText =
+    "Let’s meet Tuesday at 2 PM. Actually, scratch that — Thursday at 11 AM works better.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -223,6 +229,7 @@ const Onboarding: React.FC = () => {
     "mic-check",
     "hotkey-info",
     "hotkey-test",
+    "hotkey-tap-test",
     "complete",
   ];
 
@@ -402,10 +409,10 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // Prepare the pill (create main window + tray) when entering the hotkey test step
+  // Prepare the pill (create main window + tray) when entering either hotkey test step
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if (currentStep === "hotkey-test" && !pillPreparedRef.current) {
+    if ((currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") && !pillPreparedRef.current) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -417,8 +424,9 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (currentStep === "hotkey-test") {
-      window.electron?.setPttTarget?.("main");
+    if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
+      // Route PTT to onboarding so this step receives Fn events
+      window.electron?.setPttTarget?.("onboarding");
       window.electron?.expandPill?.(() => undefined);
     }
   }, [currentStep]);
@@ -563,9 +571,9 @@ const Onboarding: React.FC = () => {
     };
   }, [currentStep]);
 
-  // Auto-focus the text box on step 4 for better UX
+  // Auto-focus the text box on test steps for better UX
   useEffect(() => {
-    if (currentStep !== "hotkey-test") return;
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
     const id = setTimeout(() => {
       textAreaRef.current?.focus();
     }, 50);
@@ -640,6 +648,7 @@ const Onboarding: React.FC = () => {
     autoInitStream: false,
   });
   const [testText, setTestText] = useState("");
+  const [testTextTap, setTestTextTap] = useState("");
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -656,14 +665,18 @@ const Onboarding: React.FC = () => {
     };
   };
 
-  // Append recognized text to test area
+  // Append recognized text to test area(s)
   useEffect(() => {
     if (trans.text) {
-      setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      if (currentStep === "hotkey-test") {
+        setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      } else if (currentStep === "hotkey-tap-test") {
+        setTestTextTap((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      }
     }
-  }, [trans.text]);
+  }, [trans.text, currentStep]);
 
-  // Hook Fn key to provide visual feedback on step 3; only dictate on step 4
+  // Hook Fn key: hold-to-speak on hotkey-test, tap-to-toggle on hotkey-tap-test
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) {
       devFlags.methods.devLog("PTT API not available yet, waiting...");
@@ -676,17 +689,24 @@ const Onboarding: React.FC = () => {
       devFlags.methods.devLog("Fn key pressed down");
       setFnKeyPressed(true); // Immediate visual feedback
 
-      // Only start dictation on hotkey-test step (step 4)
-      if (currentStep !== "hotkey-test") return;
-      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-      if (trans.processing || trans.recording) return;
-      // Immediate audio feedback on key down to reduce perceived latency during onboarding test
-      try { playToggleOn(); } catch {}
-      isLongPressRef.current = false;
-      pressTimerRef.current = setTimeout(() => {
-        isLongPressRef.current = true;
-        if (!trans.recording) trans.start();
-      }, HOLD_MS);
+      if (currentStep === "hotkey-test") {
+        if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+        if (trans.processing || trans.recording) return;
+        try { playToggleOn(); } catch {}
+        isLongPressRef.current = false;
+        pressTimerRef.current = setTimeout(() => {
+          isLongPressRef.current = true;
+          if (!trans.recording) trans.start();
+        }, HOLD_MS);
+      } else if (currentStep === "hotkey-tap-test") {
+        if (trans.processing) return;
+        if (!trans.recording) {
+          try { playToggleOn(); } catch {}
+          trans.start();
+        } else {
+          trans.stop();
+        }
+      }
     };
     const handleUp = () => {
       devFlags.methods.devLog("Fn key released");
@@ -696,7 +716,7 @@ const Onboarding: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-      // Only stop dictation on hotkey-test step (step 4)
+      // For hold-to-speak, stop on release; for tap-to-talk, ignore release
       if (currentStep === "hotkey-test" && trans.recording) trans.stop();
       isLongPressRef.current = false;
     };
@@ -1295,11 +1315,16 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-3 max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Test Your Setup
+                      Press and hold Fn to dictate
                     </h2>
                     <p className="text-sm text-subtle subheading">
-                      Press and hold Fn to dictate, then release to stop.
+                      Hold to speak. Release to stop.
                     </p>
+                  </div>
+
+                  {/* Sample hint */}
+                  <div className="text-[11px] text-dimmed text-left">
+                    Try saying: {sampleHoldText}
                   </div>
 
                   {/* Dictation Textarea */}
@@ -1317,6 +1342,47 @@ const Onboarding: React.FC = () => {
                   </div>
 
                   {/* No CTA here; proceed with Next to the completion screen */}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Hotkey Tap Test Step */}
+            {currentStep === "hotkey-tap-test" && (
+              <motion.div
+                key="hotkey-tap-test"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-3 overflow-hidden"
+              >
+                <div className="space-y-3 max-w-xl mx-auto text-left">
+                  <div className="text-center heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Tap Fn to dictate
+                    </h2>
+                    <p className="text-sm text-subtle subheading">
+                      Tap once to start. Tap again to stop.
+                    </p>
+                  </div>
+
+                  {/* Sample hint */}
+                  <div className="text-[11px] text-dimmed text-left">
+                    Try saying: {sampleTapText}
+                  </div>
+
+                  {/* Dictation Textarea */}
+                  <div>
+                    <textarea
+                      className={
+                        "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                      }
+                      placeholder="Say something…"
+                      value={testTextTap}
+                      onChange={(e) => setTestTextTap(e.target.value)}
+                      ref={textAreaRef}
+                    />
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -1392,7 +1458,7 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {/* Next button appears on permissions and hotkey-info */}
+            {/* Next button appears on permissions, hotkey-info, and hotkey-tap-test; always enabled except permissions gating */}
             {currentStep !== "hotkey-test" && (
               <Button
                 variant="secondary"
@@ -1410,9 +1476,8 @@ const Onboarding: React.FC = () => {
             {currentStep === "hotkey-test" && (
               <Button
                 variant="secondary"
-                onClick={() => setCurrentStep("complete")}
+                onClick={() => setCurrentStep("hotkey-tap-test")}
                 className="px-3 py-1.5"
-                disabled={!testText || testText.trim().length === 0}
               >
                 Next
               </Button>
