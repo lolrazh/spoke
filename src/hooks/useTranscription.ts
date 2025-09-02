@@ -591,7 +591,14 @@ export function useTranscription(
           await fallback.init();
           vadEngineRef.current = fallback;
         }
-        vadStreamGateRef.current = new VadStreamGate(vadEngineRef.current);
+        vadStreamGateRef.current = new VadStreamGate(
+          vadEngineRef.current,
+          (ev) => {
+            if (window.devFlags?.devConsoleLogs) {
+              console.log("[VAD]", ev.type, { atMs: ev.atMs });
+            }
+          },
+        );
         vadReadyRef.current = true;
       } else {
         vadEngineRef.current = null;
@@ -624,11 +631,17 @@ export function useTranscription(
             if (metricsRef.current) {
               metricsRef.current.framesDropped = (metricsRef.current.framesDropped ?? 0) + 1;
             }
+            if (window.devFlags?.devConsoleLogs) {
+              console.debug("[VAD] drop frame (silence)");
+            }
           }
           for (const chunk of chunks) {
             streamFrame(chunk.buffer);
             if (metricsRef.current) {
               metricsRef.current.framesForwarded = (metricsRef.current.framesForwarded ?? 0) + 1;
+            }
+            if (window.devFlags?.devConsoleLogs) {
+              console.debug("[VAD] forward frame (speech)");
             }
           }
         } else {

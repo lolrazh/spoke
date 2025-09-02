@@ -1,5 +1,5 @@
 import { WINDOW_MS, SAMPLE_RATE_HZ, PRE_ROLL_MS, POST_ROLL_MS_VAD } from "@/config/vad";
-import type { VadEngine } from "@/types/vad";
+import type { VadEngine, VadEvent } from "@/types/vad";
 import { VadGate } from "@/utils/vadGate";
 
 /**
@@ -19,14 +19,17 @@ export class VadStreamGate {
   private carryFloat: Float32Array | null = null; // leftover window slice
   private timeMs = 0; // approximate timeline in ms, step by WINDOW_MS
 
-  constructor(engine: VadEngine) {
+  constructor(engine: VadEngine, onEvent?: (ev: VadEvent) => void) {
     this.engine = engine;
     this.gate = new VadGate();
+    this.onEvent = onEvent;
     this.windowSamples = Math.round((SAMPLE_RATE_HZ * WINDOW_MS) / 1000);
     this.preRollSamples = Math.round((SAMPLE_RATE_HZ * PRE_ROLL_MS) / 1000);
     this.postRollSamples = Math.round((SAMPLE_RATE_HZ * POST_ROLL_MS_VAD) / 1000);
     this.preRollBuf = new Int16Array(this.preRollSamples);
   }
+
+  private onEvent?: (ev: VadEvent) => void;
 
   reset(): void {
     this.gate.reset();
@@ -90,6 +93,7 @@ export class VadStreamGate {
 
       const events = this.gate.drainEvents();
       for (const ev of events) {
+        try { this.onEvent?.(ev); } catch {}
         if (ev.type === "speech_start") {
           // On start, flush pre-roll first as a single contiguous chunk
           if (this.preRollCount > 0) {
