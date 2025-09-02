@@ -1244,7 +1244,7 @@ const Onboarding: React.FC = () => {
                 </div>
 
                 {/* Mic selector */}
-                <div className="mx-auto max-w-sm w-full">
+                <div className="mx-auto w-full max-w-xl">
                   <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select microphone" />
