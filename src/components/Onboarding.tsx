@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "./ui/select";
 import { useTranscription } from "../hooks/useTranscription";
 import SfIcon from "./icons/SfIcon";
 import {
@@ -99,6 +106,10 @@ const Onboarding: React.FC = () => {
   const rafIdRef = useRef<number | null>(null);
   const [barValues, setBarValues] = useState<number[]>(Array.from({ length: 24 }, () => 0));
   const [speakingDetected, setSpeakingDetected] = useState(false);
+  const [micDevices, setMicDevices] = useState<Array<{ id: string; label: string }>>([
+    { id: "default", label: "System Default" },
+  ]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -436,7 +447,14 @@ const Onboarding: React.FC = () => {
     try {
       // Ensure any previous session is closed
       stopMic();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const constraints: MediaStreamConstraints = {
+        video: false,
+        audio:
+          selectedMicId && selectedMicId !== "default"
+            ? { deviceId: { exact: selectedMicId } }
+            : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
       const Ctor: typeof AudioContext =
         (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -487,6 +505,62 @@ const Onboarding: React.FC = () => {
     }
     // Stop when leaving mic-check
     stopMic();
+  }, [currentStep]);
+
+  // Restart capture when device changes
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    startMic();
+    try {
+      // Persist selection to main so app-wide mic matches user choice
+      if (selectedMicId) window.mic?.select?.(selectedMicId);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMicId]);
+
+  // Enumerate mics when entering mic-check
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Seed from main if present
+        let seedId: string | null = null;
+        try {
+          const res = await window.mic?.getSelected?.();
+          seedId = res?.id ?? null;
+        } catch {}
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices
+          .filter((d) => d.kind === "audioinput")
+          .map((d) => ({ id: d.deviceId || "default", label: d.label || "Microphone" }));
+        const deduped = inputs.length
+          ? inputs
+          : [{ id: "default", label: "System Default" }];
+        if (!cancelled) {
+          setMicDevices(deduped);
+          const next = seedId && deduped.some((d) => d.id === seedId) ? seedId : deduped[0]?.id;
+          if (next) setSelectedMicId(next);
+          try {
+            window.mic?.updateDevices?.(
+              deduped.map((d) => ({ id: d.id, label: d.label })),
+              next || undefined,
+            );
+          } catch {}
+        }
+      } catch {
+        if (!cancelled) setMicDevices([{ id: "default", label: "System Default" }]);
+      }
+    })();
+    const off = window.mic?.onSelectedChanged?.(({ id }) => {
+      try {
+        if (id && id !== selectedMicId) setSelectedMicId(id);
+      } catch {}
+    });
+    return () => {
+      cancelled = true;
+      try { off && off(); } catch {}
+    };
   }, [currentStep]);
 
   // Auto-focus the text box on step 4 for better UX
@@ -1149,7 +1223,8 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
 
-            {/* Mic Check Step */}
+            {/* Mic Check Step */
+            }
             {currentStep === "mic-check" && (
               <motion.div
                 key="mic-check"
@@ -1161,11 +1236,27 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Just checking your mic
+                    Let’s check your microphone
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Say something — the bars should bounce when your mic is working.
+                    Pick the right input and say a few words. The bars should bounce.
                   </p>
+                </div>
+
+                {/* Mic selector */}
+                <div className="mx-auto max-w-sm w-full">
+                  <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select microphone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {micDevices.map((d) => (
+                        <SelectItem key={d.id} value={d.id} className="text-sm">
+                          {d.label || "Microphone"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex items-center justify-center py-3">
@@ -1186,7 +1277,7 @@ const Onboarding: React.FC = () => {
                 </div>
 
                 <div className="text-[11px] text-dimmed">
-                  {speakingDetected ? "We hear you — sounds good." : "No input yet. Check the right mic is selected and its level."}
+                  {speakingDetected ? "We hear you — sounding good." : "No input yet. Say a few words to test your mic."}
                 </div>
               </motion.div>
             )}
