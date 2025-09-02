@@ -1,10 +1,5 @@
 import type { VadDecision, VadEngine } from "@/types/vad";
-import {
-  MODEL_URL,
-  ORT_WASM_BASE_URL,
-  WINDOW_MS,
-  SAMPLE_RATE_HZ,
-} from "@/config/vad";
+import { WINDOW_MS, SAMPLE_RATE_HZ, getVadModelURL, getOrtWasmBaseURL } from "@/config/vad";
 
 // Lazy imports typed as any to avoid pulling heavy types in the renderer bundle type-check
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,8 +27,8 @@ export class SileroVadEngine implements VadEngine {
     }
 
     const opts = {
-      modelURL: MODEL_URL,
-      wasmURLPrefix: ORT_WASM_BASE_URL,
+      modelURL: getVadModelURL(),
+      wasmURLPrefix: getOrtWasmBaseURL(),
       sampleRate: SAMPLE_RATE_HZ,
       frameSamples: this.windowSamples,
       // Let wrapper manage its own internal state; we'll call process() per window

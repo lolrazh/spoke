@@ -28,4 +28,29 @@ export const MIN_SILENCE_MS = 120; // debounce end
 export const MODEL_URL = "/vad/silero_vad.onnx";
 export const ORT_WASM_BASE_URL = "/vad/ort-wasm/"; // directory containing *.wasm files
 
+function resolveAssetUrl(relPath: string): string {
+  try {
+    const base = (
+      (import.meta as unknown) as { env?: Record<string, unknown> }
+    )?.env?.BASE_URL ?? "./";
+    const joined = `${String(base).replace(/\/$/, "")}${relPath.startsWith("/") ? relPath : `/${relPath}`}`;
+    return new URL(
+      joined,
+      typeof window !== "undefined" ? window.location.href : "file://",
+    ).toString();
+  } catch {
+    return relPath; // best-effort
+  }
+}
+
+export function getVadModelURL(): string {
+  return resolveAssetUrl(MODEL_URL);
+}
+
+export function getOrtWasmBaseURL(): string {
+  // Ensure trailing slash for prefix semantics expected by ORT
+  const url = resolveAssetUrl(ORT_WASM_BASE_URL);
+  return url.endsWith("/") ? url : `${url}/`;
+}
+
 
