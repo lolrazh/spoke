@@ -24,7 +24,8 @@ export const MIN_SPEECH_MS = 120; // ignore blips shorter than this
 export const MIN_SILENCE_MS = 120; // debounce end
 
 // Asset locations (served from public/)
-export const MODEL_URL = "/assets/vad/silero_vad.onnx";
-export const ORT_WASM_BASE_URL = "/assets/vad/ort-wasm/"; // directory containing *.wasm files
+// Match user's placement under public/vad
+export const MODEL_URL = "/vad/silero_vad.onnx";
+export const ORT_WASM_BASE_URL = "/vad/ort-wasm/"; // directory containing *.wasm files
 
 
