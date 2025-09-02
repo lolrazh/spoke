@@ -9,6 +9,9 @@ import {
 } from "../config/audio";
 import { getTranscribeWsUrl, getMetricsUrl } from "../config/api";
 import { encodeFrameHeader } from "../utils/pcm";
+import { VAD_ENABLED } from "@/config/vad";
+import { SileroVadEngine, EnergyVadEngine } from "@/utils/vadEngine";
+import { VadStreamGate } from "@/utils/vadStreamGate";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -89,7 +92,14 @@ export function useTranscription(
     bytesProduced: number;
     framesQueued: number;
     framesSentApprox: number;
+    framesForwarded?: number;
+    framesDropped?: number;
   } | null>(null);
+
+  // VAD
+  const vadEngineRef = useRef<SileroVadEngine | EnergyVadEngine | null>(null);
+  const vadStreamGateRef = useRef<VadStreamGate | null>(null);
+  const vadReadyRef = useRef<boolean>(false);
 
   const nowRelNs = () => {
     try {
@@ -570,6 +580,25 @@ export function useTranscription(
       })();
       await audioContextRef.current.audioWorklet.addModule(workletUrl);
 
+      // Initialize VAD (gate-only). Fail gracefully to energy fallback.
+      if (VAD_ENABLED) {
+        try {
+          const eng = new SileroVadEngine();
+          await eng.init();
+          vadEngineRef.current = eng;
+        } catch {
+          const fallback = new EnergyVadEngine();
+          await fallback.init();
+          vadEngineRef.current = fallback;
+        }
+        vadStreamGateRef.current = new VadStreamGate(vadEngineRef.current);
+        vadReadyRef.current = true;
+      } else {
+        vadEngineRef.current = null;
+        vadStreamGateRef.current = null;
+        vadReadyRef.current = false;
+      }
+
       sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(
         streamRef.current,
       );
@@ -586,9 +615,24 @@ export function useTranscription(
 
       workletNodeRef.current.port.onmessage = (ev: MessageEvent) => {
         const msg = ev.data as unknown as { type?: string; samples?: ArrayBuffer };
-        if (msg?.type === "audio" && msg?.samples) {
-          const buf: ArrayBuffer = msg.samples as ArrayBuffer;
-          // Stream immediately
+        if (msg?.type !== "audio" || !msg?.samples) return;
+        const buf: ArrayBuffer = msg.samples as ArrayBuffer;
+
+        if (VAD_ENABLED && vadReadyRef.current && vadStreamGateRef.current) {
+          const chunks = vadStreamGateRef.current.pushFrame(buf);
+          if (chunks.length === 0) {
+            if (metricsRef.current) {
+              metricsRef.current.framesDropped = (metricsRef.current.framesDropped ?? 0) + 1;
+            }
+          }
+          for (const chunk of chunks) {
+            streamFrame(chunk.buffer);
+            if (metricsRef.current) {
+              metricsRef.current.framesForwarded = (metricsRef.current.framesForwarded ?? 0) + 1;
+            }
+          }
+        } else {
+          // No VAD: pass-through
           streamFrame(buf);
         }
       };
@@ -951,6 +995,14 @@ export function useTranscription(
                     ? performance.now()
                     : Date.now();
 
+              // Flush any VAD post-roll (gate-only currently returns empty)
+              try {
+                if (VAD_ENABLED && vadStreamGateRef.current) {
+                  const tail = vadStreamGateRef.current.flushPostRoll();
+                  for (const chunk of tail) streamFrame(chunk.buffer);
+                }
+              } catch {}
+
               await waitForAllFramesSent();
               if (metricsRef.current && !metricsRef.current.drainDoneMs)
                 metricsRef.current.drainDoneMs =
@@ -1034,6 +1086,12 @@ export function useTranscription(
       workletNodeRef.current = null;
       sourceNodeRef.current = null;
       abortControllerRef.current = null;
+      // Dispose VAD
+      try { vadStreamGateRef.current?.dispose(); } catch {}
+      vadStreamGateRef.current = null;
+      try { vadEngineRef.current?.dispose(); } catch {}
+      vadEngineRef.current = null;
+      vadReadyRef.current = false;
       if (audioContextRef.current) {
         try {
           await audioContextRef.current.close();
@@ -1084,6 +1142,12 @@ export function useTranscription(
       sendQueueRef.current = [];
       sendQueueBytesRef.current = 0;
       seqRef.current = 0;
+      // Dispose VAD
+      try { vadStreamGateRef.current?.dispose(); } catch {}
+      vadStreamGateRef.current = null;
+      try { vadEngineRef.current?.dispose(); } catch {}
+      vadEngineRef.current = null;
+      vadReadyRef.current = false;
       if (wsRef.current) {
         try {
           if (wsReadyRef.current && wsRef.current.readyState === WebSocket.OPEN)
@@ -1134,6 +1198,13 @@ export function useTranscription(
         } catch {}
         audioContextRef.current = null;
       }
+
+      // Dispose VAD
+      try { vadStreamGateRef.current?.dispose(); } catch {}
+      vadStreamGateRef.current = null;
+      try { vadEngineRef.current?.dispose(); } catch {}
+      vadEngineRef.current = null;
+      vadReadyRef.current = false;
 
       if (streamRef.current) {
         try {
