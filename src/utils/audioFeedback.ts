@@ -9,8 +9,9 @@ import toggleOffUrl from "/assets/sonic-flow-toggle-off.wav?url";
 const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);
 
-audioOn.volume = 0.3;
-audioOff.volume = 0.2;
+// Increase default volumes for clearer audible feedback
+audioOn.volume = 0.6;
+audioOff.volume = 0.5;
 
 // prep — reduce latency between .play() call and first sample
 [audioOn, audioOff].forEach((a) => {
