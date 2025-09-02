@@ -36,7 +36,7 @@ Principles (minimal change; preserve meaning, tone, and intent):
   - Normalize well-known domain terminology to its standard form when the intent is clear and unambiguous.
 - Preserve profanity, emphasis, repetition, and style.
 
-Output: a single cleaned passage with no extra text.
+Output: a single cleaned passage with no extra text. Only the corrected transcription.
 `;
 }
 
