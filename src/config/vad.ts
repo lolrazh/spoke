@@ -18,10 +18,10 @@ export const PRE_ROLL_MS = 200; // leading context to avoid clipping starts
 export const POST_ROLL_MS_VAD = 160; // trailing context (distinct from capture POST_ROLL_MS)
 
 // Hysteresis / policy
-export const SPEECH_PROB_START = 0.6; // start speaking when prob >= 0.6
-export const SPEECH_PROB_END = 0.4; // stop when prob <= 0.4
-export const MIN_SPEECH_MS = 120; // ignore blips shorter than this
-export const MIN_SILENCE_MS = 120; // debounce end
+export const SPEECH_PROB_START = 0.8; // require stronger confidence to start
+export const SPEECH_PROB_END = 0.5; // maintain speech through brief dips
+export const MIN_SPEECH_MS = 200; // ignore short blips
+export const MIN_SILENCE_MS = 200; // avoid premature cut-offs
 
 // Asset locations (served from public/)
 // Match user's placement under public/vad
