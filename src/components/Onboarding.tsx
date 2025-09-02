@@ -1249,7 +1249,7 @@ const Onboarding: React.FC = () => {
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select microphone" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent inPlace>
                       {micDevices.map((d) => (
                         <SelectItem key={d.id} value={d.id} className="text-sm">
                           {d.label || "Microphone"}

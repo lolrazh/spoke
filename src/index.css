@@ -736,6 +736,25 @@ body {
     box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
   }
 
+  /* Localized backdrop blur for dropdowns/popovers to avoid full-window artifact */
+  .dropdown-glass {
+    position: relative;
+    isolation: isolate;
+    contain: paint;
+    overflow: hidden;
+  }
+  .dropdown-glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: rgba(var(--surface-base-rgb), 0.42);
+    -webkit-backdrop-filter: blur(var(--blur-md)) saturate(115%);
+    backdrop-filter: blur(var(--blur-md)) saturate(115%);
+    z-index: -1;
+  }
+
   /* Interactive card with hover effects */
   .card-interactive {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
