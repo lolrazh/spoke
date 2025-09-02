@@ -54,6 +54,7 @@ const mockPermissions = {
 type OnboardingStep =
   | "auth"
   | "permissions"
+  | "mic-check"
   | "hotkey-info"
   | "hotkey-test"
   | "complete";
@@ -90,6 +91,14 @@ const Onboarding: React.FC = () => {
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mic-check visualizer state
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const [barValues, setBarValues] = useState<number[]>(Array.from({ length: 24 }, () => 0));
+  const [speakingDetected, setSpeakingDetected] = useState(false);
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -200,6 +209,7 @@ const Onboarding: React.FC = () => {
   const getSteps = (): OnboardingStep[] => [
     "auth",
     "permissions",
+    "mic-check",
     "hotkey-info",
     "hotkey-test",
     "complete",
@@ -400,6 +410,83 @@ const Onboarding: React.FC = () => {
       window.electron?.setPttTarget?.("main");
       window.electron?.expandPill?.(() => undefined);
     }
+  }, [currentStep]);
+
+  // --- Mic-check visualizer lifecycle ---
+  const stopMic = () => {
+    try {
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+    } catch {}
+    rafIdRef.current = null;
+    try {
+      analyserRef.current?.disconnect();
+    } catch {}
+    analyserRef.current = null;
+    try {
+      audioCtxRef.current?.close();
+    } catch {}
+    audioCtxRef.current = null;
+    try {
+      micStreamRef.current?.getTracks()?.forEach((t) => t.stop());
+    } catch {}
+    micStreamRef.current = null;
+  };
+
+  const startMic = async () => {
+    try {
+      // Ensure any previous session is closed
+      stopMic();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      micStreamRef.current = stream;
+      const Ctor: typeof AudioContext =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctor();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512; // fine-grained but light
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      analyserRef.current = analyser;
+
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      const NUM_BARS = 24;
+
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(freqData);
+        // Group bins into NUM_BARS buckets
+        const buckets: number[] = new Array(NUM_BARS).fill(0);
+        const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
+        let energy = 0;
+        for (let i = 0; i < NUM_BARS; i++) {
+          let sum = 0;
+          const start = i * binsPerBar;
+          const end = Math.min(freqData.length, start + binsPerBar);
+          for (let j = start; j < end; j++) sum += freqData[j];
+          const avg = sum / (end - start || 1);
+          buckets[i] = avg / 255; // normalize 0..1
+          energy += avg;
+        }
+        const avgEnergy = energy / freqData.length;
+        setSpeakingDetected((prev) => (avgEnergy > 14 ? true : prev));
+        setBarValues(buckets);
+        rafIdRef.current = requestAnimationFrame(tick);
+      };
+      rafIdRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      // If mic unavailable, keep UI but don't block progression
+      setSpeakingDetected(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentStep === "mic-check") {
+      startMic();
+      return () => stopMic();
+    }
+    // Stop when leaving mic-check
+    stopMic();
   }, [currentStep]);
 
   // Auto-focus the text box on step 4 for better UX
@@ -1058,6 +1145,48 @@ const Onboarding: React.FC = () => {
 
                     {/* No separate denied section; user can press Enable again. */}
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Mic Check Step */}
+            {currentStep === "mic-check" && (
+              <motion.div
+                key="mic-check"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-4"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Just checking your mic
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Say something — the bars should bounce when your mic is working.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-center py-3">
+                  <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
+                    {barValues.map((v, i) => {
+                      const h = Math.max(6, Math.round(6 + v * 80));
+                      const opacity = 0.45 + v * 0.55;
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-[3px] bg-white/70"
+                          style={{ height: `${h}px`, opacity }}
+                          aria-hidden
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-dimmed">
+                  {speakingDetected ? "We hear you — sounds good." : "No input yet. Check the right mic is selected and its level."}
                 </div>
               </motion.div>
             )}
