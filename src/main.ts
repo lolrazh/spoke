@@ -198,6 +198,11 @@ const SKIP_ONBOARDING =
   process.env.SKIP_AUTH === "1" ||
   process.env.SKIP_AUTH === "true";
 
+// Dev helper: force-show onboarding every launch (ignore local done flag)
+const FORCE_ONBOARDING =
+  process.env.FORCE_ONBOARDING === "1" ||
+  process.env.FORCE_ONBOARDING === "true";
+
 // Microphone management state
 let micDevices: MicDevice[] = [
   { id: "default", label: "System Default" }, // Always available fallback
@@ -1772,9 +1777,10 @@ app.whenReady().then(async () => {
     console.warn("[Main Process] Failed to set dock icon:", error.message);
   }
 
-  // Startup flow: skip onboarding when either SKIP_ONBOARDING is set
-  // or we have a local onboarding done flag
-  if (SKIP_ONBOARDING || onboardingPrefs?.done === true) {
+  // Startup flow:
+  // - FORCE_ONBOARDING => always show onboarding (ignore local flag)
+  // - Otherwise, skip onboarding when SKIP_ONBOARDING or local done flag
+  if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true)) {
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
@@ -1791,7 +1797,11 @@ app.whenReady().then(async () => {
       );
     }
   } else {
-    console.log("[Startup] Showing onboarding");
+    console.log(
+      FORCE_ONBOARDING
+        ? "[Startup] FORCE_ONBOARDING enabled — showing onboarding"
+        : "[Startup] Showing onboarding",
+    );
     console.log("[Debug] About to create onboarding window...");
     try {
       createOnboardingWindow();
@@ -2503,16 +2513,18 @@ app.on("activate", () => {
       return;
     }
 
-    // If no windows exist at all, create the main window
+    // If no windows exist at all, create the appropriate window
     if (allWindows.length === 0) {
       console.log("[App Event] activate: No windows exist, creating window");
-      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true))
+        createWindow();
       else createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
       console.log("[App Event] activate: Main window is destroyed, recreating");
-      if (SKIP_ONBOARDING || onboardingPrefs?.done === true) createWindow();
+      if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true))
+        createWindow();
       else createOnboardingWindow();
     }
   } else {

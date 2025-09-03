@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "./ui/select";
 import { useTranscription } from "../hooks/useTranscription";
 import SfIcon from "./icons/SfIcon";
 import {
@@ -54,8 +61,10 @@ const mockPermissions = {
 type OnboardingStep =
   | "auth"
   | "permissions"
+  | "mic-check"
   | "hotkey-info"
   | "hotkey-test"
+  | "hotkey-tap-test"
   | "complete";
 
 const Onboarding: React.FC = () => {
@@ -90,6 +99,23 @@ const Onboarding: React.FC = () => {
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Mic-check visualizer state
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const [barValues, setBarValues] = useState<number[]>(Array.from({ length: 24 }, () => 0));
+  const [speakingDetected, setSpeakingDetected] = useState(false);
+  const [micDevices, setMicDevices] = useState<Array<{ id: string; label: string }>>([
+    { id: "default", label: "System Default" },
+  ]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("default");
+  // Sample prompts for tests
+  const sampleHoldText =
+    "Hi Sam — thanks for your note. I’d love to sync next week. Tuesday at 2 PM works for me. If not, share a couple alternatives. Thanks!";
+  const sampleTapText =
+    "Let’s meet Tuesday at 2 PM. Actually, scratch that — Thursday at 11 AM works better.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -200,8 +226,10 @@ const Onboarding: React.FC = () => {
   const getSteps = (): OnboardingStep[] => [
     "auth",
     "permissions",
+    "mic-check",
     "hotkey-info",
     "hotkey-test",
+    "hotkey-tap-test",
     "complete",
   ];
 
@@ -215,8 +243,15 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     getSupabase();
     (async () => {
-      const user = await getCurrentUser();
-      if (!user) return;
+      const skipAuth = !!window.devFlags?.skipAuth;
+      const forceOnboarding = !!window.devFlags?.forceOnboarding;
+      const user = skipAuth ? { id: "dev" } : await getCurrentUser();
+      // In FORCE_ONBOARDING mode, never auto-complete; start at permissions.
+      if (forceOnboarding) {
+        setCurrentStep("permissions");
+        return;
+      }
+      if (!user && !skipAuth) return; // stay on auth step
       try {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
@@ -252,7 +287,8 @@ const Onboarding: React.FC = () => {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
-        if (profile?.onboarding_done) {
+        const forceOnboarding = !!window.devFlags?.forceOnboarding;
+        if (!forceOnboarding && profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
           } catch (e) {
@@ -306,9 +342,7 @@ const Onboarding: React.FC = () => {
   const handleEmailSubmit: React.FormEventHandler<HTMLFormElement> = async (
     e,
   ) => {
-    try {
-      e.preventDefault();
-    } catch {}
+    e.preventDefault();
     if (authLoading) return;
     if (!authEmail || !authEmail.trim()) return;
     await handleEmailStart();
@@ -373,10 +407,10 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // Prepare the pill (create main window + tray) when entering the hotkey test step
+  // Prepare the pill (create main window + tray) when entering either hotkey test step
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if (currentStep === "hotkey-test" && !pillPreparedRef.current) {
+    if ((currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") && !pillPreparedRef.current) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -388,15 +422,160 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (currentStep === "hotkey-test") {
-      window.electron?.setPttTarget?.("main");
+    if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
+      // Route PTT to onboarding so this step receives Fn events
+      window.electron?.setPttTarget?.("onboarding");
       window.electron?.expandPill?.(() => undefined);
     }
   }, [currentStep]);
 
-  // Auto-focus the text box on step 4 for better UX
+  // --- Mic-check visualizer lifecycle ---
+  const stopMic = () => {
+    try {
+      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
+    } catch {}
+    rafIdRef.current = null;
+    try {
+      analyserRef.current?.disconnect();
+    } catch {}
+    analyserRef.current = null;
+    try {
+      audioCtxRef.current?.close();
+    } catch {}
+    audioCtxRef.current = null;
+    try {
+      micStreamRef.current?.getTracks()?.forEach((t) => t.stop());
+    } catch {}
+    micStreamRef.current = null;
+  };
+
+  const startMic = async () => {
+    try {
+      // Ensure any previous session is closed
+      stopMic();
+      const constraints: MediaStreamConstraints = {
+        video: false,
+        audio:
+          selectedMicId && selectedMicId !== "default"
+            ? { deviceId: { exact: selectedMicId } }
+            : true,
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      micStreamRef.current = stream;
+      // Prefer a typed fallback for WebKit without using any
+      const Ctor: typeof AudioContext =
+        (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
+      const ctx = new Ctor();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512; // fine-grained but light
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      analyserRef.current = analyser;
+
+      const freqData = new Uint8Array(analyser.frequencyBinCount);
+      const NUM_BARS = 24;
+
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(freqData);
+        // Group bins into NUM_BARS buckets
+        const buckets: number[] = new Array(NUM_BARS).fill(0);
+        const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
+        let energy = 0;
+        for (let i = 0; i < NUM_BARS; i++) {
+          let sum = 0;
+          const start = i * binsPerBar;
+          const end = Math.min(freqData.length, start + binsPerBar);
+          for (let j = start; j < end; j++) sum += freqData[j];
+          const avg = sum / (end - start || 1);
+          buckets[i] = avg / 255; // normalize 0..1
+          energy += avg;
+        }
+        const avgEnergy = energy / freqData.length;
+        setSpeakingDetected((prev) => (avgEnergy > 14 ? true : prev));
+        setBarValues(buckets);
+        rafIdRef.current = requestAnimationFrame(tick);
+      };
+      rafIdRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      // If mic unavailable, keep UI but don't block progression
+      setSpeakingDetected(false);
+      try {
+        if (isDevelopment) console.error("[Onboarding] startMic failed:", e);
+      } catch {}
+    }
+  };
+
   useEffect(() => {
-    if (currentStep !== "hotkey-test") return;
+    if (currentStep === "mic-check") {
+      startMic();
+      return () => stopMic();
+    }
+    // Stop when leaving mic-check
+    stopMic();
+  }, [currentStep]);
+
+  // Restart capture when device changes
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    startMic();
+    try {
+      // Persist selection to main so app-wide mic matches user choice
+      if (selectedMicId) window.mic?.select?.(selectedMicId);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMicId]);
+
+  // Enumerate mics when entering mic-check
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Seed from main if present
+        let seedId: string | null = null;
+        try {
+          const res = await window.mic?.getSelected?.();
+          seedId = res?.id ?? null;
+        } catch {}
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices
+          .filter((d) => d.kind === "audioinput")
+          .map((d) => ({ id: d.deviceId || "default", label: d.label || "Microphone" }));
+        const deduped = inputs.length
+          ? inputs
+          : [{ id: "default", label: "System Default" }];
+        if (!cancelled) {
+          setMicDevices(deduped);
+          const next = seedId && deduped.some((d) => d.id === seedId) ? seedId : deduped[0]?.id;
+          if (next) setSelectedMicId(next);
+          try {
+            window.mic?.updateDevices?.(
+              deduped.map((d) => ({ id: d.id, label: d.label })),
+              next || undefined,
+            );
+          } catch {}
+        }
+      } catch {
+        if (!cancelled) setMicDevices([{ id: "default", label: "System Default" }]);
+      }
+    })();
+    const off = window.mic?.onSelectedChanged?.(({ id }) => {
+      try {
+        if (id && id !== selectedMicId) setSelectedMicId(id);
+      } catch {}
+    });
+    return () => {
+      cancelled = true;
+      try { off && off(); } catch {}
+    };
+  }, [currentStep]);
+
+  // Auto-focus the text box on test steps for better UX
+  useEffect(() => {
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
     const id = setTimeout(() => {
       textAreaRef.current?.focus();
     }, 50);
@@ -471,9 +650,11 @@ const Onboarding: React.FC = () => {
     autoInitStream: false,
   });
   const [testText, setTestText] = useState("");
+  const [testTextTap, setTestTextTap] = useState("");
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const prevStepRef = useRef<OnboardingStep | null>(null);
 
   // Minimal debounce utility
   const debounce = <T extends (...args: unknown[]) => void>(
@@ -487,14 +668,31 @@ const Onboarding: React.FC = () => {
     };
   };
 
-  // Append recognized text to test area
+  // Append recognized text to test area(s)
   useEffect(() => {
     if (trans.text) {
-      setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      if (currentStep === "hotkey-test") {
+        setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      } else if (currentStep === "hotkey-tap-test") {
+        setTestTextTap((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
+      }
     }
-  }, [trans.text]);
+  }, [trans.text, currentStep]);
 
-  // Hook Fn key to provide visual feedback on step 3; only dictate on step 4
+  // Ensure transcription is stopped when leaving tap-to-talk step
+  useEffect(() => {
+    const previous = prevStepRef.current;
+    if (previous === "hotkey-tap-test" && currentStep !== "hotkey-tap-test") {
+      try {
+        if (trans.recording) trans.stop();
+      } catch {}
+    }
+    prevStepRef.current = currentStep;
+    // We intentionally depend on currentStep and trans.recording state only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, trans.recording]);
+
+  // Hook Fn key: hold-to-speak on hotkey-test, tap-to-toggle on hotkey-tap-test
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) {
       devFlags.methods.devLog("PTT API not available yet, waiting...");
@@ -507,17 +705,24 @@ const Onboarding: React.FC = () => {
       devFlags.methods.devLog("Fn key pressed down");
       setFnKeyPressed(true); // Immediate visual feedback
 
-      // Only start dictation on hotkey-test step (step 4)
-      if (currentStep !== "hotkey-test") return;
-      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-      if (trans.processing || trans.recording) return;
-      // Immediate audio feedback on key down to reduce perceived latency during onboarding test
-      try { playToggleOn(); } catch {}
-      isLongPressRef.current = false;
-      pressTimerRef.current = setTimeout(() => {
-        isLongPressRef.current = true;
-        if (!trans.recording) trans.start();
-      }, HOLD_MS);
+      if (currentStep === "hotkey-test") {
+        if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+        if (trans.processing || trans.recording) return;
+        try { playToggleOn(); } catch {}
+        isLongPressRef.current = false;
+        pressTimerRef.current = setTimeout(() => {
+          isLongPressRef.current = true;
+          if (!trans.recording) trans.start();
+        }, HOLD_MS);
+      } else if (currentStep === "hotkey-tap-test") {
+        if (trans.processing) return;
+        if (!trans.recording) {
+          try { playToggleOn(); } catch {}
+          trans.start();
+        } else {
+          trans.stop();
+        }
+      }
     };
     const handleUp = () => {
       devFlags.methods.devLog("Fn key released");
@@ -527,7 +732,7 @@ const Onboarding: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-      // Only stop dictation on hotkey-test step (step 4)
+      // For hold-to-speak, stop on release; for tap-to-talk, ignore release
       if (currentStep === "hotkey-test" && trans.recording) trans.stop();
       isLongPressRef.current = false;
     };
@@ -693,65 +898,40 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-4"
+                className="text-center"
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                     Your Hotkey is the Fn key
                   </h2>
-                  <p className="text-sm text-subtle subheading">
+                  <p className="text-sm text-subtle leading-relaxed subheading">
                     Press and hold to speak. Release to stop.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center gap-2">
-                  <div
-                    className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
-                    aria-label={
-                      fnKeyPressed || trans.recording
-                        ? "Function key active - recording in progress"
-                        : "Function key - press and hold to start dictation"
-                    }
-                    aria-live="polite"
-                  >
-                    <span className="keycap-label text-[12px] font-system lowercase">
-                      fn
-                    </span>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center justify-center">
+                    <div
+                      className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                      aria-label={
+                        fnKeyPressed || trans.recording
+                          ? "Function key active - recording in progress"
+                          : "Function key - press and hold to start dictation"
+                      }
+                      aria-live="polite"
+                    >
+                      <span className="keycap-label text-[12px] font-system lowercase">
+                        fn
+                      </span>
+                    </div>
+                    <p className="onboarding-note onboarding-content-gap">
+                      Press your Fn key now to test it.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-dimmed">
-                    Press your Fn key now to test it.
-                  </p>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
               </motion.div>
             )}
-            {/* Legacy welcome step removed */}
-            {false && (
-              <motion.div
-                key="welcome"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center space-y-4"
-              >
-                <div className="heading-stack">
-                  <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    Welcome to Sonic Flow
-                  </h1>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Let's get you started.
-                  </p>
-                </div>
-                <div className="flex justify-center">
-                  <Button
-                    onClick={nextStep}
-                    className="px-5 py-2 onboarding-cta shimmer"
-                  >
-                    Start Setup
-                  </Button>
-                </div>
-              </motion.div>
-            )}
+            {/* Legacy welcome step removed (block fully deleted) */}
 
             {/* Combined Permissions Step */}
             {currentStep === "permissions" && (
@@ -787,7 +967,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Microphone
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -880,7 +1060,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Accessibility
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -972,7 +1152,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -1054,6 +1234,65 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
 
+            {/* Mic Check Step */
+            }
+            {currentStep === "mic-check" && (
+              <motion.div
+                key="mic-check"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center space-y-4"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Let’s check your microphone
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Pick the right input and say a few words. The bars should bounce.
+                  </p>
+                </div>
+
+                {/* Mic selector */}
+                <div className="mx-auto w-full max-w-xl">
+                  <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select microphone" />
+                    </SelectTrigger>
+                    <SelectContent inPlace>
+                      {micDevices.map((d) => (
+                        <SelectItem key={d.id} value={d.id} className="text-sm">
+                          {d.label || "Microphone"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-center py-3">
+                  <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
+                    {barValues.map((v, i) => {
+                      const h = Math.max(6, Math.round(6 + v * 80));
+                      const opacity = 0.45 + v * 0.55;
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-[3px] bg-white/70"
+                          style={{ height: `${h}px`, opacity }}
+                          aria-hidden
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="text-[12px] text-dimmed">
+                  {speakingDetected ? "We hear you — sounding good." : "No input yet. Say a few words to test your mic."}
+                </div>
+              </motion.div>
+            )}
+
             {/* Hotkey Test Step */}
             {currentStep === "hotkey-test" && (
               <motion.div
@@ -1062,33 +1301,83 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-3 overflow-hidden"
+                className="text-center overflow-hidden"
               >
-                <div className="space-y-3 max-w-xl mx-auto text-left">
+                <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Test Your Setup
+                      Press and hold Fn to dictate
                     </h2>
-                    <p className="text-sm text-subtle subheading">
-                      Press and hold Fn to dictate, then release to stop.
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Hold to speak. Release to stop.
                     </p>
                   </div>
+                  <div className="space-y-3">
+                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
+                      <div className="text-[12px] text-dimmed">Try saying:</div>
+                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
+                    </div>
 
-                  {/* Dictation Textarea */}
-                  <div>
-                    {/* removed the small label above the textarea */}
-                    <textarea
-                      className={
-                        "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                      }
-                      placeholder="Say something…"
-                      value={testText}
-                      onChange={(e) => setTestText(e.target.value)}
-                      ref={textAreaRef}
-                    />
+                    {/* Dictation Textarea */}
+                    <div className="onboarding-content-gap">
+                      {/* removed the small label above the textarea */}
+                      <textarea
+                        className={
+                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                        }
+                        placeholder="Say something…"
+                        value={testText}
+                        onChange={(e) => setTestText(e.target.value)}
+                        ref={textAreaRef}
+                      />
+                    </div>
+
+                    {/* No CTA here; proceed with Next to the completion screen */}
                   </div>
+                </div>
+              </motion.div>
+            )}
 
-                  {/* No CTA here; proceed with Next to the completion screen */}
+            {/* Hotkey Tap Test Step */}
+            {currentStep === "hotkey-tap-test" && (
+              <motion.div
+                key="hotkey-tap-test"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center overflow-hidden"
+              >
+                <div className="max-w-xl mx-auto text-left">
+                  <div className="text-center heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Tap Fn to dictate
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Tap once to start. Tap again to stop.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
+                      <div className="text-[12px] text-dimmed">Try saying:</div>
+                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
+                    </div>
+
+                    {/* Dictation Textarea */}
+                    <div className="onboarding-content-gap">
+                      <textarea
+                        className={
+                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                        }
+                        placeholder="Say something…"
+                        value={testTextTap}
+                        onChange={(e) => setTestTextTap(e.target.value)}
+                        ref={textAreaRef}
+                      />
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -1164,7 +1453,7 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {/* Next button appears on permissions and hotkey-info */}
+            {/* Next button appears on permissions, hotkey-info, and hotkey-tap-test; always enabled except permissions gating */}
             {currentStep !== "hotkey-test" && (
               <Button
                 variant="secondary"
@@ -1182,9 +1471,8 @@ const Onboarding: React.FC = () => {
             {currentStep === "hotkey-test" && (
               <Button
                 variant="secondary"
-                onClick={() => setCurrentStep("complete")}
+                onClick={() => setCurrentStep("hotkey-tap-test")}
                 className="px-3 py-1.5"
-                disabled={!testText || testText.trim().length === 0}
               >
                 Next
               </Button>

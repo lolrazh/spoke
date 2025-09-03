@@ -81,6 +81,7 @@ if (!globalThis.window.devFlags) {
   globalThis.window.devFlags = {
     skipAuth: false,
     skipOnboarding: false,
+    forceOnboarding: false,
     devConsoleLogs: false,
   };
 }
