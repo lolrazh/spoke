@@ -29,8 +29,10 @@ This is an example project made to be used as a quick start into building OpenAP
 Set these environment variables in `.dev.vars` or your Worker settings:
 
 - `GROQ_API_KEY`: API key for Groq.
+- `OPENAI_API_KEY`: API key for OpenAI (required if using OpenAI provider).
 - `ENABLE_LLM`: `true|false` to enable post-LLM cleanup (default: true).
 - `LLM_MODEL`: Chat model id (default from `src/config.ts`).
+- `LLM_DEFAULT_PROVIDER` or `LLM_PROVIDER`: `groq|openai` (default: `groq`).
 - `LLM_CURRENT_DATE`: Optional current date string (YYYY-MM-DD) injected into the LLM system prompt; defaults to today's UTC date.
 - `LLM_STREAM`: `true|false` stream deltas to client (default: true).
 - `LLM_TIMEOUT_MS`: Request timeout override.

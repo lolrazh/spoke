@@ -62,9 +62,11 @@ The worker implements a real-time audio transcription pipeline:
 
 ### Environment Variables
 - `GROQ_API_KEY` — Required for STT and LLM (dashboard secret)
+- `OPENAI_API_KEY` — Required when using OpenAI as LLM provider
 - `ENABLE_LLM` — Enable post-LLM cleanup (`true|false`, default: true)
 - `LLM_STREAM` — Stream deltas to client (`true|false`, default: true)
 - `LLM_MODEL` — Chat model id (default from `src/config.ts`)
+- `LLM_DEFAULT_PROVIDER` or `LLM_PROVIDER` — Choose LLM provider: `groq|openai` (default: `groq`)
 - `LLM_CURRENT_DATE` — Optional ISO date (YYYY-MM-DD) inserted in system prompt; defaults to today (UTC)
 - `LLM_TIMEOUT_MS` — LLM request timeout override
 - `STT_MODEL` — STT model id (default from `src/config.ts`)
