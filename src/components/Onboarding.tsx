@@ -1322,13 +1322,14 @@ const Onboarding: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Sample hint */}
-                  <div className="text-[11px] text-dimmed text-left">
-                    Try saying: {sampleHoldText}
+                  {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                  <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left onboarding-content-gap">
+                    <div className="text-[11px] text-dimmed">Try saying:</div>
+                    <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
                   </div>
 
                   {/* Dictation Textarea */}
-                  <div>
+                  <div className="onboarding-content-gap">
                     {/* removed the small label above the textarea */}
                     <textarea
                       className={
@@ -1366,13 +1367,14 @@ const Onboarding: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Sample hint */}
-                  <div className="text-[11px] text-dimmed text-left">
-                    Try saying: {sampleTapText}
+                  {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                  <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left onboarding-content-gap">
+                    <div className="text-[11px] text-dimmed">Try saying:</div>
+                    <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
                   </div>
 
                   {/* Dictation Textarea */}
-                  <div>
+                  <div className="onboarding-content-gap">
                     <textarea
                       className={
                         "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"

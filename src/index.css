@@ -378,6 +378,13 @@ body {
   animation: fadeInOnboarding 0.3s ease-out 0.2s forwards;
 }
 
+/* Prevent default focus outline/ring on the whole vibrancy window */
+.onboarding-window:focus,
+.onboarding-window:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 /* FIX 9: Fade in animation to ensure smooth vibrancy appearance */
 @keyframes fadeInOnboarding {
   from {
@@ -571,6 +578,12 @@ body {
 
 /* Glassmorphic Design System Components (from website) */
 @layer components {
+  /* Dropdown surface tuned for transparent/vibrant windows */
+  .dropdown-glass {
+    background-color: rgba(20, 20, 30, 0.96);
+    backdrop-filter: blur(var(--blur-md));
+  }
+
   /* Unified subtext spacing & styling for onboarding */
   .onboarding-note {
     font-size: 11px;
