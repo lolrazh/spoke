@@ -1298,7 +1298,7 @@ const Onboarding: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="text-[11px] text-dimmed">
+                <div className="text-[12px] text-dimmed">
                   {speakingDetected ? "We hear you — sounding good." : "No input yet. Say a few words to test your mic."}
                 </div>
               </motion.div>
@@ -1326,7 +1326,7 @@ const Onboarding: React.FC = () => {
                   <div className="space-y-3">
                     {/* Sample hint in styled container (non-blur to avoid flicker) */}
                     <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
-                      <div className="text-[11px] text-dimmed">Try saying:</div>
+                      <div className="text-[12px] text-dimmed">Try saying:</div>
                       <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
                     </div>
 
@@ -1372,7 +1372,7 @@ const Onboarding: React.FC = () => {
                   <div className="space-y-3">
                     {/* Sample hint in styled container (non-blur to avoid flicker) */}
                     <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
-                      <div className="text-[11px] text-dimmed">Try saying:</div>
+                      <div className="text-[12px] text-dimmed">Try saying:</div>
                       <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
                     </div>
 
