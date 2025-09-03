@@ -978,7 +978,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Microphone
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -1071,7 +1071,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Accessibility
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -1163,7 +1163,7 @@ const Onboarding: React.FC = () => {
                           />
                         </div>
                         <div className="text-left">
-                          <p className="text-sm font-medium text-foreground">
+                          <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
                           <p className="text-[11px] text-subtle">
@@ -1327,7 +1327,7 @@ const Onboarding: React.FC = () => {
                     {/* Sample hint in styled container (non-blur to avoid flicker) */}
                     <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
                       <div className="text-[11px] text-dimmed">Try saying:</div>
-                      <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
+                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
                     </div>
 
                     {/* Dictation Textarea */}
@@ -1373,7 +1373,7 @@ const Onboarding: React.FC = () => {
                     {/* Sample hint in styled container (non-blur to avoid flicker) */}
                     <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
                       <div className="text-[11px] text-dimmed">Try saying:</div>
-                      <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
+                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
                     </div>
 
                     {/* Dictation Textarea */}
