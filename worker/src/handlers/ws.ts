@@ -8,7 +8,7 @@ import { safeClose, safeJson } from '../utils/ws';
 import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
-import { chatComplete } from '../services/llm/groq';
+import { chatCompleteByProvider } from '../services/llm';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
@@ -16,6 +16,7 @@ import { safely } from '../utils/safely';
 
 type Bindings = {
   GROQ_API_KEY?: string;
+  OPENAI_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
   LLM_MODEL?: string; // default from src/config.ts
@@ -163,27 +164,33 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
+                  const provider = runtime.llm.provider;
+                  const apiKeyForProvider = provider === 'openai' ? c.env.OPENAI_API_KEY : GROQ_API_KEY;
 
-                  const llmRes = await chatComplete({
-                    apiKey: GROQ_API_KEY,
-                    model,
-                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
-                    userContent: finalText,
-                    stream: streamLLM,
-                    temperature: runtime.llm.temperature,
-                    signal: sttAbort.signal,
-                    onDelta: (delta) => {
-                      if (!socketClosed && streamLLM && delta) {
-                        safely(() =>
-                          server.send(
-                            JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                          ),
-                        );
-                      }
-                    },
-                  });
-                  llmText = llmRes.text || '';
-                  llmTimings = llmRes.timings;
+                  if (apiKeyForProvider) {
+                    const llmRes = await chatCompleteByProvider(provider, {
+                      apiKey: apiKeyForProvider,
+                      model,
+                      systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
+                      userContent: finalText,
+                      stream: streamLLM,
+                      temperature: runtime.llm.temperature,
+                      signal: sttAbort.signal,
+                      onDelta: (delta) => {
+                        if (!socketClosed && streamLLM && delta) {
+                          safely(() =>
+                            server.send(
+                              JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                            ),
+                          );
+                        }
+                      },
+                    });
+                    llmText = llmRes.text || '';
+                    llmTimings = llmRes.timings;
+                  } else {
+                    sessionSpan.setAttribute('llm.api_key_missing', true);
+                  }
                 }
                 
                 // Set final session attributes with all timing data  
