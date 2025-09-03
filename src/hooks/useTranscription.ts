@@ -640,10 +640,31 @@ export function useTranscription(
         },
       );
 
+      // Initial unconditional streaming window to avoid start clipping
+      let initialBypassSamplesRemaining = TARGET_SAMPLE_RATE * 0.3; // ~300ms at 16k
       workletNodeRef.current.port.onmessage = (ev: MessageEvent) => {
         const msg = ev.data as unknown as { type?: string; samples?: ArrayBuffer };
         if (msg?.type !== "audio" || !msg?.samples) return;
         const buf: ArrayBuffer = msg.samples as ArrayBuffer;
+
+        if (initialBypassSamplesRemaining > 0) {
+          const int16 = new Int16Array(buf);
+          const take = Math.min(initialBypassSamplesRemaining, int16.length);
+          const chunk = int16.subarray(0, take);
+          streamFrame(chunk.buffer);
+          initialBypassSamplesRemaining -= take;
+          if (take < int16.length) {
+            const rest = int16.subarray(take);
+            // process remainder through gate if enabled
+            if (VAD_ENABLED && vadReadyRef.current && vadStreamGateRef.current) {
+              const chunks = vadStreamGateRef.current.pushFrame(rest);
+              for (const c of chunks) streamFrame(c.buffer);
+            } else {
+              streamFrame(rest.buffer);
+            }
+          }
+          return;
+        }
 
         if (VAD_ENABLED && vadReadyRef.current && vadStreamGateRef.current) {
           const chunks = vadStreamGateRef.current.pushFrame(buf);

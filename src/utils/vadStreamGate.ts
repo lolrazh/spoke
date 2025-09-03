@@ -16,6 +16,7 @@ export class VadStreamGate {
   private preRollBuf: Int16Array;
   private preRollHead = 0; // ring buffer idx
   private preRollCount = 0;
+  private tailRemainingSamples = 0; // forward a small tail after speech_end
   private carryFloat: Float32Array | null = null; // leftover window slice
   private timeMs = 0; // approximate timeline in ms, step by WINDOW_MS
 
@@ -35,6 +36,7 @@ export class VadStreamGate {
     this.gate.reset();
     this.preRollHead = 0;
     this.preRollCount = 0;
+    this.tailRemainingSamples = 0;
     this.carryFloat = null;
     this.timeMs = 0;
   }
@@ -110,15 +112,19 @@ export class VadStreamGate {
           }
         }
         if (ev.type === "speech_end") {
-          // post-roll handled by letting subsequent frames flow for a tail period in caller stop
+          // Begin forwarding a small tail regardless of VAD to avoid clipping endings
+          this.tailRemainingSamples = this.postRollSamples;
         }
       }
     }
 
-    // Gate forwarding: if speaking, forward entire input frame; else buffer into pre-roll
-    if (this.gate.isSpeaking()) {
+    // Gate forwarding: if speaking or tail-forward active, forward entire input frame; else buffer into pre-roll
+    if (this.gate.isSpeaking() || this.tailRemainingSamples > 0) {
       out.push(int16);
       forwarded += int16.length;
+      if (this.tailRemainingSamples > 0) {
+        this.tailRemainingSamples = Math.max(0, this.tailRemainingSamples - int16.length);
+      }
     } else {
       // Append to pre-roll ring buffer
       const src = int16;

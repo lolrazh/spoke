@@ -22,7 +22,7 @@ export const WS_MAX_BUFFERED_BYTES = 512 * 1024; // 512 KB backpressure threshol
 
 // Post-roll tail capture to avoid clipping final syllables when user releases PTT
 // Keep small to balance responsiveness vs. completeness
-export const POST_ROLL_MS = 160;
+export const POST_ROLL_MS = 240;
 
 // Feature flag: streaming v2 (100 ms frames)
 export function streamingV2Enabled(): boolean {
