@@ -342,9 +342,7 @@ const Onboarding: React.FC = () => {
   const handleEmailSubmit: React.FormEventHandler<HTMLFormElement> = async (
     e,
   ) => {
-    try {
-      e.preventDefault();
-    } catch {}
+    e.preventDefault();
     if (authLoading) return;
     if (!authEmail || !authEmail.trim()) return;
     await handleEmailStart();
@@ -464,8 +462,9 @@ const Onboarding: React.FC = () => {
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
+      // Prefer a typed fallback for WebKit without using any
       const Ctor: typeof AudioContext =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
+        (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
       const ctx = new Ctor();
       audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
@@ -503,6 +502,9 @@ const Onboarding: React.FC = () => {
     } catch (e) {
       // If mic unavailable, keep UI but don't block progression
       setSpeakingDetected(false);
+      try {
+        if (isDevelopment) console.error("[Onboarding] startMic failed:", e);
+      } catch {}
     }
   };
 
@@ -915,34 +917,7 @@ const Onboarding: React.FC = () => {
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
               </motion.div>
             )}
-            {/* Legacy welcome step removed */}
-            {false && (
-              <motion.div
-                key="welcome"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center space-y-4"
-              >
-                <div className="heading-stack">
-                  <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    Welcome to Sonic Flow
-                  </h1>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Let's get you started.
-                  </p>
-                </div>
-                <div className="flex justify-center">
-                  <Button
-                    onClick={nextStep}
-                    className="px-5 py-2 onboarding-cta shimmer"
-                  >
-                    Start Setup
-                  </Button>
-                </div>
-              </motion.div>
-            )}
+            {/* Legacy welcome step removed (block fully deleted) */}
 
             {/* Combined Permissions Step */}
             {currentStep === "permissions" && (
