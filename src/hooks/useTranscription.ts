@@ -577,9 +577,10 @@ export function useTranscription(
       // Resolve worklet URL for both dev (http://localhost) and prod (file://)
       const workletUrl = (() => {
         try {
-          const base = (
+          const baseEnv = (
             (import.meta as unknown) as { env?: Record<string, unknown> }
-          )?.env?.BASE_URL ?? "./";
+          )?.env?.BASE_URL;
+          const base = typeof baseEnv === "string" ? baseEnv : "./";
           const rel = `${base.replace(/\/$/, "")}/worklets/pcm16-downsampler.worklet.js`;
           return new URL(
             rel,
@@ -611,6 +612,14 @@ export function useTranscription(
           },
         );
         vadReadyRef.current = true;
+        // Pre-warm: push a short span of silence to stabilize initial state
+        try {
+          const warmupFrames = 5; // ~150ms at 30ms windows
+          const silence = new Int16Array(SAMPLES_PER_CHUNK);
+          for (let i = 0; i < warmupFrames; i++) {
+            vadStreamGateRef.current.pushFrame(silence);
+          }
+        } catch {}
       } else {
         vadEngineRef.current = null;
         vadStreamGateRef.current = null;
