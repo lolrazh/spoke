@@ -49,7 +49,7 @@ The transcription pipeline consists of six main stages:
 
 **Location**: `src/hooks/useTranscription.ts:425-503`
 
-The pipeline starts by requesting microphone access with explicit DSP disabled:
+The pipeline starts by requesting microphone access with echo cancellation disabled, but noise suppression and auto gain enabled:
 
 ```typescript
 const constraints: MediaStreamConstraints = {
@@ -57,8 +57,8 @@ const constraints: MediaStreamConstraints = {
     sampleRate: MICROPHONE_PREFERRED_RATE,    // 48000 Hz
     channelCount: 1,                          // Mono
     echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
+    noiseSuppression: true,
+    autoGainControl: true,
   },
 };
 ```

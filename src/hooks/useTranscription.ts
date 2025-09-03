@@ -348,8 +348,8 @@ export function useTranscription(
         const tempStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
+            noiseSuppression: true,
+            autoGainControl: true,
           },
         });
         // Immediately stop tracks to prevent persistent capture
@@ -446,8 +446,8 @@ export function useTranscription(
             sampleRate: MICROPHONE_PREFERRED_RATE,
             channelCount: 1,
             echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
+            noiseSuppression: true,
+            autoGainControl: true,
           },
         };
 
@@ -471,8 +471,8 @@ export function useTranscription(
           try {
             await track.applyConstraints({
               echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
+              noiseSuppression: true,
+              autoGainControl: true,
             } as MediaTrackConstraints);
           } catch {}
           const settings = track.getSettings();
