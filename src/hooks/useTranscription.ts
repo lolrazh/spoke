@@ -346,7 +346,11 @@ export function useTranscription(
       // Avoid opening the mic by default; only request permission for labels if explicitly asked
       if (requestLabelPermissionForEnumeration) {
         const tempStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
         // Immediately stop tracks to prevent persistent capture
         tempStream.getTracks().forEach((track) => track.stop());
@@ -441,9 +445,9 @@ export function useTranscription(
           audio: {
             sampleRate: MICROPHONE_PREFERRED_RATE,
             channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
           },
         };
 
@@ -460,10 +464,17 @@ export function useTranscription(
         streamRef.current =
           await navigator.mediaDevices.getUserMedia(constraints);
 
-        // Log actual audio track settings that were applied
+        // Enforce and log actual audio track settings that were applied
         const audioTracks = streamRef.current.getAudioTracks();
         if (audioTracks.length > 0) {
           const track = audioTracks[0];
+          try {
+            await track.applyConstraints({
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            } as MediaTrackConstraints);
+          } catch {}
           const settings = track.getSettings();
           const capabilities = track.getCapabilities?.() || {};
           

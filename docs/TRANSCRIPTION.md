@@ -47,18 +47,18 @@ The transcription pipeline consists of six main stages:
 
 ### Microphone Stream Configuration
 
-**Location**: `src/hooks/useTranscription.ts:425-493`
+**Location**: `src/hooks/useTranscription.ts:425-503`
 
-The pipeline starts by requesting microphone access with optimized constraints:
+The pipeline starts by requesting microphone access with explicit DSP disabled:
 
 ```typescript
 const constraints: MediaStreamConstraints = {
   audio: {
     sampleRate: MICROPHONE_PREFERRED_RATE,    // 48000 Hz
     channelCount: 1,                          // Mono
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
   },
 };
 ```
@@ -67,7 +67,7 @@ const constraints: MediaStreamConstraints = {
 - Device-specific targeting when user selects non-default microphone
 - Automatic device enumeration and permission management
 - Real-time device change detection and stream reinitialization
-- Constraint validation and actual settings logging
+- Constraint validation, `applyConstraints` enforcement, and actual settings logging
 
 ### Audio Processing Worklet
 
