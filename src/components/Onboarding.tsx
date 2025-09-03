@@ -882,33 +882,35 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-4"
+                className="text-center"
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                     Your Hotkey is the Fn key
                   </h2>
-                  <p className="text-sm text-subtle subheading">
+                  <p className="text-sm text-subtle leading-relaxed subheading">
                     Press and hold to speak. Release to stop.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center onboarding-content-gap">
-                  <div
-                    className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
-                    aria-label={
-                      fnKeyPressed || trans.recording
-                        ? "Function key active - recording in progress"
-                        : "Function key - press and hold to start dictation"
-                    }
-                    aria-live="polite"
-                  >
-                    <span className="keycap-label text-[12px] font-system lowercase">
-                      fn
-                    </span>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center justify-center">
+                    <div
+                      className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                      aria-label={
+                        fnKeyPressed || trans.recording
+                          ? "Function key active - recording in progress"
+                          : "Function key - press and hold to start dictation"
+                      }
+                      aria-live="polite"
+                    >
+                      <span className="keycap-label text-[12px] font-system lowercase">
+                        fn
+                      </span>
+                    </div>
+                    <p className="onboarding-note onboarding-content-gap">
+                      Press your Fn key now to test it.
+                    </p>
                   </div>
-                  <p className="onboarding-note onboarding-content-gap">
-                    Press your Fn key now to test it.
-                  </p>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
               </motion.div>
@@ -1310,39 +1312,40 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-3 overflow-hidden"
+                className="text-center overflow-hidden"
               >
-                <div className="space-y-3 max-w-xl mx-auto text-left">
+                <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Press and hold Fn to dictate
                     </h2>
-                    <p className="text-sm text-subtle subheading">
+                    <p className="text-sm text-subtle leading-relaxed subheading">
                       Hold to speak. Release to stop.
                     </p>
                   </div>
+                  <div className="space-y-3">
+                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
+                      <div className="text-[11px] text-dimmed">Try saying:</div>
+                      <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
+                    </div>
 
-                  {/* Sample hint in styled container (non-blur to avoid flicker) */}
-                  <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left onboarding-content-gap">
-                    <div className="text-[11px] text-dimmed">Try saying:</div>
-                    <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
+                    {/* Dictation Textarea */}
+                    <div className="onboarding-content-gap">
+                      {/* removed the small label above the textarea */}
+                      <textarea
+                        className={
+                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                        }
+                        placeholder="Say something…"
+                        value={testText}
+                        onChange={(e) => setTestText(e.target.value)}
+                        ref={textAreaRef}
+                      />
+                    </div>
+
+                    {/* No CTA here; proceed with Next to the completion screen */}
                   </div>
-
-                  {/* Dictation Textarea */}
-                  <div className="onboarding-content-gap">
-                    {/* removed the small label above the textarea */}
-                    <textarea
-                      className={
-                        "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                      }
-                      placeholder="Say something…"
-                      value={testText}
-                      onChange={(e) => setTestText(e.target.value)}
-                      ref={textAreaRef}
-                    />
-                  </div>
-
-                  {/* No CTA here; proceed with Next to the completion screen */}
                 </div>
               </motion.div>
             )}
@@ -1355,35 +1358,36 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-3 overflow-hidden"
+                className="text-center overflow-hidden"
               >
-                <div className="space-y-3 max-w-xl mx-auto text-left">
+                <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Tap Fn to dictate
                     </h2>
-                    <p className="text-sm text-subtle subheading">
+                    <p className="text-sm text-subtle leading-relaxed subheading">
                       Tap once to start. Tap again to stop.
                     </p>
                   </div>
+                  <div className="space-y-3">
+                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
+                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
+                      <div className="text-[11px] text-dimmed">Try saying:</div>
+                      <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
+                    </div>
 
-                  {/* Sample hint in styled container (non-blur to avoid flicker) */}
-                  <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left onboarding-content-gap">
-                    <div className="text-[11px] text-dimmed">Try saying:</div>
-                    <div className="text-sm text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
-                  </div>
-
-                  {/* Dictation Textarea */}
-                  <div className="onboarding-content-gap">
-                    <textarea
-                      className={
-                        "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                      }
-                      placeholder="Say something…"
-                      value={testTextTap}
-                      onChange={(e) => setTestTextTap(e.target.value)}
-                      ref={textAreaRef}
-                    />
+                    {/* Dictation Textarea */}
+                    <div className="onboarding-content-gap">
+                      <textarea
+                        className={
+                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                        }
+                        placeholder="Say something…"
+                        value={testTextTap}
+                        onChange={(e) => setTestTextTap(e.target.value)}
+                        ref={textAreaRef}
+                      />
+                    </div>
                   </div>
                 </div>
               </motion.div>
