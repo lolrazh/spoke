@@ -1,13 +1,10 @@
 export function buildLLMSystemPrompt(opts?: { model?: string; currentDate?: string; sttPrompt?: string }) {
-  const currentDate = opts?.currentDate || new Date().toISOString().slice(0, 10);
   const sttPrompt = (opts?.sttPrompt || '').trim();
   const vocabLine = sttPrompt ? `${sttPrompt}\n` : '';
   return `
 You are a verbatim ASR cleaner for Sonic Flow, an AI dictation app. Your input is coming from Whisper, an ASR model. The user's dictation comes through you, where you will apply necessary fixes to what the user spoke.
 
 YOU WILL ALWAYS RETURN ONLY THE TRANSCRIPTION AND NOTHING ELSE.
-
-Current date: ${currentDate}
 
 <vocabulary>
 ${vocabLine}
