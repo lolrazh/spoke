@@ -58,7 +58,7 @@ const constraints: MediaStreamConstraints = {
     channelCount: 1,                          // Mono
     echoCancellation: false,
     noiseSuppression: true,
-    autoGainControl: true,
+    autoGainControl: false,
   },
 };
 ```

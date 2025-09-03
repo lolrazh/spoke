@@ -349,7 +349,7 @@ export function useTranscription(
           audio: {
             echoCancellation: false,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: false,
           },
         });
         // Immediately stop tracks to prevent persistent capture
@@ -447,7 +447,7 @@ export function useTranscription(
             channelCount: 1,
             echoCancellation: false,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: false,
           },
         };
 
@@ -472,7 +472,7 @@ export function useTranscription(
             await track.applyConstraints({
               echoCancellation: false,
               noiseSuppression: true,
-              autoGainControl: true,
+              autoGainControl: false,
             } as MediaTrackConstraints);
           } catch {}
           const settings = track.getSettings();
