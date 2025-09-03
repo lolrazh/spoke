@@ -892,7 +892,7 @@ const Onboarding: React.FC = () => {
                     Press and hold to speak. Release to stop.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center onboarding-content-gap gap-3">
+                <div className="flex flex-col items-center justify-center onboarding-content-gap">
                   <div
                     className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
                     aria-label={
@@ -906,7 +906,7 @@ const Onboarding: React.FC = () => {
                       fn
                     </span>
                   </div>
-                  <p className="onboarding-note">
+                  <p className="onboarding-note onboarding-content-gap">
                     Press your Fn key now to test it.
                   </p>
                 </div>
