@@ -654,6 +654,7 @@ const Onboarding: React.FC = () => {
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const prevStepRef = useRef<OnboardingStep | null>(null);
 
   // Minimal debounce utility
   const debounce = <T extends (...args: unknown[]) => void>(
@@ -677,6 +678,19 @@ const Onboarding: React.FC = () => {
       }
     }
   }, [trans.text, currentStep]);
+
+  // Ensure transcription is stopped when leaving tap-to-talk step
+  useEffect(() => {
+    const previous = prevStepRef.current;
+    if (previous === "hotkey-tap-test" && currentStep !== "hotkey-tap-test") {
+      try {
+        if (trans.recording) trans.stop();
+      } catch {}
+    }
+    prevStepRef.current = currentStep;
+    // We intentionally depend on currentStep and trans.recording state only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, trans.recording]);
 
   // Hook Fn key: hold-to-speak on hotkey-test, tap-to-toggle on hotkey-tap-test
   useEffect(() => {

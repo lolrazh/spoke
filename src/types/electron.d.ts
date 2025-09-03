@@ -8,6 +8,7 @@ declare global {
     devFlags: {
       skipAuth: boolean;
       skipOnboarding: boolean;
+      forceOnboarding: boolean;
       devConsoleLogs: boolean;
     };
     contextMenu: {
