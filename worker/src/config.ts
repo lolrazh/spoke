@@ -6,6 +6,9 @@ export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct'
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
+export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+export const LLM_DEFAULT_PROVIDER = 'groq' as const;
+export type LLMProvider = 'groq' | 'openai';
 
 // STT (Audio Transcriptions)
 export const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
