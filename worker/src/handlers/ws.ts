@@ -8,14 +8,16 @@ import { safeClose, safeJson } from '../utils/ws';
 import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt/groq';
-import { chatComplete } from '../services/llm/groq';
+import { chatCompleteByProvider } from '../services/llm';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
+import { STT_ENDPOINT, LLM_ENDPOINT, OPENAI_LLM_ENDPOINT } from '../config';
 
 type Bindings = {
   GROQ_API_KEY?: string;
+  OPENAI_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
   LLM_MODEL?: string; // default from src/config.ts
@@ -136,6 +138,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
                 const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
+                // Log STT request details (console + Sentry)
+                try {
+                  const sttLog = {
+                    event: 'stt.request',
+                    model: runtime.stt.model,
+                    endpoint: STT_ENDPOINT,
+                    language: clientLanguage || runtime.stt.language,
+                    traceId: session.traceId,
+                  } as const;
+                  console.log(JSON.stringify(sttLog));
+                  safely(() => Sentry.logger.info('stt.request', sttLog as any));
+                } catch {}
                 const res = await transcribeWav(wav, GROQ_API_KEY, {
                   signal: sttAbort.signal,
                   model: runtime.stt.model,
@@ -163,27 +177,47 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
+                  const provider = runtime.llm.provider;
+                  const apiKeyForProvider = provider === 'openai' ? c.env.OPENAI_API_KEY : GROQ_API_KEY;
 
-                  const llmRes = await chatComplete({
-                    apiKey: GROQ_API_KEY,
-                    model,
-                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
-                    userContent: finalText,
-                    stream: streamLLM,
-                    temperature: runtime.llm.temperature,
-                    signal: sttAbort.signal,
-                    onDelta: (delta) => {
-                      if (!socketClosed && streamLLM && delta) {
-                        safely(() =>
-                          server.send(
-                            JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                          ),
-                        );
-                      }
-                    },
-                  });
-                  llmText = llmRes.text || '';
-                  llmTimings = llmRes.timings;
+                  if (apiKeyForProvider) {
+                    // Log LLM request details (console + Sentry)
+                    try {
+                      const llmEndpoint = provider === 'openai' ? OPENAI_LLM_ENDPOINT : LLM_ENDPOINT;
+                      const llmLog = {
+                        event: 'llm.request',
+                        provider,
+                        model,
+                        endpoint: llmEndpoint,
+                        stream: streamLLM,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(llmLog));
+                      safely(() => Sentry.logger.info('llm.request', llmLog as any));
+                    } catch {}
+                    const llmRes = await chatCompleteByProvider(provider, {
+                      apiKey: apiKeyForProvider,
+                      model,
+                      systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
+                      userContent: finalText,
+                      stream: streamLLM,
+                      temperature: runtime.llm.temperature,
+                      signal: sttAbort.signal,
+                      onDelta: (delta) => {
+                        if (!socketClosed && streamLLM && delta) {
+                          safely(() =>
+                            server.send(
+                              JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                            ),
+                          );
+                        }
+                      },
+                    });
+                    llmText = llmRes.text || '';
+                    llmTimings = llmRes.timings;
+                  } else {
+                    sessionSpan.setAttribute('llm.api_key_missing', true);
+                  }
                 }
                 
                 // Set final session attributes with all timing data  
