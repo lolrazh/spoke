@@ -318,6 +318,7 @@ const Pill: React.FC<PillProps> = ({
                 <SettingsPanel
                   embeddedMode={true}
                   onToggleFloatingBar={onToggleFloatingBar}
+                  onRequestCollapse={onCollapse}
                 />
                 {/* Collapse chevron at bottom */}
                 <button
