@@ -14,7 +14,7 @@ export type LLMProvider = 'groq' | 'openai';
 
 // STT (Audio Transcriptions)
 export const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
-export const STT_DEFAULT_MODEL = 'whisper-large-v3';
+export const STT_DEFAULT_MODEL = 'whisper-large-v3-turbo';
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
 // Default vocab/prompt moved to services/stt/prompt.ts to keep prompts centralized
