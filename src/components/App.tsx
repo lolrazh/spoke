@@ -327,6 +327,37 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Lightweight polling for microphone permission to keep UI honest
+  useEffect(() => {
+    let pollId: number | null = null;
+    const startPolling = () => {
+      if (pollId != null) return;
+      pollId = window.setInterval(async () => {
+        try {
+          const mic = await window.electron?.checkMicrophonePermission?.();
+          if (mic && !mic.granted) {
+            // Surface a user-friendly heads-up; pill will show NOTIFICATION state
+            window.notifications?.send?.(
+              "Microphone permission is off. Double-click to open Settings.",
+            );
+          }
+        } catch {}
+      }, 8000);
+    };
+    const stopPolling = () => {
+      if (pollId != null) {
+        clearInterval(pollId);
+        pollId = null;
+      }
+    };
+
+    // Start polling when idle (not recording/processing)
+    if (!trans.recording && !trans.processing) startPolling();
+    else stopPolling();
+
+    return () => stopPolling();
+  }, [trans.recording, trans.processing]);
+
   // Listen for window show events to reset pill state when shown from tray menu
   useEffect(() => {
     const handleWindowShow = () => {
@@ -569,11 +600,12 @@ const App: React.FC = () => {
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
-        pillDispatch({ type: "PTT_START" });
+        // Gate before flipping UI state so we don't get stuck in LISTENING
+        const allowed = await canProceedWithStartBasedOnMicPermission();
+        if (!allowed) return;
         if (!latestTransRef.current.recording) {
-          const allowed = await canProceedWithStartBasedOnMicPermission();
-          if (!allowed) return;
           latestTransRef.current.start();
+          pillDispatch({ type: "PTT_START" });
         }
       }, HOLD_DURATION_MS);
     };
@@ -600,9 +632,9 @@ const App: React.FC = () => {
             const allowed = await canProceedWithStartBasedOnMicPermission();
             if (!allowed) return;
             latestTransRef.current.start();
+            pushTrace(`PTT short press start`);
+            pillDispatch({ type: "PTT_START" });
           })();
-          pushTrace(`PTT short press start`);
-          pillDispatch({ type: "PTT_START" });
         }
       }
       isLongPressRef.current = false;
@@ -636,7 +668,6 @@ const App: React.FC = () => {
           maxW: MAX_W,
         }}
         onStartDictation={async () => {
-          pillDispatch({ type: "PTT_START" });
           // Immediate audio feedback on click start
           try {
             playToggleOn();
@@ -644,6 +675,7 @@ const App: React.FC = () => {
           const allowed = await canProceedWithStartBasedOnMicPermission();
           if (!allowed) return;
           trans.start();
+          pillDispatch({ type: "PTT_START" });
         }}
         onStopDictation={() => {
           pillDispatch({ type: "PTT_STOP" });

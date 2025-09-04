@@ -1785,9 +1785,8 @@ app.whenReady().then(async () => {
     try {
       createWindow();
       createTray();
-      // Start continuous follow and helper to fully mimic post-onboarding state
+      // Start continuous follow (defer helper until user grants IM or initiates PTT)
       startFollowCursor();
-      startFnListener();
       pttTarget = "main";
       console.log("[Debug] Main window launched (onboarding skipped)");
     } catch (error) {
@@ -1927,7 +1926,8 @@ app.whenReady().then(async () => {
       mainWindow.show();
     }
     createTray();
-    startFnListener();
+    // Defer starting the helper until user has granted Input Monitoring
+    // or initiates PTT from the UI
     pttTarget = "main";
     // (Removed) silent app location check after onboarding
   });
@@ -2723,41 +2723,7 @@ function startFnListener() {
             "notify",
             "Grant Input Monitoring permission → restart",
           );
-
-          // Debounce permission dialog to prevent multiple simultaneous dialogs
-          if (!fnPermissionDialogShown) {
-            fnPermissionDialogShown = true;
-            console.log(
-              "[FnListener] Permission denied detected, showing dialog",
-            );
-
-            dialog
-              .showMessageBox({
-                type: "warning",
-                buttons: ["Open System Settings", "Cancel"],
-                defaultId: 0,
-                title: "Permission Required",
-                message:
-                  "Sonic Flow needs Input Monitoring permission to detect the Fn key.",
-                detail:
-                  "Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.",
-              })
-              .then((result) => {
-                if (result.response === 0) {
-                  shell.openExternal(
-                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
-                  );
-                }
-                // Reset debounce flag after dialog is dismissed (with a small delay to prevent rapid re-triggering)
-                setTimeout(() => {
-                  fnPermissionDialogShown = false;
-                }, 2000);
-              });
-          } else {
-            console.log(
-              "[FnListener] Permission dialog already shown, ignoring duplicate perm-denied",
-            );
-          }
+          // Do not show modal dialogs automatically; rely on pill notification UX
         } else {
           console.warn(
             `[FnListener] Unknown command received: "${trimmedLine}"`,
