@@ -2441,6 +2441,39 @@ app.whenReady().then(async () => {
     return app.getAppPath();
   });
 
+  // Respond to permission grants without full app restart
+  ipcMain.handle(
+    "permissions:post-grant",
+    async (_event, type: "accessibility" | "microphone") => {
+      try {
+        if (type === "accessibility") {
+          // If paste daemon exists, respawn to pick up AX trust
+          try {
+            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+              preSpawnedPasteHelper.stdin?.write("exit\n");
+            }
+          } catch {}
+          preSpawnedPasteHelper = null;
+          preSpawnReady = null;
+          resolvePreSpawnReady = null;
+          // Eagerly pre-spawn again so paste is ready post-grant
+          preSpawnPasteHelper();
+          return { ok: true };
+        }
+        if (type === "microphone") {
+          // Ask pill to refresh devices list to ensure clean state
+          try {
+            mainWindow?.webContents.send("mic:refresh-devices");
+          } catch {}
+          return { ok: true };
+        }
+        return { ok: false, error: "Unknown type" };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+    },
+  );
+
   // Onboarding window controls
   ipcMain.handle("close-onboarding", () => {
     if (onboardingWindow) {

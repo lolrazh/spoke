@@ -134,6 +134,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       if (res?.success && res?.granted) {
         setPermissions((prev) => ({ ...prev, microphone: true }));
         setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+        try { await (window as any)?.electron?.postPermissionGrant?.("microphone"); } catch {}
         setTimeout(() => {
           if (!mountedRef.current) return;
           setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
@@ -150,6 +151,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           timersRef.current.mic = null;
           setPermissions((prev) => ({ ...prev, microphone: true }));
           setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+          try { await (window as any)?.electron?.postPermissionGrant?.("microphone"); } catch {}
           setTimeout(() => {
             if (!mountedRef.current) return;
             setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
@@ -196,34 +198,35 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     }
   };
 
-  const requestAccessibility = async () => {
-    try {
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
-      await p.requestAccessibilityPermission();
-      axDeepLinkedRef.current = false;
-      if (timersRef.current.ax) clearInterval(timersRef.current.ax);
-      const startedAt = Date.now();
-      timersRef.current.ax = setInterval(async () => {
-        const sys = await p.checkPermissions();
-        if (sys && !sys.needAX) {
-          clearInterval(timersRef.current.ax);
-          timersRef.current.ax = null;
-          setPermissions((prev) => ({ ...prev, accessibility: true }));
-          setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
-          setTimeout(() => {
-            if (!mountedRef.current) return;
-            setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } }));
-          }, 800);
-        } else if (!axDeepLinkedRef.current && Date.now() - startedAt > graceMs) {
-          axDeepLinkedRef.current = true;
-          try { p.openSystemPreferences("accessibility"); } catch {}
+  const requestAccessibility = async () =>
+    {
+      try {
+        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
+        const out = await p.requestAccessibilityPermission();
+        if (out?.success) {
+          // Will still require user to toggle in System Settings; start polling
         }
-      }, pollMs);
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
-    } catch {
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
-    }
-  };
+        try { p.openSystemPreferences("accessibility"); } catch {}
+        if (timersRef.current.ax) clearInterval(timersRef.current.ax);
+        timersRef.current.ax = setInterval(async () => {
+          const sys = await p.checkPermissions();
+          if (sys && !sys.needAX) {
+            clearInterval(timersRef.current.ax);
+            timersRef.current.ax = null;
+            setPermissions((prev) => ({ ...prev, accessibility: true }));
+            setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
+            try { await (window as any)?.electron?.postPermissionGrant?.("accessibility"); } catch {}
+            setTimeout(() => {
+              if (!mountedRef.current) return;
+              setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } }));
+            }, 800);
+          }
+        }, pollMs);
+        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+      } catch {
+        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+      }
+    };
 
   return useMemo(
     () => ({
