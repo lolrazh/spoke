@@ -13,6 +13,7 @@ import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
+import { STT_ENDPOINT, LLM_ENDPOINT, OPENAI_LLM_ENDPOINT } from '../config';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -137,6 +138,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
                 const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
+                // Log STT request details (console + Sentry)
+                try {
+                  const sttLog = {
+                    event: 'stt.request',
+                    model: runtime.stt.model,
+                    endpoint: STT_ENDPOINT,
+                    language: clientLanguage || runtime.stt.language,
+                    traceId: session.traceId,
+                  } as const;
+                  console.log(JSON.stringify(sttLog));
+                  safely(() => Sentry.logger.info('stt.request', sttLog as any));
+                } catch {}
                 const res = await transcribeWav(wav, GROQ_API_KEY, {
                   signal: sttAbort.signal,
                   model: runtime.stt.model,
@@ -168,6 +181,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const apiKeyForProvider = provider === 'openai' ? c.env.OPENAI_API_KEY : GROQ_API_KEY;
 
                   if (apiKeyForProvider) {
+                    // Log LLM request details (console + Sentry)
+                    try {
+                      const llmEndpoint = provider === 'openai' ? OPENAI_LLM_ENDPOINT : LLM_ENDPOINT;
+                      const llmLog = {
+                        event: 'llm.request',
+                        provider,
+                        model,
+                        endpoint: llmEndpoint,
+                        stream: streamLLM,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(llmLog));
+                      safely(() => Sentry.logger.info('llm.request', llmLog as any));
+                    } catch {}
                     const llmRes = await chatCompleteByProvider(provider, {
                       apiKey: apiKeyForProvider,
                       model,
