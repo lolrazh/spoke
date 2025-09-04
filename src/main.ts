@@ -424,6 +424,37 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   return proc;
 }
 
+async function startHelperIfIMGranted(): Promise<void> {
+  try {
+    const helperPath = getHelperPath();
+    if (!fs.existsSync(helperPath)) {
+      console.warn("[FnListener] Helper not found; cannot preflight IM grant");
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const proc = spawn(helperPath, ["--check-permissions"], {
+        stdio: ["ignore", "pipe", "ignore"],
+        detached: false,
+      });
+      let out = "";
+      proc.stdout.on("data", (d) => (out += d.toString()));
+      proc.on("close", () => {
+        const hasIM = out.includes("im-granted");
+        if (hasIM) {
+          try {
+            startFnListener();
+          } catch {}
+        } else {
+          console.log("[FnListener] IM not granted; helper start deferred");
+        }
+        resolve();
+      });
+    });
+  } catch (e) {
+    console.warn("[FnListener] Preflight IM check failed:", (e as Error)?.message);
+  }
+}
+
 function getHelperPath(): string {
   return app.isPackaged
     ? path.join(
@@ -1785,9 +1816,10 @@ app.whenReady().then(async () => {
     try {
       createWindow();
       createTray();
-      // Start continuous follow (defer helper until user grants IM or initiates PTT)
+      // Start continuous follow, and start helper only if IM already granted
       startFollowCursor();
       pttTarget = "main";
+      startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
     } catch (error) {
       console.error(
@@ -1926,9 +1958,9 @@ app.whenReady().then(async () => {
       mainWindow.show();
     }
     createTray();
-    // Defer starting the helper until user has granted Input Monitoring
-    // or initiates PTT from the UI
+    // Start helper only if IM is already granted; otherwise defer
     pttTarget = "main";
+    startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
   });
 
@@ -2367,11 +2399,14 @@ app.whenReady().then(async () => {
           console.log("[Ask-IM Error]:", data.toString());
         });
 
-        helper.on("close", (code) => {
+        helper.on("close", async (code) => {
           console.log(`[Ask-IM] Process exited with code ${code}`);
 
           if (stdout.includes("im-granted")) {
             console.log("[Ask-IM] Input Monitoring permission granted");
+            try {
+              await startHelperIfIMGranted();
+            } catch {}
             resolve({ success: true, status: "authorized", isDev });
           } else if (stdout.includes("im-denied")) {
             console.log("[Ask-IM] Input Monitoring permission denied");
