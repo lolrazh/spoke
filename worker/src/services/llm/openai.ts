@@ -32,7 +32,7 @@ import { safely } from '../../utils/safely';
 export async function chatComplete(opts: ChatCompleteOptions): Promise<OpenAIChatResult> {
   const {
     apiKey,
-    model = 'gpt-4o-mini',
+    model = LLM_DEFAULT_MODEL,
     systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
     userContent,
     stream = true,
