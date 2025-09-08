@@ -81,7 +81,6 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       openSystemPreferences: () => undefined,
     };
   const pollMs = opts?.pollIntervalMs ?? 1000;
-  const graceMs = opts?.deepLinkGraceMs ?? 4000;
 
   const [permissions, setPermissions] = useState<PermissionsState>({
     microphone: false,
@@ -99,7 +98,6 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     im: ReturnType<typeof setInterval> | null;
     ax: ReturnType<typeof setInterval> | null;
   }>({ mic: null, im: null, ax: null });
-  const axDeepLinkedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;

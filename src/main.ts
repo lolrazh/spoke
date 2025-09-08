@@ -133,7 +133,6 @@ let preSpawnReady: Promise<void> | null = null;
 let resolvePreSpawnReady: (() => void) | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
-let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
@@ -438,6 +437,10 @@ async function startHelperIfIMGranted(): Promise<void> {
       });
       let out = "";
       proc.stdout.on("data", (d) => (out += d.toString()));
+      proc.on("error", (err) => {
+        console.error("[FnListener] Helper spawn error:", err);
+        resolve();
+      });
       proc.on("close", () => {
         const hasIM = out.includes("im-granted");
         if (hasIM) {
@@ -2691,7 +2694,6 @@ function startFnListener() {
 
   // Clear any buffered stdout data from previous process
   fnStdoutBuffer = "";
-  fnPermissionDialogShown = false;
 
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
