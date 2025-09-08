@@ -133,7 +133,6 @@ let preSpawnReady: Promise<void> | null = null;
 let resolvePreSpawnReady: (() => void) | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
-let fnPermissionDialogShown = false;
 let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
@@ -422,6 +421,41 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   helperSet.add(proc);
   proc.once("exit", () => helperSet.delete(proc));
   return proc;
+}
+
+async function startHelperIfIMGranted(): Promise<void> {
+  try {
+    const helperPath = getHelperPath();
+    if (!fs.existsSync(helperPath)) {
+      console.warn("[FnListener] Helper not found; cannot preflight IM grant");
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const proc = spawn(helperPath, ["--check-permissions"], {
+        stdio: ["ignore", "pipe", "ignore"],
+        detached: false,
+      });
+      let out = "";
+      proc.stdout.on("data", (d) => (out += d.toString()));
+      proc.on("error", (err) => {
+        console.error("[FnListener] Helper spawn error:", err);
+        resolve();
+      });
+      proc.on("close", () => {
+        const hasIM = out.includes("im-granted");
+        if (hasIM) {
+          try {
+            startFnListener();
+          } catch {}
+        } else {
+          console.log("[FnListener] IM not granted; helper start deferred");
+        }
+        resolve();
+      });
+    });
+  } catch (e) {
+    console.warn("[FnListener] Preflight IM check failed:", (e as Error)?.message);
+  }
 }
 
 function getHelperPath(): string {
@@ -1785,10 +1819,10 @@ app.whenReady().then(async () => {
     try {
       createWindow();
       createTray();
-      // Start continuous follow and helper to fully mimic post-onboarding state
+      // Start continuous follow, and start helper only if IM already granted
       startFollowCursor();
-      startFnListener();
       pttTarget = "main";
+      startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
     } catch (error) {
       console.error(
@@ -1927,8 +1961,9 @@ app.whenReady().then(async () => {
       mainWindow.show();
     }
     createTray();
-    startFnListener();
+    // Start helper only if IM is already granted; otherwise defer
     pttTarget = "main";
+    startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
   });
 
@@ -2367,11 +2402,14 @@ app.whenReady().then(async () => {
           console.log("[Ask-IM Error]:", data.toString());
         });
 
-        helper.on("close", (code) => {
+        helper.on("close", async (code) => {
           console.log(`[Ask-IM] Process exited with code ${code}`);
 
           if (stdout.includes("im-granted")) {
             console.log("[Ask-IM] Input Monitoring permission granted");
+            try {
+              await startHelperIfIMGranted();
+            } catch {}
             resolve({ success: true, status: "authorized", isDev });
           } else if (stdout.includes("im-denied")) {
             console.log("[Ask-IM] Input Monitoring permission denied");
@@ -2405,6 +2443,39 @@ app.whenReady().then(async () => {
   ipcMain.handle("get-app-path", () => {
     return app.getAppPath();
   });
+
+  // Respond to permission grants without full app restart
+  ipcMain.handle(
+    "permissions:post-grant",
+    async (_event, type: "accessibility" | "microphone") => {
+      try {
+        if (type === "accessibility") {
+          // If paste daemon exists, respawn to pick up AX trust
+          try {
+            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+              preSpawnedPasteHelper.stdin?.write("exit\n");
+            }
+          } catch {}
+          preSpawnedPasteHelper = null;
+          preSpawnReady = null;
+          resolvePreSpawnReady = null;
+          // Eagerly pre-spawn again so paste is ready post-grant
+          preSpawnPasteHelper();
+          return { ok: true };
+        }
+        if (type === "microphone") {
+          // Ask pill to refresh devices list to ensure clean state
+          try {
+            mainWindow?.webContents.send("mic:refresh-devices");
+          } catch {}
+          return { ok: true };
+        }
+        return { ok: false, error: "Unknown type" };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+    },
+  );
 
   // Onboarding window controls
   ipcMain.handle("close-onboarding", () => {
@@ -2623,7 +2694,6 @@ function startFnListener() {
 
   // Clear any buffered stdout data from previous process
   fnStdoutBuffer = "";
-  fnPermissionDialogShown = false;
 
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
@@ -2723,41 +2793,7 @@ function startFnListener() {
             "notify",
             "Grant Input Monitoring permission → restart",
           );
-
-          // Debounce permission dialog to prevent multiple simultaneous dialogs
-          if (!fnPermissionDialogShown) {
-            fnPermissionDialogShown = true;
-            console.log(
-              "[FnListener] Permission denied detected, showing dialog",
-            );
-
-            dialog
-              .showMessageBox({
-                type: "warning",
-                buttons: ["Open System Settings", "Cancel"],
-                defaultId: 0,
-                title: "Permission Required",
-                message:
-                  "Sonic Flow needs Input Monitoring permission to detect the Fn key.",
-                detail:
-                  "Please grant permission in System Settings ▸ Privacy & Security ▸ Input Monitoring, then restart the app.",
-              })
-              .then((result) => {
-                if (result.response === 0) {
-                  shell.openExternal(
-                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
-                  );
-                }
-                // Reset debounce flag after dialog is dismissed (with a small delay to prevent rapid re-triggering)
-                setTimeout(() => {
-                  fnPermissionDialogShown = false;
-                }, 2000);
-              });
-          } else {
-            console.log(
-              "[FnListener] Permission dialog already shown, ignoring duplicate perm-denied",
-            );
-          }
+          // Do not show modal dialogs automatically; rely on pill notification UX
         } else {
           console.warn(
             `[FnListener] Unknown command received: "${trimmedLine}"`,

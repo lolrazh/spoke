@@ -93,11 +93,13 @@ const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
   onToggleFloatingBar?: (enabled: boolean) => void;
+  onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
+  onRequestCollapse,
 }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
@@ -345,10 +347,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
   }, []);
 
-  // Permission handlers
-  const handleRequestMicrophone = async () => { await requestMicrophone(); };
-  const handleRequestAccessibility = async () => { await requestAccessibility(); };
-  const handleRequestInputMonitoring = async () => { await requestInputMonitoring(); };
+  // Permission handlers – collapse first so macOS sheets are visible
+  const handleRequestMicrophone = async () => {
+    try { onRequestCollapse?.(); } catch {}
+    await requestMicrophone();
+  };
+  const handleRequestAccessibility = async () => {
+    try { onRequestCollapse?.(); } catch {}
+    await requestAccessibility();
+  };
+  const handleRequestInputMonitoring = async () => {
+    try { onRequestCollapse?.(); } catch {}
+    await requestInputMonitoring();
+  };
 
   const handleSignOut = () => {
     (async () => {

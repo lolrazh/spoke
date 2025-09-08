@@ -327,6 +327,37 @@ const App: React.FC = () => {
     return cleanup;
   }, []);
 
+  // Lightweight polling for microphone permission to keep UI honest
+  useEffect(() => {
+    let pollId: number | null = null;
+    const startPolling = () => {
+      if (pollId != null) return;
+      pollId = window.setInterval(async () => {
+        try {
+          const mic = await window.electron?.checkMicrophonePermission?.();
+          if (mic && !mic.granted) {
+            // Surface a user-friendly heads-up; pill will show NOTIFICATION state
+            window.notifications?.send?.(
+              "Microphone permission is off. Double-click to open Settings.",
+            );
+          }
+        } catch {}
+      }, 8000);
+    };
+    const stopPolling = () => {
+      if (pollId != null) {
+        clearInterval(pollId);
+        pollId = null;
+      }
+    };
+
+    // Start polling when idle (not recording/processing)
+    if (!trans.recording && !trans.processing) startPolling();
+    else stopPolling();
+
+    return () => stopPolling();
+  }, [trans.recording, trans.processing]);
+
   // Listen for window show events to reset pill state when shown from tray menu
   useEffect(() => {
     const handleWindowShow = () => {
@@ -569,10 +600,24 @@ const App: React.FC = () => {
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
         pushTrace(`PTT long press start`);
+        // Immediate visual drop for responsiveness
         pillDispatch({ type: "PTT_START" });
+        const allowed = await canProceedWithStartBasedOnMicPermission();
+        if (!allowed) {
+          // Show a clear notification instead of snapping back
+          try {
+            const mic = await window.electron?.checkMicrophonePermission?.();
+            const msg = mic && mic.granted === false
+              ? "Microphone permission is off. Double-click to open Settings."
+              : "Sign in to dictate";
+            pillDispatch({ type: "CANCEL" });
+            pillDispatch({ type: "NOTIFY", msg });
+          } catch {
+            pillDispatch({ type: "CANCEL" });
+          }
+          return;
+        }
         if (!latestTransRef.current.recording) {
-          const allowed = await canProceedWithStartBasedOnMicPermission();
-          if (!allowed) return;
           latestTransRef.current.start();
         }
       }, HOLD_DURATION_MS);
@@ -596,13 +641,26 @@ const App: React.FC = () => {
           pushTrace(`PTT short press stop`);
           pillDispatch({ type: "PTT_STOP" });
         } else {
+          // Immediate visual drop for responsiveness
+          pillDispatch({ type: "PTT_START" });
+          pushTrace(`PTT short press start`);
           (async () => {
             const allowed = await canProceedWithStartBasedOnMicPermission();
-            if (!allowed) return;
+            if (!allowed) {
+              try {
+                const mic = await window.electron?.checkMicrophonePermission?.();
+                const msg = mic && mic.granted === false
+                  ? "Microphone permission is off. Double-click to open Settings."
+                  : "Sign in to dictate";
+                pillDispatch({ type: "CANCEL" });
+                pillDispatch({ type: "NOTIFY", msg });
+              } catch {
+                pillDispatch({ type: "CANCEL" });
+              }
+              return;
+            }
             latestTransRef.current.start();
           })();
-          pushTrace(`PTT short press start`);
-          pillDispatch({ type: "PTT_START" });
         }
       }
       isLongPressRef.current = false;
@@ -636,13 +694,26 @@ const App: React.FC = () => {
           maxW: MAX_W,
         }}
         onStartDictation={async () => {
-          pillDispatch({ type: "PTT_START" });
           // Immediate audio feedback on click start
           try {
             playToggleOn();
           } catch {}
+          // Immediate visual drop
+          pillDispatch({ type: "PTT_START" });
           const allowed = await canProceedWithStartBasedOnMicPermission();
-          if (!allowed) return;
+          if (!allowed) {
+            try {
+              const mic = await window.electron?.checkMicrophonePermission?.();
+              const msg = mic && mic.granted === false
+                ? "Microphone permission is off. Double-click to open Settings."
+                : "Sign in to dictate";
+              pillDispatch({ type: "CANCEL" });
+              pillDispatch({ type: "NOTIFY", msg });
+            } catch {
+              pillDispatch({ type: "CANCEL" });
+            }
+            return;
+          }
           trans.start();
         }}
         onStopDictation={() => {

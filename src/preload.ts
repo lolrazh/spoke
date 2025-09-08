@@ -126,6 +126,9 @@ contextBridge.exposeInMainWorld("electron", {
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
+  // Permission lifecycle helpers
+  postPermissionGrant: (type: "accessibility" | "microphone") =>
+    ipcRenderer.invoke("permissions:post-grant", type),
   // Window controls
   showOnboarding: () => ipcRenderer.invoke("auth:show-onboarding"),
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
