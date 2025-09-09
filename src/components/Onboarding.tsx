@@ -119,9 +119,9 @@ const Onboarding: React.FC = () => {
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   // Sample prompts for tests
   const sampleHoldText =
-    "I wanna fix app.py and test.py. Add at symbols before the file names.";
+    "I wanna fix app.py and test.py. Can you add at symbols before the file names.";
   const sampleTapText =
-    "Let’s meet Tuesday at 2 PM. Actually, Thursday at 11 AM works better.";
+    "Let’s meet Tuesday at 2pm. Wait no, actually, Thursday at 11am.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -681,15 +681,31 @@ const Onboarding: React.FC = () => {
     };
   };
 
-  // Reflect recognized text into test areas without duplicating
-  // Replace content with the evolving transcription rather than appending repeatedly
+  // Reflect recognized text into test areas only during an active session
+  // Avoid carrying over text between steps when idle
   useEffect(() => {
+    if (!(trans.recording || trans.processing)) return;
     if (currentStep === "hotkey-test") {
       setTestText(trans.text || "");
     } else if (currentStep === "hotkey-tap-test") {
       setTestTextTap(trans.text || "");
     }
-  }, [trans.text, currentStep]);
+  }, [trans.text, currentStep, trans.recording, trans.processing]);
+
+  // Ensure each test step starts with an empty textbox and clean tap state
+  useEffect(() => {
+    if (currentStep === "hotkey-test") {
+      setTestText("");
+      // Reset long-press tracking
+      isLongPressRef.current = false;
+      if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
+    } else if (currentStep === "hotkey-tap-test") {
+      setTestTextTap("");
+      // Reset double-tap tracking
+      lastTapTimeRef.current = null;
+      if (doubleTapTimerRef.current) { clearTimeout(doubleTapTimerRef.current); doubleTapTimerRef.current = null; }
+    }
+  }, [currentStep]);
 
   // Mirror pill state during onboarding tests so pill shows LISTENING/PROCESSING
   useEffect(() => {
