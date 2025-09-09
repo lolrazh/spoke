@@ -609,24 +609,28 @@ const App: React.FC = () => {
         pushTrace(`PTT long press start`);
         // Immediate visual drop for responsiveness
         pillDispatch({ type: "PTT_START" });
-        const allowed = await canProceedWithStartBasedOnMicPermission();
-        if (!allowed) {
-          // Show a clear notification instead of snapping back
-          try {
-            const mic = await window.electron?.checkMicrophonePermission?.();
-            const msg = mic && mic.granted === false
-              ? "Microphone permission is off. Double-click to open Settings."
-              : "Sign in to dictate";
-            pillDispatch({ type: "CANCEL" });
-            pillDispatch({ type: "NOTIFY", msg });
-          } catch {
-            pillDispatch({ type: "CANCEL" });
-          }
-          return;
-        }
+        // Start capture immediately to minimize perceived latency
         if (!latestTransRef.current.recording) {
-          latestTransRef.current.start();
+          try { latestTransRef.current.start(); } catch {}
         }
+        // Run auth/mic checks in the background and cancel if they fail
+        (async () => {
+          const allowed = await canProceedWithStartBasedOnMicPermission();
+          if (!allowed) {
+            try {
+              const mic = await window.electron?.checkMicrophonePermission?.();
+              const msg = mic && mic.granted === false
+                ? "Microphone permission is off. Double-click to open Settings."
+                : "Sign in to dictate";
+              try { latestTransRef.current.cancel(); } catch {}
+              pillDispatch({ type: "CANCEL" });
+              pillDispatch({ type: "NOTIFY", msg });
+            } catch {
+              try { latestTransRef.current.cancel(); } catch {}
+              pillDispatch({ type: "CANCEL" });
+            }
+          }
+        })();
       }, HOLD_DURATION_MS);
     };
 
@@ -658,9 +662,13 @@ const App: React.FC = () => {
             pushTrace(`PTT double-tap stop`);
             pillDispatch({ type: "PTT_STOP" });
           } else {
-            // Start dictation on double-tap
+            // Start dictation on double-tap: play sound and start mic immediately
+            try { playToggleOn(); } catch {}
             pillDispatch({ type: "PTT_START" });
             pushTrace(`PTT double-tap start`);
+            // Start capture immediately to minimize perceived latency
+            try { latestTransRef.current.start(); } catch {}
+            // Run auth/mic checks in the background and cancel if they fail
             (async () => {
               const allowed = await canProceedWithStartBasedOnMicPermission();
               if (!allowed) {
@@ -669,15 +677,15 @@ const App: React.FC = () => {
                   const msg = mic && mic.granted === false
                     ? "Microphone permission is off. Double-click to open Settings."
                     : "Sign in to dictate";
+                  // Cancel any active/in-flight session and notify
+                  try { latestTransRef.current.cancel(); } catch {}
                   pillDispatch({ type: "CANCEL" });
                   pillDispatch({ type: "NOTIFY", msg });
                 } catch {
+                  try { latestTransRef.current.cancel(); } catch {}
                   pillDispatch({ type: "CANCEL" });
                 }
-                return;
               }
-              try { playToggleOn(); } catch {}
-              latestTransRef.current.start();
             })();
           }
         } else {
