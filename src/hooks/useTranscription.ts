@@ -41,6 +41,11 @@ export interface UseTranscriptionOptions {
    * Defaults to false to avoid opening the mic until dictation starts.
    */
   requestLabelPermissionForEnumeration?: boolean;
+  /**
+   * When true, the hook will NOT trigger native paste on final results.
+   * Useful for onboarding/tests where the UI wants to control insertion.
+   */
+  suppressNativePaste?: boolean;
 }
 
 export function useTranscription(
@@ -50,6 +55,7 @@ export function useTranscription(
     autoEnumerateDevices = true,
     autoInitStream = true,
     requestLabelPermissionForEnumeration = false,
+    suppressNativePaste = false,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -798,14 +804,16 @@ export function useTranscription(
                           typeof performance !== "undefined"
                             ? performance.now()
                             : Date.now();
-                      try {
-                        await window.clipboard.insertText(msg.text);
-                        if (metricsRef.current)
-                          metricsRef.current.pasteDoneMs =
-                            typeof performance !== "undefined"
-                              ? performance.now()
-                              : Date.now();
-                      } catch {}
+                      if (!suppressNativePaste) {
+                        try {
+                          await window.clipboard.insertText(msg.text);
+                          if (metricsRef.current)
+                            metricsRef.current.pasteDoneMs =
+                              typeof performance !== "undefined"
+                                ? performance.now()
+                                : Date.now();
+                        } catch {}
+                      }
                     }
                     if (metricsRef.current) {
                       metricsRef.current.sttEndMs =

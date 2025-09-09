@@ -52,7 +52,7 @@ const mockPermissions = {
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
   askIM: async () => ({ success: true, status: "authorized" }),
   requestAccessibilityPermission: async () => ({ success: true }),
-  openSystemPreferences: async () => ({ success: true }),
+  openSystemPreferences: () => undefined,
   resetPermissions: () => {
     if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
   },
@@ -660,6 +660,7 @@ const Onboarding: React.FC = () => {
   const trans = useTranscription({
     autoEnumerateDevices: false,
     autoInitStream: false,
+    suppressNativePaste: true,
   });
   const [testText, setTestText] = useState("");
   const [testTextTap, setTestTextTap] = useState("");
@@ -680,14 +681,13 @@ const Onboarding: React.FC = () => {
     };
   };
 
-  // Append recognized text to test area(s)
+  // Reflect recognized text into test areas without duplicating
+  // Replace content with the evolving transcription rather than appending repeatedly
   useEffect(() => {
-    if (trans.text) {
-      if (currentStep === "hotkey-test") {
-        setTestText((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
-      } else if (currentStep === "hotkey-tap-test") {
-        setTestTextTap((prev) => (prev ? `${prev} ${trans.text}` : trans.text));
-      }
+    if (currentStep === "hotkey-test") {
+      setTestText(trans.text || "");
+    } else if (currentStep === "hotkey-tap-test") {
+      setTestTextTap(trans.text || "");
     }
   }, [trans.text, currentStep]);
 
