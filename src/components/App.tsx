@@ -649,7 +649,7 @@ const App: React.FC = () => {
       } else {
         // Double-tap to toggle hands-free
         const now = Date.now();
-        const DOUBLE_MS = 280;
+        const DOUBLE_MS = 220;
         if (lastTapUpRef.current && now - lastTapUpRef.current <= DOUBLE_MS) {
           // Confirmed double-tap
           if (doubleTapTimerRef.current) {

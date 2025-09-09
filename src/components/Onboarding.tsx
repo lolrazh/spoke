@@ -720,7 +720,7 @@ const Onboarding: React.FC = () => {
       } else if (currentStep === "hotkey-tap-test") {
         if (trans.processing) return;
         const now = Date.now();
-        const DOUBLE_MS = 280;
+        const DOUBLE_MS = 220;
         if (lastTapTimeRef.current && now - lastTapTimeRef.current <= DOUBLE_MS) {
           // Double-tap detected
           if (doubleTapTimerRef.current) {
