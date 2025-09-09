@@ -262,6 +262,9 @@ const App: React.FC = () => {
   const [isTextTruncated, setIsTextTruncated] = useState(false);
   const ghostRef = useRef<HTMLSpanElement | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Double-tap detection for hands-free (Right Option)
+  const lastTapUpRef = useRef<number | null>(null);
+  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const latestTransRef = useRef(trans);
   const [trace, setTrace] = useState<string[]>([]);
@@ -400,7 +403,7 @@ const App: React.FC = () => {
     }
   }, [pillState]);
 
-  // Subscribe to a global cancel signal (Option key via native helper; wired later)
+  // Subscribe to a global cancel signal (Right Command via native helper; wired later)
   useEffect(() => {
     const onCancel = () => {
       // Treat cancel as concluding the current PTT gesture: prevent pending long-press start
@@ -592,13 +595,17 @@ const App: React.FC = () => {
       if (latestTransRef.current.recording) {
         return;
       }
-      // Immediate audio feedback on PTT down to reduce perceived latency
-      try {
-        playToggleOn();
-      } catch {}
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
+        // Play audio on actual long-press start
+        try { playToggleOn(); } catch {}
+        // Cancel any pending double-tap window
+        if (doubleTapTimerRef.current) {
+          clearTimeout(doubleTapTimerRef.current);
+          doubleTapTimerRef.current = null;
+        }
+        lastTapUpRef.current = null;
         pushTrace(`PTT long press start`);
         // Immediate visual drop for responsiveness
         pillDispatch({ type: "PTT_START" });
@@ -636,31 +643,51 @@ const App: React.FC = () => {
           pillDispatch({ type: "PTT_STOP" });
         }
       } else {
-        if (latestTransRef.current.recording) {
-          latestTransRef.current.stop();
-          pushTrace(`PTT short press stop`);
-          pillDispatch({ type: "PTT_STOP" });
-        } else {
-          // Immediate visual drop for responsiveness
-          pillDispatch({ type: "PTT_START" });
-          pushTrace(`PTT short press start`);
-          (async () => {
-            const allowed = await canProceedWithStartBasedOnMicPermission();
-            if (!allowed) {
-              try {
-                const mic = await window.electron?.checkMicrophonePermission?.();
-                const msg = mic && mic.granted === false
-                  ? "Microphone permission is off. Double-click to open Settings."
-                  : "Sign in to dictate";
-                pillDispatch({ type: "CANCEL" });
-                pillDispatch({ type: "NOTIFY", msg });
-              } catch {
-                pillDispatch({ type: "CANCEL" });
+        // Double-tap to toggle hands-free
+        const now = Date.now();
+        const DOUBLE_MS = 280;
+        if (lastTapUpRef.current && now - lastTapUpRef.current <= DOUBLE_MS) {
+          // Confirmed double-tap
+          if (doubleTapTimerRef.current) {
+            clearTimeout(doubleTapTimerRef.current);
+            doubleTapTimerRef.current = null;
+          }
+          lastTapUpRef.current = null;
+          if (latestTransRef.current.recording) {
+            latestTransRef.current.stop();
+            pushTrace(`PTT double-tap stop`);
+            pillDispatch({ type: "PTT_STOP" });
+          } else {
+            // Start dictation on double-tap
+            pillDispatch({ type: "PTT_START" });
+            pushTrace(`PTT double-tap start`);
+            (async () => {
+              const allowed = await canProceedWithStartBasedOnMicPermission();
+              if (!allowed) {
+                try {
+                  const mic = await window.electron?.checkMicrophonePermission?.();
+                  const msg = mic && mic.granted === false
+                    ? "Microphone permission is off. Double-click to open Settings."
+                    : "Sign in to dictate";
+                  pillDispatch({ type: "CANCEL" });
+                  pillDispatch({ type: "NOTIFY", msg });
+                } catch {
+                  pillDispatch({ type: "CANCEL" });
+                }
+                return;
               }
-              return;
-            }
-            latestTransRef.current.start();
-          })();
+              try { playToggleOn(); } catch {}
+              latestTransRef.current.start();
+            })();
+          }
+        } else {
+          // First tap: arm the window for a second tap
+          lastTapUpRef.current = now;
+          if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
+          doubleTapTimerRef.current = setTimeout(() => {
+            lastTapUpRef.current = null;
+            doubleTapTimerRef.current = null;
+          }, DOUBLE_MS);
         }
       }
       isLongPressRef.current = false;
@@ -675,6 +702,10 @@ const App: React.FC = () => {
     return () => {
       cleanupOnDown();
       cleanupOnUp();
+      if (doubleTapTimerRef.current) {
+        clearTimeout(doubleTapTimerRef.current);
+        doubleTapTimerRef.current = null;
+      }
     };
   }, []);
 

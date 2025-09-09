@@ -2780,11 +2780,26 @@ function startFnListener() {
           preSpawnReady = null;
           resolvePreSpawnReady = null;
           targetWindow?.webContents.send("ptt-up");
-        } else if (trimmedLine === "opt-down") {
-          // Emit a cancel signal on Option press
+        } else if (trimmedLine === "optR-down") {
+          // Right Option: primary PTT hotkey (press-and-hold)
+          preSpawnPasteHelper();
+          targetWindow?.webContents.send("ptt-down");
+        } else if (trimmedLine === "optR-up") {
+          // End of PTT press-and-hold
+          try {
+            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+              preSpawnedPasteHelper.stdin?.write("exit\n");
+            }
+          } catch {}
+          preSpawnedPasteHelper = null;
+          preSpawnReady = null;
+          resolvePreSpawnReady = null;
+          targetWindow?.webContents.send("ptt-up");
+        } else if (trimmedLine === "cmdR-down") {
+          // Right Command: global cancel
           targetWindow?.webContents.send("ptt-cancel");
-        } else if (trimmedLine === "opt-up") {
-          // Currently unused, but kept for symmetry and future features
+        } else if (trimmedLine === "cmdR-up") {
+          // Currently unused.
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 

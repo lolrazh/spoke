@@ -498,25 +498,21 @@ bool check_permissions() {
 
 typedef struct {
     bool fn;
-    bool opt;
+    bool optL;
+    bool optR;
+    bool cmdL;
+    bool cmdR;
 } KeyState;
 
 static bool g_debug_keys = false;
 
-static void emit_opt_state(KeyState *state, bool now, const char *src) {
-    if (g_debug_keys) {
-        fprintf(stderr, "[OPT:%s] now=%d prev=%d\n", src ? src : "?", (int)now, (int)state->opt);
-    }
-    if (now != state->opt) {
-        state->opt = now;
-        if (now) {
-            puts("opt-down");
-        } else {
-            puts("opt-up");
-        }
-        fflush(stdout);
-    }
-}
+// Some SDKs don't expose virtual keycodes; define the ones we need for Command
+#ifndef kVK_Command
+#define kVK_Command      55
+#endif
+#ifndef kVK_RightCommand
+#define kVK_RightCommand 54
+#endif
 
 CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
     if (t == kCGEventFlagsChanged) {
@@ -525,10 +521,9 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
         bool fnNow = (flags & FN_MASK) != 0;
         CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
 
-        if (g_debug_keys && (code == kVK_Option || code == kVK_RightOption)) {
-            bool optNowDbg = (flags & kCGEventFlagMaskAlternate) != 0;
-            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx fnNow=%d optNow=%d prevOpt=%d\n",
-                    (unsigned)code, (unsigned long long)flags, (int)fnNow, (int)optNowDbg, (int)state->opt);
+        if (g_debug_keys) {
+            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx fnNow=%d optL=%d optR=%d cmdL=%d cmdR=%d\n",
+                    (unsigned)code, (unsigned long long)flags, (int)fnNow, (int)state->optL, (int)state->optR, (int)state->cmdL, (int)state->cmdR);
         }
 
         // Fn follows its flag transitions directly
@@ -538,10 +533,26 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
             fflush(stdout);
         }
 
-        // Option: only update when the Option key is the one that changed (code 58/61)
-        if (code == kVK_Option || code == kVK_RightOption) {
-            bool optNow = (flags & kCGEventFlagMaskAlternate) != 0;
-            emit_opt_state(state, optNow, "CG");
+        // Track Option sides independently by toggling per-keycode
+        if (code == kVK_RightOption) {
+            state->optR = !state->optR;
+            puts(state->optR ? "optR-down" : "optR-up");
+            fflush(stdout);
+        } else if (code == kVK_Option) {
+            state->optL = !state->optL;
+            puts(state->optL ? "optL-down" : "optL-up");
+            fflush(stdout);
+        }
+
+        // Track Command sides independently by toggling per-keycode
+        if (code == kVK_RightCommand) {
+            state->cmdR = !state->cmdR;
+            puts(state->cmdR ? "cmdR-down" : "cmdR-up");
+            fflush(stdout);
+        } else if (code == kVK_Command) {
+            state->cmdL = !state->cmdL;
+            puts(state->cmdL ? "cmdL-down" : "cmdL-up");
+            fflush(stdout);
         }
     }
     // Ignore keyDown/Up for modifiers; they are not reliable sources for Option state
@@ -721,7 +732,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    KeyState s = { false, false };
+    KeyState s = { false, false, false, false, false };
     // Only listen to flagsChanged; modifiers are canonical via flagsChanged + keycode
     CGEventMask m = (1ULL << kCGEventFlagsChanged);
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,

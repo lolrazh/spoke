@@ -96,6 +96,9 @@ const Onboarding: React.FC = () => {
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
   const [fnKeyPressed, setFnKeyPressed] = useState(false);
+  // Double-tap detection for hands-free (Right Option)
+  const lastTapTimeRef = useRef<number | null>(null);
+  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -692,47 +695,65 @@ const Onboarding: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, trans.recording]);
 
-  // Hook Fn key: hold-to-speak on hotkey-test, tap-to-toggle on hotkey-tap-test
+  // Hook hotkey: Right Option — hold-to-speak on hotkey-test, double-tap-to-toggle on hotkey-tap-test
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) {
       devFlags.methods.devLog("PTT API not available yet, waiting...");
       return;
     }
 
-    devFlags.methods.devLog("PTT API available, setting up Fn key handlers");
+    devFlags.methods.devLog("PTT API available, setting up Right Option handlers");
     const HOLD_MS = 90;
     const handleDown = () => {
-      devFlags.methods.devLog("Fn key pressed down");
+      devFlags.methods.devLog("Hotkey pressed down");
       setFnKeyPressed(true); // Immediate visual feedback
 
       if (currentStep === "hotkey-test") {
         if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
         if (trans.processing || trans.recording) return;
-        try { playToggleOn(); } catch {}
         isLongPressRef.current = false;
         pressTimerRef.current = setTimeout(() => {
           isLongPressRef.current = true;
+          try { playToggleOn(); } catch {}
           if (!trans.recording) trans.start();
         }, HOLD_MS);
       } else if (currentStep === "hotkey-tap-test") {
         if (trans.processing) return;
-        if (!trans.recording) {
-          try { playToggleOn(); } catch {}
-          trans.start();
+        const now = Date.now();
+        const DOUBLE_MS = 280;
+        if (lastTapTimeRef.current && now - lastTapTimeRef.current <= DOUBLE_MS) {
+          // Double-tap detected
+          if (doubleTapTimerRef.current) {
+            clearTimeout(doubleTapTimerRef.current);
+            doubleTapTimerRef.current = null;
+          }
+          lastTapTimeRef.current = null;
+          if (!trans.recording) {
+            try { playToggleOn(); } catch {}
+            trans.start();
+          } else {
+            trans.stop();
+          }
         } else {
-          trans.stop();
+          // First tap: arm a window for second tap
+          lastTapTimeRef.current = now;
+          if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
+          doubleTapTimerRef.current = setTimeout(() => {
+            lastTapTimeRef.current = null;
+            doubleTapTimerRef.current = null;
+          }, DOUBLE_MS);
         }
       }
     };
     const handleUp = () => {
-      devFlags.methods.devLog("Fn key released");
+      devFlags.methods.devLog("Hotkey released");
       setFnKeyPressed(false); // Immediate visual feedback
 
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-      // For hold-to-speak, stop on release; for tap-to-talk, ignore release
+      // For hold-to-speak, stop on release; for double-tap, ignore release
       if (currentStep === "hotkey-test" && trans.recording) trans.stop();
       isLongPressRef.current = false;
     };
@@ -745,6 +766,10 @@ const Onboarding: React.FC = () => {
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
+      }
+      if (doubleTapTimerRef.current) {
+        clearTimeout(doubleTapTimerRef.current);
+        doubleTapTimerRef.current = null;
       }
     };
   }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
@@ -902,7 +927,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Hotkey is the Fn key
+                    Your Hotkey is the Right Option key
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     Press and hold to speak. Release to stop.
@@ -919,13 +944,9 @@ const Onboarding: React.FC = () => {
                       }
                       aria-live="polite"
                     >
-                      <span className="keycap-label text-[12px] font-system lowercase">
-                        fn
-                      </span>
+                      <span className="keycap-label text-[12px] font-system">⌥</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">
-                      Press your Fn key now to test it.
-                    </p>
+                    <p className="onboarding-note onboarding-content-gap">Press your Right Option key now to test it.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1155,9 +1176,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
-                          <p className="text-[11px] text-subtle">
-                            Detect the Fn key to start and stop dictation.
-                          </p>
+                          <p className="text-[11px] text-subtle">Detect the Right Option key to start and stop dictation.</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -1306,7 +1325,7 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Press and hold Fn to dictate
+                      Press and hold Right Option to dictate
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       Hold to speak. Release to stop.
@@ -1352,10 +1371,10 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Tap Fn to dictate
+                      Double-tap Right Option to dictate
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Tap once to start. Tap again to stop.
+                      Double-tap to start. Double-tap again to stop.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1425,9 +1444,7 @@ const Onboarding: React.FC = () => {
                 <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                   You're all set
                 </h2>
-                <p className="text-sm text-subtle leading-relaxed">
-                  Your voice is now your keyboard. Press Fn to dictate anywhere.
-                </p>
+                <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Use Right Option to dictate anywhere.</p>
                 <div className="pt-2 flex justify-center">
                   <Button
                     onClick={handleComplete}

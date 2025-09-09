@@ -565,7 +565,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 {/* Input Monitoring Permission */}
                 <SettingsCard
                   title="Input Monitoring"
-                  description="Detect the Fn key to start and stop dictation"
+                  description="Detect the Right Option key to start and stop dictation"
                   icon={
                     <SfIcon
                       name="keyboard.badge.eye.fill"
