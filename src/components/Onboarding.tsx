@@ -65,6 +65,7 @@ type OnboardingStep =
   | "hotkey-info"
   | "hotkey-test"
   | "hotkey-tap-test"
+  | "cancel-info"
   | "complete";
 
 const Onboarding: React.FC = () => {
@@ -240,6 +241,7 @@ const Onboarding: React.FC = () => {
     "hotkey-info",
     "hotkey-test",
     "hotkey-tap-test",
+    "cancel-info",
     "complete",
   ];
 
@@ -781,44 +783,41 @@ const Onboarding: React.FC = () => {
     };
   }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
 
-  // Hook cancel: Right Command — visual press on down; cancel on release during test steps
+  // Hook: Right Command visual feedback on cancel-info step only
   useEffect(() => {
-    const inRelevantStep =
-      currentStep === "hotkey-info" ||
-      currentStep === "hotkey-test" ||
-      currentStep === "hotkey-tap-test";
-    if (!inRelevantStep) return;
+    if (currentStep !== "cancel-info") return;
     const cleanups: Array<() => void> = [];
-    // Down: show visual pressed state
     if (window.ptt?.onCancelDown) {
-      cleanups.push(
-        window.ptt.onCancelDown(() => {
-          setCmdKeyPressed(true);
-        }),
-      );
+      cleanups.push(window.ptt.onCancelDown(() => setCmdKeyPressed(true)));
     }
-    // Up: clear pressed state and cancel if in test steps
     if (window.ptt?.onCancel) {
       cleanups.push(
         window.ptt.onCancel(() => {
           setCmdKeyPressed(false);
-          // Clear any pending Option timers and visual state
-          if (pressTimerRef.current) {
-            clearTimeout(pressTimerRef.current);
-            pressTimerRef.current = null;
-          }
-          setFnKeyPressed(false);
-          if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
-            try {
-              if (trans.recording || trans.processing) trans.cancel();
-            } catch {}
-          }
         }),
       );
     }
     return () => {
       cleanups.forEach((fn) => fn && fn());
     };
+  }, [currentStep]);
+
+  // Hook: Right Command cancels active/processing transcription on test steps
+  useEffect(() => {
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    if (!window.ptt?.onCancel) return;
+    const cleanup = window.ptt.onCancel(() => {
+      // Clear pending PTT timers and visual
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      setFnKeyPressed(false);
+      try {
+        if (trans.recording || trans.processing) trans.cancel();
+      } catch {}
+    });
+    return () => cleanup && cleanup();
   }, [currentStep, trans.recording, trans.processing]);
 
   return (
@@ -974,39 +973,27 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Hotkeys
+                    Your Hotkey is the Right Option Key
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Right Option to dictate. Right Command to cancel.
+                    Press and hold to speak. Release to stop.
                   </p>
                 </div>
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
-                    <div className="flex items-center gap-2">
-                      {/* Right Command key (left, wider) */}
-                      <div
-                        className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
-                        aria-label={"Command key - press to cancel dictation"}
-                        aria-live="polite"
-                      >
-                        <span className="keycap-legend-top text-[14px] font-system">⌘</span>
-                        <span className="keycap-legend-bottom text-[10px] font-system">command</span>
-                      </div>
-                      {/* Right Option key */}
-                      <div
-                        className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
-                        aria-label={
-                          fnKeyPressed || trans.recording
-                            ? "Option key active - recording in progress"
-                            : "Option key - press and hold to start dictation"
-                        }
-                        aria-live="polite"
-                      >
-                        <span className="keycap-legend-top text-[14px] font-system">⌥</span>
-                        <span className="keycap-legend-bottom text-[10px] font-system">option</span>
-                      </div>
+                    <div
+                      className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                      aria-label={
+                        fnKeyPressed || trans.recording
+                          ? "Option key active - recording in progress"
+                          : "Option key - press and hold to start dictation"
+                      }
+                      aria-live="polite"
+                    >
+                      <span className="keycap-legend-top text-[14px] font-system">⌥</span>
+                      <span className="keycap-legend-bottom text-[10px] font-system">option</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Press Right Option to test dictation. Press Right Command to test cancel.</p>
+                    <p className="onboarding-note onboarding-content-gap">Press your Right Option key now to test it.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1454,6 +1441,40 @@ const Onboarding: React.FC = () => {
                         ref={textAreaRef}
                       />
                     </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Cancel Info Step */}
+            {currentStep === "cancel-info" && (
+              <motion.div
+                key="cancel-info"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Your Cancel Key is the Right Command Key
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Press Right Command to cancel dictation.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center justify-center">
+                    <div
+                      className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
+                      aria-label={"Command key - press to cancel dictation"}
+                      aria-live="polite"
+                    >
+                      <span className="keycap-legend-top text-[14px] font-system">⌘</span>
+                      <span className="keycap-legend-bottom text-[10px] font-system">command</span>
+                    </div>
+                    <p className="onboarding-note onboarding-content-gap">Press your Right Command key now to test it.</p>
                   </div>
                 </div>
               </motion.div>
