@@ -96,7 +96,7 @@ const Onboarding: React.FC = () => {
   } = usePermissions(mockProvider, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
-  const [fnKeyPressed, setFnKeyPressed] = useState(false);
+  const [optKeyPressed, setOptKeyPressed] = useState(false);
   const [cmdKeyPressed, setCmdKeyPressed] = useState(false);
   // Double-tap detection for hands-free (Right Option)
   const lastTapTimeRef = useRef<number | null>(null);
@@ -215,7 +215,7 @@ const Onboarding: React.FC = () => {
   // Clear any active polling timers on unmount
   useEffect(() => {
     return () => {
-      setFnKeyPressed(false); // Reset Fn key state
+      setOptKeyPressed(false); // Reset Option key state
       setCmdKeyPressed(false);
       isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
@@ -360,7 +360,7 @@ const Onboarding: React.FC = () => {
     await handleEmailStart();
   };
 
-  // Start helper when entering the hotkey info step (after permissions) so Fn key testing works
+  // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
     if (currentStep === "hotkey-info" && !pttApiReady) {
       // Ensure PTT events route to onboarding while testing
@@ -399,9 +399,9 @@ const Onboarding: React.FC = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
-      // Reset Fn key visual state when leaving hotkey pages
+      // Reset Option key visual state when leaving hotkey pages
       if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
-        setFnKeyPressed(false);
+        setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex + 1]);
     }
@@ -411,9 +411,9 @@ const Onboarding: React.FC = () => {
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
-      // Reset Fn key visual state when leaving hotkey pages
+      // Reset Option key visual state when leaving hotkey pages
       if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
-        setFnKeyPressed(false);
+        setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex - 1]);
     }
@@ -715,7 +715,7 @@ const Onboarding: React.FC = () => {
     const HOLD_MS = 90;
     const handleDown = () => {
       devFlags.methods.devLog("Hotkey pressed down");
-      setFnKeyPressed(true); // Immediate visual feedback
+      setOptKeyPressed(true); // Immediate visual feedback
 
       if (currentStep === "hotkey-test") {
         if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
@@ -756,7 +756,7 @@ const Onboarding: React.FC = () => {
     };
     const handleUp = () => {
       devFlags.methods.devLog("Hotkey released");
-      setFnKeyPressed(false); // Immediate visual feedback
+      setOptKeyPressed(false); // Immediate visual feedback
 
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
@@ -812,7 +812,7 @@ const Onboarding: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
-      setFnKeyPressed(false);
+      setOptKeyPressed(false);
       try {
         if (trans.recording || trans.processing) trans.cancel();
       } catch {}
@@ -982,9 +982,9 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
                     <div
-                      className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                      className={`keycap keycap-lg ${optKeyPressed || trans.recording ? "keycap-active" : ""}`}
                       aria-label={
-                        fnKeyPressed || trans.recording
+                        optKeyPressed || trans.recording
                           ? "Option key active - recording in progress"
                           : "Option key - press and hold to start dictation"
                       }

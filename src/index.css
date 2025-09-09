@@ -668,7 +668,7 @@ body {
     ); /* extra space below subheading pushes content down */
   }
 
-  /* Keycap visual for Fn key */
+  /* Keycap visual for Option/Command keys */
   .keycap {
     display: inline-flex;
     align-items: center;

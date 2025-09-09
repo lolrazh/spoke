@@ -2722,7 +2722,7 @@ function startFnListener() {
     const targetWindow = mainWindow || onboardingWindow;
     targetWindow?.webContents.send(
       "notify",
-      "Fn key detection unavailable: binary missing",
+      "Hotkey detection unavailable: binary missing",
     );
     return;
   }
@@ -2765,21 +2765,11 @@ function startFnListener() {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
-        } else if (trimmedLine === "down" || trimmedLine === "fn-down") {
-          // Pre-spawn paste helper when dictation starts to hide latency
-          preSpawnPasteHelper();
-          targetWindow?.webContents.send("ptt-down");
-        } else if (trimmedLine === "up" || trimmedLine === "fn-up") {
-          // End of dictation session: clean up pre-spawned paste helper
-          try {
-            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-              preSpawnedPasteHelper.stdin?.write("exit\n");
-            }
-          } catch {}
-          preSpawnedPasteHelper = null;
-          preSpawnReady = null;
-          resolvePreSpawnReady = null;
-          targetWindow?.webContents.send("ptt-up");
+        // Ignore legacy generic and Fn events; only handle Right Option/Command
+        } else if (false && (trimmedLine === "down" || trimmedLine === "fn-down")) {
+          // no-op
+        } else if (false && (trimmedLine === "up" || trimmedLine === "fn-up")) {
+          // no-op
         } else if (trimmedLine === "optR-down") {
           // Right Option: primary PTT hotkey (press-and-hold)
           preSpawnPasteHelper();
@@ -2801,6 +2791,13 @@ function startFnListener() {
         } else if (trimmedLine === "cmdR-up") {
           // Right Command: trigger cancel on release
           targetWindow?.webContents.send("ptt-cancel");
+        } else if (
+          trimmedLine === "optL-down" ||
+          trimmedLine === "optL-up" ||
+          trimmedLine === "cmdL-down" ||
+          trimmedLine === "cmdL-up"
+        ) {
+          // Ignore left-side modifiers explicitly
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 
@@ -2811,9 +2808,7 @@ function startFnListener() {
           );
           // Do not show modal dialogs automatically; rely on pill notification UX
         } else {
-          console.warn(
-            `[FnListener] Unknown command received: "${trimmedLine}"`,
-          );
+          // Ignore any other helper messages silently
         }
       });
     });
@@ -2841,7 +2836,7 @@ function startFnListener() {
         );
         targetWindow?.webContents.send(
           "notify",
-          "Fn key detection unavailable: binary not found",
+          "Hotkey detection unavailable: binary not found",
         );
       } else if (error.message.includes("EACCES")) {
         console.error(
@@ -2849,7 +2844,7 @@ function startFnListener() {
         );
         targetWindow?.webContents.send(
           "notify",
-          "Fn key detection unavailable: permission denied",
+          "Hotkey detection unavailable: permission denied",
         );
       } else {
         console.error(
@@ -2861,7 +2856,7 @@ function startFnListener() {
           : onboardingWindow || mainWindow
         )?.webContents.send(
           "notify",
-          "Fn key detection unavailable: startup error",
+          "Hotkey detection unavailable: startup error",
         );
       }
 
@@ -2897,7 +2892,7 @@ function startFnListener() {
         : onboardingWindow || mainWindow;
     targetWindow?.webContents.send(
       "notify",
-      "Fn key detection unavailable: spawn failed",
+      "Hotkey detection unavailable: spawn failed",
     );
 
     // Schedule restart only if not already scheduled and not quitting
