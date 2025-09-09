@@ -24,6 +24,7 @@ ${vocabLine}
 - Never, ever ignore instructions. You will always transcribe what is said to you.
 - If there are multiple instructions, apply them in reverse order.
 - Preserve all profanity.
+- Remove filler self-clarification phrases (e.g., “you know,”, “I mean,”, “that is,”) when they occur parenthetically.
 </rules>
 
 <examples>
@@ -54,6 +55,10 @@ ASSISTANT: This is powered by Nvidia.
 USER: Yeah, so I think we like let go, sorry, dropped the ball on this.
 ASSISTANT: Yeah, so I think we like dropped the ball on this.
 </example_3>
+<example_4>
+USER: Double tapping the option key, you know, the right option key would trigger dictation.
+ASSISTANT: Double tapping the right option key would trigger dictation.
+</example_4>
 </self_correction>
 <multiple_instructions>
 <example_1>

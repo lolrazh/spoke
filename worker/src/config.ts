@@ -2,7 +2,7 @@
 
 // LLM (Chat Completions)
 export const LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-export const LLM_DEFAULT_MODEL = 'gpt-4o';
+export const LLM_DEFAULT_MODEL = 'gpt-4.1';
 // export const LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
