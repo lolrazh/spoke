@@ -41,6 +41,15 @@ declare global {
       setFocusable: (focusable: boolean) => void;
       focusWindow: () => void;
       expandPill: (callback: () => void) => void;
+      // Pill mirror controls/listeners used by onboarding test steps
+      pillMirrorStart: () => void;
+      pillMirrorStop: () => void;
+      pillMirrorComplete: () => void;
+      pillMirrorCancel: () => void;
+      onPillMirrorStart?: (cb: () => void) => () => void;
+      onPillMirrorStop?: (cb: () => void) => () => void;
+      onPillMirrorComplete?: (cb: () => void) => () => void;
+      onPillMirrorCancel?: (cb: () => void) => () => void;
       checkPermissions: () => Promise<{
         needAX: boolean;
         needIM: boolean;

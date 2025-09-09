@@ -46,7 +46,7 @@ const devFlags = {
 };
 
 // Simple mock for now - starting in disabled state for UI development
-const mockPermissions = {
+const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = {
   checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
   checkMicrophonePermission: async () => ({ status: "denied", granted: false }),
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
@@ -690,6 +690,28 @@ const Onboarding: React.FC = () => {
       setTestTextTap(trans.text || "");
     }
   }, [trans.text, currentStep]);
+
+  // Mirror pill state during onboarding tests so pill shows LISTENING/PROCESSING
+  useEffect(() => {
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    if (trans.recording) {
+      window.electron?.pillMirrorStart?.();
+    } else if (trans.processing) {
+      window.electron?.pillMirrorStop?.();
+    } else {
+      // Completed or idle
+      window.electron?.pillMirrorComplete?.();
+    }
+  }, [currentStep, trans.recording, trans.processing]);
+
+  // Forward cancels to pill mirror
+  useEffect(() => {
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    const off = window.ptt?.onCancel?.(() => {
+      window.electron?.pillMirrorCancel?.();
+    });
+    return () => { try { off && off(); } catch {} };
+  }, [currentStep]);
 
   // Ensure transcription is stopped when leaving tap-to-talk step
   useEffect(() => {

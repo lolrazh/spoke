@@ -111,6 +111,31 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("expand-pill", callback);
   },
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
+  // Mirror pill state between onboarding and pill window
+  pillMirrorStart: () => ipcRenderer.send("pill:mirror-start"),
+  pillMirrorStop: () => ipcRenderer.send("pill:mirror-stop"),
+  pillMirrorComplete: () => ipcRenderer.send("pill:mirror-complete"),
+  pillMirrorCancel: () => ipcRenderer.send("pill:mirror-cancel"),
+  onPillMirrorStart: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("pill-mirror-start", listener);
+    return () => ipcRenderer.removeListener("pill-mirror-start", listener);
+  },
+  onPillMirrorStop: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("pill-mirror-stop", listener);
+    return () => ipcRenderer.removeListener("pill-mirror-stop", listener);
+  },
+  onPillMirrorComplete: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("pill-mirror-complete", listener);
+    return () => ipcRenderer.removeListener("pill-mirror-complete", listener);
+  },
+  onPillMirrorCancel: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("pill-mirror-cancel", listener);
+    return () => ipcRenderer.removeListener("pill-mirror-cancel", listener);
+  },
   // Onboarding APIs
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () =>

@@ -2034,6 +2034,32 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Mirror pill state from onboarding to pill window during tests
+  ipcMain.on("pill:mirror-start", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed())
+        mainWindow.webContents.send("pill-mirror-start");
+    } catch {}
+  });
+  ipcMain.on("pill:mirror-stop", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed())
+        mainWindow.webContents.send("pill-mirror-stop");
+    } catch {}
+  });
+  ipcMain.on("pill:mirror-complete", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed())
+        mainWindow.webContents.send("pill-mirror-complete");
+    } catch {}
+  });
+  ipcMain.on("pill:mirror-cancel", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed())
+        mainWindow.webContents.send("pill-mirror-cancel");
+    } catch {}
+  });
+
   ipcMain.on(
     "show-notification",
     (event: Electron.IpcMainEvent, message: string) => {
