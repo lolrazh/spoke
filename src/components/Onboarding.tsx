@@ -939,12 +939,13 @@ const Onboarding: React.FC = () => {
                       className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
                       aria-label={
                         fnKeyPressed || trans.recording
-                          ? "Function key active - recording in progress"
-                          : "Function key - press and hold to start dictation"
+                          ? "Option key active - recording in progress"
+                          : "Option key - press and hold to start dictation"
                       }
                       aria-live="polite"
                     >
-                      <span className="keycap-label text-[12px] font-system">⌥</span>
+                      <span className="keycap-legend-top text-[14px] font-system">⌥</span>
+                      <span className="keycap-legend-bottom text-[10px] font-system">Option</span>
                     </div>
                     <p className="onboarding-note onboarding-content-gap">Press your Right Option key now to test it.</p>
                   </div>
@@ -1332,10 +1333,9 @@ const Onboarding: React.FC = () => {
                     </p>
                   </div>
                   <div className="space-y-3">
-                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
-                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
-                      <div className="text-[12px] text-dimmed">Try saying:</div>
-                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleHoldText}</div>
+                    {/* Sample hint as tertiary text for improved hierarchy */}
+                    <div className="text-[11px] text-dimmed text-left">
+                      Try saying: {sampleHoldText}
                     </div>
 
                     {/* Dictation Textarea */}
@@ -1378,10 +1378,9 @@ const Onboarding: React.FC = () => {
                     </p>
                   </div>
                   <div className="space-y-3">
-                    {/* Sample hint in styled container (non-blur to avoid flicker) */}
-                    <div className="onboarding-permission-row rounded-lg px-3 py-2 text-left">
-                      <div className="text-[12px] text-dimmed">Try saying:</div>
-                      <div className="text-[13px] text-foreground mt-1 leading-relaxed">{sampleTapText}</div>
+                    {/* Sample hint as tertiary text for improved hierarchy */}
+                    <div className="text-[11px] text-dimmed text-left">
+                      Try saying: {sampleTapText}
                     </div>
 
                     {/* Dictation Textarea */}
