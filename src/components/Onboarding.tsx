@@ -118,9 +118,9 @@ const Onboarding: React.FC = () => {
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   // Sample prompts for tests
   const sampleHoldText =
-    "Hi Sam, thanks for your note. I’d love to sync next week. Thanks!";
+    "I wanna fix app.py and test.py. Add at symbols before the file names.";
   const sampleTapText =
-    "Let’s meet Tuesday at 2 PM. Actually, scratch that. Thursday at 11 AM works better.";
+    "Let’s meet Tuesday at 2 PM. Actually, Thursday at 11 AM works better.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
