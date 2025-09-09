@@ -96,9 +96,11 @@ const Onboarding: React.FC = () => {
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
   const [fnKeyPressed, setFnKeyPressed] = useState(false);
+  const [cmdKeyPressed, setCmdKeyPressed] = useState(false);
   // Double-tap detection for hands-free (Right Option)
   const lastTapTimeRef = useRef<number | null>(null);
   const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const cmdTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -213,6 +215,7 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     return () => {
       setFnKeyPressed(false); // Reset Fn key state
+      setCmdKeyPressed(false);
       isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
         clearTimeout(pttCheckTimeoutRef.current);
@@ -221,6 +224,10 @@ const Onboarding: React.FC = () => {
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
+      }
+      if (cmdTapTimerRef.current) {
+        clearTimeout(cmdTapTimerRef.current);
+        cmdTapTimerRef.current = null;
       }
     };
   }, []);
@@ -774,20 +781,34 @@ const Onboarding: React.FC = () => {
     };
   }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
 
-  // Hook cancel: Right Command — cancel active or processing transcription on test steps
+  // Hook cancel: Right Command — visual tap state on info/test steps; cancel on test steps
   useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    if (
+      currentStep !== "hotkey-info" &&
+      currentStep !== "hotkey-test" &&
+      currentStep !== "hotkey-tap-test"
+    )
+      return;
     if (!window.ptt?.onCancel) return;
     const onCancel = () => {
-      // Clear any pending timers and visual state
+      // Brief tap state for Command keycap
+      setCmdKeyPressed(true);
+      if (cmdTapTimerRef.current) clearTimeout(cmdTapTimerRef.current);
+      cmdTapTimerRef.current = setTimeout(() => setCmdKeyPressed(false), 180);
+
+      // Clear any pending Option timers and visual state
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
       setFnKeyPressed(false);
-      try {
-        if (trans.recording || trans.processing) trans.cancel();
-      } catch {}
+
+      // On test steps, perform cancel of active/processing transcription
+      if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
+        try {
+          if (trans.recording || trans.processing) trans.cancel();
+        } catch {}
+      }
     };
     const cleanup = window.ptt.onCancel(onCancel);
     return () => {
@@ -957,6 +978,15 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
                     <div className="flex items-center gap-4">
+                      {/* Right Command key (left, wider) */}
+                      <div
+                        className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
+                        aria-label={"Command key - press to cancel dictation"}
+                        aria-live="polite"
+                      >
+                        <span className="keycap-legend-top text-[14px] font-system">⌘</span>
+                        <span className="keycap-legend-bottom text-[10px] font-system">command</span>
+                      </div>
                       {/* Right Option key */}
                       <div
                         className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
@@ -969,15 +999,6 @@ const Onboarding: React.FC = () => {
                       >
                         <span className="keycap-legend-top text-[14px] font-system">⌥</span>
                         <span className="keycap-legend-bottom text-[10px] font-system">option</span>
-                      </div>
-                      {/* Right Command key */}
-                      <div
-                        className={`keycap keycap-lg`}
-                        aria-label={"Command key - press to cancel dictation"}
-                        aria-live="polite"
-                      >
-                        <span className="keycap-legend-top text-[14px] font-system">⌘</span>
-                        <span className="keycap-legend-bottom text-[10px] font-system">command</span>
                       </div>
                     </div>
                     <p className="onboarding-note onboarding-content-gap">Press Right Option to test dictation. Press Right Command to test cancel.</p>

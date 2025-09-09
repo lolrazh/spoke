@@ -691,6 +691,9 @@ body {
     height: 56px;
     padding: 0;
   }
+  .keycap-wide {
+    width: 72px;
+  }
   .keycap-label {
     position: absolute;
     bottom: 6px;
