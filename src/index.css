@@ -700,16 +700,14 @@ body {
   .keycap-legend-top {
     position: absolute;
     top: 6px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 8px;
     font-size: 14px;
     line-height: 1;
   }
   .keycap-legend-bottom {
     position: absolute;
     bottom: 6px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 8px;
     font-size: 10px;
     line-height: 1;
     letter-spacing: 0.2px;

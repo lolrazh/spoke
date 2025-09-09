@@ -774,6 +774,27 @@ const Onboarding: React.FC = () => {
     };
   }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
 
+  // Hook cancel: Right Command — cancel active or processing transcription on test steps
+  useEffect(() => {
+    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    if (!window.ptt?.onCancel) return;
+    const onCancel = () => {
+      // Clear any pending timers and visual state
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      setFnKeyPressed(false);
+      try {
+        if (trans.recording || trans.processing) trans.cancel();
+      } catch {}
+    };
+    const cleanup = window.ptt.onCancel(onCancel);
+    return () => {
+      cleanup?.();
+    };
+  }, [currentStep, trans.recording, trans.processing]);
+
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
@@ -927,27 +948,39 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Hotkey is the Right Option key
+                    Your Hotkeys
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Press and hold to speak. Release to stop.
+                    Right Option to dictate. Right Command to cancel.
                   </p>
                 </div>
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
-                    <div
-                      className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
-                      aria-label={
-                        fnKeyPressed || trans.recording
-                          ? "Option key active - recording in progress"
-                          : "Option key - press and hold to start dictation"
-                      }
-                      aria-live="polite"
-                    >
-                      <span className="keycap-legend-top text-[14px] font-system">⌥</span>
-                      <span className="keycap-legend-bottom text-[10px] font-system">Option</span>
+                    <div className="flex items-center gap-4">
+                      {/* Right Option key */}
+                      <div
+                        className={`keycap keycap-lg ${fnKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                        aria-label={
+                          fnKeyPressed || trans.recording
+                            ? "Option key active - recording in progress"
+                            : "Option key - press and hold to start dictation"
+                        }
+                        aria-live="polite"
+                      >
+                        <span className="keycap-legend-top text-[14px] font-system">⌥</span>
+                        <span className="keycap-legend-bottom text-[10px] font-system">option</span>
+                      </div>
+                      {/* Right Command key */}
+                      <div
+                        className={`keycap keycap-lg`}
+                        aria-label={"Command key - press to cancel dictation"}
+                        aria-live="polite"
+                      >
+                        <span className="keycap-legend-top text-[14px] font-system">⌘</span>
+                        <span className="keycap-legend-bottom text-[10px] font-system">command</span>
+                      </div>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Press your Right Option key now to test it.</p>
+                    <p className="onboarding-note onboarding-content-gap">Press Right Option to test dictation. Press Right Command to test cancel.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1329,7 +1362,7 @@ const Onboarding: React.FC = () => {
                       Press and hold Right Option to dictate
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Hold to speak. Release to stop.
+                      Hold to speak. Release to stop. Press Right Command to cancel.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1374,7 +1407,7 @@ const Onboarding: React.FC = () => {
                       Double-tap Right Option to dictate
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Double-tap to start. Double-tap again to stop.
+                      Double-tap to start. Double-tap again to stop. Press Right Command to cancel.
                     </p>
                   </div>
                   <div className="space-y-3">
