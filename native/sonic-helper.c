@@ -522,15 +522,8 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
         CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
 
         if (g_debug_keys) {
-            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx fnNow=%d optL=%d optR=%d cmdL=%d cmdR=%d\n",
-                    (unsigned)code, (unsigned long long)flags, (int)fnNow, (int)state->optL, (int)state->optR, (int)state->cmdL, (int)state->cmdR);
-        }
-
-        // Fn follows its flag transitions directly
-        if (fnNow != state->fn) {
-            state->fn = fnNow;
-            if (fnNow) puts("fn-down"); else puts("fn-up");
-            fflush(stdout);
+            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx optL=%d optR=%d cmdL=%d cmdR=%d\n",
+                    (unsigned)code, (unsigned long long)flags, (int)state->optL, (int)state->optR, (int)state->cmdL, (int)state->cmdR);
         }
 
         // Track Option sides independently by toggling per-keycode
@@ -538,20 +531,12 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
             state->optR = !state->optR;
             puts(state->optR ? "optR-down" : "optR-up");
             fflush(stdout);
-        } else if (code == kVK_Option) {
-            state->optL = !state->optL;
-            puts(state->optL ? "optL-down" : "optL-up");
-            fflush(stdout);
         }
 
         // Track Command sides independently by toggling per-keycode
         if (code == kVK_RightCommand) {
             state->cmdR = !state->cmdR;
             puts(state->cmdR ? "cmdR-down" : "cmdR-up");
-            fflush(stdout);
-        } else if (code == kVK_Command) {
-            state->cmdL = !state->cmdL;
-            puts(state->cmdL ? "cmdL-down" : "cmdL-up");
             fflush(stdout);
         }
     }
