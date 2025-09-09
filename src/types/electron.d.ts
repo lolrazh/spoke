@@ -30,6 +30,7 @@ declare global {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
       onReady: (cb: () => void) => () => void;
+      onCancelDown: (cb: () => void) => () => void;
       onCancel: (cb: () => void) => () => void;
     };
     island: {

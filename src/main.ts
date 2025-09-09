@@ -2796,10 +2796,11 @@ function startFnListener() {
           resolvePreSpawnReady = null;
           targetWindow?.webContents.send("ptt-up");
         } else if (trimmedLine === "cmdR-down") {
-          // Right Command: global cancel
-          targetWindow?.webContents.send("ptt-cancel");
+          // Right Command: visual press state only
+          targetWindow?.webContents.send("ptt-cancel-down");
         } else if (trimmedLine === "cmdR-up") {
-          // Currently unused.
+          // Right Command: trigger cancel on release
+          targetWindow?.webContents.send("ptt-cancel");
         } else if (trimmedLine === "perm-denied") {
           fnPermissionDenied = true;
 

@@ -781,38 +781,43 @@ const Onboarding: React.FC = () => {
     };
   }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
 
-  // Hook cancel: Right Command — visual tap state on info/test steps; cancel on test steps
+  // Hook cancel: Right Command — visual press on down; cancel on release during test steps
   useEffect(() => {
-    if (
-      currentStep !== "hotkey-info" &&
-      currentStep !== "hotkey-test" &&
-      currentStep !== "hotkey-tap-test"
-    )
-      return;
-    if (!window.ptt?.onCancel) return;
-    const onCancel = () => {
-      // Brief tap state for Command keycap
-      setCmdKeyPressed(true);
-      if (cmdTapTimerRef.current) clearTimeout(cmdTapTimerRef.current);
-      cmdTapTimerRef.current = setTimeout(() => setCmdKeyPressed(false), 180);
-
-      // Clear any pending Option timers and visual state
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      setFnKeyPressed(false);
-
-      // On test steps, perform cancel of active/processing transcription
-      if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
-        try {
-          if (trans.recording || trans.processing) trans.cancel();
-        } catch {}
-      }
-    };
-    const cleanup = window.ptt.onCancel(onCancel);
+    const inRelevantStep =
+      currentStep === "hotkey-info" ||
+      currentStep === "hotkey-test" ||
+      currentStep === "hotkey-tap-test";
+    if (!inRelevantStep) return;
+    const cleanups: Array<() => void> = [];
+    // Down: show visual pressed state
+    if (window.ptt?.onCancelDown) {
+      cleanups.push(
+        window.ptt.onCancelDown(() => {
+          setCmdKeyPressed(true);
+        }),
+      );
+    }
+    // Up: clear pressed state and cancel if in test steps
+    if (window.ptt?.onCancel) {
+      cleanups.push(
+        window.ptt.onCancel(() => {
+          setCmdKeyPressed(false);
+          // Clear any pending Option timers and visual state
+          if (pressTimerRef.current) {
+            clearTimeout(pressTimerRef.current);
+            pressTimerRef.current = null;
+          }
+          setFnKeyPressed(false);
+          if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
+            try {
+              if (trans.recording || trans.processing) trans.cancel();
+            } catch {}
+          }
+        }),
+      );
+    }
     return () => {
-      cleanup?.();
+      cleanups.forEach((fn) => fn && fn());
     };
   }, [currentStep, trans.recording, trans.processing]);
 
@@ -977,7 +982,7 @@ const Onboarding: React.FC = () => {
                 </div>
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
                       {/* Right Command key (left, wider) */}
                       <div
                         className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
@@ -1380,10 +1385,10 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Press and hold Right Option to dictate
+                      Press and hold the Right Option Key
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Hold to speak. Release to stop. Press Right Command to cancel.
+                      For Push-to-Talk, hold to speak. Release to stop.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1425,10 +1430,10 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Double-tap Right Option to dictate
+                      Double-tap the Right Option Key
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Double-tap to start. Double-tap again to stop. Press Right Command to cancel.
+                      For Hands-free, double-tap to start. Double-tap again to stop.
                     </p>
                   </div>
                   <div className="space-y-3">

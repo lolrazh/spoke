@@ -62,6 +62,11 @@ contextBridge.exposeInMainWorld("ptt", {
     ipcRenderer.on("ptt-ready", listener);
     return () => ipcRenderer.removeListener("ptt-ready", listener);
   },
+  onCancelDown: (cb: () => void) => {
+    ipcRenderer.removeAllListeners("ptt-cancel-down");
+    ipcRenderer.on("ptt-cancel-down", cb);
+    return () => ipcRenderer.removeAllListeners("ptt-cancel-down");
+  },
   onCancel: (cb: () => void) => {
     ipcRenderer.removeAllListeners("ptt-cancel");
     ipcRenderer.on("ptt-cancel", cb);
