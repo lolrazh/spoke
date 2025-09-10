@@ -24,7 +24,7 @@ export type ChatCompleteOptions = {
 
 import * as Sentry from '@sentry/cloudflare';
 import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
-import { LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
+import { GROQ_LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
 import { safeJson } from '../../utils/ws';
 import { safely } from '../../utils/safely';
 
@@ -54,7 +54,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: `POST ${LLM_ENDPOINT}`,
+      name: `POST ${GROQ_LLM_ENDPOINT}`,
       attributes: {
         'http.request.method': 'POST',
         'server.address': 'api.groq.com',
@@ -76,7 +76,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
         temperature,
       };
 
-      const res = await fetch(LLM_ENDPOINT, {
+      const res = await fetch(GROQ_LLM_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

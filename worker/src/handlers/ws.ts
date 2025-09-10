@@ -13,7 +13,7 @@ import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
-import { STT_ENDPOINT, LLM_ENDPOINT, OPENAI_LLM_ENDPOINT } from '../config';
+import { STT_ENDPOINT, GROQ_LLM_ENDPOINT, OPENAI_LLM_ENDPOINT } from '../config';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -183,7 +183,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   if (apiKeyForProvider) {
                     // Log LLM request details (console + Sentry)
                     try {
-                      const llmEndpoint = provider === 'openai' ? OPENAI_LLM_ENDPOINT : LLM_ENDPOINT;
+                      const llmEndpoint = provider === 'openai' ? OPENAI_LLM_ENDPOINT : GROQ_LLM_ENDPOINT;
                       const llmLog = {
                         event: 'llm.request',
                         provider,
