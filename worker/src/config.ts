@@ -4,7 +4,7 @@
 export const GROQ_LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 // export const LLM_DEFAULT_MODEL = 'gpt-4.1';
-export const LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
+export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
