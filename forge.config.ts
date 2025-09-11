@@ -5,6 +5,8 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherS3 } from "@electron-forge/publisher-s3";
+import fs from "node:fs";
+import path from "node:path";
 
 // Signing identity (no fallback). Must be Developer ID Application.
 // Intentionally no Apple Development fallback to avoid accidental dev-signed releases.
@@ -21,6 +23,8 @@ const enableNotarize =
     : notarizeFlag === "0" || notarizeFlag === "false"
       ? false
       : Boolean(signIdentity && appleId && applePassword && appleTeamId);
+
+const timings: Record<string, number> = {};
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -75,6 +79,7 @@ const config: ForgeConfig = {
     ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
           osxNotarize: {
+            tool: "notarytool",
             appleId,
             appleIdPassword: applePassword,
             teamId: appleTeamId,
@@ -159,6 +164,27 @@ const config: ForgeConfig = {
           );
         }
       }
+    },
+    prePackage: async (_forgeConfig, options) => {
+      timings["packageStart"] = Date.now();
+      console.log(`[Forge] PrePackage: target=${options.platform}/${options.arch}`);
+    },
+    postPackage: async (_forgeConfig, options) => {
+      const ms = Date.now() - (timings["packageStart"] || Date.now());
+      console.log(`[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s for ${options.platform}/${options.arch}`);
+    },
+    postMake: async (_forgeConfig, results) => {
+      try {
+        const mac = results.filter((r) => r.platform === "darwin");
+        for (const r of mac) {
+          for (const a of r.artifacts) {
+            try {
+              const stat = fs.statSync(a);
+              console.log(`[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`);
+            } catch {}
+          }
+        }
+      } catch {}
     },
   },
   plugins: [
