@@ -48,10 +48,8 @@ const config: ForgeConfig = {
       "./native/bin/Sonic Flow Helper.app",
     ],
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
-    osxSign: {
+    osxSign: ({
       identity: signIdentity,
-      entitlements: "./build/entitlements/main.plist",
-      entitlementsInherit: "./build/entitlements/inherit.plist",
       preAutoEntitlements: false,
       // Ensure the nested helper app and its binary are signed with the same identity
       binaries: [
@@ -63,7 +61,8 @@ const config: ForgeConfig = {
         const base = {
           hardenedRuntime: true,
           signatureFlags: "runtime" as const,
-        };
+          entitlements: "./build/entitlements/main.plist",
+        } as const;
         // Apply tighter inherit entitlements on the helper
         if (
           filePath.endsWith("/Sonic Flow Helper.app") ||
@@ -72,17 +71,15 @@ const config: ForgeConfig = {
           return {
             ...base,
             entitlements: "./build/entitlements/inherit.plist",
-            entitlementsInherit: "./build/entitlements/inherit.plist",
           };
         }
         return base;
       },
-    },
+    }) as any,
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
     ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
           osxNotarize: {
-            tool: "notarytool",
             appleId,
             appleIdPassword: applePassword,
             teamId: appleTeamId,
