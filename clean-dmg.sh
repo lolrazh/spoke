@@ -8,7 +8,7 @@ hdiutil detach "/Volumes/Sonic Flow" 2>/dev/null || true
 npm run clean
 
 # Rebuild DMG
-npm run make
+npm run make:env
 
 # Open the newly created DMG
 open out/make/Sonic\ Flow-0.0.1-arm64.dmg

@@ -6,12 +6,9 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherS3 } from "@electron-forge/publisher-s3";
 
-// Local CI-style configuration from environment
-const distIdentity = process.env.APPLE_IDENTITY || process.env.APPLE_DIST_IDENTITY;
-const devIdentity =
-  process.env.APPLE_DEV_IDENTITY ||
-  "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)";
-const signIdentity = distIdentity || devIdentity;
+// Signing identity (no fallback). Must be Developer ID Application.
+// Intentionally no Apple Development fallback to avoid accidental dev-signed releases.
+const signIdentity = process.env.APPLE_IDENTITY;
 
 const appleId = process.env.APPLE_ID;
 const applePassword = process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
@@ -23,7 +20,7 @@ const enableNotarize =
     ? true
     : notarizeFlag === "0" || notarizeFlag === "false"
       ? false
-      : Boolean(distIdentity && appleId && applePassword && appleTeamId);
+      : Boolean(signIdentity && appleId && applePassword && appleTeamId);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -47,7 +44,7 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/Sonic Flow Helper.app",
     ],
-    // Code signing: uses Developer ID if provided via env, else Apple Development
+    // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: {
       identity: signIdentity,
       hardenedRuntime: true,
@@ -152,6 +149,18 @@ const config: ForgeConfig = {
       },
     }),
   ],
+  hooks: {
+    // Fail fast if making macOS builds without proper Developer ID identity
+    preMake: async () => {
+      if (process.platform === "darwin") {
+        if (!process.env.APPLE_IDENTITY) {
+          throw new Error(
+            "APPLE_IDENTITY (Developer ID Application: ...) is required for macOS make. No fallback to Apple Development.",
+          );
+        }
+      }
+    },
+  },
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
