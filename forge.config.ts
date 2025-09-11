@@ -6,7 +6,6 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherS3 } from "@electron-forge/publisher-s3";
 import fs from "node:fs";
-import path from "node:path";
 
 // Signing identity (no fallback). Must be Developer ID Application.
 // Intentionally no Apple Development fallback to avoid accidental dev-signed releases.
@@ -51,8 +50,6 @@ const config: ForgeConfig = {
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: {
       identity: signIdentity,
-      hardenedRuntime: true,
-      signatureFlags: "runtime",
       entitlements: "./build/entitlements/main.plist",
       entitlementsInherit: "./build/entitlements/inherit.plist",
       preAutoEntitlements: false,
@@ -62,17 +59,23 @@ const config: ForgeConfig = {
         "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
       ],
       optionsForFile: (filePath) => {
+        // Base options applied to all files
+        const base = {
+          hardenedRuntime: true,
+          signatureFlags: "runtime" as const,
+        };
         // Apply tighter inherit entitlements on the helper
         if (
           filePath.endsWith("/Sonic Flow Helper.app") ||
           filePath.endsWith("/Sonic Flow Helper")
         ) {
           return {
+            ...base,
             entitlements: "./build/entitlements/inherit.plist",
             entitlementsInherit: "./build/entitlements/inherit.plist",
           };
         }
-        return {};
+        return base;
       },
     },
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
@@ -165,24 +168,26 @@ const config: ForgeConfig = {
         }
       }
     },
-    prePackage: async (_forgeConfig, options) => {
+    prePackage: async (_forgeConfig, platform, arch) => {
       timings["packageStart"] = Date.now();
-      console.log(`[Forge] PrePackage: target=${options.platform}/${options.arch}`);
+      console.log(`[Forge] PrePackage: target=${platform}/${arch}`);
     },
-    postPackage: async (_forgeConfig, options) => {
+    postPackage: async () => {
       const ms = Date.now() - (timings["packageStart"] || Date.now());
-      console.log(`[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s for ${options.platform}/${options.arch}`);
+      console.log(`[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s`);
     },
     postMake: async (_forgeConfig, results) => {
       try {
-        const mac = results.filter((r) => r.platform === "darwin");
-        for (const r of mac) {
-          for (const a of r.artifacts) {
+        const anyResults = results as any;
+        const artifactLists: string[][] = anyResults.map((r: any) =>
+          Array.isArray(r) ? (r as string[]) : Array.isArray(r?.artifacts) ? (r.artifacts as string[]) : [],
+        );
+        const artifactPaths: string[] = ([] as string[]).concat(...artifactLists);
+        for (const a of artifactPaths) {
             try {
               const stat = fs.statSync(a);
               console.log(`[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`);
             } catch {}
-          }
         }
       } catch {}
     },
