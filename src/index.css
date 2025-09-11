@@ -446,7 +446,7 @@ body {
   :root {
     --pill-expanded-width: 207px;
     --pill-expanded-height: 30px;
-    --pill-resting-height: 9px;
+    --pill-resting-height: 7px;
 
     /* Unified design system - optimized for native vibrancy */
     --background: 0 0% 3.9%;
