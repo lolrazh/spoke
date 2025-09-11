@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "@/config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
@@ -469,8 +470,11 @@ const Onboarding: React.FC = () => {
         video: false,
         audio:
           selectedMicId && selectedMicId !== "default"
-            ? { deviceId: { exact: selectedMicId } }
-            : true,
+            ? {
+                deviceId: { exact: selectedMicId },
+                ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
+              }
+            : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;

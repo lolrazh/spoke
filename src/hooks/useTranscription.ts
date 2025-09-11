@@ -8,6 +8,7 @@ import {
   POST_ROLL_MS,
 } from "../config/audio";
 import { getTranscribeWsUrl, getMetricsUrl } from "../config/api";
+import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { encodeFrameHeader } from "../utils/pcm";
 import { VAD_ENABLED } from "@/config/vad";
 import { SileroVadEngine, EnergyVadEngine } from "@/utils/vadEngine";
@@ -352,11 +353,7 @@ export function useTranscription(
       // Avoid opening the mic by default; only request permission for labels if explicitly asked
       if (requestLabelPermissionForEnumeration) {
         const tempStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: true,
-            autoGainControl: false,
-          },
+          audio: { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
         });
         // Immediately stop tracks to prevent persistent capture
         tempStream.getTracks().forEach((track) => track.stop());
@@ -451,9 +448,7 @@ export function useTranscription(
           audio: {
             sampleRate: MICROPHONE_PREFERRED_RATE,
             channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: true,
-            autoGainControl: false,
+            ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
           },
         };
 
@@ -476,9 +471,7 @@ export function useTranscription(
           const track = audioTracks[0];
           try {
             await track.applyConstraints({
-              echoCancellation: false,
-              noiseSuppression: true,
-              autoGainControl: false,
+              ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
             } as MediaTrackConstraints);
           } catch {}
           const settings = track.getSettings();
