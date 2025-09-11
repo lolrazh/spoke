@@ -1,6 +1,6 @@
-import { WINDOW_MS, SAMPLE_RATE_HZ, PRE_ROLL_MS, POST_ROLL_MS_VAD } from "@/config/vad";
-import type { VadEngine, VadEvent } from "@/types/vad";
-import { VadGate } from "@/utils/vadGate";
+import { WINDOW_MS, SAMPLE_RATE_HZ, PRE_ROLL_MS, POST_ROLL_MS_VAD } from "../config/vad";
+import type { VadEngine, VadEvent } from "../types/vad";
+import { VadGate } from "./vadGate";
 
 /**
  * Streaming gate: accepts Int16 PCM16LE@16k frames, slices into 30ms Float32
@@ -86,7 +86,6 @@ export class VadStreamGate {
 
     // Process decisions and produce output chunks
     const out: Int16Array[] = [];
-    let forwarded = 0;
 
     for (let w = 0; w < windows.length; w++) {
       const d = this.engine.process(windows[w]);
@@ -121,7 +120,6 @@ export class VadStreamGate {
     // Gate forwarding: if speaking or tail-forward active, forward entire input frame; else buffer into pre-roll
     if (this.gate.isSpeaking() || this.tailRemainingSamples > 0) {
       out.push(int16);
-      forwarded += int16.length;
       if (this.tailRemainingSamples > 0) {
         this.tailRemainingSamples = Math.max(0, this.tailRemainingSamples - int16.length);
       }
@@ -151,5 +149,4 @@ export class VadStreamGate {
     return [];
   }
 }
-
 

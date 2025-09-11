@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "@/config/audioConstraints";
+import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
@@ -478,9 +478,9 @@ const Onboarding: React.FC = () => {
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
-      // Prefer a typed fallback for WebKit without using any
-      const Ctor: typeof AudioContext =
-        (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)!;
+      // Prefer a typed fallback for WebKit without using non-null assertions
+      const Ctor = window.AudioContext ?? window.webkitAudioContext;
+      if (!Ctor) throw new Error("Web Audio API not supported");
       const ctx = new Ctor();
       audioCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
@@ -541,7 +541,6 @@ const Onboarding: React.FC = () => {
       // Persist selection to main so app-wide mic matches user choice
       if (selectedMicId) window.mic?.select?.(selectedMicId);
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMicId]);
 
   // Enumerate mics when entering mic-check
@@ -743,7 +742,6 @@ const Onboarding: React.FC = () => {
     }
     prevStepRef.current = currentStep;
     // We intentionally depend on currentStep and trans.recording state only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, trans.recording]);
 
   // Hook hotkey: Right Option — hold-to-speak on hotkey-test, double-tap-to-toggle on hotkey-tap-test

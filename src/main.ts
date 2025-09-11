@@ -56,18 +56,24 @@ import {
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
-const VITE_ENV = ((import.meta as unknown) as { env?: Record<string, unknown> })
-  .env || {};
+// Vite injects env at build time; provide a typed fallback for the main process
+const VITE_ENV: Record<string, string | undefined> = (
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ??
+  {}
+);
+
+const sentryDsn = VITE_ENV.VITE_SENTRY_DSN ?? process.env.VITE_SENTRY_DSN;
+const sentryEnv = VITE_ENV.VITE_SENTRY_ENVIRONMENT ?? (app.isPackaged ? "prod" : "dev");
+const devFlag = VITE_ENV.DEV === "1" || VITE_ENV.DEV === "true" || !app.isPackaged;
 
 Sentry.init({
   // Use a single DSN variable for both main/renderer (Vite-injected)
-  dsn: VITE_ENV?.VITE_SENTRY_DSN || process.env.VITE_SENTRY_DSN || undefined,
+  dsn: sentryDsn || undefined,
   // Default to 'prod' for packaged builds and 'dev' for development
-  environment:
-    VITE_ENV?.VITE_SENTRY_ENVIRONMENT || (app.isPackaged ? "prod" : "dev"),
+  environment: sentryEnv,
   release: app.getVersion(),
   // Enable performance tracing (tune in prod)
-  tracesSampleRate: (VITE_ENV?.DEV || !app.isPackaged) ? 1.0 : 0.1,
+  tracesSampleRate: devFlag ? 1.0 : 0.1,
   beforeSend(event) {
     try {
       if (event.request?.url) {
@@ -870,8 +876,8 @@ const createWindow = () => {
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: ["--enable-features=SharedArrayBuffer"],
-      paintWhenInitiallyHidden: true,
     },
+    paintWhenInitiallyHidden: true,
   };
 
   // Try to set the icon, but don't crash if it fails
@@ -1124,8 +1130,8 @@ function createOnboardingWindow() {
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
       webSecurity: app.isPackaged ? true : false,
-      paintWhenInitiallyHidden: true,
     },
+    paintWhenInitiallyHidden: true,
   };
 
   // Add native macOS vibrancy for true glassmorphic effect
@@ -2810,10 +2816,6 @@ function startFnListener() {
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
         // Ignore legacy generic and Fn events; only handle Right Option/Command
-        } else if (false && (trimmedLine === "down" || trimmedLine === "fn-down")) {
-          // no-op
-        } else if (false && (trimmedLine === "up" || trimmedLine === "fn-up")) {
-          // no-op
         } else if (trimmedLine === "optR-down") {
           // Right Option: primary PTT hotkey (press-and-hold)
           preSpawnPasteHelper();

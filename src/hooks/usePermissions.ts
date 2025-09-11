@@ -132,7 +132,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       if (res?.success && res?.granted) {
         setPermissions((prev) => ({ ...prev, microphone: true }));
         setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
-        try { await (window as any)?.electron?.postPermissionGrant?.("microphone"); } catch {}
+        try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
         setTimeout(() => {
           if (!mountedRef.current) return;
           setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
@@ -149,7 +149,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           timersRef.current.mic = null;
           setPermissions((prev) => ({ ...prev, microphone: true }));
           setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
-          try { await (window as any)?.electron?.postPermissionGrant?.("microphone"); } catch {}
+          try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
           setTimeout(() => {
             if (!mountedRef.current) return;
             setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
@@ -213,7 +213,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
             timersRef.current.ax = null;
             setPermissions((prev) => ({ ...prev, accessibility: true }));
             setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
-            try { await (window as any)?.electron?.postPermissionGrant?.("accessibility"); } catch {}
+            try { await window.electron?.postPermissionGrant?.("accessibility"); } catch {}
             setTimeout(() => {
               if (!mountedRef.current) return;
               setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } }));

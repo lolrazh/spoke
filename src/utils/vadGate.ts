@@ -1,11 +1,11 @@
-import type { VadDecision, VadEvent } from "@/types/vad";
+import type { VadDecision, VadEvent } from "../types/vad";
 import {
   SPEECH_PROB_START,
   SPEECH_PROB_END,
   MIN_SPEECH_MS,
   MIN_SILENCE_MS,
   WINDOW_MS,
-} from "@/config/vad";
+} from "../config/vad";
 
 /**
  * Stateless-ish gate that applies hysteresis and timing constraints
@@ -57,5 +57,4 @@ export class VadGate {
     this.events = [];
   }
 }
-
 

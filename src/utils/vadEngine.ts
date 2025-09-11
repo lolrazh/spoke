@@ -1,5 +1,5 @@
-import type { VadDecision, VadEngine } from "@/types/vad";
-import { WINDOW_MS, SAMPLE_RATE_HZ, getVadModelURL, getOrtWasmBaseURL } from "@/config/vad";
+import type { VadDecision, VadEngine } from "../types/vad";
+import { WINDOW_MS, SAMPLE_RATE_HZ, getVadModelURL, getOrtWasmBaseURL } from "../config/vad";
 
 // Lazy imports typed as any to avoid pulling heavy types in the renderer bundle type-check
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,8 +84,7 @@ export class EnergyVadEngine implements VadEngine {
     const rms = Math.sqrt(sum / Math.max(1, window.length));
     return { isSpeech: rms >= this.rmsThreshold };
   }
-  reset(): void {}
-  dispose(): void {}
+  reset(): void { return; }
+  dispose(): void { return; }
 }
-
 

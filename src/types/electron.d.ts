@@ -4,6 +4,8 @@
 
 declare global {
   interface Window {
+    /** Safari/WebKit fallback for AudioContext */
+    webkitAudioContext?: typeof AudioContext;
     app: never; // removed unused bridge
     devFlags: {
       skipAuth: boolean;
@@ -86,6 +88,10 @@ declare global {
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
       getAppPath: () => Promise<string>;
+      // Permission lifecycle helpers
+      postPermissionGrant?: (
+        type: "accessibility" | "microphone",
+      ) => Promise<void> | void;
       // Window controls
       showOnboarding: () => Promise<{ ok: boolean }>;
       closeOnboarding: () => Promise<void>;

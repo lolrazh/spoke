@@ -62,12 +62,12 @@ const config: ForgeConfig = {
       },
     },
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
-    ...(enableNotarize
+    ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
           osxNotarize: {
             appleId,
             appleIdPassword: applePassword,
-            teamId: appleTeamId!,
+            teamId: appleTeamId,
           },
         }
       : {}),

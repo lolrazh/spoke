@@ -10,9 +10,9 @@ import {
 import { getTranscribeWsUrl, getMetricsUrl } from "../config/api";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { encodeFrameHeader } from "../utils/pcm";
-import { VAD_ENABLED } from "@/config/vad";
-import { SileroVadEngine, EnergyVadEngine } from "@/utils/vadEngine";
-import { VadStreamGate } from "@/utils/vadStreamGate";
+import { VAD_ENABLED } from "../config/vad";
+import { SileroVadEngine, EnergyVadEngine } from "../utils/vadEngine";
+import { VadStreamGate } from "../utils/vadStreamGate";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
