@@ -55,9 +55,22 @@ const config: ForgeConfig = {
       entitlements: "./build/entitlements/main.plist",
       entitlementsInherit: "./build/entitlements/inherit.plist",
       preAutoEntitlements: false,
-      optionsForFile: () => {
-        // The main app has its own entitlements.
-        // The helper bundle is signed separately by our build script.
+      // Ensure the nested helper app and its binary are signed with the same identity
+      binaries: [
+        "Contents/Resources/Sonic Flow Helper.app",
+        "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
+      ],
+      optionsForFile: (filePath) => {
+        // Apply tighter inherit entitlements on the helper
+        if (
+          filePath.endsWith("/Sonic Flow Helper.app") ||
+          filePath.endsWith("/Sonic Flow Helper")
+        ) {
+          return {
+            entitlements: "./build/entitlements/inherit.plist",
+            entitlementsInherit: "./build/entitlements/inherit.plist",
+          };
+        }
         return {};
       },
     },

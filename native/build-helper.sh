@@ -40,15 +40,7 @@ cp "$SOURCE_DIR/Info.plist" "$APP_BUNDLE_PATH/Contents/Info.plist"
 echo "Updating CFBundleExecutable in Info.plist..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE_NAME" "$APP_BUNDLE_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $EXECUTABLE_NAME" "$APP_BUNDLE_PATH/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.sonicflow.helper" "$APP_BUNDLE_PATH/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.sonicflow.app.helper" "$APP_BUNDLE_PATH/Contents/Info.plist"
 
-
-# --- Sign the .app bundle ---
-echo "Signing $APP_BUNDLE_NAME..."
-codesign --force --timestamp --options=runtime \
-         --entitlements "$SOURCE_DIR/../build/entitlements/inherit.plist" \
-         --sign "Apple Development: rajkumar.sandheep@gmail.com (8BJB99KGZ9)" \
-         "$APP_BUNDLE_PATH"
-
-echo "$APP_BUNDLE_NAME built and signed successfully."
+echo "$APP_BUNDLE_NAME built (unsigned). Will be signed by Forge."
 echo "Native helper built successfully at $APP_BUNDLE_PATH"
