@@ -65,6 +65,9 @@ function mountReact(root: HTMLElement) {
   );
 }
 
+// Add a temporary class to body to avoid any first-paint flash
+try { document.body.classList.add("initial-fade"); } catch {}
+
 const existing = document.getElementById("root");
 if (existing) {
   mountReact(existing);
@@ -90,6 +93,8 @@ void (async () => {
     try {
       window.electron?.rendererReady?.();
     } catch {}
+    // Remove initial fade after we've signaled readiness
+    try { document.body.classList.remove("initial-fade"); } catch {}
   });
 })();
 

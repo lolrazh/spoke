@@ -334,6 +334,11 @@ body {
   user-select: none;
 }
 
+/* Guard against first-paint flash: start fully transparent; renderer promotes to 1.0 */
+body.initial-fade {
+  opacity: 0;
+}
+
 body {
   font-family:
     "Lexend Deca",

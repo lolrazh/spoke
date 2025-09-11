@@ -668,7 +668,7 @@ function hideFloatingBarWithTimer(minutes: number | null): void {
         () => {
           console.log("[Hide Timer] Timer expired, showing floating bar");
           if (mainWindow) {
-            mainWindow.show();
+            smoothShow(mainWindow);
             mainWindow?.webContents.send(
               "notify",
               "Floating bar shown automatically",
@@ -759,7 +759,7 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
           console.log("[Menu] Show floating bar");
           clearHideTimer();
           if (mainWindow) {
-            mainWindow.show();
+            smoothShow(mainWindow);
             console.log("[Menu] Floating bar shown");
           }
           floatingBarEnabled = true;
@@ -831,6 +831,22 @@ const getTrayIconPath = () => {
 
 const iconPath = getIconPath();
 
+const smoothShow = (win: BrowserWindow | null, fadeMs = 140) => {
+  if (!win || win.isDestroyed()) return;
+  try {
+    win.setOpacity(0);
+    // Show immediately at 0 opacity to avoid any pre-paint flash
+    win.show();
+    // Small timeout to ensure first styled frame is committed
+    setTimeout(() => {
+      if (!win || win.isDestroyed()) return;
+      win.setOpacity(1);
+    }, Math.max(50, Math.min(fadeMs, 300)));
+  } catch (e) {
+    try { win?.show(); } catch {}
+  }
+};
+
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: Electron.BrowserWindowConstructorOptions = {
@@ -854,6 +870,7 @@ const createWindow = () => {
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
       additionalArguments: ["--enable-features=SharedArrayBuffer"],
+      paintWhenInitiallyHidden: true,
     },
   };
 
@@ -1043,8 +1060,8 @@ const createWindow = () => {
   );
 };
 
-// Show windows only after their own renderers signal they are visually ready
-ipcMain.on("renderer-ready", (event) => {
+  // Show windows only after their own renderers signal they are visually ready
+  ipcMain.on("renderer-ready", (event) => {
   const senderWin = BrowserWindow.fromWebContents(event.sender);
   if (!senderWin || senderWin.isDestroyed()) return;
 
@@ -1066,7 +1083,7 @@ ipcMain.on("renderer-ready", (event) => {
       console.warn("[renderer-ready] Top-align failed:", e);
     }
     try {
-      mainWindow.show();
+      smoothShow(mainWindow);
       logBounds("renderer-ready -> show");
     } catch (e) {
       console.warn("[renderer-ready] Failed to show:", e);
@@ -1077,7 +1094,7 @@ ipcMain.on("renderer-ready", (event) => {
   // If the onboarding window reports ready, do not manipulate the pill.
   if (senderWin === onboardingWindow) {
     try {
-      if (!onboardingWindow?.isVisible()) onboardingWindow?.show();
+      if (!onboardingWindow?.isVisible()) smoothShow(onboardingWindow);
     } catch (e) {
       console.warn("[renderer-ready] Failed to show onboarding:", e);
     }
@@ -1107,6 +1124,7 @@ function createOnboardingWindow() {
       nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
       webSecurity: app.isPackaged ? true : false,
+      paintWhenInitiallyHidden: true,
     },
   };
 
@@ -1954,12 +1972,12 @@ app.whenReady().then(async () => {
         "utf8",
       );
     } catch {}
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow();
-    } else {
-      // Ensure the pill window is visible and interactive
-      mainWindow.show();
-    }
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      } else {
+        // Ensure the pill window is visible and interactive
+        smoothShow(mainWindow);
+      }
     createTray();
     // Start helper only if IM is already granted; otherwise defer
     pttTarget = "main";
