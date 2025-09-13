@@ -550,11 +550,12 @@ const App: React.FC = () => {
             try {
               await window.electron?.hideFloatingBarIndefinitely?.();
             } catch {}
-            try {
-              onAfter && onAfter();
-            } catch {}
-            setPendingHideAfterCollapse({ active: false, message: "" });
-          }, 100); // 100ms delay to let pill reach IDLE state properly
+            // Allow the fade-out in main to complete before showing onboarding
+            setTimeout(() => {
+              try { onAfter && onAfter(); } catch {}
+              setPendingHideAfterCollapse({ active: false, message: "" });
+            }, 180);
+          }, 100); // let pill reach IDLE state properly before starting fade-out
         }
       }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);

@@ -665,7 +665,7 @@ function hideFloatingBarWithTimer(minutes: number | null): void {
 
   // Hide the window
   if (mainWindow) {
-    mainWindow.hide();
+    smoothHide(mainWindow);
 
     // Set up timer if duration is specified
     if (minutes !== null) {
@@ -850,6 +850,22 @@ const smoothShow = (win: BrowserWindow | null, fadeMs = 140) => {
     }, Math.max(50, Math.min(fadeMs, 300)));
   } catch (e) {
     try { win?.show(); } catch {}
+  }
+};
+
+const smoothHide = (win: BrowserWindow | null, fadeMs = 140) => {
+  if (!win || win.isDestroyed()) return;
+  try {
+    // Start fade-out by dropping opacity to 0, then hide.
+    win.setOpacity(1);
+    setTimeout(() => {
+      try { win.setOpacity(0); } catch {}
+      setTimeout(() => {
+        try { win.hide(); } catch {}
+      }, Math.max(50, Math.min(fadeMs, 300)));
+    }, 0);
+  } catch (e) {
+    try { win?.hide(); } catch {}
   }
 };
 
@@ -2006,10 +2022,11 @@ app.whenReady().then(async () => {
     } catch {}
     // Hide pill/main, show onboarding
     try {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
+        smoothHide(mainWindow);
     } catch {}
     if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-      onboardingWindow.show();
+      smoothShow(onboardingWindow);
     } else {
       createOnboardingWindow();
     }
@@ -2119,7 +2136,7 @@ app.whenReady().then(async () => {
     try {
       clearHideTimer();
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.hide();
+        smoothHide(mainWindow);
       }
       floatingBarEnabled = false;
       return { ok: true };
