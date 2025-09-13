@@ -2513,6 +2513,15 @@ app.whenReady().then(async () => {
     return app.getAppPath();
   });
 
+  // Provide application version to renderer via preload bridge
+  ipcMain.handle("app:get-version", () => {
+    try {
+      return app.getVersion();
+    } catch (e) {
+      return "";
+    }
+  });
+
   // Respond to permission grants without full app restart
   ipcMain.handle(
     "permissions:post-grant",

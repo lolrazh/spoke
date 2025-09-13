@@ -181,6 +181,11 @@ contextBridge.exposeInMainWorld("electron", {
   rendererReady: () => ipcRenderer.send("renderer-ready"),
 });
 
+// Expose application metadata
+contextBridge.exposeInMainWorld("app", {
+  getVersion: (): Promise<string> => ipcRenderer.invoke("app:get-version"),
+});
+
 // (Removed) dev-only Sentry verification hooks
 
 // Auth bridge: receive deep link callback URLs

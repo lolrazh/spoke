@@ -6,7 +6,9 @@ declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
-    app: never; // removed unused bridge
+    app: {
+      getVersion: () => Promise<string>;
+    };
     devFlags: {
       skipAuth: boolean;
       skipOnboarding: boolean;

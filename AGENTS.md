@@ -8,10 +8,15 @@
 - Always send a brief 1–2 sentence preamble before grouped tool calls.
 - Use the plan tool for multi‑step tasks; exactly one step in_progress.
 - Keep changes minimal and scoped; do not fix unrelated issues.
-- Mirror existing style: TypeScript, React 18, Electron 35; Prettier (2 spaces, double quotes, semicolons); ESLint zero warnings.
+- Follow the Coding Style & Naming Conventions section for language, formatting, and linting rules.
 - Search with `rg`; read files in <=250 line chunks; prefer surgical edits via `apply_patch`.
-- Validate when meaningful: `npm run lint`, `npm test`; add small targeted tests when you change logic (do not introduce new frameworks).
-- Security: Never expose Node APIs directly to the renderer; add bridges only via `preload.ts`.
+- Add small targeted tests when you change logic (do not introduce new frameworks).
+
+## Updates & Releases
+- Read `docs/UPDATE_PIPELINE.md` before making release changes.
+- Prefer `npm run make:env` for building and `npm run publish:env` for publishing (loads `.env` via dotenv). Use plain `make`/`publish` only if env is already exported.
+- When asked to push an update, ensure `package.json` `version` is bumped (SemVer). If unclear, ask whether to bump minor or patch.
+- Never reuse a version; confirm artifacts target `darwin/<arch>/` and update manifest is correct.
 
 ## Session Continuity
 - Be aware `agent-logs/` exists; do not skim logs by default.
@@ -42,7 +47,7 @@ When the user asks you to “log” or “write a log” for this session:
 - `npm run dev`: Start the Electron app with dev tools.
 - `npm run dev:local`: Start with local WS (`VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws`).
 - `npm run dev:ws`: Run the worker locally (from `worker/`).
-- `npm run make` / `npm run package`: Build distributables via Electron Forge (arm64).
+- `npm run make` / `npm run package`: Build distributables via Electron Forge (arm64). For release builds, prefer `make:env`.
 - `npm test` / `npm run test:watch`: Run Vitest (CI or watch).
 - `npm run coverage`: Generate coverage (text + lcov).
 - `npm run lint`: ESLint TypeScript/React linting.
@@ -72,4 +77,4 @@ When the user asks you to “log” or “write a log” for this session:
 - Dev app: `npm run dev` (or `npm run dev:local` to target local WS).
 - Local worker: from `worker/`, `npm run dev:ws`.
 - Lint/tests: `npm run lint` and `npm test`; coverage: `npm run coverage`.
-- Packaging: `npm run make` or `npm run package` (arm64 by default).
+- Build for release: `npm run make:env` (arm64 by default). Publish: `npm run publish:env`.

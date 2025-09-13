@@ -108,6 +108,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [playSounds, setPlaySounds] = useState<boolean>(true);
+  const [appVersion, setAppVersion] = useState<string>("");
   // Auth state for settings panel
   // Remove inline login from Settings Panel — this surface should only show when signed in
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -119,6 +120,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
     usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
   const { cancelAll } = useIntervalManager();
+
+  // Load app version from main via preload bridge
+  useEffect(() => {
+    (async () => {
+      try {
+        const v = await window.app?.getVersion?.();
+        if (v && typeof v === "string") setAppVersion(v);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   // Initialize from main visibility state (source of truth)
   useEffect(() => {
@@ -396,7 +409,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Vertical version text on bottom-left - only in embedded mode */}
       {embeddedMode && (
         <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-muted-foreground opacity-60 whitespace-nowrap">
-          v0.0.1
+          {appVersion ? `v${appVersion}` : ""}
         </div>
       )}
 
@@ -655,9 +668,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-muted-foreground opacity-70">
-                  v0.0.1
-                </p>
+                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `v${appVersion}` : ""}</p>
               </motion.footer>
             )}
           </motion.div>
