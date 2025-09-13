@@ -334,15 +334,36 @@ const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
 
 ### Optional LLM Post-Processing
 
-The worker includes optional LLM enhancement of transcription results:
+The worker can optionally run the final STT text through an LLM “clean‑up” step. Multiple providers are supported with streaming deltas:
+
+#### Providers
+- Groq: chat completions (OpenAI‑compatible)
+- OpenAI: chat completions (SSE streaming)
+- Baseten (Base Ten): chat completions (OpenAI‑compatible, SSE streaming)
 
 #### Configuration
-```typescript
-ENABLE_LLM: '1'                    // Enable post-processing
-LLM_STREAM: '1'                    // Stream progressive updates
-LLM_MODEL: 'meta-llama/llama-4-maverick-17b-128e-instruct' // Model selection
-LLM_CURRENT_DATE: 'YYYY-MM-DD'     // Optional; defaults to today (UTC)
+```bash
+# Enable / behavior
+ENABLE_LLM=1                       # Enable post-processing (default true)
+LLM_STREAM=1                       # Stream progressive updates when supported (default true)
+LLM_MODEL=gpt-4.1                  # Model to use (see provider notes)
+LLM_TEMPERATURE=0.1                # Optional; defaults to 0.1
+LLM_TIMEOUT_MS=25000               # Optional; defaults to 25000
+LLM_CURRENT_DATE=YYYY-MM-DD        # Optional; defaults to today (UTC)
+
+# Provider selection
+LLM_PROVIDER=openai                # One of: openai | groq | baseten
+LLM_DEFAULT_PROVIDER=openai        # Fallback when LLM_PROVIDER is unset
+
+# API keys (set the one(s) for the provider you use)
+OPENAI_API_KEY=sk-...              # Required when provider=openai
+GROQ_API_KEY=gk-...                # Required when provider=groq
+BASETEN_API_KEY=bt-...             # Required when provider=baseten
 ```
+
+Notes
+- Provider, model, temperature, and streaming behavior are read at runtime (see `worker/src/config/runtime.ts`).
+- Endpoints and defaults live in `worker/src/config.ts` and can be adjusted if needed.
 
 #### Progressive Streaming
 When enabled, the worker streams LLM improvements in real-time:
@@ -610,9 +631,15 @@ VITE_SENTRY_DSN=...                     # Error reporting
 
 # Worker configuration
 GROQ_API_KEY=...                        # Required for transcription
-ENABLE_LLM=1                            # Enable post-processing
-LLM_STREAM=1                            # Stream progressive updates
-LLM_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct  # LLM model selection
+# LLM provider + options (choose provider and set its key)
+LLM_PROVIDER=openai                     # openai | groq | baseten
+LLM_DEFAULT_PROVIDER=openai             # Fallback when LLM_PROVIDER is unset
+OPENAI_API_KEY=...                      # When provider=openai
+GROQ_API_KEY=...                        # When provider=groq
+BASETEN_API_KEY=...                     # When provider=baseten
+ENABLE_LLM=1                            # Enable post-processing (default true)
+LLM_STREAM=1                            # Stream progressive updates (default true)
+LLM_MODEL=gpt-4.1                       # Model to use per provider
 ```
 
 ### Performance Tuning
