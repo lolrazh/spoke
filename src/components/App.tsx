@@ -208,19 +208,28 @@ const App: React.FC = () => {
         if (supabase) {
           const {
             data: { subscription },
-          } = supabase.auth.onAuthStateChange((_event, session) => {
+          } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === "SIGNED_IN" && session?.user) {
+              (async () => {
+                try { await window.electron?.showFloatingBar?.(); } catch {}
+                try { window.notifications?.send?.("You've been signed in."); } catch {}
+              })();
+              return;
+            }
             if (!session?.user && !skipAuth) {
               (async () => {
                 try {
                   // Cancel any active or in-flight transcription when signing out
                   latestTransRef.current?.cancel?.();
                 } catch {}
-                try {
-                  await window.electron?.showOnboarding?.();
-                } catch {}
-                try {
-                  await window.electron?.hideFloatingBarIndefinitely?.();
-                } catch {}
+                try { window.notifications?.send?.("Signed out"); } catch {}
+                setPendingHideAfterCollapse({
+                  active: true,
+                  message: "Signed out",
+                  onAfter: async () => {
+                    try { await window.electron?.showOnboarding?.(); } catch {}
+                  },
+                });
               })();
             }
           });
@@ -236,8 +245,14 @@ const App: React.FC = () => {
                 // Only treat as signed-out when there is NO error and NO user
                 if (!error && !data?.user) {
                   try { latestTransRef.current?.cancel?.(); } catch {}
-                  try { await window.electron?.showOnboarding?.(); } catch {}
-                  try { await window.electron?.hideFloatingBarIndefinitely?.(); } catch {}
+                  try { window.notifications?.send?.("Signed out"); } catch {}
+                  setPendingHideAfterCollapse({
+                    active: true,
+                    message: "Signed out",
+                    onAfter: async () => {
+                      try { await window.electron?.showOnboarding?.(); } catch {}
+                    },
+                  });
                 }
                 // If error: likely network issue — ignore and retain current UX
               } catch {}
@@ -271,6 +286,7 @@ const App: React.FC = () => {
   const [pendingHideAfterCollapse, setPendingHideAfterCollapse] = useState<{
     active: boolean;
     message: string;
+    onAfter?: () => void;
   }>({ active: false, message: "" });
 
   const pushTrace = (msg: string) => {
@@ -523,6 +539,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
       const shouldHideAfter = pendingHideAfterCollapse.active;
+      const onAfter = pendingHideAfterCollapse.onAfter;
       const timeout = setTimeout(async () => {
         pillDispatch({ type: "ANIM_DONE" });
 
@@ -533,20 +550,24 @@ const App: React.FC = () => {
             try {
               await window.electron?.hideFloatingBarIndefinitely?.();
             } catch {}
-            setPendingHideAfterCollapse({ active: false, message: "" });
-          }, 100); // 100ms delay to let pill reach IDLE state properly
+            // Allow the fade-out in main to complete before showing onboarding
+            setTimeout(() => {
+              try { onAfter && onAfter(); } catch {}
+              setPendingHideAfterCollapse({ active: false, message: "" });
+            }, 180);
+          }, 100); // let pill reach IDLE state properly before starting fade-out
         }
       }, NOTIFICATION_DURATION_MS);
       return () => clearTimeout(timeout);
     }
-  }, [pillState, pillContext.notifMsg, pendingHideAfterCollapse.active]);
+  }, [pillState, pillContext.notifMsg, pendingHideAfterCollapse.active, pendingHideAfterCollapse.onAfter]);
 
-  const notifyThenHide = useCallback((message: string) => {
+  const notifyThenHide = useCallback((message: string, onAfter?: () => void) => {
     try {
       window.notifications?.send?.(message);
     } catch {}
     // Defer actual hide until NOTIFICATION finishes and we return to IDLE
-    setPendingHideAfterCollapse({ active: true, message });
+    setPendingHideAfterCollapse({ active: true, message, onAfter });
   }, []);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {

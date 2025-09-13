@@ -364,18 +364,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleSignOut = () => {
     (async () => {
       try {
+        // Collapse the pill first so UI returns to resting before we transition
+        try { onRequestCollapse?.(); } catch {}
+        // Sign out; App.tsx will orchestrate notification + hide + onboarding
         await supaSignOut();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("Failed to sign out:", msg);
       }
-      // Regardless of signOut outcome, route user into onboarding and hide the pill
-      try {
-        await window.electron?.hideFloatingBarIndefinitely?.();
-      } catch {}
-      try {
-        await window.electron?.showOnboarding?.();
-      } catch {}
+      // Let App.tsx's auth handler orchestrate tasteful hide + onboarding.
       setUserEmail(null);
       setUserName(null);
       // clear any derived avatar state if used in the future
