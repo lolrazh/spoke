@@ -6,6 +6,7 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherS3 } from "@electron-forge/publisher-s3";
 import fs from "node:fs";
+import { execa } from "execa";
 
 // Signing identity (no fallback). Must be Developer ID Application.
 // Intentionally no Apple Development fallback to avoid accidental dev-signed releases.
@@ -174,6 +175,7 @@ const config: ForgeConfig = {
       console.log(`[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s`);
     },
     postMake: async (_forgeConfig, results) => {
+      // Log produced artifacts
       try {
         const anyResults = results as any;
         const artifactLists: string[][] = anyResults.map((r: any) =>
@@ -181,12 +183,72 @@ const config: ForgeConfig = {
         );
         const artifactPaths: string[] = ([] as string[]).concat(...artifactLists);
         for (const a of artifactPaths) {
-            try {
-              const stat = fs.statSync(a);
-              console.log(`[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`);
-            } catch {}
+          try {
+            const stat = fs.statSync(a);
+            console.log(
+              `[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`,
+            );
+          } catch {}
         }
-      } catch {}
+
+        // Notarize + staple DMG(s) after make (before publish uploads)
+        if (process.platform !== "darwin") return;
+
+        const dmgPaths = artifactPaths.filter((p) => p.toLowerCase().endsWith(".dmg"));
+        if (!dmgPaths.length) return;
+
+        // Respect the same notarization gating as the app bundle
+        const notarizeFlag = (process.env.APPLE_NOTARIZE || process.env.FORGE_ENABLE_NOTARIZE || "").toLowerCase();
+        const appleIdEnv = appleId;
+        const applePasswordEnv = applePassword;
+        const appleTeamIdEnv = appleTeamId;
+        const enableDmgs =
+          notarizeFlag === "1" ||
+          notarizeFlag === "true" ||
+          (notarizeFlag !== "0" && Boolean(appleIdEnv && applePasswordEnv && appleTeamIdEnv));
+
+        if (!enableDmgs) {
+          console.log("[DMG Notarize] Skipped (credentials or flag missing)");
+          return;
+        }
+
+        for (const dmg of dmgPaths) {
+          try {
+            console.log(`[DMG Notarize] Submitting: ${dmg}`);
+            await execa(
+              "xcrun",
+              [
+                "notarytool",
+                "submit",
+                dmg,
+                "--apple-id",
+                appleIdEnv as string,
+                "--password",
+                applePasswordEnv as string,
+                "--team-id",
+                appleTeamIdEnv as string,
+                "--wait",
+              ],
+              { stdio: "inherit" },
+            );
+
+            console.log(`[DMG Staple] Stapling: ${dmg}`);
+            await execa("xcrun", ["stapler", "staple", dmg], { stdio: "inherit" });
+
+            try {
+              const { stdout } = await execa("xcrun", ["stapler", "validate", dmg]);
+              console.log(`[DMG Staple] Validate: ${stdout.trim()}`);
+            } catch (e) {
+              console.warn("[DMG Staple] Validate warning:", e);
+            }
+          } catch (e) {
+            console.warn("[DMG Notarize] Failed for", dmg, e);
+            // Do not hard-fail the entire make; publishing can still proceed with ZIP updates
+          }
+        }
+      } catch (e) {
+        console.warn("[postMake] Artifact logging / DMG step skipped:", e);
+      }
     },
   },
   plugins: [
