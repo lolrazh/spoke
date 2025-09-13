@@ -12,6 +12,18 @@
 - Search with `rg`; read files in <=250 line chunks; prefer surgical edits via `apply_patch`.
 - Add small targeted tests when you change logic (do not introduce new frameworks).
 
+## Design System Changes
+- Follow `docs/DESIGN.md`. Use design tokens first (CSS variables in `src/index.css`), then component-level classes. Avoid hard-coded colors/spacing.
+- Component authoring: prefer Radix primitives; co-locate base components in `src/components/ui/`; use `class-variance-authority` for variants and `tailwind-merge` for class composition.
+- Motion: use `src/config/motionTokens.ts` springs/durations; avoid ad‑hoc easings.
+- Accessibility: keep keyboard navigation and ARIA roles; preserve visible focus states; verify contrast on glass surfaces.
+
+## Documentation Discipline
+- If you change design tokens, UI components, or interaction patterns, update `docs/DESIGN.md` (tokens, examples, and any affected guidance).
+- If you change the transcription pipeline or worker protocol/behavior, update `docs/TRANSCRIPTION.md` accordingly.
+- If you change the release/update flow, update `docs/UPDATE_PIPELINE.md` and any README pointers.
+- Reference the relevant `agent-logs/*` entry in your PR/notes for continuity.
+
 ## Updates & Releases
 - Read `docs/UPDATE_PIPELINE.md` before making release changes.
 - Prefer `npm run make:env` for building and `npm run publish:env` for publishing (loads `.env` via dotenv). Use plain `make`/`publish` only if env is already exported.

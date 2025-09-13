@@ -798,6 +798,13 @@ src/
 3. **Cascade Support**: Test changes across all components
 4. **Documentation**: Update this guide when tokens change
 
+#### Component Authoring Rules
+- Prefer Radix primitives for accessibility and behavior (e.g., `@radix-ui/react-select`, `.../switch`).
+- Author base components in `src/components/ui/` using the CVA pattern (class-variance-authority) and Tailwind utilities.
+- Consume tokens (CSS variables) for color, radius, spacing; do not hard-code values.
+- Compose classes with `tailwind-merge` to avoid conflicts; avoid inline styles unless unavoidable.
+- Preserve keyboard navigation and visible focus states; ensure ARIA roles/labels are set.
+
 ### Troubleshooting
 
 #### Common Issues
@@ -822,6 +829,13 @@ This design system is a living document. When making changes:
 2. **Test Across Components**: Verify changes don't break existing patterns
 3. **Document Changes**: Update this guide with new patterns or breaking changes
 4. **Validate Accessibility**: Re-test compliance after major updates
+
+### Change Checklist (For Agents)
+- Update tokens in `src/index.css` (and `src/config/uiTokens.ts` / motion in `src/config/motionTokens.ts`) instead of hard-coding.
+- Update or create components under `src/components/ui/` following CVA and Radix usage.
+- Reflect changes here in `docs/DESIGN.md` (tokens table, examples, and any affected guidance).
+- Run `npm run lint && npm test`; visually verify focus states and contrast.
+- Add an `agent-logs/YYYY-MM-DD_HHMM_*.md` entry summarizing design changes and rationale.
 
 **Last Updated**: 2025-01-XX  
 **Version**: 1.0.0  
