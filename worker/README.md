@@ -30,9 +30,10 @@ Set these environment variables in `.dev.vars` or your Worker settings:
 
 - `GROQ_API_KEY`: API key for Groq.
 - `OPENAI_API_KEY`: API key for OpenAI (required if using OpenAI provider).
+- `CEREBRAS_API_KEY`: API key for Cerebras (required if using Cerebras provider).
 - `ENABLE_LLM`: `true|false` to enable post-LLM cleanup (default: true).
 - `LLM_MODEL`: Chat model id (default from `src/config.ts`).
-- `LLM_DEFAULT_PROVIDER` or `LLM_PROVIDER`: `groq|openai` (default: `groq`).
+- `LLM_DEFAULT_PROVIDER` or `LLM_PROVIDER`: `groq|openai|cerebras` (default: `groq`).
 - `LLM_CURRENT_DATE`: Optional current date string (YYYY-MM-DD) injected into the LLM system prompt; defaults to today's UTC date.
 - `LLM_STREAM`: `true|false` stream deltas to client (default: true).
 - `LLM_TIMEOUT_MS`: Request timeout override.
@@ -54,6 +55,7 @@ Example `.dev.vars` (add as needed):
 # LLM
 # ENABLE_LLM=true
 # LLM_MODEL=meta-llama/llama-4-maverick-17b-128e-instruct
+# LLM_PROVIDER=openai # or groq | cerebras
 # LLM_STREAM=true
 # LLM_CURRENT_DATE=2025-09-01
 # LLM_TIMEOUT_MS=25000

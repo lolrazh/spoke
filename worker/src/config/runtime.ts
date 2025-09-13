@@ -71,6 +71,6 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'openai') return s;
+  if (s === 'groq' || s === 'openai' || s === 'cerebras') return s as LLMProvider;
   return fallback;
 }
