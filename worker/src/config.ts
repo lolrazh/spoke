@@ -3,13 +3,12 @@
 // LLM (Chat Completions)
 export const GROQ_LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-export const CEREBRAS_LLM_ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
-// export const LLM_DEFAULT_MODEL = 'gpt-4.1';
-export const LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
+export const CEREBRAS_LLM_ENDPOINT = 'https://inference.baseten.co/v1';
+export const LLM_DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B-Instruct-2507';
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
-export const LLM_DEFAULT_PROVIDER = 'groq' as const;
+export const LLM_DEFAULT_PROVIDER = 'cerebras' as const;
 export type LLMProvider = 'groq' | 'openai' | 'cerebras';
 
 // STT (Audio Transcriptions)
