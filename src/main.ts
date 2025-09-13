@@ -1989,6 +1989,13 @@ app.whenReady().then(async () => {
     pttTarget = "main";
     startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
+
+    // Inform the pill UI that the user has signed in successfully.
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("notify", "You've been signed in.");
+      }
+    } catch {}
   });
 
   // (Removed) auth:set-signed-in — rely on Supabase session as source of truth

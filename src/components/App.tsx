@@ -208,7 +208,12 @@ const App: React.FC = () => {
         if (supabase) {
           const {
             data: { subscription },
-          } = supabase.auth.onAuthStateChange((_event, session) => {
+          } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === "SIGNED_IN" && session?.user) {
+              try {
+                window.notifications?.send?.("You've been signed in.");
+              } catch {}
+            }
             if (!session?.user && !skipAuth) {
               (async () => {
                 try {
