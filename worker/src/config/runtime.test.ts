@@ -7,7 +7,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(cfg.llm.enabled).toBe(true);
     expect(cfg.llm.stream).toBe(true);
     expect(typeof cfg.llm.model).toBe('string');
-    expect(['groq','openai','cerebras']).toContain(cfg.llm.provider);
+    expect(['groq','openai','baseten']).toContain(cfg.llm.provider);
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
   });
@@ -30,8 +30,8 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(cfg1.llm.provider).toBe('openai');
     const cfg2 = getRuntimeConfig({ LLM_DEFAULT_PROVIDER: 'groq' });
     expect(cfg2.llm.provider).toBe('groq');
-    const cfg3 = getRuntimeConfig({ LLM_PROVIDER: 'cerebras' });
-    expect(cfg3.llm.provider).toBe('cerebras');
+    const cfg3 = getRuntimeConfig({ LLM_PROVIDER: 'baseten' });
+    expect(cfg3.llm.provider).toBe('baseten');
     const cfg4 = getRuntimeConfig({ LLM_PROVIDER: 'invalid', LLM_DEFAULT_PROVIDER: 'openai' });
     expect(cfg4.llm.provider).toBe('openai');
   });

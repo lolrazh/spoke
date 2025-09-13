@@ -1,13 +1,13 @@
-export type CerebrasChatTimings = {
+export type BasetenChatTimings = {
   startAt: number;
   headersAt: number;
   firstDeltaAt?: number;
   bodyDoneAt: number;
 };
 
-export type CerebrasChatResult = {
+export type BasetenChatResult = {
   text: string;
-  timings: CerebrasChatTimings;
+  timings: BasetenChatTimings;
 };
 
 export type ChatCompleteOptions = {
@@ -24,12 +24,12 @@ export type ChatCompleteOptions = {
 
 import * as Sentry from '@sentry/cloudflare';
 import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
-import { CEREBRAS_LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
+import { BASETEN_LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
 import { safeJson } from '../../utils/ws';
 import { safely } from '../../utils/safely';
 
-// Cerebras chat completions (OpenAI-compatible) with SSE streaming
-export async function chatComplete(opts: ChatCompleteOptions): Promise<CerebrasChatResult> {
+// Baseten chat completions (OpenAI-compatible) with SSE streaming
+export async function chatComplete(opts: ChatCompleteOptions): Promise<BasetenChatResult> {
   const {
     apiKey,
     model = LLM_DEFAULT_MODEL,
@@ -54,10 +54,10 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<CerebrasC
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: `POST ${CEREBRAS_LLM_ENDPOINT}`,
+      name: `POST ${BASETEN_LLM_ENDPOINT}`,
       attributes: {
         'http.request.method': 'POST',
-        'server.address': 'api.cerebras.ai',
+        'server.address': 'inference.baseten.co',
         'server.port': 443,
         'llm.model': model,
         'llm.stream': stream,
@@ -76,10 +76,10 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<CerebrasC
         temperature,
       };
 
-      const res = await fetch(CEREBRAS_LLM_ENDPOINT, {
+      const res = await fetch(BASETEN_LLM_ENDPOINT, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Api-Key ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -94,7 +94,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<CerebrasC
       if (!res.ok) {
         const t = await res.text().catch(() => '');
         span.setAttribute('llm.error_body', t);
-        throw new Error(`Cerebras Chat error: ${res.status} ${t}`);
+        throw new Error(`Baseten Chat error: ${res.status} ${t}`);
       }
 
       if (!stream) {
@@ -110,7 +110,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<CerebrasC
 
       // SSE stream
       const reader = res.body?.getReader();
-      if (!reader) throw new Error('Cerebras Chat streaming not supported: missing body reader');
+      if (!reader) throw new Error('Baseten Chat streaming not supported: missing body reader');
       let buf = '';
       let out = '';
       let firstDeltaAt: number | undefined = undefined;

@@ -8,14 +8,14 @@ vi.mock('./openai', () => ({
   chatComplete: vi.fn(async (opts: any) => ({ text: 'openai', timings: { startAt: 1, headersAt: 2, bodyDoneAt: 3 } }))
 }));
 
-vi.mock('./cerebras', () => ({
-  chatComplete: vi.fn(async (opts: any) => ({ text: 'cerebras', timings: { startAt: 1, headersAt: 2, bodyDoneAt: 3 } }))
+vi.mock('./baseten', () => ({
+  chatComplete: vi.fn(async (opts: any) => ({ text: 'baseten', timings: { startAt: 1, headersAt: 2, bodyDoneAt: 3 } }))
 }));
 
 import { chatCompleteByProvider } from './index';
 import { chatComplete as groqImpl } from './groq';
 import { chatComplete as openaiImpl } from './openai';
-import { chatComplete as cerebrasImpl } from './cerebras';
+import { chatComplete as basetenImpl } from './baseten';
 
 describe('services/llm/index.chatCompleteByProvider', () => {
   it('dispatches to OpenAI when provider=openai', async () => {
@@ -31,9 +31,9 @@ describe('services/llm/index.chatCompleteByProvider', () => {
     expect(groqImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('dispatches to Cerebras when provider=cerebras', async () => {
-    const res = await chatCompleteByProvider('cerebras', { apiKey: 'k', userContent: 'hi' });
-    expect(res.text).toBe('cerebras');
-    expect(cerebrasImpl).toHaveBeenCalledTimes(1);
+  it('dispatches to Baseten when provider=baseten', async () => {
+    const res = await chatCompleteByProvider('baseten', { apiKey: 'k', userContent: 'hi' });
+    expect(res.text).toBe('baseten');
+    expect(basetenImpl).toHaveBeenCalledTimes(1);
   });
 });
