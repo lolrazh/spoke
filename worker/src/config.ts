@@ -5,11 +5,11 @@ export const GROQ_LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completion
 export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 export const CEREBRAS_LLM_ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
 // export const LLM_DEFAULT_MODEL = 'gpt-4.1';
-export const LLM_DEFAULT_MODEL = 'qwen-3-235b-a22b-instruct-2507';
+export const LLM_DEFAULT_MODEL = 'kimi-k2-instruct-0905';
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
-export const LLM_DEFAULT_PROVIDER = 'cerebras' as const;
+export const LLM_DEFAULT_PROVIDER = 'groq' as const;
 export type LLMProvider = 'groq' | 'openai' | 'cerebras';
 
 // STT (Audio Transcriptions)
