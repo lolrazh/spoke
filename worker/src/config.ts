@@ -5,14 +5,14 @@ export const GROQ_LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completion
 export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 export const BASETEN_LLM_ENDPOINT = 'https://inference.baseten.co/v1/chat/completions';
 // export const LLM_DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B-Instruct-2507'; // Baseten
-export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct'; // Groq
-// export const LLM_DEFAULT_MODEL = 'gpt-4.1'; // OpenAI
+// export const LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct'; // Groq
+export const LLM_DEFAULT_MODEL = 'ft:gpt-4.1-mini-2025-04-14:personal:sonic-flow-experiment:CFNOEq5J'; // OpenAI
 export const LLM_DEFAULT_TEMPERATURE = 0.1;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
 // export const LLM_DEFAULT_PROVIDER = 'baseten' as const;
-export const LLM_DEFAULT_PROVIDER = 'groq' as const;
-// export const LLM_DEFAULT_PROVIDER = 'openai' as const;
+// export const LLM_DEFAULT_PROVIDER = 'groq' as const;
+export const LLM_DEFAULT_PROVIDER = 'openai' as const;
 export type LLMProvider = 'groq' | 'openai' | 'baseten';
 
 // STT (Audio Transcriptions)
