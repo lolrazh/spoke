@@ -30,6 +30,14 @@
 - When asked to push an update, ensure `package.json` `version` is bumped (SemVer). If unclear, ask whether to bump minor or patch.
 - Never reuse a version; confirm artifacts target `darwin/<arch>/` and update manifest is correct.
 
+### Release Checklist (Summary)
+- Bump version with npm: `npm version patch` (ask if prerelease needed: e.g., `npm version prerelease --preid beta`).
+- Publish in one step: `npm run publish:env` (do not pre-run `make` to avoid double notarization).
+- Verify:
+  - Manifest: `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
+  - ZIP URL: `curl -I https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip`
+  - DMG stapled (optional but recommended for first installs): `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
+
 ## Transcription & Worker (Overview)
 - End-to-end: mic capture → 16kHz PCM worklet → binary WS frames → Cloudflare Worker (PCM concat + WAV wrap) → Groq STT → optional LLM → final text → native insertion.
 - Dev endpoints: `VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws` (local), prod `wss://api.sonicflow.app/ws`.

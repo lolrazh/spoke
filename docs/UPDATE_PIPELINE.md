@@ -65,21 +65,22 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
 
 ## Build and Publish Flow
 1) Set version
-- In `package.json`, set or bump `"version"` to the intended version (SemVer recommended).
+- Prefer npm to bump SemVer: `npm version patch` (or `npm version prerelease --preid beta`).
+- Single source of truth is `package.json`; the app reads this via `app.getVersion()` at runtime.
 
-2) Build artifacts (arm64)
-- `npm run make`
-- Outputs:
-  - `out/make/zip/darwin/arm64/RELEASES.json`
-  - `out/make/zip/darwin/arm64/Sonic Flow-<version>-mac.zip`
-  - (DMG is also built for first‑time installs)
+2) Publish in one step (recommended)
+- Ensure `.env` is present. Run: `npm run publish:env`.
+- This runs packaging → make → uploads ZIP + `RELEASES.json` (and DMG). Avoid pre‑running `make` to prevent double notarization.
 
-3) Publish to R2 (automated)
-- Ensure `.env` loaded in your shell.
-- `npm run publish`
-- Uploads to `s3://<R2_BUCKET>/darwin/<arch>/...` → public at `https://releases.sonicflow.app/darwin/<arch>/...`
+3) Optional two‑step flow
+- Local build without notarization: `APPLE_NOTARIZE=0 npm run make:env`.
+- When ready to ship, run: `npm run publish:env`.
 
-4) Verify hosting
+4) Post‑make DMG stapling (if enabled)
+- The config can notarize + staple the DMG in a `postMake` hook. You can validate with:
+  - `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
+
+5) Verify hosting
 - `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
 - `curl -I "https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
 - Headers to check:
@@ -201,4 +202,3 @@ R2_REGION=auto
 ## Appendix: Paths
 - ZIP + manifest (local): `out/make/zip/darwin/<arch>/`
 - ZIP + manifest (R2): `https://releases.sonicflow.app/darwin/<arch>/`
-
