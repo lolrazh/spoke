@@ -1,3 +1,32 @@
+# Agent Operating Guide (Read First)
+
+## Scope & Precedence
+- This AGENTS.md applies to the entire repository. If a more deeply nested AGENTS.md exists, it overrides these rules for files under its directory.
+- Follow direct system/developer/user instructions first. Then follow AGENTS.md rules. When in doubt, ask briefly and proceed.
+
+## Workflow Standards
+- Always send a brief 1–2 sentence preamble before grouped tool calls.
+- Use the plan tool for multi‑step tasks; exactly one step in_progress.
+- Keep changes minimal and scoped; do not fix unrelated issues.
+- Mirror existing style: TypeScript, React 18, Electron 35; Prettier (2 spaces, double quotes, semicolons); ESLint zero warnings.
+- Search with `rg`; read files in <=250 line chunks; prefer surgical edits via `apply_patch`.
+- Validate when meaningful: `npm run lint`, `npm test`; add small targeted tests when you change logic (do not introduce new frameworks).
+- Security: Never expose Node APIs directly to the renderer; add bridges only via `preload.ts`.
+
+## Session Continuity
+- Be aware `agent-logs/` exists; do not skim logs by default.
+- Only consult a specific log when the user references it or when the task clearly continues prior work. Prefer scanning filenames over opening full files.
+- If continuing prior tasks, reference the relevant log(s) by filename and include only essential details.
+
+## Custom: Logging Protocol
+When the user asks you to “log” or “write a log” for this session:
+- Create a log file in `agent-logs/` named `YYYY-MM-DD_HHMM_descriptive-task.md` (24‑hour time; kebab‑case description).
+- Follow the template and rules in `agent-logs/README.md` exactly.
+- Focus on user intention (underlying goal), document what we accomplished with checkboxes, include bugs/fixes, key learnings, architecture decisions, files modified, and context for future sessions.
+- Never overwrite an existing log; create a new file, and reference prior logs if continuing work.
+
+---
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization
@@ -39,3 +68,8 @@
 - Sentry: Configure `VITE_SENTRY_DSN` and `VITE_SENTRY_ENVIRONMENT`.
 - Preload: Add renderer bridges only via `preload.ts`; avoid exposing Node APIs directly.
 
+## Quick Run & Validate
+- Dev app: `npm run dev` (or `npm run dev:local` to target local WS).
+- Local worker: from `worker/`, `npm run dev:ws`.
+- Lint/tests: `npm run lint` and `npm test`; coverage: `npm run coverage`.
+- Packaging: `npm run make` or `npm run package` (arm64 by default).
