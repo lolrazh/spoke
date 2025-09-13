@@ -1990,12 +1990,7 @@ app.whenReady().then(async () => {
     startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
 
-    // Inform the pill UI that the user has signed in successfully.
-    try {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("notify", "You've been signed in.");
-      }
-    } catch {}
+    // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
   // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
@@ -2137,7 +2132,7 @@ app.whenReady().then(async () => {
     try {
       clearHideTimer();
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show();
+        smoothShow(mainWindow);
       }
       floatingBarEnabled = true;
       return { ok: true };
