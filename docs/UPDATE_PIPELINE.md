@@ -99,6 +99,15 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
 - If a newer version exists, it downloads the ZIP, atomically replaces the `.app` bundle, and restarts.
 - Logging goes to your app logs (`console` bound). You can add more logging around update init if needed.
 
+### Manual Check (Tray)
+- The tray menu includes “Check for Updates…”. It triggers an immediate check and shows in‑app notifications:
+  - “Checking for updates…” when the check starts
+  - “Update found. Downloading…” when a newer version is discovered
+  - “You’re up to date.” when no update is available
+  - “Update ready. Restart to install.” when the update has downloaded
+- When an update finishes downloading, the tray shows “Restart and Install Update”, which quits and installs via the updater.
+- Dev builds show a notice that updates are only available in packaged builds; the menu item remains for parity.
+
 ## RELEASES.json (Example)
 ```json
 {
