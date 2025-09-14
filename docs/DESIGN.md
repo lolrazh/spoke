@@ -76,7 +76,7 @@ For solid, non-glass surfaces that should visually unify with the pill, use the 
 
 ```css
 /* Solid surface for opaque UIs (e.g., onboarding window, pill background) */
---surface-solid: rgba(0, 0, 0, 0.95);
+--surface-solid: rgba(20, 20, 20, 0.95);
 ```
 
 Usage examples:
@@ -88,6 +88,30 @@ Usage examples:
 /* Onboarding window */
 .onboarding-window { background: var(--surface-solid); }
 ```
+
+#### Surface Context Tokens
+Use semantic surface tokens to keep component surfaces consistent while allowing contextual overrides.
+
+```css
+/* Defaults (glass on top of any base) */
+--surface-card: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+
+/* In solid contexts (e.g., pill expanded/settings), override locally */
+.pill-core.expanded {
+  --surface-card: var(--pill-background);            /* aligns cards with pill */
+}
+
+/* Card components read from the token */
+.onboarding-permission-row { background-color: var(--surface-card); }
+```
+
+Note on background utilities: Settings uses Tailwind’s `bg-background` (HSL token). In the pill-expanded context we map it to the pill color to avoid mismatches with RGBA solids:
+
+```css
+.pill-core.expanded .bg-background { background-color: var(--pill-background) !important; }
+```
+
+This addresses a token space mismatch (HSL semantic tokens vs RGBA glass/solid tokens). Prefer semantic tokens (e.g., `--surface-card`) for component surfaces and scope overrides at container boundaries.
 
 #### Typography Tokens
 ```css

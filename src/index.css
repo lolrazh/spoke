@@ -94,11 +94,18 @@
     border-radius: var(
       --radius-window
     ); /* Larger radius for window appearance */
-    background: rgba(20, 20, 30, 0.98); /* More opaque background */
+    background: var(--pill-background); /* Unified with resting pill */
+    /* In expanded settings context, cards should match the pill */
+    --surface-card: var(--pill-background);
     border: 1px solid rgba(255, 255, 255, 0.12);
     /* Use layered window-strength shadow for soft, glass-friendly falloff */
     box-shadow: var(--shadow-interactive);
     cursor: default; /* Arrow over expanded/home UI; buttons manage their own pointer */
+  }
+
+  /* Ensure settings (embedded) surface matches pill color exactly */
+  .pill-core.expanded .bg-background {
+    background-color: var(--pill-background) !important;
   }
 
   /* Resting indicator - invisible by default, just for spacing */
@@ -510,6 +517,9 @@ body {
     --surface-alpha-md: 0.35; /* medium */
     --surface-alpha-lg: 0.4; /* strong */
 
+    /* Semantic surface tokens (defaults) */
+    --surface-card: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+
     --blur-md: 16px;
     --blur-lg: 32px;
 
@@ -632,7 +642,7 @@ body {
 
   /* Permission row styling without backdrop-filter to prevent timing issues */
   .onboarding-permission-row {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-color: var(--surface-card);
     border: 1px solid var(--stroke-fg);
     border-radius: var(--radius);
     box-shadow: var(--shadow-floating);
