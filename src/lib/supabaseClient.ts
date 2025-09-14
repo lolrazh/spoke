@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { markAuthCallback, markAuthIntent } from "../utils/authSignals";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as
@@ -46,6 +47,11 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
   console.log(`[Auth] Using redirect URL: ${redirect.url}`);
   console.log(`[Auth] Environment: ${import.meta.env.MODE || "production"}`);
 
+  // Mark user intent before kicking off OAuth
+  try {
+    markAuthIntent("google");
+  } catch {}
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -89,6 +95,11 @@ export async function startEmailOtp(
 
   console.log(`[Auth] Starting email OTP for: ${email}`);
   console.log(`[Auth] Using email redirect URL: ${redirect.url}`);
+
+  // Mark user intent before kicking off OTP
+  try {
+    markAuthIntent("email");
+  } catch {}
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -154,6 +165,7 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] OAuth PKCE code exchange successful`);
+      try { markAuthCallback(); } catch {}
       return { ok: true };
     }
 
@@ -173,6 +185,7 @@ export async function handleAuthCallbackUrl(
           return { ok: false, error: error.message };
         }
         console.log(`[Auth] Magic link session set successfully`);
+        try { markAuthCallback(); } catch {}
         return { ok: true };
       }
     }
@@ -191,6 +204,7 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] PKCE email OTP verification successful`);
+      try { markAuthCallback(); } catch {}
       return { ok: true };
     }
 

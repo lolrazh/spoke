@@ -11,6 +11,8 @@ import { useTranscription } from "../hooks/useTranscription";
 import { CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
+import { getSignals, setLastToastTs } from "../utils/authSignals";
+import { shouldToastSignIn } from "../utils/shouldToastSignIn";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -181,6 +183,23 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
+  const prevUserIdRef = useRef<string | null>(null);
+  const lastToastTsRef = useRef<number | null>(null);
+  const lastFocusTsRef = useRef<number | null>(
+    typeof performance !== "undefined" ? performance.now() : null,
+  );
+
+  // Track focus to guard Mission Control/Spaces focus resumes
+  useEffect(() => {
+    const onFocus = () => {
+      try {
+        lastFocusTsRef.current =
+          typeof performance !== "undefined" ? performance.now() : null;
+      } catch {}
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
   // Ensure pill is not shown when signed out; route to onboarding instead
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -204,16 +223,47 @@ const App: React.FC = () => {
             latestTransRef.current?.cancel?.();
           } catch {}
         }
+        // Seed previous user for transition detection
+        try {
+          prevUserIdRef.current = user?.id ?? null;
+        } catch {}
         const supabase = getSupabase();
         if (supabase) {
           const {
             data: { subscription },
           } = supabase.auth.onAuthStateChange((event, session) => {
             if (event === "SIGNED_IN" && session?.user) {
-              (async () => {
-                try { await window.electron?.showFloatingBar?.(); } catch {}
-                try { window.notifications?.send?.("You've been signed in."); } catch {}
-              })();
+              const currentUserId = session.user.id ?? null;
+              const now = Date.now();
+              const signals = getSignals();
+              const docHidden = typeof document !== "undefined" ? document.hidden : false;
+              const msSinceFocus =
+                typeof performance !== "undefined" && lastFocusTsRef.current != null
+                  ? performance.now() - lastFocusTsRef.current
+                  : null;
+              const allow = shouldToastSignIn({
+                event: "SIGNED_IN",
+                prevUserId: prevUserIdRef.current,
+                currentUserId,
+                now,
+                lastToastTs: lastToastTsRef.current,
+                authIntentTs: signals.authIntentTs,
+                authCallbackTs: signals.authCallbackTs,
+                onboardingTs: signals.onboardingTs,
+                documentHidden: docHidden,
+                msSinceFocus,
+                // Be a bit more conservative around focus churn (Mission Control, Spaces)
+                focusGuardMs: 1200,
+              });
+              // Let onboarding-complete handle showing the pill and the sign-in toast.
+              // Avoid triggering show here to prevent flicker on focus/Spaces.
+              if (allow) {
+                // Update last-toast timestamp to suppress any late duplicate triggers.
+                lastToastTsRef.current = now;
+                try { setLastToastTs(now); } catch {}
+              }
+              // Update previous after handling
+              prevUserIdRef.current = currentUserId;
               return;
             }
             if (!session?.user && !skipAuth) {
@@ -231,6 +281,7 @@ const App: React.FC = () => {
                   },
                 });
               })();
+              prevUserIdRef.current = null;
             }
           });
           unsubscribe = () => subscription.unsubscribe();

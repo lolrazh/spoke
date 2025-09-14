@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
@@ -118,6 +119,14 @@ const Onboarding: React.FC = () => {
     { id: "default", label: "System Default" },
   ]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+
+  // Record onboarding visibility for auth intent correlation
+  useEffect(() => {
+    try { markOnboardingEvent(); } catch {}
+    return () => {
+      try { markOnboardingEvent(); } catch {}
+    };
+  }, []);
   // Sample prompts for tests
   const sampleHoldText =
     "I wanna fix app.py and test.py. Can you add at symbols before the file names.";
@@ -279,6 +288,7 @@ const Onboarding: React.FC = () => {
           }
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
+          try { window.notifications?.send?.("You've been signed in."); } catch {}
           return;
         }
       } catch {}
@@ -626,6 +636,7 @@ const Onboarding: React.FC = () => {
         await markOnboardingDone();
       } catch {}
       await window.electron?.onboardingComplete();
+      try { window.notifications?.send?.("You've been signed in."); } catch {}
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
     }
