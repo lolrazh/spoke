@@ -322,7 +322,7 @@ const Pill: React.FC<PillProps> = ({
                 />
                 {/* Collapse chevron at bottom */}
                 <button
-                  className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-10 h-8 bg-black/20 hover:bg-black/40 rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors"
+                  className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2"
                   onClick={onCollapse}
                   aria-label="Collapse"
                 >

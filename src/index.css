@@ -108,6 +108,28 @@
     background-color: var(--pill-background) !important;
   }
 
+  /* Ghost icon button for pill collapse (no background, color-only hover) */
+  .pill-collapse-btn {
+    background: transparent;
+    border: none;
+    width: 40px; /* preserve hit target without a visible shape */
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.6);
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+  .pill-collapse-btn:hover {
+    color: rgba(255, 255, 255, 0.92);
+  }
+  .pill-collapse-btn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.18);
+    outline-offset: 2px;
+  }
+
   /* Resting indicator - invisible by default, just for spacing */
   .resting-indicator {
     width: 0;
