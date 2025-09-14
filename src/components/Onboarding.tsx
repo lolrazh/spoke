@@ -319,6 +319,8 @@ const Onboarding: React.FC = () => {
           }
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
+          // Show a consistent post sign-in toast once the pill/main window is up
+          try { window.notifications?.send?.("You've been signed in."); } catch {}
           return;
         }
       } catch {}
