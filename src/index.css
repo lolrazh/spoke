@@ -42,7 +42,7 @@
 
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
-    --pill-background: rgba(0, 0, 0, 0.95);
+    --pill-background: var(--surface-solid);
     --pill-border: 1px solid rgba(255, 255, 255, 0.08);
     --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 
@@ -368,9 +368,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Onboarding window - true macOS glassmorphic effect */
+/* Onboarding window - solid surface to match pill */
 .onboarding-window {
-  background: transparent; /* Let macOS handle the vibrancy */
+  background: var(--surface-solid);
   border: 1px solid var(--stroke-fg);
   border-radius: var(--radius-window);
   box-sizing: border-box;
@@ -378,7 +378,7 @@ body {
   will-change: transform;
   contain: layout style paint;
   position: relative;
-  /* FIX 8: Initial opacity to prevent flash of black content */
+  /* Initial opacity to prevent flash of content */
   opacity: 0;
   animation: fadeInOnboarding 0.3s ease-out 0.2s forwards;
 }
@@ -402,16 +402,7 @@ body {
   }
 }
 
-/* Add very light surface tint for text contrast without fighting wallpaper */
-.onboarding-window::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 10, 10, 0.35); /* neutral tint - no color cast */
-  border-radius: var(--radius-window);
-  pointer-events: none;
-  z-index: -1;
-}
+/* (Removed) Glass overlay: onboarding now uses solid surface token */
 
 /* Resize performance optimization - disable effects during resize */
 .onboarding-window.resizing {
@@ -489,6 +480,8 @@ body {
     --stroke-fg: rgba(255, 255, 255, 0.08);
     --text-primary: #ffffff;
     --text-secondary: #c0c0c0;
+    /* Opaque surface tokens for solid UIs (match pill) */
+    --surface-solid: rgb(20, 20, 20);
 
     /* Typography tokens - match website scale */
     --font-family-body:

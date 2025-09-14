@@ -71,6 +71,24 @@ All design tokens are defined as CSS custom properties in `:root` for easy maint
 --stroke-fg-xstrong: rgba(255, 255, 255, 0.15); /* Extra strong */
 ```
 
+#### Opaque Surface Tokens
+For solid, non-glass surfaces that should visually unify with the pill, use the opaque surface token:
+
+```css
+/* Solid surface for opaque UIs (e.g., onboarding window, pill background) */
+--surface-solid: rgba(0, 0, 0, 0.95);
+```
+
+Usage examples:
+
+```css
+/* Pill */
+.pill-wrapper { --pill-background: var(--surface-solid); }
+
+/* Onboarding window */
+.onboarding-window { background: var(--surface-solid); }
+```
+
 #### Typography Tokens
 ```css
 /* Font families */
