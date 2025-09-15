@@ -129,9 +129,9 @@ const Onboarding: React.FC = () => {
   }, []);
   // Sample prompts for tests
   const sampleHoldText =
-    "I wanna fix app.py and test.py. Can you add at symbols before the file names.";
+    "I wanna fix app.py and test.py. Add at symbols before the file names.";
   const sampleTapText =
-    "Let’s meet Tuesday at 2pm. Wait no, actually, Thursday at 11am.";
+    "Let’s meet Tuesday at 2pm. Actually, scratch that. Thursday at 11am.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -1029,7 +1029,7 @@ const Onboarding: React.FC = () => {
                     Your Hotkey is the Right Option Key
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Press and hold to speak. Release to stop.
+                    Press your Right Option key now to test it.
                   </p>
                 </div>
                 <div className="space-y-4">
@@ -1046,7 +1046,7 @@ const Onboarding: React.FC = () => {
                       <span className="keycap-legend-top text-[14px] font-system">⌥</span>
                       <span className="keycap-legend-bottom text-[10px] font-system">option</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Press your Right Option key now to test it.</p>
+                    <p className="onboarding-note onboarding-content-gap">Hold for push-to-talk, double tap for hands-free mode.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1062,7 +1062,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-4"
+                className="text-center"
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
@@ -1362,7 +1362,7 @@ const Onboarding: React.FC = () => {
                 initial="hidden"
                 animate="visible"
                 exit="exit"
-                className="text-center space-y-4"
+                className="text-center"
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
@@ -1405,10 +1405,6 @@ const Onboarding: React.FC = () => {
                     })}
                   </div>
                 </div>
-
-                <div className="text-[12px] text-dimmed">
-                  {speakingDetected ? "We hear you — sounding good." : "No input yet. Say a few words to test your mic."}
-                </div>
               </motion.div>
             )}
 
@@ -1425,10 +1421,10 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Press and hold the Right Option Key
+                      Let's try Push-to-Talk Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      For Push-to-Talk, hold to speak. Release to stop.
+                      Hold the hotkey to start dictation. Release to stop.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1470,10 +1466,10 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Double-tap the Right Option Key
+                      Let's try Hands-free Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      For Hands-free, double-tap to start. Double-tap again to stop.
+                      Double-tap the hotkey to start and stop dictation.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1527,7 +1523,7 @@ const Onboarding: React.FC = () => {
                       <span className="keycap-legend-top text-[14px] font-system">⌘</span>
                       <span className="keycap-legend-bottom text-[10px] font-system">command</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Press your Right Command key now to test it.</p>
+                    <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
                   </div>
                 </div>
               </motion.div>
