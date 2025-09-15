@@ -553,6 +553,40 @@ This single log line provides complete visibility into performance across the en
 
 ---
 
+### Merged Summary Payload (with Dataset)
+
+When the server sends the final result, it includes `dataset: { sttText, llmText }`. The client forwards this to `/metrics/session`, and the Worker emits a merged `transcription.session_summary` with the dataset attached. The Sentry span is also enriched with `dataset.stt_text`/`dataset.llm_text`.
+
+Example merged summary:
+
+```
+{
+  "event": "transcription.session_summary",
+  "id": "abc123",
+  "pipeline": "stt+llm",
+  "durations": {
+    "e2eMs": 960,
+    "dictationMs": 3156,
+    "totalMs": 4116,
+    "captureMs": 242,
+    "deliverMs": 357,
+    "pasteMs": 0,
+    "wsAcceptToFinalMs": 4200,
+    "assembleMs": 1,
+    "sttMs": 357,
+    "llmMs": 253,
+    "serverProcessingMs": 610,
+    "overheadMs": 3
+  },
+  "traffic": { "frames": 34, "bytesKB": 103.22, "seqGaps": 0, "firstToLastArrivalMs": 3220 },
+  "result": { "textLen": 49 },
+  "dataset": { "sttText": "...", "llmText": "..." },
+  "ws": { "closeCode": 1000, "closeReason": "done" }
+}
+```
+
+Privacy note: dataset includes full text; comment out the dataset logging block in `worker/src/handlers/ws.ts` if you need to disable.
+
 ## Error Handling
 
 ### Multi-Layer Error Recovery

@@ -49,14 +49,18 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - Search in Sentry Logs with `session.trace_id:<value>` to see the entire story.
 
 **Unified Session Summary (Logs)**
-- The Worker emits a single structured JSON line with event `transcription.session_summary` per dictation.
-- Schema (server summary):
+- The Worker emits a structured JSON line with event `transcription.session_summary` per dictation.
+- There are two flavors:
+  - Server-only (when no client metrics are posted): includes `durations` (server), `traffic`, `result`, `ws`.
+  - Merged (after the client POSTs `/metrics/session`): includes the above plus `durations` merged with client timings, and, when available, `dataset: { sttText, llmText }`.
+- Schema (merged):
   - `event`: `"transcription.session_summary"`
   - `id`: traceId
   - `pipeline`: `"stt" | "stt+llm"`
-  - `durations`: `wsAcceptToFinalMs`, `assembleMs`, `sttMs`, `llmMs`, `serverProcessingMs`, `overheadMs`
+  - `durations`: `e2eMs` (stop→paste), `dictationMs`, `totalMs`, `captureMs`, `deliverMs`, `pasteMs`, `wsAcceptToFinalMs`, `assembleMs`, `sttMs`, `llmMs`, `serverProcessingMs`, `overheadMs`
   - `traffic`: `frames`, `bytesKB`, `seqGaps`, `firstToLastArrivalMs`
   - `result`: `textLen`
+  - `dataset?`: `{ sttText, llmText }` (present when the server included dataset on the final message)
   - `ws`: `closeCode`, `closeReason`
 - Source files: `worker/src/handlers/ws.ts:1`, `worker/src/utils/logger.ts:1`
 
@@ -132,7 +136,7 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - `worker/src/services/stt/groq.ts:1` — STT HTTP span
 - `worker/src/services/llm/groq.ts:1` — LLM HTTP span
 
-**Appendix: Example Summary**
+**Appendix: Example Summaries**
 ```
 {
   "event": "transcription.session_summary",
@@ -156,3 +160,36 @@ It covers environments, what we capture, how logs and traces correlate per dicta
   "ws": { "closeCode": 1000, "closeReason": "done" }
 }
 ```
+
+Merged (with client metrics + dataset):
+```
+{
+  "event": "transcription.session_summary",
+  "id": "abc123",
+  "pipeline": "stt+llm",
+  "durations": {
+    "e2eMs": 960,
+    "dictationMs": 3156,
+    "totalMs": 4116,
+    "captureMs": 242,
+    "deliverMs": 357,
+    "pasteMs": 0,
+    "wsAcceptToFinalMs": 4200,
+    "assembleMs": 1,
+    "sttMs": 357,
+    "llmMs": 253,
+    "serverProcessingMs": 610,
+    "overheadMs": 3
+  },
+  "traffic": { "frames": 34, "bytesKB": 103.22, "seqGaps": 0, "firstToLastArrivalMs": 3220 },
+  "result": { "textLen": 49 },
+  "dataset": { "sttText": "...", "llmText": "..." },
+  "ws": { "closeCode": 1000, "closeReason": "done" }
+}
+```
+
+**Sentry Span Enrichment**
+- The `/metrics/session` route attaches the following attributes to the span:
+  - `dataset.stt_text`, `dataset.stt_len`
+  - `dataset.llm_text`, `dataset.llm_len`
+- This makes the full texts searchable/correlatable in Sentry (intended for your private dataset).
