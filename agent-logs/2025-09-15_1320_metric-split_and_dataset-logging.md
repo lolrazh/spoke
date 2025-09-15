@@ -22,6 +22,24 @@
   - Sentry span enriched with `dataset.stt_text`/`dataset.llm_text` and lengths.
 - ✅ Docs updated to reflect new metrics, dataset flow, and how to disable.
 
+### Sentry Logging Cleanup (Noise Reduction)
+- ✅ Suppressed noisy lifecycle logs to ensure exactly one Sentry log per dictation by default:
+  - Removed `ws.accepted` (both console+Sentry and direct `Sentry.logger` calls).
+  - Removed `session.start` Sentry log.
+  - Removed `session.ws_close` Sentry warning logs (rely on summary instead).
+- ✅ Kept a single operational log: `transcription.session_summary` (JSON via `console.log`, captured by Sentry console integration). The merged version includes client timings and `dataset` when present.
+- ✅ Kept request-level observability as console-only (still visible locally and in Sentry via console integration):
+  - `stt.request`, `llm.request`, and `dataset.llm_io` now emit to `console` only (no `Sentry.logger.*`).
+
+Before (per dictation):
+- `ws.accepted` (console→Sentry) and `ws.accepted` (direct Sentry)
+- `session.start` (direct Sentry)
+- `transcription.session_summary` (console→Sentry)
+
+After (per dictation):
+- `transcription.session_summary` only (console→Sentry)
+- Optional console-only lines (visible if desired): `stt.request`, `llm.request`, `dataset.llm_io`
+
 ## Technical Implementation
 - Client (`renderer`)
   - `src/hooks/useTranscription.ts`
@@ -45,6 +63,10 @@
 - `sonic-flow-app/worker/src/index.ts`
 - `sonic-flow-app/docs/INSTRUMENTATION.md`
 - `sonic-flow-app/docs/TRANSCRIPTION.md`
+  
+Sentry logging cleanup:
+- `sonic-flow-app/worker/src/handlers/ws.ts`
+- `sonic-flow-app/docs/INSTRUMENTATION.md`
 
 ## How To Disable Dataset Logging (Simple Toggle)
 - Open `worker/src/handlers/ws.ts` and comment out the block labeled:
@@ -65,4 +87,3 @@
 ## Notes & Follow‑Ups
 - Delivery overlaps LLM generation; the new post‑dictation anchor clarifies user‑perceived latency.
 - If you want Time‑to‑First‑Visible (first token render) added, we can instrument and include `ttfvMs` next.
-
