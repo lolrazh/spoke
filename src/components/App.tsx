@@ -332,6 +332,9 @@ const App: React.FC = () => {
   const lastTapUpRef = useRef<number | null>(null);
   const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
+  // Prevent double-playing the start cue when long-press timer and
+  // double-tap start race on first gesture after idle
+  const startCuePlayedRef = useRef(false);
   const latestTransRef = useRef(trans);
   const [trace, setTrace] = useState<string[]>([]);
   const [pendingHideAfterCollapse, setPendingHideAfterCollapse] = useState<{
@@ -679,6 +682,8 @@ const App: React.FC = () => {
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }
+      // New gesture: reset start-cue guard
+      startCuePlayedRef.current = false;
       // Add processing guard
       if (latestTransRef.current.processing) {
         if (window.notifications?.send) {
@@ -692,8 +697,11 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
       pressTimerRef.current = setTimeout(async () => {
         isLongPressRef.current = true;
-        // Play audio on actual long-press start
-        try { playToggleOn(); } catch {}
+        // Play audio on actual long-press start (once per gesture)
+        if (!startCuePlayedRef.current) {
+          try { playToggleOn(); } catch {}
+          startCuePlayedRef.current = true;
+        }
         // Cancel any pending double-tap window
         if (doubleTapTimerRef.current) {
           clearTimeout(doubleTapTimerRef.current);
@@ -757,7 +765,10 @@ const App: React.FC = () => {
             pillDispatch({ type: "PTT_STOP" });
           } else {
             // Start dictation on double-tap: play sound and start mic immediately
-            try { playToggleOn(); } catch {}
+            if (!startCuePlayedRef.current) {
+              try { playToggleOn(); } catch {}
+              startCuePlayedRef.current = true;
+            }
             pillDispatch({ type: "PTT_START" });
             pushTrace(`PTT double-tap start`);
             // Start capture immediately to minimize perceived latency
