@@ -191,7 +191,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
           {!reduced && <ParticlesCanvas />}
 
           {/* Center group */}
-          <div className="sf-intro-center">
+          <div className="sf-intro-center space-y-3 md:space-y-4">
             {/* Logo */}
             <motion.img
               src={logoSrc}
@@ -201,15 +201,19 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}
               transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
             />
-            {/* Tagline */}
+            {/* Headline + Subcopy */}
             <motion.div
-              className="sf-intro-tagline"
+              className="text-center"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 6 }}
-              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1], delay: stage >= 3 ? 0 : 0 }}
+              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
             >
-              <div className="sf-intro-heading">Think it. Say it. See it.</div>
-              <div className="sf-intro-sub">Press Right Option to start dictating anytime.</div>
+              <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
+                Your voice, everywhere.
+              </h1>
+              <p className="text-sm text-subtle leading-relaxed">
+                Press Right Option to dictate anywhere on your Mac.
+              </p>
             </motion.div>
             {/* CTA */}
             <motion.div
