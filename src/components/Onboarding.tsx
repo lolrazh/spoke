@@ -357,7 +357,7 @@ const Onboarding: React.FC = () => {
     const res = await startEmailOtp(authEmail.trim());
     setAuthLoading(false);
     if (!res.ok) {
-      setAuthError(res.error || "Failed to send code");
+      setAuthError(res.error || "Failed to send Magic Link");
       return;
     }
     setAuthEmailRequested(true);
@@ -967,10 +967,10 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    Welcome to Sonic Flow
+                    Let's get you signed in
                   </h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Sign in to continue
+                    Choose your sign-in method
                   </p>
                 </div>
                 <div className="mx-auto max-w-sm space-y-3">
@@ -982,9 +982,21 @@ const Onboarding: React.FC = () => {
                     disabled={authLoading}
                     onClick={handleGoogle}
                   >
-                    <span>Continue with Google</span>
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 via-red-500 to-yellow-500 flex items-center justify-center">
+                        <span className="text-white font-bold text-xs">G</span>
+                      </div>
+                      <span>Continue with Google</span>
+                    </div>
                   </Button>
-                  <div className="text-[11px] text-subtle">or</div>
+                  <div className="relative my-3">
+                    <div className="border-b border-border/40" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="bg-[var(--surface-solid)] px-2 text-[11px] font-medium text-subtle tracking-wider uppercase">
+                        or
+                      </span>
+                    </div>
+                  </div>
                   {!authEmailRequested ? (
                     <form className="space-y-2" onSubmit={handleEmailSubmit}>
                       <input
@@ -999,7 +1011,7 @@ const Onboarding: React.FC = () => {
                         type="submit"
                         disabled={authLoading || !authEmail}
                       >
-                        Send code
+                        Send Magic Link
                       </Button>
                     </form>
                   ) : (
