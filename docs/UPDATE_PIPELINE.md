@@ -108,6 +108,17 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
 - When an update finishes downloading, the tray shows “Restart and Install Update”, which quits and installs via the updater.
 - Dev builds show a notice that updates are only available in packaged builds; the menu item remains for parity.
 
+### Cadence & Triggers (Production Policy)
+- Interval: periodic checks every 6 hours (configured via `updateInterval`).
+- Jittered triggers:
+  - ~60s after app launch (with ±20% jitter).
+  - ~60s after system wake/resume (±20% jitter).
+  - Network regain: not hooked in main; rely on periodic checks and resume.
+- Backoff on errors: background checks back off exponentially (15m → 30m → 1h → 2h → … capped at 24h) until a successful check resets the backoff.
+- Notifications:
+  - Background checks only toast when an update is found/downloaded.
+  - User‑initiated checks also show “Checking…” and “You’re up to date.”
+
 ## RELEASES.json (Example)
 ```json
 {

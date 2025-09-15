@@ -11,7 +11,9 @@ import {
   shell,
   dialog,
   systemPreferences,
+  powerMonitor,
 } from "electron";
+// 'net' is imported via eval'd require to avoid bundling issues when unused
 import * as Sentry from "@sentry/electron/main";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import path from "node:path";
@@ -117,8 +119,8 @@ try {
         // Fetch RELEASES.json from darwin/<arch>/
         baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
       },
-      // You can temporarily set "1 minute" while testing updates
-      updateInterval: "1 hour",
+      // Production cadence; see policy: startup/resume triggers augment this
+      updateInterval: "6 hours",
     });
   }
 } catch (e) {
@@ -232,6 +234,9 @@ let updateAvailableVersion: string | null = null;
 let updateReadyToInstall = false;
 let updateError: string | null = null;
 let updaterListenersInitialized = false;
+let manualUpdateCheckInFlight = false; // user-initiated checks for toast routing
+let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
+let updateBackoffMs: number | null = null; // background backoff on errors
 
 function sendNotify(message: string) {
   try {
@@ -310,23 +315,27 @@ function initUpdaterEventBridgeOnce() {
     if (autoUpdater && typeof autoUpdater.on === "function") {
       autoUpdater.on("checking-for-update", () => {
         setUpdateState("checking");
-        sendNotify("Checking for updates…");
+        // No toast here; manual checks show their own
       });
       autoUpdater.on("update-available", (info: any) => {
         const v = info?.version || info?.updateInfo?.version || null;
         updateReadyToInstall = false;
         setUpdateState("available", { version: v || undefined });
+        // Always surface availability
         if (v) sendNotify(`Update found: v${v}. Downloading…`);
         else sendNotify("Update found. Downloading…");
+        manualUpdateCheckInFlight = false;
       });
       autoUpdater.on("update-not-available", () => {
         setUpdateState("not-available");
-        sendNotify("You’re up to date.");
+        if (manualUpdateCheckInFlight) sendNotify("You’re up to date.");
+        manualUpdateCheckInFlight = false;
       });
       autoUpdater.on("error", (err: any) => {
         const msg = (err && (err.message || String(err))) || "Unknown updater error";
         setUpdateState("error", { error: msg });
-        sendNotify(`Update check failed: ${msg}`);
+        if (manualUpdateCheckInFlight) sendNotify(`Update check failed: ${msg}`);
+        manualUpdateCheckInFlight = false;
       });
       autoUpdater.on("download-progress", () => {
         setUpdateState("available"); // remain in available/downloading state
@@ -337,6 +346,7 @@ function initUpdaterEventBridgeOnce() {
         updateReadyToInstall = true;
         setUpdateState("available"); // keep as available; expose restart action via tray
         sendNotify("Update ready. Restart to install.");
+        manualUpdateCheckInFlight = false;
       });
     }
   } catch {
@@ -344,9 +354,14 @@ function initUpdaterEventBridgeOnce() {
   }
 }
 
-async function manualCheckForUpdates(): Promise<void> {
+function jitterMs(baseMs: number, pct = 0.2): number {
+  const f = 1 + (Math.random() * 2 - 1) * pct; // [1-pct, 1+pct]
+  return Math.max(0, Math.round(baseMs * f));
+}
+
+async function manualCheckForUpdates(silent = false): Promise<void> {
   if (!app.isPackaged) {
-    sendNotify("Updates are only available in packaged builds.");
+    if (!silent) sendNotify("Updates are only available in packaged builds.");
     return;
   }
   if (updateStatus === "checking") return;
@@ -359,9 +374,11 @@ async function manualCheckForUpdates(): Promise<void> {
     const autoUpdater = mod?.autoUpdater as any;
     if (autoUpdater && typeof autoUpdater.checkForUpdates === "function") {
       setUpdateState("checking");
-      sendNotify("Checking for updates…");
+      manualUpdateCheckInFlight = !silent;
+      if (!silent) sendNotify("Checking for updates…");
       try {
         await autoUpdater.checkForUpdates();
+        return; // handled by updater events; skip manifest fallback
       } catch (e: any) {
         // If the delegated check fails, fall back to manifest probe
         console.warn("[auto-update] Delegated check failed, falling back:", e?.message || e);
@@ -392,16 +409,34 @@ async function manualCheckForUpdates(): Promise<void> {
     const current = app.getVersion();
     if (latest && compareSemver(latest, current) > 0) {
       setUpdateState("available", { version: latest });
-      sendNotify(`Update available: v${latest}. It will download automatically.`);
+      if (!silent) sendNotify(`Update available: v${latest}. It will download automatically.`);
     } else {
       setUpdateState("not-available");
-      sendNotify("You’re up to date.");
+      if (!silent) sendNotify("You’re up to date.");
     }
   } catch (err: any) {
     const msg = err?.message || String(err);
     setUpdateState("error", { error: msg });
-    sendNotify(`Update check failed: ${msg}`);
+    if (!silent) sendNotify(`Update check failed: ${msg}`);
   }
+}
+
+function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
+  try { if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer); } catch {}
+  pendingUpdateCheckTimer = setTimeout(async () => {
+    pendingUpdateCheckTimer = null;
+    console.log(`[auto-update] Triggered background check: ${reason}`);
+    const prevBackoff = updateBackoffMs;
+    await manualCheckForUpdates(silent);
+    if (updateStatus === "error") {
+      // Exponential backoff up to 24h
+      updateBackoffMs = Math.min(prevBackoff ? prevBackoff * 2 : 15 * 60 * 1000, 24 * 60 * 60 * 1000);
+      console.log(`[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0)/60000)}m`);
+      scheduleUpdateCheck(updateBackoffMs!, "backoff-retry", true);
+    } else {
+      updateBackoffMs = null;
+    }
+  }, delayMs);
 }
 
 // Last transcript storage for context menu copy functionality
@@ -2094,6 +2129,8 @@ app.whenReady().then(async () => {
       pttTarget = "main";
       startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
+      // Schedule background update check ~60s after startup with jitter
+      scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
     } catch (error) {
       console.error(
         "[Debug] Error launching main window with SKIP_ONBOARDING:",
@@ -2236,6 +2273,9 @@ app.whenReady().then(async () => {
     startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
 
+    // Schedule background update check ~60s after onboarding completes (with jitter)
+    scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
+
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
@@ -2342,6 +2382,16 @@ app.whenReady().then(async () => {
       mainWindow?.webContents.send("notify", message);
     },
   );
+
+  // Background triggers for update checks
+  try {
+    powerMonitor.on("resume", () => {
+      // Check ~60s after wake with jitter
+      scheduleUpdateCheck(jitterMs(60_000, 0.2), "resume", true);
+    });
+  } catch {}
+  // Note: network regain detection is renderer-friendly via navigator.onLine.
+  // Main process lacks a stable 'online' event; we rely on periodic checks + resume.
 
   // Floating bar visibility controls for renderer-driven UX flows
   ipcMain.handle("floating-bar:is-visible", () => {
