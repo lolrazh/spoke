@@ -882,7 +882,7 @@ const Onboarding: React.FC = () => {
 
       {/* Static top progress - glassy bars */}
       {currentStep !== "complete" && (
-        <div className="absolute top-12 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
+        <div className="absolute top-20 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
           <div className="onboarding-progress-shell">
             {(() => {
               const progressSteps = getSteps().slice(0, -1);
