@@ -71,6 +71,16 @@ It covers environments, what we capture, how logs and traces correlate per dicta
   - Route: `POST /metrics/session` in `worker/src/index.ts:1`
   - CORS enabled for `/metrics/*` in dev.
 
+**Dataset Logging**
+- Purpose: capture ASR→LLM input and LLM output for building a private dataset.
+- Default: enabled in code. To disable, open `worker/src/handlers/ws.ts` and comment out the block labeled “Dataset logging: ASR→LLM input and LLM output”.
+- Behavior:
+  - Emits a single JSON log per dictation: `event: "dataset.llm_io"`
+  - Fields: `traceId`, `language`, `sttText` (ASR output), `llmText` (LLM output or `null` if LLM disabled), `llm.provider`, `llm.model`, `ts`.
+  - Location: emitted after processing in `worker/src/handlers/ws.ts`.
+  - Delivery: logged to `console` and forwarded to Sentry Logs via `consoleLoggingIntegration`.
+- Privacy: this includes full text. Comment the block out in shared or production environments unless content logging is acceptable.
+
 **PII & Privacy**
 - App filters request URLs and headers in `beforeSend` (Auth tokens/API keys redacted).
 - Worker logs only include text length (`textLen`), never the full transcript.

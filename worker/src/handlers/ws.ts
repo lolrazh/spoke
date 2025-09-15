@@ -252,6 +252,21 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 } else {
                   sessionSpan.setAttribute('llm.enabled', enableLLM);
                 }
+                // Dataset logging: ASR→LLM input and LLM output
+                // Comment out this block to disable dataset logging.
+                try {
+                  const datasetEntry = {
+                    event: 'dataset.llm_io',
+                    traceId: session.traceId,
+                    language: clientLanguage || runtime.stt.language,
+                    sttText: finalText,
+                    llmText: llmText || null,
+                    llm: { provider: runtime.llm.provider, model: runtime.llm.model },
+                    ts: Date.now(),
+                  } as const;
+                  console.log(JSON.stringify(datasetEntry));
+                  safely(() => Sentry.logger.info('dataset.llm_io', datasetEntry as any));
+                } catch {}
                 
                 // Add overall session timing
                 const finalizationMs = Date.now() - t0;
