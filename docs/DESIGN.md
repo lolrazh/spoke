@@ -863,6 +863,25 @@ src/
 
 ---
 
+## Settings Panel Guidelines
+
+### Version Label
+- Format: `Sonic Flow Beta <version>` (e.g., `Sonic Flow Beta 0.0.3`).
+- Embedded (pill expanded): bottom-right, normal orientation, subdued styling (`text-[10px] text-muted-foreground opacity-70`), offsets `right-3 bottom-2`.
+- Standalone Settings: footer shows the same label next to the app icon for consistency.
+- Channel: Prefer env-driven channel (e.g., `beta`, `stable`) when available; consider a `VITE_RELEASE_CHANNEL` flag to avoid hardcoding copy.
+
+### Radius and Surface Hierarchy
+- Cards: Settings cards (permission rows) use `border-radius: var(--radius-window)` to align with the window curve.
+- Panel (embedded): Expanded settings container uses `border-radius: calc(var(--radius-window) + 2px)` for a slightly softer, nested feel relative to the window.
+- Surfaces: Cards consume `--surface-card`. In expanded settings, `.pill-core.expanded` sets `--surface-card: var(--pill-background)` to unify surfaces with the pill.
+
+### Accessibility & Visual Hierarchy
+- Keep the version label low-emphasis while maintaining sufficient contrast.
+- Ensure all controls within settings cards retain focus styles and keyboard navigation.
+
+---
+
 ## Maintenance & Updates
 
 This design system is a living document. When making changes:
@@ -879,6 +898,6 @@ This design system is a living document. When making changes:
 - Run `npm run lint && npm test`; visually verify focus states and contrast.
 - Add an `agent-logs/YYYY-MM-DD_HHMM_*.md` entry summarizing design changes and rationale.
 
-**Last Updated**: 2025-01-XX  
+**Last Updated**: 2025-09-15  
 **Version**: 1.0.0  
 **Maintainers**: Sonic Flow Team
