@@ -217,7 +217,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               transition={{ duration: 0.4, delay: 0.1 }}
               onClick={handleSkip}
             >
-              Get set up
+              Start Setup
             </motion.button>
           </div>
         </motion.div>
