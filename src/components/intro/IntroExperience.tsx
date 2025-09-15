@@ -16,9 +16,9 @@ const prefersReducedMotion = () => {
 
 // no countdown guard: intro remains until user interacts
 
-const GridBackground: React.FC = () => {
+const GridBackground: React.FC<{ holeActive: boolean }> = ({ holeActive }) => {
   return (
-    <div className="sf-intro-grid" aria-hidden />
+    <div className={`sf-intro-grid${holeActive ? " hole-active" : ""}`} aria-hidden />
   );
 };
 
@@ -185,7 +185,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
           role="dialog"
           aria-label="Sonic Flow intro"
         >
-          <GridBackground />
+          <GridBackground holeActive={stage >= 2} />
           {!reduced && <ParticlesCanvas />}
 
           {/* Center group */}

@@ -42,12 +42,24 @@
     inset: 0;
     pointer-events: none;
     background-color: hsl(var(--background, 0 0% 3.9%));
-    background-image:
-      radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-      radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
-    background-position: 0 0, 12px 12px;
-    background-size: 24px 24px, 24px 24px;
-    /* Create a soft hole around the logo area to avoid visual stacking */
+    /* Square dotted grid: single layer, no diagonal offset */
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-position: 0 0;
+    background-size: 24px 24px;
+    /* Default: no hole to avoid early bald patch before logo appears */
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  /* Enable soft hole only after logo appears to avoid early flash */
+  .sf-intro-grid.hole-active {
+    -webkit-mask-image: radial-gradient(
+      50% 40% at 50% 42%,
+      transparent 0%,
+      transparent 30%,
+      rgba(255,255,255,0.85) 55%,
+      rgba(255,255,255,1) 70%
+    );
     mask-image: radial-gradient(
       50% 40% at 50% 42%,
       transparent 0%,
