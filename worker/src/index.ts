@@ -46,6 +46,13 @@ app.post('/metrics/session', async (c) => {
       for (const [k, v] of Object.entries(summary.durations)) span.setAttribute(`dur.${k}`, v as any);
       for (const [k, v] of Object.entries(summary.traffic)) span.setAttribute(`traffic.${k}`, v as any);
       span.setAttribute('result.text_len', summary.result.textLen ?? 0);
+      // Attach dataset text lengths (do not attach full text to span by default)
+      try {
+        const stt = (summary as any)?.dataset?.sttText as string | undefined;
+        const llm = (summary as any)?.dataset?.llmText as string | undefined;
+        if (typeof stt === 'string') span.setAttribute('dataset.stt_len', stt.length);
+        if (typeof llm === 'string') span.setAttribute('dataset.llm_len', llm.length);
+      } catch {}
       span.setAttribute('ws.code', summary.ws.closeCode);
       span.setAttribute('ws.reason', summary.ws.closeReason);
     });

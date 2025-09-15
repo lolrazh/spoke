@@ -21,6 +21,8 @@ export type SessionBody = {
   client?: ClientMetrics | null;
   worker?: WorkerMetrics | null;
   meta?: { appVersion?: string; platform?: string };
+  // Optional dataset texts forwarded by the client
+  dataset?: { sttText?: string | null; llmText?: string | null } | null;
   derived?: {
     // e2eMs now represents post-dictation latency (stop -> paste/final)
     e2eMs?: number | null;
@@ -95,6 +97,7 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     durations,
     traffic,
     result,
+    dataset: body?.dataset ?? null,
     ws,
     env: envOut,
     containsClientMetrics: true,

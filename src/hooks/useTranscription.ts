@@ -959,6 +959,8 @@ export function useTranscription(
                               bytesProduced: m.bytesProduced,
                             },
                             worker: msg?.metrics?.worker ?? null,
+                            // New: forward dataset texts from server so /metrics/session can log them
+                            dataset: (msg?.dataset as { sttText?: string | null; llmText?: string | null } | undefined) ?? null,
                             derived: {
                               // e2eMs now represents post-dictation latency
                               e2eMs: breakdown.e2eMs,

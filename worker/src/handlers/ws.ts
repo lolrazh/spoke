@@ -258,6 +258,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const datasetEntry = {
                     event: 'dataset.llm_io',
                     traceId: session.traceId,
+                    'session.trace_id': session.traceId,
                     language: clientLanguage || runtime.stt.language,
                     sttText: finalText,
                     llmText: llmText || null,
@@ -340,6 +341,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   type: 'final',
                   text: llmText || finalText,
                   traceId: session.traceId,
+                  // Pass dataset texts so the client can forward to /metrics/session
+                  dataset: { sttText: finalText, llmText: llmText || null },
                   metrics: { worker: workerMetrics },
                 }),
               );

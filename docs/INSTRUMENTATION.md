@@ -81,6 +81,10 @@ It covers environments, what we capture, how logs and traces correlate per dicta
   - Delivery: logged to `console` and forwarded to Sentry Logs via `consoleLoggingIntegration`.
 - Privacy: this includes full text. Comment the block out in shared or production environments unless content logging is acceptable.
 
+ - Consolidated summary: the server now includes `dataset` on the final message and the client forwards it to `/metrics/session`. The merged summary JSON will contain:
+   - `dataset: { sttText, llmText }`
+   - Sentry span adds `dataset.stt_len` and `dataset.llm_len` attributes for quick filters.
+
 **PII & Privacy**
 - App filters request URLs and headers in `beforeSend` (Auth tokens/API keys redacted).
 - Worker logs only include text length (`textLen`), never the full transcript.
