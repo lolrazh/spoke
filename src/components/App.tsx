@@ -744,9 +744,15 @@ const App: React.FC = () => {
       }
       if (isLongPressRef.current) {
         if (latestTransRef.current.recording) {
+          // Normal hold-to-speak: stop on release
           latestTransRef.current.stop();
           pushTrace(`PTT long press stop`);
           pillDispatch({ type: "PTT_STOP" });
+        } else {
+          // Race: release before recording flips true → cancel pending start
+          latestTransRef.current.cancel();
+          pushTrace(`PTT long press canceled before start`);
+          pillDispatch({ type: "CANCEL" });
         }
       } else {
         // Double-tap to toggle hands-free
