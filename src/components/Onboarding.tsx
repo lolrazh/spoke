@@ -897,7 +897,6 @@ const Onboarding: React.FC = () => {
           <IntroExperience
             logoSrc="/assets/transparent-logo-w-text.png"
             onFinish={handleIntroFinish}
-            maxDurationMs={4800}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -914,7 +913,6 @@ const Onboarding: React.FC = () => {
         <IntroExperience
           logoSrc="/assets/transparent-logo-w-text.png"
           onFinish={handleIntroFinish}
-          maxDurationMs={4800}
         />
       )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}

@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type IntroExperienceProps = {
   logoSrc: string;
   onFinish: () => void;
-  maxDurationMs?: number;
 };
 
 const prefersReducedMotion = () => {
@@ -15,13 +14,7 @@ const prefersReducedMotion = () => {
   }
 };
 
-const useCountdownGuard = (enabled: boolean, ms: number, onEnd: () => void) => {
-  useEffect(() => {
-    if (!enabled) return;
-    const id = setTimeout(onEnd, ms);
-    return () => clearTimeout(id);
-  }, [enabled, ms, onEnd]);
-};
+// no countdown guard: intro remains until user interacts
 
 const GridBackground: React.FC = () => {
   return (
@@ -148,16 +141,10 @@ const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   return <canvas ref={canvasRef} className="sf-intro-particles" aria-hidden />;
 };
 
-export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFinish, maxDurationMs = 5000 }) => {
+export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFinish }) => {
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
-
-  // Global guard: never block beyond maxDurationMs
-  useCountdownGuard(visible, maxDurationMs, () => {
-    setVisible(false);
-    onFinish();
-  });
 
   useEffect(() => {
     if (reduced) {
