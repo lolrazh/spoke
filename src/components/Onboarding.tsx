@@ -72,14 +72,16 @@ type OnboardingStep =
   | "complete";
 
 const Onboarding: React.FC = () => {
-  const [showIntro, setShowIntro] = useState<boolean>(() => {
+  const introOnly = (() => {
     try {
-      const seen = localStorage.getItem("sf_has_seen_intro");
-      return seen !== "true";
+      const fromQuery = params.has("introOnly");
+      const fromEnv = (import.meta as any)?.env?.VITE_INTRO_ONLY === "1" || (import.meta as any)?.env?.VITE_INTRO_ONLY === "true";
+      return fromQuery || fromEnv;
     } catch {
-      return true;
+      return false;
     }
-  });
+  })();
+  const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
@@ -136,9 +138,8 @@ const Onboarding: React.FC = () => {
       try { markOnboardingEvent(); } catch {}
     };
   }, []);
-  // Persist first-run intro flag when dismissed
+  // Dismiss intro without persisting any flag so it always shows next run
   const handleIntroFinish = () => {
-    try { localStorage.setItem("sf_has_seen_intro", "true"); } catch {}
     setShowIntro(false);
   };
   // Sample prompts for tests
@@ -277,6 +278,7 @@ const Onboarding: React.FC = () => {
 
   // Initial auth check and deep-link listener
   useEffect(() => {
+    if (introOnly) return; // In intro-only mode, don't drive step state or auth
     getSupabase();
     (async () => {
       const skipAuth = !!window.devFlags?.skipAuth;
@@ -343,7 +345,7 @@ const Onboarding: React.FC = () => {
     return () => {
       off && off();
     };
-  }, []);
+  }, [introOnly]);
 
   const handleGoogle = async () => {
     try {
@@ -887,6 +889,25 @@ const Onboarding: React.FC = () => {
     return () => cleanup && cleanup();
   }, [currentStep, trans.recording, trans.processing]);
 
+  // Intro-only rendering path: show only the cinematic and a replay control
+  if (introOnly) {
+    return (
+      <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+        {showIntro ? (
+          <IntroExperience
+            logoSrc="/assets/transparent-logo-w-text.png"
+            onFinish={handleIntroFinish}
+            maxDurationMs={4800}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>Replay intro</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {showIntro && (
@@ -1036,7 +1057,7 @@ const Onboarding: React.FC = () => {
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[12px] text-subtle">
-                        A Magic Link will be sent to your email.
+                        A Magic Link will be sent to your email.But like, I used it once, and then that's it; it just didn't show up again, you know?
                       </p>
                     </div>
                   )}
