@@ -227,8 +227,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             >
               <Button
                 onClick={handleSkip}
-                className="px-5 py-2 onboarding-cta shimmer"
-                style={{ background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(20px)' }}
+                className="px-5 py-2 btn-primary shimmer"
               >
                 Start Setup
               </Button>
