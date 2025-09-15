@@ -1055,7 +1055,7 @@ const Onboarding: React.FC = () => {
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[12px] text-subtle">
-                        A Magic Link will be sent to your email.But like, I used it once, and then that's it; it just didn't show up again, you know?
+                        A Magic Link will be sent to your email.
                       </p>
                     </div>
                   )}
