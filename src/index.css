@@ -27,6 +27,111 @@
 @tailwind utilities;
 
 @layer components {
+  /* Intro overlay */
+  .sf-intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: hsl(var(--background, 0 0% 3.9%));
+    color: rgba(255, 255, 255, 0.92);
+    overflow: hidden;
+  }
+
+  .sf-intro-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-color: hsl(var(--background, 0 0% 3.9%));
+    background-image:
+      radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+      radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-position: 0 0, 12px 12px;
+    background-size: 24px 24px, 24px 24px;
+    mask-image: radial-gradient(60% 40% at 50% 40%, rgba(255,255,255,1), rgba(255,255,255,0) 70%);
+  }
+
+  .sf-intro-particles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .sf-intro-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+
+  .sf-intro-logo {
+    width: 196px;
+    height: auto;
+    image-rendering: -webkit-optimize-contrast;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
+    user-select: none;
+  }
+
+  .sf-intro-tagline {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sf-intro-heading {
+    font-family: "DM Serif Display", Georgia, serif;
+    font-size: clamp(20px, 4.8vw, 40px);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .sf-intro-sub {
+    font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .sf-intro-cta {
+    margin-top: 6px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.92);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(12px);
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .sf-intro-cta:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.18);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+  }
+  .sf-intro-cta:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.2);
+    outline-offset: 2px;
+  }
+
+  .sf-intro-skip {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    font-size: 12px;
+    backdrop-filter: blur(8px);
+  }
+
   /* The main container for the app, which also acts as the hover hot-zone */
   .app-container {
     position: fixed;

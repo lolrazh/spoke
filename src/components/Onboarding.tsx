@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import IntroExperience from "./intro/IntroExperience";
 import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
@@ -71,6 +72,14 @@ type OnboardingStep =
   | "complete";
 
 const Onboarding: React.FC = () => {
+  const [showIntro, setShowIntro] = useState<boolean>(() => {
+    try {
+      const seen = localStorage.getItem("sf_has_seen_intro");
+      return seen !== "true";
+    } catch {
+      return true;
+    }
+  });
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
@@ -127,6 +136,11 @@ const Onboarding: React.FC = () => {
       try { markOnboardingEvent(); } catch {}
     };
   }, []);
+  // Persist first-run intro flag when dismissed
+  const handleIntroFinish = () => {
+    try { localStorage.setItem("sf_has_seen_intro", "true"); } catch {}
+    setShowIntro(false);
+  };
   // Sample prompts for tests
   const sampleHoldText =
     "I wanna fix app.py and test.py. Add at symbols before the file names.";
@@ -875,6 +889,13 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+      {showIntro && (
+        <IntroExperience
+          logoSrc="/assets/transparent-logo-w-text.png"
+          onFinish={handleIntroFinish}
+          maxDurationMs={4800}
+        />
+      )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
 
       {/* Draggable Header Areas */}
