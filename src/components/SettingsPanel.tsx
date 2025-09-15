@@ -406,10 +406,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     <div
       className={`${embeddedMode ? "h-full" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
-      {/* Vertical version text on bottom-left - only in embedded mode */}
+      {/* Version text on bottom-right (embedded mode) */}
       {embeddedMode && (
-        <div className="absolute left-5 bottom-4 transform -rotate-90 origin-bottom-left text-[10px] text-muted-foreground opacity-60 whitespace-nowrap">
-          {appVersion ? `v${appVersion}` : ""}
+        <div className="absolute right-3 bottom-2 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap">
+          {appVersion ? `Sonic Flow Beta ${appVersion}` : ""}
         </div>
       )}
 
@@ -668,7 +668,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `v${appVersion}` : ""}</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
               </motion.footer>
             )}
           </motion.div>
