@@ -48,8 +48,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
 
   server.accept();
-  connLog.info('[WS] accepted');
-  safely(() => Sentry.logger.info('ws.accepted', { ip: clientIP }));
+  // Accept silently; avoid emitting ws.accepted logs to Sentry to reduce noise
 
   // Track optional language from client
   let clientLanguage: string | undefined = undefined;
@@ -74,7 +73,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
           clientLanguage = parsed.language;
-          safely(() => Sentry.logger.info('session.start', { 'session.trace_id': session.traceId }));
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -139,7 +137,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
                 const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
-                // Log STT request details (console + Sentry)
+                // Log STT request details (console only)
                 try {
                   const sttLog = {
                     event: 'stt.request',
@@ -149,7 +147,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     traceId: session.traceId,
                   } as const;
                   console.log(JSON.stringify(sttLog));
-                  safely(() => Sentry.logger.info('stt.request', sttLog as any));
                 } catch {}
                 const res = await transcribeWav(wav, GROQ_API_KEY, {
                   signal: sttAbort.signal,
@@ -187,7 +184,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         : GROQ_API_KEY;
 
                   if (apiKeyForProvider) {
-                    // Log LLM request details (console + Sentry)
+                    // Log LLM request details (console only)
                     try {
                       const llmEndpoint =
                         provider === 'openai'
@@ -204,7 +201,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(llmLog));
-                      safely(() => Sentry.logger.info('llm.request', llmLog as any));
                     } catch {}
                     const llmRes = await chatCompleteByProvider(provider, {
                       apiKey: apiKeyForProvider,
@@ -266,7 +262,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ts: Date.now(),
                   } as const;
                   console.log(JSON.stringify(datasetEntry));
-                  safely(() => Sentry.logger.info('dataset.llm_io', datasetEntry as any));
                 } catch {}
                 
                 // Add overall session timing
@@ -399,12 +394,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               env: {},
               containsClientMetrics: false,
             } as const;
-            // Log as single-line JSON
+            // Log as single-line JSON (captured by Sentry console integration)
             safely(() => console.log(JSON.stringify(summary)));
-            // Also send to Sentry logs for Logs product and enrich span
-            safely(() => {
-              Sentry.logger.info('session.summary', { 'session.trace_id': session.traceId ?? '', ...summary });
-            });
             // Enrich the Sentry span (we are still inside the span callback)
             await Sentry.startSpan({
               op: 'transcription.session_summary',
@@ -478,13 +469,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     const code = (evt as any)?.code || 1000;
     const reason = (evt as any)?.reason || 'unknown';
     // Only log ws_close when abnormal or no final was sent (to reduce noise)
-    if (!finalSent || code !== 1000) {
-      logSession(connLog.info, 'ws_close', session, {
-        code,
-        reason,
-      });
-      safely(() => Sentry.logger.warn('session.ws_close', { 'session.trace_id': session.traceId ?? '', code, reason }));
-    }
+    // Reduce noise: no Sentry logs for closes; rely on session_summary for observability
     socketClosed = true;
     safely(() => sttAbort?.abort());
     sttAbort = null;

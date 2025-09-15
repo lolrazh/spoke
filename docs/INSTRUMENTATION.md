@@ -37,11 +37,8 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - **Logs** (Sentry Logs product):
   - Console logs are forwarded to Sentry via `consoleLoggingIntegration` and `enableLogs: true` (`worker/src/index.ts:1`).
   - Our logger writes level-appropriate console calls: `worker/src/utils/logger.ts:1`.
-  - Key log events emitted with a per-dictation tag `'session.trace_id'`:
-    - `ws.accepted` when the socket is accepted
-    - `session.start` when the client’s `start` is received
-    - `session.summary` once per dictation (server summary)
-    - `session.ws_close` for abnormal closes
+  - To reduce noise, we only emit one operational log per dictation by default:
+    - `transcription.session_summary` (server-only and merged forms). All other lifecycle logs are suppressed.
 
 **Per-Dictation Correlation**
 - The renderer sends a unique `sessionId` in the `start` message.
@@ -99,7 +96,7 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - Group a single dictation:
   - `session.trace_id:<traceId>`
 - Investigate abnormal closes:
-  - `session.ws_close level:warning` (or search for `"tag":"ws_close"` in raw JSON)
+  - Use `transcription.session_summary` and filter by missing/short durations; lifecycle close logs are suppressed by default.
 - Performance outliers (quick scan):
   - `event:"transcription.session_summary" durations.serverProcessingMs:>1500`
 
