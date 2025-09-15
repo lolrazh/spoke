@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "../ui/button";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -97,13 +98,13 @@ const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
 
       ctx2.clearRect(0, 0, w, h);
       ctx2.globalCompositeOperation = "source-over";
-      ctx2.globalAlpha = 0.85;
-      ctx2.fillStyle = "rgba(255,255,255,0.9)";
+      ctx2.globalAlpha = 0.8;
+      ctx2.fillStyle = "rgba(255,255,255,0.85)";
 
       for (let i = 0; i < starsRef.current.length; i++) {
         const s = starsRef.current[i];
         // Subtle swirl proportional to radius
-        const swirl = 0.25 * dt * (s.r / maxRadius()); // radians per sec scaled by radius fraction
+        const swirl = 0.18 * dt * (s.r / maxRadius()); // slightly calmer swirl
         s.theta += swirl;
         // Radial inward motion
         s.r -= s.speed * dt;
@@ -116,12 +117,12 @@ const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
         // Size scales with distance; also dim near center to reduce hot spot
         const distFrac = s.r / maxRadius();
         const scale = 0.6 + 0.6 * distFrac;
-        const rpx = Math.max(0.6 * dpr, s.size * scale);
+        const rpx = Math.max(0.55 * dpr, s.size * scale);
         // Local alpha falloff near the center
-        const localAlpha = Math.max(0.25, Math.min(1, distFrac * 1.1));
+        const localAlpha = Math.max(0.3, Math.min(1, distFrac * 1.05));
         ctx2.globalAlpha = 0.85 * localAlpha;
         // Draw a short trail for motion impression
-        const trail = Math.min(12 * dpr, (s.speed * dt * 0.8));
+        const trail = Math.min(10 * dpr, (s.speed * dt * 0.7));
         ctx2.beginPath();
         ctx2.arc(x, y, rpx * 0.65, 0, Math.PI * 2);
         ctx2.fill();
@@ -162,9 +163,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       const id = setTimeout(() => setStage(3), 50);
       return () => clearTimeout(id);
     }
-    const t0 = setTimeout(() => setStage(1), 700);
-    const t1 = setTimeout(() => setStage(2), 1500);
-    const t2 = setTimeout(() => setStage(3), 2300);
+    // Slower, more intentional pacing
+    const t0 = setTimeout(() => setStage(1), 1200);
+    const t1 = setTimeout(() => setStage(2), 2200);
+    const t2 = setTimeout(() => setStage(3), 3300);
     return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); };
   }, [reduced]);
 
@@ -195,30 +197,33 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               src={logoSrc}
               alt="Sonic Flow logo"
               className="sf-intro-logo"
-              initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
-              animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 8, filter: stage >= 2 ? "blur(0px)" : "blur(6px)" }}
-              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
+              initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(8px)" }}
+              animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}
+              transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
             />
             {/* Tagline */}
             <motion.div
               className="sf-intro-tagline"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 6 }}
-              transition={{ duration: 0.45 }}
+              transition={{ duration: 0.65, ease: [0.25, 0.8, 0.25, 1], delay: stage >= 3 ? 0.05 : 0 }}
             >
               <div className="sf-intro-heading">Think it. Say it. See it.</div>
               <div className="sf-intro-sub">Press Right Option to start dictating anytime.</div>
             </motion.div>
             {/* CTA */}
-            <motion.button
-              className="sf-intro-cta"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 8 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              onClick={handleSkip}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 10 }}
+              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1], delay: 0.25 }}
             >
-              Start Setup
-            </motion.button>
+              <Button
+                onClick={handleSkip}
+                className="px-5 py-2 onboarding-cta shimmer"
+              >
+                Start Setup
+              </Button>
+            </motion.div>
           </div>
         </motion.div>
       )}
