@@ -43,11 +43,18 @@
     pointer-events: none;
     background-color: hsl(var(--background, 0 0% 3.9%));
     background-image:
-      radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
-      radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+      radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
     background-position: 0 0, 12px 12px;
     background-size: 24px 24px, 24px 24px;
-    mask-image: radial-gradient(60% 40% at 50% 40%, rgba(255,255,255,1), rgba(255,255,255,0) 70%);
+    /* Create a soft hole around the logo area to avoid visual stacking */
+    mask-image: radial-gradient(
+      50% 40% at 50% 42%,
+      transparent 0%,
+      transparent 30%,
+      rgba(255,255,255,0.85) 55%,
+      rgba(255,255,255,1) 70%
+    );
   }
 
   .sf-intro-particles {
