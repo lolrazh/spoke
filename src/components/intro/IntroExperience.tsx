@@ -30,9 +30,16 @@ const GridBackground: React.FC = () => {
 };
 
 const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
+  type Star = {
+    theta: number; // angle in radians
+    r: number; // radius (distance to center) in device pixels
+    speed: number; // radial speed (px/sec)
+    size: number; // base size in device pixels
+  };
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
-  const particlesRef = useRef<Array<{ x: number; y: number; vx: number; vy: number; r: number }>>([]);
+  const starsRef = useRef<Star[]>([]);
+  const lastTsRef = useRef<number | null>(null);
   const [dpr, setDpr] = useState<number>(1);
 
   useEffect(() => {
@@ -42,7 +49,7 @@ const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    const handleResize = () => {
+    const setupCanvas = () => {
       const ratio = Math.min(2, window.devicePixelRatio || 1);
       setDpr(ratio);
       const { innerWidth: w, innerHeight: h } = window;
@@ -51,51 +58,83 @@ const ParticlesCanvas: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
     };
-    handleResize();
+    setupCanvas();
+
+    const center = () => ({
+      x: canvas.width / 2,
+      y: Math.floor(canvas.height * 0.42),
+    });
+    const maxRadius = () => Math.hypot(canvas.width, canvas.height) * 0.65;
+    const innerRadius = () => 10 * (window.devicePixelRatio || 1);
+
+    const makeStar = (): Star => {
+      const th = Math.random() * Math.PI * 2;
+      const r = maxRadius() * (0.8 + Math.random() * 0.4);
+      const speed = 60 + Math.random() * 140; // px/sec inward
+      const size = (0.6 + Math.random() * 1.2) * (window.devicePixelRatio || 1);
+      return { theta: th, r, speed, size };
+    };
+
+    const initStars = () => {
+      const density = Math.min(420, Math.floor((window.innerWidth * window.innerHeight) / 20000));
+      starsRef.current = new Array(Math.max(120, density)).fill(0).map(() => makeStar());
+    };
+    initStars();
+
+    const handleResize = () => {
+      setupCanvas();
+      initStars();
+    };
     window.addEventListener("resize", handleResize);
 
-    // Init particles (keep count modest to avoid overdraw)
-    const count = Math.min(320, Math.floor((window.innerWidth * window.innerHeight) / 24000));
-    const particles = new Array(count).fill(0).map(() => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.15 * dpr,
-      vy: (Math.random() - 0.5) * 0.15 * dpr,
-      r: (Math.random() * 1.2 + 0.4) * dpr,
-    }));
-    particlesRef.current = particles;
-
-    const animate = () => {
+    const animate = (ts: number) => {
       const ctx2 = ctx;
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx2.clearRect(0, 0, width, height);
-      ctx2.globalAlpha = 0.7;
-      ctx2.fillStyle = "rgba(255,255,255,0.6)";
-      const centerX = width / 2;
-      const centerY = Math.floor(height * 0.42);
+      const { x: cx, y: cy } = center();
+      const w = canvas.width;
+      const h = canvas.height;
+      const last = lastTsRef.current ?? ts;
+      const dt = Math.min(0.033, (ts - last) / 1000); // cap at ~33ms for stability
+      lastTsRef.current = ts;
 
-      for (const p of particlesRef.current) {
-        // Gentle attraction to center for converge feel
-        const dx = centerX - p.x;
-        const dy = centerY - p.y;
-        p.vx += (dx * 0.00002) * dpr;
-        p.vy += (dy * 0.00002) * dpr;
-        // Damping
-        p.vx *= 0.995;
-        p.vy *= 0.995;
-        p.x += p.vx;
-        p.y += p.vy;
-        // Wrap
-        if (p.x < -50) p.x = width + 50;
-        if (p.x > width + 50) p.x = -50;
-        if (p.y < -50) p.y = height + 50;
-        if (p.y > height + 50) p.y = -50;
-        // Draw
+      ctx2.clearRect(0, 0, w, h);
+      ctx2.globalCompositeOperation = "source-over";
+      ctx2.globalAlpha = 0.85;
+      ctx2.fillStyle = "rgba(255,255,255,0.9)";
+
+      for (let i = 0; i < starsRef.current.length; i++) {
+        const s = starsRef.current[i];
+        // Subtle swirl proportional to radius
+        const swirl = 0.25 * dt * (s.r / maxRadius()); // radians per sec scaled by radius fraction
+        s.theta += swirl;
+        // Radial inward motion
+        s.r -= s.speed * dt;
+        if (s.r < innerRadius()) {
+          starsRef.current[i] = makeStar();
+          continue;
+        }
+        const x = cx + Math.cos(s.theta) * s.r;
+        const y = cy + Math.sin(s.theta) * s.r;
+        // Size slightly scales with distance to create depth
+        const scale = 0.6 + 0.6 * (s.r / maxRadius());
+        const rpx = Math.max(0.6 * dpr, s.size * scale);
+        // Draw a short trail for motion impression
+        const trail = Math.min(12 * dpr, (s.speed * dt * 0.8));
         ctx2.beginPath();
-        ctx2.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx2.arc(x, y, rpx * 0.65, 0, Math.PI * 2);
         ctx2.fill();
+        // trail line slightly behind the star along radial direction
+        const tx = x + Math.cos(s.theta) * trail;
+        const ty = y + Math.sin(s.theta) * trail;
+        ctx2.globalAlpha = 0.55;
+        ctx2.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx2.lineWidth = Math.max(0.5 * dpr, rpx * 0.25);
+        ctx2.beginPath();
+        ctx2.moveTo(tx, ty);
+        ctx2.lineTo(x, y);
+        ctx2.stroke();
+        ctx2.globalAlpha = 0.85;
       }
+
       rafRef.current = requestAnimationFrame(animate);
     };
     rafRef.current = requestAnimationFrame(animate);
