@@ -43,7 +43,7 @@
   /* CSS variables for pill styling - change these to update all states */
   .pill-wrapper {
     --pill-background: var(--surface-solid);
-    --pill-border: 1px solid rgba(255, 255, 255, 0.08);
+    --pill-border: 1px solid rgba(255, 255, 255, 0.02);
     --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 
     /* It is now a flex item centered by its parent. */
@@ -97,7 +97,7 @@
     background: var(--pill-background); /* Unified with resting pill */
     /* In expanded settings context, cards should match the pill */
     --surface-card: var(--pill-background);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     /* Use layered window-strength shadow for soft, glass-friendly falloff */
     box-shadow: var(--shadow-interactive);
     cursor: default; /* Arrow over expanded/home UI; buttons manage their own pointer */
