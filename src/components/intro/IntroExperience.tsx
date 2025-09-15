@@ -178,9 +178,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
           <GridBackground />
           {!reduced && <ParticlesCanvas />}
 
-          {/* Skip */}
-          <button className="sf-intro-skip" onClick={handleSkip} aria-label="Skip intro">Skip</button>
-
           {/* Center group */}
           <div className="sf-intro-center">
             {/* Logo */}
