@@ -46,6 +46,15 @@
 - Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/groq.ts` (STT), `worker/src/services/llm/{openai,groq,baseten}.ts` (optional LLM), `worker/src/config/runtime.ts` (env-driven provider/model/stream settings).
 - Environment: client `VITE_TRANSCRIBE_WS_URL`; worker STT `GROQ_API_KEY`; LLM supports `LLM_PROVIDER` (openai|groq|baseten), `LLM_MODEL`, `LLM_STREAM`, and keys `OPENAI_API_KEY` / `GROQ_API_KEY` / `BASETEN_API_KEY`. See `docs/TRANSCRIPTION.md` for the full matrix.
 
+### PTT Gestures & Guards
+- Hold‑to‑speak: press Right Option ≥ 80 ms → start dictation; releasing stops.
+- Hands‑free toggle: double‑tap Right Option within 220 ms → start/stop.
+- Start cue plays at most once per gesture (guarded latch in `src/components/App.tsx`).
+- Race guard on release: if a long‑press start fires but `recording` hasn’t flipped true by key‑up, we `cancel()` and reset pill state to avoid accidental hands‑free start.
+- Primary handlers live in `App.tsx` (`handleFunctionKeyDown/Up`). Onboarding has its own test handlers and was intentionally left unchanged.
+
+Refer to `agent-logs/2025-09-15_1320_ptt-gesture-bugs.md` for rationale and details.
+
 ## Session Continuity
 - Be aware `agent-logs/` exists; do not skim logs by default.
 - Only consult a specific log when the user references it or when the task clearly continues prior work. Prefer scanning filenames over opening full files.
