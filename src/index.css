@@ -533,7 +533,7 @@ body {
   position: relative;
   /* Initial opacity to prevent flash of content */
   opacity: 0;
-  animation: fadeInOnboarding 0.3s ease-out 0.2s forwards;
+  animation: fadeInOnboarding 260ms var(--ease-emphasized) 60ms forwards;
 }
 
 /* Prevent default focus outline/ring on the whole vibrancy window */
@@ -547,7 +547,7 @@ body {
 @keyframes fadeInOnboarding {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
@@ -634,7 +634,8 @@ body {
     --text-primary: #ffffff;
     --text-secondary: #c0c0c0;
     /* Opaque surface tokens for solid UIs (match pill) */
-    --surface-solid: rgb(20, 20, 20);
+    /* Darken solid surfaces to match intro (≈#0A0A0A) */
+    --surface-solid: rgb(10, 10, 10);
 
     /* Typography tokens - match website scale */
     --font-family-body:
@@ -656,7 +657,7 @@ body {
     --spacing-xl: 2rem; /* 32px */
 
     /* Surface and effect tokens */
-    --surface-base-rgb: 15, 15, 15;
+    --surface-base-rgb: 10, 10, 10;
     --surface-alpha-xxs: 0.2; /* very light */
     --surface-alpha-xs: 0.25; /* light */
     --surface-alpha-sm: 0.3; /* subtle */
@@ -795,14 +796,16 @@ body {
   }
 
   .onboarding-cta {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg);
-    color: rgba(255, 255, 255, 0.92);
+    background-color: rgba(var(--surface-base-rgb), 0.6);
+    border: 1px solid var(--stroke-fg-strong);
+    color: rgba(255, 255, 255, 0.96);
+    position: relative;
+    isolation: isolate; /* ensure backdrop filters underneath don't bleed through */
   }
   .onboarding-cta:hover {
-    background-color: rgba(var(--surface-base-rgb), 0.5);
-    border-color: var(--stroke-fg-strong);
-    color: rgba(255, 255, 255, 0.98);
+    background-color: rgba(var(--surface-base-rgb), 0.7);
+    border-color: var(--stroke-fg-xstrong);
+    color: rgba(255, 255, 255, 1);
   }
 
   /* Unified heading/subheading spacing */

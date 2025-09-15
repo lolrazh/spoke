@@ -6,8 +6,8 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "dev": "SF_DEVTOOLS=1 electron-forge start",
-    "dev:onboarding": "SF_DEVTOOLS=1 FORCE_ONBOARDING=1 VITE_REPLAY_INTRO=1 VITE_INTRO_ONLY=1 electron-forge start",
-    "dev:onboarding:skip-auth": "SF_DEVTOOLS=1 FORCE_ONBOARDING=1 SKIP_AUTH=1 VITE_REPLAY_INTRO=1 VITE_INTRO_ONLY=1 electron-forge start",
+    "dev:onboarding": "SF_DEVTOOLS=1 FORCE_ONBOARDING=1 electron-forge start",
+    "dev:onboarding:skip-auth": "SF_DEVTOOLS=1 FORCE_ONBOARDING=1 SKIP_AUTH=1 electron-forge start",
     "dev:ws": "npm run dev --prefix worker",
     "dev:local": "SF_DEVTOOLS=1 VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws electron-forge start",
     "dev:prod": "SF_DEVTOOLS=1 VITE_TRANSCRIBE_WS_URL=wss://api.sonicflow.app/ws electron-forge start",

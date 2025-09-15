@@ -171,6 +171,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   }, [reduced]);
 
   const handleSkip = () => {
+    try {
+      const root = document.querySelector('.onboarding-window');
+      if (root) root.classList.remove('resizing');
+    } catch {}
     setVisible(false);
     onFinish();
   };
