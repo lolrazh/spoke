@@ -18,6 +18,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   return (
     <div
       className={`onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3 ${className}`}
+      style={{ borderRadius: "var(--radius-window)" }}
       role="group"
       aria-label={title}
     >
