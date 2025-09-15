@@ -203,16 +203,16 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             />
             {/* Headline + Subcopy */}
             <motion.div
-              className="text-center"
+              className="text-center space-y-1"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 6 }}
               transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
             >
               <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                Your voice, everywhere.
+                So Good You'll Want To Lick It.
               </h1>
               <p className="text-sm text-subtle leading-relaxed">
-                Press Right Option to dictate anywhere on your Mac.
+                Let's get you set up for blazing fast dictation.
               </p>
             </motion.div>
             {/* CTA */}
@@ -224,6 +224,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               <Button
                 onClick={handleSkip}
                 className="px-5 py-2 onboarding-cta shimmer"
+                style={{ background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(20px)' }}
               >
                 Start Setup
               </Button>
