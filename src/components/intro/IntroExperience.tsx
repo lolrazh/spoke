@@ -163,10 +163,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       const id = setTimeout(() => setStage(3), 50);
       return () => clearTimeout(id);
     }
-    // Slower, more intentional pacing
-    const t0 = setTimeout(() => setStage(1), 1200);
-    const t1 = setTimeout(() => setStage(2), 2200);
-    const t2 = setTimeout(() => setStage(3), 3300);
+    // Slower motion, minimal waiting (earlier stage triggers)
+    const t0 = setTimeout(() => setStage(1), 600);
+    const t1 = setTimeout(() => setStage(2), 1200);
+    const t2 = setTimeout(() => setStage(3), 1800);
     return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); };
   }, [reduced]);
 
@@ -206,7 +206,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               className="sf-intro-tagline"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 6 }}
-              transition={{ duration: 0.65, ease: [0.25, 0.8, 0.25, 1], delay: stage >= 3 ? 0.05 : 0 }}
+              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1], delay: stage >= 3 ? 0 : 0 }}
             >
               <div className="sf-intro-heading">Think it. Say it. See it.</div>
               <div className="sf-intro-sub">Press Right Option to start dictating anytime.</div>
@@ -215,7 +215,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 10 }}
-              transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1], delay: 0.25 }}
+              transition={{ duration: 0.55, ease: [0.25, 0.8, 0.25, 1], delay: 0.1 }}
             >
               <Button
                 onClick={handleSkip}
