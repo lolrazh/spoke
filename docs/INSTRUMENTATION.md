@@ -61,7 +61,10 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - Source files: `worker/src/handlers/ws.ts:1`, `worker/src/utils/logger.ts:1`
 
 **Client E2E Metrics**
-- The renderer computes end-to-end timings (PTT→paste) and posts them to the API:
+- The renderer computes timings and posts them to the API. E2E is now split:
+  - `dictationMs`: PTT down → stop (user talk time)
+  - `e2eMs`: stop → paste/final (post‑dictation latency)
+  - `totalMs`: PTT down → paste/final (legacy total)
   - Metrics URL resolution: `src/config/api.ts:1`
   - Post on final: `src/hooks/useTranscription.ts:1`
 - The Worker accepts the payload and logs a merged summary with `containsClientMetrics: true`:
@@ -139,4 +142,3 @@ It covers environments, what we capture, how logs and traces correlate per dicta
   "ws": { "closeCode": 1000, "closeReason": "done" }
 }
 ```
-

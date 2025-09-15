@@ -886,6 +886,19 @@ export function useTranscription(
                               ? Math.round(finalRecv - client.pttDownMs)
                               : null;
 
+                        // New metrics split
+                        const dictationMs =
+                          m.stopInvokedMs != null
+                            ? Math.max(0, Math.round(m.stopInvokedMs - m.pttDownMs))
+                            : null;
+                        const postDictationE2eMs = (() => {
+                          const anchor = m.stopInvokedMs ?? null; // hotkey up / user ends dictation
+                          if (anchor == null) return null;
+                          if (pasteDone != null) return Math.max(0, Math.round(pasteDone - anchor));
+                          if (finalRecv != null) return Math.max(0, Math.round(finalRecv - anchor));
+                          return null;
+                        })();
+
                         const captureMs = (() => {
                           const pr =
                             (m.postRollEndMs ?? 0) - (m.postRollStartMs ?? 0);
@@ -910,7 +923,10 @@ export function useTranscription(
                         const breakdown = {
                           traceId:
                             (msg?.traceId as string | undefined) || m.sessionId,
-                          e2eMs: totalPttDownToPasteMs,
+                          // Redefine e2eMs to mean post-dictation latency (stop -> paste)
+                          e2eMs: postDictationE2eMs,
+                          dictationMs,
+                          totalMs: totalPttDownToPasteMs,
                           wsOpenMs: wsOpenDeltaMs,
                           captureMs,
                           endToStatusMs: endSendToStatusMs,
@@ -944,7 +960,10 @@ export function useTranscription(
                             },
                             worker: msg?.metrics?.worker ?? null,
                             derived: {
+                              // e2eMs now represents post-dictation latency
                               e2eMs: breakdown.e2eMs,
+                              dictationMs: breakdown.dictationMs,
+                              totalMs: breakdown.totalMs,
                               captureMs: breakdown.captureMs,
                               deliverMs: breakdown.deliverMs,
                               pasteMs: breakdown.pasteMs,

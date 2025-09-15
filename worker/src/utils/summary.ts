@@ -22,7 +22,12 @@ export type SessionBody = {
   worker?: WorkerMetrics | null;
   meta?: { appVersion?: string; platform?: string };
   derived?: {
+    // e2eMs now represents post-dictation latency (stop -> paste/final)
     e2eMs?: number | null;
+    // New: time the user was dictating (PTT down -> stop)
+    dictationMs?: number | null;
+    // New: total session time (PTT down -> paste/final), for reference
+    totalMs?: number | null;
     captureMs?: number | null;
     deliverMs?: number | null;
     pasteMs?: number | null;
@@ -45,6 +50,8 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
 
   const durations = {
     e2eMs: body?.derived?.e2eMs ?? null,
+    dictationMs: body?.derived?.dictationMs ?? null,
+    totalMs: body?.derived?.totalMs ?? null,
     captureMs: body?.derived?.captureMs ?? null,
     deliverMs: body?.derived?.deliverMs ?? null,
     pasteMs: body?.derived?.pasteMs ?? null,
@@ -93,4 +100,3 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     containsClientMetrics: true,
   } as const;
 }
-

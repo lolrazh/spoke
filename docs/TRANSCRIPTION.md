@@ -502,16 +502,20 @@ interface WorkerMetrics {
 
 #### Derived Performance Indicators
 ```typescript
-// End-to-end latency breakdown
+// End-to-end latency breakdown (split)
 const breakdown = {
-  e2eMs: pasteDoneMs - pttDownMs,                    // Total user experience
+  // New split: separate user speech duration from system latency
+  dictationMs: stopInvokedMs - pttDownMs,            // How long the user dictated
+  e2eMs: pasteDoneMs - stopInvokedMs,                // Post-dictation latency (hotkey up -> paste)
+  totalMs: pasteDoneMs - pttDownMs,                  // Full session (legacy total)
+
   wsOpenMs: wsOpenMs - pttDownMs,                    // Connection setup
-  captureMs: (postRollMs + drainMs),                 // Audio capture overhead
+  captureMs: (postRollMs + drainMs),                 // Audio capture overhead (tail + drain)
   endToStatusMs: statusRecvMs - endSentMs,           // Server response latency
   sttMs: groq.totalMs,                               // Speech-to-text processing
   deliverMs: finalRecvMs - statusRecvMs - sttMs,     // Result delivery
   pasteMs: pasteDoneMs - finalRecvMs,                // Text insertion time
-  
+
   // Quality metrics
   frames: framesProduced,
   bytesKB: bytesProduced / 1024,
@@ -528,16 +532,20 @@ All metrics are consolidated into a single structured log entry for easy analysi
 ```javascript
 console.log("[SF] E2E", {
   traceId: "abc123",
-  e2eMs: 2847,           // Total latency
+  // Split metrics
+  dictationMs: 1620,     // User talk time
+  e2eMs: 1227,           // Post-dictation latency (stop -> paste)
+  totalMs: 2847,         // Full session
+
   wsOpenMs: 145,         // Connection setup  
   captureMs: 170,        // Audio processing overhead
   endToStatusMs: 89,     // Server response time
-  sttMs: 1205,          // Groq API processing
-  deliverMs: 34,        // Response delivery
-  pasteMs: 25,          // Native text insertion
-  frames: 42,           // Audio frames sent
-  bytesKB: 134.4,       // Audio data size
-  seqGaps: 0,           // Connection quality (0 = perfect)
+  sttMs: 1205,           // Groq API processing
+  deliverMs: 34,         // Response delivery
+  pasteMs: 25,           // Native text insertion
+  frames: 42,            // Audio frames sent
+  bytesKB: 134.4,        // Audio data size
+  seqGaps: 0,            // Connection quality (0 = perfect)
 });
 ```
 
