@@ -983,9 +983,7 @@ const Onboarding: React.FC = () => {
                     onClick={handleGoogle}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 rounded bg-gradient-to-br from-blue-500 via-red-500 to-yellow-500 flex items-center justify-center">
-                        <span className="text-white font-bold text-xs">G</span>
-                      </div>
+                      <span className="text-primary font-medium text-lg">G</span>
                       <span>Continue with Google</span>
                     </div>
                   </Button>
@@ -1011,14 +1009,13 @@ const Onboarding: React.FC = () => {
                         type="submit"
                         disabled={authLoading || !authEmail}
                       >
-                        Send Magic Link
+                        Continue with Email
                       </Button>
                     </form>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[12px] text-subtle">
-                        Check your email. After you click the link or enter the
-                        code, you’ll be signed in.
+                        A Magic Link will be sent to your email.
                       </p>
                     </div>
                   )}
