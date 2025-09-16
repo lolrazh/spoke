@@ -254,8 +254,8 @@
   .pill-collapse-btn {
     background: transparent;
     border: none;
-    width: 40px; /* preserve hit target without a visible shape */
-    height: 28px;
+    width: 44px; /* preserve hit target without a visible shape */
+    height: 36px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -593,7 +593,7 @@ body {
   position: absolute;
   top: 0;
   left: 80px; /* Leave first 80px alone for native traffic lights (3 buttons × 12px + 6px gutter on each side) */
-  right: 0;
+  right: 80px; /* Leave last 80px alone for top-right controls (speaker, etc.) */
   height: 32px;
   z-index: 1000;
 }
