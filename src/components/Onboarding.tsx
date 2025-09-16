@@ -1629,7 +1629,7 @@ const Onboarding: React.FC = () => {
                 <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                   You're all set
                 </h2>
-                <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Use Right Option to dictate anywhere.</p>
+                <p className="text-sm text-subtle leading-relaxed">It's been a pleasure onboarding you. You can now start dictating.</p>
                 <div className="pt-2 flex justify-center">
                   <Button
                     onClick={handleComplete}
