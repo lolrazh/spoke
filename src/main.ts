@@ -2139,6 +2139,7 @@ app.whenReady().then(async () => {
       // Start continuous follow once window exists
       startFollowCursor();
       // Ensure pill is hidden until the test step asks to show it
+      pttTarget = "onboarding";
       if (mainWindow && !mainWindow.isDestroyed()) {
         const currentBounds = mainWindow.getBounds();
         const display = screen.getDisplayMatching(currentBounds);
@@ -2306,6 +2307,22 @@ app.whenReady().then(async () => {
       }
       if (!mainWindow) return { ok: false };
 
+      // During onboarding, ensure pill stays hidden and below the top edge
+      if (pttTarget === "onboarding") {
+        const current = mainWindow.getBounds();
+        const display = screen.getDisplayMatching(current);
+        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
+        if (current.y !== hideY) {
+          mainWindow.setBounds(
+            { x: current.x, y: hideY, width: current.width, height: current.height },
+            false,
+          );
+          if (process.platform === "darwin") mainWindow.invalidateShadow();
+        }
+        // Do not show the window while onboarding owns the flow
+        return { ok: true };
+      }
+
       const current = mainWindow.getBounds();
       const display = screen.getDisplayMatching(current);
       const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
@@ -2317,7 +2334,6 @@ app.whenReady().then(async () => {
         );
         if (process.platform === "darwin") mainWindow.invalidateShadow();
       }
-      // Only run fade-in if currently hidden to avoid flicker
       if (!mainWindow.isVisible()) {
         smoothShow(mainWindow);
       }
