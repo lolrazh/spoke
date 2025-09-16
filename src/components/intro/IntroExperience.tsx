@@ -156,6 +156,13 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
+  // Match onboarding page transition spring
+  const spring = {
+    type: "spring" as const,
+    stiffness: 340,
+    damping: 28,
+    mass: 0.45,
+  };
 
   useEffect(() => {
     if (reduced) {
@@ -183,10 +190,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       {visible && (
         <motion.div
           className="sf-intro-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.35 }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -16 }}
+          transition={spring}
           role="dialog"
           aria-label="Sonic Flow intro"
         >
