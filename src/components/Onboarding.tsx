@@ -72,15 +72,7 @@ type OnboardingStep =
   | "complete";
 
 const Onboarding: React.FC = () => {
-  const introOnly = (() => {
-    try {
-      const fromQuery = params.has("introOnly");
-      const fromEnv = (import.meta as any)?.env?.VITE_INTRO_ONLY === "1" || (import.meta as any)?.env?.VITE_INTRO_ONLY === "true";
-      return fromQuery || fromEnv;
-    } catch {
-      return false;
-    }
-  })();
+  const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
   const [authEmail, setAuthEmail] = useState("");
@@ -141,6 +133,23 @@ const Onboarding: React.FC = () => {
   // Dismiss intro without persisting any flag so it always shows next run
   const handleIntroFinish = () => {
     setShowIntro(false);
+  };
+
+  // Helper to render intro experience or replay button (for intro-only mode)
+  const renderIntroOrReplay = () => {
+    if (showIntro) {
+      return (
+        <IntroExperience
+          logoSrc="/assets/transparent-logo-w-text.png"
+          onFinish={handleIntroFinish}
+        />
+      );
+    }
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>Replay intro</button>
+      </div>
+    );
   };
   // Sample prompts for tests
   const sampleHoldText =
@@ -893,16 +902,7 @@ const Onboarding: React.FC = () => {
   if (introOnly) {
     return (
       <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
-        {showIntro ? (
-          <IntroExperience
-            logoSrc="/assets/transparent-logo-w-text.png"
-            onFinish={handleIntroFinish}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>Replay intro</button>
-          </div>
-        )}
+        {renderIntroOrReplay()}
       </div>
     );
   }
