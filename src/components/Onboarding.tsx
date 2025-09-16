@@ -128,6 +128,8 @@ const Onboarding: React.FC = () => {
   // Background music during onboarding
   const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
   const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
+  const targetMusicVolumeRef = useRef<number>(0.28);
+  const fadeRafRef = useRef<number | null>(null);
 
   // Record onboarding visibility for auth intent correlation
   useEffect(() => {
@@ -185,7 +187,7 @@ const Onboarding: React.FC = () => {
     const audio = new Audio("/assets/onboarding-music.mp3");
     onboardingAudioRef.current = audio;
     audio.loop = true;
-    audio.volume = 0.28; // subtle by default
+    audio.volume = targetMusicVolumeRef.current; // subtle by default
 
     const tryPlay = async () => {
       try {
@@ -212,15 +214,49 @@ const Onboarding: React.FC = () => {
   const toggleMusic = async () => {
     const audio = onboardingAudioRef.current;
     if (!audio) return;
+    const clearFade = () => {
+      if (fadeRafRef.current) {
+        cancelAnimationFrame(fadeRafRef.current);
+        fadeRafRef.current = null;
+      }
+    };
+    const fadeTo = (to: number, durationMs = 220) =>
+      new Promise<void>((resolve) => {
+        const a = onboardingAudioRef.current;
+        if (!a || durationMs <= 0) {
+          if (a) a.volume = Math.max(0, Math.min(1, to));
+          resolve();
+          return;
+        }
+        clearFade();
+        const from = a.volume;
+        const start = performance.now();
+        const step = (now: number) => {
+          const t = Math.min(1, (now - start) / durationMs);
+          const v = from + (to - from) * t;
+          a.volume = Math.max(0, Math.min(1, v));
+          if (t < 1) {
+            fadeRafRef.current = requestAnimationFrame(step);
+          } else {
+            clearFade();
+            resolve();
+          }
+        };
+        fadeRafRef.current = requestAnimationFrame(step);
+      });
+
     if (musicEnabled) {
       try {
+        await fadeTo(0, 240);
         audio.pause();
       } catch {}
       setMusicEnabled(false);
     } else {
       try {
+        audio.volume = 0;
         await audio.play();
         setMusicEnabled(true);
+        await fadeTo(targetMusicVolumeRef.current, 260);
       } catch {
         // Keep disabled on failure
         setMusicEnabled(false);
@@ -230,8 +266,33 @@ const Onboarding: React.FC = () => {
 
   // Speaker icon with fixed box and crossfade to avoid jumps
   const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+    const prevEnabledRef = useRef<boolean>(enabled);
+    const [showSlashOverlay, setShowSlashOverlay] = useState<boolean>(false);
+    const [drawForward, setDrawForward] = useState<boolean>(false);
+
+    useEffect(() => {
+      const was = prevEnabledRef.current;
+      if (was !== enabled) {
+        // Trigger slash draw overlay on transitions
+        if (!enabled) {
+          // going from on -> off: draw in
+          setDrawForward(true);
+          setShowSlashOverlay(true);
+          const t = setTimeout(() => setShowSlashOverlay(false), 260);
+          return () => clearTimeout(t);
+        } else {
+          // off -> on: draw out
+          setDrawForward(false);
+          setShowSlashOverlay(true);
+          const t = setTimeout(() => setShowSlashOverlay(false), 220);
+          return () => clearTimeout(t);
+        }
+      }
+      prevEnabledRef.current = enabled;
+    }, [enabled]);
+
     return (
-      <div className="relative w-6 h-6 flex items-center justify-center">
+      <div className="relative w-7 h-7 flex items-center justify-center">
         <AnimatePresence initial={false} mode="wait">
           <motion.div
             key={enabled ? "on" : "off"}
@@ -243,10 +304,32 @@ const Onboarding: React.FC = () => {
           >
             <SfIcon
               name={enabled ? "speaker.wave.3.fill" : "speaker.slash.fill"}
-              size={20}
+              size={22}
             />
           </motion.div>
         </AnimatePresence>
+
+        {showSlashOverlay && (
+          <motion.svg
+            className="absolute inset-0"
+            width={22}
+            height={22}
+            viewBox="0 0 41.29296875 48.146484375"
+            preserveAspectRatio="xMidYMid meet"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <motion.path
+              d="M 37.060546875 4.94140625 L 3.416015625 39.359375"
+              initial={{ pathLength: drawForward ? 0 : 1, opacity: 0.9 }}
+              animate={{ pathLength: drawForward ? 1 : 0, opacity: 0.9 }}
+              transition={{ duration: drawForward ? 0.24 : 0.2, ease: "easeOut" }}
+            />
+          </motion.svg>
+        )}
       </div>
     );
   };
