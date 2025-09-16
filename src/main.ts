@@ -2325,12 +2325,18 @@ app.whenReady().then(async () => {
       const current = mainWindow.getBounds();
       const display = screen.getDisplayMatching(current);
       const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      mainWindow.setBounds(
-        { x: current.x, y: targetY, width: current.width, height: current.height },
-        false,
-      );
-      if (process.platform === "darwin") mainWindow.invalidateShadow();
-      smoothShow(mainWindow);
+      const needMove = current.y !== targetY;
+      if (needMove) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      // Only run fade-in if currently hidden to avoid flicker
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
 
       // Ask renderer to expand the pill UI
       mainWindow.webContents.send("expand-pill");
@@ -2352,12 +2358,18 @@ app.whenReady().then(async () => {
       const current = mainWindow.getBounds();
       const display = screen.getDisplayMatching(current);
       const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      mainWindow.setBounds(
-        { x: current.x, y: targetY, width: current.width, height: current.height },
-        false,
-      );
-      if (process.platform === "darwin") mainWindow.invalidateShadow();
-      smoothShow(mainWindow);
+      const needMove = current.y !== targetY;
+      if (needMove) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      // Only run fade-in if currently hidden to avoid flicker
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
       return { ok: true };
     } catch (e) {
       console.warn("[pill:reveal] Failed to reveal pill:", e);
