@@ -267,18 +267,7 @@
     outline-offset: 2px;
   }
 
-  /* Mute slash overlay for speaker icon (matches chevron button visual weight) */
-  .mute-slash {
-    position: absolute;
-    pointer-events: none;
-    top: 50%;
-    left: 50%;
-    width: 18px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.6);
-    transform: translate(-50%, -50%) rotate(-40deg);
-    border-radius: 1px;
-  }
+  /* (removed) old mute slash overlay; now using custom SfIcon path */
 
   /* Resting indicator - invisible by default, just for spacing */
   .resting-indicator {

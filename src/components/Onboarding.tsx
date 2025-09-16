@@ -965,8 +965,11 @@ const Onboarding: React.FC = () => {
           aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
           title={musicEnabled ? "Mute music" : "Unmute music"}
         >
-          <SfIcon name="speaker.wave.3.fill" size={16} />
-          {!musicEnabled && <span className="mute-slash" aria-hidden="true" />}
+          {musicEnabled ? (
+            <SfIcon name="speaker.wave.3.fill" size={16} />
+          ) : (
+            <SfIcon name="speaker.slash.fill" size={16} />
+          )}
         </button>
       </div>
     );
@@ -1065,8 +1068,11 @@ const Onboarding: React.FC = () => {
         aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
         title={musicEnabled ? "Mute music" : "Unmute music"}
       >
-        <SfIcon name="speaker.wave.3.fill" size={16} />
-        {!musicEnabled && <span className="mute-slash" aria-hidden="true" />}
+        {musicEnabled ? (
+          <SfIcon name="speaker.wave.3.fill" size={16} />
+        ) : (
+          <SfIcon name="speaker.slash.fill" size={16} />
+        )}
       </button>
 
       {/* Close Button removed per design */}
