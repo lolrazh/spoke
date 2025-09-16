@@ -261,25 +261,32 @@ const Onboarding: React.FC = () => {
     })();
   }, [currentStep]);
 
-  const toggleMusic = async () => {
+  const toggleMusic = () => {
     const audio = onboardingAudioRef.current;
     if (!audio) return;
-    if (musicEnabled) {
-      try {
-        await fadeVolumeTo(0, 600);
-        audio.pause();
-      } catch {}
-      setMusicEnabled(false);
+    const nextEnabled = !musicEnabled;
+    // Flip UI state immediately for reactive icon change
+    setMusicEnabled(nextEnabled);
+    if (nextEnabled) {
+      // Enable: start playback silently, then fade up asynchronously
+      (async () => {
+        try {
+          audio.volume = 0;
+          await audio.play();
+          await fadeVolumeTo(targetMusicVolumeRef.current, 600);
+        } catch {
+          // Revert UI if play fails
+          setMusicEnabled(false);
+        }
+      })();
     } else {
-      try {
-        audio.volume = 0;
-        await audio.play();
-        setMusicEnabled(true);
-        await fadeVolumeTo(targetMusicVolumeRef.current, 600);
-      } catch {
-        // Keep disabled on failure
-        setMusicEnabled(false);
-      }
+      // Disable: fade down asynchronously, then pause
+      (async () => {
+        try {
+          await fadeVolumeTo(0, 600);
+        } catch {}
+        try { audio.pause(); } catch {}
+      })();
     }
   };
 
@@ -1083,7 +1090,7 @@ const Onboarding: React.FC = () => {
         {renderIntroOrReplay()}
         {/* Speaker toggle - top-right, ghost style matching chevron */}
         <button
-          className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
+          className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
           onClick={toggleMusic}
           aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
           title={musicEnabled ? "Mute music" : "Unmute music"}
@@ -1183,7 +1190,7 @@ const Onboarding: React.FC = () => {
       {/* Speaker toggle - show before mic-check only */}
       {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
         <button
-          className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
+          className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
           onClick={toggleMusic}
           aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
           title={musicEnabled ? "Mute music" : "Unmute music"}

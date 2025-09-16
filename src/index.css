@@ -76,6 +76,11 @@
     z-index: 1;
   }
 
+  /* Controls that must appear above the intro overlay (e.g., speaker toggle) */
+  .sf-intro-controls {
+    z-index: 10001; /* one above .sf-intro-overlay */
+  }
+
   .sf-grid-background {
     position: absolute;
     inset: 0;
