@@ -10,8 +10,8 @@ const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);
 
 // Increase default volumes for clearer audible feedback
-audioOn.volume = 0.6;
-audioOff.volume = 0.5;
+audioOn.volume = 0.8;
+audioOff.volume = 0.7;
 
 // prep — reduce latency between .play() call and first sample
 [audioOn, audioOff].forEach((a) => {

@@ -1186,12 +1186,17 @@ const createWindow = () => {
       MAIN_WINDOW_VITE_DEV_SERVER_URL &&
       process.env.SF_DEVTOOLS === "1"
     ) {
-      try {
-        mainWindow.webContents.openDevTools({ mode: "detach" });
-      } catch {}
-      console.log(
-        "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
-      );
+      // Only auto-open DevTools for the pill window when it's actually the main app target
+      if (pttTarget === "main") {
+        try {
+          mainWindow.webContents.openDevTools({ mode: "detach" });
+        } catch {}
+        console.log(
+          "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
+        );
+      } else {
+        console.log("DevTools suppressed for pill during onboarding prepare");
+      }
     } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       console.log(
         "DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)",
@@ -1310,6 +1315,10 @@ const createWindow = () => {
 
   // Only top-align and show if the pill (main) window is the sender
   if (senderWin === mainWindow) {
+    // During onboarding prepare, avoid auto-show to prevent flicker
+    if (pttTarget !== "main") {
+      return;
+    }
     if (!mainWindow || mainWindow.isDestroyed()) return;
     try {
       // Align to current display's safe top before revealing (guard)
@@ -1350,8 +1359,8 @@ function createOnboardingWindow() {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
     frame: false,
-    transparent: true, // crucial: no opaque backing store
-    backgroundColor: "#00000000", // extra guard against fallback fill
+    transparent: false,
+    backgroundColor: "#0f0f0f",
     hasShadow: false,
     resizable: false,
     alwaysOnTop: false,
@@ -1371,15 +1380,10 @@ function createOnboardingWindow() {
     paintWhenInitiallyHidden: true,
   };
 
-  // Add native macOS vibrancy for true glassmorphic effect
+  // macOS-specific window tweaks (no vibrancy)
   if (process.platform === "darwin") {
-    onboardingWindowOptions.vibrancy = "hud"; // 'sidebar' or 'fullscreen-ui' also work
-    onboardingWindowOptions.visualEffectState = "active"; // window remains vibrant when focused
-    onboardingWindowOptions.titleBarStyle = "hiddenInset"; // ① keep it frameless — we still get traffic-lights
-    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 }; // ③ nudge them if your design needs it (same numbers Raycast uses)
-  } else {
-    // Fallback for non-macOS platforms
-    onboardingWindowOptions.backgroundColor = "#0f0f0f";
+    onboardingWindowOptions.titleBarStyle = "hiddenInset";
+    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 };
   }
 
   console.log(
@@ -1465,64 +1469,20 @@ function createOnboardingWindow() {
     console.log("[Onboarding] DOM ready");
   });
 
-  // FIX 4: Use did-finish-load to ensure all resources are ready
+  // Wait for all resources to be ready; renderer will request showing when visually ready
   onboardingWindow.webContents.once("did-finish-load", () => {
     console.log("[Onboarding] Content finished loading");
-
-    // FIX 8: Force hardware acceleration settings for better vibrancy
-    if (process.platform === "darwin") {
-      onboardingWindow.webContents
-        .executeJavaScript(
-          `
-        // Ensure proper rendering context
-        document.documentElement.style.transform = 'translateZ(0)';
-        console.log('[Vibrancy] Hardware acceleration enabled for rendering');
-      `,
-        )
-        .catch((err) => {
-          console.warn("[Vibrancy] Could not set hardware acceleration:", err);
-        });
-    }
-
-    // FIX 5: Add small delay to ensure vibrancy effect is ready
-    setTimeout(() => {
-      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-        console.log("[Onboarding] Showing window after vibrancy delay");
-        onboardingWindow.show();
-
-        // FIX 6: Force invalidate shadow to clear any artifacts
-        if (process.platform === "darwin") {
-          onboardingWindow.invalidateShadow();
-        }
-      }
-    }, 100); // Small delay to let vibrancy settle
   });
 
-  // FIX 7: Backup using ready-to-show as fallback
+  // Keep DevTools behavior; showing is coordinated by renderer-ready
   onboardingWindow.once("ready-to-show", () => {
     console.log("[Onboarding] Ready to show event fired");
-    // Auto-open DevTools in packaged staging builds for onboarding UI (compile-time flag)
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         onboardingWindow.webContents.openDevTools({ mode: "detach" });
       } catch {}
       console.log("[Onboarding] DevTools opened (staging)");
     }
-    // Only show if not already shown by did-finish-load
-    setTimeout(() => {
-      if (
-        onboardingWindow &&
-        !onboardingWindow.isDestroyed() &&
-        !onboardingWindow.isVisible()
-      ) {
-        console.log("[Onboarding] Showing window via ready-to-show fallback");
-        onboardingWindow.show();
-
-        if (process.platform === "darwin") {
-          onboardingWindow.invalidateShadow();
-        }
-      }
-    }, 150);
   });
 
   onboardingWindow.on("closed", () => {
@@ -2179,6 +2139,7 @@ app.whenReady().then(async () => {
       // Start continuous follow once window exists
       startFollowCursor();
       // Ensure pill is hidden until the test step asks to show it
+      pttTarget = "onboarding";
       if (mainWindow && !mainWindow.isDestroyed()) {
         const currentBounds = mainWindow.getBounds();
         const display = screen.getDisplayMatching(currentBounds);
@@ -2306,11 +2267,110 @@ app.whenReady().then(async () => {
 
   // Allow other windows (onboarding) to request the pill to expand without directly moving the window
   ipcMain.handle("pill:expand", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      if (!mainWindow) return { ok: false };
+
+      // Bring pill to visible top-aligned position and reveal
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
+      const needMove = current.y !== targetY;
+      if (needMove) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      // Only run fade-in if currently hidden to avoid flicker
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
+
+      // Ask renderer to expand the pill UI
       mainWindow.webContents.send("expand-pill");
       return { ok: true };
+    } catch (e) {
+      console.warn("[pill:expand] Failed to expand pill:", e);
+      return { ok: false };
     }
-    return { ok: false };
+  });
+
+  // Reveal the pill without expanding (used by onboarding test steps)
+  ipcMain.handle("pill:reveal", () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      if (!mainWindow) return { ok: false };
+
+      // During onboarding, ensure pill stays hidden and below the top edge
+      if (pttTarget === "onboarding") {
+        const current = mainWindow.getBounds();
+        const display = screen.getDisplayMatching(current);
+        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
+        if (current.y !== hideY) {
+          mainWindow.setBounds(
+            { x: current.x, y: hideY, width: current.width, height: current.height },
+            false,
+          );
+          if (process.platform === "darwin") mainWindow.invalidateShadow();
+        }
+        // Do not show the window while onboarding owns the flow
+        return { ok: true };
+      }
+
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
+      const needMove = current.y !== targetY;
+      if (needMove) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
+      return { ok: true };
+    } catch (e) {
+      console.warn("[pill:reveal] Failed to reveal pill:", e);
+      return { ok: false };
+    }
+  });
+
+  // Reveal pill specifically for onboarding test steps (compact, no expansion)
+  ipcMain.handle("pill:reveal-for-test", () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      if (!mainWindow) return { ok: false };
+
+      // Allow reveal only during onboarding test steps; keep compact and at visible Y
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
+      if (current.y !== targetY) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
+      return { ok: true };
+    } catch (e) {
+      console.warn("[pill:reveal-for-test] Failed:", e);
+      return { ok: false };
+    }
   });
 
   // Handle pill context menu

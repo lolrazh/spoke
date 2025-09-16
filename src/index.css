@@ -27,6 +27,148 @@
 @tailwind utilities;
 
 @layer components {
+  /* Intro overlay */
+  .sf-intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: hsl(var(--background, 0 0% 3.9%));
+    color: rgba(255, 255, 255, 0.92);
+    overflow: hidden;
+  }
+
+  .sf-intro-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-color: hsl(var(--background, 0 0% 3.9%));
+    /* Square dotted grid: single layer, no diagonal offset */
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-position: 0 0;
+    background-size: 24px 24px;
+    /* Default: no hole to avoid early bald patch before logo appears */
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  /* Enable soft hole only after logo appears to avoid early flash */
+  .sf-intro-grid.hole-active {
+    -webkit-mask-image: radial-gradient(
+      50% 40% at 50% 42%,
+      transparent 0%,
+      transparent 30%,
+      rgba(255,255,255,0.85) 55%,
+      rgba(255,255,255,1) 70%
+    );
+    mask-image: radial-gradient(
+      50% 40% at 50% 42%,
+      transparent 0%,
+      transparent 30%,
+      rgba(255,255,255,0.85) 55%,
+      rgba(255,255,255,1) 70%
+    );
+  }
+
+  .sf-intro-particles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Controls that must appear above the intro overlay (e.g., speaker toggle) */
+  .sf-intro-controls {
+    z-index: 10001; /* one above .sf-intro-overlay */
+  }
+
+  .sf-grid-background {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-color: hsl(var(--background, 0 0% 3.9%));
+    /* Subtle square dotted grid */
+    background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-position: 0 0;
+    background-size: 24px 24px;
+    z-index: 0;
+  }
+
+  .sf-intro-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -52%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+
+  .sf-intro-logo {
+    width: 196px;
+    height: auto;
+    image-rendering: -webkit-optimize-contrast;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
+    user-select: none;
+  }
+
+  .sf-intro-tagline {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sf-intro-heading {
+    font-family: "DM Serif Display", Georgia, serif;
+    font-size: clamp(20px, 4.8vw, 40px);
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .sf-intro-sub {
+    font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .sf-intro-cta {
+    margin-top: 6px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.92);
+    border: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(12px);
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .sf-intro-cta:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.18);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+  }
+  .sf-intro-cta:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.2);
+    outline-offset: 2px;
+  }
+
+  .sf-intro-skip {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    font-size: 12px;
+    backdrop-filter: blur(8px);
+  }
+
   /* The main container for the app, which also acts as the hover hot-zone */
   .app-container {
     position: fixed;
@@ -112,8 +254,8 @@
   .pill-collapse-btn {
     background: transparent;
     border: none;
-    width: 40px; /* preserve hit target without a visible shape */
-    height: 28px;
+    width: 44px; /* preserve hit target without a visible shape */
+    height: 36px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -129,6 +271,8 @@
     outline: 2px solid rgba(255, 255, 255, 0.18);
     outline-offset: 2px;
   }
+
+  /* (removed) old mute slash overlay; now using custom SfIcon path */
 
   /* Resting indicator - invisible by default, just for spacing */
   .resting-indicator {
@@ -409,7 +553,7 @@ body {
   position: relative;
   /* Initial opacity to prevent flash of content */
   opacity: 0;
-  animation: fadeInOnboarding 0.3s ease-out 0.2s forwards;
+  animation: fadeInOnboarding 260ms var(--ease-emphasized) 60ms forwards;
 }
 
 /* Prevent default focus outline/ring on the whole vibrancy window */
@@ -423,7 +567,7 @@ body {
 @keyframes fadeInOnboarding {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
@@ -449,7 +593,7 @@ body {
   position: absolute;
   top: 0;
   left: 80px; /* Leave first 80px alone for native traffic lights (3 buttons × 12px + 6px gutter on each side) */
-  right: 0;
+  right: 80px; /* Leave last 80px alone for top-right controls (speaker, etc.) */
   height: 32px;
   z-index: 1000;
 }
@@ -510,7 +654,8 @@ body {
     --text-primary: #ffffff;
     --text-secondary: #c0c0c0;
     /* Opaque surface tokens for solid UIs (match pill) */
-    --surface-solid: rgb(20, 20, 20);
+    /* Darken solid surfaces to match intro (≈#0A0A0A) */
+    --surface-solid: rgb(10, 10, 10);
 
     /* Typography tokens - match website scale */
     --font-family-body:
@@ -532,7 +677,7 @@ body {
     --spacing-xl: 2rem; /* 32px */
 
     /* Surface and effect tokens */
-    --surface-base-rgb: 15, 15, 15;
+    --surface-base-rgb: 10, 10, 10;
     --surface-alpha-xxs: 0.2; /* very light */
     --surface-alpha-xs: 0.25; /* light */
     --surface-alpha-sm: 0.3; /* subtle */
@@ -671,14 +816,16 @@ body {
   }
 
   .onboarding-cta {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg);
-    color: rgba(255, 255, 255, 0.92);
+    background-color: rgba(var(--surface-base-rgb), 0.6);
+    border: 1px solid var(--stroke-fg-strong);
+    color: rgba(255, 255, 255, 0.96);
+    position: relative;
+    isolation: isolate; /* ensure backdrop filters underneath don't bleed through */
   }
   .onboarding-cta:hover {
-    background-color: rgba(var(--surface-base-rgb), 0.5);
-    border-color: var(--stroke-fg-strong);
-    color: rgba(255, 255, 255, 0.98);
+    background-color: rgba(var(--surface-base-rgb), 0.7);
+    border-color: var(--stroke-fg-xstrong);
+    color: rgba(255, 255, 255, 1);
   }
 
   /* Unified heading/subheading spacing */

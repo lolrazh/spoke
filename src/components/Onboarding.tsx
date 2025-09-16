@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
+import IntroExperience from "./intro/IntroExperience";
+import { ParticlesCanvas } from "./shared/ParticlesCanvas";
+import { GridBackground } from "./shared/GridBackground";
 import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
@@ -24,6 +27,10 @@ import {
   ensureProfileRow,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
+// eslint-disable-next-line import/no-unresolved
+import onboardingMusicUrl from "/assets/onboarding-music.mp3?url";
+// eslint-disable-next-line import/no-unresolved
+import transparentLogoUrl from "/assets/transparent-logo-w-text.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -71,7 +78,10 @@ type OnboardingStep =
   | "complete";
 
 const Onboarding: React.FC = () => {
+  const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
+  const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
+  const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -120,6 +130,12 @@ const Onboarding: React.FC = () => {
   ]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
+  // Background music during onboarding
+  const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
+  const targetMusicVolumeRef = useRef<number>(0.28);
+  const fadeRafRef = useRef<number | null>(null);
+
   // Record onboarding visibility for auth intent correlation
   useEffect(() => {
     try { markOnboardingEvent(); } catch {}
@@ -127,6 +143,64 @@ const Onboarding: React.FC = () => {
       try { markOnboardingEvent(); } catch {}
     };
   }, []);
+
+  // Reusable volume fade helper
+  const fadeVolumeTo = (to: number, durationMs = 600) =>
+    new Promise<void>((resolve) => {
+      const audio = onboardingAudioRef.current;
+      if (!audio || durationMs <= 0) {
+        if (audio) audio.volume = Math.max(0, Math.min(1, to));
+        resolve();
+        return;
+      }
+      if (fadeRafRef.current) {
+        cancelAnimationFrame(fadeRafRef.current);
+        fadeRafRef.current = null;
+      }
+      const from = audio.volume;
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / durationMs);
+        const v = from + (to - from) * t;
+        audio.volume = Math.max(0, Math.min(1, v));
+        if (t < 1) {
+          fadeRafRef.current = requestAnimationFrame(step);
+        } else {
+          if (fadeRafRef.current) {
+            cancelAnimationFrame(fadeRafRef.current);
+            fadeRafRef.current = null;
+          }
+          resolve();
+        }
+      };
+      fadeRafRef.current = requestAnimationFrame(step);
+    });
+  // Dismiss intro without persisting any flag so it always shows next run
+  const handleIntroFinish = () => {
+    setShowIntro(false);
+  };
+
+  // Ensure we reset the controls ready flag when replaying the intro
+  useEffect(() => {
+    if (showIntro) setIntroControlsReady(false);
+  }, [showIntro]);
+
+  // Helper to render intro experience or replay button (for intro-only mode)
+  const renderIntroOrReplay = () => {
+    if (showIntro) {
+      return (
+        <IntroExperience
+          logoSrc={transparentLogoUrl}
+          onFinish={handleIntroFinish}
+        />
+      );
+    }
+    return (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>Replay intro</button>
+      </div>
+    );
+  };
   // Sample prompts for tests
   const sampleHoldText =
     "I wanna fix app.py and test.py. Add at symbols before the file names.";
@@ -149,6 +223,152 @@ const Onboarding: React.FC = () => {
       cleanupReady && cleanupReady();
     };
   }, []);
+
+  // Setup onboarding background music (autoplay + loop)
+  useEffect(() => {
+    const audio = new Audio(onboardingMusicUrl);
+    onboardingAudioRef.current = audio;
+    audio.loop = true;
+    audio.volume = targetMusicVolumeRef.current; // subtle by default
+
+    const tryPlay = async () => {
+      try {
+        await audio.play();
+        setMusicEnabled(true);
+      } catch {
+        // Autoplay might be blocked; keep disabled until user toggles
+        setMusicEnabled(false);
+      }
+    };
+
+    // Try to start immediately
+    tryPlay();
+
+    return () => {
+      try {
+        audio.pause();
+        audio.src = "";
+      } catch {}
+      onboardingAudioRef.current = null;
+    };
+  }, []);
+
+  // Fade out audio upon entering mic-check, then pause and mark disabled
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    (async () => {
+      try {
+        if (
+          onboardingAudioRef.current &&
+          !onboardingAudioRef.current.paused &&
+          onboardingAudioRef.current.volume > 0
+        ) {
+          await fadeVolumeTo(0, 800);
+          onboardingAudioRef.current.pause();
+          setMusicEnabled(false);
+        }
+      } catch {}
+    })();
+  }, [currentStep]);
+
+  const toggleMusic = () => {
+    const audio = onboardingAudioRef.current;
+    if (!audio) return;
+    const nextEnabled = !musicEnabled;
+    // Flip UI state immediately for reactive icon change
+    setMusicEnabled(nextEnabled);
+    if (nextEnabled) {
+      // Enable: start playback silently, then fade up asynchronously
+      (async () => {
+        try {
+          audio.volume = 0;
+          await audio.play();
+          await fadeVolumeTo(targetMusicVolumeRef.current, 600);
+        } catch {
+          // Revert UI if play fails
+          setMusicEnabled(false);
+        }
+      })();
+    } else {
+      // Disable: fade down asynchronously, then pause
+      (async () => {
+        try {
+          await fadeVolumeTo(0, 600);
+        } catch {}
+        try { audio.pause(); } catch {}
+      })();
+    }
+  };
+
+  // Speaker icon with fixed box and crossfade to avoid jumps
+  const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+    const prevEnabledRef = useRef<boolean>(enabled);
+    const [showSlashOverlay, setShowSlashOverlay] = useState<boolean>(false);
+    const [drawForward, setDrawForward] = useState<boolean>(false);
+
+    useEffect(() => {
+      const was = prevEnabledRef.current;
+      if (was !== enabled) {
+        // Trigger slash draw overlay on transitions
+        if (!enabled) {
+          // going from on -> off: draw in
+          setDrawForward(true);
+          setShowSlashOverlay(true);
+          const t = setTimeout(() => setShowSlashOverlay(false), 260);
+          return () => clearTimeout(t);
+        } else {
+          // off -> on: draw out
+          setDrawForward(false);
+          setShowSlashOverlay(true);
+          const t = setTimeout(() => setShowSlashOverlay(false), 220);
+          return () => clearTimeout(t);
+        }
+      }
+      prevEnabledRef.current = enabled;
+    }, [enabled]);
+
+    return (
+      <div className="relative w-7 h-7 flex items-center justify-center">
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            key={enabled ? "on" : "off"}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="absolute inset-0 flex items-center justify-center"
+          >
+            <SfIcon
+              name={enabled ? "speaker.wave.3.fill" : "speaker.slash.fill"}
+              size={22}
+            />
+          </motion.div>
+        </AnimatePresence>
+
+        {showSlashOverlay && (
+          <motion.svg
+            className="absolute inset-0"
+            width={22}
+            height={22}
+            viewBox="0 0 41.29296875 48.146484375"
+            preserveAspectRatio="xMidYMid meet"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <motion.path
+              d="M 37.060546875 4.94140625 L 3.416015625 39.359375"
+              initial={{ pathLength: drawForward ? 0 : 1, opacity: 0.9 }}
+              animate={{ pathLength: drawForward ? 1 : 0, opacity: 0.9 }}
+              transition={{ duration: drawForward ? 0.24 : 0.2, ease: "easeOut" }}
+            />
+          </motion.svg>
+        )}
+      </div>
+    );
+  };
 
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
@@ -263,6 +483,7 @@ const Onboarding: React.FC = () => {
 
   // Initial auth check and deep-link listener
   useEffect(() => {
+    if (introOnly) return; // In intro-only mode, don't drive step state or auth
     getSupabase();
     (async () => {
       const skipAuth = !!window.devFlags?.skipAuth;
@@ -329,7 +550,7 @@ const Onboarding: React.FC = () => {
     return () => {
       off && off();
     };
-  }, []);
+  }, [introOnly]);
 
   const handleGoogle = async () => {
     try {
@@ -450,7 +671,8 @@ const Onboarding: React.FC = () => {
     if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
       // Route PTT to onboarding so this step receives Fn events
       window.electron?.setPttTarget?.("onboarding");
-      window.electron?.expandPill?.(() => undefined);
+      // Reveal pill safely for test step (compact; main guarded against expansion)
+      try { (window.electron as any)?.revealPillForTest?.(); } catch {}
     }
   }, [currentStep]);
 
@@ -638,18 +860,15 @@ const Onboarding: React.FC = () => {
         await markOnboardingDone();
       } catch {}
       await window.electron?.onboardingComplete();
-      try { window.notifications?.send?.("You've been signed in."); } catch {}
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
     }
-    // Small delay for UX before closing
-    setTimeout(() => {
-      try {
-        window.electron?.closeOnboarding?.();
-      } catch (e) {
-        /* ignore */
-      }
-    }, 300);
+    // Close immediately; no extra UX delay or audio fade here
+    try {
+      window.electron?.closeOnboarding?.();
+    } catch (e) {
+      /* ignore */
+    }
   };
 
   // Step progress indicator
@@ -873,8 +1092,37 @@ const Onboarding: React.FC = () => {
     return () => cleanup && cleanup();
   }, [currentStep, trans.recording, trans.processing]);
 
+  // Intro-only rendering path: show only the cinematic and a replay control
+  if (introOnly) {
+    return (
+      <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+        {renderIntroOrReplay()}
+        {/* Speaker toggle - top-right, ghost style matching chevron */}
+        <button
+          className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
+          onClick={toggleMusic}
+          aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+          title={musicEnabled ? "Mute music" : "Unmute music"}
+        >
+          <SpeakerToggleIcon enabled={musicEnabled} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+      {/* Grid and starfield backgrounds */}
+      <GridBackground />
+      <ParticlesCanvas />
+
+      {showIntro && (
+        <IntroExperience
+          logoSrc={transparentLogoUrl}
+          onFinish={handleIntroFinish}
+          onReadyForControls={() => setIntroControlsReady(true)}
+        />
+      )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
 
       {/* Draggable Header Areas */}
@@ -949,11 +1197,33 @@ const Onboarding: React.FC = () => {
         </div>
       )}
 
+      {/* Speaker toggle - show before mic-check only */}
+      {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
+        <AnimatePresence initial={false}>
+          {(showIntro ? introControlsReady : true) && (
+            <motion.button
+              key={showIntro ? "intro-toggle" : "onboarding-toggle"}
+              className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
+              onClick={toggleMusic}
+              aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+              title={musicEnabled ? "Mute music" : "Unmute music"}
+              initial={{ opacity: 0, scale: 0.9, y: -2, filter: "blur(4px)" }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, scale: 0.95, y: -2, filter: "blur(2px)" }}
+              transition={{ duration: 0.5, ease: [0.25, 0.8, 0.25, 1] }}
+            >
+              <SpeakerToggleIcon enabled={musicEnabled} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      )}
+
       {/* Close Button removed per design */}
 
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
         <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
+          {!showIntro && (
           <AnimatePresence mode="wait">
             {/* Auth Step */}
             {currentStep === "auth" && (
@@ -1581,7 +1851,7 @@ const Onboarding: React.FC = () => {
                 <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                   You're all set
                 </h2>
-                <p className="text-sm text-subtle leading-relaxed">Your voice is now your keyboard. Use Right Option to dictate anywhere.</p>
+                <p className="text-sm text-subtle leading-relaxed">It's been a pleasure onboarding you. You can now start dictating.</p>
                 <div className="pt-2 flex justify-center">
                   <Button
                     onClick={handleComplete}
@@ -1593,6 +1863,7 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
           </AnimatePresence>
+          )}
         </div>
 
         {/* Navigation Controls (hidden on auth & complete) */}

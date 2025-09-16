@@ -20,6 +20,19 @@ contextBridge.exposeInMainWorld("devFlags", {
     process.env.SF_DEVTOOLS === "1" ||
     process.env.SF_DEVTOOLS === "true" ||
     false,
+  // Renderer-friendly mirrors for intro testing (support both VITE_* and non-VITE names)
+  introOnly:
+    process.env.VITE_INTRO_ONLY === "1" ||
+    process.env.VITE_INTRO_ONLY === "true" ||
+    process.env.INTRO_ONLY === "1" ||
+    process.env.INTRO_ONLY === "true" ||
+    false,
+  replayIntro:
+    process.env.VITE_REPLAY_INTRO === "1" ||
+    process.env.VITE_REPLAY_INTRO === "true" ||
+    process.env.REPLAY_INTRO === "1" ||
+    process.env.REPLAY_INTRO === "true" ||
+    false,
 });
 
 contextBridge.exposeInMainWorld("contextMenu", {
@@ -111,6 +124,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("expand-pill", callback);
   },
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
+  revealPill: () => ipcRenderer.invoke("pill:reveal"),
+  revealPillForTest: () => ipcRenderer.invoke("pill:reveal-for-test"),
   // Mirror pill state between onboarding and pill window
   pillMirrorStart: () => ipcRenderer.send("pill:mirror-start"),
   pillMirrorStop: () => ipcRenderer.send("pill:mirror-stop"),

@@ -267,6 +267,11 @@ const App: React.FC = () => {
               return;
             }
             if (!session?.user && !skipAuth) {
+              // Guard: avoid playing signed-out sequence on cold start (no previous user)
+              if (prevUserIdRef.current == null) {
+                prevUserIdRef.current = null;
+                return;
+              }
               (async () => {
                 try {
                   // Cancel any active or in-flight transcription when signing out
@@ -295,6 +300,8 @@ const App: React.FC = () => {
                 const { data, error } = await supabase.auth.getUser();
                 // Only treat as signed-out when there is NO error and NO user
                 if (!error && !data?.user) {
+                  // Guard: only toast sign-out on a real transition from a prior user
+                  if (prevUserIdRef.current == null) return;
                   try { latestTransRef.current?.cancel?.(); } catch {}
                   try { window.notifications?.send?.("Signed out"); } catch {}
                   setPendingHideAfterCollapse({
