@@ -243,6 +243,24 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
+  // Fade out audio upon entering mic-check, then pause and mark disabled
+  useEffect(() => {
+    if (currentStep !== "mic-check") return;
+    (async () => {
+      try {
+        if (
+          onboardingAudioRef.current &&
+          !onboardingAudioRef.current.paused &&
+          onboardingAudioRef.current.volume > 0
+        ) {
+          await fadeVolumeTo(0, 800);
+          onboardingAudioRef.current.pause();
+          setMusicEnabled(false);
+        }
+      } catch {}
+    })();
+  }, [currentStep]);
+
   const toggleMusic = async () => {
     const audio = onboardingAudioRef.current;
     if (!audio) return;
@@ -829,19 +847,12 @@ const Onboarding: React.FC = () => {
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
     }
-    // Fade music out gently before closing onboarding
+    // Close immediately; no extra UX delay or audio fade here
     try {
-      await fadeVolumeTo(0, 800);
-      onboardingAudioRef.current?.pause();
-    } catch {}
-    // Small delay for UX before closing
-    setTimeout(() => {
-      try {
-        window.electron?.closeOnboarding?.();
-      } catch (e) {
-        /* ignore */
-      }
-    }, 200);
+      window.electron?.closeOnboarding?.();
+    } catch (e) {
+      /* ignore */
+    }
   };
 
   // Step progress indicator
@@ -1169,15 +1180,17 @@ const Onboarding: React.FC = () => {
         </div>
       )}
 
-      {/* Speaker toggle - top-right, ghost style matching chevron */}
-      <button
-        className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
-        onClick={toggleMusic}
-        aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
-        title={musicEnabled ? "Mute music" : "Unmute music"}
-      >
-        <SpeakerToggleIcon enabled={musicEnabled} />
-      </button>
+      {/* Speaker toggle - show before mic-check only */}
+      {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
+        <button
+          className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
+          onClick={toggleMusic}
+          aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+          title={musicEnabled ? "Mute music" : "Unmute music"}
+        >
+          <SpeakerToggleIcon enabled={musicEnabled} />
+        </button>
+      )}
 
       {/* Close Button removed per design */}
 
