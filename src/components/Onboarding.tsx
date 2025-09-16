@@ -914,7 +914,7 @@ const Onboarding: React.FC = () => {
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {/* Grid and starfield backgrounds */}
       <GridBackground />
-      <ParticlesCanvas opacity={0.4} density={0.7} />
+      <ParticlesCanvas />
 
       {showIntro && (
         <IntroExperience

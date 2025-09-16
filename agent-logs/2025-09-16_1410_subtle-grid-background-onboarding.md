@@ -9,20 +9,21 @@ Add the subtle dotted grid background (like in the intro) to every onboarding pa
 
 ## What We Accomplished
 - ✅ **Extracted GridBackground component** - Created `src/components/shared/GridBackground.tsx` as a reusable component
-- ✅ **Added grid to onboarding** - Integrated subtle dotted grid behind all onboarding content (auth → permissions → hotkey tests → complete)
+- ✅ **Added consistent grid to onboarding** - Integrated dotted grid behind all onboarding content (auth → permissions → hotkey tests → complete)
+- ✅ **Unified starfield settings** - Same particle opacity/density across intro and onboarding for visual consistency
 - ✅ **Proper layering** - Grid positioned at z-index 0, particles at z-index 1, ensuring correct visual hierarchy
 - ✅ **Performance optimized** - Pure CSS background, no JavaScript overhead
 
 ## Technical Implementation
 - **Component:** Simple `GridBackground` component that renders a div with CSS grid background
-- **CSS:** `.sf-grid-background` with `radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)` for ultra-subtle dots
-- **Integration:** Added to onboarding container alongside `ParticlesCanvas` with proper z-index layering
+- **CSS:** `.sf-grid-background` with `radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)` for consistent dots
+- **Integration:** Added to onboarding container alongside `ParticlesCanvas` with unified default settings
 - **Background size:** 24px × 24px grid matching the intro's aesthetic
 
 ## Files Modified
 - `src/components/shared/GridBackground.tsx` - New reusable grid background component
-- `src/components/Onboarding.tsx` - Added GridBackground import and component to onboarding container
-- `src/index.css` - Added `.sf-grid-background` styles with z-index: 0 and subtle opacity
+- `src/components/Onboarding.tsx` - Added GridBackground import and component with consistent ParticlesCanvas settings
+- `src/index.css` - Added `.sf-grid-background` styles with z-index: 0 and consistent opacity
 
 ## Architecture Decisions
 - **Pure CSS approach** - No JavaScript overhead, just CSS background gradients
