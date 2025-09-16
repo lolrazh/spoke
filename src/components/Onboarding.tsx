@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import IntroExperience from "./intro/IntroExperience";
+import { ParticlesCanvas } from "./shared/ParticlesCanvas";
+import { GridBackground } from "./shared/GridBackground";
 import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
@@ -910,6 +912,10 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+      {/* Grid and starfield backgrounds */}
+      <GridBackground />
+      <ParticlesCanvas opacity={0.4} density={0.7} />
+
       {showIntro && (
         <IntroExperience
           logoSrc="/assets/transparent-logo-w-text.png"

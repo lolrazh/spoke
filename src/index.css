@@ -73,6 +73,19 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
+    z-index: 1;
+  }
+
+  .sf-grid-background {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-color: hsl(var(--background, 0 0% 3.9%));
+    /* Subtle square dotted grid */
+    background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-position: 0 0;
+    background-size: 24px 24px;
+    z-index: 0;
   }
 
   .sf-intro-center {
