@@ -1186,12 +1186,17 @@ const createWindow = () => {
       MAIN_WINDOW_VITE_DEV_SERVER_URL &&
       process.env.SF_DEVTOOLS === "1"
     ) {
-      try {
-        mainWindow.webContents.openDevTools({ mode: "detach" });
-      } catch {}
-      console.log(
-        "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
-      );
+      // Only auto-open DevTools for the pill window when it's actually the main app target
+      if (pttTarget === "main") {
+        try {
+          mainWindow.webContents.openDevTools({ mode: "detach" });
+        } catch {}
+        console.log(
+          "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
+        );
+      } else {
+        console.log("DevTools suppressed for pill during onboarding prepare");
+      }
     } else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       console.log(
         "DevTools suppressed for transparent window (set SF_DEVTOOLS=1 to enable)",
@@ -1310,6 +1315,10 @@ const createWindow = () => {
 
   // Only top-align and show if the pill (main) window is the sender
   if (senderWin === mainWindow) {
+    // During onboarding prepare, avoid auto-show to prevent flicker
+    if (pttTarget !== "main") {
+      return;
+    }
     if (!mainWindow || mainWindow.isDestroyed()) return;
     try {
       // Align to current display's safe top before revealing (guard)
@@ -2306,11 +2315,30 @@ app.whenReady().then(async () => {
 
   // Allow other windows (onboarding) to request the pill to expand without directly moving the window
   ipcMain.handle("pill:expand", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      if (!mainWindow) return { ok: false };
+
+      // Bring pill to visible top-aligned position and reveal
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
+      mainWindow.setBounds(
+        { x: current.x, y: targetY, width: current.width, height: current.height },
+        false,
+      );
+      if (process.platform === "darwin") mainWindow.invalidateShadow();
+      smoothShow(mainWindow);
+
+      // Ask renderer to expand the pill UI
       mainWindow.webContents.send("expand-pill");
       return { ok: true };
+    } catch (e) {
+      console.warn("[pill:expand] Failed to expand pill:", e);
+      return { ok: false };
     }
-    return { ok: false };
   });
 
   // Handle pill context menu

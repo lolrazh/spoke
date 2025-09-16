@@ -45,6 +45,7 @@ declare global {
       setFocusable: (focusable: boolean) => void;
       focusWindow: () => void;
       expandPill: (callback: () => void) => void;
+      requestExpandPill: () => Promise<{ ok: boolean }>;
       // Pill mirror controls/listeners used by onboarding test steps
       pillMirrorStart: () => void;
       pillMirrorStop: () => void;
