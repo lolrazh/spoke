@@ -228,6 +228,29 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  // Speaker icon with fixed box and crossfade to avoid jumps
+  const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+    return (
+      <div className="relative w-6 h-6 flex items-center justify-center">
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            key={enabled ? "on" : "off"}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="absolute inset-0 flex items-center justify-center"
+          >
+            <SfIcon
+              name={enabled ? "speaker.wave.3.fill" : "speaker.slash.fill"}
+              size={20}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    );
+  };
+
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
 
@@ -965,11 +988,7 @@ const Onboarding: React.FC = () => {
           aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
           title={musicEnabled ? "Mute music" : "Unmute music"}
         >
-          {musicEnabled ? (
-            <SfIcon name="speaker.wave.3.fill" size={16} />
-          ) : (
-            <SfIcon name="speaker.slash.fill" size={16} />
-          )}
+          <SpeakerToggleIcon enabled={musicEnabled} />
         </button>
       </div>
     );
@@ -1068,11 +1087,7 @@ const Onboarding: React.FC = () => {
         aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
         title={musicEnabled ? "Mute music" : "Unmute music"}
       >
-        {musicEnabled ? (
-          <SfIcon name="speaker.wave.3.fill" size={16} />
-        ) : (
-          <SfIcon name="speaker.slash.fill" size={16} />
-        )}
+        <SpeakerToggleIcon enabled={musicEnabled} />
       </button>
 
       {/* Close Button removed per design */}
