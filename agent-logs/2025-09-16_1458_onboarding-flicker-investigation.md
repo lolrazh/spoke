@@ -12,6 +12,9 @@ Investigate and eliminate a consistent visual flicker that appears shortly after
 - ✅ **Scoped window show pipeline** – Confirmed renderer-ready fade-in remains consistent and not the direct cause.
 - ⚠️ **Attempted mitigation: neutralized intro grid mask** – Disabled `.sf-intro-grid.hole-active` mask to avoid GPU layer reshuffle ~1.2s after open. Flicker persists.
 - ⚠️ **Attempted mitigation: delayed particles** – Deferred `ParticlesCanvas` mount by ~2s in `Onboarding.tsx` and `IntroExperience.tsx` to reduce early compositing stress. Flicker persists.
+- ⚠️ **Diagnostic: compositor pre‑warm** – Injected hidden blur pre‑warm; later widened/opacity‑tweaked to ensure it exercises the pipeline. No change.
+- ⚠️ **Diagnostic: disable onboarding backdrop‑filters** – Scoped override removing `backdrop-filter` within onboarding. No change.
+- ⚠️ **Diagnostic: freeze animations/transitions** – Temporarily disabled transitions/animations in onboarding during first 4s to see if flicker correlates with CSS motion. Pending verification.
 
 ## Technical Implementation
 Focused on minimizing early compositor churn while keeping UX intact:
@@ -38,8 +41,9 @@ Focused on minimizing early compositor churn while keeping UX intact:
 ## Ready for Next Session
 - ✅ Repro remains reliable; edits are small and reversible.
 - 🔧 Next steps to test quickly:
-  - Pre-warm compositing with an offscreen element using `backdrop-filter: blur(1px)` (opacity 0, pointer-events none) to settle layers before visible UI appears.
-  - Temporarily remove or reduce `backdrop-filter` from the largest onboarding containers (e.g., `.onboarding-card`, button containers) and see if the flicker disappears.
+  - Capture a Performance trace with “Screenshots” and “Layers” in DevTools at launch; mark the flicker moment to inspect layer tree diff.
+  - Log every window `setBounds`/`invalidateShadow` call in `src/main.ts` during onboarding and guard against redundant Y moves at T+1–4s.
+  - Disable `mix-blend-mode: overlay` on the grid temporarily; A/B if it’s causing a compositor re-path when first visible.
   - If confirmed, reintroduce blur selectively (localized overlays only) or replace with tokenized gradients/solid surfaces.
   - Capture a short screen recording with devtools performance panel to confirm a compositing change around the flicker timestamp.
 
