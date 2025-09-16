@@ -47,7 +47,79 @@ Focused on minimizing early compositor churn while keeping UX intact:
   - If confirmed, reintroduce blur selectively (localized overlays only) or replace with tokenized gradients/solid surfaces.
   - Capture a short screen recording with devtools performance panel to confirm a compositing change around the flicker timestamp.
 
+---
+
+# Continuation — Deeper Analysis and Proposed Surgical Fixes
+
+**Date:** 2025-09-16 (later)
+**Agent:** GPT-5 (Cursor)
+**Status:** 🔄 In Progress
+
+## What Happens in the First ~2 Seconds
+- Renderer waits for fonts, then sends `renderer-ready`; main reveals onboarding via `smoothShow` (opacity 0→1 over ~140ms); CSS runs `fadeInOnboarding` on `.onboarding-window`.
+- Immediately on mount, onboarding runs permission checks (helper spawn), adds resize listeners, and applies a `translateZ(0)` nudge to `.onboarding-window`.
+- Several components still use `backdrop-filter` (cards/rows/buttons), though many surfaces are now solid tokens.
+
+## Updated Hypothesis (High Confidence)
+- The single, reliable flash at ~1–2s is a compositor re-path on macOS/Chromium triggered by:
+  1) Container-level composition hints on a large element: `.onboarding-window { will-change: transform; contain: layout style paint; }` plus initial animation.
+  2) First engagement of filtered surfaces (`backdrop-filter`) on non‑trivial regions after initial paint.
+
+This aligns with the timing (no main-process timers in that window; prior attempts removing masks/particles didn’t remove the flash).
+
+## Minimal, Reversible Fix Plan
+1) Remove container isolation/promotion from `.onboarding-window` (drop `contain` and `will-change`).
+2) Temporarily disable backdrop filters for the first 3s after mount via a top-level `.onboarding-no-filters` class applied on `<body>` (or onboarding root), then remove it; scope overrides to `.onboarding-card`, `.onboarding-row`, `.btn-secondary`, `.onboarding-close`, and any remaining filtered controls.
+3) If (2) proves causal, keep blur only on small, localized overlays (dropdowns/popovers) which already use isolated pseudo-elements.
+
+## Files to Change
+- `src/index.css`: Remove `contain`/`will-change` on `.onboarding-window`; add `.onboarding-no-filters` overrides that set `backdrop-filter: none !important; -webkit-backdrop-filter: none !important;` for onboarding surfaces.
+- `src/components/Onboarding.tsx`: On mount, add `.onboarding-no-filters` to `document.body` (or root) and remove it after 3000 ms. No behavioral changes otherwise.
+
+## Expected Outcome
+- The one-time compositor flip should be eliminated (or substantially reduced). If only (1) is applied and flicker disappears, we can skip (2). If needed, (2) is a guarded, first‑seconds mitigation and keeps permanent UI unchanged.
+
+## Verification
+- A/B with and without (1); if needed, A/B (2) at 3s window. Capture a DevTools performance trace (Screenshots + Layers) to confirm layer tree stability around T+1–2s.
+
+## Rollback Plan
+- Both changes are scoped and reversible; toggling the CSS and the 3s class removal returns to prior behavior instantly.
+
 ## Context for Future
 Resolving the flicker will harden the onboarding experience across branches and releases. The investigation points to compositor behavior under certain CSS effects; the next set of tests should decisively confirm whether `backdrop-filter` is the remaining trigger so we can implement a minimal, design-aligned fix.
 
 
+
+---
+
+# Continuation — Flicker Persists; Next Isolation Steps
+
+**Date:** 2025-09-16 (later)
+**Agent:** GPT-5 (Cursor)
+**Status:** 🔄 In Progress
+
+## Result
+- Flicker still occurs after:
+  - Removing container `contain`/`will-change` from `.onboarding-window`.
+  - Applying a 3s `.onboarding-no-filters` guard to disable `backdrop-filter` on onboarding surfaces.
+
+## Interpretation
+- The compositor re-path is likely being provoked by another first-seconds event unrelated to those two changes. Two candidates remain:
+  1) The resize listeners toggling `.onboarding-window.resizing` (which changes `backdrop-filter` and transitions) around early layout passes.
+  2) The explicit `translateZ(0)`/promotion applied to `.onboarding-window` via JS (late promotion after initial animations).
+
+## Next Fixes (Surgical)
+1) Remove the onboarding resize listeners and `.resizing` toggles entirely.
+2) Remove the JS `translateZ(0)` nudge applied to `.onboarding-window` after DOMContentLoaded.
+
+## Files Modified Next
+- `src/components/Onboarding.tsx`:
+  - Delete the resize handlers and event listeners that add/remove the `.resizing` class.
+  - Remove the `onboardingWindow.style.transform = "translateZ(0)";` line in the DOM ready handler.
+
+## Expected Outcome
+- Eliminates any early-style toggles and late container promotions that could retrigger a compositor re-path at ~1–2s.
+
+## If Flicker Still Persists
+- Capture DevTools Performance trace with Layers at the flicker timestamp to identify the exact layer tree change.
+- As a fallback, convert remaining blur usage in onboarding from direct `backdrop-filter` to localized isolated pseudo-elements (like `dropdown-glass::before` pattern) or swap to tokenized opaque surfaces.
