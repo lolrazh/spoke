@@ -109,3 +109,34 @@ Refine the first-run cinematic to feel premium and intentional: continuous starf
 
 ## Context for Future
 This polish brings the cinematic in line with the product’s design language and sets a stable baseline for adding sonic branding, parallax, and accessible variants without visual regressions.
+
+---
+
+# Continuation — Intro→Onboarding Transition Parity and Exit Sequencing
+
+**Date:** 2025-09-16  
+**Agent:** GPT-5 (Cursor)  
+**Status:** ✅ Completed
+
+## User Intention
+Make the transition from the cinematic intro to the onboarding page feel identical to other page transitions (content rises and fades out while the incoming content moves up from below), and ensure edits actually take effect.
+
+## Root Cause
+- The intro overlay invoked its `onFinish` callback immediately on CTA click while also starting a Framer Motion exit. The parent unmounted the intro overlay instantly, preventing the exit animation from playing. This made timing and easing tweaks appear to “do nothing.”
+- The overlay was using a simple fade without the standard y-offset spring used elsewhere, so even when it did animate it didn’t match the onboarding step transitions.
+
+## What We Changed
+- Deferred parent notification until after the exit completes by moving the callback to `AnimatePresence` `onExitComplete`.
+- Matched the onboarding page motion: `initial {opacity:0, y:16} → animate {opacity:1, y:0} → exit {opacity:0, y:-16}` with the same spring `{stiffness:340, damping:28, mass:0.45}`.
+
+## Files Modified
+- `src/components/intro/IntroExperience.tsx`
+  - Wrap overlay in `AnimatePresence onExitComplete={onFinish}` and remove direct `onFinish()` from the click handler.
+  - Apply page-consistent motion: `initial/animate/exit` with shared spring.
+
+## Verification
+- Onboarding container still fades/scales in via CSS `fadeInOnboarding` while the intro exits using the page spring. The handoff now mirrors other step transitions and feels consistent.
+- ESLint reports no issues.
+
+## Follow-ups (Optional)
+- Add a slight overlap crossfade (≈120 ms) by rendering onboarding underneath the intro and staggering `mode="wait"`/callbacks for even more continuity.
