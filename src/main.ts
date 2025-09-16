@@ -1359,8 +1359,8 @@ function createOnboardingWindow() {
     width: ONBOARDING_WIDTH,
     height: ONBOARDING_HEIGHT,
     frame: false,
-    transparent: true, // crucial: no opaque backing store
-    backgroundColor: "#00000000", // extra guard against fallback fill
+    transparent: false,
+    backgroundColor: "#0f0f0f",
     hasShadow: false,
     resizable: false,
     alwaysOnTop: false,
@@ -1380,15 +1380,10 @@ function createOnboardingWindow() {
     paintWhenInitiallyHidden: true,
   };
 
-  // Add native macOS vibrancy for true glassmorphic effect
+  // macOS-specific window tweaks (no vibrancy)
   if (process.platform === "darwin") {
-    onboardingWindowOptions.vibrancy = "hud"; // 'sidebar' or 'fullscreen-ui' also work
-    onboardingWindowOptions.visualEffectState = "active"; // window remains vibrant when focused
-    onboardingWindowOptions.titleBarStyle = "hiddenInset"; // ① keep it frameless — we still get traffic-lights
-    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 }; // ③ nudge them if your design needs it (same numbers Raycast uses)
-  } else {
-    // Fallback for non-macOS platforms
-    onboardingWindowOptions.backgroundColor = "#0f0f0f";
+    onboardingWindowOptions.titleBarStyle = "hiddenInset";
+    onboardingWindowOptions.trafficLightPosition = { x: 14, y: 14 };
   }
 
   console.log(
@@ -1474,64 +1469,20 @@ function createOnboardingWindow() {
     console.log("[Onboarding] DOM ready");
   });
 
-  // FIX 4: Use did-finish-load to ensure all resources are ready
+  // Wait for all resources to be ready; renderer will request showing when visually ready
   onboardingWindow.webContents.once("did-finish-load", () => {
     console.log("[Onboarding] Content finished loading");
-
-    // FIX 8: Force hardware acceleration settings for better vibrancy
-    if (process.platform === "darwin") {
-      onboardingWindow.webContents
-        .executeJavaScript(
-          `
-        // Ensure proper rendering context
-        document.documentElement.style.transform = 'translateZ(0)';
-        console.log('[Vibrancy] Hardware acceleration enabled for rendering');
-      `,
-        )
-        .catch((err) => {
-          console.warn("[Vibrancy] Could not set hardware acceleration:", err);
-        });
-    }
-
-    // FIX 5: Add small delay to ensure vibrancy effect is ready
-    setTimeout(() => {
-      if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-        console.log("[Onboarding] Showing window after vibrancy delay");
-        onboardingWindow.show();
-
-        // FIX 6: Force invalidate shadow to clear any artifacts
-        if (process.platform === "darwin") {
-          onboardingWindow.invalidateShadow();
-        }
-      }
-    }, 100); // Small delay to let vibrancy settle
   });
 
-  // FIX 7: Backup using ready-to-show as fallback
+  // Keep DevTools behavior; showing is coordinated by renderer-ready
   onboardingWindow.once("ready-to-show", () => {
     console.log("[Onboarding] Ready to show event fired");
-    // Auto-open DevTools in packaged staging builds for onboarding UI (compile-time flag)
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         onboardingWindow.webContents.openDevTools({ mode: "detach" });
       } catch {}
       console.log("[Onboarding] DevTools opened (staging)");
     }
-    // Only show if not already shown by did-finish-load
-    setTimeout(() => {
-      if (
-        onboardingWindow &&
-        !onboardingWindow.isDestroyed() &&
-        !onboardingWindow.isVisible()
-      ) {
-        console.log("[Onboarding] Showing window via ready-to-show fallback");
-        onboardingWindow.show();
-
-        if (process.platform === "darwin") {
-          onboardingWindow.invalidateShadow();
-        }
-      }
-    }, 150);
   });
 
   onboardingWindow.on("closed", () => {
