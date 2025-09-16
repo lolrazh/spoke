@@ -475,8 +475,8 @@ const Onboarding: React.FC = () => {
     if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
       // Route PTT to onboarding so this step receives Fn events
       window.electron?.setPttTarget?.("onboarding");
-      // Request expansion via IPC so the pill window handles the expand
-      try { window.electron?.requestExpandPill?.(); } catch {}
+      // Reveal pill in compact mode (no SettingsPanel)
+      try { window.electron?.revealPill?.(); } catch {}
     }
   }, [currentStep]);
 

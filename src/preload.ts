@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("expand-pill", callback);
   },
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
+  revealPill: () => ipcRenderer.invoke("pill:reveal"),
   // Mirror pill state between onboarding and pill window
   pillMirrorStart: () => ipcRenderer.send("pill:mirror-start"),
   pillMirrorStop: () => ipcRenderer.send("pill:mirror-stop"),
