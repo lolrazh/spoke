@@ -176,11 +176,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       if (root) root.classList.remove('resizing');
     } catch {}
     setVisible(false);
-    onFinish();
   };
 
   return (
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={onFinish}>
       {visible && (
         <motion.div
           className="sf-intro-overlay"
