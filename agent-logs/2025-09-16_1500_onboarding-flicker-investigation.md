@@ -149,3 +149,27 @@ Resolving the flicker will harden the onboarding experience across branches and 
 
 ## Follow-up Bug (Tracked)
 - On the hotkey test page, the pill must appear for dictation testing. Next: allow a safe reveal only on those steps (compact mode, no expansion), while keeping the onboarding guard for all other steps.
+
+---
+
+# Continuation — Pill Reveal on Test Steps
+
+**Date:** 2025-09-16 (later)
+**Agent:** GPT-5 (Cursor)
+**Status:** ✅ Completed
+
+## User Intention
+Ensure the pill appears when users reach the onboarding dictation test pages, while keeping it hidden during the rest of onboarding.
+
+## What We Changed
+- Added `pill:reveal-for-test` IPC in `main.ts` that positions the pill at the visible Y and shows it without expanding.
+- Bridged in `preload.ts` as `revealPillForTest()` and added typings in `src/types/electron.d.ts`.
+- Updated `Onboarding.tsx` to call `revealPillForTest()` on `hotkey-test` and `hotkey-tap-test` steps (still sets `pttTarget = "onboarding"`).
+- Retained the onboarding guard in `pill:reveal` so the pill stays hidden outside of the test steps.
+
+## Verification
+- Pill remains hidden during non-test onboarding steps (no signed-out animation).
+- Pill appears compactly on both test pages for dictation trials and does not expand to Settings.
+
+## Impact
+- Restores expected test-step behavior without reintroducing the original 2.5s flicker.
