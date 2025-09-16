@@ -2344,6 +2344,35 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Reveal pill specifically for onboarding test steps (compact, no expansion)
+  ipcMain.handle("pill:reveal-for-test", () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow();
+      }
+      if (!mainWindow) return { ok: false };
+
+      // Allow reveal only during onboarding test steps; keep compact and at visible Y
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
+      if (current.y !== targetY) {
+        mainWindow.setBounds(
+          { x: current.x, y: targetY, width: current.width, height: current.height },
+          false,
+        );
+        if (process.platform === "darwin") mainWindow.invalidateShadow();
+      }
+      if (!mainWindow.isVisible()) {
+        smoothShow(mainWindow);
+      }
+      return { ok: true };
+    } catch (e) {
+      console.warn("[pill:reveal-for-test] Failed:", e);
+      return { ok: false };
+    }
+  });
+
   // Handle pill context menu
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");

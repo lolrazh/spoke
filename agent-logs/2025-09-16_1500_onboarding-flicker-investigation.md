@@ -123,3 +123,29 @@ Resolving the flicker will harden the onboarding experience across branches and 
 ## If Flicker Still Persists
 - Capture DevTools Performance trace with Layers at the flicker timestamp to identify the exact layer tree change.
 - As a fallback, convert remaining blur usage in onboarding from direct `backdrop-filter` to localized isolated pseudo-elements (like `dropdown-glass::before` pattern) or swap to tokenized opaque surfaces.
+
+---
+
+# Continuation — Root Cause Confirmed and Fix Applied
+
+**Date:** 2025-09-16 (later)
+**Agent:** GPT-5 (Cursor)
+**Status:** ✅ Resolved
+
+## Root Cause
+- Not a compositor-only issue. The pill was being shown ~2.5s into onboarding and running its “Signed out” notification. This was due to:
+  - Cold-start auth flow treating initial “no session” like a sign-out, triggering the sign-out toast and the hide/show sequence.
+  - `pill:reveal` allowed the pill to appear even while `pttTarget` was still `onboarding`.
+
+## Fixes Implemented
+- Renderer (`App.tsx`):
+  - Guard sign-out handling so it only fires when transitioning from a previous user (ignore cold start with no prior user). Same guard added to the periodic auth polling path.
+- Main (`main.ts`):
+  - In `pill:reveal`, if `pttTarget === "onboarding"`, keep the pill hidden (force Y to `ISLAND_HIDDEN_Y`) and do not show the window.
+  - In `prepare-pill`, set `pttTarget = "onboarding"` immediately so the guard is active during onboarding prep.
+
+## Result
+- The 2.5s flicker is gone; onboarding no longer shows the pill or signed‑out animation during cold start. The flow is stable and premium.
+
+## Follow-up Bug (Tracked)
+- On the hotkey test page, the pill must appear for dictation testing. Next: allow a safe reveal only on those steps (compact mode, no expansion), while keeping the onboarding guard for all other steps.
