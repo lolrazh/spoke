@@ -856,7 +856,6 @@ const Onboarding: React.FC = () => {
         await markOnboardingDone();
       } catch {}
       await window.electron?.onboardingComplete();
-      try { window.notifications?.send?.("You've been signed in."); } catch {}
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
     }
