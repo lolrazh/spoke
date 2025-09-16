@@ -51,3 +51,35 @@ The user wanted onboarding to feel premium and intentional by adding subtle back
 
 ## Context for Future
 This work improves the onboarding’s perceived quality and sets up a reusable pattern for subtle audio with robust lifecycle control. The icon pipeline and fade helper can be reused in other parts of the app for consistent, premium-feel transitions.
+
+---
+
+## Follow-up Fixes (Later on 2025-09-16)
+
+### What We Refined
+- ✅ **Instant toggle UI, async audio fade** — Icon updates immediately while audio fades in/out in the background.
+- ✅ **Intro timing polish** — Speaker toggle now appears only after the intro content finishes, with a small buffered delay.
+- ✅ **Softer entrance** — Toggle animates in with a smoother fade/scale and subtle blur for a premium feel.
+- ✅ **Hover hit-area fix** — Resolved draggable header overlap and enlarged the hit target so hover/click work across the entire button.
+
+### Technical Implementation
+- UI state flips synchronously; audio fade runs in an async IIFE (no UI delay).
+- Intro signals `onReadyForControls` at `stage >= 3` with an extra delay (`~650ms`, `120ms` when reduced motion) to trail the CTA finish.
+- Entrance animation updated to include opacity/scale and CSS filter blur over ~0.5s.
+- Drag region trimmed on the top-right (`right: 80px`) and button hit-area increased to avoid partial hover zones.
+
+**Files Modified (follow-up):**
+- `src/components/Onboarding.tsx` — Immediate `musicEnabled` flip; async fades; intro-controlled toggle reveal via `AnimatePresence`/`motion.button` with refined animation; `introControlsReady` state and reset on replay.
+- `src/components/intro/IntroExperience.tsx` — Added optional `onReadyForControls`; fire after final stage with small delay (respects reduced motion).
+- `src/index.css` — Added `.sf-intro-controls` above overlay; adjusted `.onboarding-header { right: 80px; }` to avoid drag overlap; increased `.pill-collapse-btn` size for better hit area.
+
+### Bugs & Issues Encountered
+1. **Toggle icon felt delayed** — UI waited on audio fade promise.
+   - **Fix:** Flip UI first, run fade/play/pause asynchronously.
+2. **Toggle appeared too early in intro** — Rendered immediately under overlay.
+   - **Fix:** Gate rendering on `onReadyForControls` after intro final stage with buffer.
+3. **Hover only worked on lower half** — Top draggable region intercepted pointer events.
+   - **Fix:** Reduced header drag width on the right and enlarged button hit area.
+
+### Impact
+- More responsive feel, better cinematic sequencing, and reliable interactivity (hover/click) on the speaker toggle.
