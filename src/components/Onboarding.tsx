@@ -77,6 +77,7 @@ const Onboarding: React.FC = () => {
   const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
+  const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -174,6 +175,11 @@ const Onboarding: React.FC = () => {
   const handleIntroFinish = () => {
     setShowIntro(false);
   };
+
+  // Ensure we reset the controls ready flag when replaying the intro
+  useEffect(() => {
+    if (showIntro) setIntroControlsReady(false);
+  }, [showIntro]);
 
   // Helper to render intro experience or replay button (for intro-only mode)
   const renderIntroOrReplay = () => {
@@ -1111,6 +1117,7 @@ const Onboarding: React.FC = () => {
         <IntroExperience
           logoSrc="/assets/transparent-logo-w-text.png"
           onFinish={handleIntroFinish}
+          onReadyForControls={() => setIntroControlsReady(true)}
         />
       )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
@@ -1189,14 +1196,23 @@ const Onboarding: React.FC = () => {
 
       {/* Speaker toggle - show before mic-check only */}
       {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
-        <button
-          className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
-          onClick={toggleMusic}
-          aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
-          title={musicEnabled ? "Mute music" : "Unmute music"}
-        >
-          <SpeakerToggleIcon enabled={musicEnabled} />
-        </button>
+        <AnimatePresence initial={false}>
+          {(showIntro ? introControlsReady : true) && (
+            <motion.button
+              key={showIntro ? "intro-toggle" : "onboarding-toggle"}
+              className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
+              onClick={toggleMusic}
+              aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+              title={musicEnabled ? "Mute music" : "Unmute music"}
+              initial={{ opacity: 0, scale: 0.9, y: -2, filter: "blur(4px)" }}
+              animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, scale: 0.95, y: -2, filter: "blur(2px)" }}
+              transition={{ duration: 0.5, ease: [0.25, 0.8, 0.25, 1] }}
+            >
+              <SpeakerToggleIcon enabled={musicEnabled} />
+            </motion.button>
+          )}
+        </AnimatePresence>
       )}
 
       {/* Close Button removed per design */}
