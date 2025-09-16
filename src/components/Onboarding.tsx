@@ -138,6 +138,38 @@ const Onboarding: React.FC = () => {
       try { markOnboardingEvent(); } catch {}
     };
   }, []);
+
+  // Reusable volume fade helper
+  const fadeVolumeTo = (to: number, durationMs = 600) =>
+    new Promise<void>((resolve) => {
+      const audio = onboardingAudioRef.current;
+      if (!audio || durationMs <= 0) {
+        if (audio) audio.volume = Math.max(0, Math.min(1, to));
+        resolve();
+        return;
+      }
+      if (fadeRafRef.current) {
+        cancelAnimationFrame(fadeRafRef.current);
+        fadeRafRef.current = null;
+      }
+      const from = audio.volume;
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / durationMs);
+        const v = from + (to - from) * t;
+        audio.volume = Math.max(0, Math.min(1, v));
+        if (t < 1) {
+          fadeRafRef.current = requestAnimationFrame(step);
+        } else {
+          if (fadeRafRef.current) {
+            cancelAnimationFrame(fadeRafRef.current);
+            fadeRafRef.current = null;
+          }
+          resolve();
+        }
+      };
+      fadeRafRef.current = requestAnimationFrame(step);
+    });
   // Dismiss intro without persisting any flag so it always shows next run
   const handleIntroFinish = () => {
     setShowIntro(false);
@@ -214,40 +246,9 @@ const Onboarding: React.FC = () => {
   const toggleMusic = async () => {
     const audio = onboardingAudioRef.current;
     if (!audio) return;
-    const clearFade = () => {
-      if (fadeRafRef.current) {
-        cancelAnimationFrame(fadeRafRef.current);
-        fadeRafRef.current = null;
-      }
-    };
-    const fadeTo = (to: number, durationMs = 220) =>
-      new Promise<void>((resolve) => {
-        const a = onboardingAudioRef.current;
-        if (!a || durationMs <= 0) {
-          if (a) a.volume = Math.max(0, Math.min(1, to));
-          resolve();
-          return;
-        }
-        clearFade();
-        const from = a.volume;
-        const start = performance.now();
-        const step = (now: number) => {
-          const t = Math.min(1, (now - start) / durationMs);
-          const v = from + (to - from) * t;
-          a.volume = Math.max(0, Math.min(1, v));
-          if (t < 1) {
-            fadeRafRef.current = requestAnimationFrame(step);
-          } else {
-            clearFade();
-            resolve();
-          }
-        };
-        fadeRafRef.current = requestAnimationFrame(step);
-      });
-
     if (musicEnabled) {
       try {
-        await fadeTo(0, 240);
+        await fadeVolumeTo(0, 600);
         audio.pause();
       } catch {}
       setMusicEnabled(false);
@@ -256,7 +257,7 @@ const Onboarding: React.FC = () => {
         audio.volume = 0;
         await audio.play();
         setMusicEnabled(true);
-        await fadeTo(targetMusicVolumeRef.current, 260);
+        await fadeVolumeTo(targetMusicVolumeRef.current, 600);
       } catch {
         // Keep disabled on failure
         setMusicEnabled(false);
@@ -828,6 +829,11 @@ const Onboarding: React.FC = () => {
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
     }
+    // Fade music out gently before closing onboarding
+    try {
+      await fadeVolumeTo(0, 800);
+      onboardingAudioRef.current?.pause();
+    } catch {}
     // Small delay for UX before closing
     setTimeout(() => {
       try {
@@ -835,7 +841,7 @@ const Onboarding: React.FC = () => {
       } catch (e) {
         /* ignore */
       }
-    }, 300);
+    }, 200);
   };
 
   // Step progress indicator
