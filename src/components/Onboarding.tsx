@@ -125,6 +125,10 @@ const Onboarding: React.FC = () => {
   ]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
+  // Background music during onboarding
+  const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
+
   // Record onboarding visibility for auth intent correlation
   useEffect(() => {
     try { markOnboardingEvent(); } catch {}
@@ -175,6 +179,54 @@ const Onboarding: React.FC = () => {
       cleanupReady && cleanupReady();
     };
   }, []);
+
+  // Setup onboarding background music (autoplay + loop)
+  useEffect(() => {
+    const audio = new Audio("/assets/onboarding-music.mp3");
+    onboardingAudioRef.current = audio;
+    audio.loop = true;
+    audio.volume = 0.28; // subtle by default
+
+    const tryPlay = async () => {
+      try {
+        await audio.play();
+        setMusicEnabled(true);
+      } catch {
+        // Autoplay might be blocked; keep disabled until user toggles
+        setMusicEnabled(false);
+      }
+    };
+
+    // Try to start immediately
+    tryPlay();
+
+    return () => {
+      try {
+        audio.pause();
+        audio.src = "";
+      } catch {}
+      onboardingAudioRef.current = null;
+    };
+  }, []);
+
+  const toggleMusic = async () => {
+    const audio = onboardingAudioRef.current;
+    if (!audio) return;
+    if (musicEnabled) {
+      try {
+        audio.pause();
+      } catch {}
+      setMusicEnabled(false);
+    } else {
+      try {
+        await audio.play();
+        setMusicEnabled(true);
+      } catch {
+        // Keep disabled on failure
+        setMusicEnabled(false);
+      }
+    }
+  };
 
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
@@ -906,6 +958,16 @@ const Onboarding: React.FC = () => {
     return (
       <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
         {renderIntroOrReplay()}
+        {/* Speaker toggle - top-right, ghost style matching chevron */}
+        <button
+          className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
+          onClick={toggleMusic}
+          aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+          title={musicEnabled ? "Mute music" : "Unmute music"}
+        >
+          <SfIcon name="speaker.wave.3.fill" size={16} />
+          {!musicEnabled && <span className="mute-slash" aria-hidden="true" />}
+        </button>
       </div>
     );
   }
@@ -995,6 +1057,17 @@ const Onboarding: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Speaker toggle - top-right, ghost style matching chevron */}
+      <button
+        className="pill-collapse-btn absolute top-4 right-4 z-50 no-drag"
+        onClick={toggleMusic}
+        aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+        title={musicEnabled ? "Mute music" : "Unmute music"}
+      >
+        <SfIcon name="speaker.wave.3.fill" size={16} />
+        {!musicEnabled && <span className="mute-slash" aria-hidden="true" />}
+      </button>
 
       {/* Close Button removed per design */}
 
