@@ -27,6 +27,10 @@ import {
   ensureProfileRow,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
+// eslint-disable-next-line import/no-unresolved
+import onboardingMusicUrl from "/assets/onboarding-music.mp3?url";
+// eslint-disable-next-line import/no-unresolved
+import transparentLogoUrl from "/assets/transparent-logo-w-text.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 // Make permission mocking opt-in via URL (?mockPerms)
@@ -186,7 +190,7 @@ const Onboarding: React.FC = () => {
     if (showIntro) {
       return (
         <IntroExperience
-          logoSrc="/assets/transparent-logo-w-text.png"
+          logoSrc={transparentLogoUrl}
           onFinish={handleIntroFinish}
         />
       );
@@ -222,7 +226,7 @@ const Onboarding: React.FC = () => {
 
   // Setup onboarding background music (autoplay + loop)
   useEffect(() => {
-    const audio = new Audio("/assets/onboarding-music.mp3");
+    const audio = new Audio(onboardingMusicUrl);
     onboardingAudioRef.current = audio;
     audio.loop = true;
     audio.volume = targetMusicVolumeRef.current; // subtle by default
@@ -1114,7 +1118,7 @@ const Onboarding: React.FC = () => {
 
       {showIntro && (
         <IntroExperience
-          logoSrc="/assets/transparent-logo-w-text.png"
+          logoSrc={transparentLogoUrl}
           onFinish={handleIntroFinish}
           onReadyForControls={() => setIntroControlsReady(true)}
         />
