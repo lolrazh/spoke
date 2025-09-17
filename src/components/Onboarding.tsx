@@ -1009,6 +1009,11 @@ const Onboarding: React.FC = () => {
     },
   };
 
+  const showNavControls =
+    !showIntro &&
+    currentStep !== "complete" &&
+    (currentStep !== "auth" || Boolean(signedInAccount));
+
   // --- Dictation test wiring for Hotkey step ---
   // In onboarding, avoid auto enumeration/init to prevent early mic prompts.
   const trans = useTranscription({
@@ -1360,7 +1365,7 @@ const Onboarding: React.FC = () => {
                   </h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     {signedInAccount
-                      ? "Everything's ready. Continue with this account or switch anytime."
+                      ? "You can switch to a different account anytime."
                       : "Choose your sign-in method"}
                   </p>
                 </div>
@@ -1372,54 +1377,45 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-sm"
+                      className="mx-auto w-full max-w-lg space-y-3"
                     >
-                      <div className="onboarding-card p-6 text-left space-y-5">
-                        <div className="flex items-center gap-3">
+                      <div className="onboarding-permission-row flex items-center justify-between gap-3 p-4">
+                        <div className="flex items-center gap-3 min-w-0">
                           <Avatar
                             src={signedInAccount.avatarUrl ?? undefined}
                             fallbackLabel={signedInAccount.displayName}
-                            alt={`Signed in as ${signedInAccount.displayName}`}
+                            alt={`Profile image for ${signedInAccount.displayName}`}
+                            size="sm"
+                            shape="rounded"
+                            className="card-floating border border-white/10"
                           />
-                          <div className="space-y-[2px]">
-                            <p className="text-sm text-white/70">Signed in as</p>
-                            <p className="text-lg font-semibold text-white leading-tight">
+                          <div className="min-w-0 space-y-[2px]">
+                            <p className="text-sm font-semibold text-white truncate">
                               {signedInAccount.displayName}
                             </p>
                             {signedInAccount.email && (
-                              <p className="text-xs text-subtle leading-relaxed">
+                              <p className="text-xs text-subtle truncate">
                                 {signedInAccount.email}
                               </p>
                             )}
                           </div>
                         </div>
-                        <p
-                          className="text-[13px] text-subtle leading-relaxed"
-                          aria-live="polite"
-                        >
-                          You're all signed in. You can switch to a different account at any point during onboarding.
-                        </p>
-                        {authError && (
-                          <div className="text-[12px] text-red-300">{authError}</div>
-                        )}
-                        <div className="flex flex-col gap-2 pt-1 sm:flex-row">
-                          <Button
-                            variant="secondary"
-                            onClick={handleSwitchAccount}
-                            disabled={authLoading}
-                            className="w-full sm:w-auto"
-                          >
-                            Switch account
-                          </Button>
-                          <Button
-                            onClick={() => nextStep()}
-                            disabled={authLoading}
-                            className="w-full sm:w-auto onboarding-cta"
-                          >
-                            Continue
-                          </Button>
+                        <div className="text-white/70">
+                          <SfIcon name="checkmark.seal.fill" size={22} />
                         </div>
                       </div>
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        onClick={handleSwitchAccount}
+                        disabled={authLoading}
+                        className="w-full justify-center px-3 py-1.5"
+                      >
+                        Switch account
+                      </Button>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -2054,34 +2050,40 @@ const Onboarding: React.FC = () => {
           )}
         </div>
 
-        {/* Navigation Controls (hidden on auth & complete) */}
-        {currentStep !== "complete" && currentStep !== "auth" && (
+        {/* Navigation Controls */}
+        {showNavControls && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-            <Button
-              variant="secondary"
-              onClick={prevStep}
-              disabled={getProgressStepIndex() <= 0}
-              className="px-3 py-1.5"
-            >
-              Back
-            </Button>
+            {currentStep !== "auth" && (
+              <Button
+                variant="secondary"
+                onClick={prevStep}
+                disabled={getProgressStepIndex() <= 0}
+                className="px-3 py-1.5"
+              >
+                Back
+              </Button>
+            )}
 
-            {/* Next button appears on permissions, hotkey-info, and hotkey-tap-test; always enabled except permissions gating */}
-            {currentStep !== "hotkey-test" && (
+            {currentStep === "auth" && (
+              <div className="flex-1" />
+            )}
+
+            {/* Next button appears consistently; permissions step still gated */}
+            {currentStep !== "hotkey-test" ? (
               <Button
                 variant="secondary"
                 onClick={() => {
                   nextStep();
                 }}
                 disabled={
-                  currentStep === "permissions" && !allPermissionsGranted
+                  (currentStep === "permissions" && !allPermissionsGranted) ||
+                  (currentStep === "auth" && (!signedInAccount || authLoading))
                 }
                 className="px-3 py-1.5"
               >
                 Next
               </Button>
-            )}
-            {currentStep === "hotkey-test" && (
+            ) : (
               <Button
                 variant="secondary"
                 onClick={() => setCurrentStep("hotkey-tap-test")}

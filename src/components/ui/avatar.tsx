@@ -4,14 +4,21 @@ import { cn } from "../../lib/utils";
 export type AvatarProps = {
   src?: string | null;
   alt: string;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
   className?: string;
   fallbackLabel?: string | null;
+  shape?: "circle" | "rounded";
 };
 
 const sizeMap: Record<NonNullable<AvatarProps["size"]>, string> = {
+  sm: "h-8 w-8",
   md: "h-12 w-12",
   lg: "h-16 w-16",
+};
+
+const shapeMap: Record<NonNullable<AvatarProps["shape"]>, string> = {
+  circle: "rounded-full",
+  rounded: "rounded-[var(--radius)]",
 };
 
 export const Avatar: React.FC<AvatarProps> = ({
@@ -20,6 +27,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   size = "md",
   className,
   fallbackLabel,
+  shape = "circle",
 }) => {
   const [imageError, setImageError] = useState(false);
   const initials = (fallbackLabel && fallbackLabel.trim().charAt(0)) || "?";
@@ -28,8 +36,9 @@ export const Avatar: React.FC<AvatarProps> = ({
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 text-white/80 shadow-sm",
+        "relative flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 text-white/80 shadow-sm",
         sizeMap[size],
+        shapeMap[shape],
         className,
       )}
       aria-label={alt}
