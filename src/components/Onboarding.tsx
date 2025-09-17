@@ -121,6 +121,8 @@ const Onboarding: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
+  const [sessionValid, setSessionValid] = useState(false);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -353,11 +355,18 @@ const Onboarding: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!signedInAccount) return;
+    if (!signedInAccount) {
+      setAuthLoading(false);
+      setIsSwitchingAccount(false);
+      setSessionValid(false);
+      return;
+    }
+    setSessionValid(true);
     setAuthLoading(false);
     setAuthError(null);
     setAuthEmail(signedInAccount.email ?? "");
     setAuthEmailRequested(false);
+    setIsSwitchingAccount(false);
   }, [signedInAccount]);
 
   // Speaker icon with fixed box and crossfade to avoid jumps
@@ -677,8 +686,10 @@ const Onboarding: React.FC = () => {
   void handleEmailSubmit;
 
   const handleSwitchAccount = async () => {
-    if (authLoading) return;
+    if (authLoading || isSwitchingAccount) return;
+    setIsSwitchingAccount(true);
     setAuthError(null);
+    setAuthLoading(true);
     try {
       await signOut();
     } catch (error) {
@@ -688,12 +699,17 @@ const Onboarding: React.FC = () => {
       }
     }
     if (isMountedRef.current) {
-      setSignedInAccount(null);
-      setAuthEmail("");
-      setAuthEmailRequested(false);
-      setCurrentStep("auth");
+      setSessionValid(false);
     }
-    await startGoogleOAuth();
+    const started = await startGoogleOAuth();
+    if (isMountedRef.current) {
+      if (!started) {
+        setIsSwitchingAccount(false);
+        setAuthLoading(false);
+      } else {
+        setIsSwitchingAccount(false);
+      }
+    }
   };
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
@@ -1382,9 +1398,14 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-sm space-y-3 text-left"
+                      className="mx-auto w-full max-w-[19rem] space-y-3 text-left"
                     >
-                      <div className="onboarding-permission-row flex items-center justify-between gap-3 p-3">
+                      <div
+                        className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
+                          sessionValid ? "opacity-100" : "opacity-60"
+                        }`}
+                        aria-live="polite"
+                      >
                         <div className="flex items-center gap-3 min-w-0">
                           <Avatar
                             src={signedInAccount.avatarUrl ?? undefined}
@@ -1409,18 +1430,25 @@ const Onboarding: React.FC = () => {
                           <SfIcon name="checkmark.seal.fill" size={22} />
                         </div>
                       </div>
+                      {!sessionValid && (
+                        <p className="text-[12px] text-subtle leading-relaxed">
+                          Complete the Google sign-in window to continue.
+                        </p>
+                      )}
                       {authError && (
                         <div className="text-[12px] text-red-300">{authError}</div>
                       )}
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        onClick={handleSwitchAccount}
-                        disabled={authLoading}
-                        className="w-full justify-center px-3 py-1.5"
-                      >
-                        Switch account
-                      </Button>
+                      <div className="w-full">
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          onClick={handleSwitchAccount}
+                          disabled={authLoading}
+                          className="w-full justify-center px-3 py-1.5"
+                        >
+                          {authLoading ? "Opening Google…" : "Switch account"}
+                        </Button>
+                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -1429,7 +1457,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-sm space-y-4 text-left"
+                      className="mx-auto w-full max-w-[19rem] space-y-4 text-left"
                     >
                       {authError && (
                         <div className="text-[12px] text-red-300">{authError}</div>
@@ -2050,7 +2078,7 @@ const Onboarding: React.FC = () => {
                 }}
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "auth" && (!signedInAccount || authLoading))
+                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount))
                 }
                 className="px-3 py-1.5"
               >
