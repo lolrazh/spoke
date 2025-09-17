@@ -204,7 +204,6 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         if (out?.success) {
           // Will still require user to toggle in System Settings; start polling
         }
-        try { p.openSystemPreferences("accessibility"); } catch {}
         if (timersRef.current.ax) clearInterval(timersRef.current.ax);
         timersRef.current.ax = setInterval(async () => {
           const sys = await p.checkPermissions();

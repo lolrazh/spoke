@@ -2634,13 +2634,30 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("request-accessibility-permission", () => {
+  ipcMain.handle("request-accessibility-permission", async () => {
     try {
-      systemPreferences.isTrustedAccessibilityClient(true);
-      return { success: true };
+      const helperPath = getHelperPath();
+      if (!fs.existsSync(helperPath)) {
+        console.error("Sonic Flow Helper binary not found at path:", helperPath);
+        // Fallback to Electron prompt (main app)
+        systemPreferences.isTrustedAccessibilityClient(true);
+        return { success: true, via: "fallback-main" } as const;
+      }
+
+      return await new Promise<{ success: boolean; status?: string; error?: string }>((resolve) => {
+        const helper = spawn(helperPath, ["--ask-ax"], { stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        helper.stdout.on("data", (d) => (stdout += d.toString()));
+        helper.on("close", () => {
+          if (stdout.includes("ax-granted")) resolve({ success: true, status: "authorized" });
+          else if (stdout.includes("ax-denied")) resolve({ success: true, status: "denied" });
+          else resolve({ success: false, error: "Unexpected helper output" });
+        });
+        helper.on("error", (e) => resolve({ success: false, error: (e as Error).message }));
+      });
     } catch (error) {
       console.error("Error requesting accessibility permission:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
   });
 

@@ -610,6 +610,28 @@ int main(int argc, char *argv[]) {
         cmdV();
         return 0;
     }
+
+    // New: explicitly ask for Accessibility permission with OS prompt
+    if (argc > 1 && strcmp(argv[1], "--ask-ax") == 0) {
+        CFDictionaryRef opts = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            (const void **)&kAXTrustedCheckOptionPrompt,
+            (const void *[]){ kCFBooleanTrue },
+            1, &kCFCopyStringDictionaryKeyCallBacks,
+               &kCFTypeDictionaryValueCallBacks);
+
+        bool isTrusted = AXIsProcessTrustedWithOptions(opts);
+        CFRelease(opts);
+        if (isTrusted) {
+            puts("ax-granted");
+            fflush(stdout);
+            return 0;
+        } else {
+            puts("ax-denied");
+            fflush(stdout);
+            return 1;
+        }
+    }
     
     // New: daemon mode for pre-spawned paste helper
     if (argc > 1 && strcmp(argv[1], "--mode=paste-daemon") == 0) {
