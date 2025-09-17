@@ -3175,6 +3175,7 @@ function startFnListener() {
         else if (pttTarget === "main")
           targetWindow = mainWindow || onboardingWindow;
         else targetWindow = onboardingWindow || mainWindow;
+        const mirrorWindow = targetWindow === mainWindow ? onboardingWindow : mainWindow;
         if (trimmedLine === "ready") {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
@@ -3184,6 +3185,8 @@ function startFnListener() {
           // Right Option: primary PTT hotkey (press-and-hold)
           preSpawnPasteHelper();
           targetWindow?.webContents.send("ptt-down");
+          if (mirrorWindow && mirrorWindow !== targetWindow)
+            mirrorWindow.webContents.send("ptt-down");
         } else if (trimmedLine === "optR-up") {
           // End of PTT press-and-hold
           try {
@@ -3195,12 +3198,18 @@ function startFnListener() {
           preSpawnReady = null;
           resolvePreSpawnReady = null;
           targetWindow?.webContents.send("ptt-up");
+          if (mirrorWindow && mirrorWindow !== targetWindow)
+            mirrorWindow.webContents.send("ptt-up");
         } else if (trimmedLine === "cmdR-down") {
           // Right Command: visual press state only
           targetWindow?.webContents.send("ptt-cancel-down");
+          if (mirrorWindow && mirrorWindow !== targetWindow)
+            mirrorWindow.webContents.send("ptt-cancel-down");
         } else if (trimmedLine === "cmdR-up") {
           // Right Command: trigger cancel on release
           targetWindow?.webContents.send("ptt-cancel");
+          if (mirrorWindow && mirrorWindow !== targetWindow)
+            mirrorWindow.webContents.send("ptt-cancel");
         } else if (
           trimmedLine === "optL-down" ||
           trimmedLine === "optL-up" ||

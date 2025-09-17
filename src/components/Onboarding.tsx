@@ -156,7 +156,6 @@ const Onboarding: React.FC = () => {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const [testText, setTestText] = useState("");
   const [testTextTap, setTestTextTap] = useState("");
-  const currentStepRef = useRef<OnboardingStep>(currentStep);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const switchAccountIntentRef = useRef(false);
@@ -1045,33 +1044,12 @@ const Onboarding: React.FC = () => {
 
   // --- Dictation test wiring for Hotkey step ---
   useEffect(() => {
-    currentStepRef.current = currentStep;
-  }, [currentStep]);
-
-  useEffect(() => {
     if (currentStep === "hotkey-test") {
       setTestText("");
     } else if (currentStep === "hotkey-tap-test") {
       setTestTextTap("");
     }
   }, [currentStep]);
-
-  useEffect(() => {
-    const unsubscribe = window.transcript?.subscribe?.((next) => {
-      const text = next ?? "";
-      const step = currentStepRef.current;
-      if (step === "hotkey-test") {
-        setTestText(text);
-      } else if (step === "hotkey-tap-test") {
-        setTestTextTap(text);
-      }
-    });
-    return () => {
-      try {
-        unsubscribe && unsubscribe();
-      } catch {}
-    };
-  }, []);
 
   // Option key visual feedback (no custom gesture handling)
   useEffect(() => {
