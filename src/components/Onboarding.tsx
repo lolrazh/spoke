@@ -4,7 +4,6 @@ import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
-import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import { Avatar } from "./ui/avatar";
@@ -15,7 +14,6 @@ import {
   SelectItem,
   SelectValue,
 } from "./ui/select";
-import { useTranscription } from "../hooks/useTranscription";
 import SfIcon from "./icons/SfIcon";
 import {
   getSupabase,
@@ -155,10 +153,10 @@ const Onboarding: React.FC = () => {
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
   const [cmdKeyPressed, setCmdKeyPressed] = useState(false);
-  // Double-tap detection for hands-free (Right Option)
-  const lastTapTimeRef = useRef<number | null>(null);
-  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const cmdTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [testText, setTestText] = useState("");
+  const [testTextTap, setTestTextTap] = useState("");
+  const currentStepRef = useRef<OnboardingStep>(currentStep);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const switchAccountIntentRef = useRef(false);
@@ -532,14 +530,6 @@ const Onboarding: React.FC = () => {
         clearTimeout(pttCheckTimeoutRef.current);
         pttCheckTimeoutRef.current = null;
       }
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      if (cmdTapTimerRef.current) {
-        clearTimeout(cmdTapTimerRef.current);
-        cmdTapTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -735,8 +725,7 @@ const Onboarding: React.FC = () => {
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
     if (currentStep === "hotkey-info" && !pttApiReady) {
-      // Ensure PTT events route to onboarding while testing
-      window.electron?.setPttTarget?.("onboarding");
+      window.electron?.setPttTarget?.("main");
       const startHelperForTesting = async () => {
         try {
           devFlags.methods.devLog("Starting helper for onboarding testing...");
@@ -807,8 +796,7 @@ const Onboarding: React.FC = () => {
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
     if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
-      // Route PTT to onboarding so this step receives Fn events
-      window.electron?.setPttTarget?.("onboarding");
+      window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try { (window.electron as any)?.revealPillForTest?.(); } catch {}
     }
@@ -1056,173 +1044,53 @@ const Onboarding: React.FC = () => {
     (currentStep !== "auth" || Boolean(signedInAccount));
 
   // --- Dictation test wiring for Hotkey step ---
-  // In onboarding, avoid auto enumeration/init to prevent early mic prompts.
-  const trans = useTranscription({
-    autoEnumerateDevices: false,
-    autoInitStream: false,
-    suppressNativePaste: true,
-  });
-  const [testText, setTestText] = useState("");
-  const [testTextTap, setTestTextTap] = useState("");
-  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isLongPressRef = useRef(false);
-  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
-  const prevStepRef = useRef<OnboardingStep | null>(null);
-
-  // Minimal debounce utility
-  const debounce = <T extends (...args: unknown[]) => void>(
-    func: T,
-    delay: number,
-  ) => {
-    let timeoutId: NodeJS.Timeout | null = null;
-    return (...args: Parameters<T>) => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => func(...args), delay);
-    };
-  };
-
-  // Reflect recognized text into test areas only during an active session
-  // Avoid carrying over text between steps when idle
   useEffect(() => {
-    if (!(trans.recording || trans.processing)) return;
-    if (currentStep === "hotkey-test") {
-      setTestText(trans.text || "");
-    } else if (currentStep === "hotkey-tap-test") {
-      setTestTextTap(trans.text || "");
-    }
-  }, [trans.text, currentStep, trans.recording, trans.processing]);
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
 
-  // Ensure each test step starts with an empty textbox and clean tap state
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       setTestText("");
-      // Reset long-press tracking
-      isLongPressRef.current = false;
-      if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
     } else if (currentStep === "hotkey-tap-test") {
       setTestTextTap("");
-      // Reset double-tap tracking
-      lastTapTimeRef.current = null;
-      if (doubleTapTimerRef.current) { clearTimeout(doubleTapTimerRef.current); doubleTapTimerRef.current = null; }
     }
   }, [currentStep]);
 
-  // Mirror pill state during onboarding tests so pill shows LISTENING/PROCESSING
   useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
-    if (trans.recording) {
-      window.electron?.pillMirrorStart?.();
-    } else if (trans.processing) {
-      window.electron?.pillMirrorStop?.();
-    } else {
-      // Completed or idle
-      window.electron?.pillMirrorComplete?.();
-    }
-  }, [currentStep, trans.recording, trans.processing]);
-
-  // Forward cancels to pill mirror
-  useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
-    const off = window.ptt?.onCancel?.(() => {
-      window.electron?.pillMirrorCancel?.();
+    const unsubscribe = window.transcript?.subscribe?.((next) => {
+      const text = next ?? "";
+      const step = currentStepRef.current;
+      if (step === "hotkey-test") {
+        setTestText(text);
+      } else if (step === "hotkey-tap-test") {
+        setTestTextTap(text);
+      }
     });
-    return () => { try { off && off(); } catch {} };
-  }, [currentStep]);
-
-  // Ensure transcription is stopped when leaving tap-to-talk step
-  useEffect(() => {
-    const previous = prevStepRef.current;
-    if (previous === "hotkey-tap-test" && currentStep !== "hotkey-tap-test") {
-      try {
-        if (trans.recording) trans.stop();
-      } catch {}
-    }
-    prevStepRef.current = currentStep;
-    // We intentionally depend on currentStep and trans.recording state only
-  }, [currentStep, trans.recording]);
-
-  // Hook hotkey: Right Option — hold-to-speak on hotkey-test, double-tap-to-toggle on hotkey-tap-test
-  useEffect(() => {
-    if (!window.ptt?.onDown || !window.ptt?.onUp) {
-      devFlags.methods.devLog("PTT API not available yet, waiting...");
-      return;
-    }
-
-    devFlags.methods.devLog("PTT API available, setting up Right Option handlers");
-    const HOLD_MS = 90;
-    const handleDown = () => {
-      devFlags.methods.devLog("Hotkey pressed down");
-      setOptKeyPressed(true); // Immediate visual feedback
-
-      if (currentStep === "hotkey-test") {
-        if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-        if (trans.processing || trans.recording) return;
-        isLongPressRef.current = false;
-        pressTimerRef.current = setTimeout(() => {
-          isLongPressRef.current = true;
-          try { playToggleOn(); } catch {}
-          if (!trans.recording) trans.start();
-        }, HOLD_MS);
-      } else if (currentStep === "hotkey-tap-test") {
-        if (trans.processing) return;
-        const now = Date.now();
-        const DOUBLE_MS = 220;
-        if (lastTapTimeRef.current && now - lastTapTimeRef.current <= DOUBLE_MS) {
-          // Double-tap detected
-          if (doubleTapTimerRef.current) {
-            clearTimeout(doubleTapTimerRef.current);
-            doubleTapTimerRef.current = null;
-          }
-          lastTapTimeRef.current = null;
-          if (!trans.recording) {
-            try { playToggleOn(); } catch {}
-            trans.start();
-          } else {
-            trans.stop();
-          }
-        } else {
-          // First tap: arm a window for second tap
-          lastTapTimeRef.current = now;
-          if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
-          doubleTapTimerRef.current = setTimeout(() => {
-            lastTapTimeRef.current = null;
-            doubleTapTimerRef.current = null;
-          }, DOUBLE_MS);
-        }
-      }
-    };
-    const handleUp = () => {
-      devFlags.methods.devLog("Hotkey released");
-      setOptKeyPressed(false); // Immediate visual feedback
-
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      // For hold-to-speak, stop on release; for double-tap, ignore release
-      if (currentStep === "hotkey-test" && trans.recording) trans.stop();
-      isLongPressRef.current = false;
-    };
-
-    const cleanupDown = window.ptt.onDown(debounce(handleDown, 25));
-    const cleanupUp = window.ptt.onUp(debounce(handleUp, 25));
     return () => {
-      cleanupDown?.();
-      cleanupUp?.();
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      if (doubleTapTimerRef.current) {
-        clearTimeout(doubleTapTimerRef.current);
-        doubleTapTimerRef.current = null;
-      }
+      try {
+        unsubscribe && unsubscribe();
+      } catch {}
     };
-  }, [trans.recording, trans.processing, pttApiReady, currentStep]); // Re-run when PTT API becomes ready
+  }, []);
+
+  // Option key visual feedback (no custom gesture handling)
+  useEffect(() => {
+    if (!window.ptt?.onDown || !window.ptt?.onUp) return;
+    const offDown = window.ptt.onDown(() => setOptKeyPressed(true));
+    const offUp = window.ptt.onUp(() => setOptKeyPressed(false));
+    return () => {
+      offDown?.();
+      offUp?.();
+      setOptKeyPressed(false);
+    };
+  }, []);
 
   // Hook: Right Command visual feedback on cancel-info step only
   useEffect(() => {
-    if (currentStep !== "cancel-info") return;
+    if (currentStep !== "cancel-info") {
+      setCmdKeyPressed(false);
+      return;
+    }
     const cleanups: Array<() => void> = [];
     if (window.ptt?.onCancelDown) {
       cleanups.push(window.ptt.onCancelDown(() => setCmdKeyPressed(true)));
@@ -1236,26 +1104,9 @@ const Onboarding: React.FC = () => {
     }
     return () => {
       cleanups.forEach((fn) => fn && fn());
+      setCmdKeyPressed(false);
     };
   }, [currentStep]);
-
-  // Hook: Right Command cancels active/processing transcription on test steps
-  useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
-    if (!window.ptt?.onCancel) return;
-    const cleanup = window.ptt.onCancel(() => {
-      // Clear pending PTT timers and visual
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      setOptKeyPressed(false);
-      try {
-        if (trans.recording || trans.processing) trans.cancel();
-      } catch {}
-    });
-    return () => cleanup && cleanup();
-  }, [currentStep, trans.recording, trans.processing]);
 
   // Intro-only rendering path: show only the cinematic and a replay control
   if (introOnly) {
@@ -1458,7 +1309,7 @@ const Onboarding: React.FC = () => {
                           disabled={authLoading}
                           className="w-full justify-center px-3 py-1.5"
                         >
-                          {authLoading ? "Opening Google…" : "Switch account"}
+                          {authLoading ? "Opening Google…" : "Switch Account"}
                         </Button>
                       </div>
                       {authError && (
@@ -1514,9 +1365,9 @@ const Onboarding: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center">
                     <div
-                      className={`keycap keycap-lg ${optKeyPressed || trans.recording ? "keycap-active" : ""}`}
+                      className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
                       aria-label={
-                        optKeyPressed || trans.recording
+                        optKeyPressed
                           ? "Option key active - recording in progress"
                           : "Option key - press and hold to start dictation"
                       }
@@ -1755,7 +1606,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
-                          <p className="text-[11px] text-subtle">Detect the Right Option key to start and stop dictation.</p>
+                          <p className="text-[11px] text-subtle">Detect the Hotkey for dictation..</p>
                         </div>
                       </div>
                       <div className="flex items-center">

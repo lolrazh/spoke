@@ -2139,7 +2139,7 @@ app.whenReady().then(async () => {
       // Start continuous follow once window exists
       startFollowCursor();
       // Ensure pill is hidden until the test step asks to show it
-      pttTarget = "onboarding";
+      pttTarget = "main";
       if (mainWindow && !mainWindow.isDestroyed()) {
         const currentBounds = mainWindow.getBounds();
         const display = screen.getDisplayMatching(currentBounds);
@@ -2407,32 +2407,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Mirror pill state from onboarding to pill window during tests
-  ipcMain.on("pill:mirror-start", () => {
-    try {
-      if (mainWindow && !mainWindow.isDestroyed())
-        mainWindow.webContents.send("pill-mirror-start");
-    } catch {}
-  });
-  ipcMain.on("pill:mirror-stop", () => {
-    try {
-      if (mainWindow && !mainWindow.isDestroyed())
-        mainWindow.webContents.send("pill-mirror-stop");
-    } catch {}
-  });
-  ipcMain.on("pill:mirror-complete", () => {
-    try {
-      if (mainWindow && !mainWindow.isDestroyed())
-        mainWindow.webContents.send("pill-mirror-complete");
-    } catch {}
-  });
-  ipcMain.on("pill:mirror-cancel", () => {
-    try {
-      if (mainWindow && !mainWindow.isDestroyed())
-        mainWindow.webContents.send("pill-mirror-cancel");
-    } catch {}
-  });
-
   ipcMain.on(
     "show-notification",
     (event: Electron.IpcMainEvent, message: string) => {
@@ -2581,6 +2555,11 @@ app.whenReady().then(async () => {
       text.slice(0, 50) + (text.length > 50 ? "..." : ""),
     );
     lastTranscript = text;
+    BrowserWindow.getAllWindows().forEach((window) => {
+      try {
+        window.webContents.send("transcript:updated", text);
+      } catch {}
+    });
   });
 
   // Onboarding IPC handlers

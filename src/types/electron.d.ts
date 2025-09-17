@@ -20,6 +20,7 @@ declare global {
     };
     transcript: {
       update: (text: string) => void;
+      subscribe: (cb: (text: string) => void) => () => void;
     };
     clipboard: {
       insertText: (
@@ -48,15 +49,6 @@ declare global {
       requestExpandPill: () => Promise<{ ok: boolean }>;
       revealPill: () => Promise<{ ok: boolean }>;
       revealPillForTest?: () => Promise<{ ok: boolean }>;
-      // Pill mirror controls/listeners used by onboarding test steps
-      pillMirrorStart: () => void;
-      pillMirrorStop: () => void;
-      pillMirrorComplete: () => void;
-      pillMirrorCancel: () => void;
-      onPillMirrorStart?: (cb: () => void) => () => void;
-      onPillMirrorStop?: (cb: () => void) => () => void;
-      onPillMirrorComplete?: (cb: () => void) => () => void;
-      onPillMirrorCancel?: (cb: () => void) => () => void;
       checkPermissions: () => Promise<{
         needAX: boolean;
         needIM: boolean;

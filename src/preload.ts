@@ -41,6 +41,14 @@ contextBridge.exposeInMainWorld("contextMenu", {
 
 contextBridge.exposeInMainWorld("transcript", {
   update: (text: string) => ipcRenderer.send("transcript:update", text),
+  subscribe: (cb: (text: string) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      text: string,
+    ) => cb(text);
+    ipcRenderer.on("transcript:updated", listener);
+    return () => ipcRenderer.removeListener("transcript:updated", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("clipboard", {
@@ -126,31 +134,6 @@ contextBridge.exposeInMainWorld("electron", {
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
   revealPill: () => ipcRenderer.invoke("pill:reveal"),
   revealPillForTest: () => ipcRenderer.invoke("pill:reveal-for-test"),
-  // Mirror pill state between onboarding and pill window
-  pillMirrorStart: () => ipcRenderer.send("pill:mirror-start"),
-  pillMirrorStop: () => ipcRenderer.send("pill:mirror-stop"),
-  pillMirrorComplete: () => ipcRenderer.send("pill:mirror-complete"),
-  pillMirrorCancel: () => ipcRenderer.send("pill:mirror-cancel"),
-  onPillMirrorStart: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-mirror-start", listener);
-    return () => ipcRenderer.removeListener("pill-mirror-start", listener);
-  },
-  onPillMirrorStop: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-mirror-stop", listener);
-    return () => ipcRenderer.removeListener("pill-mirror-stop", listener);
-  },
-  onPillMirrorComplete: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-mirror-complete", listener);
-    return () => ipcRenderer.removeListener("pill-mirror-complete", listener);
-  },
-  onPillMirrorCancel: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("pill-mirror-cancel", listener);
-    return () => ipcRenderer.removeListener("pill-mirror-cancel", listener);
-  },
   // Onboarding APIs
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () =>

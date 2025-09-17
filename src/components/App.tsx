@@ -382,28 +382,6 @@ const App: React.FC = () => {
   } = usePillMachine();
 
   useEffect(() => {
-    // Allow onboarding to mirror pill state during test steps
-    const offStart = window.electron?.onPillMirrorStart?.(() => {
-      pillDispatch({ type: "PTT_START" });
-    });
-    const offStop = window.electron?.onPillMirrorStop?.(() => {
-      pillDispatch({ type: "PTT_STOP" });
-    });
-    const offComplete = window.electron?.onPillMirrorComplete?.(() => {
-      pillDispatch({ type: "PROCESSING_COMPLETE" });
-    });
-    const offCancel = window.electron?.onPillMirrorCancel?.(() => {
-      pillDispatch({ type: "CANCEL" });
-    });
-    return () => {
-      try { offStart && offStart(); } catch {}
-      try { offStop && offStop(); } catch {}
-      try { offComplete && offComplete(); } catch {}
-      try { offCancel && offCancel(); } catch {}
-    };
-  }, [pillDispatch]);
-
-  useEffect(() => {
     if (!trans.recording && !trans.processing) {
       pushTrace(
         trans.text
