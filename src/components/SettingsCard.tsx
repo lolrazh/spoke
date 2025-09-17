@@ -18,13 +18,12 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   return (
     <div
       className={`onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3 ${className}`}
-      style={{ borderRadius: "var(--radius-window)" }}
       role="group"
       aria-label={title}
     >
       <div className="flex items-center gap-3 min-w-0">
         {icon && (
-          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center shrink-0">
             {icon}
           </div>
         )}

@@ -872,7 +872,7 @@ src/
 - Channel: Prefer env-driven channel (e.g., `beta`, `stable`) when available; consider a `VITE_RELEASE_CHANNEL` flag to avoid hardcoding copy.
 
 ### Radius and Surface Hierarchy
-- Cards: Settings cards (permission rows) use `border-radius: var(--radius-window)` to align with the window curve.
+- Cards: Settings cards (permission rows) use `border-radius: var(--radius)` to stay consistent with standard surface corners.
 - Panel (embedded): Expanded settings container uses `border-radius: calc(var(--radius-window) + 2px)` for a slightly softer, nested feel relative to the window.
 - Surfaces: Cards consume `--surface-card`. In expanded settings, `.pill-core.expanded` sets `--surface-card: var(--pill-background)` to unify surfaces with the pill.
 

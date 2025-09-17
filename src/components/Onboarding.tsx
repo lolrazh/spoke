@@ -5,7 +5,7 @@ import { GridBackground } from "./shared/GridBackground";
 import { markOnboardingEvent } from "../utils/authSignals";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import { Avatar } from "./ui/avatar";
 import {
@@ -55,6 +55,14 @@ const devFlags = {
     },
   },
 };
+
+const AUTH_EASE_VISIBLE: [number, number, number, number] = [
+  0.25,
+  0.8,
+  0.25,
+  1,
+];
+const AUTH_EASE_EXIT: [number, number, number, number] = [0.4, 0, 0.2, 1];
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = {
@@ -1020,7 +1028,7 @@ const Onboarding: React.FC = () => {
     exit: { opacity: 0, y: -16, transition: spring },
   };
 
-  const authViewVariants = {
+  const authViewVariants: Variants = {
     hidden: { opacity: 0, y: 18, filter: "blur(12px)" },
     visible: {
       opacity: 1,
@@ -1028,7 +1036,7 @@ const Onboarding: React.FC = () => {
       filter: "blur(0px)",
       transition: {
         duration: devFlags.fastAnimations ? 0.22 : 0.36,
-        ease: [0.25, 0.8, 0.25, 1],
+        ease: AUTH_EASE_VISIBLE,
       },
     },
     exit: {
@@ -1037,7 +1045,7 @@ const Onboarding: React.FC = () => {
       filter: "blur(8px)",
       transition: {
         duration: devFlags.fastAnimations ? 0.18 : 0.3,
-        ease: [0.4, 0, 0.2, 1],
+        ease: AUTH_EASE_EXIT,
       },
     },
   };
@@ -1425,7 +1433,7 @@ const Onboarding: React.FC = () => {
                             alt={`Profile image for ${signedInAccount.displayName}`}
                             size="sm"
                             shape="rounded"
-                            className="card-floating border border-white/10"
+                            className="card-floating border border-white/10 rounded-[var(--radius-md)]"
                           />
                           <div className="min-w-0 space-y-[2px]">
                             <p className="text-sm font-semibold text-white truncate">
