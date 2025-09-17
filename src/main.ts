@@ -120,7 +120,7 @@ try {
         baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
       },
       // Production cadence; see policy: startup/resume triggers augment this
-      updateInterval: "6 hours",
+      updateInterval: "1 hour",
     });
   }
 } catch (e) {
