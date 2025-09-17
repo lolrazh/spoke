@@ -7,6 +7,7 @@ import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import { Avatar } from "./ui/avatar";
 import {
   Select,
   SelectTrigger,
@@ -25,6 +26,7 @@ import {
   getProfile,
   markOnboardingDone,
   ensureProfileRow,
+  signOut,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
 // eslint-disable-next-line import/no-unresolved
@@ -77,6 +79,37 @@ type OnboardingStep =
   | "cancel-info"
   | "complete";
 
+type AccountSummary = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  avatarUrl: string | null;
+};
+
+const deriveAccountSummary = (
+  profile: Awaited<ReturnType<typeof getProfile>>,
+  user: Awaited<ReturnType<typeof getCurrentUser>>,
+): AccountSummary | null => {
+  if (!user) return null;
+  const metadata = (user.user_metadata ?? {}) as {
+    name?: string;
+    avatar_url?: string;
+  };
+  const email = profile?.email ?? user.email ?? null;
+  const displayName =
+    profile?.display_name ??
+    metadata.name ??
+    (email ? email.split("@")[0] : null) ??
+    "Sonic Flow user";
+
+  return {
+    id: profile?.id ?? user.id,
+    displayName,
+    email,
+    avatarUrl: profile?.avatar_url ?? metadata.avatar_url ?? null,
+  };
+};
+
 const Onboarding: React.FC = () => {
   const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
@@ -84,8 +117,12 @@ const Onboarding: React.FC = () => {
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  void authEmailRequested; // Magic link flow preserved but hidden from UI
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
+  const [sessionValid, setSessionValid] = useState(false);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -116,6 +153,7 @@ const Onboarding: React.FC = () => {
   const cmdTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
+  const switchAccountIntentRef = useRef(false);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mic-check visualizer state
@@ -299,6 +337,40 @@ const Onboarding: React.FC = () => {
       })();
     }
   };
+
+  const refreshAccountSummary = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        if (isMountedRef.current) setSignedInAccount(null);
+        return null;
+      }
+      const profile = await getProfile();
+      const account = deriveAccountSummary(profile, user);
+      if (isMountedRef.current) setSignedInAccount(account);
+      return account;
+    } catch (error) {
+      if (isMountedRef.current) setSignedInAccount(null);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!signedInAccount) {
+      setAuthLoading(false);
+      setIsSwitchingAccount(false);
+      setSessionValid(false);
+      switchAccountIntentRef.current = false;
+      return;
+    }
+    switchAccountIntentRef.current = false;
+    setSessionValid(true);
+    setAuthLoading(false);
+    setAuthError(null);
+    setAuthEmail(signedInAccount.email ?? "");
+    setAuthEmailRequested(false);
+    setIsSwitchingAccount(false);
+  }, [signedInAccount]);
 
   // Speaker icon with fixed box and crossfade to avoid jumps
   const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
@@ -488,19 +560,27 @@ const Onboarding: React.FC = () => {
     (async () => {
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
-      const user = skipAuth ? { id: "dev" } : await getCurrentUser();
-      // In FORCE_ONBOARDING mode, never auto-complete; start at permissions.
+      const user = await getCurrentUser();
+
       if (forceOnboarding) {
+        await refreshAccountSummary();
         setCurrentStep("permissions");
         return;
       }
-      if (!user && !skipAuth) return; // stay on auth step
+
+      if (!user && !skipAuth) {
+        if (isMountedRef.current) setSignedInAccount(null);
+        return; // stay on auth step until the user signs in
+      }
+
       try {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
+        const account = deriveAccountSummary(profile, user);
+        if (isMountedRef.current) setSignedInAccount(account);
         if (profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
@@ -512,7 +592,10 @@ const Onboarding: React.FC = () => {
           try { window.notifications?.send?.("You've been signed in."); } catch {}
           return;
         }
-      } catch {}
+      } catch (error) {
+        if (isMountedRef.current) setSignedInAccount(null);
+      }
+
       setCurrentStep("permissions");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
@@ -523,15 +606,19 @@ const Onboarding: React.FC = () => {
       setAuthLoading(false);
       if (!res.ok) {
         setAuthError(res.error || "Login failed");
+        switchAccountIntentRef.current = false;
         return;
       }
+      const forceOnboarding = !!window.devFlags?.forceOnboarding;
       try {
         // Ensure a profile row exists as soon as login completes
         try {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
-        const forceOnboarding = !!window.devFlags?.forceOnboarding;
+        const currentUser = await getCurrentUser();
+        if (isMountedRef.current)
+          setSignedInAccount(deriveAccountSummary(profile, currentUser));
         if (!forceOnboarding && profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
@@ -542,9 +629,15 @@ const Onboarding: React.FC = () => {
           await window.electron?.onboardingComplete();
           // Show a consistent post sign-in toast once the pill/main window is up
           try { window.notifications?.send?.("You've been signed in."); } catch {}
+          switchAccountIntentRef.current = false;
           return;
         }
       } catch {}
+      if (switchAccountIntentRef.current && !forceOnboarding) {
+        switchAccountIntentRef.current = false;
+        return;
+      }
+      switchAccountIntentRef.current = false;
       setCurrentStep("permissions");
     });
     return () => {
@@ -552,24 +645,31 @@ const Onboarding: React.FC = () => {
     };
   }, [introOnly]);
 
-  const handleGoogle = async () => {
+  const startGoogleOAuth = async () => {
     try {
       setAuthLoading(true);
       setAuthError(null);
       const url = await getGoogleOAuthUrl();
-      setAuthLoading(false);
-      if (url) {
-        await window.electron?.openExternal(url);
-      } else {
+      if (!url) {
         setAuthError(
           "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
         );
+        setAuthLoading(false);
+        return false;
       }
-    } catch (e: unknown) {
+      await window.electron?.openExternal(url);
       setAuthLoading(false);
+      return true;
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setAuthError(msg || "Could not start Google sign-in");
+      setAuthLoading(false);
+      return false;
     }
+  };
+
+  const handleGoogle = async () => {
+    await startGoogleOAuth();
   };
 
   const handleEmailStart = async () => {
@@ -592,6 +692,36 @@ const Onboarding: React.FC = () => {
     if (authLoading) return;
     if (!authEmail || !authEmail.trim()) return;
     await handleEmailStart();
+  };
+  void handleEmailSubmit;
+
+  const handleSwitchAccount = async () => {
+    if (authLoading || isSwitchingAccount) return;
+    switchAccountIntentRef.current = true;
+    setIsSwitchingAccount(true);
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      await signOut();
+    } catch (error) {
+      if (isMountedRef.current) {
+        const msg = error instanceof Error ? error.message : String(error);
+        setAuthError(msg || "Could not switch account");
+      }
+    }
+    if (isMountedRef.current) {
+      setSessionValid(false);
+    }
+    const started = await startGoogleOAuth();
+    if (isMountedRef.current) {
+      if (!started) {
+        setIsSwitchingAccount(false);
+        setAuthLoading(false);
+        switchAccountIntentRef.current = false;
+      } else {
+        setIsSwitchingAccount(false);
+      }
+    }
   };
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
@@ -889,6 +1019,33 @@ const Onboarding: React.FC = () => {
     visible: { opacity: 1, y: 0, transition: spring },
     exit: { opacity: 0, y: -16, transition: spring },
   };
+
+  const authViewVariants = {
+    hidden: { opacity: 0, y: 18, filter: "blur(12px)" },
+    visible: {
+      opacity: 1,
+      y: 0,
+      filter: "blur(0px)",
+      transition: {
+        duration: devFlags.fastAnimations ? 0.22 : 0.36,
+        ease: [0.25, 0.8, 0.25, 1],
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -12,
+      filter: "blur(8px)",
+      transition: {
+        duration: devFlags.fastAnimations ? 0.18 : 0.3,
+        ease: [0.4, 0, 0.2, 1],
+      },
+    },
+  };
+
+  const showNavControls =
+    !showIntro &&
+    currentStep !== "complete" &&
+    (currentStep !== "auth" || Boolean(signedInAccount));
 
   // --- Dictation test wiring for Hotkey step ---
   // In onboarding, avoid auto enumeration/init to prevent early mic prompts.
@@ -1237,59 +1394,94 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    Let's get you signed in
+                    {signedInAccount ? "You're signed in" : "Let's get you signed in"}
                   </h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Choose your sign-in method
+                    {signedInAccount
+                      ? "You can switch to a different account anytime."
+                      : "Choose your sign-in method"}
                   </p>
                 </div>
-                <div className="mx-auto max-w-sm space-y-3">
-                  {authError && (
-                    <div className="text-[12px] text-red-300">{authError}</div>
-                  )}
-                  <Button
-                    className="w-full onboarding-cta"
-                    disabled={authLoading}
-                    onClick={handleGoogle}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-primary font-medium text-lg">G</span>
-                      <span>Continue with Google</span>
-                    </div>
-                  </Button>
-                  <div className="relative my-3">
-                    <div className="border-b border-border/40" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="bg-[var(--surface-solid)] px-2 text-[11px] font-medium text-subtle tracking-wider uppercase">
-                        or
-                      </span>
-                    </div>
-                  </div>
-                  {!authEmailRequested ? (
-                    <form className="space-y-2" onSubmit={handleEmailSubmit}>
-                      <input
-                        type="email"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
-                      />
-                      <Button
-                        className="w-full"
-                        type="submit"
-                        disabled={authLoading || !authEmail}
+                <AnimatePresence mode="wait">
+                  {signedInAccount ? (
+                    <motion.div
+                      key="auth-summary"
+                      variants={authViewVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      className="mx-auto w-full max-w-[19rem] space-y-3 text-left"
+                    >
+                      <div
+                        className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
+                          sessionValid ? "opacity-100" : "opacity-60"
+                        }`}
+                        aria-live="polite"
                       >
-                        Continue with Email
-                      </Button>
-                    </form>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Avatar
+                            src={signedInAccount.avatarUrl ?? undefined}
+                            fallbackLabel={signedInAccount.displayName}
+                            alt={`Profile image for ${signedInAccount.displayName}`}
+                            size="sm"
+                            shape="rounded"
+                            className="card-floating border border-white/10"
+                          />
+                          <div className="min-w-0 space-y-[2px]">
+                            <p className="text-sm font-semibold text-white truncate">
+                              {signedInAccount.displayName}
+                            </p>
+                            {signedInAccount.email && (
+                              <p className="text-xs text-subtle truncate">
+                                {signedInAccount.email}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-white/70">
+                          <SfIcon name="checkmark.seal.fill" size={22} />
+                        </div>
+                      </div>
+                      <div className="w-full">
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          onClick={handleSwitchAccount}
+                          disabled={authLoading}
+                          className="w-full justify-center px-3 py-1.5"
+                        >
+                          {authLoading ? "Opening Google…" : "Switch account"}
+                        </Button>
+                      </div>
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
+                    </motion.div>
                   ) : (
-                    <div className="space-y-2">
-                      <p className="text-[12px] text-subtle">
-                        A Magic Link will be sent to your email.
-                      </p>
-                    </div>
+                    <motion.div
+                      key="auth-form"
+                      variants={authViewVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      className="mx-auto w-full max-w-[19rem] space-y-4 text-left"
+                    >
+                      <Button
+                        className="w-full onboarding-cta"
+                        disabled={authLoading}
+                        onClick={handleGoogle}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-primary font-medium text-lg">G</span>
+                          <span>Continue with Google</span>
+                        </div>
+                      </Button>
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
+                    </motion.div>
                   )}
-                </div>
+                </AnimatePresence>
               </motion.div>
             )}
 
@@ -1866,34 +2058,40 @@ const Onboarding: React.FC = () => {
           )}
         </div>
 
-        {/* Navigation Controls (hidden on auth & complete) */}
-        {currentStep !== "complete" && currentStep !== "auth" && (
+        {/* Navigation Controls */}
+        {showNavControls && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-            <Button
-              variant="secondary"
-              onClick={prevStep}
-              disabled={getProgressStepIndex() <= 0}
-              className="px-3 py-1.5"
-            >
-              Back
-            </Button>
+            {currentStep !== "auth" && (
+              <Button
+                variant="secondary"
+                onClick={prevStep}
+                disabled={getProgressStepIndex() <= 0}
+                className="px-3 py-1.5"
+              >
+                Back
+              </Button>
+            )}
 
-            {/* Next button appears on permissions, hotkey-info, and hotkey-tap-test; always enabled except permissions gating */}
-            {currentStep !== "hotkey-test" && (
+            {currentStep === "auth" && (
+              <div className="flex-1" />
+            )}
+
+            {/* Next button appears consistently; permissions step still gated */}
+            {currentStep !== "hotkey-test" ? (
               <Button
                 variant="secondary"
                 onClick={() => {
                   nextStep();
                 }}
                 disabled={
-                  currentStep === "permissions" && !allPermissionsGranted
+                  (currentStep === "permissions" && !allPermissionsGranted) ||
+                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount))
                 }
                 className="px-3 py-1.5"
               >
                 Next
               </Button>
-            )}
-            {currentStep === "hotkey-test" && (
+            ) : (
               <Button
                 variant="secondary"
                 onClick={() => setCurrentStep("hotkey-tap-test")}
