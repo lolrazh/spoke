@@ -7,6 +7,7 @@ import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { playToggleOn } from "../utils/audioFeedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import { Avatar } from "./ui/avatar";
 import {
   Select,
   SelectTrigger,
@@ -25,6 +26,7 @@ import {
   getProfile,
   markOnboardingDone,
   ensureProfileRow,
+  signOut,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
 // eslint-disable-next-line import/no-unresolved
@@ -77,6 +79,37 @@ type OnboardingStep =
   | "cancel-info"
   | "complete";
 
+type AccountSummary = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  avatarUrl: string | null;
+};
+
+const deriveAccountSummary = (
+  profile: Awaited<ReturnType<typeof getProfile>>,
+  user: Awaited<ReturnType<typeof getCurrentUser>>,
+): AccountSummary | null => {
+  if (!user) return null;
+  const metadata = (user.user_metadata ?? {}) as {
+    name?: string;
+    avatar_url?: string;
+  };
+  const email = profile?.email ?? user.email ?? null;
+  const displayName =
+    profile?.display_name ??
+    metadata.name ??
+    (email ? email.split("@")[0] : null) ??
+    "Sonic Flow user";
+
+  return {
+    id: profile?.id ?? user.id,
+    displayName,
+    email,
+    avatarUrl: profile?.avatar_url ?? metadata.avatar_url ?? null,
+  };
+};
+
 const Onboarding: React.FC = () => {
   const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
@@ -86,6 +119,7 @@ const Onboarding: React.FC = () => {
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -300,6 +334,31 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  const refreshAccountSummary = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        if (isMountedRef.current) setSignedInAccount(null);
+        return null;
+      }
+      const profile = await getProfile();
+      const account = deriveAccountSummary(profile, user);
+      if (isMountedRef.current) setSignedInAccount(account);
+      return account;
+    } catch (error) {
+      if (isMountedRef.current) setSignedInAccount(null);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!signedInAccount) return;
+    setAuthLoading(false);
+    setAuthError(null);
+    setAuthEmail(signedInAccount.email ?? "");
+    setAuthEmailRequested(false);
+  }, [signedInAccount]);
+
   // Speaker icon with fixed box and crossfade to avoid jumps
   const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
     const prevEnabledRef = useRef<boolean>(enabled);
@@ -488,19 +547,27 @@ const Onboarding: React.FC = () => {
     (async () => {
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
-      const user = skipAuth ? { id: "dev" } : await getCurrentUser();
-      // In FORCE_ONBOARDING mode, never auto-complete; start at permissions.
+      const user = await getCurrentUser();
+
       if (forceOnboarding) {
+        await refreshAccountSummary();
         setCurrentStep("permissions");
         return;
       }
-      if (!user && !skipAuth) return; // stay on auth step
+
+      if (!user && !skipAuth) {
+        if (isMountedRef.current) setSignedInAccount(null);
+        return; // stay on auth step until the user signs in
+      }
+
       try {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
+        const account = deriveAccountSummary(profile, user);
+        if (isMountedRef.current) setSignedInAccount(account);
         if (profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
@@ -512,7 +579,10 @@ const Onboarding: React.FC = () => {
           try { window.notifications?.send?.("You've been signed in."); } catch {}
           return;
         }
-      } catch {}
+      } catch (error) {
+        if (isMountedRef.current) setSignedInAccount(null);
+      }
+
       setCurrentStep("permissions");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
@@ -531,6 +601,9 @@ const Onboarding: React.FC = () => {
           await ensureProfileRow();
         } catch {}
         const profile = await getProfile();
+        const currentUser = await getCurrentUser();
+        if (isMountedRef.current)
+          setSignedInAccount(deriveAccountSummary(profile, currentUser));
         const forceOnboarding = !!window.devFlags?.forceOnboarding;
         if (!forceOnboarding && profile?.onboarding_done) {
           try {
@@ -592,6 +665,30 @@ const Onboarding: React.FC = () => {
     if (authLoading) return;
     if (!authEmail || !authEmail.trim()) return;
     await handleEmailStart();
+  };
+
+  const handleSwitchAccount = async () => {
+    if (authLoading) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      await signOut();
+      if (isMountedRef.current) {
+        setSignedInAccount(null);
+        setAuthEmail("");
+        setAuthEmailRequested(false);
+        setCurrentStep("auth");
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        const msg = error instanceof Error ? error.message : String(error);
+        setAuthError(msg || "Could not switch account");
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setAuthLoading(false);
+      }
+    }
   };
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
@@ -888,6 +985,28 @@ const Onboarding: React.FC = () => {
     hidden: { opacity: 0, y: 16 },
     visible: { opacity: 1, y: 0, transition: spring },
     exit: { opacity: 0, y: -16, transition: spring },
+  };
+
+  const authViewVariants = {
+    hidden: { opacity: 0, y: 18, filter: "blur(12px)" },
+    visible: {
+      opacity: 1,
+      y: 0,
+      filter: "blur(0px)",
+      transition: {
+        duration: devFlags.fastAnimations ? 0.22 : 0.36,
+        ease: [0.25, 0.8, 0.25, 1],
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -12,
+      filter: "blur(8px)",
+      transition: {
+        duration: devFlags.fastAnimations ? 0.18 : 0.3,
+        ease: [0.4, 0, 0.2, 1],
+      },
+    },
   };
 
   // --- Dictation test wiring for Hotkey step ---
@@ -1237,59 +1356,128 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    Let's get you signed in
+                    {signedInAccount ? "You're signed in" : "Let's get you signed in"}
                   </h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Choose your sign-in method
+                    {signedInAccount
+                      ? "Everything's ready. Continue with this account or switch anytime."
+                      : "Choose your sign-in method"}
                   </p>
                 </div>
-                <div className="mx-auto max-w-sm space-y-3">
-                  {authError && (
-                    <div className="text-[12px] text-red-300">{authError}</div>
-                  )}
-                  <Button
-                    className="w-full onboarding-cta"
-                    disabled={authLoading}
-                    onClick={handleGoogle}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-primary font-medium text-lg">G</span>
-                      <span>Continue with Google</span>
-                    </div>
-                  </Button>
-                  <div className="relative my-3">
-                    <div className="border-b border-border/40" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="bg-[var(--surface-solid)] px-2 text-[11px] font-medium text-subtle tracking-wider uppercase">
-                        or
-                      </span>
-                    </div>
-                  </div>
-                  {!authEmailRequested ? (
-                    <form className="space-y-2" onSubmit={handleEmailSubmit}>
-                      <input
-                        type="email"
-                        value={authEmail}
-                        onChange={(e) => setAuthEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
-                      />
-                      <Button
-                        className="w-full"
-                        type="submit"
-                        disabled={authLoading || !authEmail}
-                      >
-                        Continue with Email
-                      </Button>
-                    </form>
+                <AnimatePresence mode="wait">
+                  {signedInAccount ? (
+                    <motion.div
+                      key="auth-summary"
+                      variants={authViewVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      className="mx-auto w-full max-w-sm"
+                    >
+                      <div className="onboarding-card p-6 text-left space-y-5">
+                        <div className="flex items-center gap-3">
+                          <Avatar
+                            src={signedInAccount.avatarUrl ?? undefined}
+                            fallbackLabel={signedInAccount.displayName}
+                            alt={`Signed in as ${signedInAccount.displayName}`}
+                          />
+                          <div className="space-y-[2px]">
+                            <p className="text-sm text-white/70">Signed in as</p>
+                            <p className="text-lg font-semibold text-white leading-tight">
+                              {signedInAccount.displayName}
+                            </p>
+                            {signedInAccount.email && (
+                              <p className="text-xs text-subtle leading-relaxed">
+                                {signedInAccount.email}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <p
+                          className="text-[13px] text-subtle leading-relaxed"
+                          aria-live="polite"
+                        >
+                          You're all signed in. You can switch to a different account at any point during onboarding.
+                        </p>
+                        {authError && (
+                          <div className="text-[12px] text-red-300">{authError}</div>
+                        )}
+                        <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                          <Button
+                            variant="secondary"
+                            onClick={handleSwitchAccount}
+                            disabled={authLoading}
+                            className="w-full sm:w-auto"
+                          >
+                            Switch account
+                          </Button>
+                          <Button
+                            onClick={() => nextStep()}
+                            disabled={authLoading}
+                            className="w-full sm:w-auto onboarding-cta"
+                          >
+                            Continue
+                          </Button>
+                        </div>
+                      </div>
+                    </motion.div>
                   ) : (
-                    <div className="space-y-2">
-                      <p className="text-[12px] text-subtle">
-                        A Magic Link will be sent to your email.
-                      </p>
-                    </div>
+                    <motion.div
+                      key="auth-form"
+                      variants={authViewVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      className="mx-auto w-full max-w-sm space-y-3"
+                    >
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
+                      <Button
+                        className="w-full onboarding-cta"
+                        disabled={authLoading}
+                        onClick={handleGoogle}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-primary font-medium text-lg">G</span>
+                          <span>Continue with Google</span>
+                        </div>
+                      </Button>
+                      <div className="relative my-3">
+                        <div className="border-b border-border/40" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="bg-[var(--surface-solid)] px-2 text-[11px] font-medium text-subtle tracking-wider uppercase">
+                            or
+                          </span>
+                        </div>
+                      </div>
+                      {!authEmailRequested ? (
+                        <form className="space-y-2" onSubmit={handleEmailSubmit}>
+                          <input
+                            type="email"
+                            value={authEmail}
+                            onChange={(e) => setAuthEmail(e.target.value)}
+                            placeholder="Enter your email"
+                            className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
+                          />
+                          <Button
+                            className="w-full"
+                            type="submit"
+                            disabled={authLoading || !authEmail}
+                          >
+                            Continue with Email
+                          </Button>
+                        </form>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-[12px] text-subtle">
+                            A Magic Link will be sent to your email.
+                          </p>
+                        </div>
+                      )}
+                    </motion.div>
                   )}
-                </div>
+                </AnimatePresence>
               </motion.div>
             )}
 
