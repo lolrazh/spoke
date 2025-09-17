@@ -153,6 +153,7 @@ const Onboarding: React.FC = () => {
   const cmdTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
+  const switchAccountIntentRef = useRef(false);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mic-check visualizer state
@@ -359,8 +360,10 @@ const Onboarding: React.FC = () => {
       setAuthLoading(false);
       setIsSwitchingAccount(false);
       setSessionValid(false);
+      switchAccountIntentRef.current = false;
       return;
     }
+    switchAccountIntentRef.current = false;
     setSessionValid(true);
     setAuthLoading(false);
     setAuthError(null);
@@ -603,8 +606,10 @@ const Onboarding: React.FC = () => {
       setAuthLoading(false);
       if (!res.ok) {
         setAuthError(res.error || "Login failed");
+        switchAccountIntentRef.current = false;
         return;
       }
+      const forceOnboarding = !!window.devFlags?.forceOnboarding;
       try {
         // Ensure a profile row exists as soon as login completes
         try {
@@ -614,7 +619,6 @@ const Onboarding: React.FC = () => {
         const currentUser = await getCurrentUser();
         if (isMountedRef.current)
           setSignedInAccount(deriveAccountSummary(profile, currentUser));
-        const forceOnboarding = !!window.devFlags?.forceOnboarding;
         if (!forceOnboarding && profile?.onboarding_done) {
           try {
             await window.electron?.setPttTarget?.("main");
@@ -625,9 +629,15 @@ const Onboarding: React.FC = () => {
           await window.electron?.onboardingComplete();
           // Show a consistent post sign-in toast once the pill/main window is up
           try { window.notifications?.send?.("You've been signed in."); } catch {}
+          switchAccountIntentRef.current = false;
           return;
         }
       } catch {}
+      if (switchAccountIntentRef.current && !forceOnboarding) {
+        switchAccountIntentRef.current = false;
+        return;
+      }
+      switchAccountIntentRef.current = false;
       setCurrentStep("permissions");
     });
     return () => {
@@ -687,6 +697,7 @@ const Onboarding: React.FC = () => {
 
   const handleSwitchAccount = async () => {
     if (authLoading || isSwitchingAccount) return;
+    switchAccountIntentRef.current = true;
     setIsSwitchingAccount(true);
     setAuthError(null);
     setAuthLoading(true);
@@ -706,6 +717,7 @@ const Onboarding: React.FC = () => {
       if (!started) {
         setIsSwitchingAccount(false);
         setAuthLoading(false);
+        switchAccountIntentRef.current = false;
       } else {
         setIsSwitchingAccount(false);
       }
@@ -1430,14 +1442,6 @@ const Onboarding: React.FC = () => {
                           <SfIcon name="checkmark.seal.fill" size={22} />
                         </div>
                       </div>
-                      {!sessionValid && (
-                        <p className="text-[12px] text-subtle leading-relaxed">
-                          Complete the Google sign-in window to continue.
-                        </p>
-                      )}
-                      {authError && (
-                        <div className="text-[12px] text-red-300">{authError}</div>
-                      )}
                       <div className="w-full">
                         <Button
                           variant="secondary"
@@ -1449,6 +1453,9 @@ const Onboarding: React.FC = () => {
                           {authLoading ? "Opening Google…" : "Switch account"}
                         </Button>
                       </div>
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.div
@@ -1459,9 +1466,6 @@ const Onboarding: React.FC = () => {
                       exit="exit"
                       className="mx-auto w-full max-w-[19rem] space-y-4 text-left"
                     >
-                      {authError && (
-                        <div className="text-[12px] text-red-300">{authError}</div>
-                      )}
                       <Button
                         className="w-full onboarding-cta"
                         disabled={authLoading}
@@ -1472,6 +1476,9 @@ const Onboarding: React.FC = () => {
                           <span>Continue with Google</span>
                         </div>
                       </Button>
+                      {authError && (
+                        <div className="text-[12px] text-red-300">{authError}</div>
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
