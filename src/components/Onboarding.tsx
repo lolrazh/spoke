@@ -117,6 +117,7 @@ const Onboarding: React.FC = () => {
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  void authEmailRequested; // Magic link flow preserved but hidden from UI
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
@@ -625,24 +626,31 @@ const Onboarding: React.FC = () => {
     };
   }, [introOnly]);
 
-  const handleGoogle = async () => {
+  const startGoogleOAuth = async () => {
     try {
       setAuthLoading(true);
       setAuthError(null);
       const url = await getGoogleOAuthUrl();
-      setAuthLoading(false);
-      if (url) {
-        await window.electron?.openExternal(url);
-      } else {
+      if (!url) {
         setAuthError(
           "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
         );
+        setAuthLoading(false);
+        return false;
       }
-    } catch (e: unknown) {
+      await window.electron?.openExternal(url);
       setAuthLoading(false);
+      return true;
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setAuthError(msg || "Could not start Google sign-in");
+      setAuthLoading(false);
+      return false;
     }
+  };
+
+  const handleGoogle = async () => {
+    await startGoogleOAuth();
   };
 
   const handleEmailStart = async () => {
@@ -666,29 +674,26 @@ const Onboarding: React.FC = () => {
     if (!authEmail || !authEmail.trim()) return;
     await handleEmailStart();
   };
+  void handleEmailSubmit;
 
   const handleSwitchAccount = async () => {
     if (authLoading) return;
-    setAuthLoading(true);
     setAuthError(null);
     try {
       await signOut();
-      if (isMountedRef.current) {
-        setSignedInAccount(null);
-        setAuthEmail("");
-        setAuthEmailRequested(false);
-        setCurrentStep("auth");
-      }
     } catch (error) {
       if (isMountedRef.current) {
         const msg = error instanceof Error ? error.message : String(error);
         setAuthError(msg || "Could not switch account");
       }
-    } finally {
-      if (isMountedRef.current) {
-        setAuthLoading(false);
-      }
     }
+    if (isMountedRef.current) {
+      setSignedInAccount(null);
+      setAuthEmail("");
+      setAuthEmailRequested(false);
+      setCurrentStep("auth");
+    }
+    await startGoogleOAuth();
   };
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
@@ -1377,9 +1382,9 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-lg space-y-3"
+                      className="mx-auto w-full max-w-sm space-y-3 text-left"
                     >
-                      <div className="onboarding-permission-row flex items-center justify-between gap-3 p-4">
+                      <div className="onboarding-permission-row flex items-center justify-between gap-3 p-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <Avatar
                             src={signedInAccount.avatarUrl ?? undefined}
@@ -1424,7 +1429,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-sm space-y-3"
+                      className="mx-auto w-full max-w-sm space-y-4 text-left"
                     >
                       {authError && (
                         <div className="text-[12px] text-red-300">{authError}</div>
@@ -1439,38 +1444,6 @@ const Onboarding: React.FC = () => {
                           <span>Continue with Google</span>
                         </div>
                       </Button>
-                      <div className="relative my-3">
-                        <div className="border-b border-border/40" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="bg-[var(--surface-solid)] px-2 text-[11px] font-medium text-subtle tracking-wider uppercase">
-                            or
-                          </span>
-                        </div>
-                      </div>
-                      {!authEmailRequested ? (
-                        <form className="space-y-2" onSubmit={handleEmailSubmit}>
-                          <input
-                            type="email"
-                            value={authEmail}
-                            onChange={(e) => setAuthEmail(e.target.value)}
-                            placeholder="Enter your email"
-                            className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none"
-                          />
-                          <Button
-                            className="w-full"
-                            type="submit"
-                            disabled={authLoading || !authEmail}
-                          >
-                            Continue with Email
-                          </Button>
-                        </form>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-[12px] text-subtle">
-                            A Magic Link will be sent to your email.
-                          </p>
-                        </div>
-                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
