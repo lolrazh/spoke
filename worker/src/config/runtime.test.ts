@@ -10,6 +10,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(['groq','openai','baseten']).toContain(cfg.llm.provider);
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
+    expect(['groq','fireworks']).toContain(cfg.stt.provider);
   });
 
   it('coerces booleans (reasoning removed)', () => {
@@ -23,6 +24,13 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(cfg.stt.model).toBe('whisper-x');
     expect(cfg.stt.language).toBe('fr');
     expect(cfg.stt.prompt).toBe('hello');
+  });
+
+  it('parses STT provider override', () => {
+    const cfg = getRuntimeConfig({ STT_PROVIDER: 'fireworks' });
+    expect(cfg.stt.provider).toBe('fireworks');
+    const fallback = getRuntimeConfig({ STT_PROVIDER: 'invalid' });
+    expect(['groq','fireworks']).toContain(fallback.stt.provider);
   });
 
   it('parses LLM provider from env (LLM_PROVIDER preferred)', () => {

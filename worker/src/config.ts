@@ -16,8 +16,23 @@ export const LLM_DEFAULT_PROVIDER = 'groq' as const;
 export type LLMProvider = 'groq' | 'openai' | 'baseten';
 
 // STT (Audio Transcriptions)
-export const STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
-export const STT_DEFAULT_MODEL = 'whisper-large-v3';
+export type STTProvider = 'groq' | 'fireworks';
+
+export const GROQ_STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
+export const GROQ_STT_MODEL = 'whisper-large-v3';
+
+export const FIREWORKS_STT_TURBO_ENDPOINT =
+  'https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
+export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
+// export const FIREWORKS_STT_LARGE_ENDPOINT =
+//   'https://audio-prod.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
+// export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
+
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-// Default vocab/prompt moved to services/stt/prompt.ts to keep prompts centralized
+
+export const STT_DEFAULT_PROVIDER = 'groq' as const;
+// export const STT_DEFAULT_PROVIDER = 'fireworks' as const;
+
+export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
+// export const STT_DEFAULT_MODEL = FIREWORKS_STT_TURBO_MODEL;

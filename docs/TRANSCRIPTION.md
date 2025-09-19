@@ -300,37 +300,28 @@ export function wrapWav(pcm: Uint8Array, rate = 16000, channels = 1, bitsPerSamp
 }
 ```
 
-### Speech-to-Text API
+### Speech-to-Text Providers
 
-**Location**: `worker/src/services/stt/groq.ts`
+The worker now supports multiple STT providers behind a small dispatcher so the default can be flipped by editing `worker/src/config.ts` (no `.dev.vars` required).
 
-#### Groq API Configuration
-```typescript
-const model = 'whisper-large-v3';                 // Groq's Whisper model
-const language = 'en';                            // Language hint
-const prompt = 'Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, Groq, Supabase, Gemini 2.0 Flash Lite';
-```
+- **Switcher**: `worker/src/services/stt/index.ts` — selects provider based on `STT_DEFAULT_PROVIDER` and forwards normalized options.
+- **Provider configs**: toggle `STT_DEFAULT_PROVIDER`, `STT_DEFAULT_MODEL`, and the endpoint you want in `worker/src/config.ts` by commenting/uncommenting the desired exports (mirrors the existing LLM workflow).
 
-#### Request Processing
-```typescript
-const form = new FormData();
-form.append('file', new File([wav], 'audio.wav', { type: 'audio/wav' }));
-form.append('model', model);
-form.append('language', language);
-form.append('prompt', prompt);                    // Context for better accuracy
+#### Groq Whisper Large v3 (default)
+- **Location**: `worker/src/services/stt/providers/groq.ts`
+- **Endpoint**: `https://api.groq.com/openai/v1/audio/transcriptions`
+- **Auth**: `Authorization: Bearer <GROQ_API_KEY>`
+- **Default model**: `whisper-large-v3` (set via `GROQ_STT_MODEL`)
+- **Instrumentation**: Records `stt.provider = groq` plus Groq-specific timing attributes for TTFB, body processing, and total duration.
 
-const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${apiKey}` },
-  body: form,
-  signal: abortController.signal,                 // Cancellation support
-});
-```
+#### Fireworks Whisper Turbo
+- **Location**: `worker/src/services/stt/providers/fireworks.ts`
+- **Endpoint**: `https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions`
+- **Auth**: `Authorization: <FIREWORKS_API_KEY>` (no `Bearer` prefix)
+- **Default model**: `whisper-v3-turbo` (via `FIREWORKS_STT_TURBO_MODEL`)
+- **Instrumentation**: Emits `stt.provider = fireworks` with timing metrics mirroring the Groq span fields.
 
-#### Timing Instrumentation
-- **TTFB (Time to First Byte)**: Headers received timestamp
-- **Body Processing**: Full response parsing time  
-- **Total Request Time**: Complete API call duration
+> **Switching providers**: Uncomment the Fireworks exports for `STT_DEFAULT_PROVIDER` and `STT_DEFAULT_MODEL` (plus any alternate endpoint constants) in `worker/src/config.ts`. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
 
 ### Optional LLM Post-Processing
 

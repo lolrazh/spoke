@@ -1,28 +1,45 @@
-export type GroqTranscriptionTimings = {
+import * as Sentry from '@sentry/cloudflare';
+import {
+  FIREWORKS_STT_TURBO_ENDPOINT,
+  STT_DEFAULT_LANGUAGE,
+  STT_DEFAULT_MODEL,
+  STT_DEFAULT_TIMEOUT_MS,
+} from '../../../config';
+import { DEFAULT_STT_PROMPT } from '../prompt';
+
+type BasicTimings = {
   startAt: number;
   headersAt: number;
   bodyDoneAt: number;
 };
 
-export type GroqTranscriptionResult = {
+export type FireworksTranscriptionResult = {
   text: string;
-  timings: GroqTranscriptionTimings;
+  timings: BasicTimings;
 };
 
-import * as Sentry from '@sentry/cloudflare';
-import { STT_ENDPOINT, STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../config';
-import { DEFAULT_STT_PROMPT } from './prompt';
+const FIREWORKS_HOSTNAME = new URL(FIREWORKS_STT_TURBO_ENDPOINT).hostname;
+
+type TranscribeOpts = {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  language?: string;
+  prompt?: string;
+  model?: string;
+};
 
 export async function transcribeWav(
   wav: Uint8Array,
   apiKey: string,
-  opts?: { timeoutMs?: number; signal?: AbortSignal; language?: string; prompt?: string; model?: string },
-): Promise<GroqTranscriptionResult> {
+  opts?: TranscribeOpts,
+): Promise<FireworksTranscriptionResult> {
   const startAt = Date.now();
   const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
   const model = opts?.model ?? STT_DEFAULT_MODEL;
   const language = opts?.language ?? STT_DEFAULT_LANGUAGE;
   const prompt = opts?.prompt ?? DEFAULT_STT_PROMPT;
+
+  const endpoint = FIREWORKS_STT_TURBO_ENDPOINT;
 
   const form = new FormData();
   const file = new File([wav], 'audio.wav', { type: 'audio/wav' });
@@ -42,46 +59,47 @@ export async function transcribeWav(
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: `POST ${STT_ENDPOINT}`,
+      name: `POST ${endpoint}`,
       attributes: {
         'http.request.method': 'POST',
-        'server.address': 'api.groq.com',
+        'server.address': FIREWORKS_HOSTNAME,
         'server.port': 443,
-        'groq.model': model,
-        'groq.language': language,
+        'stt.provider': 'fireworks',
+        'fireworks.model': model,
+        'fireworks.language': language,
         'audio.size_bytes': wav.length,
-        'groq.timeout_ms': timeoutMs,
+        'fireworks.timeout_ms': timeoutMs,
       },
     }, async (span) => {
-      const res = await fetch(STT_ENDPOINT, {
+      const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: { Authorization: apiKey },
         body: form,
         signal: controller.signal,
       });
       const headersAt = Date.now();
-      
-      // Set HTTP response attributes
+
       span.setAttribute('http.response.status_code', res.status);
-      span.setAttribute('http.response_content_length', 
-        Number(res.headers.get('content-length')) || 0);
-      span.setAttribute('groq.ttfb_ms', headersAt - startAt);
-      
+      span.setAttribute(
+        'http.response_content_length',
+        Number(res.headers.get('content-length')) || 0,
+      );
+      span.setAttribute('fireworks.ttfb_ms', headersAt - startAt);
+
       if (!res.ok) {
         const body = await res.text();
-        span.setAttribute('groq.error_body', body);
-        throw new Error(`GROQ STT error: ${res.status} ${body}`);
+        span.setAttribute('fireworks.error_body', body);
+        throw new Error(`FIREWORKS STT error: ${res.status} ${body}`);
       }
-      
+
       const json = (await res.json()) as { text?: string };
       const bodyDoneAt = Date.now();
-      
-      // Set transcription result attributes
+
       const transcriptionText = json?.text ?? '';
-      span.setAttribute('groq.transcription_text', transcriptionText);
-      span.setAttribute('groq.total_duration_ms', bodyDoneAt - startAt);
-      span.setAttribute('groq.body_processing_ms', bodyDoneAt - headersAt);
-      
+      span.setAttribute('fireworks.transcription_text', transcriptionText);
+      span.setAttribute('fireworks.total_duration_ms', bodyDoneAt - startAt);
+      span.setAttribute('fireworks.body_processing_ms', bodyDoneAt - headersAt);
+
       return {
         text: transcriptionText,
         timings: { startAt, headersAt, bodyDoneAt },
