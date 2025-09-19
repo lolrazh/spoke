@@ -131,7 +131,7 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - `worker/src/handlers/ws.ts:1` — WS lifecycle, Sentry spans, session summary, per‑session logs
 - `worker/src/utils/logger.ts:1` — Structured logging with proper console levels
 - `worker/src/services/stt/providers/groq.ts:1` — STT HTTP span (Groq)
-- `worker/src/services/stt/providers/fireworks.ts:1` — STT HTTP span (Fireworks)
+- `worker/src/services/stt/providers/fireworks.ts:1` — STT HTTP span (Fireworks). Includes `fireworks.preprocessing`, `fireworks.vad_model`, `fireworks.alignment_model`, and `fireworks.temperature_schedule` attributes for auditing advanced parameters.
 - `worker/src/services/llm/groq.ts:1` — LLM HTTP span
 
 **Appendix: Example Summaries**

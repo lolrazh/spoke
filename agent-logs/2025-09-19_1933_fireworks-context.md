@@ -11,6 +11,8 @@ User wanted to extend the transcription worker so it can switch between Groq Whi
 - ✅ **Provider abstraction landed** – `worker/src/services/stt/index.ts` now fans out to Groq or Fireworks using normalized options and shared defaults.
 - ✅ **Fireworks client implemented** – `worker/src/services/stt/providers/fireworks.ts` posts WAV/FormData with Sentry spans mirroring the Groq implementation and handles timeout/abort wiring.
 - ✅ **Runtime + docs updated** – `worker/src/config/runtime.ts`, docs, and README describe how to flip providers and which env vars/keys drive each path; added unit coverage for the dispatcher/runtime helpers.
+- ✅ **Fireworks defaults tuned for latency** – Added VAD (`silero`), alignment (`tdnn_ffn`), fallback temperatures (`0.0,0.2,0.4`), `preprocessing=none`, and explicit language wiring so the API runs with the recommended low-latency profile.
+- ✅ **Final message regression fixed** – `worker/src/handlers/ws.ts` now keeps `sttProvider` in scope so the worker can emit the `final` payload instead of throwing.
 - ⚠️ **Fireworks sessions hit context ceiling** – Real WS runs against Fireworks fail with `context_length_exceeded`, so transcription never returns and we fall back to error handling.
 
 ## Technical Implementation
@@ -35,6 +37,8 @@ The worker now derives STT defaults in `worker/src/config.ts` (Groq-first, Firew
    - **Fix:** None yet; probable next step is trimming the prompt, chunking audio, or requesting larger context tier from Fireworks.
 2. **No graceful fallback when Fireworks fails** – When Fireworks rejects, the worker throws, WS closes, and the renderer shows a generic error instead of reverting to Groq.
    - **Workaround:** Keep `STT_PROVIDER` defaulted to Groq in env; Fireworks remains experimental until error handling is added.
+3. **Final send ReferenceError** – Calculated metrics used `sttProvider` outside its scope, throwing `ReferenceError: sttProvider is not defined` and preventing paste.
+   - **Fix:** Move `getRuntimeConfig` lookup ahead of the Sentry span so `sttProvider` stays in scope for the final metrics payload (`worker/src/handlers/ws.ts:120-178`).
 
 ## Key Learnings
 - **Fireworks uses raw `Authorization` key** – No `Bearer` prefix, unlike Groq, so bindings must stay distinct.
@@ -46,7 +50,7 @@ The worker now derives STT defaults in `worker/src/config.ts` (Groq-first, Firew
 - **Opt-in Fireworks defaults** – Left Groq as the compiled default while documenting how to flip constants so prod remains stable.
 
 ## Ready for Next Session
-- ✅ **Provider scaffolding and tests** – Dispatcher, clients, and docs are in place for further tuning.
+- ✅ **Provider scaffolding and tests** – Dispatcher, clients, docs, and regression fix are in place for further tuning.
 - 🔧 **Tackle Fireworks context limits** – Need to reduce payload, request higher context, or retry on failure before exposing to users.
 - 🔧 **Add fallback/error UX** – Consider retrying with Groq or emitting a clearer UI error when Fireworks rejects.
 

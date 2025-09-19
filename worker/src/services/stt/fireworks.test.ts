@@ -26,8 +26,12 @@ describe('services/stt/fireworks.transcribeWav', () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe(FIREWORKS_STT_TURBO_ENDPOINT);
     expect((init as any).headers.Authorization).toBe(apiKey);
-    const body = (init as any).body;
-    expect(typeof body.append).toBe('function');
+    const body = (init as any).body as FormData;
+    expect(body.get('language')).toBe('en');
+    expect(body.get('preprocessing')).toBe('none');
+    expect(body.get('vad_model')).toBe('silero');
+    expect(body.get('alignment_model')).toBe('tdnn_ffn');
+    expect(body.get('temperature')).toBe('0.0,0.2,0.4');
   });
 
   it('throws on non-ok response', async () => {

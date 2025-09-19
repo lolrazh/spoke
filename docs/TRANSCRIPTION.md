@@ -319,6 +319,7 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Endpoint**: `https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions`
 - **Auth**: `Authorization: <FIREWORKS_API_KEY>` (no `Bearer` prefix)
 - **Default model**: `whisper-v3-turbo` (via `FIREWORKS_STT_TURBO_MODEL`)
+- **Signal options**: Uses fallback decoding with `temperature=0.0,0.2,0.4`, `vad_model=silero`, `alignment_model=tdnn_ffn`, and `preprocessing=none` for minimal latency; language defaults to `en` unless overridden.
 - **Instrumentation**: Emits `stt.provider = fireworks` with timing metrics mirroring the Groq span fields.
 
 > **Switching providers**: Uncomment the Fireworks exports for `STT_DEFAULT_PROVIDER` and `STT_DEFAULT_MODEL` (plus any alternate endpoint constants) in `worker/src/config.ts`. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
