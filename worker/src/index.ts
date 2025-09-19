@@ -32,6 +32,22 @@ app.post('/metrics/session', async (c) => {
     const body = await c.req.json<any>();
     const summary = buildSessionSummary(body, c.env as any);
 
+    // Emit dataset texts directly to Sentry logs when present in the merged payload
+    const dataset = summary.dataset;
+    if (dataset && (dataset.sttText || dataset.llmText)) {
+      safely(() =>
+        Sentry.logger.info('dataset.llm_io', {
+          traceId: summary.id,
+          'session.trace_id': summary.id,
+          sttText: dataset.sttText ?? null,
+          llmText: dataset.llmText ?? null,
+          sttLen: dataset.sttText ? dataset.sttText.length : 0,
+          llmLen: dataset.llmText ? dataset.llmText.length : 0,
+          source: 'metrics.session',
+        }),
+      );
+    }
+
     // Log one-line JSON summary
     safely(() => console.log(JSON.stringify(summary)));
 
