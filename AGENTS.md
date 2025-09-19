@@ -43,8 +43,8 @@
 - Dev endpoints: `VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws` (local), prod `wss://api.sonicflow.app/ws`.
 - Commands: run worker locally with `npm run dev:ws` (from `worker/`); start app pointing to local WS via `npm run dev:local`.
 - Key files (client): `src/hooks/useTranscription.ts` (pipeline + WS), `public/worklets/pcm16-downsampler.worklet.js` (resample), `src/utils/pcm.ts` (frame header), `src/config/audio.ts` (CHUNK_MS, POST_ROLL_MS, WS buffers), `src/config/vad.ts` + `src/utils/vad*` (gate-only VAD, optional).
-- Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/groq.ts` (STT), `worker/src/services/llm/{openai,groq,baseten}.ts` (optional LLM), `worker/src/config/runtime.ts` (env-driven provider/model/stream settings).
-- Environment: client `VITE_TRANSCRIBE_WS_URL`; worker STT `GROQ_API_KEY`; LLM supports `LLM_PROVIDER` (openai|groq|baseten), `LLM_MODEL`, `LLM_STREAM`, and keys `OPENAI_API_KEY` / `GROQ_API_KEY` / `BASETEN_API_KEY`. See `docs/TRANSCRIPTION.md` for the full matrix.
+- Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/index.ts` + `worker/src/services/stt/providers/*` (STT), `worker/src/services/llm/{openai,groq,baseten}.ts` (optional LLM), `worker/src/config/runtime.ts` (env-driven provider/model/stream settings).
+- Environment: client `VITE_TRANSCRIBE_WS_URL`; worker STT `GROQ_API_KEY` / `FIREWORKS_API_KEY`; LLM supports `LLM_PROVIDER` (openai|groq|baseten), `LLM_MODEL`, `LLM_STREAM`, and keys `OPENAI_API_KEY` / `GROQ_API_KEY` / `BASETEN_API_KEY`. See `docs/TRANSCRIPTION.md` for the full matrix.
 
 ### PTT Gestures & Guards
 - Hold‑to‑speak: press Right Option ≥ 80 ms → start dictation; releasing stops.

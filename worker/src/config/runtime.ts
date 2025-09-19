@@ -7,8 +7,9 @@ import {
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_MODEL,
   STT_DEFAULT_TIMEOUT_MS,
+  STT_DEFAULT_PROVIDER,
 } from '../config';
-import type { LLMProvider } from '../config';
+import type { LLMProvider, STTProvider } from '../config';
 
 type Boolish = string | undefined | null | boolean;
 
@@ -33,6 +34,7 @@ export type RuntimeConfig = {
     provider: LLMProvider;
   };
   stt: {
+    provider: STTProvider;
     model: string;
     language: string;
     prompt?: string;
@@ -56,6 +58,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   const provider = parseProvider(env.LLM_PROVIDER, userDefaultProvider as LLMProvider);
 
   // STT
+  const sttProvider = parseSttProvider(env.STT_PROVIDER, STT_DEFAULT_PROVIDER);
   const sttModel = env.STT_MODEL || STT_DEFAULT_MODEL;
   const sttLanguage = env.STT_LANGUAGE || STT_DEFAULT_LANGUAGE;
   const sttPrompt = env.STT_PROMPT || undefined;
@@ -65,12 +68,18 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
   return {
     llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider },
-    stt: { model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
+    stt: { provider: sttProvider, model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
   };
 }
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? '').toString().toLowerCase();
   if (s === 'groq' || s === 'openai' || s === 'baseten') return s as LLMProvider;
+  return fallback;
+}
+
+function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
+  const s = (v ?? '').toString().toLowerCase();
+  if (s === 'groq' || s === 'fireworks') return s as STTProvider;
   return fallback;
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { transcribeWav } from './groq';
+import { transcribeWav } from './providers/groq';
 
 describe('services/stt/groq.transcribeWav', () => {
   const apiKey = 'test-key';

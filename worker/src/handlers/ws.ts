@@ -7,16 +7,23 @@ import { createLogger } from '../utils/logger';
 import { safeClose, safeJson } from '../utils/ws';
 import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
-import { transcribeWav } from '../services/stt/groq';
+import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
-import { STT_ENDPOINT, GROQ_LLM_ENDPOINT, OPENAI_LLM_ENDPOINT, BASETEN_LLM_ENDPOINT } from '../config';
+import {
+  GROQ_STT_ENDPOINT,
+  FIREWORKS_STT_TURBO_ENDPOINT,
+  GROQ_LLM_ENDPOINT,
+  OPENAI_LLM_ENDPOINT,
+  BASETEN_LLM_ENDPOINT,
+} from '../config';
 
 type Bindings = {
   GROQ_API_KEY?: string;
+  FIREWORKS_API_KEY?: string;
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
@@ -35,7 +42,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     return c.text('Too many connections from your IP. Please try again later.', 429);
   }
 
-  const { GROQ_API_KEY } = c.env;
+  const { GROQ_API_KEY, FIREWORKS_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
@@ -109,6 +116,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
           
+          const runtime = getRuntimeConfig(c.env);
+          const sttProvider = runtime.stt.provider;
+
           try {
             await Sentry.startSpan({
               op: 'transcription.session',
@@ -132,8 +142,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               // Add session context directly to the span using setAttribute
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               
-              if (GROQ_API_KEY) {
-                const runtime = getRuntimeConfig(c.env);
+              const sttApiKey = sttProvider === 'fireworks' ? FIREWORKS_API_KEY : GROQ_API_KEY;
+              const sttEndpoint = sttProvider === 'fireworks'
+                ? FIREWORKS_STT_TURBO_ENDPOINT
+                : GROQ_STT_ENDPOINT;
+
+              sessionSpan.setAttribute('stt.provider', sttProvider);
+
+              if (sttApiKey) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
                 const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
@@ -141,14 +157,17 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 try {
                   const sttLog = {
                     event: 'stt.request',
+                    provider: sttProvider,
                     model: runtime.stt.model,
-                    endpoint: STT_ENDPOINT,
+                    endpoint: sttEndpoint,
                     language: clientLanguage || runtime.stt.language,
                     traceId: session.traceId,
                   } as const;
                   console.log(JSON.stringify(sttLog));
                 } catch {}
-                const res = await transcribeWav(wav, GROQ_API_KEY, {
+                const res = await transcribeWav(wav, {
+                  provider: sttProvider,
+                  apiKey: sttApiKey,
                   signal: sttAbort.signal,
                   model: runtime.stt.model,
                   language: clientLanguage || runtime.stt.language,
@@ -273,7 +292,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 sessionSpan.setAttribute('session.final_text_length', (llmText || finalText).length);
               } else {
                 finalText = '';
-                sessionSpan.setAttribute('groq.api_key_missing', true);
+                sessionSpan.setAttribute('stt.api_key_missing', true);
+                sessionSpan.setAttribute('stt.provider', sttProvider);
+                connLog.error('[WS] missing STT API key', { provider: sttProvider });
               }
             });
           } catch (e: any) {
@@ -308,8 +329,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ? session.lastArrivalMs - session.firstArrivalMs
                     : null,
                 assembleMs,
-                groq: timings
+                stt: timings
                   ? {
+                      provider: sttProvider,
                       startAt: timings.startAt,
                       headersAt: timings.headersAt,
                       bodyDoneAt: timings.bodyDoneAt,

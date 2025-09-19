@@ -32,7 +32,7 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 **What We Capture (Worker)**
 - **Traces**: A session span per dictation and HTTP client spans for STT/LLM.
   - Session span: `worker/src/handlers/ws.ts:1` (around the transcription flow)
-  - STT span: `worker/src/services/stt/groq.ts:1`
+  - STT span: `worker/src/services/stt/providers/groq.ts:1` (Groq) / `worker/src/services/stt/providers/fireworks.ts:1` (Fireworks)
   - LLM span: `worker/src/services/llm/groq.ts:1`
 - **Logs** (Sentry Logs product):
   - Console logs are forwarded to Sentry via `consoleLoggingIntegration` and `enableLogs: true` (`worker/src/index.ts:1`).
@@ -130,7 +130,8 @@ It covers environments, what we capture, how logs and traces correlate per dicta
 - `worker/src/index.ts:1` — Sentry config (Logs integration), `/ws`, `/metrics/session`, `/logs/test`, CORS
 - `worker/src/handlers/ws.ts:1` — WS lifecycle, Sentry spans, session summary, per‑session logs
 - `worker/src/utils/logger.ts:1` — Structured logging with proper console levels
-- `worker/src/services/stt/groq.ts:1` — STT HTTP span
+- `worker/src/services/stt/providers/groq.ts:1` — STT HTTP span (Groq)
+- `worker/src/services/stt/providers/fireworks.ts:1` — STT HTTP span (Fireworks). Includes `fireworks.preprocessing`, `fireworks.vad_model`, `fireworks.alignment_model`, and `fireworks.temperature_schedule` attributes for auditing advanced parameters.
 - `worker/src/services/llm/groq.ts:1` — LLM HTTP span
 
 **Appendix: Example Summaries**

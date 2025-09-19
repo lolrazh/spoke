@@ -10,8 +10,13 @@ export type GroqTranscriptionResult = {
 };
 
 import * as Sentry from '@sentry/cloudflare';
-import { STT_ENDPOINT, STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../config';
-import { DEFAULT_STT_PROMPT } from './prompt';
+import {
+  GROQ_STT_ENDPOINT,
+  STT_DEFAULT_MODEL,
+  STT_DEFAULT_LANGUAGE,
+  STT_DEFAULT_TIMEOUT_MS,
+} from '../../../config';
+import { DEFAULT_STT_PROMPT } from '../prompt';
 
 export async function transcribeWav(
   wav: Uint8Array,
@@ -42,18 +47,19 @@ export async function transcribeWav(
   try {
     return await Sentry.startSpan({
       op: 'http.client',
-      name: `POST ${STT_ENDPOINT}`,
+      name: `POST ${GROQ_STT_ENDPOINT}`,
       attributes: {
         'http.request.method': 'POST',
         'server.address': 'api.groq.com',
         'server.port': 443,
+        'stt.provider': 'groq',
         'groq.model': model,
         'groq.language': language,
         'audio.size_bytes': wav.length,
         'groq.timeout_ms': timeoutMs,
       },
     }, async (span) => {
-      const res = await fetch(STT_ENDPOINT, {
+      const res = await fetch(GROQ_STT_ENDPOINT, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,

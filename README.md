@@ -227,7 +227,9 @@ sonic-flow-app/
 │   ├── src/
 │   │   ├── handlers/ws.ts       # WebSocket connection handling
 │   │   ├── audio/codec.ts       # PCM processing and WAV wrapping
-│   │   ├── services/stt/groq.ts # Speech-to-text integration
+│   │   ├── services/stt/        # Speech-to-text providers
+│   │   │   ├── index.ts         # Provider dispatcher (Groq / Fireworks)
+│   │   │   └── providers/…      # Provider-specific clients
 │   │   └── index.ts             # Worker entry point
 │   └── wrangler.jsonc           # Worker configuration
 ├── native/                       # Native helper binary
