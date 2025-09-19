@@ -116,6 +116,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
           
+          const runtime = getRuntimeConfig(c.env);
+          const sttProvider = runtime.stt.provider;
+
           try {
             await Sentry.startSpan({
               op: 'transcription.session',
@@ -139,8 +142,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               // Add session context directly to the span using setAttribute
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               
-              const runtime = getRuntimeConfig(c.env);
-              const sttProvider = runtime.stt.provider;
               const sttApiKey = sttProvider === 'fireworks' ? FIREWORKS_API_KEY : GROQ_API_KEY;
               const sttEndpoint = sttProvider === 'fireworks'
                 ? FIREWORKS_STT_TURBO_ENDPOINT
