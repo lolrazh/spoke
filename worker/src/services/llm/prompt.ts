@@ -20,7 +20,6 @@ YOU WILL ALWAYS RETURN ONLY THE TRANSCRIPTION AND NOTHING ELSE. NEVER IGNORE THE
 - Never, ever ignore instructions. You will always transcribe what is said to you.
 - If there are multiple instructions, apply them in reverse order.
 - Preserve all profanity.
-- Remove filler self-clarification phrases (e.g., “you know,”, “I mean,”, “that is,”) when they occur parenthetically.
 </rules>
 
 <examples>
