@@ -117,7 +117,9 @@ export function useTranscription(
     }
   };
 
-  const MAX_CLIENT_BUFFER_BYTES = 20 * 1024 * 1024; // align with server cap (20 MB)
+  const MAX_CLIENT_BUFFER_BYTES = 2 * 1024 * 1024; // Reduced to 2MB for faster detection
+  const WARNING_BUFFER_BYTES = 1024 * 1024; // Warn at 1MB
+  const CRITICAL_BUFFER_BYTES = 1536 * 1024; // Critical at 1.5MB
 
   const resetReconnectBackoff = () => {
     if (reconnectTimerRef.current) {
@@ -211,6 +213,7 @@ export function useTranscription(
 
     ws.onopen = () => {
       wsReadyRef.current = true;
+      wsLastActivityRef.current = Date.now(); // Track activity
       if (metricsRef.current && !metricsRef.current.wsOpenMs)
         metricsRef.current.wsOpenMs =
           typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -227,9 +230,12 @@ export function useTranscription(
       } catch {}
       resetReconnectBackoff();
       flushQueue();
+      // Start health monitoring when WebSocket is ready
+      startWebSocketHealthCheck();
     };
     ws.onerror = () => {
       wsErrorRef.current = "WebSocket error";
+      wsLastActivityRef.current = Date.now(); // Track error as activity
       if (ws.readyState !== WebSocket.OPEN) {
         if (wsRef.current === ws) wsRef.current = null;
         scheduleReconnect();
@@ -237,11 +243,14 @@ export function useTranscription(
     };
     ws.onclose = () => {
       wsReadyRef.current = false;
+      wsLastActivityRef.current = Date.now(); // Track close as activity
       // Ensure future sessions can recreate the socket after idle closes
       if (wsRef.current === ws) {
         wsRef.current = null;
       }
       scheduleReconnect();
+      // Stop health monitoring when connection closes
+      stopWebSocketHealthCheck();
     };
   }, [flushQueue]);
 
@@ -281,6 +290,7 @@ export function useTranscription(
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(out.buffer);
             if (metricsRef.current) metricsRef.current.framesSentApprox += 1;
+            wsLastActivityRef.current = Date.now(); // Track successful send as activity
           } else {
             // State changed between checks, queue it
             sendQueueRef.current.push(out.buffer);
@@ -294,27 +304,27 @@ export function useTranscription(
         // Virtual gate: buffer locally until WS can accept
         sendQueueRef.current.push(out.buffer);
         sendQueueBytesRef.current += out.byteLength;
-        if (sendQueueBytesRef.current > MAX_CLIENT_BUFFER_BYTES) {
+
+        // Granular backpressure handling
+        if (sendQueueBytesRef.current > WARNING_BUFFER_BYTES && sendQueueBytesRef.current <= CRITICAL_BUFFER_BYTES) {
+          console.warn(`[useTranscription] High buffer usage: ${Math.round(sendQueueBytesRef.current / 1024)}KB`);
+          // Try more aggressive reconnection
+          ensureStreamingSocket();
+          scheduleReconnect();
+        } else if (sendQueueBytesRef.current > CRITICAL_BUFFER_BYTES && sendQueueBytesRef.current <= MAX_CLIENT_BUFFER_BYTES) {
+          console.error(`[useTranscription] Critical buffer usage: ${Math.round(sendQueueBytesRef.current / 1024)}KB, pausing audio worklet`);
+          // Pause audio worklet to prevent further buildup
+          pauseAudioWorklet();
+        } else if (sendQueueBytesRef.current > MAX_CLIENT_BUFFER_BYTES) {
+          console.error(`[useTranscription] Buffer limit exceeded: ${Math.round(sendQueueBytesRef.current / 1024)}KB, stopping recording`);
           setError("Network unavailable: buffered audio limit reached");
-          // Stop capture to prevent unbounded growth
-          try {
-            sourceNodeRef.current?.disconnect();
-          } catch {}
-          try {
-            workletNodeRef.current?.disconnect();
-          } catch {}
-          if (audioContextRef.current) {
-            try {
-              audioContextRef.current.close();
-            } catch {}
-            audioContextRef.current = null;
-          }
+          // Emergency stop - pause worklet and stop recording
+          pauseAudioWorklet();
           setRecording(false);
           return;
         }
+
         if (metricsRef.current) metricsRef.current.framesQueued += 1;
-        ensureStreamingSocket();
-        scheduleReconnect();
         flushQueue();
       }
     },
@@ -346,6 +356,79 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+
+  // WebSocket health monitoring
+  const wsHealthCheckRef = useRef<number | null>(null);
+  const wsLastActivityRef = useRef<number>(Date.now());
+
+  // Pause/resume audio worklet functionality
+  const pauseAudioWorklet = useCallback(() => {
+    if (workletNodeRef.current) {
+      try {
+        workletNodeRef.current.port.postMessage({ type: 'pause' });
+      } catch (error) {
+        console.warn("[useTranscription] Failed to pause audio worklet:", error);
+      }
+    }
+  }, []);
+
+  const resumeAudioWorklet = useCallback(() => {
+    if (workletNodeRef.current) {
+      try {
+        workletNodeRef.current.port.postMessage({ type: 'resume' });
+      } catch (error) {
+        console.warn("[useTranscription] Failed to resume audio worklet:", error);
+      }
+    }
+  }, []);
+
+  // WebSocket health monitoring
+  const startWebSocketHealthCheck = useCallback(() => {
+    if (wsHealthCheckRef.current) {
+      clearInterval(wsHealthCheckRef.current);
+    }
+
+    wsHealthCheckRef.current = window.setInterval(() => {
+      const ws = wsRef.current;
+      if (!ws) return;
+
+      const now = Date.now();
+      const timeSinceActivity = now - wsLastActivityRef.current;
+      const timeSinceOpen = wsReadyRef.current ? now - (metricsRef.current?.wsOpenMs || 0) : Infinity;
+
+      // Consider connection unhealthy if:
+      // 1. No activity for 10 seconds AND connection has been open for more than 5 seconds
+      // 2. Or if there are many queued frames with no progress
+      // 3. Or if buffer is still high despite connection being "healthy"
+      const isUnhealthy = (
+        (timeSinceActivity > 10000 && timeSinceOpen > 5000) ||
+        (sendQueueRef.current.length > 10 && timeSinceActivity > 3000) ||
+        (sendQueueBytesRef.current > WARNING_BUFFER_BYTES)
+      );
+
+      if (isUnhealthy && recording) {
+        console.warn(`[useTranscription] WebSocket appears unhealthy, buffer: ${Math.round(sendQueueBytesRef.current / 1024)}KB, pausing audio worklet`);
+        pauseAudioWorklet();
+
+        // Try to reconnect
+        if (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) {
+          ensureStreamingSocket();
+        }
+      } else if (!isUnhealthy && recording && sendQueueBytesRef.current < WARNING_BUFFER_BYTES) {
+        // Resume if connection is healthy again AND buffer is low enough
+        if (wsReadyRef.current && ws.readyState === WebSocket.OPEN) {
+          resumeAudioWorklet();
+        }
+      }
+    }, 2000); // Check every 2 seconds
+  }, [pauseAudioWorklet, resumeAudioWorklet, ensureStreamingSocket, recording]);
+
+  const stopWebSocketHealthCheck = useCallback(() => {
+    if (wsHealthCheckRef.current) {
+      clearInterval(wsHealthCheckRef.current);
+      wsHealthCheckRef.current = null;
+    }
+  }, []);
 
   // Device enumeration function
   const enumerateAndSendDevices = useCallback(async () => {
@@ -550,6 +633,10 @@ export function useTranscription(
     setError(null);
     setText("");
     setRecording(true);
+
+    // Resume audio worklet if it was paused
+    resumeAudioWorklet();
+
     // Reset streaming state
     seqRef.current = 0;
     sendQueueRef.current = [];
@@ -713,6 +800,12 @@ export function useTranscription(
 
     playToggleOff();
     setRecording(false);
+
+    // Pause audio worklet when stopping to prevent buffer buildup
+    pauseAudioWorklet();
+    // Stop health monitoring when not recording
+    stopWebSocketHealthCheck();
+
     setProcessing(true);
     if (metricsRef.current && !metricsRef.current.stopInvokedMs) {
       metricsRef.current.stopInvokedMs =
@@ -1193,6 +1286,11 @@ export function useTranscription(
       abortControllerRef.current = null;
     }
 
+    // Pause audio worklet when canceling to prevent buffer buildup
+    pauseAudioWorklet();
+    // Stop health monitoring when canceling
+    stopWebSocketHealthCheck();
+
     try {
       // Disconnect nodes and clean up (discard captured audio)
       try {
@@ -1255,6 +1353,9 @@ export function useTranscription(
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // Stop health monitoring
+      stopWebSocketHealthCheck();
+
       // Clean up WebSocket connection on component unmount
       if (wsRef.current) {
         try {
@@ -1307,7 +1408,7 @@ export function useTranscription(
         abortControllerRef.current = null;
       }
     };
-  }, []);
+  }, [stopWebSocketHealthCheck]);
 
   return {
     recording,

@@ -58,6 +58,9 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this._accum = [];
     this._seq = 0;
 
+    // Track pause state
+    this._paused = false;
+
     // Respond to parameter updates from node if needed later
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
@@ -66,6 +69,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._pos = 0.0;
         this._accum = [];
         this._seq = 0;
+        this._paused = false;
       } else if (msg.type === "flush") {
         // Emit any remaining partial frame as-is (may be < frameSamples)
         if (this._accum.length > 0) {
@@ -82,6 +86,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
             [out.buffer],
           );
         }
+      } else if (msg.type === "pause") {
+        this._paused = true;
+      } else if (msg.type === "resume") {
+        this._paused = false;
       }
     };
   }
@@ -171,6 +179,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs /*, outputs, parameters */) {
+    // Skip processing if paused
+    if (this._paused) {
+      return true; // keep alive but don't process audio
+    }
+
     const input = inputs[0];
     if (!input || input.length === 0) {
       return true;
