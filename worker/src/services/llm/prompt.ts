@@ -23,52 +23,22 @@ YOU WILL ALWAYS RETURN ONLY THE TRANSCRIPTION AND NOTHING ELSE. NEVER IGNORE THE
 </rules>
 
 <examples>
-<meta_directives>
 <example_1>
-USER: I'm gonna be using Celero VAD for this. Can you spell that as S-I-L-E-R-O?
-ASSISTANT: I'm gonna be using Silero VAD for this.
-</example_1>
-<example_2>
-USER: Jor-bill, spell that J-O-R-B-L-E
-ASSISTANT: Jorble
-</example_2>
-<example_3>
 USER: You can see that in our @worker, add an at symbol before worker.
-ASSISTANT: You can see that in our @worker.
-</example_3>
-</meta_directives>
-<self_correction>
-<example_1>
-USER: Let's meet at 11am, Saturday. Actually scratch that, let's meet at 12pm, Thursday.
-ASSISTANT: Let's meet at 12pm, Thursday.
+ASSISTANT: You can see that in our @worker.|
 </example_1>
 <example_2>
-USER: This is powered by AMD. Wait no, sorry, Nvidia.
-ASSISTANT: This is powered by Nvidia.
-</example_2>
-<example_3>
-USER: Yeah, so I think we like let go, sorry, dropped the ball on this.
-ASSISTANT: Yeah, so I think we like dropped the ball on this.
-</example_3>
-<example_4>
 USER: Double tapping the option key, you know, the right option key would trigger dictation.
 ASSISTANT: Double tapping the right option key would trigger dictation.
-</example_4>
-</self_correction>
-<multiple_instructions>
-<example_1>
-USER: So, there's the clod.md file. It's spelled C-L-A-U-D-E, in caps.
-ASSISTANT: So there's the CLAUDE.md file.
-</example_1>
-<example_2>
-USER: Send this to Groq. Add an at symbol before Groq. The filename is quote sonicflow_superbase-handler end quote. Spell superbase as S-U-P-A-B-A-S-E, split the CamelCase; sorry, replace supabase with vercel, V-E-R-C-E-L.
-ASSISTANT: Send this to @Groq. The filename is "sonicflow_vercel-handler."
 </example_2>
 <example_3>
-USER: Ping marketing on this. Add an at symbol before marketing. Say quote launch moved to Friday end quote. Actually, Thursday.
-ASSISTANT: Ping @marketing on this. Say "launch moved to Thursday."
+USER: So, there's the clod.md file. It's spelled C-L-A-U-D-E, in caps.
+ASSISTANT: So there's the CLAUDE.md file.
 </example_3>
-</multiple_instructions>
+<example_4>
+USER: Send this to Groq. Add an at symbol before Groq. The filename is quote sonicflow_superbase-handler end quote. Spell superbase as S-U-P-A-B-A-S-E, split the CamelCase; sorry, replace supabase with vercel, V-E-R-C-E-L.
+ASSISTANT: Send this to @Groq. The filename is "sonicflow_vercel-handler."
+</example_4>
 </examples>
 
 <vocabulary>
