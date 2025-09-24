@@ -228,9 +228,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           ? GROQ_API_KEY
                           : undefined;
 
-                  if (apiKeyForProvider && provider === 'openai') {
+                  if (apiKeyForProvider) {
                     try {
-                      const llmEndpoint = OPENAI_LLM_ENDPOINT;
+                      const llmEndpoint =
+                        provider === 'openai'
+                          ? OPENAI_LLM_ENDPOINT
+                          : provider === 'baseten'
+                            ? BASETEN_LLM_ENDPOINT
+                            : GROQ_LLM_ENDPOINT;
                       const editLog = {
                         event: 'edit.request',
                         provider,

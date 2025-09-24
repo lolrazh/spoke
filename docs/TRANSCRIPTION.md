@@ -723,7 +723,7 @@ LLM_MODEL=gpt-4.1                       # Model to use per provider
 EDIT_LLM_ENABLED=1                      # Enable edit-mode rewriting (default true)
 EDIT_LLM_PROVIDER=openai                # Provider for edits (openai | groq | baseten)
 EDIT_LLM_MODEL=gpt-4.1                 # Editing model (defaults to GPT-4.1)
-EDIT_LLM_STREAM=0                       # Stream edit deltas (OpenAI SSE) when set to 1
+EDIT_LLM_STREAM=0                       # Stream edit deltas when provider supports SSE (OpenAI/Groq/Baseten)
 EDIT_LLM_TEMPERATURE=0.2                # Creativity dial for edits (default 0.2)
 EDIT_LLM_TIMEOUT_MS=25000               # Timeout for editing request (default 25s)
 ```
