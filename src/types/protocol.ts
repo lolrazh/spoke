@@ -11,7 +11,6 @@ export type SelectionSnapshotPayload = {
   status?: string;
   hadSelection?: boolean;
   text?: string | null;
-  context?: string | null;
   range?: SelectionRange | null;
   valueLength?: number | null;
 };

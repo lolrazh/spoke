@@ -148,7 +148,6 @@ Before every session, the renderer probes the macOS accessibility API for the cu
   "selection": {
     "hadSelection": true,
     "text": "Original paragraph that will be edited",
-    "context": "… surrounding paragraph context …",
     "range": { "location": 42, "length": 128 },
     "status": "read:ok"
   }
@@ -359,7 +358,7 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 
 Edit sessions use the STT output as an instruction string rather than the final text. The worker then:
 
-1. Calls `prepareEditRequest` to wrap the instruction + original selection (plus optional context) into an XML payload.
+1. Calls `prepareEditRequest` to wrap the instruction and original selection into a minimal XML payload.
 2. Sends the payload to the configured edit model (GPT‑4.1 by default) with a strict system prompt that requests the rewritten text only.
 3. Streams edit deltas back to the renderer when `EDIT_LLM_STREAM=1`, otherwise returns a single edited block.
 4. Falls back to the original selection if the edit request errors or the provider key is missing (recorded as `edit.api_key_missing`).

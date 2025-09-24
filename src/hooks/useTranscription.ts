@@ -135,7 +135,6 @@ export function useTranscription(
       status: snapshot.status,
       hadSelection: snapshot.hadSelection,
       text: snapshot.selectedText ?? null,
-      context: snapshot.context ?? null,
       range,
       valueLength: snapshot.valueLength ?? null,
     };

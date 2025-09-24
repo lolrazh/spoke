@@ -7,7 +7,6 @@ export type ClientSelectionPayload = {
   status?: string;
   hadSelection?: boolean;
   text?: string | null;
-  context?: string | null;
   range?: ClientSelectionRange | null;
   valueLength?: number | null;
 };
@@ -144,10 +143,6 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
         text:
           typeof sel.text === 'string' || sel.text === null
             ? (sel.text as string | null)
-            : undefined,
-        context:
-          typeof sel.context === 'string' || sel.context === null
-            ? (sel.context as string | null)
             : undefined,
         range,
         valueLength:
