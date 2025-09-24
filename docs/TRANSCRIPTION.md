@@ -6,11 +6,14 @@ This document provides a comprehensive technical overview of Sonic Flow's real-t
 1. [Pipeline Overview](#pipeline-overview)
 2. [Audio Capture & Processing](#audio-capture--processing)
 3. [WebSocket Protocol](#websocket-protocol)
+   - [Edit Mode Metadata](#edit-mode-metadata)
 4. [Server-Side Processing](#server-side-processing)
+   - [Edit Mode LLM Flow](#edit-mode-llm-flow)
 5. [Response Handling](#response-handling)
 6. [Performance Metrics](#performance-metrics)
 7. [Error Handling](#error-handling)
 8. [Configuration](#configuration)
+   - [Edit Mode LLM Settings](#edit-mode-llm-settings)
 
 ---
 
@@ -130,6 +133,32 @@ const WS_MAX_BUFFERED_BYTES = 512 * 1024;  // 512KB backpressure threshold
 - Client-side buffering when WebSocket buffer is full
 - Queue flushing with 10ms retry intervals
 - 20MB total buffer limit with graceful degradation
+
+### Edit Mode Metadata
+
+**Location**: `src/hooks/useTranscription.ts:353-421`, `worker/src/types/messages.ts:1-172`
+
+Before every session, the renderer probes the macOS accessibility API for the currently selected text. If the helper returns a valid snapshot, the subsequent `start` control message includes both a `mode` flag and a serialized selection payload:
+
+```json
+{
+  "type": "start",
+  "version": 2,
+  "mode": "edit",
+  "selection": {
+    "hadSelection": true,
+    "text": "Original paragraph that will be edited",
+    "context": "… surrounding paragraph context …",
+    "range": { "location": 42, "length": 128 },
+    "status": "read:ok"
+  }
+}
+```
+
+Runtime details:
+- When no selection is available (or the AX read fails) the hook falls back to `mode: "dictation"` and omits the `selection` field.
+- The worker stores `mode` and `selection` in the session object, making the metadata available once the audio finishes streaming.
+- Downstream logging (`dataset.llm_io`, Sentry spans) records the chosen mode so edit sessions can be analyzed separately.
 
 ### Binary Frame Protocol
 
@@ -323,6 +352,19 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Instrumentation**: Emits `stt.provider = fireworks` with timing metrics mirroring the Groq span fields.
 
 > **Switching providers**: Uncomment the Fireworks exports for `STT_DEFAULT_PROVIDER` and `STT_DEFAULT_MODEL` (plus any alternate endpoint constants) in `worker/src/config.ts`. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
+
+### Edit Mode LLM Flow
+
+**Location**: `worker/src/handlers/ws.ts:200-360`, `worker/src/services/llm/editPrompt.ts`
+
+Edit sessions use the STT output as an instruction string rather than the final text. The worker then:
+
+1. Calls `prepareEditRequest` to wrap the instruction + original selection (plus optional context) into an XML payload.
+2. Sends the payload to the configured edit model (GPT‑4.1 by default) with a strict system prompt that requests the rewritten text only.
+3. Streams edit deltas back to the renderer when `EDIT_LLM_STREAM=1`, otherwise returns a single edited block.
+4. Falls back to the original selection if the edit request errors or the provider key is missing (recorded as `edit.api_key_missing`).
+
+Every edit invocation emits additional Sentry attributes (`edit.instructions_length`, `edit.provider`, `edit.had_selection`, etc.) and reuses the existing dataset logging pipeline so analytics can compare dictation and edit flows side-by-side.
 
 ### Optional LLM Post-Processing
 
@@ -675,6 +717,19 @@ ENABLE_LLM=1                            # Enable post-processing (default true)
 LLM_STREAM=1                            # Stream progressive updates (default true)
 LLM_MODEL=gpt-4.1                       # Model to use per provider
 ```
+
+### Edit Mode LLM Settings
+
+```bash
+EDIT_LLM_ENABLED=1                      # Enable edit-mode rewriting (default true)
+EDIT_LLM_PROVIDER=openai                # Provider for edits (openai | groq | baseten)
+EDIT_LLM_MODEL=gpt-4.1                 # Editing model (defaults to GPT-4.1)
+EDIT_LLM_STREAM=0                       # Stream edit deltas (OpenAI SSE) when set to 1
+EDIT_LLM_TEMPERATURE=0.2                # Creativity dial for edits (default 0.2)
+EDIT_LLM_TIMEOUT_MS=25000               # Timeout for editing request (default 25s)
+```
+
+> **API Keys**: When `EDIT_LLM_PROVIDER=openai`, the worker requires `OPENAI_API_KEY`. For Groq/Baseten supply `GROQ_API_KEY` or `BASETEN_API_KEY`. Missing credentials are logged (`edit.api_key_missing`) and the original selection is returned unchanged.
 
 ### Performance Tuning
 
