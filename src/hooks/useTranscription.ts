@@ -1033,10 +1033,29 @@ export function useTranscription(
                               lastArrivalMs?: number | null;
                               firstToLastArrivalMs?: number | null;
                               assembleMs?: number | null;
-                              stt?: { totalMs?: number | null } | null;
-                              groq?: {
+                              stt?: {
+                                provider?: string | null;
                                 startAt?: number | null;
                                 headersAt?: number | null;
+                                bodyDoneAt?: number | null;
+                                ttfbMs?: number | null;
+                                bodyMs?: number | null;
+                                totalMs?: number | null;
+                              } | null;
+                              groq?: {
+                                provider?: string | null;
+                                startAt?: number | null;
+                                headersAt?: number | null;
+                                bodyDoneAt?: number | null;
+                                ttfbMs?: number | null;
+                                bodyMs?: number | null;
+                                totalMs?: number | null;
+                              } | null;
+                              llm?: {
+                                provider?: string | null;
+                                startAt?: number | null;
+                                headersAt?: number | null;
+                                firstDeltaAt?: number | null;
                                 bodyDoneAt?: number | null;
                                 ttfbMs?: number | null;
                                 bodyMs?: number | null;

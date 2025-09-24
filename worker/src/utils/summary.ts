@@ -3,10 +3,31 @@ export type ClientMetrics = {
   bytesProduced?: number;
 };
 
+export type SttMetrics = {
+  provider?: string | null;
+  startAt?: number | null;
+  headersAt?: number | null;
+  bodyDoneAt?: number | null;
+  ttfbMs?: number | null;
+  bodyMs?: number | null;
+  totalMs?: number | null;
+};
+
+export type LlmMetrics = {
+  provider?: string | null;
+  startAt?: number | null;
+  headersAt?: number | null;
+  firstDeltaAt?: number | null;
+  bodyDoneAt?: number | null;
+  ttfbMs?: number | null;
+  bodyMs?: number | null;
+  totalMs?: number | null;
+};
+
 export type WorkerMetrics = {
-  llm?: { totalMs?: number | null } | null;
-  stt?: { totalMs?: number | null } | null;
-  groq?: { totalMs?: number | null } | null;
+  llm?: LlmMetrics | null;
+  stt?: SttMetrics | null;
+  groq?: SttMetrics | null;
   frames?: number;
   bytes?: number;
   seqGaps?: number;
@@ -46,8 +67,10 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
   if (!traceId) throw new Error('traceId required');
 
   const worker = body?.worker || null;
-  const llmMs = worker?.llm?.totalMs ?? null;
-  const sttMs = worker?.groq?.totalMs ?? worker?.stt?.totalMs ?? null;
+  const llm = worker?.llm ?? null;
+  const stt = worker?.stt ?? worker?.groq ?? null;
+  const llmMs = llm?.totalMs ?? null;
+  const sttMs = stt?.totalMs ?? null;
   const pipeline = llmMs != null ? 'stt+llm' : 'stt';
 
   const durations = {
@@ -63,7 +86,15 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
         : null,
     assembleMs: worker?.assembleMs ?? null,
     sttMs: sttMs ?? null,
+    sttTtfbMs: stt?.ttfbMs ?? null,
+    sttBodyMs: stt?.bodyMs ?? null,
     llmMs: llmMs ?? null,
+    llmTtfbMs: llm?.ttfbMs ?? null,
+    llmBodyMs: llm?.bodyMs ?? null,
+    llmFirstTokenMs:
+      llm?.firstDeltaAt != null && llm?.startAt != null
+        ? llm.firstDeltaAt - llm.startAt
+        : llm?.ttfbMs ?? null,
     serverProcessingMs: (sttMs ?? 0) + (llmMs ?? 0),
     overheadMs: (worker as any)?.overheadMs ?? null,
   };

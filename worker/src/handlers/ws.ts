@@ -119,6 +119,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
           let llmSuccess = false;
+          let llmProvider: string | null = null;
 
           const runtime = getRuntimeConfig(c.env);
           const sttProvider = runtime.stt.provider;
@@ -218,6 +219,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   );
 
                   const provider = runtime.edit.provider;
+                  llmProvider = provider;
                   const model = runtime.edit.model;
                   const apiKeyForProvider =
                     provider === 'openai'
@@ -299,6 +301,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
                   const provider = runtime.llm.provider;
+                  llmProvider = provider;
                   const apiKeyForProvider =
                     provider === 'openai'
                       ? c.env.OPENAI_API_KEY
@@ -351,7 +354,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   }
                 }
                 
-                // Set final session attributes with all timing data  
+                // Set final session attributes with all timing data
                 sessionSpan.setAttribute('stt.text_length', finalText.length);
                 sessionSpan.setAttribute('stt.success', true);
                 if (timings) {
@@ -359,15 +362,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   sessionSpan.setAttribute('stt.body_ms', timings.bodyDoneAt - timings.headersAt);
                   sessionSpan.setAttribute('stt.total_ms', timings.bodyDoneAt - timings.startAt);
                 }
-                
+
                 if (llmText) {
                   sessionSpan.setAttribute('llm.text_length', llmText.length);
                   sessionSpan.setAttribute('llm.enabled', true);
                   sessionSpan.setAttribute('llm.success', llmSuccess);
                   if (llmTimings) {
-                    sessionSpan.setAttribute('llm.ttfb_ms', (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt);
+                    const llmTtfb = (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt;
+                    sessionSpan.setAttribute('llm.ttfb_ms', llmTtfb);
                     sessionSpan.setAttribute('llm.body_ms', llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt));
                     sessionSpan.setAttribute('llm.total_ms', llmTimings.bodyDoneAt - llmTimings.startAt);
+                    if (llmTimings.firstDeltaAt)
+                      sessionSpan.setAttribute('llm.first_token_ms', llmTimings.firstDeltaAt - llmTimings.startAt);
                   }
                 } else {
                   sessionSpan.setAttribute('llm.enabled', enableLLM);
@@ -473,6 +479,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   : null,
                 llm: llmTimings
                   ? {
+                      provider: llmProvider,
                       startAt: llmTimings.startAt,
                       headersAt: llmTimings.headersAt,
                       firstDeltaAt: llmTimings.firstDeltaAt ?? null,
@@ -507,6 +514,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const llmTtfbMs = llmTimings ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt : null;
           const llmBodyMs = llmTimings ? llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt) : null;
           const llmTotalMs = llmTimings ? llmTimings.bodyDoneAt - llmTimings.startAt : null;
+          const llmFirstTokenMs =
+            llmTimings?.firstDeltaAt != null && llmTimings?.startAt != null
+              ? llmTimings.firstDeltaAt - llmTimings.startAt
+              : llmTtfbMs;
           const finalizationMs = t1 - t0;
           const overheadMs =
             sttTotalMs != null
@@ -529,7 +540,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 wsAcceptToFinalMs,
                 assembleMs,
                 sttMs: sttTotalMs,
+                sttTtfbMs,
+                sttBodyMs,
                 llmMs: llmTotalMs,
+                llmTtfbMs,
+                llmBodyMs,
+                llmFirstTokenMs,
                 serverProcessingMs: (sttTotalMs ?? 0) + (llmTotalMs ?? 0),
                 overheadMs,
                 e2eMs: null,
@@ -575,7 +591,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               span.setAttribute('dur.wsAcceptToFinalMs', wsAcceptToFinalMs ?? 0);
               span.setAttribute('dur.assembleMs', assembleMs);
               if (sttTotalMs != null) span.setAttribute('dur.sttMs', sttTotalMs);
+              if (sttTtfbMs != null) span.setAttribute('dur.sttTtfbMs', sttTtfbMs);
+              if (sttBodyMs != null) span.setAttribute('dur.sttBodyMs', sttBodyMs);
               if (llmTotalMs != null) span.setAttribute('dur.llmMs', llmTotalMs);
+              if (llmTtfbMs != null) span.setAttribute('dur.llmTtfbMs', llmTtfbMs);
+              if (llmBodyMs != null) span.setAttribute('dur.llmBodyMs', llmBodyMs);
+              if (llmFirstTokenMs != null) span.setAttribute('dur.llmFirstTokenMs', llmFirstTokenMs);
               span.setAttribute('dur.serverProcessingMs', (sttTotalMs ?? 0) + (llmTotalMs ?? 0));
               span.setAttribute('dur.overheadMs', overheadMs);
               span.setAttribute('traffic.frames', session.frames);

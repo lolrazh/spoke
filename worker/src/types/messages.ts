@@ -47,6 +47,7 @@ export type ServerLlmStatusMessage = {
 };
 
 export type SttTimingsMetrics = {
+  provider?: string | null;
   startAt: number;
   headersAt: number;
   bodyDoneAt: number;
@@ -56,6 +57,7 @@ export type SttTimingsMetrics = {
 };
 
 export type LlmTimingsMetrics = {
+  provider?: string | null;
   startAt: number;
   headersAt: number;
   firstDeltaAt: number | null;
