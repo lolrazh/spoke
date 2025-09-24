@@ -511,7 +511,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           try {
             const wsAccept = session.wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
-            const pipeline = llmTotalMs != null ? 'stt+llm' : 'stt';
+            const pipeline = session.mode === 'edit'
+              ? 'edit'
+              : llmTotalMs != null
+                ? 'stt+llm'
+                : 'stt';
             const summary = {
               event: 'transcription.session_summary',
               id: session.traceId ?? null,
@@ -538,6 +542,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
               },
               result: { textLen: (llmText || finalText).length },
+              edit:
+                session.mode === 'edit'
+                  ? {
+                      instructions: finalText,
+                      inputText:
+                        prepareEditRequest({
+                          instructions: finalText,
+                          selection: session.selection,
+                        })?.originalText ?? session.selection?.text ?? null,
+                      outputText: llmText || null,
+                    }
+                  : null,
               ws: { closeCode: 1000, closeReason: 'done' },
               env: {},
               containsClientMetrics: false,
@@ -561,6 +577,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               span.setAttribute('traffic.bytesKB', Number((session.totalBytes / 1024).toFixed(2)));
               span.setAttribute('traffic.seqGaps', session.seqGaps);
               span.setAttribute('result.text_len', (llmText || finalText).length);
+              if (session.mode === 'edit') {
+                span.setAttribute('edit.instructions_len', finalText.length);
+                span.setAttribute('edit.output_len', (llmText || '').length);
+              }
             });
           } catch (err) {
             connLog.error('[WS] session summary failed', { error: String(err) });
