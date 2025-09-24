@@ -313,6 +313,8 @@ export function useTranscription(
     ws.onclose = () => {
       wsReadyRef.current = false;
       wsLastActivityRef.current = Date.now(); // Track close as activity
+      // Reset start flag on close to allow re-sending start message on reconnect
+      startSentRef.current = false;
       // Ensure future sessions can recreate the socket after idle closes
       if (wsRef.current === ws) {
         wsRef.current = null;
