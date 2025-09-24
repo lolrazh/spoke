@@ -1,9 +1,22 @@
 // WebSocket protocol types for streaming transcription (v2)
 
+import type { SelectionRange } from "./shared";
+
 export type ClientStartV1 = {
   type: "start";
   language?: string;
 };
+
+export type SelectionSnapshotPayload = {
+  status?: string;
+  hadSelection?: boolean;
+  text?: string | null;
+  context?: string | null;
+  range?: SelectionRange | null;
+  valueLength?: number | null;
+};
+
+export type ClientSessionMode = "dictation" | "edit";
 
 export type ClientStartV2 = {
   type: "start";
@@ -11,6 +24,9 @@ export type ClientStartV2 = {
   format: "pcm16le";
   rate: number; // 16000
   language?: string;
+  traceId?: string;
+  mode?: ClientSessionMode;
+  selection?: SelectionSnapshotPayload | null;
 };
 
 export type ClientEnd = { type: "end" };

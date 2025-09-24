@@ -358,6 +358,10 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    pushTrace(`Mode: ${trans.mode}`);
+  }, [trans.mode]);
+
+  useEffect(() => {
     if (!trans.selection) return;
     const snapshot = trans.selection;
     const summary = snapshot.hadSelection

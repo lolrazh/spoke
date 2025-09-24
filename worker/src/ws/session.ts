@@ -1,3 +1,8 @@
+import type {
+  ClientSelectionPayload,
+  ClientSessionMode,
+} from '../types/messages';
+
 export type AudioSession = ReturnType<typeof createEmptySession>;
 
 export function createEmptySession() {
@@ -17,6 +22,8 @@ export function createEmptySession() {
     traceId: undefined as string | undefined,
     wsAcceptAt: undefined as number | undefined,
     processingStartAt: undefined as number | undefined,
+    mode: 'dictation' as ClientSessionMode,
+    selection: null as ClientSelectionPayload | null,
   };
 }
 
@@ -37,6 +44,7 @@ export function logSession(
         s.firstArrivalMs && s.lastArrivalMs
           ? s.lastArrivalMs - s.firstArrivalMs
           : null,
+      mode: s.mode,
       ...extra,
     };
     log('session', info);

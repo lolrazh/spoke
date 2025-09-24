@@ -15,6 +15,12 @@ export const LLM_DEFAULT_PROVIDER = 'groq' as const;
 // export const LLM_DEFAULT_PROVIDER = 'openai' as const;
 export type LLMProvider = 'groq' | 'openai' | 'baseten';
 
+export const EDIT_LLM_DEFAULT_MODEL = 'gpt-4.1';
+export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.2;
+export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
+export const EDIT_LLM_DEFAULT_STREAM = false;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'openai' as const;
+
 
 // STT (Audio Transcriptions)
 export const GROQ_STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';

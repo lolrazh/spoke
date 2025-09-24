@@ -10,6 +10,7 @@ import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
+import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editPrompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
@@ -80,6 +81,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
           clientLanguage = parsed.language;
+          session.mode = parsed.mode ?? 'dictation';
+          session.selection = parsed.selection ?? null;
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -115,7 +118,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let timings: { startAt: number; headersAt: number; bodyDoneAt: number } | null = null;
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
-          
+          let llmSuccess = false;
+
           const runtime = getRuntimeConfig(c.env);
           const sttProvider = runtime.stt.provider;
 
@@ -176,10 +180,105 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 });
                 finalText = res.text;
                 timings = res.timings;
-                
+
+                const editPlan =
+                  session.mode === 'edit' && runtime.edit.enabled
+                    ? prepareEditRequest({
+                        instructions: finalText,
+                        selection: session.selection,
+                      })
+                    : null;
+
+                if (sessionSpan) {
+                  sessionSpan.setAttribute('session.mode', session.mode ?? 'dictation');
+                  sessionSpan.setAttribute('edit.enabled', runtime.edit.enabled);
+                  sessionSpan.setAttribute('edit.provider', runtime.edit.provider);
+                  if (editPlan) {
+                    sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
+                    sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
+                    sessionSpan.setAttribute('edit.prompt_length', editPlan.promptXml.length);
+                    if (typeof editPlan.hadSelection === 'boolean') {
+                      sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
+                    }
+                  }
+                }
+
                 // Optional LLM post-process
-                const enableLLM = runtime.llm.enabled;
-                if (enableLLM && finalText) {
+                const enableLLM = runtime.llm.enabled && !editPlan;
+                if (editPlan) {
+                  safely(() =>
+                    server.send(
+                      JSON.stringify({
+                        type: 'llm_status',
+                        state: 'llm_processing',
+                        traceId: session.traceId,
+                        serverTs: Date.now(),
+                      }),
+                    ),
+                  );
+
+                  const provider = runtime.edit.provider;
+                  const model = runtime.edit.model;
+                  const apiKeyForProvider =
+                    provider === 'openai'
+                      ? c.env.OPENAI_API_KEY
+                      : provider === 'baseten'
+                        ? c.env.BASETEN_API_KEY
+                        : provider === 'groq'
+                          ? GROQ_API_KEY
+                          : undefined;
+
+                  if (apiKeyForProvider && provider === 'openai') {
+                    try {
+                      const llmEndpoint = OPENAI_LLM_ENDPOINT;
+                      const editLog = {
+                        event: 'edit.request',
+                        provider,
+                        model,
+                        endpoint: llmEndpoint,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(editLog));
+                    } catch {}
+                    try {
+                      const streamEdit = runtime.edit.stream;
+                      const editRes = await chatCompleteByProvider(provider, {
+                        apiKey: apiKeyForProvider,
+                        model,
+                        systemPrompt: buildEditSystemPrompt(),
+                        userContent: editPlan.promptXml,
+                        stream: streamEdit,
+                        temperature: runtime.edit.temperature,
+                        timeoutMs: runtime.edit.timeoutMs,
+                        signal: sttAbort.signal,
+                        onDelta: streamEdit
+                          ? (delta) => {
+                              if (!socketClosed && delta) {
+                                safely(() =>
+                                  server.send(
+                                    JSON.stringify({
+                                      type: 'llm_delta',
+                                      delta,
+                                      traceId: session.traceId,
+                                    }),
+                                  ),
+                                );
+                              }
+                          }
+                          : undefined,
+                      });
+                      llmSuccess = Boolean(editRes.text && editRes.text.length > 0);
+                      llmText = editRes.text || editPlan.originalText;
+                      llmTimings = editRes.timings;
+                    } catch (error) {
+                      sessionSpan.setAttribute('edit.error', String(error));
+                      llmText = editPlan.originalText;
+                    }
+                  } else {
+                    sessionSpan.setAttribute('edit.api_key_missing', true);
+                    llmText = editPlan.originalText;
+                  }
+                } else if (enableLLM && finalText) {
               // Notify client that LLM processing starts
                   safely(() =>
                     server.send(
@@ -241,6 +340,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     });
                     llmText = llmRes.text || '';
                     llmTimings = llmRes.timings;
+                    llmSuccess = llmText.length > 0;
                   } else {
                     sessionSpan.setAttribute('llm.api_key_missing', true);
                   }
@@ -258,7 +358,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 if (llmText) {
                   sessionSpan.setAttribute('llm.text_length', llmText.length);
                   sessionSpan.setAttribute('llm.enabled', true);
-                  sessionSpan.setAttribute('llm.success', true);
+                  sessionSpan.setAttribute('llm.success', llmSuccess);
                   if (llmTimings) {
                     sessionSpan.setAttribute('llm.ttfb_ms', (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt);
                     sessionSpan.setAttribute('llm.body_ms', llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt));
@@ -266,10 +366,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   }
                 } else {
                   sessionSpan.setAttribute('llm.enabled', enableLLM);
+                  sessionSpan.setAttribute('llm.success', false);
                 }
                 // Dataset logging: ASR→LLM input and LLM output
                 // Comment out this block to disable dataset logging.
                 try {
+                  const datasetLlmConfig = session.mode === 'edit'
+                    ? { provider: runtime.edit.provider, model: runtime.edit.model }
+                    : { provider: runtime.llm.provider, model: runtime.llm.model };
                   const datasetEntry = {
                     event: 'dataset.llm_io',
                     traceId: session.traceId,
@@ -277,7 +381,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     language: clientLanguage || runtime.stt.language,
                     sttText: finalText,
                     llmText: llmText || null,
-                    llm: { provider: runtime.llm.provider, model: runtime.llm.model },
+                    llm: datasetLlmConfig,
+                    mode: session.mode,
                     ts: Date.now(),
                   } as const;
                   console.log(JSON.stringify(datasetEntry));
