@@ -1,42 +1,28 @@
 import type { ClientSelectionPayload } from '../../types/messages';
 
-const XML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
-};
-
-const XML_ESCAPE_REGEX = /[&<>"']/g;
-
-function escapeForXml(value: string): string {
-  return value.replace(XML_ESCAPE_REGEX, (char) => XML_ESCAPE_MAP[char] ?? char);
-}
-
 function normalizeText(value: string | null | undefined): string {
   if (!value) return '';
   return value.trim();
 }
 
 export type EditRequestPayload = {
-  promptXml: string;
+  prompt: string;
   instructions: string;
   originalText: string;
   hadSelection?: boolean;
   status?: string;
 };
 
-export function buildEditXmlPrompt(input: {
+export function buildEditPrompt(input: {
   instructions: string;
   originalText: string;
 }): string {
-  const instructions = escapeForXml(input.instructions);
-  const original = escapeForXml(input.originalText);
-
   return [
-    `<instructions>\n  ${instructions}\n</instructions>`,
-    `<input>\n  ${original}\n</input>`,
+    'Instructions:',
+    input.instructions,
+    '',
+    'Original Text:',
+    input.originalText,
   ].join('\n');
 }
 
@@ -53,13 +39,13 @@ export function prepareEditRequest(params: {
   const original = normalizeText(selection.text ?? null);
   if (!original) return null;
 
-  const promptXml = buildEditXmlPrompt({
+  const prompt = buildEditPrompt({
     instructions,
     originalText: original,
   });
 
   return {
-    promptXml,
+    prompt,
     instructions,
     originalText: original,
     hadSelection: selection.hadSelection,
@@ -67,7 +53,7 @@ export function prepareEditRequest(params: {
   };
 }
 
-const EDIT_SYSTEM_PROMPT = `You are an expert writing editor. You receive XML inside <edit_request> where <instructions> describes the desired edits and <input> contains the original text. Return only the edited text without commentary.`;
+const EDIT_SYSTEM_PROMPT = `You are an expert writing editor. You will receive plain text sections labelled "Instructions:" and "Original Text:". Rewrite the original text so it satisfies the instructions. Respond with the edited text only, preserving punctuation and without inserting XML/HTML entities or additional commentary.`;
 
 export function buildEditSystemPrompt(): string {
   return EDIT_SYSTEM_PROMPT;

@@ -196,7 +196,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   if (editPlan) {
                     sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
                     sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
-                    sessionSpan.setAttribute('edit.prompt_length', editPlan.promptXml.length);
+                    sessionSpan.setAttribute('edit.prompt_length', editPlan.prompt.length);
                     if (typeof editPlan.hadSelection === 'boolean') {
                       sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
                     }
@@ -246,7 +246,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         apiKey: apiKeyForProvider,
                         model,
                         systemPrompt: buildEditSystemPrompt(),
-                        userContent: editPlan.promptXml,
+                        userContent: editPlan.prompt,
                         stream: streamEdit,
                         temperature: runtime.edit.temperature,
                         timeoutMs: runtime.edit.timeoutMs,
