@@ -374,18 +374,39 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const datasetLlmConfig = session.mode === 'edit'
                     ? { provider: runtime.edit.provider, model: runtime.edit.model }
                     : { provider: runtime.llm.provider, model: runtime.llm.model };
-                  const datasetEntry = {
-                    event: 'dataset.llm_io',
-                    traceId: session.traceId,
-                    'session.trace_id': session.traceId,
-                    language: clientLanguage || runtime.stt.language,
-                    sttText: finalText,
-                    llmText: llmText || null,
-                    llm: datasetLlmConfig,
-                    mode: session.mode,
-                    ts: Date.now(),
-                  } as const;
-                  console.log(JSON.stringify(datasetEntry));
+
+                  if (session.mode === 'edit') {
+                    const editPlanForDataset = prepareEditRequest({
+                      instructions: finalText,
+                      selection: session.selection,
+                    });
+                    const datasetEntry = {
+                      event: 'dataset.edit_io',
+                      traceId: session.traceId,
+                      'session.trace_id': session.traceId,
+                      language: clientLanguage || runtime.stt.language,
+                      instructions: finalText,
+                      inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
+                      outputText: llmText || null,
+                      llm: datasetLlmConfig,
+                      mode: session.mode,
+                      ts: Date.now(),
+                    } as const;
+                    console.log(JSON.stringify(datasetEntry));
+                  } else {
+                    const datasetEntry = {
+                      event: 'dataset.llm_io',
+                      traceId: session.traceId,
+                      'session.trace_id': session.traceId,
+                      language: clientLanguage || runtime.stt.language,
+                      sttText: finalText,
+                      llmText: llmText || null,
+                      llm: datasetLlmConfig,
+                      mode: session.mode,
+                      ts: Date.now(),
+                    } as const;
+                    console.log(JSON.stringify(datasetEntry));
+                  }
                 } catch {}
                 
                 // Add overall session timing
