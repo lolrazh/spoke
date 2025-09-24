@@ -358,6 +358,15 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!trans.selection) return;
+    const snapshot = trans.selection;
+    const summary = snapshot.hadSelection
+      ? `Selection captured (${snapshot.selectedText?.length ?? 0} chars)`
+      : `Selection inspect ${snapshot.status}`;
+    pushTrace(summary);
+  }, [trans.selection]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setShowDebug(params.has("debugPill"));
   }, []);

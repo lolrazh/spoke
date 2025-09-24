@@ -184,6 +184,35 @@ static void print_cfstring_truncated(const char *label, CFStringRef s, CFIndex l
     CFRelease(slice);
 }
 
+static void print_cfstring_base64(const char *label, CFStringRef s) {
+    if (!label) label = "";
+    if (!s) {
+        printf("%sB64:\n", label);
+        return;
+    }
+    CFDataRef data = CFStringCreateExternalRepresentation(
+        kCFAllocatorDefault,
+        s,
+        kCFStringEncodingUTF8,
+        0
+    );
+    if (!data) {
+        printf("%sB64:\n", label);
+        return;
+    }
+    @autoreleasepool {
+        NSData *nsData = [NSData dataWithBytes:CFDataGetBytePtr(data)
+                                         length:(NSUInteger)CFDataGetLength(data)];
+        NSString *encoded = [nsData base64EncodedStringWithOptions:0];
+        if (encoded) {
+            printf("%sB64:%s\n", label, [encoded UTF8String]);
+        } else {
+            printf("%sB64:\n", label);
+        }
+    }
+    CFRelease(data);
+}
+
 static CFStringRef cfstring_substring_safe(CFStringRef s, CFRange r) {
     if (!s) return NULL;
     CFIndex len = CFStringGetLength(s);
@@ -390,6 +419,8 @@ static int inspect_text_core(int context_chars) {
     printf("selectedRange:%ld:%ld\n", (long)sel.location, (long)sel.length);
     print_cfstring_truncated("selectedText", selectedText, 512);
     print_cfstring_truncated("context", contextSlice, 512);
+    print_cfstring_base64("selectedText", selectedText);
+    print_cfstring_base64("context", contextSlice);
     printf("valueLength:%ld\n", (long)len);
     fflush(stdout);
 

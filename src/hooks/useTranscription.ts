@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import type { SelectionInspectSnapshot } from "../types/shared";
 import { playToggleOff } from "../utils/audioFeedback";
 import {
   MICROPHONE_PREFERRED_RATE,
@@ -21,6 +22,7 @@ export interface UseTranscriptionReturn {
   ready: boolean;
   text: string;
   error: string | null;
+  selection: SelectionInspectSnapshot | null;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -355,6 +357,8 @@ export function useTranscription(
   const [ready, setReady] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const selectionRef = useRef<SelectionInspectSnapshot | null>(null);
+  const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(null);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   // WebSocket health monitoring
@@ -625,6 +629,25 @@ export function useTranscription(
     if (recording) return;
     if (processing) return; // Prevent starting while processing
     // Start cue moved to PTT/button handlers for immediacy
+
+    selectionRef.current = null;
+    setSelection(null);
+    if (window.selection?.inspect) {
+      try {
+        const snapshot = await window.selection.inspect();
+        selectionRef.current = snapshot ?? null;
+        setSelection(snapshot ?? null);
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[useTranscription] Selection snapshot", snapshot);
+        }
+      } catch (err) {
+        if (window.devFlags?.devConsoleLogs) {
+          console.warn("[useTranscription] Selection inspect failed", err);
+        }
+        selectionRef.current = null;
+        setSelection(null);
+      }
+    }
 
     if (!streamRef.current) {
       const ok = await openStreamForSelectedDevice();
@@ -1416,6 +1439,7 @@ export function useTranscription(
     ready,
     text,
     error,
+    selection,
     start,
     stop,
     cancel,
