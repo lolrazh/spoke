@@ -18,7 +18,7 @@ export type LLMProvider = 'groq' | 'openai' | 'baseten';
 export const EDIT_LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.2;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
-export const EDIT_LLM_DEFAULT_STREAM = false;
+export const EDIT_LLM_DEFAULT_STREAM = true;
 export const EDIT_LLM_DEFAULT_PROVIDER = 'groq' as const;
 
 
