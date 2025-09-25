@@ -990,9 +990,9 @@ const App: React.FC = () => {
           clearActiveCapture(tokenId);
           return;
         }
-        let startPromise: Promise<void>;
+        let startResult: void | Promise<void>;
         try {
-          startPromise = latestTransRef.current.start();
+          startResult = latestTransRef.current.start();
         } catch (err) {
           pushTrace(
             `PTT hold start failed synchronously: ${
@@ -1003,7 +1003,11 @@ const App: React.FC = () => {
           pillDispatch({ type: "CANCEL" });
           return;
         }
-        monitorStartResolution(tokenId, "hold", startPromise);
+        monitorStartResolution(
+          tokenId,
+          "hold",
+          Promise.resolve(startResult),
+        );
         if (permissionResult === true) {
           void handlePermissionOutcome(true, tokenId, "hold", permissionToken);
           return;
@@ -1115,9 +1119,9 @@ const App: React.FC = () => {
               );
               return;
             }
-            let startPromise: Promise<void>;
+            let startResult: void | Promise<void>;
             try {
-              startPromise = latestTransRef.current.start();
+              startResult = latestTransRef.current.start();
             } catch (err) {
               pushTrace(
                 `PTT double-tap start failed synchronously: ${
@@ -1128,7 +1132,11 @@ const App: React.FC = () => {
               pillDispatch({ type: "CANCEL" });
               return;
             }
-            monitorStartResolution(tokenId, "doubleTap", startPromise);
+            monitorStartResolution(
+              tokenId,
+              "doubleTap",
+              Promise.resolve(startResult),
+            );
             if (permissionResult === true) {
               void handlePermissionOutcome(
                 true,
@@ -1215,9 +1223,9 @@ const App: React.FC = () => {
             void handlePermissionOutcome(false, tokenId, "click", permissionToken);
             return;
           }
-          let startPromise: Promise<void>;
+          let startResult: void | Promise<void>;
           try {
-            startPromise = trans.start();
+            startResult = trans.start();
           } catch (err) {
             pushTrace(
               `Pill click start failed synchronously: ${
@@ -1228,7 +1236,11 @@ const App: React.FC = () => {
             pillDispatch({ type: "CANCEL" });
             return;
           }
-          monitorStartResolution(tokenId, "click", startPromise);
+          monitorStartResolution(
+            tokenId,
+            "click",
+            Promise.resolve(startResult),
+          );
           if (permissionResult === true) {
             void handlePermissionOutcome(true, tokenId, "click", permissionToken);
             return;
