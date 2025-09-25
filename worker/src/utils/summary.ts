@@ -73,7 +73,13 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
   const llmMs = llm?.totalMs ?? null;
   const sttMs = stt?.totalMs ?? null;
   const mode = worker?.mode ?? null;
-  const pipeline = mode === 'edit' ? 'edit' : llmMs != null ? 'stt+llm' : 'stt';
+  const pipeline = mode === 'edit'
+    ? 'edit'
+    : mode === 'dictation' && llmMs != null
+      ? 'dictation'
+      : llmMs != null
+        ? 'stt+llm'
+        : 'stt';
 
   const durations = {
     e2eMs: body?.derived?.e2eMs ?? null,

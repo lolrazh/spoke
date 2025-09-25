@@ -68,6 +68,25 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.durations.serverProcessingMs).toBe(300);
   });
 
+  it('computes dictation pipeline when mode is dictation with llm', () => {
+    const body = {
+      traceId: 'abc5',
+      worker: {
+        mode: 'dictation',
+        llm: { totalMs: 100, ttfbMs: 40, bodyMs: 60, firstDeltaAt: 1100, startAt: 1000 },
+        stt: { totalMs: 200, ttfbMs: 80, bodyMs: 120 },
+        wsAcceptAt: 1000,
+        finalSentAt: 1500,
+      },
+      derived: {},
+    };
+    const s = buildSessionSummary(body as any, env as any);
+    expect(s.pipeline).toBe('dictation');
+    expect(s.durations.llmMs).toBe(100);
+    expect(s.durations.wsAcceptToFinalMs).toBe(500);
+    expect(s.durations.serverProcessingMs).toBe(300);
+  });
+
   it('computes stt pipeline when no llm and mode is dictation', () => {
     const body = {
       traceId: 'abc4',
