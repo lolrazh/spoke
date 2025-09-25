@@ -525,20 +525,8 @@ const App: React.FC = () => {
         : undefined;
       if (active && postAction) {
         pushTrace(
-          `Executing post-start ${postAction} for ${active.kind} token=${active.token}`,
+          `Start pending scheduled ${postAction} for ${active.kind} token=${active.token}`,
         );
-        if (postAction === "cancel") {
-          try {
-            latestTransRef.current.cancel();
-          } catch {}
-          pillDispatch({ type: "CANCEL" });
-        } else {
-          try {
-            latestTransRef.current.stop();
-          } catch {}
-          pillDispatch({ type: "PTT_STOP" });
-        }
-        clearActiveCapture(active.token);
       } else if (active && active.kind === "hold" && !isOptionDownRef.current) {
         pushTrace("Auto-cancel hold capture after late start");
         try {
@@ -1071,9 +1059,6 @@ const App: React.FC = () => {
           if (activeHold) {
             schedulePostStartAction(activeHold.token, "cancel");
           }
-          try {
-            latestTransRef.current.cancel();
-          } catch {}
           pushTrace(`PTT long press canceled before start`);
           pillDispatch({ type: "CANCEL" });
         }
