@@ -722,7 +722,9 @@ const Onboarding: React.FC = () => {
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
     if (currentStep === "hotkey-info" && !pttApiReady) {
-      window.electron?.setPttTarget?.("main");
+      // Keep PTT routed to onboarding while the pill stays hidden so test taps
+      // don't leak into the main app. Helper still runs so we can show keycaps.
+      window.electron?.setPttTarget?.("onboarding");
       const startHelperForTesting = async () => {
         try {
           devFlags.methods.devLog("Starting helper for onboarding testing...");

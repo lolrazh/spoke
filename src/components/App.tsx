@@ -339,6 +339,7 @@ const App: React.FC = () => {
   const lastTapUpRef = useRef<number | null>(null);
   const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
+  const isOptionDownRef = useRef(false);
   // Prevent double-playing the start cue when long-press timer and
   // double-tap start race on first gesture after idle
   const startCuePlayedRef = useRef(false);
@@ -677,6 +678,11 @@ const App: React.FC = () => {
 
     const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);
+      if (isOptionDownRef.current) {
+        pushTrace(`PTT down ignored (already active)`);
+        return;
+      }
+      isOptionDownRef.current = true;
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
       }
@@ -687,6 +693,7 @@ const App: React.FC = () => {
         if (window.notifications?.send) {
           window.notifications.send("Still transcribing… wait a sec");
         }
+        isOptionDownRef.current = false;
         return;
       }
       if (latestTransRef.current.recording) {
@@ -736,6 +743,16 @@ const App: React.FC = () => {
 
     const handleFunctionKeyUp = () => {
       pushTrace(`PTT up`);
+      if (!isOptionDownRef.current) {
+        pushTrace(`PTT up ignored (no active press)`);
+        lastTapUpRef.current = null;
+        if (doubleTapTimerRef.current) {
+          clearTimeout(doubleTapTimerRef.current);
+          doubleTapTimerRef.current = null;
+        }
+        return;
+      }
+      isOptionDownRef.current = false;
       if (pressTimerRef.current) {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
