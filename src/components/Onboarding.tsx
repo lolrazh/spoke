@@ -81,7 +81,7 @@ type OnboardingStep =
   | "mic-check"
   | "hotkey-info"
   | "hotkey-test"
-  | "hotkey-tap-test"
+  | "edit-test"
   | "cancel-info"
   | "complete";
 
@@ -247,8 +247,8 @@ const Onboarding: React.FC = () => {
   // Sample prompts for tests
   const sampleHoldText =
     "I wanna fix app.py and test.py. Add at symbols before the file names.";
-  const sampleTapText =
-    "Let’s meet Tuesday at 2pm. Actually, scratch that. Thursday at 11am.";
+  const sampleEditText =
+    "Team standup notes for today: Sarah finished the auth module yesterday and we had some bugs with the login flow. John is working on the dashboard but its taking longer than expected. We need to discuss the database schema changes. Also, the CI/CD pipeline is broken and needs fixing ASAP.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -539,7 +539,7 @@ const Onboarding: React.FC = () => {
     "mic-check",
     "hotkey-info",
     "hotkey-test",
-    "hotkey-tap-test",
+    "edit-test",
     "cancel-info",
     "complete",
   ];
@@ -782,7 +782,7 @@ const Onboarding: React.FC = () => {
   // Prepare the pill (create main window + tray) when entering either hotkey test step
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if ((currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") && !pillPreparedRef.current) {
+    if ((currentStep === "hotkey-test" || currentStep === "edit-test") && !pillPreparedRef.current) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -794,7 +794,7 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (currentStep === "hotkey-test" || currentStep === "hotkey-tap-test") {
+    if (currentStep === "hotkey-test" || currentStep === "edit-test") {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try { (window.electron as any)?.revealPillForTest?.(); } catch {}
@@ -949,7 +949,7 @@ const Onboarding: React.FC = () => {
 
   // Auto-focus the text box on test steps for better UX
   useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hotkey-tap-test") return;
+    if (currentStep !== "hotkey-test" && currentStep !== "edit-test") return;
     const id = setTimeout(() => {
       textAreaRef.current?.focus();
     }, 50);
@@ -1046,8 +1046,8 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       setTestText("");
-    } else if (currentStep === "hotkey-tap-test") {
-      setTestTextTap("");
+    } else if (currentStep === "edit-test") {
+      setTestTextTap(sampleEditText);
     }
   }, [currentStep]);
 
@@ -1761,10 +1761,10 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
 
-            {/* Hotkey Tap Test Step */}
-            {currentStep === "hotkey-tap-test" && (
+            {/* Edit Test Step */}
+            {currentStep === "edit-test" && (
               <motion.div
-                key="hotkey-tap-test"
+                key="edit-test"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -1774,29 +1774,37 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's try Hands-free Mode
+                      Let's try Edit Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Double-tap the hotkey to start and stop dictation.
+                      Select some text, then hold the hotkey and give it instructions.
                     </p>
                   </div>
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
-                      Try saying: {sampleTapText}
+                      Select some text below, then try: "Can you format this as meeting notes?" or "Make this more professional"
                     </div>
 
-                    {/* Dictation Textarea */}
+                    {/* Dictation Textarea with pre-filled content */}
                     <div className="onboarding-content-gap">
                       <textarea
                         className={
-                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                          "w-full h-32 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
                         }
-                        placeholder="Say something…"
+                        placeholder="Select some text and try editing it..."
                         value={testTextTap}
                         onChange={(e) => setTestTextTap(e.target.value)}
                         ref={textAreaRef}
                       />
+                    </div>
+
+                    {/* Edit mode instructions */}
+                    <div className="text-[11px] text-dimmed text-left space-y-1">
+                      <div>1. Select some text above (drag to highlight)</div>
+                      <div>2. Hold Right Option key</div>
+                      <div>3. Say: "Format this as bullet points" or "Make this more concise"</div>
+                      <div>4. Release to see your text rewritten!</div>
                     </div>
                   </div>
                 </div>
@@ -1931,7 +1939,7 @@ const Onboarding: React.FC = () => {
             ) : (
               <Button
                 variant="secondary"
-                onClick={() => setCurrentStep("hotkey-tap-test")}
+                onClick={() => setCurrentStep("edit-test")}
                 className="px-3 py-1.5"
               >
                 Next
