@@ -1777,13 +1777,13 @@ const Onboarding: React.FC = () => {
                       Let's try Edit Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Select some text, then hold the hotkey and give it instructions.
+                      Select the text, then hold the hotkey and give it instructions.
                     </p>
                   </div>
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
-                      Select some text below, then try: "Can you format this as meeting notes?" or "Make this more professional"
+                      Try saying: "Can you format this as meeting notes?"
                     </div>
 
                     {/* Dictation Textarea with pre-filled content */}
@@ -1799,13 +1799,6 @@ const Onboarding: React.FC = () => {
                       />
                     </div>
 
-                    {/* Edit mode instructions */}
-                    <div className="text-[11px] text-dimmed text-left space-y-1">
-                      <div>1. Select some text above (drag to highlight)</div>
-                      <div>2. Hold Right Option key</div>
-                      <div>3. Say: "Format this as bullet points" or "Make this more concise"</div>
-                      <div>4. Release to see your text rewritten!</div>
-                    </div>
                   </div>
                 </div>
               </motion.div>
