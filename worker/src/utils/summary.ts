@@ -35,6 +35,7 @@ export type WorkerMetrics = {
   wsAcceptAt?: number | null;
   finalSentAt?: number | null;
   assembleMs?: number | null;
+  mode?: string | null;
 };
 
 export type SessionBody = {
@@ -71,7 +72,8 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
   const stt = worker?.stt ?? worker?.groq ?? null;
   const llmMs = llm?.totalMs ?? null;
   const sttMs = stt?.totalMs ?? null;
-  const pipeline = llmMs != null ? 'stt+llm' : 'stt';
+  const mode = worker?.mode ?? null;
+  const pipeline = mode === 'edit' ? 'edit' : llmMs != null ? 'stt+llm' : 'stt';
 
   const durations = {
     e2eMs: body?.derived?.e2eMs ?? null,

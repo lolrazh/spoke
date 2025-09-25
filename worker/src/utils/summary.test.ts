@@ -48,4 +48,40 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.durations.llmBodyMs).toBe(60);
     expect(s.durations.llmFirstTokenMs).toBe(100);
   });
+
+  it('computes edit pipeline when mode is edit', () => {
+    const body = {
+      traceId: 'abc3',
+      worker: {
+        mode: 'edit',
+        llm: { totalMs: 100, ttfbMs: 40, bodyMs: 60, firstDeltaAt: 1100, startAt: 1000 },
+        stt: { totalMs: 200, ttfbMs: 80, bodyMs: 120 },
+        wsAcceptAt: 1000,
+        finalSentAt: 1500,
+      },
+      derived: {},
+    };
+    const s = buildSessionSummary(body as any, env as any);
+    expect(s.pipeline).toBe('edit');
+    expect(s.durations.llmMs).toBe(100);
+    expect(s.durations.wsAcceptToFinalMs).toBe(500);
+    expect(s.durations.serverProcessingMs).toBe(300);
+  });
+
+  it('computes stt pipeline when no llm and mode is dictation', () => {
+    const body = {
+      traceId: 'abc4',
+      worker: {
+        mode: 'dictation',
+        stt: { totalMs: 200, ttfbMs: 80, bodyMs: 120 },
+        wsAcceptAt: 1000,
+        finalSentAt: 1500,
+      },
+      derived: {},
+    };
+    const s = buildSessionSummary(body as any, env as any);
+    expect(s.pipeline).toBe('stt');
+    expect(s.durations.sttMs).toBe(200);
+    expect(s.durations.wsAcceptToFinalMs).toBe(500);
+  });
 });

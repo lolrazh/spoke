@@ -466,6 +466,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ? session.lastArrivalMs - session.firstArrivalMs
                     : null,
                 assembleMs,
+                mode: session.mode,
                 stt: timings
                   ? {
                       provider: sttProvider,
