@@ -340,6 +340,12 @@ const App: React.FC = () => {
   const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const isOptionDownRef = useRef(false);
+  const gestureTokenCounterRef = useRef(0);
+  const pendingStartTokenRef = useRef<
+    { id: number; kind: "hold" | "doubleTap" | "click" }
+    | null
+  >(null);
+  const holdActivationNonceRef = useRef<number | null>(null);
   // Prevent double-playing the start cue when long-press timer and
   // double-tap start race on first gesture after idle
   const startCuePlayedRef = useRef(false);
@@ -700,8 +706,19 @@ const App: React.FC = () => {
         return;
       }
       isLongPressRef.current = false;
-      pressTimerRef.current = setTimeout(async () => {
+      const holdNonce = ++gestureTokenCounterRef.current;
+      holdActivationNonceRef.current = holdNonce;
+      pressTimerRef.current = setTimeout(() => {
+        if (holdActivationNonceRef.current !== holdNonce) {
+          pushTrace(`PTT long press timer stale`);
+          return;
+        }
+        if (!isOptionDownRef.current) {
+          pushTrace(`PTT long press timer fired but key not down`);
+          return;
+        }
         isLongPressRef.current = true;
+        holdActivationNonceRef.current = null;
         // Play audio on actual long-press start (once per gesture)
         if (!startCuePlayedRef.current) {
           try { playToggleOn(); } catch {}
@@ -713,30 +730,45 @@ const App: React.FC = () => {
           doubleTapTimerRef.current = null;
         }
         lastTapUpRef.current = null;
-        pushTrace(`PTT long press start`);
+        pushTrace(`PTT long press start (pending gate)`);
         // Immediate visual drop for responsiveness
         pillDispatch({ type: "PTT_START" });
-        // Start capture immediately to minimize perceived latency
-        if (!latestTransRef.current.recording) {
-          try { latestTransRef.current.start(); } catch {}
-        }
-        // Run auth/mic checks in the background and cancel if they fail
+        const tokenId = ++gestureTokenCounterRef.current;
+        pendingStartTokenRef.current = { id: tokenId, kind: "hold" };
         (async () => {
           const allowed = await canProceedWithStartBasedOnMicPermission();
+          if (
+            !pendingStartTokenRef.current ||
+            pendingStartTokenRef.current.id !== tokenId
+          ) {
+            pushTrace(`PTT long press gate aborted (token mismatch)`);
+            return;
+          }
           if (!allowed) {
+            pendingStartTokenRef.current = null;
+            isLongPressRef.current = false;
             try {
               const mic = await window.electron?.checkMicrophonePermission?.();
               const msg = mic && mic.granted === false
                 ? "Microphone permission is off. Double-click to open Settings."
                 : "Sign in to dictate";
-              try { latestTransRef.current.cancel(); } catch {}
               pillDispatch({ type: "CANCEL" });
               pillDispatch({ type: "NOTIFY", msg });
             } catch {
-              try { latestTransRef.current.cancel(); } catch {}
               pillDispatch({ type: "CANCEL" });
             }
+            return;
           }
+          if (!isOptionDownRef.current) {
+            pendingStartTokenRef.current = null;
+            isLongPressRef.current = false;
+            pushTrace(`PTT long press gate aborted (key lifted)`);
+            pillDispatch({ type: "CANCEL" });
+            return;
+          }
+          try { latestTransRef.current.start(); } catch {}
+          pendingStartTokenRef.current = null;
+          pushTrace(`PTT long press capture started`);
         })();
       }, HOLD_DURATION_MS);
     };
@@ -757,15 +789,26 @@ const App: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
+      holdActivationNonceRef.current = null;
+      if (
+        pendingStartTokenRef.current?.kind === "hold" &&
+        !latestTransRef.current.recording
+      ) {
+        pendingStartTokenRef.current = null;
+      }
       if (isLongPressRef.current) {
         if (latestTransRef.current.recording) {
+          pendingStartTokenRef.current = null;
           // Normal hold-to-speak: stop on release
           latestTransRef.current.stop();
           pushTrace(`PTT long press stop`);
           pillDispatch({ type: "PTT_STOP" });
         } else {
           // Race: release before recording flips true → cancel pending start
-          latestTransRef.current.cancel();
+          pendingStartTokenRef.current = null;
+          try {
+            latestTransRef.current.cancel();
+          } catch {}
           pushTrace(`PTT long press canceled before start`);
           pillDispatch({ type: "CANCEL" });
         }
@@ -779,39 +822,53 @@ const App: React.FC = () => {
             clearTimeout(doubleTapTimerRef.current);
             doubleTapTimerRef.current = null;
           }
+          const pendingHandsFree =
+            pendingStartTokenRef.current?.kind === "doubleTap";
           lastTapUpRef.current = null;
           if (latestTransRef.current.recording) {
+            pendingStartTokenRef.current = null;
             latestTransRef.current.stop();
             pushTrace(`PTT double-tap stop`);
             pillDispatch({ type: "PTT_STOP" });
+          } else if (pendingHandsFree) {
+            pendingStartTokenRef.current = null;
+            pushTrace(`PTT double-tap start canceled before activation`);
+            pillDispatch({ type: "CANCEL" });
           } else {
-            // Start dictation on double-tap: play sound and start mic immediately
+            const tokenId = ++gestureTokenCounterRef.current;
+            pendingStartTokenRef.current = { id: tokenId, kind: "doubleTap" };
             if (!startCuePlayedRef.current) {
               try { playToggleOn(); } catch {}
               startCuePlayedRef.current = true;
             }
             pillDispatch({ type: "PTT_START" });
-            pushTrace(`PTT double-tap start`);
-            // Start capture immediately to minimize perceived latency
-            try { latestTransRef.current.start(); } catch {}
-            // Run auth/mic checks in the background and cancel if they fail
+            pushTrace(`PTT double-tap start (pending gate)`);
             (async () => {
               const allowed = await canProceedWithStartBasedOnMicPermission();
+              if (
+                !pendingStartTokenRef.current ||
+                pendingStartTokenRef.current.id !== tokenId
+              ) {
+                pushTrace(`PTT double-tap gate aborted (token mismatch)`);
+                return;
+              }
               if (!allowed) {
+                pendingStartTokenRef.current = null;
                 try {
                   const mic = await window.electron?.checkMicrophonePermission?.();
                   const msg = mic && mic.granted === false
                     ? "Microphone permission is off. Double-click to open Settings."
                     : "Sign in to dictate";
-                  // Cancel any active/in-flight session and notify
-                  try { latestTransRef.current.cancel(); } catch {}
                   pillDispatch({ type: "CANCEL" });
                   pillDispatch({ type: "NOTIFY", msg });
                 } catch {
-                  try { latestTransRef.current.cancel(); } catch {}
                   pillDispatch({ type: "CANCEL" });
                 }
+                return;
               }
+              try { latestTransRef.current.start(); } catch {}
+              pendingStartTokenRef.current = null;
+              pushTrace(`PTT double-tap capture started`);
             })();
           }
         } else {
@@ -859,6 +916,8 @@ const App: React.FC = () => {
           maxW: MAX_W,
         }}
         onStartDictation={async () => {
+          const tokenId = ++gestureTokenCounterRef.current;
+          pendingStartTokenRef.current = { id: tokenId, kind: "click" };
           // Immediate audio feedback on click start
           try {
             playToggleOn();
@@ -866,7 +925,15 @@ const App: React.FC = () => {
           // Immediate visual drop
           pillDispatch({ type: "PTT_START" });
           const allowed = await canProceedWithStartBasedOnMicPermission();
+          if (
+            !pendingStartTokenRef.current ||
+            pendingStartTokenRef.current.id !== tokenId
+          ) {
+            pushTrace(`Pill click start aborted (token mismatch)`);
+            return;
+          }
           if (!allowed) {
+            pendingStartTokenRef.current = null;
             try {
               const mic = await window.electron?.checkMicrophonePermission?.();
               const msg = mic && mic.granted === false
@@ -880,8 +947,10 @@ const App: React.FC = () => {
             return;
           }
           trans.start();
+          pendingStartTokenRef.current = null;
         }}
         onStopDictation={() => {
+          pendingStartTokenRef.current = null;
           pillDispatch({ type: "PTT_STOP" });
           trans.stop();
         }}
