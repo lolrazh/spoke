@@ -809,9 +809,17 @@ export function useTranscription(
         vadReadyRef.current = false;
       }
 
-      sourceNodeRef.current = audioContextRef.current.createMediaStreamSource(
-        streamRef.current,
-      );
+      const stream = streamRef.current;
+      if (!stream) {
+        if (window.devFlags?.devConsoleLogs) {
+          console.warn("[useTranscription] Stream missing during start(); aborting");
+        }
+        setRecording(false);
+        setProcessing(false);
+        return;
+      }
+      sourceNodeRef.current =
+        audioContextRef.current.createMediaStreamSource(stream);
       workletNodeRef.current = new AudioWorkletNode(
         audioContextRef.current,
         "pcm16-downsampler",
