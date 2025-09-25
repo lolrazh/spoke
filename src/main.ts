@@ -1102,14 +1102,14 @@ function hideFloatingBarWithTimer(minutes: number | null): void {
 
       mainWindow?.webContents.send(
         "notify",
-        `Floating bar hidden for ${minutes} minutes. Use tray menu to show early.`,
+        `Floating Bar Hidden for ${minutes} minutes. Use the Tray Menu to show early.`,
       );
     } else {
       // Treat indefinite hide as preference OFF
       floatingBarEnabled = false;
       mainWindow?.webContents.send(
         "notify",
-        "Floating bar hidden indefinitely. Use tray menu to show again.",
+        "Floating Bar Hidden Indefinitely. Use the Tray Menu to show again.",
       );
     }
   }

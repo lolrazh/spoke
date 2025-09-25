@@ -1296,7 +1296,7 @@ const App: React.FC = () => {
             return;
           }
 
-          const message = "Floating bar hidden. Use the tray to bring it back.";
+          const message = "Floating Bar Hidden. Use the Tray Menu to bring it back.";
           // If expanded, defer notification until collapse to avoid jank
           if (pillState === "EXPANDED") {
             setPendingHideAfterCollapse({ active: true, message });
