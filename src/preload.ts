@@ -56,6 +56,11 @@ contextBridge.exposeInMainWorld("clipboard", {
     ipcRenderer.invoke("insert-text-at-cursor", text),
 });
 
+contextBridge.exposeInMainWorld("selection", {
+  inspect: (options?: { contextChars?: number }) =>
+    ipcRenderer.invoke("selection:inspect", options ?? {}),
+});
+
 contextBridge.exposeInMainWorld("notifications", {
   send: (message: string) => ipcRenderer.send("show-notification", message),
   on: (callback: (message: string) => void) => {

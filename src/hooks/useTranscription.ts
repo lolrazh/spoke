@@ -1,4 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import type {
+  SelectionInspectSnapshot,
+  SelectionRange,
+} from "../types/shared";
+import type {
+  ClientSessionMode,
+  SelectionSnapshotPayload,
+} from "../types/protocol";
 import { playToggleOff } from "../utils/audioFeedback";
 import {
   MICROPHONE_PREFERRED_RATE,
@@ -21,6 +29,8 @@ export interface UseTranscriptionReturn {
   ready: boolean;
   text: string;
   error: string | null;
+  mode: ClientSessionMode;
+  selection: SelectionInspectSnapshot | null;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -102,6 +112,75 @@ export function useTranscription(
     framesForwarded?: number;
     framesDropped?: number;
   } | null>(null);
+
+  const [recording, setRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<ClientSessionMode>("dictation");
+  const selectionRef = useRef<SelectionInspectSnapshot | null>(null);
+  const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(null);
+  const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
+  const sessionModeRef = useRef<ClientSessionMode>("dictation");
+  const startSentRef = useRef(false);
+  const [selectedMicId, setSelectedMicId] = useState<string>("default");
+
+  const buildSelectionPayload = (
+    snapshot: SelectionInspectSnapshot | null,
+  ): SelectionSnapshotPayload | null => {
+    if (!snapshot) return null;
+    const range: SelectionRange | null = snapshot.range ?? null;
+    return {
+      status: snapshot.status,
+      hadSelection: snapshot.hadSelection,
+      text: snapshot.selectedText ?? null,
+      range,
+      valueLength: snapshot.valueLength ?? null,
+    };
+  };
+
+  const trySendStartMessage = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || startSentRef.current) return;
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const traceId = metricsRef.current?.sessionId;
+    if (!traceId) return;
+    const startPayload: {
+      type: "start";
+      version: 2;
+      format: "pcm16le";
+      rate: number;
+      language: string;
+      traceId: string;
+      mode?: ClientSessionMode;
+      selection?: SelectionSnapshotPayload | null;
+    } = {
+      type: "start",
+      version: 2,
+      format: "pcm16le",
+      rate: TARGET_SAMPLE_RATE,
+      language: "en",
+      traceId,
+    };
+
+    if (sessionModeRef.current) {
+      startPayload.mode = sessionModeRef.current;
+    }
+
+    if (sessionSelectionPayloadRef.current) {
+      startPayload.selection = sessionSelectionPayloadRef.current;
+    }
+
+    try {
+      ws.send(JSON.stringify(startPayload));
+      startSentRef.current = true;
+    } catch (err) {
+      if (window.devFlags?.devConsoleLogs) {
+        console.warn("[useTranscription] Failed to send start payload", err);
+      }
+    }
+  }, []);
 
   // VAD
   const vadEngineRef = useRef<SileroVadEngine | EnergyVadEngine | null>(null);
@@ -217,17 +296,7 @@ export function useTranscription(
       if (metricsRef.current && !metricsRef.current.wsOpenMs)
         metricsRef.current.wsOpenMs =
           typeof performance !== "undefined" ? performance.now() : Date.now();
-      try {
-        const startMsg = {
-          type: "start",
-          version: 2 as const,
-          format: "pcm16le" as const,
-          rate: TARGET_SAMPLE_RATE,
-          language: "en",
-          traceId: metricsRef.current?.sessionId,
-        };
-        ws.send(JSON.stringify(startMsg));
-      } catch {}
+      trySendStartMessage();
       resetReconnectBackoff();
       flushQueue();
       // Start health monitoring when WebSocket is ready
@@ -244,6 +313,8 @@ export function useTranscription(
     ws.onclose = () => {
       wsReadyRef.current = false;
       wsLastActivityRef.current = Date.now(); // Track close as activity
+      // Reset start flag on close to allow re-sending start message on reconnect
+      startSentRef.current = false;
       // Ensure future sessions can recreate the socket after idle closes
       if (wsRef.current === ws) {
         wsRef.current = null;
@@ -252,7 +323,7 @@ export function useTranscription(
       // Stop health monitoring when connection closes
       stopWebSocketHealthCheck();
     };
-  }, [flushQueue]);
+  }, [flushQueue, trySendStartMessage]);
 
   const streamFrame = useCallback(
     (pcmBuf: ArrayBuffer) => {
@@ -349,13 +420,6 @@ export function useTranscription(
     },
     [flushQueue],
   );
-
-  const [recording, setRecording] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   // WebSocket health monitoring
   const wsHealthCheckRef = useRef<number | null>(null);
@@ -626,6 +690,38 @@ export function useTranscription(
     if (processing) return; // Prevent starting while processing
     // Start cue moved to PTT/button handlers for immediacy
 
+    startSentRef.current = false;
+    sessionSelectionPayloadRef.current = null;
+    sessionModeRef.current = "dictation";
+    setMode("dictation");
+    selectionRef.current = null;
+    setSelection(null);
+    if (window.selection?.inspect) {
+      try {
+        const snapshot = await window.selection.inspect();
+        selectionRef.current = snapshot ?? null;
+        setSelection(snapshot ?? null);
+        sessionSelectionPayloadRef.current = buildSelectionPayload(snapshot ?? null);
+        const nextMode: ClientSessionMode = snapshot?.hadSelection
+          ? "edit"
+          : "dictation";
+        sessionModeRef.current = nextMode;
+        setMode(nextMode);
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[useTranscription] Selection snapshot", snapshot);
+        }
+      } catch (err) {
+        if (window.devFlags?.devConsoleLogs) {
+          console.warn("[useTranscription] Selection inspect failed", err);
+        }
+        selectionRef.current = null;
+        setSelection(null);
+        sessionSelectionPayloadRef.current = null;
+        sessionModeRef.current = "dictation";
+        setMode("dictation");
+      }
+    }
+
     if (!streamRef.current) {
       const ok = await openStreamForSelectedDevice();
       if (!ok) return;
@@ -658,6 +754,7 @@ export function useTranscription(
     try {
       // Try to establish the WebSocket early so audio failures don't mask connectivity
       ensureStreamingSocket();
+      trySendStartMessage();
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
       // Resolve worklet URL for both dev (http://localhost) and prod (file://)
@@ -938,10 +1035,29 @@ export function useTranscription(
                               lastArrivalMs?: number | null;
                               firstToLastArrivalMs?: number | null;
                               assembleMs?: number | null;
-                              stt?: { totalMs?: number | null } | null;
-                              groq?: {
+                              stt?: {
+                                provider?: string | null;
                                 startAt?: number | null;
                                 headersAt?: number | null;
+                                bodyDoneAt?: number | null;
+                                ttfbMs?: number | null;
+                                bodyMs?: number | null;
+                                totalMs?: number | null;
+                              } | null;
+                              groq?: {
+                                provider?: string | null;
+                                startAt?: number | null;
+                                headersAt?: number | null;
+                                bodyDoneAt?: number | null;
+                                ttfbMs?: number | null;
+                                bodyMs?: number | null;
+                                totalMs?: number | null;
+                              } | null;
+                              llm?: {
+                                provider?: string | null;
+                                startAt?: number | null;
+                                headersAt?: number | null;
+                                firstDeltaAt?: number | null;
                                 bodyDoneAt?: number | null;
                                 ttfbMs?: number | null;
                                 bodyMs?: number | null;
@@ -1416,6 +1532,8 @@ export function useTranscription(
     ready,
     text,
     error,
+    mode,
+    selection,
     start,
     stop,
     cancel,

@@ -4,6 +4,11 @@ import {
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
   LLM_DEFAULT_PROVIDER,
+  EDIT_LLM_DEFAULT_MODEL,
+  EDIT_LLM_DEFAULT_PROVIDER,
+  EDIT_LLM_DEFAULT_TEMPERATURE,
+  EDIT_LLM_DEFAULT_TIMEOUT_MS,
+  EDIT_LLM_DEFAULT_STREAM,
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_MODEL,
   STT_DEFAULT_TIMEOUT_MS,
@@ -40,6 +45,14 @@ export type RuntimeConfig = {
     prompt?: string;
     timeoutMs: number;
   };
+  edit: {
+    enabled: boolean;
+    stream: boolean;
+    model: string;
+    temperature: number;
+    timeoutMs: number;
+    provider: LLMProvider;
+  };
 };
 
 export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
@@ -66,9 +79,21 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     ? Number(env.STT_TIMEOUT_MS)
     : STT_DEFAULT_TIMEOUT_MS;
 
+  const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
+  const editStream = toBool(env.EDIT_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
+  const editModel = env.EDIT_LLM_MODEL || EDIT_LLM_DEFAULT_MODEL;
+  const editTemperature = Number.isFinite(Number(env.EDIT_LLM_TEMPERATURE))
+    ? Number(env.EDIT_LLM_TEMPERATURE)
+    : EDIT_LLM_DEFAULT_TEMPERATURE;
+  const editTimeoutMs = Number.isFinite(Number(env.EDIT_LLM_TIMEOUT_MS))
+    ? Number(env.EDIT_LLM_TIMEOUT_MS)
+    : EDIT_LLM_DEFAULT_TIMEOUT_MS;
+  const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
+
   return {
     llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider },
     stt: { provider: sttProvider, model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
+    edit: { enabled: editEnabled, stream: editStream, model: editModel, temperature: editTemperature, timeoutMs: editTimeoutMs, provider: editProvider },
   };
 }
 

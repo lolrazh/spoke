@@ -2,6 +2,8 @@
  * TypeScript declarations for the Electron API exposed to the renderer process
  */
 
+import type { SelectionInspectSnapshot } from "./shared";
+
 declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
@@ -26,6 +28,9 @@ declare global {
       insertText: (
         text: string,
       ) => Promise<{ success: boolean; error?: string }>;
+    };
+    selection: {
+      inspect: (options?: { contextChars?: number }) => Promise<SelectionInspectSnapshot>;
     };
     notifications: {
       send: (message: string) => void;

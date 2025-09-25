@@ -10,6 +10,20 @@ export type MicPreferences = { selectedMicId?: string };
 
 export type PttTarget = "auto" | "onboarding" | "main";
 
+export type SelectionRange = { location: number; length: number };
+
+export type SelectionInspectSnapshot = {
+  ok: boolean;
+  status: string;
+  range: SelectionRange | null;
+  selectedText: string | null;
+  context: string | null;
+  valueLength: number | null;
+  hadSelection: boolean;
+  rawOutput: string;
+  error?: string;
+};
+
 // Shared IPC payload types
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Size = { width: number; height: number };

@@ -10,6 +10,7 @@ import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
+import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editPrompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
@@ -80,6 +81,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.rate = parsed.rate ?? 16000;
           session.traceId = parsed.traceId;
           clientLanguage = parsed.language;
+          session.mode = parsed.mode ?? 'dictation';
+          session.selection = parsed.selection ?? null;
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -115,7 +118,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let timings: { startAt: number; headersAt: number; bodyDoneAt: number } | null = null;
           let llmText = '';
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
-          
+          let llmSuccess = false;
+          let llmProvider: string | null = null;
+
           const runtime = getRuntimeConfig(c.env);
           const sttProvider = runtime.stt.provider;
 
@@ -176,10 +181,111 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 });
                 finalText = res.text;
                 timings = res.timings;
-                
+
+                const editPlan =
+                  session.mode === 'edit' && runtime.edit.enabled
+                    ? prepareEditRequest({
+                        instructions: finalText,
+                        selection: session.selection,
+                      })
+                    : null;
+
+                if (sessionSpan) {
+                  sessionSpan.setAttribute('session.mode', session.mode ?? 'dictation');
+                  sessionSpan.setAttribute('edit.enabled', runtime.edit.enabled);
+                  sessionSpan.setAttribute('edit.provider', runtime.edit.provider);
+                  if (editPlan) {
+                    sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
+                    sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
+                    sessionSpan.setAttribute('edit.prompt_length', editPlan.prompt.length);
+                    if (typeof editPlan.hadSelection === 'boolean') {
+                      sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
+                    }
+                  }
+                }
+
                 // Optional LLM post-process
-                const enableLLM = runtime.llm.enabled;
-                if (enableLLM && finalText) {
+                const enableLLM = runtime.llm.enabled && !editPlan;
+                if (editPlan) {
+                  safely(() =>
+                    server.send(
+                      JSON.stringify({
+                        type: 'llm_status',
+                        state: 'llm_processing',
+                        traceId: session.traceId,
+                        serverTs: Date.now(),
+                      }),
+                    ),
+                  );
+
+                  const provider = runtime.edit.provider;
+                  llmProvider = provider;
+                  const model = runtime.edit.model;
+                  const apiKeyForProvider =
+                    provider === 'openai'
+                      ? c.env.OPENAI_API_KEY
+                      : provider === 'baseten'
+                        ? c.env.BASETEN_API_KEY
+                        : provider === 'groq'
+                          ? GROQ_API_KEY
+                          : undefined;
+
+                  if (apiKeyForProvider) {
+                    try {
+                      const llmEndpoint =
+                        provider === 'openai'
+                          ? OPENAI_LLM_ENDPOINT
+                          : provider === 'baseten'
+                            ? BASETEN_LLM_ENDPOINT
+                            : GROQ_LLM_ENDPOINT;
+                      const editLog = {
+                        event: 'edit.request',
+                        provider,
+                        model,
+                        endpoint: llmEndpoint,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(editLog));
+                    } catch {}
+                    try {
+                      const streamEdit = runtime.edit.stream;
+                      const editRes = await chatCompleteByProvider(provider, {
+                        apiKey: apiKeyForProvider,
+                        model,
+                        systemPrompt: buildEditSystemPrompt(),
+                        userContent: editPlan.prompt,
+                        stream: streamEdit,
+                        temperature: runtime.edit.temperature,
+                        timeoutMs: runtime.edit.timeoutMs,
+                        signal: sttAbort.signal,
+                        onDelta: streamEdit
+                          ? (delta) => {
+                              if (!socketClosed && delta) {
+                                safely(() =>
+                                  server.send(
+                                    JSON.stringify({
+                                      type: 'llm_delta',
+                                      delta,
+                                      traceId: session.traceId,
+                                    }),
+                                  ),
+                                );
+                              }
+                          }
+                          : undefined,
+                      });
+                      llmSuccess = Boolean(editRes.text && editRes.text.length > 0);
+                      llmText = editRes.text || editPlan.originalText;
+                      llmTimings = editRes.timings;
+                    } catch (error) {
+                      sessionSpan.setAttribute('edit.error', String(error));
+                      llmText = editPlan.originalText;
+                    }
+                  } else {
+                    sessionSpan.setAttribute('edit.api_key_missing', true);
+                    llmText = editPlan.originalText;
+                  }
+                } else if (enableLLM && finalText) {
               // Notify client that LLM processing starts
                   safely(() =>
                     server.send(
@@ -195,6 +301,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const streamLLM = runtime.llm.stream;
                   const model = runtime.llm.model;
                   const provider = runtime.llm.provider;
+                  llmProvider = provider;
                   const apiKeyForProvider =
                     provider === 'openai'
                       ? c.env.OPENAI_API_KEY
@@ -241,12 +348,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     });
                     llmText = llmRes.text || '';
                     llmTimings = llmRes.timings;
+                    llmSuccess = llmText.length > 0;
                   } else {
                     sessionSpan.setAttribute('llm.api_key_missing', true);
                   }
                 }
                 
-                // Set final session attributes with all timing data  
+                // Set final session attributes with all timing data
                 sessionSpan.setAttribute('stt.text_length', finalText.length);
                 sessionSpan.setAttribute('stt.success', true);
                 if (timings) {
@@ -254,33 +362,62 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   sessionSpan.setAttribute('stt.body_ms', timings.bodyDoneAt - timings.headersAt);
                   sessionSpan.setAttribute('stt.total_ms', timings.bodyDoneAt - timings.startAt);
                 }
-                
+
                 if (llmText) {
                   sessionSpan.setAttribute('llm.text_length', llmText.length);
                   sessionSpan.setAttribute('llm.enabled', true);
-                  sessionSpan.setAttribute('llm.success', true);
+                  sessionSpan.setAttribute('llm.success', llmSuccess);
                   if (llmTimings) {
-                    sessionSpan.setAttribute('llm.ttfb_ms', (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt);
+                    const llmTtfb = (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt;
+                    sessionSpan.setAttribute('llm.ttfb_ms', llmTtfb);
                     sessionSpan.setAttribute('llm.body_ms', llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt));
                     sessionSpan.setAttribute('llm.total_ms', llmTimings.bodyDoneAt - llmTimings.startAt);
+                    if (llmTimings.firstDeltaAt)
+                      sessionSpan.setAttribute('llm.first_token_ms', llmTimings.firstDeltaAt - llmTimings.startAt);
                   }
                 } else {
                   sessionSpan.setAttribute('llm.enabled', enableLLM);
+                  sessionSpan.setAttribute('llm.success', false);
                 }
                 // Dataset logging: ASR→LLM input and LLM output
                 // Comment out this block to disable dataset logging.
                 try {
-                  const datasetEntry = {
-                    event: 'dataset.llm_io',
-                    traceId: session.traceId,
-                    'session.trace_id': session.traceId,
-                    language: clientLanguage || runtime.stt.language,
-                    sttText: finalText,
-                    llmText: llmText || null,
-                    llm: { provider: runtime.llm.provider, model: runtime.llm.model },
-                    ts: Date.now(),
-                  } as const;
-                  console.log(JSON.stringify(datasetEntry));
+                  const datasetLlmConfig = session.mode === 'edit'
+                    ? { provider: runtime.edit.provider, model: runtime.edit.model }
+                    : { provider: runtime.llm.provider, model: runtime.llm.model };
+
+                  if (session.mode === 'edit') {
+                    const editPlanForDataset = prepareEditRequest({
+                      instructions: finalText,
+                      selection: session.selection,
+                    });
+                    const datasetEntry = {
+                      event: 'dataset.edit_io',
+                      traceId: session.traceId,
+                      'session.trace_id': session.traceId,
+                      language: clientLanguage || runtime.stt.language,
+                      instructions: finalText,
+                      inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
+                      outputText: llmText || null,
+                      llm: datasetLlmConfig,
+                      mode: session.mode,
+                      ts: Date.now(),
+                    } as const;
+                    console.log(JSON.stringify(datasetEntry));
+                  } else {
+                    const datasetEntry = {
+                      event: 'dataset.llm_io',
+                      traceId: session.traceId,
+                      'session.trace_id': session.traceId,
+                      language: clientLanguage || runtime.stt.language,
+                      sttText: finalText,
+                      llmText: llmText || null,
+                      llm: datasetLlmConfig,
+                      mode: session.mode,
+                      ts: Date.now(),
+                    } as const;
+                    console.log(JSON.stringify(datasetEntry));
+                  }
                 } catch {}
                 
                 // Add overall session timing
@@ -329,6 +466,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ? session.lastArrivalMs - session.firstArrivalMs
                     : null,
                 assembleMs,
+                mode: session.mode,
                 stt: timings
                   ? {
                       provider: sttProvider,
@@ -342,6 +480,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   : null,
                 llm: llmTimings
                   ? {
+                      provider: llmProvider,
                       startAt: llmTimings.startAt,
                       headersAt: llmTimings.headersAt,
                       firstDeltaAt: llmTimings.firstDeltaAt ?? null,
@@ -376,6 +515,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const llmTtfbMs = llmTimings ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt : null;
           const llmBodyMs = llmTimings ? llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt) : null;
           const llmTotalMs = llmTimings ? llmTimings.bodyDoneAt - llmTimings.startAt : null;
+          const llmFirstTokenMs =
+            llmTimings?.firstDeltaAt != null && llmTimings?.startAt != null
+              ? llmTimings.firstDeltaAt - llmTimings.startAt
+              : llmTtfbMs;
           const finalizationMs = t1 - t0;
           const overheadMs =
             sttTotalMs != null
@@ -385,7 +528,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           try {
             const wsAccept = session.wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
-            const pipeline = llmTotalMs != null ? 'stt+llm' : 'stt';
+            const pipeline = session.mode === 'edit'
+              ? 'edit'
+              : llmTotalMs != null
+                ? 'stt+llm'
+                : 'stt';
             const summary = {
               event: 'transcription.session_summary',
               id: session.traceId ?? null,
@@ -394,7 +541,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 wsAcceptToFinalMs,
                 assembleMs,
                 sttMs: sttTotalMs,
+                sttTtfbMs,
+                sttBodyMs,
                 llmMs: llmTotalMs,
+                llmTtfbMs,
+                llmBodyMs,
+                llmFirstTokenMs,
                 serverProcessingMs: (sttTotalMs ?? 0) + (llmTotalMs ?? 0),
                 overheadMs,
                 e2eMs: null,
@@ -412,6 +564,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
               },
               result: { textLen: (llmText || finalText).length },
+              edit:
+                session.mode === 'edit'
+                  ? {
+                      instructions: finalText,
+                      inputText:
+                        prepareEditRequest({
+                          instructions: finalText,
+                          selection: session.selection,
+                        })?.originalText ?? session.selection?.text ?? null,
+                      outputText: llmText || null,
+                    }
+                  : null,
               ws: { closeCode: 1000, closeReason: 'done' },
               env: {},
               containsClientMetrics: false,
@@ -428,13 +592,22 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               span.setAttribute('dur.wsAcceptToFinalMs', wsAcceptToFinalMs ?? 0);
               span.setAttribute('dur.assembleMs', assembleMs);
               if (sttTotalMs != null) span.setAttribute('dur.sttMs', sttTotalMs);
+              if (sttTtfbMs != null) span.setAttribute('dur.sttTtfbMs', sttTtfbMs);
+              if (sttBodyMs != null) span.setAttribute('dur.sttBodyMs', sttBodyMs);
               if (llmTotalMs != null) span.setAttribute('dur.llmMs', llmTotalMs);
+              if (llmTtfbMs != null) span.setAttribute('dur.llmTtfbMs', llmTtfbMs);
+              if (llmBodyMs != null) span.setAttribute('dur.llmBodyMs', llmBodyMs);
+              if (llmFirstTokenMs != null) span.setAttribute('dur.llmFirstTokenMs', llmFirstTokenMs);
               span.setAttribute('dur.serverProcessingMs', (sttTotalMs ?? 0) + (llmTotalMs ?? 0));
               span.setAttribute('dur.overheadMs', overheadMs);
               span.setAttribute('traffic.frames', session.frames);
               span.setAttribute('traffic.bytesKB', Number((session.totalBytes / 1024).toFixed(2)));
               span.setAttribute('traffic.seqGaps', session.seqGaps);
               span.setAttribute('result.text_len', (llmText || finalText).length);
+              if (session.mode === 'edit') {
+                span.setAttribute('edit.instructions_len', finalText.length);
+                span.setAttribute('edit.output_len', (llmText || '').length);
+              }
             });
           } catch (err) {
             connLog.error('[WS] session summary failed', { error: String(err) });
