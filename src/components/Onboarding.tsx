@@ -245,8 +245,6 @@ const Onboarding: React.FC = () => {
     );
   };
   // Sample prompts for tests
-  const sampleHoldText =
-    "I wanna fix app.py and test.py. Add at symbols before the file names.";
   const sampleEditText =
     "Team standup notes for today: Sarah finished the auth module yesterday and we had some bugs with the login flow. John is working on the dashboard but its taking longer than expected. We need to discuss the database schema changes. Also, the CI/CD pipeline is broken and needs fixing ASAP.";
 
@@ -1738,7 +1736,7 @@ const Onboarding: React.FC = () => {
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
-                      Try saying: {sampleHoldText}
+                      Try saying: "I wanna fix app.py and test.py. Add at symbols before the file names."
                     </div>
 
                     {/* Dictation Textarea */}
@@ -1782,7 +1780,7 @@ const Onboarding: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left">
+                    <div className="text-[11px] text-dimmed text-left ml-2">
                       Try saying: "Can you format this as meeting notes?"
                     </div>
 
