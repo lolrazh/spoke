@@ -839,6 +839,7 @@ async function inspectFocusedSelection(
         context: null,
         valueLength: null,
         hadSelection: false,
+        source: "none",
         rawOutput: stdout,
         error: error.message,
       });
