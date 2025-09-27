@@ -1,7 +1,7 @@
 {
   "name": "sonic-flow",
   "productName": "Sonic Flow",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A Lightweight AI Dictation App for macOS",
   "main": ".vite/build/main.js",
   "scripts": {
