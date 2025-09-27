@@ -149,7 +149,8 @@ Before every session, the renderer probes the macOS accessibility API for the cu
     "hadSelection": true,
     "text": "Original paragraph that will be edited",
     "range": { "location": 42, "length": 128 },
-    "status": "read:ok"
+    "status": "read:ok",
+    "source": "ax"
   }
 }
 ```
@@ -158,6 +159,7 @@ Runtime details:
 - When no selection is available (or the AX read fails) the hook falls back to `mode: "dictation"` and omits the `selection` field.
 - The worker stores `mode` and `selection` in the session object, making the metadata available once the audio finishes streaming.
 - Downstream logging (`dataset.llm_io`, Sentry spans) records the chosen mode so edit sessions can be analyzed separately.
+- `selection.source` records where the text came from. The helper snapshots the clipboard, synthesizes Cmd+C using the same event sequencing as paste, waits for plain-text data, and restores the clipboard so the user never sees the temporary value. When that capture succeeds the source is `"clipboard"`; when the clipboard probe fails (for secure fields, etc.) the source is `"none"` and the session falls back to dictation.
 
 ### Binary Frame Protocol
 

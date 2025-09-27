@@ -721,6 +721,11 @@ function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
     ? { location: Number(rangeMatch[1]), length: Number(rangeMatch[2]) }
     : null;
 
+  const sourceMatch = normalized.match(/selectionSource:([^\n]+)/);
+  const rawSource = sourceMatch ? sourceMatch[1].trim() : "none";
+  const source: SelectionInspectSnapshot["source"] =
+    rawSource === "ax" || rawSource === "clipboard" ? (rawSource as "ax" | "clipboard") : "none";
+
   const valueLengthMatch = normalized.match(/valueLength:(-?\d+)/);
   const valueLength = valueLengthMatch ? Number(valueLengthMatch[1]) : null;
 
@@ -730,16 +735,21 @@ function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
   let context = extractBase64Section(normalized, "context");
   if (context === null) context = extractFallbackSection(normalized, "context");
 
-  const hadSelection = !!(range && range.length > 0 && selectedText !== null);
+  const normalizedRange =
+    range && range.location >= 0 && range.length >= 0 ? range : null;
+  const hadSelection = Boolean(
+    (normalizedRange && normalizedRange.length > 0) || (selectedText && selectedText.length > 0),
+  );
 
   const result: SelectionInspectSnapshot = {
     ok,
     status,
-    range,
+    range: normalizedRange,
     selectedText,
     context,
     valueLength,
     hadSelection,
+    source,
     rawOutput: normalized,
   };
 
@@ -763,6 +773,7 @@ async function inspectFocusedSelection(
       context: null,
       valueLength: null,
       hadSelection: false,
+      source: "none",
       rawOutput: "",
       error: "Helper binary not found",
     };
@@ -804,6 +815,7 @@ async function inspectFocusedSelection(
         context: null,
         valueLength: null,
         hadSelection: false,
+        source: "none",
         rawOutput: stdout,
         error: "Selection inspection timed out",
       });
@@ -827,6 +839,7 @@ async function inspectFocusedSelection(
         context: null,
         valueLength: null,
         hadSelection: false,
+        source: "none",
         rawOutput: stdout,
         error: error.message,
       });
@@ -3059,6 +3072,7 @@ app.whenReady().then(async () => {
         context: null,
         valueLength: null,
         hadSelection: false,
+        source: "none",
         rawOutput: "",
         error: (error as Error)?.message ?? "Selection inspection failed",
       } satisfies SelectionInspectSnapshot;

@@ -198,11 +198,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
                     sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
                     sessionSpan.setAttribute('edit.prompt_length', editPlan.prompt.length);
-                    if (typeof editPlan.hadSelection === 'boolean') {
-                      sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
-                    }
+                  if (typeof editPlan.hadSelection === 'boolean') {
+                    sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
+                  }
+                  if (session.selection?.source) {
+                    sessionSpan.setAttribute('edit.selection_source', session.selection.source);
                   }
                 }
+              }
 
                 // Optional LLM post-process
                 const enableLLM = runtime.llm.enabled && !editPlan;
@@ -401,6 +404,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       outputText: llmText || null,
                       llm: datasetLlmConfig,
                       mode: session.mode,
+                      selectionSource: session.selection?.source ?? null,
                       ts: Date.now(),
                     } as const;
                     console.log(JSON.stringify(datasetEntry));

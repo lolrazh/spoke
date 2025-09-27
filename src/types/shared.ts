@@ -20,6 +20,7 @@ export type SelectionInspectSnapshot = {
   context: string | null;
   valueLength: number | null;
   hadSelection: boolean;
+  source: "ax" | "clipboard" | "none";
   rawOutput: string;
   error?: string;
 };

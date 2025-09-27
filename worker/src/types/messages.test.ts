@@ -23,5 +23,48 @@ describe('types/messages.parseClientMessage', () => {
     expect(parseClientMessage({ type: 'noop' })).toBeNull();
     expect(parseClientMessage(null as any)).toBeNull();
   });
-});
 
+  it('parses selection payload with source metadata', () => {
+    const msg = parseClientMessage({
+      type: 'start',
+      selection: {
+        text: 'hello',
+        hadSelection: true,
+        source: 'clipboard',
+        status: 'read:ok',
+        range: { location: 1, length: 5 },
+        valueLength: 10,
+      },
+    });
+
+    expect(msg).toEqual({
+      type: 'start',
+      version: undefined,
+      format: undefined,
+      rate: undefined,
+      traceId: undefined,
+      language: undefined,
+      mode: undefined,
+      selection: {
+        status: 'read:ok',
+        hadSelection: true,
+        text: 'hello',
+        range: { location: 1, length: 5 },
+        valueLength: 10,
+        source: 'clipboard',
+      },
+    });
+  });
+
+  it('drops invalid selection source values', () => {
+    const msg = parseClientMessage({
+      type: 'start',
+      selection: {
+        text: 'hi',
+        source: 'bogus',
+      },
+    });
+
+    expect(msg?.selection?.source).toBeUndefined();
+  });
+});

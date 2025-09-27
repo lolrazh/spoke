@@ -13,6 +13,7 @@ export type SelectionSnapshotPayload = {
   text?: string | null;
   range?: SelectionRange | null;
   valueLength?: number | null;
+  source?: "ax" | "clipboard" | "none";
 };
 
 export type ClientSessionMode = "dictation" | "edit";

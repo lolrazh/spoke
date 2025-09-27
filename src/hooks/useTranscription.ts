@@ -137,6 +137,7 @@ export function useTranscription(
       text: snapshot.selectedText ?? null,
       range,
       valueLength: snapshot.valueLength ?? null,
+      source: snapshot.source,
     };
   };
 
