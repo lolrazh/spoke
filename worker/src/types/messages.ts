@@ -9,6 +9,7 @@ export type ClientSelectionPayload = {
   text?: string | null;
   range?: ClientSelectionRange | null;
   valueLength?: number | null;
+  source?: 'ax' | 'clipboard' | 'none';
 };
 
 export type ClientSessionMode = 'dictation' | 'edit';
@@ -149,6 +150,10 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
         range,
         valueLength:
           typeof sel.valueLength === 'number' ? sel.valueLength : undefined,
+        source:
+          sel.source === 'ax' || sel.source === 'clipboard' || sel.source === 'none'
+            ? (sel.source as ClientSelectionPayload['source'])
+            : undefined,
       };
     }
 

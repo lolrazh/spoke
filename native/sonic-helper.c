@@ -12,6 +12,7 @@
 // Forward declarations for functions defined later in this file
 static void requireAX(void);
 static void cmdV(void);
+static void cmdC(void);
 
 // ==== Accessibility (AX) paste verification utilities ====
 // We keep Cmd+V for insertion, and use AX to read/observe for verification.
@@ -240,6 +241,124 @@ static bool cfstring_equals(CFStringRef a, CFStringRef b) {
     return CFStringCompare(a, b, 0) == kCFCompareEqualTo;
 }
 
+static CFStringRef ax_copy_selected_text_attribute(AXUIElementRef el) {
+    if (!el) return NULL;
+    CFTypeRef value = NULL;
+    if (AXUIElementCopyAttributeValue(el, kAXSelectedTextAttribute, &value) == kAXErrorSuccess && value) {
+        if (CFGetTypeID(value) == CFStringGetTypeID()) {
+            return (CFStringRef)value; // caller CFRelease
+        }
+        CFRelease(value);
+    }
+    return NULL;
+}
+
+static CFStringRef ax_copy_string_for_range(AXUIElementRef el, CFRange range) {
+    if (!el) return NULL;
+    AXValueRef rangeValue = AXValueCreate(kAXValueCFRangeType, &range);
+    if (!rangeValue) return NULL;
+
+    CFTypeRef raw = NULL;
+    CFStringRef result = NULL;
+    AXError err = AXUIElementCopyParameterizedAttributeValue(
+        el,
+        kAXStringForRangeParameterizedAttribute,
+        rangeValue,
+        (CFTypeRef *)&raw
+    );
+    if (err == kAXErrorSuccess && raw && CFGetTypeID(raw) == CFStringGetTypeID()) {
+        result = (CFStringRef)raw; // caller CFRelease
+    } else if (raw) {
+        CFRelease(raw);
+    }
+
+    CFRelease(rangeValue);
+    return result;
+}
+
+static NSArray *clipboard_snapshot(NSPasteboard *pb) {
+    if (!pb) return nil;
+    NSArray *items = [pb pasteboardItems];
+    if (!items) return @[];
+
+    NSMutableArray *snapshot = [NSMutableArray arrayWithCapacity:[items count]];
+    for (NSPasteboardItem *item in items) {
+        NSMutableDictionary *entry = [NSMutableDictionary dictionary];
+        for (NSPasteboardType type in [item types]) {
+            NSData *data = [item dataForType:type];
+            if (data) {
+                entry[type] = [data copy];
+            }
+        }
+        [snapshot addObject:entry];
+    }
+
+    return snapshot;
+}
+
+static void clipboard_restore(NSPasteboard *pb, NSArray *snapshot) {
+    if (!pb) return;
+    [pb clearContents];
+    if (!snapshot || [snapshot count] == 0) return;
+
+    NSMutableArray *items = [NSMutableArray arrayWithCapacity:[snapshot count]];
+    for (NSDictionary *entry in snapshot) {
+        NSPasteboardItem *item = [[NSPasteboardItem alloc] init];
+        for (NSString *type in entry) {
+            NSData *data = entry[type];
+            if (data) {
+                [item setData:data forType:type];
+            }
+        }
+        [items addObject:item];
+    }
+
+    if ([items count] > 0) {
+        [pb writeObjects:items];
+    }
+}
+
+static CFStringRef clipboard_copy_selected_text(bool *outSuccess) {
+    @autoreleasepool {
+        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+        if (!pb) {
+            if (outSuccess) *outSuccess = false;
+            return NULL;
+        }
+
+        NSInteger originalChangeCount = [pb changeCount];
+        NSArray *snapshot = clipboard_snapshot(pb);
+
+        cmdC();
+
+        NSString *copied = nil;
+        const useconds_t intervalUs = 30000; // 30ms polling window
+        const int attempts = 6;              // ~180ms total budget
+        for (int i = 0; i < attempts; i++) {
+            usleep(intervalUs);
+            if ([pb changeCount] != originalChangeCount) {
+                copied = [pb stringForType:NSPasteboardTypeString];
+                if (copied.length > 0) {
+                    break;
+                }
+            }
+        }
+
+        CFStringRef result = NULL;
+        if (copied.length > 0) {
+            NSString *trimmed = [copied stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (trimmed.length > 0) {
+                result = CFBridgingRetain([copied copy]);
+            }
+        }
+
+        clipboard_restore(pb, snapshot);
+
+        if (outSuccess) *outSuccess = (result != NULL);
+        return result;
+    }
+}
+
 // ==== Fallback verification strategies for content-editable elements ====
 
 static bool verify_by_selection_math(CFRange preSel, CFRange postSel, CFIndex payloadLen) {
@@ -404,19 +523,35 @@ static int inspect_text_core(int context_chars) {
     CFStringRef value = ax_copy_value(el);
     CFRange sel = {0,0};
     bool haveSel = ax_get_selected_range_cf(el, &sel);
-    if (!value) { CFRelease(el); CFRelease(appEl); puts("read:err:unreadable"); fflush(stdout); return 4; }
+    bool rangeValid = haveSel && sel.length > 0 && sel.location >= 0;
 
-    CFIndex len = CFStringGetLength(value);
-    CFIndex beforeStart = sel.location - (context_chars > 0 ? context_chars : 32);
-    if (beforeStart < 0) beforeStart = 0;
-    CFIndex afterEnd = sel.location + sel.length + (context_chars > 0 ? context_chars : 32);
-    if (afterEnd > len) afterEnd = len;
+    bool clipboardOk = false;
+    CFStringRef selectedText = clipboard_copy_selected_text(&clipboardOk);
+    const char *source = clipboardOk ? "clipboard" : "none";
 
-    CFStringRef selectedText = haveSel ? cfstring_substring_safe(value, sel) : NULL;
-    CFStringRef contextSlice = cfstring_substring_safe(value, CFRangeMake(beforeStart, afterEnd - beforeStart));
+    CFRange outputRange = rangeValid ? sel : (CFRange){ -1, -1 };
+
+    CFIndex len = value ? CFStringGetLength(value) : -1;
+    CFStringRef contextSlice = NULL;
+    if (value && len > 0) {
+        if (rangeValid) {
+            CFIndex beforeStart = sel.location - (context_chars > 0 ? context_chars : 32);
+            if (beforeStart < 0) beforeStart = 0;
+            CFIndex afterEnd = sel.location + sel.length + (context_chars > 0 ? context_chars : 32);
+            if (afterEnd > len) afterEnd = len;
+            contextSlice = cfstring_substring_safe(value, CFRangeMake(beforeStart, afterEnd - beforeStart));
+        } else {
+            CFIndex window = (context_chars > 0 ? context_chars : 32);
+            if (window > len) window = len;
+            if (window > 0) {
+                contextSlice = cfstring_substring_safe(value, CFRangeMake(0, window));
+            }
+        }
+    }
 
     printf("read:ok\n");
-    printf("selectedRange:%ld:%ld\n", (long)sel.location, (long)sel.length);
+    printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
+    printf("selectionSource:%s\n", source);
     print_cfstring_truncated("selectedText", selectedText, 512);
     print_cfstring_truncated("context", contextSlice, 512);
     print_cfstring_base64("selectedText", selectedText);
@@ -594,6 +729,34 @@ static void requireAX(void) {
     }
     // And so will this.
     fprintf(stdout, "[AX] Accessibility permissions are granted.\n");
+}
+
+static void cmdC(void) {
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+
+    const CGKeyCode kVK_COMMAND = 0x37;
+    const CGKeyCode kVK_C = 0x08;
+
+    CGEventRef cmdDown = CGEventCreateKeyboardEvent(src, kVK_COMMAND, true);
+    CGEventRef cDown   = CGEventCreateKeyboardEvent(src, kVK_C, true);
+    CGEventSetFlags(cDown, kCGEventFlagMaskCommand);
+    CGEventRef cUp     = CGEventCreateKeyboardEvent(src, kVK_C, false);
+    CGEventSetFlags(cUp, kCGEventFlagMaskCommand);
+    CGEventRef cmdUp   = CGEventCreateKeyboardEvent(src, kVK_COMMAND, false);
+
+    CGEventPost(kCGHIDEventTap, cmdDown);
+    usleep(1000);
+    CGEventPost(kCGHIDEventTap, cDown);
+    usleep(1000);
+    CGEventPost(kCGHIDEventTap, cUp);
+    usleep(1000);
+    CGEventPost(kCGHIDEventTap, cmdUp);
+
+    CFRelease(cmdDown);
+    CFRelease(cDown);
+    CFRelease(cUp);
+    CFRelease(cmdUp);
+    CFRelease(src);
 }
 
 // Sends a robust, correct 4-event sequence for Command-V with delays.
