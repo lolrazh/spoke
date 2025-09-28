@@ -2,16 +2,16 @@
 // lightweight HTMLAudioElement wrapper – no external libs
 
 // eslint-disable-next-line import/no-unresolved
-import toggleOnUrl from "/assets/toggle_on_bouncy.wav?url";
+import toggleOnUrl from "/assets/toggle_on_bouncy_fast.wav?url";
 // eslint-disable-next-line import/no-unresolved
-import toggleOffUrl from "/assets/toggle_off_bouncy.wav?url";
+import toggleOffUrl from "/assets/toggle_off_bouncy_fast.wav?url";
 
 const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);
 
 // Increase default volumes for clearer audible feedback
-audioOn.volume = 0.1;
-audioOff.volume = 0.1;
+audioOn.volume = 0.3;
+audioOff.volume = 0.3;
 
 // prep — reduce latency between .play() call and first sample
 [audioOn, audioOff].forEach((a) => {
