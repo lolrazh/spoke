@@ -21,8 +21,8 @@ export const MOTION = {
     lively: { stiffness: 700, damping: 22, mass: 0.8 } as SpringToken,
     // Heavier feel for large layout changes
     heavy: { stiffness: 420, damping: 34, mass: 1.0 } as SpringToken,
-    // Subtle, tasteful bounce specifically for returning to idle
-    settle: { stiffness: 560, damping: 24, mass: 0.85 } as SpringToken,
+    // Snappy return to idle with minimal bounce
+    settle: { stiffness: 720, damping: 28, mass: 0.6 } as SpringToken,
   },
 } as const;
 

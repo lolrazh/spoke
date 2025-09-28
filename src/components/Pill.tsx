@@ -234,6 +234,7 @@ const Pill: React.FC<PillProps> = ({
         // Ultra-snappy expansion for immediate feedback
         return { type: "spring" as const, ...MOTION.springs.instant };
       case "PROCESSING":
+        return { type: "spring" as const, ...MOTION.springs.instant };
       case "NOTIFICATION":
         return { type: "spring" as const, ...MOTION.springs.quick };
       case "IDLE":
@@ -255,9 +256,9 @@ const Pill: React.FC<PillProps> = ({
         // Use a snappy spring for the tiny scale pulse
         scale: {
           type: "spring" as const,
-          stiffness: 820,
-          damping: 28,
-          mass: 0.75,
+          stiffness: 600,
+          damping: 32,
+          mass: 0.5,
         },
         // Spring chain: width leads, height follows by a hair
         width: { ...(transitionForState as unknown as Record<string, unknown>) },
