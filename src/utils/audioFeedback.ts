@@ -2,9 +2,9 @@
 // lightweight HTMLAudioElement wrapper – no external libs
 
 // eslint-disable-next-line import/no-unresolved
-import toggleOnUrl from "/assets/toggle_on_bouncy_fast.wav?url";
+import toggleOnUrl from "/assets/toggle_on.wav?url";
 // eslint-disable-next-line import/no-unresolved
-import toggleOffUrl from "/assets/toggle_off_bouncy_fast.wav?url";
+import toggleOffUrl from "/assets/toggle_off.wav?url";
 
 const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);

@@ -28,7 +28,7 @@ import {
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
 // eslint-disable-next-line import/no-unresolved
-import onboardingMusicUrl from "/assets/onboarding-music.mp3?url";
+import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
 import transparentLogoUrl from "/assets/transparent-logo-w-text.png?url";
 // Development flags - only enabled in development mode
