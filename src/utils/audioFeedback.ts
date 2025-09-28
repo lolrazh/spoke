@@ -2,16 +2,16 @@
 // lightweight HTMLAudioElement wrapper – no external libs
 
 // eslint-disable-next-line import/no-unresolved
-import toggleOnUrl from "/assets/sonic-flow-toggle-on.wav?url";
+import toggleOnUrl from "/assets/toggle_on7.wav?url";
 // eslint-disable-next-line import/no-unresolved
-import toggleOffUrl from "/assets/sonic-flow-toggle-off.wav?url";
+import toggleOffUrl from "/assets/toggle_off7.wav?url";
 
 const audioOn = new Audio(toggleOnUrl);
 const audioOff = new Audio(toggleOffUrl);
 
 // Increase default volumes for clearer audible feedback
-audioOn.volume = 0.8;
-audioOff.volume = 0.8;
+audioOn.volume = 0.35;
+audioOff.volume = 0.35;
 
 // prep — reduce latency between .play() call and first sample
 [audioOn, audioOff].forEach((a) => {
