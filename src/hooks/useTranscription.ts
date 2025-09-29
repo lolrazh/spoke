@@ -57,6 +57,10 @@ export interface UseTranscriptionOptions {
    * Useful for onboarding/tests where the UI wants to control insertion.
    */
   suppressNativePaste?: boolean;
+  /**
+   * When true, transcription text may be forwarded to metrics/session for telemetry.
+   */
+  shareTranscriptionsEnabled?: boolean;
 }
 
 export function useTranscription(
@@ -67,6 +71,7 @@ export function useTranscription(
     autoInitStream = true,
     requestLabelPermissionForEnumeration = false,
     suppressNativePaste = false,
+    shareTranscriptionsEnabled = false,
   } = options ?? {};
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -124,6 +129,7 @@ export function useTranscription(
   const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
   const sessionModeRef = useRef<ClientSessionMode>("dictation");
   const startSentRef = useRef(false);
+  const shareTranscriptionsRef = useRef<boolean>(shareTranscriptionsEnabled);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   const buildSelectionPayload = (
@@ -141,6 +147,10 @@ export function useTranscription(
     };
   };
 
+  useEffect(() => {
+    shareTranscriptionsRef.current = !!shareTranscriptionsEnabled;
+  }, [shareTranscriptionsEnabled]);
+
   const trySendStartMessage = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || startSentRef.current) return;
@@ -156,6 +166,7 @@ export function useTranscription(
       traceId: string;
       mode?: ClientSessionMode;
       selection?: SelectionSnapshotPayload | null;
+      shareTranscriptions: boolean;
     } = {
       type: "start",
       version: 2,
@@ -163,6 +174,7 @@ export function useTranscription(
       rate: TARGET_SAMPLE_RATE,
       language: "en",
       traceId,
+      shareTranscriptions: shareTranscriptionsRef.current,
     };
 
     if (sessionModeRef.current) {
@@ -1159,6 +1171,13 @@ export function useTranscription(
                         console.log("[SF] E2E", breakdown);
                         // Post client metrics to the API for a unified summary
                         try {
+                          const shareAllowed = shareTranscriptionsRef.current === true;
+                          const datasetPayload = shareAllowed
+                            ? ((msg?.dataset as {
+                                sttText?: string | null;
+                                llmText?: string | null;
+                              } | undefined) ?? null)
+                            : null;
                           const payload = {
                             traceId: breakdown.traceId,
                             client: {
@@ -1177,8 +1196,8 @@ export function useTranscription(
                               bytesProduced: m.bytesProduced,
                             },
                             worker: msg?.metrics?.worker ?? null,
-                            // New: forward dataset texts from server so /metrics/session can log them
-                            dataset: (msg?.dataset as { sttText?: string | null; llmText?: string | null } | undefined) ?? null,
+                            dataset: datasetPayload,
+                            shareTranscriptions: shareAllowed,
                             derived: {
                               // e2eMs now represents post-dictation latency
                               e2eMs: breakdown.e2eMs,

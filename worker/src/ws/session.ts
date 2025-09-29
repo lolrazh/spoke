@@ -24,6 +24,7 @@ export function createEmptySession() {
     processingStartAt: undefined as number | undefined,
     mode: 'dictation' as ClientSessionMode,
     selection: null as ClientSelectionPayload | null,
+    shareTranscriptions: false,
   };
 }
 

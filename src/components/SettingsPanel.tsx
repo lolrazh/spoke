@@ -41,9 +41,10 @@ const Toggle: React.FC<{
   label: string;
   description?: string;
   icon?: React.ReactNode;
-}> = ({ enabled, onChange, label, description, icon }) => (
+  disabled?: boolean;
+}> = ({ enabled, onChange, label, description, icon, disabled }) => (
   <SettingsCard title={label} description={description} icon={icon}>
-    <Switch checked={enabled} onCheckedChange={onChange} />
+    <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
   </SettingsCard>
 );
 
@@ -94,12 +95,20 @@ interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
   onToggleFloatingBar?: (enabled: boolean) => void;
   onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
+  shareTranscriptionsEnabled?: boolean;
+  shareTranscriptionsLoading?: boolean;
+  shareTranscriptionsUpdating?: boolean;
+  onShareTranscriptionsChange?: (enabled: boolean) => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
   onRequestCollapse,
+  shareTranscriptionsEnabled,
+  shareTranscriptionsLoading,
+  shareTranscriptionsUpdating,
+  onShareTranscriptionsChange,
 }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
@@ -620,7 +629,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </motion.div>
 
-            {/* Section 3: Account */}
+            {/* Section 3: Privacy */}
+            <motion.div variants={sectionVariants}>
+              <SectionSeparator title="Privacy" />
+
+              <div className="space-y-3 no-drag">
+                <Toggle
+                  label="Share Transcriptions"
+                  description="Allow Sonic Flow to send transcriptions for diagnostics."
+                  enabled={shareTranscriptionsEnabled ?? false}
+                  onChange={(enabled) =>
+                    onShareTranscriptionsChange?.(enabled)
+                  }
+                  icon={
+                    <SfIcon
+                      name="lock.shield"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
+                  disabled={
+                    !!shareTranscriptionsLoading ||
+                    !!shareTranscriptionsUpdating ||
+                    !authReady ||
+                    !userEmail
+                  }
+                />
+              </div>
+            </motion.div>
+
+            {/* Section 4: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
               {userEmail ? (

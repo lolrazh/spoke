@@ -43,6 +43,8 @@ export interface PillMachineState {
   };
 }
 
+const SHARE_PREF_STORAGE_PREFIX = "sf.shareTranscriptions.";
+
 // Reducer function for pill machine
 const pillReducer = (
   state: PillMachineState,
@@ -188,6 +190,101 @@ const App: React.FC = () => {
   const lastFocusTsRef = useRef<number | null>(
     typeof performance !== "undefined" ? performance.now() : null,
   );
+  const [shareTranscriptionsEnabled, setShareTranscriptionsEnabled] =
+    useState<boolean>(false);
+  const [shareTranscriptionsLoading, setShareTranscriptionsLoading] =
+    useState<boolean>(true);
+  const [shareTranscriptionsUpdating, setShareTranscriptionsUpdating] =
+    useState<boolean>(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  const loadSharePreference = useCallback(async (userId: string | null) => {
+    if (!userId) {
+      setShareTranscriptionsEnabled(false);
+      setShareTranscriptionsLoading(false);
+      return;
+    }
+
+    let seeded = false;
+    try {
+      const stored = localStorage.getItem(
+        `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
+      );
+      if (stored != null) {
+        seeded = true;
+        setShareTranscriptionsEnabled(stored === "true");
+      }
+    } catch {}
+
+    setShareTranscriptionsLoading(true);
+    try {
+      const { getShareTranscriptionsPreference } = await import(
+        "../lib/supabaseClient"
+      );
+      const pref = await getShareTranscriptionsPreference();
+      if (pref === null) {
+        if (!seeded) setShareTranscriptionsEnabled(false);
+      } else {
+        const value = pref === true;
+        setShareTranscriptionsEnabled(value);
+        try {
+          localStorage.setItem(
+            `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
+            value ? "true" : "false",
+          );
+        } catch {}
+      }
+    } catch {
+      if (!seeded) setShareTranscriptionsEnabled(false);
+    } finally {
+      setShareTranscriptionsLoading(false);
+    }
+  }, []);
+
+  const handleSharePreferenceToggle = useCallback(
+    async (enabled: boolean) => {
+      const userId = currentUserIdRef.current;
+      if (!userId) {
+        try {
+          window.notifications?.send?.("Sign in to change this setting");
+        } catch {}
+        return;
+      }
+      if (shareTranscriptionsUpdating) return;
+      if (enabled === shareTranscriptionsEnabled) return;
+      const previous = shareTranscriptionsEnabled;
+      setShareTranscriptionsEnabled(enabled);
+      setShareTranscriptionsUpdating(true);
+      try {
+        const { setShareTranscriptionsPreference } = await import(
+          "../lib/supabaseClient"
+        );
+        const ok = await setShareTranscriptionsPreference(enabled);
+        if (!ok) throw new Error("update failed");
+        try {
+          localStorage.setItem(
+            `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
+            enabled ? "true" : "false",
+          );
+        } catch {}
+      } catch {
+        setShareTranscriptionsEnabled(previous);
+        try {
+          window.notifications?.send?.(
+            "Unable to update sharing preference",
+          );
+        } catch {}
+      } finally {
+        setShareTranscriptionsUpdating(false);
+      }
+    },
+    [shareTranscriptionsEnabled, shareTranscriptionsUpdating],
+  );
 
   // Track focus to guard Mission Control/Spaces focus resumes
   useEffect(() => {
@@ -219,6 +316,13 @@ const App: React.FC = () => {
             await window.electron?.hideFloatingBarIndefinitely?.();
           } catch {}
           try {
+        if (user) {
+          setCurrentUserId(user.id ?? null);
+          await loadSharePreference(user.id ?? null);
+        } else {
+          setCurrentUserId(null);
+          await loadSharePreference(null);
+        }
             // Stop any active capture if present
             latestTransRef.current?.cancel?.();
           } catch {}
@@ -264,12 +368,16 @@ const App: React.FC = () => {
               }
               // Update previous after handling
               prevUserIdRef.current = currentUserId;
+              setCurrentUserId(currentUserId);
+              loadSharePreference(currentUserId);
               return;
             }
             if (!session?.user && !skipAuth) {
               // Guard: avoid playing signed-out sequence on cold start (no previous user)
               if (prevUserIdRef.current == null) {
                 prevUserIdRef.current = null;
+                setCurrentUserId(null);
+                loadSharePreference(null);
                 return;
               }
               (async () => {
@@ -287,6 +395,8 @@ const App: React.FC = () => {
                 });
               })();
               prevUserIdRef.current = null;
+              setCurrentUserId(null);
+              loadSharePreference(null);
             }
           });
           unsubscribe = () => subscription.unsubscribe();
@@ -302,6 +412,8 @@ const App: React.FC = () => {
                 if (!error && !data?.user) {
                   // Guard: only toast sign-out on a real transition from a prior user
                   if (prevUserIdRef.current == null) return;
+                  setCurrentUserId(null);
+                  loadSharePreference(null);
                   try { latestTransRef.current?.cancel?.(); } catch {}
                   try { window.notifications?.send?.("Signed out"); } catch {}
                   setPendingHideAfterCollapse({
@@ -323,12 +435,13 @@ const App: React.FC = () => {
       if (unsubscribe) unsubscribe();
       if (pollId) clearInterval(pollId);
     };
-  }, []);
+  }, [loadSharePreference]);
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
     autoInitStream: false,
     requestLabelPermissionForEnumeration: false,
+    shareTranscriptionsEnabled,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -1305,6 +1418,10 @@ const App: React.FC = () => {
           // If not expanded, show heads-up now and then hide after it settles
           notifyThenHide(message);
         }}
+        shareTranscriptionsEnabled={shareTranscriptionsEnabled}
+        shareTranscriptionsLoading={shareTranscriptionsLoading}
+        shareTranscriptionsUpdating={shareTranscriptionsUpdating}
+        onShareTranscriptionsChange={handleSharePreferenceToggle}
       />
       <span
         id="pill-ghost-measure"
