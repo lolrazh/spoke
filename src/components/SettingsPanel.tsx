@@ -58,7 +58,7 @@ const SelectField: React.FC<{
   <SettingsCard
     title={label}
     description={description}
-    icon={<SfIcon name="mic.fill" size={16} className="text-primary/70" />}
+    icon={<SfIcon name="microphone.fill" size={16} className="text-primary/70" />}
   >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
@@ -465,7 +465,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   }
                   icon={
                     <SfIcon
-                      name="lock.shield"
+                      name="point.3.filled.connected.trianglepath.dotted"
                       size={16}
                       className="text-primary/70"
                     />
@@ -491,7 +491,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   description="Capture your voice for dictation"
                   icon={
                     <SfIcon
-                      name="mic.fill"
+                      name="microphone.fill"
                       size={16}
                       className="text-primary/70"
                     />
@@ -584,7 +584,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   icon={
                     <SfIcon
                       name="keyboard.badge.eye.fill"
-                      size={16}
+                      size={20}
                       className="text-primary/70"
                     />
                   }
