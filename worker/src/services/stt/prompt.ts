@@ -1,5 +1,5 @@
 export const DEFAULT_STT_PROMPT =
-  'Your vocabulary includes: Sonic Flow, Sandheep Rajkumar, rajkumar.sandheep@gmail.com';
+  'Your vocabulary includes: Sonic Flow';
 
 export function buildSTTPrompt(opts?: { extraVocab?: string[]; basePrompt?: string }) {
   const base = (opts?.basePrompt ?? DEFAULT_STT_PROMPT).trim();
