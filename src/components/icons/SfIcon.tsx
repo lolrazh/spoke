@@ -5,8 +5,9 @@ type WeightKey = "bold" | "regular" | "semibold" | string;
 const RAW_SVG_SYMBOLS = import.meta.glob<string>(
   "../../assets/sf-symbols/**/*.svg",
   {
-    as: "raw",
     eager: true,
+    import: "default",
+    query: "?raw",
   },
 );
 

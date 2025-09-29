@@ -584,7 +584,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   icon={
                     <SfIcon
                       name="keyboard.badge.eye.fill"
-                      size={16}
+                      size={20}
                       className="text-primary/70"
                     />
                   }

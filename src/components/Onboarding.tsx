@@ -1576,7 +1576,7 @@ const Onboarding: React.FC = () => {
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <SfIcon
                             name="keyboard.badge.eye.fill"
-                            size={16}
+                            size={20}
                             className="text-primary/70"
                           />
                         </div>
