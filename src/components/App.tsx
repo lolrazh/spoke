@@ -313,19 +313,19 @@ const App: React.FC = () => {
             await window.electron?.showOnboarding?.();
           } catch {}
           try {
-            await window.electron?.hideFloatingBarIndefinitely?.();
+            latestTransRef.current?.cancel?.();
           } catch {}
+          setCurrentUserId(null);
+          await loadSharePreference(null);
+        } else if (user) {
           try {
-        if (user) {
+            await window.electron?.showFloatingBar?.();
+          } catch {}
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
-        }
-            // Stop any active capture if present
-            latestTransRef.current?.cancel?.();
-          } catch {}
         }
         // Seed previous user for transition detection
         try {
