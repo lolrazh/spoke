@@ -5,20 +5,22 @@
 **Status:** ✅ Completed  
 
 ## User Intention
-Ensure the new `share_transcriptions` privacy toggle truly gates telemetry data across the app and worker, and that automated tests reliably validate the behavior without flakiness. The user also wanted continuity documentation for future sessions.
+Ensure the new `share_transcriptions` privacy toggle truly gates telemetry data across the app and worker, that the settings UI presents the preference in place of the legacy “Play Sounds” switch, and that automated tests reliably validate the behavior without flakiness. The user also wanted continuity documentation for future sessions.
 
 ## What We Accomplished
 - ✅ **Honored share preference end-to-end** - Hook now forwards the flag in start messages and suppresses dataset metrics when sharing is disabled
 - ✅ **Stabilized transcription tests** - Added targeted mocks and async guards so metrics payload assertions pass consistently
 - ✅ **Validated quality gates** - Ran `npm run lint` (existing warnings unchanged) and `npm test` successfully across the suite
+- ✅ **Replaced legacy Play Sounds toggle** - Settings panel now surfaces “Improve the model for everybody” with share preference copy and disabled-by-default behavior
 
 ## Technical Implementation
-Introduced `shareTranscriptionsRef` in the transcription hook to mirror option updates, populated the WebSocket `start` payload with the preference, and gated dataset inclusion in metrics posts. The Vitest suite now partially mocks `config/api`, injects deterministic media/fetch behavior, and uses helper polling (`waitForSent`) to await outbound WebSocket frames.
+Introduced `shareTranscriptionsRef` in the transcription hook to mirror option updates, populated the WebSocket `start` payload with the preference, and gated dataset inclusion in metrics posts. Replaced the settings “Play Sounds” card with the share toggle, keeping the control disabled until a signed-in user enables it. The Vitest suite now partially mocks `config/api`, injects deterministic media/fetch behavior, and uses helper polling (`waitForSent`) to await outbound WebSocket frames.
 
 **Files Modified:**
 - `src/hooks/useTranscription.ts` - Track share flag in refs, send with start message, gate metrics dataset and share indicator
 - `src/hooks/useTranscription.test.tsx` - Added partial mocks, deterministic fetch/media stubs, and explicit helpers to await socket events
-- `worker/src/*` & `src/components/*` (pre-existing changes referenced by user) - Left untouched in this session but noted in repo status
+- `src/components/SettingsPanel.tsx` / `SettingsPanel.test.tsx` - Swap in share-transcription toggle with new copy and update tests
+- `worker/src/*` (pre-existing changes referenced by user) - Left untouched in this session but noted in repo status
 
 ## Bugs & Issues Encountered
 1. **Fetch mock not intercepting metrics requests** - Initial mock replaced whole `config/api`, removing `getMetricsUrl` and breaking URL resolution
@@ -40,4 +42,4 @@ Introduced `shareTranscriptionsRef` in the transcription hook to mirror option u
 - 🔧 **Lint warnings outside scope** - Existing warnings in `forge.config.ts` and `Onboarding.tsx` remain if future cleanup is desired
 
 ## Context for Future
-With telemetry gating in place and tests stabilized, future work can safely expand privacy controls or analytics knowing the user preference is respected throughout the transcription pipeline.
+With telemetry gating in place, the preference surfaced prominently in settings, and tests stabilized, future work can safely expand privacy controls or analytics. Next priority is establishing a maintainable, Apple-native icon pipeline for consistent SF Symbols usage across the UI.
