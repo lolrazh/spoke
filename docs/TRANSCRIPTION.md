@@ -204,7 +204,22 @@ export function encodeFrameHeader(seq: number, nbytes: number, tsNs: bigint): Ar
 #### Client → Server Messages
 ```typescript
 // Session start
-{ type: "start", version: 2, format: "pcm16le", rate: 16000, language: "en", traceId: "abc123" }
+{
+  "type": "start",
+  "version": 2,
+  "format": "pcm16le",
+  "rate": 16000,
+  "language": "en",
+  "traceId": "abc123",
+  "identity": {
+    "name": "Ada Lovelace",
+    "email": "ada@example.com"
+  }
+}
+
+// identity is optional. When provided, both strings are sanitized on the worker (control
+// characters removed, angle brackets stripped, max length enforced) before being added to
+// STT and LLM prompts.
 
 // Session end (trigger transcription)
 { type: "end" }

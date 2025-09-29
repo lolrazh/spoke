@@ -23,12 +23,16 @@ try {
 }
 
 function emit(next: UserIdentity) {
-  if (identity.name === next.name && identity.email === next.email) return;
-  identity = next;
+  const sanitized: UserIdentity = {
+    name: typeof next.name === "string" ? next.name : null,
+    email: typeof next.email === "string" ? next.email : null,
+  };
+  if (identity.name === sanitized.name && identity.email === sanitized.email) return;
+  identity = sanitized;
   try {
     if (typeof window !== "undefined" && window.localStorage) {
-      if (next.email) {
-        window.localStorage.setItem("sf.lastUserEmail", next.email);
+      if (sanitized.email) {
+        window.localStorage.setItem("sf.lastUserEmail", sanitized.email);
       } else {
         window.localStorage.removeItem("sf.lastUserEmail");
       }
@@ -49,11 +53,10 @@ async function refreshIdentity(): Promise<UserIdentity> {
   try {
     const user = await getCurrentUser();
     const metadata = (user?.user_metadata as UserMetadata | undefined) ?? null;
-    const next: UserIdentity = {
+    emit({
       name: metadata?.name ?? null,
       email: user?.email ?? null,
-    };
-    emit(next);
+    });
   } catch {
     emit({ name: null, email: null });
   }

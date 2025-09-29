@@ -20,5 +20,15 @@ describe('services/stt/prompt', () => {
     const p = buildSTTPrompt({ basePrompt: 'Your vocabulary includes: Sonic Flow', identity: { name: 'Sonic Flow' } });
     expect(p).toBe('Your vocabulary includes: Sonic Flow');
   });
+
+  it('sanitizes identity tokens to prevent prompt injection', () => {
+    const p = buildSTTPrompt({
+      identity: {
+        name: '<script>alert("x")</script>',
+        email: 'evil@example.com\u0007',
+      },
+    });
+    expect(p).toBe('Your vocabulary includes: Sonic Flow, alert("x"), evil@example.com');
+  });
 });
 
