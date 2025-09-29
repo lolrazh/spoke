@@ -1,44 +1,75 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 
 type WeightKey = "bold" | "regular" | "semibold" | string;
 
-type SymbolEntry = {
-  [weight in WeightKey]?: {
-    path: string;
-    geometry: { width: number; height: number };
-  };
-};
+const RAW_SVG_SYMBOLS = import.meta.glob<string>(
+  "../../assets/sf-symbols/**/*.svg",
+  {
+    as: "raw",
+    eager: true,
+  },
+);
 
-type SymbolsJson = Record<string, SymbolEntry>;
+const svgRegistry: Record<string, string> = Object.entries(RAW_SVG_SYMBOLS).reduce(
+  (acc, [path, svg]) => {
+    const afterRoot = path.substring(
+      path.lastIndexOf("sf-symbols/") + "sf-symbols/".length,
+    );
+    const normalized = afterRoot
+      .replace(/\.svg$/i, "")
+      .split("/")
+      .join(".");
+    acc[normalized] = svg;
+    return acc;
+  },
+  {} as Record<string, string>,
+);
 
-let symbolsCache: SymbolsJson | null = null;
-let symbolsPromise: Promise<SymbolsJson> | null = null;
-
-function resetSymbolsCache() {
-  symbolsCache = null;
-  symbolsPromise = null;
+function getSvgForName(name: string, weight?: WeightKey | null): string | null {
+  const candidates = weight
+    ? [`${name}.${weight}`, `${name}-${weight}`, name]
+    : [name];
+  for (const candidate of candidates) {
+    if (svgRegistry[candidate]) return svgRegistry[candidate];
+  }
+  return null;
 }
 
-async function loadSymbols(): Promise<SymbolsJson> {
-  if (symbolsCache) return symbolsCache;
-  if (!symbolsPromise) {
-    // Use relative path so it works under file:// protocol in packaged builds
-    symbolsPromise = fetch("./assets/sf-symbols.json", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok)
-          throw new Error(`Failed to load sf-symbols.json: ${res.status}`);
-        return (await res.json()) as SymbolsJson;
-      })
-      .then((json) => {
-        symbolsCache = json;
-        return json;
-      })
-      .catch((err) => {
-        symbolsPromise = null;
-        throw err;
-      });
+function sanitizeSvg(svg: string, title?: string): string {
+  let cleaned = svg
+    .replace(/<\?xml[\s\S]*?\?>/gi, "")
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
+    .trim();
+
+  cleaned = cleaned.replace(/<svg([^>]*)>/i, (match, attrs) => {
+    const withoutDimensions = attrs
+      .replace(/\s+width="[^"]*"/gi, "")
+      .replace(/\s+height="[^"]*"/gi, "")
+      .replace(/\s+fill="[^"]*"/gi, "")
+      .replace(/\s+stroke="[^"]*"/gi, "");
+    const fillAttr = /fill=/i.test(attrs) ? "" : " fill=\"currentColor\"";
+    return `<svg${withoutDimensions} width="100%" height="100%"${fillAttr} focusable="false">`;
+  });
+
+  cleaned = cleaned.replace(/<title>[\s\S]*?<\/title>/gi, "");
+
+  if (title) {
+    cleaned = cleaned.replace(
+      /<svg([^>]*)>/i,
+      (match, attrs) => `<svg${attrs}><title>${escapeHtml(title)}</title>`,
+    );
   }
-  return symbolsPromise;
+
+  return cleaned;
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export interface SfIconProps {
@@ -56,70 +87,31 @@ const SfIcon: React.FC<SfIconProps> = ({
   className = "",
   title,
 }) => {
-  const [symbols, setSymbols] = useState<SymbolsJson | null>(symbolsCache);
+  const rawSvg = useMemo(() => getSvgForName(name, weight), [name, weight]);
+  const normalizedSvg = useMemo(
+    () => (rawSvg ? sanitizeSvg(rawSvg, title) : null),
+    [rawSvg, title],
+  );
 
-  useEffect(() => {
-    let mounted = true;
-    // If cache exists and contains the requested icon, use it
-    if (symbolsCache && symbolsCache[name]) {
-      if (mounted) setSymbols(symbolsCache);
-      return () => {
-        mounted = false;
-      };
-    }
-
-    // Otherwise, force a refetch to pick up newly added icons during dev
-    resetSymbolsCache();
-    loadSymbols()
-      .then((json) => {
-        if (mounted) setSymbols(json);
-      })
-      .catch(() => {
-        // swallow; component will render fallback
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [name]);
-
-  const spec = useMemo(() => {
-    const entry = symbols?.[name];
-    if (!entry) return null;
-    const chosen = (entry[weight] ||
-      entry["bold"] ||
-      Object.values(entry)[0]) as
-      | { path: string; geometry: { width: number; height: number } }
-      | undefined;
-    return chosen || null;
-  }, [symbols, name, weight]);
-
-  if (!spec) {
-    // Fallback: empty box to preserve layout
+  if (!normalizedSvg) {
     return (
       <span
         className={className}
-        style={{ display: "inline-block", width: size, height: size }}
+        style={{ display: "inline-flex", width: size, height: size }}
         aria-hidden
       />
     );
   }
 
-  const viewBox = `0 0 ${spec.geometry.width} ${spec.geometry.height}`;
-
   return (
-    <svg
+    <span
       className={className}
-      width={size}
-      height={size}
-      viewBox={viewBox}
-      preserveAspectRatio="xMidYMid meet"
-      fill="currentColor"
-      aria-hidden={!title}
       role={title ? "img" : undefined}
-    >
-      {title ? <title>{title}</title> : null}
-      <path d={spec.path} fillRule="evenodd" clipRule="evenodd" />
-    </svg>
+      aria-label={title ?? undefined}
+      aria-hidden={title ? undefined : true}
+      style={{ display: "inline-flex", width: size, height: size }}
+      dangerouslySetInnerHTML={{ __html: normalizedSvg }}
+    />
   );
 };
 
