@@ -3,7 +3,7 @@ export type SttPromptIdentity = {
   email?: string | null;
 };
 
-export const DEFAULT_STT_PROMPT = 'Your vocabulary includes: Sonic Flow';
+export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Sonic Flow";
 
 type BuildOptions = {
   basePrompt?: string | null | undefined;
@@ -26,8 +26,8 @@ function formatTokens(tokens: Array<string | null | undefined>): string[] {
 }
 
 function baseVocabularyTokens(base: string): string[] {
-  const [, tail = base] = base.split(':');
-  return formatTokens(tail.split(','));
+  const [, tail = base] = base.split(":");
+  return formatTokens(tail.split(","));
 }
 
 export function buildSTTPrompt(options?: BuildOptions): string {
@@ -43,9 +43,7 @@ export function buildSTTPrompt(options?: BuildOptions): string {
   const baseTokens = new Set(
     baseVocabularyTokens(base).map((token) => token.toLowerCase()),
   );
-  const filtered = combined.filter(
-    (token) => !baseTokens.has(token.toLowerCase()),
-  );
+  const filtered = combined.filter((token) => !baseTokens.has(token.toLowerCase()));
   if (filtered.length === 0) return base;
-  return `${base}, ${filtered.join(', ')}`;
+  return `${base}, ${filtered.join(", ")}`;
 }

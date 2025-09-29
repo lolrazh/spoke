@@ -21,6 +21,12 @@ import { encodeFrameHeader } from "../utils/pcm";
 import { VAD_ENABLED } from "../config/vad";
 import { SileroVadEngine, EnergyVadEngine } from "../utils/vadEngine";
 import { VadStreamGate } from "../utils/vadStreamGate";
+import { buildSTTPrompt, type SttPromptIdentity } from "../../shared/sttPrompt";
+import {
+  getUserIdentity,
+  initUserIdentity,
+  subscribeUserIdentity,
+} from "../state/userIdentity";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -132,6 +138,16 @@ export function useTranscription(
   const shareTranscriptionsRef = useRef<boolean>(shareTranscriptionsEnabled);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
+  const initialIdentity = getUserIdentity();
+  const identityRef = useRef<SttPromptIdentity>({
+    name: initialIdentity.name,
+    email: initialIdentity.email,
+  });
+  const sttPromptRef = useRef<string>(
+    buildSTTPrompt({ identity: identityRef.current })
+  );
+  const lastLoggedPromptRef = useRef<string | null>(null);
+
   const buildSelectionPayload = (
     snapshot: SelectionInspectSnapshot | null,
   ): SelectionSnapshotPayload | null => {
@@ -151,6 +167,27 @@ export function useTranscription(
     shareTranscriptionsRef.current = !!shareTranscriptionsEnabled;
   }, [shareTranscriptionsEnabled]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeUserIdentity((next) => {
+      identityRef.current = {
+        name: next.name,
+        email: next.email,
+      };
+      const prompt = buildSTTPrompt({ identity: identityRef.current });
+      sttPromptRef.current = prompt;
+      if (lastLoggedPromptRef.current !== prompt) {
+        lastLoggedPromptRef.current = prompt;
+        try {
+          console.info("[SF] STT prompt", prompt);
+        } catch {}
+      }
+    });
+    initUserIdentity().catch(() => null);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const trySendStartMessage = useCallback(() => {
     const ws = wsRef.current;
     if (!ws || startSentRef.current) return;
@@ -167,6 +204,7 @@ export function useTranscription(
       mode?: ClientSessionMode;
       selection?: SelectionSnapshotPayload | null;
       shareTranscriptions: boolean;
+      identity?: { name?: string; email?: string };
     } = {
       type: "start",
       version: 2,
@@ -184,6 +222,21 @@ export function useTranscription(
     if (sessionSelectionPayloadRef.current) {
       startPayload.selection = sessionSelectionPayloadRef.current;
     }
+
+    const identity = identityRef.current;
+    const name = typeof identity?.name === "string" ? identity.name.trim() : "";
+    const email = typeof identity?.email === "string" ? identity.email.trim() : "";
+    if (name || email) {
+      startPayload.identity = {};
+      if (name) startPayload.identity.name = name;
+      if (email) startPayload.identity.email = email;
+    }
+
+    try {
+      if (sttPromptRef.current) {
+        console.info("[SF] Using STT prompt", sttPromptRef.current);
+      }
+    } catch {}
 
     try {
       ws.send(JSON.stringify(startPayload));

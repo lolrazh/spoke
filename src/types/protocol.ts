@@ -18,6 +18,11 @@ export type SelectionSnapshotPayload = {
 
 export type ClientSessionMode = "dictation" | "edit";
 
+export type ClientIdentityPayload = {
+  name?: string;
+  email?: string;
+};
+
 export type ClientStartV2 = {
   type: "start";
   version: 2;
@@ -27,6 +32,7 @@ export type ClientStartV2 = {
   traceId?: string;
   mode?: ClientSessionMode;
   selection?: SelectionSnapshotPayload | null;
+  identity?: ClientIdentityPayload;
 };
 
 export type ClientEnd = { type: "end" };

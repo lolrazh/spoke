@@ -5,6 +5,11 @@ import type {
 
 export type AudioSession = ReturnType<typeof createEmptySession>;
 
+export type SessionIdentity = {
+  name: string | null;
+  email: string | null;
+};
+
 export function createEmptySession() {
   return {
     version: 2,
@@ -25,6 +30,7 @@ export function createEmptySession() {
     mode: 'dictation' as ClientSessionMode,
     selection: null as ClientSelectionPayload | null,
     shareTranscriptions: false,
+    identity: { name: null, email: null } as SessionIdentity,
   };
 }
 

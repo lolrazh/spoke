@@ -14,6 +14,11 @@ export type ClientSelectionPayload = {
 
 export type ClientSessionMode = 'dictation' | 'edit';
 
+export type ClientIdentityPayload = {
+  name?: string;
+  email?: string;
+};
+
 export type ClientStartMessage = {
   type: 'start';
   version?: number;
@@ -24,6 +29,7 @@ export type ClientStartMessage = {
   mode?: ClientSessionMode;
   selection?: ClientSelectionPayload | null;
   shareTranscriptions?: boolean;
+  identity?: ClientIdentityPayload;
 };
 
 export type ClientEndMessage = { type: 'end' };
@@ -159,6 +165,19 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
       };
     }
 
+    let identity: ClientIdentityPayload | undefined;
+    const rawIdentity = m.identity;
+    if (rawIdentity && typeof rawIdentity === 'object') {
+      const idName = typeof (rawIdentity as any).name === 'string' ? (rawIdentity as any).name : undefined;
+      const idEmail = typeof (rawIdentity as any).email === 'string' ? (rawIdentity as any).email : undefined;
+      if (idName || idEmail) {
+        identity = {
+          name: idName,
+          email: idEmail,
+        };
+      }
+    }
+
     return {
       type: 'start',
       version,
@@ -172,6 +191,7 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
         typeof m.shareTranscriptions === 'boolean'
           ? m.shareTranscriptions
           : undefined,
+      identity,
     };
   }
   if (t === 'end') return { type: 'end' };
