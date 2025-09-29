@@ -1390,7 +1390,7 @@ const Onboarding: React.FC = () => {
                       <div className="flex items-center space-x-3">
                         <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                           <SfIcon
-                            name="mic.fill"
+                            name="microphone.fill"
                             size={16}
                             className="text-primary/70"
                           />
