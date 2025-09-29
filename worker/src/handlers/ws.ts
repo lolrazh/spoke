@@ -84,6 +84,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session.mode = parsed.mode ?? 'dictation';
           session.selection = parsed.selection ?? null;
           session.shareTranscriptions = parsed.shareTranscriptions === true;
+          session.identity = {
+            name: parsed.identity?.name ?? null,
+            email: parsed.identity?.email ?? null,
+          };
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -159,7 +163,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               if (sttApiKey) {
                 sttAbort?.abort();
                 sttAbort = new AbortController();
-                const sttPrompt = runtime.stt.prompt || buildSTTPrompt();
+                const sttPrompt = buildSTTPrompt({
+                  basePrompt: runtime.stt.prompt,
+                  identity: session.identity,
+                });
                 // Log STT request details (console only)
                 try {
                   const sttLog = {

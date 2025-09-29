@@ -67,4 +67,17 @@ describe('types/messages.parseClientMessage', () => {
 
     expect(msg?.selection?.source).toBeUndefined();
   });
+
+  it('parses identity payload when provided', () => {
+    const msg = parseClientMessage({
+      type: 'start',
+      identity: {
+        name: 'Alex',
+        email: 'alex@example.com',
+        extra: 'ignore',
+      },
+    } as Record<string, unknown>);
+
+    expect(msg?.identity).toEqual({ name: 'Alex', email: 'alex@example.com' });
+  });
 });
