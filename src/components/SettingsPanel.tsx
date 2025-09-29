@@ -465,7 +465,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   }
                   icon={
                     <SfIcon
-                      name="lock.shield"
+                      name="point.3.filled.connected.trianglepath.dotted"
                       size={16}
                       className="text-primary/70"
                     />
