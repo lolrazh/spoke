@@ -472,9 +472,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   }
                   disabled={
                     !!shareTranscriptionsLoading ||
-                    !!shareTranscriptionsUpdating ||
-                    !authReady ||
-                    !userEmail
+                    !!shareTranscriptionsUpdating
                   }
                 />
               </div>
