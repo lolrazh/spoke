@@ -39,6 +39,10 @@ interface PillProps {
   onExpand: () => void;
   onCollapse: () => void;
   onToggleFloatingBar?: (enabled: boolean) => void;
+  shareTranscriptionsEnabled?: boolean;
+  shareTranscriptionsLoading?: boolean;
+  shareTranscriptionsUpdating?: boolean;
+  onShareTranscriptionsChange?: (enabled: boolean) => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -57,6 +61,10 @@ const Pill: React.FC<PillProps> = ({
   onExpand,
   onCollapse,
   onToggleFloatingBar,
+  shareTranscriptionsEnabled,
+  shareTranscriptionsLoading,
+  shareTranscriptionsUpdating,
+  onShareTranscriptionsChange,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -320,6 +328,10 @@ const Pill: React.FC<PillProps> = ({
                   embeddedMode={true}
                   onToggleFloatingBar={onToggleFloatingBar}
                   onRequestCollapse={onCollapse}
+                  shareTranscriptionsEnabled={shareTranscriptionsEnabled}
+                  shareTranscriptionsLoading={shareTranscriptionsLoading}
+                  shareTranscriptionsUpdating={shareTranscriptionsUpdating}
+                  onShareTranscriptionsChange={onShareTranscriptionsChange}
                 />
                 {/* Collapse chevron at bottom */}
                 <button

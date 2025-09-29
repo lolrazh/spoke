@@ -23,6 +23,7 @@ export type ClientStartMessage = {
   language?: string;
   mode?: ClientSessionMode;
   selection?: ClientSelectionPayload | null;
+  shareTranscriptions?: boolean;
 };
 
 export type ClientEndMessage = { type: 'end' };
@@ -90,6 +91,7 @@ export type ServerFinalMessage = {
   text: string;
   traceId?: string;
   metrics?: { worker: WorkerMetrics };
+  dataset?: { sttText?: string | null; llmText?: string | null } | null;
 };
 
 export type ServerErrorMessage = {
@@ -166,6 +168,10 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
       language,
       mode,
       selection,
+      shareTranscriptions:
+        typeof m.shareTranscriptions === 'boolean'
+          ? m.shareTranscriptions
+          : undefined,
     };
   }
   if (t === 'end') return { type: 'end' };

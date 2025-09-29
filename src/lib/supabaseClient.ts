@@ -30,6 +30,15 @@ export type UserMetadata = {
   avatar_url?: string;
 };
 
+type ProfileRecord = {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  onboarding_done: boolean | null;
+  share_transcriptions: boolean | null;
+};
+
 export async function getGoogleOAuthUrl(): Promise<string | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -236,6 +245,7 @@ export async function getProfile(): Promise<{
   display_name: string | null;
   avatar_url: string | null;
   onboarding_done: boolean | null;
+  share_transcriptions: boolean | null;
 } | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -243,17 +253,13 @@ export async function getProfile(): Promise<{
   if (!u) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select("id,email,display_name,avatar_url,onboarding_done")
+    .select(
+      "id,email,display_name,avatar_url,onboarding_done,share_transcriptions",
+    )
     .eq("id", u.id)
     .single();
   if (error) return null;
-  return (data as unknown) as {
-    id: string;
-    email: string | null;
-    display_name: string | null;
-    avatar_url: string | null;
-    onboarding_done: boolean | null;
-  };
+  return data as unknown as ProfileRecord;
 }
 
 export async function getProfileDetailed(): Promise<
@@ -265,6 +271,7 @@ export async function getProfileDetailed(): Promise<
         display_name: string | null;
         avatar_url: string | null;
         onboarding_done: boolean | null;
+        share_transcriptions: boolean | null;
       };
     }
   | { ok: false; error: string }
@@ -278,7 +285,9 @@ export async function getProfileDetailed(): Promise<
   try {
     const { data, error, status } = await supabase
       .from("profiles")
-      .select("id,email,display_name,avatar_url,onboarding_done")
+      .select(
+        "id,email,display_name,avatar_url,onboarding_done,share_transcriptions",
+      )
       .eq("id", u.id)
       .single();
     if (error) {
@@ -290,13 +299,7 @@ export async function getProfileDetailed(): Promise<
     if (!data) return { ok: false, error: "NOT_FOUND" };
     return {
       ok: true,
-      data: (data as unknown) as {
-        id: string;
-        email: string | null;
-        display_name: string | null;
-        avatar_url: string | null;
-        onboarding_done: boolean | null;
-      },
+      data: data as unknown as ProfileRecord,
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -355,6 +358,7 @@ export async function ensureProfileRow(): Promise<
       display_name: displayName,
       avatar_url: md.avatar_url || null,
       onboarding_done: false,
+      share_transcriptions: false,
     });
     if (error) {
       const msg =
@@ -370,5 +374,48 @@ export async function ensureProfileRow(): Promise<
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg };
+  }
+}
+
+const SHARE_PREF_COLUMN = "share_transcriptions";
+
+export async function getShareTranscriptionsPreference(): Promise<boolean | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const user = await getCurrentUser();
+  if (!user) return null;
+  try {
+    const { data, error, status } = await supabase
+      .from("profiles")
+      .select(`${SHARE_PREF_COLUMN}`)
+      .eq("id", user.id)
+      .single();
+    if (error) {
+      if (status === 406 || status === 404) return false;
+      return null;
+    }
+    const share = (data as { share_transcriptions?: boolean | null } | null)?.share_transcriptions;
+    return share === true;
+  } catch {
+    return null;
+  }
+}
+
+export async function setShareTranscriptionsPreference(
+  enabled: boolean,
+): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+  const user = await getCurrentUser();
+  if (!user) return false;
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ [SHARE_PREF_COLUMN]: enabled })
+      .eq("id", user.id);
+    if (error) return false;
+    return true;
+  } catch {
+    return false;
   }
 }

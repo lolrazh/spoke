@@ -26,6 +26,7 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.traffic.bytesKB).toBe(Number((4096/1024).toFixed(2)));
     expect(s.env.environment).toBe('test');
     expect(s.env.release).toBe('v123');
+    expect(s.shareTranscriptions).toBe(false);
   });
 
   it('computes stt+llm when llm present and wsAcceptToFinal delta', () => {
@@ -102,5 +103,28 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.pipeline).toBe('stt');
     expect(s.durations.sttMs).toBe(200);
     expect(s.durations.wsAcceptToFinalMs).toBe(500);
+  });
+
+  it('omits dataset when share flag is false', () => {
+    const body = {
+      traceId: 'dataset-off',
+      dataset: { sttText: 'secret', llmText: 'output' },
+      shareTranscriptions: false,
+    };
+    const s = buildSessionSummary(body as any, env as any);
+    expect(s.dataset).toBeNull();
+    expect(s.shareTranscriptions).toBe(false);
+  });
+
+  it('retains dataset when share flag is true', () => {
+    const body = {
+      traceId: 'dataset-on',
+      dataset: { sttText: 'hello', llmText: 'world' },
+      shareTranscriptions: true,
+    };
+    const s = buildSessionSummary(body as any, env as any);
+    expect(s.dataset?.sttText).toBe('hello');
+    expect(s.dataset?.llmText).toBe('world');
+    expect(s.shareTranscriptions).toBe(true);
   });
 });

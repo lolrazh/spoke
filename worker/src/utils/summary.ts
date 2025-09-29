@@ -45,6 +45,7 @@ export type SessionBody = {
   meta?: { appVersion?: string; platform?: string };
   // Optional dataset texts forwarded by the client
   dataset?: { sttText?: string | null; llmText?: string | null } | null;
+  shareTranscriptions?: boolean;
   derived?: {
     // e2eMs now represents post-dictation latency (stop -> paste/final)
     e2eMs?: number | null;
@@ -66,6 +67,8 @@ export type Bindings = {
 export function buildSessionSummary(body: SessionBody, env: Bindings) {
   const traceId = (body?.traceId ?? '').toString();
   if (!traceId) throw new Error('traceId required');
+
+  const shareTranscriptions = body?.shareTranscriptions === true;
 
   const worker = body?.worker || null;
   const llm = worker?.llm ?? null;
@@ -136,9 +139,10 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     durations,
     traffic,
     result,
-    dataset: body?.dataset ?? null,
+    dataset: shareTranscriptions ? body?.dataset ?? null : null,
     ws,
     env: envOut,
     containsClientMetrics: true,
+    shareTranscriptions,
   } as const;
 }

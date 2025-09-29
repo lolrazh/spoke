@@ -41,9 +41,10 @@ const Toggle: React.FC<{
   label: string;
   description?: string;
   icon?: React.ReactNode;
-}> = ({ enabled, onChange, label, description, icon }) => (
+  disabled?: boolean;
+}> = ({ enabled, onChange, label, description, icon, disabled }) => (
   <SettingsCard title={label} description={description} icon={icon}>
-    <Switch checked={enabled} onCheckedChange={onChange} />
+    <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
   </SettingsCard>
 );
 
@@ -57,7 +58,7 @@ const SelectField: React.FC<{
   <SettingsCard
     title={label}
     description={description}
-    icon={<SfIcon name="mic.fill" size={16} className="text-primary/70" />}
+    icon={<SfIcon name="microphone.fill" size={16} className="text-primary/70" />}
   >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
@@ -94,12 +95,20 @@ interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
   onToggleFloatingBar?: (enabled: boolean) => void;
   onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
+  shareTranscriptionsEnabled?: boolean;
+  shareTranscriptionsLoading?: boolean;
+  shareTranscriptionsUpdating?: boolean;
+  onShareTranscriptionsChange?: (enabled: boolean) => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
   onRequestCollapse,
+  shareTranscriptionsEnabled,
+  shareTranscriptionsLoading,
+  shareTranscriptionsUpdating,
+  onShareTranscriptionsChange,
 }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
@@ -107,7 +116,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
-  const [playSounds, setPlaySounds] = useState<boolean>(true);
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state for settings panel
   // Remove inline login from Settings Panel — this surface should only show when signed in
@@ -149,10 +157,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             if (isMounted) setShowFloatingBar(vis.visible);
           }
         }
-      } catch {}
-      try {
-        const storedPlay = localStorage.getItem("sf.playSounds");
-        if (storedPlay != null && isMounted) setPlaySounds(storedPlay === "true");
       } catch {}
       try {
         // Initialize auth view – optimistic seed from cache to reduce flicker
@@ -249,13 +253,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       unsubscribe && unsubscribe();
     };
   }, []);
-
-  // Persist preferences when they change
-  useEffect(() => {
-    try {
-      localStorage.setItem("sf.playSounds", String(playSounds));
-    } catch {}
-  }, [playSounds]);
 
   // Listen for microphone device updates and selection changes
   useEffect(() => {
@@ -444,7 +441,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
                 <Toggle
                   label="Show Floating Bar"
-                  description="Display the floating dictation pill"
+                  description="Display the floating dictation bar"
                   enabled={showFloatingBar}
                   onChange={(enabled) => {
                     setShowFloatingBar(enabled);
@@ -460,16 +457,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 />
 
                 <Toggle
-                  label="Play Sounds"
-                  description="Audio feedback for dictation start/stop"
-                  enabled={playSounds}
-                  onChange={setPlaySounds}
+                  label="Improve the Model for Everyone"
+                  description="Share anonymous usage to improve responses"
+                  enabled={shareTranscriptionsEnabled ?? false}
+                  onChange={(enabled) =>
+                    onShareTranscriptionsChange?.(enabled)
+                  }
                   icon={
                     <SfIcon
-                      name="speaker.wave.3.fill"
+                      name="point.3.filled.connected.trianglepath.dotted"
                       size={16}
                       className="text-primary/70"
                     />
+                  }
+                  disabled={
+                    !!shareTranscriptionsLoading ||
+                    !!shareTranscriptionsUpdating ||
+                    !authReady ||
+                    !userEmail
                   }
                 />
               </div>
@@ -486,7 +491,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   description="Capture your voice for dictation"
                   icon={
                     <SfIcon
-                      name="mic.fill"
+                      name="microphone.fill"
                       size={16}
                       className="text-primary/70"
                     />
@@ -579,7 +584,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   icon={
                     <SfIcon
                       name="keyboard.badge.eye.fill"
-                      size={16}
+                      size={20}
                       className="text-primary/70"
                     />
                   }

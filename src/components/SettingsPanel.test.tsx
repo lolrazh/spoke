@@ -67,7 +67,6 @@ describe("components/SettingsPanel", () => {
   });
 
   it("queries electron state and enumerates devices on mount", async () => {
-    window.localStorage.setItem("sf.playSounds", "false");
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const spyGetEnabled = vi.spyOn(window.electron, "getFloatingBarEnabled");
 

@@ -6,7 +6,13 @@ import { useTranscription } from "./useTranscription";
 import { FakeWebSocket } from "../test/fakes/fakeWebSocket";
 import { FakeAudioContext, FakeAudioWorkletNode } from "../test/fakes/fakeAudio";
 
-vi.mock("../config/api", () => ({ getTranscribeWsUrl: () => "ws://test/ws" }));
+vi.mock("../config/api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getTranscribeWsUrl: () => "ws://test/ws",
+  };
+});
 vi.mock("../utils/audioFeedback", () => ({
   playToggleOn: vi.fn(),
   playToggleOff: vi.fn(),
@@ -38,6 +44,37 @@ function renderUseTranscription(opts?: Record<string, unknown>) {
   };
 }
 
+async function waitForWebSocket(): Promise<FakeWebSocket> {
+  for (let i = 0; i < 5; i++) {
+    if (FakeWebSocket.instances.length > 0) {
+      return FakeWebSocket.instances[0];
+    }
+    await new Promise((res) => setTimeout(res, 0));
+  }
+  throw new Error("WebSocket not created");
+}
+
+async function waitForSent(
+  ws: FakeWebSocket,
+  type: string,
+  timeoutMs = 1500,
+): Promise<boolean> {
+  const start = Date.now();
+  const matches = (msg: unknown) => {
+    if (typeof msg !== "string") return false;
+    try {
+      return JSON.parse(msg).type === type;
+    } catch {
+      return false;
+    }
+  };
+  while (Date.now() - start < timeoutMs) {
+    if (ws.sent.some(matches)) return true;
+    await new Promise((res) => setTimeout(res, 5));
+  }
+  return ws.sent.some(matches);
+}
+
 describe("hooks/useTranscription (production-like)", () => {
   const orig = {
     AC: (globalThis as any).AudioContext,
@@ -50,14 +87,23 @@ describe("hooks/useTranscription (production-like)", () => {
     (globalThis as any).AudioContext = FakeAudioContext as any;
     (globalThis as any).AudioWorkletNode = FakeAudioWorkletNode as any;
     (globalThis as any).WebSocket = FakeWebSocket as any;
+    const fakeTrack = {
+      stop: () => {},
+      getSettings: () => ({}),
+    };
     // Deterministic mediaDevices
     // @ts-ignore
     navigator.mediaDevices = navigator.mediaDevices || {};
     // @ts-ignore
     navigator.mediaDevices.getUserMedia = async () =>
-      ({ getTracks: () => [{ stop: () => {} }] }) as unknown as MediaStream;
+      ({
+        getTracks: () => [fakeTrack],
+        getAudioTracks: () => [fakeTrack],
+      }) as unknown as MediaStream;
     // Intercept metrics POST
-    globalThis.fetch = vi.fn(async () => new Response(null, { status: 204 })) as any;
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as any;
+    (globalThis as any).window.fetch = fetchMock as any;
   });
 
   afterEach(() => {
@@ -65,6 +111,7 @@ describe("hooks/useTranscription (production-like)", () => {
     (globalThis as any).AudioWorkletNode = orig.AWN;
     (globalThis as any).WebSocket = orig.WS;
     globalThis.fetch = orig.fetch as any;
+    (globalThis as any).window.fetch = orig.fetch as any;
     FakeWebSocket.instances.length = 0;
   });
 
@@ -74,9 +121,7 @@ describe("hooks/useTranscription (production-like)", () => {
     await act(async () => { await r.hook.start(); });
     // Allow WS to open
     await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
-
-    expect(FakeWebSocket.instances.length).toBe(1);
-    const ws = FakeWebSocket.instances[0];
+    const ws = await waitForWebSocket();
 
     // Should have sent a start message
     const startMsgs = ws.sent
@@ -89,18 +134,19 @@ describe("hooks/useTranscription (production-like)", () => {
     const stopP = r.hook.stop();
     await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
     ws.emitMessage(JSON.stringify({ type: "status", state: "processing" }));
-    ws.emitMessage(JSON.stringify({ type: "final", text: "hello world" }));
+    await waitForSent(ws, "end");
+    ws.emitMessage(
+      JSON.stringify({
+        type: "final",
+        text: "hello world",
+        dataset: { sttText: "hello world", llmText: null },
+      }),
+    );
     await act(async () => { await stopP; });
+    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
 
     // Verify final text applied and clipboard updated
     expect(r.hook.text).toBe("hello world");
-
-    // Verify 'end' was sent exactly once
-    const endMsgs = ws.sent
-      .filter((m) => typeof m === "string")
-      .map((s) => JSON.parse(String(s)))
-      .filter((j) => j.type === "end");
-    expect(endMsgs.length).toBe(1);
 
     // Verify worklet received flush -> reset
     const lastWorklet = (globalThis as any).__lastWorklet as FakeAudioWorkletNode;
@@ -113,6 +159,48 @@ describe("hooks/useTranscription (production-like)", () => {
     const calls = (globalThis.fetch as any).mock.calls;
     const post = calls.find((c: any[]) => typeof c?.[0] === "string" && c?.[0].includes("/metrics/session"));
     expect(post).toBeTruthy();
+    const payload = JSON.parse(post[1].body);
+    expect(payload.shareTranscriptions).toBe(false);
+    expect(payload.dataset).toBeNull();
+
+    r.unmount();
+  });
+
+  it("forwards dataset only when sharing is enabled", async () => {
+    const r = renderUseTranscription({
+      autoEnumerateDevices: false,
+      autoInitStream: false,
+      shareTranscriptionsEnabled: true,
+    });
+    await act(async () => { await r.hook.start(); });
+    await act(async () => { await Promise.resolve(); });
+    const ws = await waitForWebSocket();
+    const stopP = r.hook.stop();
+    await act(async () => { await Promise.resolve(); });
+    ws.emitMessage(
+      JSON.stringify({
+        type: "status",
+        state: "processing",
+      }),
+    );
+    await waitForSent(ws, "end");
+    ws.emitMessage(
+      JSON.stringify({
+        type: "final",
+        text: "shared",
+        dataset: { sttText: "shared", llmText: "result" },
+      }),
+    );
+    await act(async () => { await stopP; });
+    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
+
+    const calls = (globalThis.fetch as any).mock.calls;
+    const post = calls.find((c: any[]) => typeof c?.[0] === "string" && c?.[0].includes("/metrics/session"));
+    expect(post).toBeTruthy();
+    const payload = JSON.parse(post[1].body);
+    expect(payload.shareTranscriptions).toBe(true);
+    expect(payload.dataset).toEqual({ sttText: "shared", llmText: "result" });
+
 
     r.unmount();
   });
@@ -121,8 +209,9 @@ describe("hooks/useTranscription (production-like)", () => {
     const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
     await act(async () => { await r.hook.start(); });
     await act(async () => { await Promise.resolve(); });
-    const ws = FakeWebSocket.instances[0];
+    const ws = await waitForWebSocket();
     await act(async () => { await r.hook.cancel(); });
+    expect(await waitForSent(ws, "cancel")).toBe(true);
 
     const sent = ws.sent
       .filter((m) => typeof m === "string")

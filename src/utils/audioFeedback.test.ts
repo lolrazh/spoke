@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock static asset imports used by audioFeedback
-vi.mock("/assets/toggle_on_bouncy_fast.wav?url", () => ({ default: "on.wav" }));
-vi.mock("/assets/toggle_off_bouncy_fast.wav?url", () => ({
+vi.mock("/assets/toggle_on7.wav?url", () => ({ default: "on.wav" }));
+vi.mock("/assets/toggle_off7.wav?url", () => ({
   default: "off.wav",
 }));
 

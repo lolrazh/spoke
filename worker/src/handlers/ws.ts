@@ -83,6 +83,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           clientLanguage = parsed.language;
           session.mode = parsed.mode ?? 'dictation';
           session.selection = parsed.selection ?? null;
+          session.shareTranscriptions = parsed.shareTranscriptions === true;
         } else if (parsed.type === 'end') {
           const t0 = Date.now();
           session.processingStartAt = t0;
@@ -146,6 +147,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             }, async (sessionSpan) => {
               // Add session context directly to the span using setAttribute
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
+              sessionSpan.setAttribute('dataset.allowed', session.shareTranscriptions ? 1 : 0);
               
               const sttApiKey = sttProvider === 'fireworks' ? FIREWORKS_API_KEY : GROQ_API_KEY;
               const sttEndpoint = sttProvider === 'fireworks'
@@ -189,7 +191,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         selection: session.selection,
                       })
                     : null;
-
                 if (sessionSpan) {
                   sessionSpan.setAttribute('session.mode', session.mode ?? 'dictation');
                   sessionSpan.setAttribute('edit.enabled', runtime.edit.enabled);
@@ -383,53 +384,56 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   sessionSpan.setAttribute('llm.success', false);
                 }
                 // Dataset logging: ASR→LLM input and LLM output
+                // Dataset logging: ASR→LLM input and LLM output
                 // Comment out this block to disable dataset logging.
-                try {
-                  const datasetLlmConfig = session.mode === 'edit'
-                    ? { provider: runtime.edit.provider, model: runtime.edit.model }
-                    : { provider: runtime.llm.provider, model: runtime.llm.model };
+                if (session.shareTranscriptions) {
+                  try {
+                    const datasetLlmConfig = session.mode === 'edit'
+                      ? { provider: runtime.edit.provider, model: runtime.edit.model }
+                      : { provider: runtime.llm.provider, model: runtime.llm.model };
 
-                  if (session.mode === 'edit') {
-                    const editPlanForDataset = prepareEditRequest({
-                      instructions: finalText,
-                      selection: session.selection,
-                    });
-                    const datasetEntry = {
-                      event: 'dataset.edit_io',
-                      traceId: session.traceId,
-                      'session.trace_id': session.traceId,
-                      language: clientLanguage || runtime.stt.language,
-                      instructions: finalText,
-                      inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
-                      outputText: llmText || null,
-                      llm: datasetLlmConfig,
-                      mode: session.mode,
-                      selectionSource: session.selection?.source ?? null,
-                      ts: Date.now(),
-                    } as const;
-                    console.log(JSON.stringify(datasetEntry));
-                  } else {
-                    const datasetEntry = {
-                      event: 'dataset.llm_io',
-                      traceId: session.traceId,
-                      'session.trace_id': session.traceId,
-                      language: clientLanguage || runtime.stt.language,
-                      sttText: finalText,
-                      llmText: llmText || null,
-                      llm: datasetLlmConfig,
-                      mode: session.mode,
-                      ts: Date.now(),
-                    } as const;
-                    console.log(JSON.stringify(datasetEntry));
-                  }
-                } catch {}
-                
-                // Add overall session timing
-                const finalizationMs = Date.now() - t0;
-                const overheadMs = Math.max(0, finalizationMs - assembleMs - (timings ? (timings.bodyDoneAt - timings.startAt) : 0) - (llmTimings ? (llmTimings.bodyDoneAt - llmTimings.startAt) : 0));
-                sessionSpan.setAttribute('session.finalization_ms', finalizationMs);
-                sessionSpan.setAttribute('session.overhead_ms', overheadMs);
-                sessionSpan.setAttribute('session.final_text', llmText || finalText);
+                    if (session.mode === 'edit') {
+                      const editPlanForDataset = prepareEditRequest({
+                        instructions: finalText,
+                        selection: session.selection,
+                      });
+
+                      try {
+                        const datasetEntry = {
+                          event: 'dataset.edit_io',
+                          traceId: session.traceId,
+                          'session.trace_id': session.traceId,
+                          language: clientLanguage || runtime.stt.language,
+                          instructions: finalText,
+                          inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
+                          outputText: llmText || null,
+                          llm: datasetLlmConfig,
+                          selectionSource: session.selection?.source ?? null,
+                          ts: Date.now(),
+                        } as const;
+                        console.log(JSON.stringify(datasetEntry));
+                      } catch {}
+                    } else {
+                      try {
+                        const datasetEntryForStt = {
+                          event: 'dataset.llm_io',
+                          traceId: session.traceId,
+                          'session.trace_id': session.traceId,
+                          language: clientLanguage || runtime.stt.language,
+                          sttText: finalText,
+                          llmText: llmText || null,
+                          llm: datasetLlmConfig,
+                          mode: session.mode,
+                          ts: Date.now(),
+                        } as const;
+                        console.log(JSON.stringify(datasetEntryForStt));
+                      } catch {}
+                    }
+                  } catch {}
+                }
+                if (session.shareTranscriptions) {
+                  sessionSpan.setAttribute('session.final_text', llmText || finalText);
+                }
                 sessionSpan.setAttribute('session.final_text_length', (llmText || finalText).length);
               } else {
                 finalText = '';
@@ -502,7 +506,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   text: llmText || finalText,
                   traceId: session.traceId,
                   // Pass dataset texts so the client can forward to /metrics/session
-                  dataset: { sttText: finalText, llmText: llmText || null },
+                  dataset: session.shareTranscriptions
+                    ? { sttText: finalText, llmText: llmText || null }
+                    : null,
                   metrics: { worker: workerMetrics },
                 }),
               );

@@ -31,10 +31,11 @@ app.post('/metrics/session', async (c) => {
   try {
     const body = await c.req.json<any>();
     const summary = buildSessionSummary(body, c.env as any);
+    const shareTranscriptions = summary.shareTranscriptions === true;
 
     // Emit dataset texts directly to Sentry logs when present in the merged payload
     const dataset = summary.dataset;
-    if (dataset && (dataset.sttText || dataset.llmText)) {
+    if (shareTranscriptions && dataset && (dataset.sttText || dataset.llmText)) {
       safely(() =>
         Sentry.logger.info('dataset.llm_io', {
           traceId: summary.id,
@@ -62,6 +63,7 @@ app.post('/metrics/session', async (c) => {
       for (const [k, v] of Object.entries(summary.durations)) span.setAttribute(`dur.${k}`, v as any);
       for (const [k, v] of Object.entries(summary.traffic)) span.setAttribute(`traffic.${k}`, v as any);
       span.setAttribute('result.text_len', summary.result.textLen ?? 0);
+      span.setAttribute('dataset.allowed', shareTranscriptions ? 1 : 0);
       // Attach dataset text lengths (do not attach full text to span by default)
       try {
         const stt = (summary as any)?.dataset?.sttText as string | undefined;
