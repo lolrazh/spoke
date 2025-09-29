@@ -174,16 +174,6 @@ const Pill: React.FC<PillProps> = ({
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
     }
-
-    // Set a timeout for single click
-    clickTimeoutRef.current = setTimeout(() => {
-      if (isListening) {
-        onStopDictation();
-      } else {
-        onStartDictation();
-      }
-      clickTimeoutRef.current = null;
-    }, 80); // 80ms delay to distinguish from double-click
   };
 
   // Handle double-click to expand/collapse

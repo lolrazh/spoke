@@ -455,7 +455,7 @@ const App: React.FC = () => {
   const isOptionDownRef = useRef(false);
   const gestureTokenCounterRef = useRef(0);
   const pendingStartTokenRef = useRef<
-    { id: number; kind: "hold" | "doubleTap" | "click" }
+    { id: number; kind: "hold" | "doubleTap" }
     | null
   >(null);
   const holdActivationNonceRef = useRef<number | null>(null);
@@ -477,7 +477,7 @@ const App: React.FC = () => {
   }>({ token: null, result: null });
   const permissionCheckPromiseRef = useRef<Promise<boolean> | null>(null);
   const activeCaptureRef = useRef<
-    { token: number; kind: "hold" | "doubleTap" | "click" }
+    { token: number; kind: "hold" | "doubleTap" }
     | null
   >(null);
   const postStartActionRef = useRef<Map<number, "cancel" | "stop">>(
@@ -551,7 +551,7 @@ const App: React.FC = () => {
   } = usePillMachine();
 
   const beginCaptureSession = useCallback(
-    (token: number, kind: "hold" | "doubleTap" | "click") => {
+    (token: number, kind: "hold" | "doubleTap") => {
       activeCaptureRef.current = { token, kind };
       postStartActionRef.current.delete(token);
       pushTrace(`Capture session begin (${kind}) token=${token}`);
@@ -591,7 +591,7 @@ const App: React.FC = () => {
   const monitorStartResolution = useCallback(
     (
       token: number,
-      kind: "hold" | "doubleTap" | "click",
+      kind: "hold" | "doubleTap",
       promise: Promise<unknown>,
     ) => {
       promise
@@ -685,7 +685,7 @@ const App: React.FC = () => {
     async (
       allowed: boolean,
       tokenId: number,
-      kind: "hold" | "doubleTap" | "click",
+      kind: "hold" | "doubleTap",
       permissionToken: number | null,
     ) => {
       const pendingToken = pendingStartTokenRef.current;
@@ -735,7 +735,7 @@ const App: React.FC = () => {
     (
       permissionPromise: Promise<boolean> | null | undefined,
       tokenId: number,
-      kind: "hold" | "doubleTap" | "click",
+      kind: "hold" | "doubleTap",
       permissionToken: number | null,
     ) => {
       if (!permissionPromise) {
@@ -1319,52 +1319,7 @@ const App: React.FC = () => {
           expandedH: EXPANDED_H,
           maxW: MAX_W,
         }}
-        onStartDictation={async () => {
-          const {
-            permissionToken,
-            permissionResult,
-            permissionPromise,
-          } = snapshotPermissionGuard(true);
-          const tokenId = ++gestureTokenCounterRef.current;
-          pendingStartTokenRef.current = { id: tokenId, kind: "click" };
-          beginCaptureSession(tokenId, "click");
-          try {
-            playToggleOn();
-          } catch {}
-          pillDispatch({ type: "PTT_START" });
-          if (permissionResult === false) {
-            void handlePermissionOutcome(false, tokenId, "click", permissionToken);
-            return;
-          }
-          let startResult: void | Promise<void>;
-          try {
-            startResult = trans.start();
-          } catch (err) {
-            pushTrace(
-              `Pill click start failed synchronously: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            );
-            clearActiveCapture(tokenId);
-            pillDispatch({ type: "CANCEL" });
-            return;
-          }
-          monitorStartResolution(
-            tokenId,
-            "click",
-            Promise.resolve(startResult),
-          );
-          if (permissionResult === true) {
-            void handlePermissionOutcome(true, tokenId, "click", permissionToken);
-            return;
-          }
-          attachPermissionPromise(
-            permissionPromise,
-            tokenId,
-            "click",
-            permissionToken,
-          );
-        }}
+        onStartDictation={() => {}}
         onStopDictation={() => {
           pendingStartTokenRef.current = null;
           pillDispatch({ type: "PTT_STOP" });
