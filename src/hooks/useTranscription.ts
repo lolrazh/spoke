@@ -139,6 +139,7 @@ export function useTranscription(
     Promise<SelectionInspectSnapshot | null> | null
   >(null);
   const selectionGateDeadlineRef = useRef<number | null>(null);
+  const selectionGateTimerRef = useRef<number | null>(null);
   const shareTranscriptionsRef = useRef<boolean>(shareTranscriptionsEnabled);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
@@ -182,6 +183,13 @@ export function useTranscription(
     },
     [buildSelectionPayload],
   );
+
+  const clearSelectionGateTimer = useCallback(() => {
+    if (selectionGateTimerRef.current != null) {
+      clearTimeout(selectionGateTimerRef.current);
+      selectionGateTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     shareTranscriptionsRef.current = !!shareTranscriptionsEnabled;
@@ -272,12 +280,13 @@ export function useTranscription(
     try {
       ws.send(JSON.stringify(startPayload));
       startSentRef.current = true;
+      clearSelectionGateTimer();
     } catch (err) {
       if (window.devFlags?.devConsoleLogs) {
         console.warn("[useTranscription] Failed to send start payload", err);
       }
     }
-  }, []);
+  }, [clearSelectionGateTimer]);
 
   // VAD
   const vadEngineRef = useRef<SileroVadEngine | EnergyVadEngine | null>(null);
@@ -788,6 +797,7 @@ export function useTranscription(
     // Start cue moved to PTT/button handlers for immediacy
 
     startSentRef.current = false;
+    clearSelectionGateTimer();
     pendingSelectionPromiseRef.current = null;
     selectionGateDeadlineRef.current = null;
     applySelectionSnapshot(null);
@@ -822,6 +832,7 @@ export function useTranscription(
               if (pendingSelectionPromiseRef.current === handledPromise) {
                 pendingSelectionPromiseRef.current = null;
                 selectionGateDeadlineRef.current = null;
+                clearSelectionGateTimer();
                 trySendStartMessage();
               }
             });
@@ -830,6 +841,15 @@ export function useTranscription(
           const nowTs =
             typeof performance !== "undefined" ? performance.now() : Date.now();
           selectionGateDeadlineRef.current = nowTs + 120;
+          clearSelectionGateTimer();
+          selectionGateTimerRef.current = window.setTimeout(() => {
+            if (pendingSelectionPromiseRef.current === handledPromise) {
+              pendingSelectionPromiseRef.current = null;
+              selectionGateDeadlineRef.current = null;
+              selectionGateTimerRef.current = null;
+              trySendStartMessage();
+            }
+          }, 130);
         } else {
           const snapshot =
             (rawPromise as SelectionInspectSnapshot | null | undefined) ?? null;
@@ -850,6 +870,7 @@ export function useTranscription(
       if (!ok) {
         pendingSelectionPromiseRef.current = null;
         selectionGateDeadlineRef.current = null;
+        clearSelectionGateTimer();
         return;
       }
     }
@@ -1034,6 +1055,7 @@ export function useTranscription(
     resumeAudioWorklet,
     trySendStartMessage,
     applySelectionSnapshot,
+    clearSelectionGateTimer,
   ]);
 
   const stop = useCallback(async () => {

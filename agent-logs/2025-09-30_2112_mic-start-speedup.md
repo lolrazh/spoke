@@ -11,6 +11,7 @@ The user wanted the microphone to begin recording immediately when the push-to-t
 - ✅ **Decoupled selection inspection from mic start** - selection now loads asynchronously with a 120 ms gate, letting capture begin without waiting on the helper process.
 - ✅ **Kept WebSocket start deterministic** - `trySendStartMessage` now waits only briefly for selection data before sending, ensuring payload correctness without delaying the stream.
 - ✅ **Resolved TypeScript promise typing issue** - added an explicit `isPromiseLike` guard to satisfy the compiler and prevent accidental miscasts.
+- ✅ **Added fallback timer for selection gate** - we now auto-send the start payload if selection data stalls longer than the gate, keeping PCM and control messages ordered.
 
 ## Technical Implementation
 We refactored `useTranscription.start()` to optimistically launch the capture pipeline: immediately starting the audio stream, resuming the worklet, and preparing metrics. Selection inspection now runs in parallel, with its payload applied whenever it resolves. A short gate window prevents duplicate start messages while still prioritizing fast mic activation. We also hardened the selection handling by type-narrowing the possible return values.
@@ -23,6 +24,8 @@ We refactored `useTranscription.start()` to optimistically launch the capture pi
    - **Fix:** Introduced an `isPromiseLike` helper and narrowed the snapshot type before applying it.
 2. **Existing lint failures** - Repository lint script still reports legacy warnings/errors in unrelated files.
    - **Workaround:** Documented the failures; no changes were made since they predate this session.
+3. **Start payload race with stalled selection** - PCM could hit the socket before the `start` message when selection hung.
+   - **Fix:** Added a timeout-backed retry that clears the gate and replays `trySendStartMessage()` after 130 ms.
 
 ## Key Learnings
 - **Mic gating lives in the renderer** - Most startup delay was caused by renderer-level permission & selection checks, not the audio stack.
