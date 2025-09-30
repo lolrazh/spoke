@@ -9,7 +9,7 @@ export const OPENROUTER_LLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/comple
 export const GROQ_LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const OPENAI_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
 export const BASETEN_LLM_DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B-Instruct-2507';
-export const OPENROUTER_LLM_DEFAULT_MODEL = 'qwen/qwen3-72b-instruct';
+export const OPENROUTER_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
 
 export const LLM_DEFAULT_MODEL = GROQ_LLM_DEFAULT_MODEL;
 export const LLM_DEFAULT_TEMPERATURE = 0.6;
