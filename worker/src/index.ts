@@ -64,6 +64,11 @@ app.post('/metrics/session', async (c) => {
       for (const [k, v] of Object.entries(summary.traffic)) span.setAttribute(`traffic.${k}`, v as any);
       span.setAttribute('result.text_len', summary.result.textLen ?? 0);
       span.setAttribute('dataset.allowed', shareTranscriptions ? 1 : 0);
+      if (summary.llm) {
+        span.setAttribute('llm.provider', summary.llm.provider ?? '');
+        if (summary.llm.model) span.setAttribute('llm.model', summary.llm.model);
+        if (summary.llm.routeRules?.length) span.setAttribute('llm.route_rules', summary.llm.routeRules.join(','));
+      }
       // Attach dataset text lengths (do not attach full text to span by default)
       try {
         const stt = (summary as any)?.dataset?.sttText as string | undefined;

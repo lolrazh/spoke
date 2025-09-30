@@ -15,6 +15,7 @@ export type SttMetrics = {
 
 export type LlmMetrics = {
   provider?: string | null;
+  model?: string | null;
   startAt?: number | null;
   headersAt?: number | null;
   firstDeltaAt?: number | null;
@@ -22,6 +23,7 @@ export type LlmMetrics = {
   ttfbMs?: number | null;
   bodyMs?: number | null;
   totalMs?: number | null;
+  routeRules?: string[] | null;
 };
 
 export type WorkerMetrics = {
@@ -132,6 +134,14 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
 
   const result = { textLen: (worker as any)?.textLen ?? null };
 
+  const llmInfo = llm
+    ? {
+        provider: llm.provider ?? null,
+        model: llm.model ?? null,
+        routeRules: llm.routeRules ?? null,
+      }
+    : null;
+
   return {
     event: 'transcription.session_summary',
     id: traceId,
@@ -139,6 +149,7 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     durations,
     traffic,
     result,
+    llm: llmInfo,
     dataset: shareTranscriptions ? body?.dataset ?? null : null,
     ws,
     env: envOut,

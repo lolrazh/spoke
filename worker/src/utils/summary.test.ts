@@ -27,6 +27,7 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.env.environment).toBe('test');
     expect(s.env.release).toBe('v123');
     expect(s.shareTranscriptions).toBe(false);
+    expect(s.llm).toBeNull();
   });
 
   it('computes stt+llm when llm present and wsAcceptToFinal delta', () => {
@@ -48,6 +49,7 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.durations.llmTtfbMs).toBe(40);
     expect(s.durations.llmBodyMs).toBe(60);
     expect(s.durations.llmFirstTokenMs).toBe(100);
+    expect(s.llm?.provider).toBeNull();
   });
 
   it('computes edit pipeline when mode is edit', () => {
@@ -67,6 +69,7 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.durations.llmMs).toBe(100);
     expect(s.durations.wsAcceptToFinalMs).toBe(500);
     expect(s.durations.serverProcessingMs).toBe(300);
+    expect(s.llm).not.toBeNull();
   });
 
   it('computes dictation pipeline when mode is dictation with llm', () => {
@@ -86,6 +89,7 @@ describe('utils/summary.buildSessionSummary', () => {
     expect(s.durations.llmMs).toBe(100);
     expect(s.durations.wsAcceptToFinalMs).toBe(500);
     expect(s.durations.serverProcessingMs).toBe(300);
+    expect(s.llm).not.toBeNull();
   });
 
   it('computes stt pipeline when no llm and mode is dictation', () => {
