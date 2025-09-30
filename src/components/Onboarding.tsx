@@ -246,7 +246,7 @@ const Onboarding: React.FC = () => {
   };
   // Sample prompts for tests
   const sampleEditText =
-    "Team standup notes for today: Sarah finished the auth module yesterday and we had some bugs with the login flow. John is working on the dashboard but its taking longer than expected. We need to discuss the database schema changes. Also, the CI/CD pipeline is broken and needs fixing ASAP.";
+    "I wanna show you how Sonic Flow actually helps, how Sonic Flow actually behaves and why Sonic Flow is better than the other apps.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -1783,7 +1783,7 @@ const Onboarding: React.FC = () => {
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left ml-2">
-                      Try saying: "Can you format this as meeting notes?"
+                      Try saying: "Can you write how and why in caps."
                     </div>
 
                     {/* Dictation Textarea with pre-filled content */}
