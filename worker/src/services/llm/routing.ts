@@ -37,7 +37,7 @@ export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
   },
   {
     id: 'formatting-instruction',
-    pattern: /\b(?:uppercase|lowercase|capital(?:ize|ized)?|hyphen|dash)\b/i,
+    pattern: /\b(?:uppercase|lowercase|caps|capitals|capitalize|capitalized|hyphen|dash|emphasize)\b/i,
     provider: 'groq',
     model: KIMI_MODEL,
   },

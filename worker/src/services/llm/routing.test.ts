@@ -44,6 +44,12 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.matchedRuleIds).toEqual(['spelled-sequence', 'formatting-instruction']);
   });
 
+  it('detects additional formatting keywords', () => {
+    const decision = selectLLMRoute('Please emphasize the word and use caps', baseRuntime);
+    expect(decision.matchedRuleIds).toContain('formatting-instruction');
+    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
+  });
+
   it('allows custom rule overrides', () => {
     const customRules = [
       { id: 'custom', pattern: /override/i, provider: 'openrouter' as const, model: 'custom-model' },
