@@ -135,6 +135,11 @@ export function useTranscription(
   const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
   const sessionModeRef = useRef<ClientSessionMode>("dictation");
   const startSentRef = useRef(false);
+  const pendingSelectionPromiseRef = useRef<
+    Promise<SelectionInspectSnapshot | null> | null
+  >(null);
+  const selectionGateDeadlineRef = useRef<number | null>(null);
+  const selectionGateTimerRef = useRef<number | null>(null);
   const shareTranscriptionsRef = useRef<boolean>(shareTranscriptionsEnabled);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
@@ -148,20 +153,43 @@ export function useTranscription(
   );
   const lastLoggedPromptRef = useRef<string | null>(null);
 
-  const buildSelectionPayload = (
-    snapshot: SelectionInspectSnapshot | null,
-  ): SelectionSnapshotPayload | null => {
-    if (!snapshot) return null;
-    const range: SelectionRange | null = snapshot.range ?? null;
-    return {
-      status: snapshot.status,
-      hadSelection: snapshot.hadSelection,
-      text: snapshot.selectedText ?? null,
-      range,
-      valueLength: snapshot.valueLength ?? null,
-      source: snapshot.source,
-    };
-  };
+  const buildSelectionPayload = useCallback(
+    (snapshot: SelectionInspectSnapshot | null): SelectionSnapshotPayload | null => {
+      if (!snapshot) return null;
+      const range: SelectionRange | null = snapshot.range ?? null;
+      return {
+        status: snapshot.status,
+        hadSelection: snapshot.hadSelection,
+        text: snapshot.selectedText ?? null,
+        range,
+        valueLength: snapshot.valueLength ?? null,
+        source: snapshot.source,
+      };
+    },
+    [],
+  );
+
+  const applySelectionSnapshot = useCallback(
+    (snapshot: SelectionInspectSnapshot | null) => {
+      const nextSnapshot = snapshot ?? null;
+      selectionRef.current = nextSnapshot;
+      setSelection(nextSnapshot);
+      sessionSelectionPayloadRef.current = buildSelectionPayload(nextSnapshot);
+      const nextMode: ClientSessionMode = nextSnapshot?.hadSelection
+        ? "edit"
+        : "dictation";
+      sessionModeRef.current = nextMode;
+      setMode(nextMode);
+    },
+    [buildSelectionPayload],
+  );
+
+  const clearSelectionGateTimer = useCallback(() => {
+    if (selectionGateTimerRef.current != null) {
+      clearTimeout(selectionGateTimerRef.current);
+      selectionGateTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     shareTranscriptionsRef.current = !!shareTranscriptionsEnabled;
@@ -194,6 +222,17 @@ export function useTranscription(
     if (ws.readyState !== WebSocket.OPEN) return;
     const traceId = metricsRef.current?.sessionId;
     if (!traceId) return;
+
+    const gateDeadline = selectionGateDeadlineRef.current;
+    if (pendingSelectionPromiseRef.current && gateDeadline != null) {
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now < gateDeadline) {
+        return;
+      }
+      selectionGateDeadlineRef.current = null;
+    }
+
     const startPayload: {
       type: "start";
       version: 2;
@@ -241,12 +280,13 @@ export function useTranscription(
     try {
       ws.send(JSON.stringify(startPayload));
       startSentRef.current = true;
+      clearSelectionGateTimer();
     } catch (err) {
       if (window.devFlags?.devConsoleLogs) {
         console.warn("[useTranscription] Failed to send start payload", err);
       }
     }
-  }, []);
+  }, [clearSelectionGateTimer]);
 
   // VAD
   const vadEngineRef = useRef<SileroVadEngine | EnergyVadEngine | null>(null);
@@ -757,40 +797,82 @@ export function useTranscription(
     // Start cue moved to PTT/button handlers for immediacy
 
     startSentRef.current = false;
-    sessionSelectionPayloadRef.current = null;
-    sessionModeRef.current = "dictation";
-    setMode("dictation");
-    selectionRef.current = null;
-    setSelection(null);
+    clearSelectionGateTimer();
+    pendingSelectionPromiseRef.current = null;
+    selectionGateDeadlineRef.current = null;
+    applySelectionSnapshot(null);
+
     if (window.selection?.inspect) {
       try {
-        const snapshot = await window.selection.inspect();
-        selectionRef.current = snapshot ?? null;
-        setSelection(snapshot ?? null);
-        sessionSelectionPayloadRef.current = buildSelectionPayload(snapshot ?? null);
-        const nextMode: ClientSessionMode = snapshot?.hadSelection
-          ? "edit"
-          : "dictation";
-        sessionModeRef.current = nextMode;
-        setMode(nextMode);
-        if (window.devFlags?.devConsoleLogs) {
-          console.log("[useTranscription] Selection snapshot", snapshot);
+        const rawPromise = window.selection.inspect();
+        const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
+          if (typeof value !== "object" && typeof value !== "function") return false;
+          if (value === null) return false;
+          return typeof (value as { then?: unknown }).then === "function";
+        };
+
+        if (isPromiseLike(rawPromise)) {
+          const handledPromise = rawPromise
+            .then((snapshot) => {
+              const normalized = snapshot ?? null;
+              if (window.devFlags?.devConsoleLogs && normalized) {
+                console.log("[useTranscription] Selection snapshot", normalized);
+              }
+              applySelectionSnapshot(normalized);
+              return normalized;
+            })
+            .catch((err) => {
+              if (window.devFlags?.devConsoleLogs) {
+                console.warn("[useTranscription] Selection inspect failed", err);
+              }
+              applySelectionSnapshot(null);
+              return null;
+            })
+            .finally(() => {
+              if (pendingSelectionPromiseRef.current === handledPromise) {
+                pendingSelectionPromiseRef.current = null;
+                selectionGateDeadlineRef.current = null;
+                clearSelectionGateTimer();
+                trySendStartMessage();
+              }
+            });
+
+          pendingSelectionPromiseRef.current = handledPromise;
+          const nowTs =
+            typeof performance !== "undefined" ? performance.now() : Date.now();
+          selectionGateDeadlineRef.current = nowTs + 120;
+          clearSelectionGateTimer();
+          selectionGateTimerRef.current = window.setTimeout(() => {
+            if (pendingSelectionPromiseRef.current === handledPromise) {
+              pendingSelectionPromiseRef.current = null;
+              selectionGateDeadlineRef.current = null;
+              selectionGateTimerRef.current = null;
+              trySendStartMessage();
+            }
+          }, 130);
+        } else {
+          const snapshot =
+            (rawPromise as SelectionInspectSnapshot | null | undefined) ?? null;
+          if (window.devFlags?.devConsoleLogs && snapshot) {
+            console.log("[useTranscription] Selection snapshot", snapshot);
+          }
+          applySelectionSnapshot(snapshot);
         }
       } catch (err) {
         if (window.devFlags?.devConsoleLogs) {
-          console.warn("[useTranscription] Selection inspect failed", err);
+          console.warn("[useTranscription] Selection inspect invocation failed", err);
         }
-        selectionRef.current = null;
-        setSelection(null);
-        sessionSelectionPayloadRef.current = null;
-        sessionModeRef.current = "dictation";
-        setMode("dictation");
       }
     }
 
     if (!streamRef.current) {
       const ok = await openStreamForSelectedDevice();
-      if (!ok) return;
+      if (!ok) {
+        pendingSelectionPromiseRef.current = null;
+        selectionGateDeadlineRef.current = null;
+        clearSelectionGateTimer();
+        return;
+      }
     }
     setError(null);
     setText("");
@@ -964,7 +1046,17 @@ export function useTranscription(
       setError((err as Error).message);
       setRecording(false);
     }
-  }, [recording, processing, openStreamForSelectedDevice, streamFrame]);
+  }, [
+    recording,
+    processing,
+    openStreamForSelectedDevice,
+    streamFrame,
+    ensureStreamingSocket,
+    resumeAudioWorklet,
+    trySendStartMessage,
+    applySelectionSnapshot,
+    clearSelectionGateTimer,
+  ]);
 
   const stop = useCallback(async () => {
     if (!recording) return;
