@@ -795,7 +795,13 @@ export function useTranscription(
     if (window.selection?.inspect) {
       try {
         const rawPromise = window.selection.inspect();
-        if (rawPromise && typeof rawPromise.then === "function") {
+        const isPromiseLike = (value: unknown): value is PromiseLike<unknown> => {
+          if (typeof value !== "object" && typeof value !== "function") return false;
+          if (value === null) return false;
+          return typeof (value as { then?: unknown }).then === "function";
+        };
+
+        if (isPromiseLike(rawPromise)) {
           const handledPromise = rawPromise
             .then((snapshot) => {
               const normalized = snapshot ?? null;
@@ -825,7 +831,8 @@ export function useTranscription(
             typeof performance !== "undefined" ? performance.now() : Date.now();
           selectionGateDeadlineRef.current = nowTs + 120;
         } else {
-          const snapshot = (rawPromise ?? null) as SelectionInspectSnapshot | null;
+          const snapshot =
+            (rawPromise as SelectionInspectSnapshot | null | undefined) ?? null;
           if (window.devFlags?.devConsoleLogs && snapshot) {
             console.log("[useTranscription] Selection snapshot", snapshot);
           }
