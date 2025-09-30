@@ -4,6 +4,10 @@ import {
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
   LLM_DEFAULT_PROVIDER,
+  GROQ_LLM_DEFAULT_MODEL,
+  OPENAI_LLM_DEFAULT_MODEL,
+  BASETEN_LLM_DEFAULT_MODEL,
+  OPENROUTER_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_PROVIDER,
   EDIT_LLM_DEFAULT_TEMPERATURE,
@@ -24,6 +28,17 @@ function toBool(v: Boolish, fallback: boolean): boolean {
   if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
   if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
   return fallback;
+}
+
+const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
+  groq: GROQ_LLM_DEFAULT_MODEL,
+  openai: OPENAI_LLM_DEFAULT_MODEL,
+  baseten: BASETEN_LLM_DEFAULT_MODEL,
+  openrouter: OPENROUTER_LLM_DEFAULT_MODEL,
+};
+
+function defaultModelFor(provider: LLMProvider, fallback: string): string {
+  return PROVIDER_DEFAULT_MODELS[provider] ?? fallback;
 }
 
 
@@ -59,7 +74,9 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   // LLM
   const enabled = toBool(env.ENABLE_LLM, true);
   const stream = toBool(env.LLM_STREAM, LLM_DEFAULT_STREAM);
-  const model = env.LLM_MODEL || LLM_DEFAULT_MODEL;
+  const userDefaultProvider = (env.LLM_DEFAULT_PROVIDER as string) || LLM_DEFAULT_PROVIDER;
+  const provider = parseProvider(env.LLM_PROVIDER, userDefaultProvider as LLMProvider);
+  const model = env.LLM_MODEL || defaultModelFor(provider, LLM_DEFAULT_MODEL);
   const temperature = Number.isFinite(Number(env.LLM_TEMPERATURE))
     ? Number(env.LLM_TEMPERATURE)
     : LLM_DEFAULT_TEMPERATURE;
@@ -67,8 +84,6 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     ? Number(env.LLM_TIMEOUT_MS)
     : LLM_DEFAULT_TIMEOUT_MS;
   const currentDate = (env.LLM_CURRENT_DATE || new Date().toISOString().slice(0, 10)) as string;
-  const userDefaultProvider = (env.LLM_DEFAULT_PROVIDER as string) || LLM_DEFAULT_PROVIDER;
-  const provider = parseProvider(env.LLM_PROVIDER, userDefaultProvider as LLMProvider);
 
   // STT
   const sttProvider = parseSttProvider(env.STT_PROVIDER, STT_DEFAULT_PROVIDER);
@@ -81,14 +96,14 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
   const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
   const editStream = toBool(env.EDIT_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
-  const editModel = env.EDIT_LLM_MODEL || EDIT_LLM_DEFAULT_MODEL;
+  const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
+  const editModel = env.EDIT_LLM_MODEL || defaultModelFor(editProvider, EDIT_LLM_DEFAULT_MODEL);
   const editTemperature = Number.isFinite(Number(env.EDIT_LLM_TEMPERATURE))
     ? Number(env.EDIT_LLM_TEMPERATURE)
     : EDIT_LLM_DEFAULT_TEMPERATURE;
   const editTimeoutMs = Number.isFinite(Number(env.EDIT_LLM_TIMEOUT_MS))
     ? Number(env.EDIT_LLM_TIMEOUT_MS)
     : EDIT_LLM_DEFAULT_TIMEOUT_MS;
-  const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
 
   return {
     llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider },
@@ -99,7 +114,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'openai' || s === 'baseten') return s as LLMProvider;
+  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter') return s as LLMProvider;
   return fallback;
 }
 

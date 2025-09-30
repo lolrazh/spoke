@@ -20,6 +20,7 @@ import {
   GROQ_LLM_ENDPOINT,
   OPENAI_LLM_ENDPOINT,
   BASETEN_LLM_ENDPOINT,
+  OPENROUTER_LLM_ENDPOINT,
 } from '../config';
 
 type Bindings = {
@@ -27,10 +28,104 @@ type Bindings = {
   FIREWORKS_API_KEY?: string;
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
   LLM_MODEL?: string; // default from src/config.ts
+  OPENROUTER_HTTP_REFERER?: string;
+  OPENROUTER_APP_TITLE?: string;
+  OPENROUTER_PROVIDER_SORT?: string;
+  OPENROUTER_PROVIDER_ORDER?: string;
+  OPENROUTER_PROVIDER_ONLY?: string;
+  OPENROUTER_PROVIDER_IGNORE?: string;
+  OPENROUTER_ALLOW_FALLBACKS?: string;
+  OPENROUTER_REQUIRE_PARAMETERS?: string;
+  OPENROUTER_DATA_COLLECTION?: string;
+  OPENROUTER_ZDR?: string;
+  OPENROUTER_PROVIDER_QUANTIZATIONS?: string;
+  OPENROUTER_PROVIDER_MAX_PRICE_PROMPT?: string;
+  OPENROUTER_PROVIDER_MAX_PRICE_COMPLETION?: string;
+  OPENROUTER_PROVIDER_MAX_PRICE_REQUEST?: string;
+  OPENROUTER_PROVIDER_MAX_PRICE_IMAGE?: string;
 };
+
+function parseBoolish(value?: string): boolean | undefined {
+  if (!value) return undefined;
+  const s = value.toLowerCase();
+  if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
+  if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
+  return undefined;
+}
+
+function parseList(value?: string): string[] | undefined {
+  if (!value) return undefined;
+  const items = value
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  return items.length > 0 ? items : undefined;
+}
+
+function parseNumber(value?: string): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function buildOpenRouterProviderConfig(env: Bindings): Record<string, any> {
+  const config: Record<string, any> = {};
+
+  const sort = (env.OPENROUTER_PROVIDER_SORT || 'latency').toLowerCase();
+  if (sort === 'latency' || sort === 'price' || sort === 'throughput') {
+    config.sort = sort;
+  } else {
+    config.sort = 'latency';
+  }
+
+  const order = parseList(env.OPENROUTER_PROVIDER_ORDER);
+  if (order) config.order = order;
+
+  const only = parseList(env.OPENROUTER_PROVIDER_ONLY);
+  if (only) config.only = only;
+
+  const ignore = parseList(env.OPENROUTER_PROVIDER_IGNORE);
+  if (ignore) config.ignore = ignore;
+
+  const quantizations = parseList(env.OPENROUTER_PROVIDER_QUANTIZATIONS);
+  if (quantizations) config.quantizations = quantizations;
+
+  const allowFallbacks = parseBoolish(env.OPENROUTER_ALLOW_FALLBACKS);
+  if (typeof allowFallbacks === 'boolean') config.allow_fallbacks = allowFallbacks;
+
+  const requireParameters = parseBoolish(env.OPENROUTER_REQUIRE_PARAMETERS);
+  if (typeof requireParameters === 'boolean') config.require_parameters = requireParameters;
+
+  const zdr = parseBoolish(env.OPENROUTER_ZDR);
+  if (typeof zdr === 'boolean') config.zdr = zdr;
+
+  const dataPolicy = env.OPENROUTER_DATA_COLLECTION?.toLowerCase();
+  if (dataPolicy === 'allow' || dataPolicy === 'deny') config.data_collection = dataPolicy;
+
+  const maxPrice: Record<string, number> = {};
+  const promptPrice = parseNumber(env.OPENROUTER_PROVIDER_MAX_PRICE_PROMPT);
+  if (typeof promptPrice === 'number') maxPrice.prompt = promptPrice;
+  const completionPrice = parseNumber(env.OPENROUTER_PROVIDER_MAX_PRICE_COMPLETION);
+  if (typeof completionPrice === 'number') maxPrice.completion = completionPrice;
+  const requestPrice = parseNumber(env.OPENROUTER_PROVIDER_MAX_PRICE_REQUEST);
+  if (typeof requestPrice === 'number') maxPrice.request = requestPrice;
+  const imagePrice = parseNumber(env.OPENROUTER_PROVIDER_MAX_PRICE_IMAGE);
+  if (typeof imagePrice === 'number') maxPrice.image = imagePrice;
+  if (Object.keys(maxPrice).length > 0) config.max_price = maxPrice;
+
+  return config;
+}
+
+function buildOpenRouterHeaders(env: Bindings): Record<string, string> | undefined {
+  const headers: Record<string, string> = {};
+  if (env.OPENROUTER_HTTP_REFERER) headers['HTTP-Referer'] = env.OPENROUTER_HTTP_REFERER;
+  if (env.OPENROUTER_APP_TITLE) headers['X-Title'] = env.OPENROUTER_APP_TITLE;
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
 
 export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   if (c.req.header('upgrade')?.toLowerCase() !== 'websocket') {
@@ -43,7 +138,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     return c.text('Too many connections from your IP. Please try again later.', 429);
   }
 
-  const { GROQ_API_KEY, FIREWORKS_API_KEY } = c.env;
+  const { GROQ_API_KEY, FIREWORKS_API_KEY, OPENROUTER_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
@@ -237,6 +332,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       ? c.env.OPENAI_API_KEY
                       : provider === 'baseten'
                         ? c.env.BASETEN_API_KEY
+                        : provider === 'openrouter'
+                          ? OPENROUTER_API_KEY
                         : provider === 'groq'
                           ? GROQ_API_KEY
                           : undefined;
@@ -248,6 +345,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           ? OPENAI_LLM_ENDPOINT
                           : provider === 'baseten'
                             ? BASETEN_LLM_ENDPOINT
+                            : provider === 'openrouter'
+                              ? OPENROUTER_LLM_ENDPOINT
                             : GROQ_LLM_ENDPOINT;
                       const editLog = {
                         event: 'edit.request',
@@ -269,6 +368,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         temperature: runtime.edit.temperature,
                         timeoutMs: runtime.edit.timeoutMs,
                         signal: sttAbort.signal,
+                        providerConfig:
+                          provider === 'openrouter'
+                            ? buildOpenRouterProviderConfig(c.env)
+                            : undefined,
+                        extraHeaders:
+                          provider === 'openrouter'
+                            ? buildOpenRouterHeaders(c.env)
+                            : undefined,
                         onDelta: streamEdit
                           ? (delta) => {
                               if (!socketClosed && delta) {
@@ -318,6 +425,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       ? c.env.OPENAI_API_KEY
                       : provider === 'baseten'
                         ? c.env.BASETEN_API_KEY
+                        : provider === 'openrouter'
+                          ? OPENROUTER_API_KEY
                         : GROQ_API_KEY;
 
                   if (apiKeyForProvider) {
@@ -328,6 +437,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           ? OPENAI_LLM_ENDPOINT
                           : provider === 'baseten'
                             ? BASETEN_LLM_ENDPOINT
+                            : provider === 'openrouter'
+                              ? OPENROUTER_LLM_ENDPOINT
                             : GROQ_LLM_ENDPOINT;
                       const llmLog = {
                         event: 'llm.request',
@@ -347,6 +458,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       stream: streamLLM,
                       temperature: runtime.llm.temperature,
                       signal: sttAbort.signal,
+                      providerConfig:
+                        provider === 'openrouter'
+                          ? buildOpenRouterProviderConfig(c.env)
+                          : undefined,
+                      extraHeaders:
+                        provider === 'openrouter'
+                          ? buildOpenRouterHeaders(c.env)
+                          : undefined,
                       onDelta: (delta) => {
                         if (!socketClosed && streamLLM && delta) {
                           safely(() =>
