@@ -9,6 +9,7 @@ import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
+import { selectLLMRoute } from '../services/llm/routing';
 import { buildLLMSystemPrompt } from '../services/llm/prompt';
 import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editPrompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
@@ -220,6 +221,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmTimings: { startAt: number; headersAt: number; firstDeltaAt?: number; bodyDoneAt: number } | null = null;
           let llmSuccess = false;
           let llmProvider: string | null = null;
+          let llmModel: string | null = null;
+          let llmRouteRules: string[] = [];
 
           const runtime = getRuntimeConfig(c.env);
           const sttProvider = runtime.stt.provider;
@@ -327,6 +330,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   const provider = runtime.edit.provider;
                   llmProvider = provider;
                   const model = runtime.edit.model;
+                  llmModel = model;
                   const apiKeyForProvider =
                     provider === 'openai'
                       ? c.env.OPENAI_API_KEY
@@ -417,9 +421,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   );
 
                   const streamLLM = runtime.llm.stream;
-                  const model = runtime.llm.model;
-                  const provider = runtime.llm.provider;
+                  const routeDecision = selectLLMRoute(finalText, runtime.llm);
+                  const provider = routeDecision.provider;
+                  const model = routeDecision.model;
                   llmProvider = provider;
+                  llmModel = model;
+                  llmRouteRules = routeDecision.matchedRuleIds;
                   const apiKeyForProvider =
                     provider === 'openai'
                       ? c.env.OPENAI_API_KEY
@@ -446,6 +453,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         model,
                         endpoint: llmEndpoint,
                         stream: streamLLM,
+                        routeRules: llmRouteRules.length ? llmRouteRules : undefined,
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(llmLog));
@@ -493,6 +501,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   sessionSpan.setAttribute('stt.total_ms', timings.bodyDoneAt - timings.startAt);
                 }
 
+                sessionSpan.setAttribute('llm.provider', llmProvider ?? runtime.llm.provider);
+                sessionSpan.setAttribute('llm.model', llmModel ?? runtime.llm.model);
+                if (llmRouteRules.length > 0) {
+                  sessionSpan.setAttribute('llm.route_rules', llmRouteRules.join(','));
+                }
+
                 if (llmText) {
                   sessionSpan.setAttribute('llm.text_length', llmText.length);
                   sessionSpan.setAttribute('llm.enabled', true);
@@ -516,7 +530,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   try {
                     const datasetLlmConfig = session.mode === 'edit'
                       ? { provider: runtime.edit.provider, model: runtime.edit.model }
-                      : { provider: runtime.llm.provider, model: runtime.llm.model };
+                      : { provider: llmProvider ?? runtime.llm.provider, model: llmModel ?? runtime.llm.model };
 
                     if (session.mode === 'edit') {
                       const editPlanForDataset = prepareEditRequest({
@@ -615,6 +629,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 llm: llmTimings
                   ? {
                       provider: llmProvider,
+                      model: llmModel,
                       startAt: llmTimings.startAt,
                       headersAt: llmTimings.headersAt,
                       firstDeltaAt: llmTimings.firstDeltaAt ?? null,
@@ -622,6 +637,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
                       bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
                       totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
+                      routeRules: llmRouteRules.length ? llmRouteRules : null,
                     }
                   : null,
                 finalSentAt: Date.now(),
@@ -700,6 +716,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
               },
               result: { textLen: (llmText || finalText).length },
+              llm: llmProvider
+                ? {
+                    provider: llmProvider,
+                    model: llmModel,
+                    routeRules: llmRouteRules.length ? llmRouteRules : null,
+                  }
+                : null,
               edit:
                 session.mode === 'edit'
                   ? {

@@ -1129,6 +1129,7 @@ export function useTranscription(
                               } | null;
                               llm?: {
                                 provider?: string | null;
+                                model?: string | null;
                                 startAt?: number | null;
                                 headersAt?: number | null;
                                 firstDeltaAt?: number | null;
@@ -1136,6 +1137,7 @@ export function useTranscription(
                                 ttfbMs?: number | null;
                                 bodyMs?: number | null;
                                 totalMs?: number | null;
+                                routeRules?: string[] | null;
                               } | null;
                               finalSentAt?: number | null;
                             }
