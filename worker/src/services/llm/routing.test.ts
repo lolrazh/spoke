@@ -32,6 +32,12 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
   });
 
+  it('routes "can you" phrasing to Kimi', () => {
+    const decision = selectLLMRoute('can you format this exactly?', baseRuntime);
+    expect(decision.matchedRuleIds).toContain('can-you-instruction');
+    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
+  });
+
   it('returns all matched rule ids in order using defaults', () => {
     const text = 'Make this uppercase A B C';
     const decision = selectLLMRoute(text, baseRuntime);

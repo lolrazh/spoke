@@ -24,6 +24,12 @@ export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
     model: KIMI_MODEL,
   },
   {
+    id: 'can-you-instruction',
+    pattern: /\bcan\s+you\b/i,
+    provider: 'groq',
+    model: KIMI_MODEL,
+  },
+  {
     id: 'spell-instruction',
     pattern: /\bspell(?:ing|ed)?\b/i,
     provider: 'groq',
