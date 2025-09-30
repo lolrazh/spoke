@@ -2,6 +2,7 @@ import type { LLMProvider } from '../../config';
 import { chatComplete as groqChatComplete } from './groq';
 import { chatComplete as openaiChatComplete } from './openai';
 import { chatComplete as basetenChatComplete } from './baseten';
+import { chatComplete as openRouterChatComplete } from './openrouter';
 
 export type ChatTimings = {
   startAt: number;
@@ -22,6 +23,8 @@ export type ChatCompleteOptions = {
   onDelta?: (delta: string) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
+  providerConfig?: Record<string, any>;
+  extraHeaders?: Record<string, string>;
 };
 
 export async function chatCompleteByProvider(
@@ -33,6 +36,9 @@ export async function chatCompleteByProvider(
   }
   if (provider === 'openai') {
     return openaiChatComplete(opts as any) as unknown as ChatResult;
+  }
+  if (provider === 'openrouter') {
+    return openRouterChatComplete(opts as any) as unknown as ChatResult;
   }
   // default groq
   return groqChatComplete(opts as any) as unknown as ChatResult;

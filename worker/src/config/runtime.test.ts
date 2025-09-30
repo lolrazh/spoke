@@ -7,7 +7,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(cfg.llm.enabled).toBe(true);
     expect(cfg.llm.stream).toBe(true);
     expect(typeof cfg.llm.model).toBe('string');
-    expect(['groq','openai','baseten']).toContain(cfg.llm.provider);
+    expect(['groq','openai','baseten','openrouter']).toContain(cfg.llm.provider);
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
     expect(['groq','fireworks']).toContain(cfg.stt.provider);
@@ -40,7 +40,16 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(cfg2.llm.provider).toBe('groq');
     const cfg3 = getRuntimeConfig({ LLM_PROVIDER: 'baseten' });
     expect(cfg3.llm.provider).toBe('baseten');
-    const cfg4 = getRuntimeConfig({ LLM_PROVIDER: 'invalid', LLM_DEFAULT_PROVIDER: 'openai' });
-    expect(cfg4.llm.provider).toBe('openai');
+    const cfg4 = getRuntimeConfig({ LLM_PROVIDER: 'openrouter' });
+    expect(cfg4.llm.provider).toBe('openrouter');
+    const cfg5 = getRuntimeConfig({ LLM_PROVIDER: 'invalid', LLM_DEFAULT_PROVIDER: 'openai' });
+    expect(cfg5.llm.provider).toBe('openai');
+  });
+
+  it('uses provider-specific default models when none supplied', () => {
+    const cfg = getRuntimeConfig({ LLM_PROVIDER: 'openrouter' });
+    expect(cfg.llm.model).toBe('qwen/qwen3-72b-instruct');
+    const editCfg = getRuntimeConfig({ EDIT_LLM_PROVIDER: 'openrouter' });
+    expect(editCfg.edit.model).toBe('qwen/qwen3-72b-instruct');
   });
 });
