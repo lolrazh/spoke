@@ -48,8 +48,8 @@ describe('config/runtime.getRuntimeConfig', () => {
 
   it('uses provider-specific default models when none supplied', () => {
     const cfg = getRuntimeConfig({ LLM_PROVIDER: 'openrouter' });
-    expect(cfg.llm.model).toBe('qwen/qwen3-72b-instruct');
+    expect(cfg.llm.model).toBe('qwen/qwen3-235b-a22b-2507');
     const editCfg = getRuntimeConfig({ EDIT_LLM_PROVIDER: 'openrouter' });
-    expect(editCfg.edit.model).toBe('qwen/qwen3-72b-instruct');
+    expect(editCfg.edit.model).toBe('qwen/qwen3-235b-a22b-2507');
   });
 });
