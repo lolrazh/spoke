@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
+import MetaDirectivesComponent from "./meta/MetaDirectivesComponent";
 import {
   getSupabase,
   getGoogleOAuthUrl,
@@ -82,6 +83,7 @@ type OnboardingStep =
   | "hotkey-info"
   | "hotkey-test"
   | "edit-test"
+  | "meta-directives"
   | "cancel-info"
   | "complete";
 
@@ -538,6 +540,7 @@ const Onboarding: React.FC = () => {
     "hotkey-info",
     "hotkey-test",
     "edit-test",
+    "meta-directives",
     "cancel-info",
     "complete",
   ];
@@ -1801,6 +1804,20 @@ const Onboarding: React.FC = () => {
 
                   </div>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Meta-Directives Step */}
+            {currentStep === "meta-directives" && (
+              <motion.div
+                key="meta-directives"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <MetaDirectivesComponent />
               </motion.div>
             )}
 
