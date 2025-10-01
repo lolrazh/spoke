@@ -176,8 +176,8 @@ const TricksComponent: React.FC = () => {
                 transition={{ delay: 0.2 }}
                 className="flex-1 max-w-md"
               >
-                <div className="card-floating rounded-lg p-4 border border-white/10">
-                  <p className="text-[13px] text-white/90 font-mono bg-black/20 rounded px-3 py-2 border-l-2 border-primary/50 leading-relaxed">
+                <div className="card-floating rounded-lg p-3 border border-white/10">
+                  <p className="text-sm text-foreground leading-relaxed">
                     {selectedTrick.inputExample}
                   </p>
                 </div>
@@ -188,7 +188,7 @@ const TricksComponent: React.FC = () => {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 }}
-                className="flex-shrink-0 text-primary/70 text-lg font-mono"
+                className="flex-shrink-0 text-primary/70 text-2xl"
               >
                 →
               </motion.div>
@@ -200,8 +200,8 @@ const TricksComponent: React.FC = () => {
                 transition={{ delay: 0.4 }}
                 className="flex-1 max-w-md"
               >
-                <div className="card-floating rounded-lg p-4 border border-white/10">
-                  <p className="text-[13px] text-white/90 font-mono bg-black/20 rounded px-3 py-2 border-l-2 border-green-500/50 leading-relaxed">
+                <div className="card-floating rounded-lg p-3 border border-white/10">
+                  <p className="text-sm text-foreground leading-relaxed">
                     {selectedTrick.outputExample}
                   </p>
                 </div>
@@ -211,22 +211,7 @@ const TricksComponent: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Auto-rotation Toggle */}
-      <div className="mt-8 flex justify-center">
-        {!isAutoRotating && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            onClick={handleResumeRotation}
-            className="flex items-center gap-2 text-xs text-white/60 hover:text-white/80 transition-colors px-3 py-1.5 rounded-full card-floating border border-white/10"
-          >
-            <SfIcon name="play.circle.fill" size={16} />
-            Auto-play examples
-          </motion.button>
-        )}
-      </div>
-    </motion.div>
+          </motion.div>
   );
 };
 
