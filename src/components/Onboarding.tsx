@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
-import MetaDirectivesComponent from "./meta/MetaDirectivesComponent";
+import TricksComponent from "./meta/MetaDirectivesComponent";
 import {
   getSupabase,
   getGoogleOAuthUrl,
@@ -1817,7 +1817,7 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center"
               >
-                <MetaDirectivesComponent />
+                <TricksComponent />
               </motion.div>
             )}
 

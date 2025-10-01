@@ -1121,7 +1121,7 @@ body {
     color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Meta-Directives Component Styles */
+  /* Tricks Component Styles */
   .meta-directive-tag {
     /* Base styling from btn-secondary */
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
