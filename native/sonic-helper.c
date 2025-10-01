@@ -525,9 +525,20 @@ static int inspect_text_core(int context_chars) {
     bool haveSel = ax_get_selected_range_cf(el, &sel);
     bool rangeValid = haveSel && sel.length > 0 && sel.location >= 0;
 
+    CFStringRef selectedText = NULL;
+    const char *source = "none";
     bool clipboardOk = false;
-    CFStringRef selectedText = clipboard_copy_selected_text(&clipboardOk);
-    const char *source = clipboardOk ? "clipboard" : "none";
+
+    if (rangeValid) {
+        // Definite selection detected by AX - get text via Cmd+C
+        selectedText = clipboard_copy_selected_text(&clipboardOk);
+        source = clipboardOk ? "clipboard" : "ax";
+    } else if (!haveSel || sel.location < 0) {
+        // AX couldn't determine selection state (e.g., Google Docs/web apps) - try Cmd+C as fallback
+        selectedText = clipboard_copy_selected_text(&clipboardOk);
+        source = clipboardOk ? "clipboard" : "none";
+    }
+    // else: haveSel=true but sel.length=0 → cursor position with no selection → skip Cmd+C entirely
 
     CFRange outputRange = rangeValid ? sel : (CFRange){ -1, -1 };
 
