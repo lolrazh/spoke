@@ -125,7 +125,7 @@ const TricksComponent: React.FC = () => {
       className="text-center max-w-6xl mx-auto"
     >
       {/* Header */}
-      <div className="heading-stack mb-8">
+      <div className="heading-stack">
         <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
           Voice Tricks & Shortcuts
         </h2>
@@ -135,7 +135,7 @@ const TricksComponent: React.FC = () => {
       </div>
 
       {/* Compact Tag Cloud */}
-      <div className="flex flex-wrap justify-center gap-2 mb-10 max-w-5xl mx-auto">
+      <div className="flex flex-wrap justify-center gap-2 mb-8 max-w-5xl mx-auto">
         {tricks.map((trick, index) => (
           <motion.button
             key={trick.id}
@@ -167,23 +167,8 @@ const TricksComponent: React.FC = () => {
             layoutId={`detail-${selectedTrick.id}`}
             className="max-w-4xl mx-auto"
           >
-            {/* Title and Description */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="mb-6"
-            >
-              <h3 className="text-[16px] font-semibold text-foreground mb-2">
-                {selectedTrick.title}
-              </h3>
-              <p className="text-[13px] text-subtle">
-                {selectedTrick.description}
-              </p>
-            </motion.div>
-
-            {/* Input/Output Cards with Arrow */}
-            <div className="flex items-center justify-center gap-4 mb-6">
+            {/* Simple Input/Output with Arrow */}
+            <div className="flex items-center justify-center gap-3 mb-6">
               {/* Input Card */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
@@ -192,28 +177,20 @@ const TricksComponent: React.FC = () => {
                 className="flex-1 max-w-md"
               >
                 <div className="card-floating rounded-lg p-4 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <SfIcon name="mic.fill" size={14} className="text-primary/70" />
-                    <span className="text-[11px] font-medium text-white/60 uppercase tracking-wide">
-                      You Say
-                    </span>
-                  </div>
                   <p className="text-[13px] text-white/90 font-mono bg-black/20 rounded px-3 py-2 border-l-2 border-primary/50 leading-relaxed">
                     {selectedTrick.inputExample}
                   </p>
                 </div>
               </motion.div>
 
-              {/* Arrow */}
+              {/* Simple Arrow */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 }}
-                className="flex-shrink-0"
+                className="flex-shrink-0 text-primary/70 text-lg font-mono"
               >
-                <div className="w-8 h-8 rounded-full card-floating flex items-center justify-center">
-                  <SfIcon name="arrow.right" size={14} className="text-primary/70" />
-                </div>
+                →
               </motion.div>
 
               {/* Output Card */}
@@ -224,12 +201,6 @@ const TricksComponent: React.FC = () => {
                 className="flex-1 max-w-md"
               >
                 <div className="card-floating rounded-lg p-4 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <SfIcon name="checkmark.circle.fill" size={14} className="text-green-500/70" />
-                    <span className="text-[11px] font-medium text-white/60 uppercase tracking-wide">
-                      Result
-                    </span>
-                  </div>
                   <p className="text-[13px] text-white/90 font-mono bg-black/20 rounded px-3 py-2 border-l-2 border-green-500/50 leading-relaxed">
                     {selectedTrick.outputExample}
                   </p>
