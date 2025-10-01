@@ -58,6 +58,60 @@ const metaDirectives: MetaDirective[] = [
     description: "Make text italic",
     example: "Add italics to this phrase",
   },
+  {
+    id: "comma",
+    title: "Add Comma",
+    description: "Insert a comma at the current position",
+    example: "Add comma",
+  },
+  {
+    id: "period",
+    title: "Add Period",
+    description: "Insert a period at the current position",
+    example: "Add period",
+  },
+  {
+    id: "newline",
+    title: "New Line",
+    description: "Move to the next line",
+    example: "New line",
+  },
+  {
+    id: "undo",
+    title: "Undo Last",
+    description: "Undo the last action",
+    example: "Undo last",
+  },
+  {
+    id: "redo",
+    title: "Redo Last",
+    description: "Redo the last undone action",
+    example: "Redo last",
+  },
+  {
+    id: "select-all",
+    title: "Select All",
+    description: "Select all text in the current field",
+    example: "Select all",
+  },
+  {
+    id: "delete",
+    title: "Delete That",
+    description: "Delete the selected text",
+    example: "Delete that",
+  },
+  {
+    id: "copy",
+    title: "Copy That",
+    description: "Copy the selected text to clipboard",
+    example: "Copy that",
+  },
+  {
+    id: "paste",
+    title: "Paste That",
+    description: "Paste from clipboard",
+    example: "Paste that",
+  },
 ];
 
 const MetaDirectivesComponent: React.FC = () => {
@@ -134,8 +188,8 @@ const MetaDirectivesComponent: React.FC = () => {
         </p>
       </div>
 
-      {/* Tag Cloud */}
-      <div className="flex flex-wrap justify-center gap-2 mb-8 max-w-3xl mx-auto">
+      {/* Tag Cloud - Marquee Style */}
+      <div className="flex flex-wrap justify-center gap-1.5 mb-8 max-w-6xl mx-auto">
         {metaDirectives.map((directive, index) => (
           <motion.button
             key={directive.id}
@@ -150,7 +204,7 @@ const MetaDirectivesComponent: React.FC = () => {
             whileTap={{ scale: 0.98 }}
             layoutId={`tag-${directive.id}`}
           >
-            <span className="font-medium text-sm">{directive.title}</span>
+            <span className="font-medium text-xs">{directive.title}</span>
           </motion.button>
         ))}
       </div>
@@ -165,31 +219,35 @@ const MetaDirectivesComponent: React.FC = () => {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3, ease: [0.25, 0.8, 0.25, 1] as const }}
             layoutId={`detail-${selectedDirective.id}`}
-            className="onboarding-card p-6 text-left max-w-2xl mx-auto"
+            className="onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 max-w-2xl mx-auto"
           >
-            <div className="text-left">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                {selectedDirective.title}
-              </h3>
-              <p className="text-sm text-subtle mb-4">
-                {selectedDirective.description}
-              </p>
-
-              {/* Example Section */}
-              <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                <div className="flex items-center gap-2 mb-2">
-                  <SfIcon name="mic.fill" size={14} className="text-white/60" />
-                  <span className="text-xs font-medium text-white/60 uppercase tracking-wide">
-                    Example
-                  </span>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center space-x-3 min-w-0 flex-1">
+                <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center flex-shrink-0">
+                  <SfIcon name="mic.fill" size={16} className="text-primary/70" />
                 </div>
-                <p className="text-sm text-white/90 font-mono bg-black/20 rounded px-3 py-2 border-l-2 border-primary">
-                  "{selectedDirective.example}"
-                </p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[13px] font-medium text-foreground">
+                    {selectedDirective.title}
+                  </h3>
+                  <p className="text-[11px] text-subtle">
+                    {selectedDirective.description}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+            {/* Example Section */}
+            <div className="mt-3 bg-white/5 rounded p-3 border border-white/10">
+              <div className="flex items-center gap-2 mb-1">
+                <SfIcon name="mic.fill" size={12} className="text-white/60" />
+                <span className="text-[10px] font-medium text-white/60 uppercase tracking-wide">
+                  Example
+                </span>
+              </div>
+              <p className="text-[11px] text-white/90 font-mono bg-black/20 rounded px-2 py-1 border-l-2 border-primary">
+                "{selectedDirective.example}"
+              </p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

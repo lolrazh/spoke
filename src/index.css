@@ -1134,10 +1134,10 @@ body {
     border-radius: var(--radius-lg);
 
     /* Smaller size - more compact than buttons */
-    padding: 6px 12px;
+    padding: 4px 8px;
     height: auto;
-    min-height: 28px;
-    font-size: 13px;
+    min-height: 24px;
+    font-size: 12px;
     font-weight: 500;
 
     /* Button-like behavior */
