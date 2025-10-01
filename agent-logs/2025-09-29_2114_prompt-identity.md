@@ -1,7 +1,7 @@
 # Dynamic Prompt Identity Enrichment
 
 **Date:** 2025-09-29  
-**Agent:** factory-droid (GPT-4.1)  
+**Agent:** Droid (GPT-5-Codex)  
 **Status:** ✅ Completed  
 
 ## User Intention

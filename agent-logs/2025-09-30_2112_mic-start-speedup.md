@@ -1,7 +1,7 @@
 # Instant Mic Activation Refinement
 
 **Date:** 2025-09-30  
-**Agent:** Droid (ChatGPT-4.1)  
+**Agent:** Droid (GPT-5-Codex)  
 **Status:** ✅ Completed  
 
 ## User Intention

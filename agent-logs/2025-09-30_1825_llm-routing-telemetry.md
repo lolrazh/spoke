@@ -1,7 +1,7 @@
 # LLM Routing & Telemetry Enhancements
 
 **Date:** 2025-09-30  
-**Agent:** Factory Droid (ChatGPT-4o)  
+**Agent:** Droid (GPT-5-Codex)  
 **Status:** ✅ Completed  
 
 ## User Intention

@@ -1,7 +1,7 @@
 # OpenRouter Integration for Worker LLM Routing
 
 **Date:** 2025-09-30  
-**Agent:** Droid (OpenAI GPT-4.1)  
+**Agent:** Droid (GPT-5-Codex)  
 **Status:** ⚠️ Partial  
 
 ## User Intention
