@@ -21,7 +21,7 @@ const tricks: Trick[] = [
     segments: [
       { text: "I need it by ", type: "normal" },
       { text: "12pm Friday. Actually, scratch that.", type: "strikethrough" },
-      { text: " 11am Thursday.", type: "normal" }
+      { text: "11am Thursday.", type: "normal" }
     ]
   },
   // Other tricks will be added later once we perfect the first one
@@ -30,8 +30,9 @@ const tricks: Trick[] = [
 const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean; isDisappearing: boolean }[]>([]);
+  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean; isDisappearing: boolean; measuredWidth?: number }[]>([]);
   const [isTyping, setIsTyping] = useState(true);
+  const segmentRefs = React.useRef<(HTMLSpanElement | null)[]>([]);
 
   // Reset when segments change
   useEffect(() => {
@@ -90,13 +91,30 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
             });
           }, 500); // Delay after all text is complete
 
-          // Trigger disappearance after strikethrough completes with extra gap
+          // Measure width before disappearing, then trigger disappearance
           setTimeout(() => {
-            setDisplayedSegments(prev => {
-              const updated = [...prev];
-              updated[index].isDisappearing = true;
-              return updated;
-            });
+            // Measure the actual width of the segment
+            const element = segmentRefs.current[index];
+            if (element) {
+              const width = element.offsetWidth;
+              
+              setDisplayedSegments(prev => {
+                const updated = [...prev];
+                updated[index].measuredWidth = width;
+                return updated;
+              });
+
+              // Wait a frame for width to be set, then trigger collapse
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  setDisplayedSegments(prev => {
+                    const updated = [...prev];
+                    updated[index].isDisappearing = true;
+                    return updated;
+                  });
+                });
+              });
+            }
           }, 1000); // 500ms delay + 250ms strikethrough + 250ms gap
         }
       });
@@ -105,20 +123,33 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
 
   return (
     <div className="text-sm leading-relaxed text-white font-sans">
-      {displayedSegments.map((displayed, index) => (
-        <span key={index}>
-          {displayed.segment.type === 'strikethrough' ? (
-            <span
-              className={`${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
-              style={displayed.isDisappearing ? { animationDelay: '0ms' } : {}}
-            >
-              {displayed.text}
-            </span>
-          ) : (
-            <span>{displayed.text}</span>
-          )}
-        </span>
-      ))}
+      <span className="inline-flex items-baseline">
+        {displayedSegments.map((displayed, index) => (
+          <span
+            key={index}
+            ref={el => segmentRefs.current[index] = el}
+            className={`inline-block overflow-hidden ${
+              displayed.isDisappearing ? 'segment-collapsing' : ''
+            }`}
+            style={{
+              width: displayed.measuredWidth !== undefined 
+                ? (displayed.isDisappearing ? '0px' : `${displayed.measuredWidth}px`)
+                : 'auto',
+            }}
+          >
+            {displayed.segment.type === 'strikethrough' ? (
+              <span
+                className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
+                style={{ whiteSpace: 'pre' }}
+              >
+                {displayed.text}
+              </span>
+            ) : (
+              <span className="inline-block" style={{ whiteSpace: 'pre' }}>{displayed.text}</span>
+            )}
+          </span>
+        ))}
+      </span>
       {isTyping && <span className="animate-pulse text-white/60">|</span>}
     </div>
   );
