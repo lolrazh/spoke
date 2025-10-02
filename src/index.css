@@ -392,14 +392,14 @@
   .waveform-bar {
     width: 3px;
     border-radius: 1px;
-    animation: pulse 600ms infinite ease-in-out;
+    animation: pill-wave 600ms infinite ease-in-out;
     will-change: height, opacity;
     background: linear-gradient(to top, #a0a0a0, #cccccc);
     opacity: 1;
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
   }
 
-  @keyframes pulse {
+  @keyframes pill-wave {
     0%,
     100% {
       height: 5px;
@@ -409,6 +409,89 @@
       height: 10px;
       opacity: 1;
     }
+  }
+
+  @keyframes strikethrough-sync {
+    0% {
+      color: rgba(255, 255, 255, 1);
+      background-position: 0% 50%;
+      background-size: 0% 2px;
+    }
+    100% {
+      color: rgba(255, 255, 255, 0.6);
+      background-position: 0% 50%;
+      background-size: 100% 2px;
+    }
+  }
+
+  .strikethrough-animate {
+    background-repeat: no-repeat;
+    background-image: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.6) 0%,
+      rgba(255, 255, 255, 0.6) 100%
+    );
+    background-position: 0% 50%;
+    background-size: 0% 2px;
+    animation: strikethrough-sync 0.25s ease-out forwards;
+  }
+
+  @keyframes disappear-reverse {
+    0% {
+      color: rgba(255, 255, 255, 0.6);
+      clip-path: inset(0 0 0 0);
+      background-repeat: no-repeat;
+      background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0.6) 100%
+      );
+      background-position: 0% 50%;
+      background-size: 100% 2px;
+    }
+    100% {
+      color: rgba(255, 255, 255, 0.6);
+      clip-path: inset(0 100% 0 0);
+      background-repeat: no-repeat;
+      background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0.6) 100%
+      );
+      background-position: 0% 50%;
+      background-size: 100% 2px;
+    }
+  }
+
+  .disappear-reverse {
+    animation: disappear-reverse 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+  }
+
+  /* Segment collapsing for layout-based text movement */
+  .segment-collapsing {
+    transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+  }
+
+  /* Success container glow - slow and passionate */
+  @keyframes success-container-glow {
+    0% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    50% {
+      box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.5),
+        0 0 0 2px rgba(255, 255, 255, 0.12),
+        0 0 12px 2px rgba(255, 255, 255, 0.25), 
+        0 0 24px 2px rgba(255, 255, 255, 0.12);
+    }
+    100% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  .success-container-glow {
+    /* Slow, passionate ease-out */
+    animation: success-container-glow 1s ease-out forwards;
   }
 
   /* Collapsed state dots - smaller size but maintain the same spacing */
