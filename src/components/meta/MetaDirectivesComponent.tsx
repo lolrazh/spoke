@@ -171,8 +171,8 @@ const TricksComponent: React.FC = () => {
 
       {/* Single Streaming Card */}
       {selectedTrick && (
-        <div className="w-full max-w-none">
-          <div className="card-floating rounded-lg p-4 w-full flex items-center justify-center">
+        <div className="w-full flex justify-center px-8">
+          <div className="card-floating rounded-lg p-6" style={{width: 'min(1000px, 90vw)'}}>
             <div className="text-left w-full overflow-x-auto whitespace-nowrap">
               <SegmentTypewriter segments={selectedTrick.segments} />
             </div>
