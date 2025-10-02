@@ -491,7 +491,7 @@
 
   .success-container-glow {
     /* Slow, passionate ease-out */
-    animation: success-container-glow 1.2s ease-out forwards;
+    animation: success-container-glow 1s ease-out forwards;
   }
 
   /* Collapsed state dots - smaller size but maintain the same spacing */

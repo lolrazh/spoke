@@ -126,7 +126,7 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
             setTimeout(() => {
               setShowSuccessGlow(false);
               onSuccessGlow?.(false);
-            }, 1200); // Full glow cycle
+            }, 1000); // Full glow cycle
           }, 2050); // 1050ms before disappear starts + 1000ms disappear animation
         }
       });
