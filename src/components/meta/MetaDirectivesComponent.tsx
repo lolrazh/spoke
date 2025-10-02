@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface CharacterState {
   char: string;
-  status: 'typing' | 'stable' | 'strikethrough' | 'fading' | 'sliding' | 'final';
+  status: 'typing' | 'stable' | 'strikethrough-start' | 'strikethrough-progress' | 'strikethrough-end' | 'fading' | 'sliding' | 'final';
   id: string; // Unique identifier for each character
+  zone: 'stable-start' | 'strikethrough-zone' | 'stable-end' | 'all'; // Which zone this character belongs to
   originalIndex?: number; // Original position for sliding animations
+  scratchProgress?: number; // 0-1 progress of scratch animation
 }
 
 interface AnimationStage {
@@ -22,6 +24,11 @@ interface Trick {
   title: string;
   description: string;
   inputText: string;
+  zones: {
+    'stable-start': { start: number; end: number };
+    'strikethrough-zone': { start: number; end: number };
+    'stable-end': { start: number; end: number };
+  };
   stages: AnimationStage[];
 }
 
@@ -31,14 +38,19 @@ const tricks: Trick[] = [
     title: "Quick Correction",
     description: "Fix mistakes by saying what you actually meant",
     inputText: "I need it by 12pm Friday. Actually, scratch that. 11am Thursday.",
+    zones: {
+      'stable-start': { start: 0, end: 13 }, // "I need it by " (never moves)
+      'strikethrough-zone': { start: 13, end: 46 }, // "12pm Friday. Actually, scratch that." (will be scratched)
+      'stable-end': { start: 46, end: 63 } // " 11am Thursday." (never changes until final join)
+    },
     stages: [
       { type: 'typing', duration: 2000, targetText: "I need it by 12pm Friday. Actually, scratch that. 11am Thursday." },
       { type: 'pause', duration: 500 },
-      { type: 'strikethrough', duration: 800, startIndex: 14, endIndex: 46 }, // "12pm Friday. Actually, scratch that."
+      { type: 'strikethrough', duration: 1200, startIndex: 13, endIndex: 46 }, // Gradual scratch animation
       { type: 'pause', duration: 300 },
-      { type: 'fade-out', duration: 600, startIndex: 14, endIndex: 46 },
+      { type: 'fade-out', duration: 600, startIndex: 13, endIndex: 46 },
       { type: 'pause', duration: 300 },
-      { type: 'slide-together', duration: 500, startIndex: 0, endIndex: 13, joinIndex: 47 }, // Join "I need it by " with "11am Thursday."
+      { type: 'slide-together', duration: 500, startIndex: 0, endIndex: 13, joinIndex: 46 }, // Join stable parts
       { type: 'pause', duration: 1000 },
     ]
   },
@@ -57,6 +69,21 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
     startStreaming(trick);
   }, [trick]);
 
+  const getCharacterZone = (index: number): CharacterState['zone'] => {
+    if (!trick) return 'all';
+
+    if (index >= trick.zones['stable-start'].start && index < trick.zones['stable-start'].end) {
+      return 'stable-start';
+    }
+    if (index >= trick.zones['strikethrough-zone'].start && index < trick.zones['strikethrough-zone'].end) {
+      return 'strikethrough-zone';
+    }
+    if (index >= trick.zones['stable-end'].start && index < trick.zones['stable-end'].end) {
+      return 'stable-end';
+    }
+    return 'all';
+  };
+
   const startStreaming = (currentTrick: Trick) => {
     let stageIndex = 0;
 
@@ -66,7 +93,7 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
       }
 
       const stage = currentTrick.stages[stageIndex];
-  
+
       switch (stage.type) {
         case 'typing':
           if (stage.targetText) {
@@ -79,7 +106,7 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
 
         case 'strikethrough':
           if (stage.startIndex !== undefined && stage.endIndex !== undefined) {
-            strikethroughEffect(stage.startIndex, stage.endIndex, () => {
+            directionalStrikethroughEffect(stage.startIndex, stage.endIndex, stage.duration, () => {
               stageIndex++;
               executeStage();
             });
@@ -135,12 +162,13 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
         char: targetText[currentCharIndex],
         status: 'typing',
         id: `${Date.now()}-${currentCharIndex}`,
+        zone: getCharacterZone(currentCharIndex),
         originalIndex: currentCharIndex
       };
 
       setCharacters(prev => {
         const updated = [...prev, newChar];
-        // Mark previous characters as stable
+        // Mark previous characters as stable (but preserve their zones)
         return updated.map((char, index) =>
           index < updated.length - 1 ? { ...char, status: 'stable' as const } : char
         );
@@ -150,22 +178,57 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
     }, intervalMs);
   };
 
-  const strikethroughEffect = (startIndex: number, endIndex: number, onComplete: () => void) => {
-    setCharacters(prev =>
-      prev.map((char, index) =>
-        index >= startIndex && index < endIndex
-          ? { ...char, status: 'strikethrough' as const }
-          : char
-      )
-    );
+  const directionalStrikethroughEffect = (startIndex: number, endIndex: number, duration: number, onComplete: () => void) => {
+    let progress = 0;
+    const intervalMs = 50; // Update every 50ms for smooth animation
 
-    setTimeout(onComplete, 100);
+    const interval = setInterval(() => {
+      progress += intervalMs / duration;
+
+      if (progress >= 1) {
+        clearInterval(interval);
+        // Mark all strikethrough zone characters as fully striked
+        setCharacters(prev =>
+          prev.map(char =>
+            char.zone === 'strikethrough-zone'
+              ? { ...char, status: 'strikethrough-end' as const, scratchProgress: 1 }
+              : char
+          )
+        );
+        setTimeout(onComplete, 200);
+        return;
+      }
+
+  
+      // Gradually apply strikethrough based on progress
+      setCharacters(prev =>
+        prev.map(char => {
+          if (char.zone !== 'strikethrough-zone') return char;
+
+          const charPosition = char.originalIndex || 0;
+          const zonePosition = charPosition - startIndex;
+          const zoneWidth = endIndex - startIndex;
+          const charProgress = zonePosition / zoneWidth;
+
+          if (charProgress <= progress) {
+            const scratchState = progress < 0.33 ? 'strikethrough-start' :
+                               progress < 0.66 ? 'strikethrough-progress' :
+                               'strikethrough-end';
+
+            return { ...char, status: scratchState as const, scratchProgress: Math.min(1, progress * 1.5) };
+          }
+
+          return char;
+        })
+      );
+    }, intervalMs);
   };
 
   const fadeOutEffect = (startIndex: number, endIndex: number, onComplete: () => void) => {
+    // First mark for fading
     setCharacters(prev =>
-      prev.map((char, index) =>
-        index >= startIndex && index < endIndex
+      prev.map(char =>
+        (char.originalIndex !== undefined && char.originalIndex >= startIndex && char.originalIndex < endIndex)
           ? { ...char, status: 'fading' as const }
           : char
       )
@@ -174,21 +237,20 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
     // Remove faded characters after animation
     setTimeout(() => {
       setCharacters(prev =>
-        prev.filter((char, index) => !(index >= startIndex && index < endIndex))
-          .map(char => ({ ...char, status: 'final' as const }))
+        prev.filter(char =>
+          char.originalIndex === undefined ||
+          !(char.originalIndex >= startIndex && char.originalIndex < endIndex)
+        ).map(char => ({ ...char, status: 'final' as const }))
       );
       onComplete();
     }, 600);
   };
 
   const slideTogetherEffect = (startIndex: number, endIndex: number, joinIndex: number, onComplete: () => void) => {
-    // Mark characters that will slide
+    // Only slide the stable-end characters towards stable-start
     setCharacters(prev =>
-      prev.map((char, index) => {
-        if (index >= startIndex && index < endIndex) {
-          return { ...char, status: 'sliding' as const };
-        }
-        if (index >= joinIndex) {
+      prev.map(char => {
+        if (char.zone === 'stable-end') {
           return { ...char, status: 'sliding' as const };
         }
         return char;
@@ -201,8 +263,21 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
     }, 500);
   };
 
-  const renderCharacter = (char: CharacterState, index: number) => {
+  const renderCharacter = (char: CharacterState) => {
     const baseClasses = "transition-all duration-300 inline-block";
+
+    // Stable zones should never change appearance
+    if (char.zone === 'stable-start' || (char.zone === 'stable-end' && char.status !== 'sliding' && char.status !== 'final')) {
+      return (
+        <span
+          key={char.id}
+          className={`${baseClasses} text-white`}
+          style={{ position: 'relative' }}
+        >
+          {char.char}
+        </span>
+      );
+    }
 
     switch (char.status) {
       case 'typing':
@@ -225,11 +300,47 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
           </span>
         );
 
-      case 'strikethrough':
+      case 'strikethrough-start':
         return (
           <span
             key={char.id}
-            className={`${baseClasses} text-white/40 line-through decoration-2`}
+            className={`${baseClasses} text-white/80`}
+            style={{ position: 'relative' }}
+          >
+            {char.char}
+            <motion.div
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="absolute bottom-0 left-0 h-0.5 bg-red-400"
+            />
+          </span>
+        );
+
+      case 'strikethrough-progress':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white/60`}
+            style={{ position: 'relative' }}
+          >
+            {char.char}
+            <div
+              className="absolute bottom-0 left-0 h-0.5 bg-red-400"
+              style={{
+                width: `${(char.scratchProgress || 0) * 100}%`,
+                transition: 'width 0.1s ease-out'
+              }}
+            />
+          </span>
+        );
+
+      case 'strikethrough-end':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white/40 line-through decoration-red-400 decoration-2`}
+            style={{ position: 'relative' }}
           >
             {char.char}
           </span>
@@ -243,31 +354,46 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
             animate={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
             className={`${baseClasses} text-white/20`}
+            style={{ position: 'absolute' }}
           >
             {char.char}
           </motion.span>
         );
 
-      case 'sliding': {
-        const slideOffset = index >= 13 ? -100 : 0; // Slide right part left
+      case 'sliding':
+        if (char.zone === 'stable-end') {
+          // Calculate how much to slide based on original position
+          const charactersToRemove = trick.zones['strikethrough-zone'].end - trick.zones['strikethrough-zone'].start;
+          const slideOffset = -charactersToRemove * 8; // Approximate character width
+
+          return (
+            <motion.span
+              key={char.id}
+              initial={{ x: 0 }}
+              animate={{ x: slideOffset }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
+              className={`${baseClasses} text-white`}
+              style={{ position: 'relative' }}
+            >
+              {char.char}
+            </motion.span>
+          );
+        }
         return (
-          <motion.span
+          <span
             key={char.id}
-            initial={{ x: 0 }}
-            animate={{ x: slideOffset }}
-            transition={{ duration: 0.5, ease: "easeInOut" }}
             className={`${baseClasses} text-white`}
           >
             {char.char}
-          </motion.span>
+          </span>
         );
-      }
 
       case 'final':
         return (
           <span
             key={char.id}
             className={`${baseClasses} text-white`}
+            style={{ position: 'relative' }}
           >
             {char.char}
           </span>
@@ -280,7 +406,7 @@ const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
 
   return (
     <div className="font-mono text-lg leading-relaxed">
-      {characters.map((char, index) => renderCharacter(char, index))}
+      {characters.map((char) => renderCharacter(char))}
       {isTyping && <span className="animate-pulse text-white/60">|</span>}
     </div>
   );
@@ -389,8 +515,8 @@ const TricksComponent: React.FC = () => {
               transition={{ delay: 0.2 }}
               className="w-full"
             >
-              <div className="card-floating rounded-xl p-6 border border-white/10 bg-black/20 backdrop-blur-xl">
-                <div className="text-left">
+              <div className="card-floating rounded-2xl p-8 border border-white/10 bg-black/20 backdrop-blur-xl w-full h-32 flex items-center justify-center">
+                <div className="text-left w-full overflow-hidden">
                   <StreamingText trick={selectedTrick} />
                 </div>
               </div>
