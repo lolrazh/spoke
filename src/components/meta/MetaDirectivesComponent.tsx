@@ -43,7 +43,7 @@ const SimpleTypewriter: React.FC<{ text: string }> = ({ text }) => {
   }, [currentIndex, text]);
 
   return (
-    <div className="text-lg leading-relaxed text-white font-sans">
+    <div className="text-sm leading-relaxed text-white font-sans">
       {displayedText}
       {isTyping && <span className="animate-pulse text-white/60">|</span>}
     </div>
@@ -74,7 +74,7 @@ const TricksComponent: React.FC = () => {
       variants={tagVariants}
       initial="hidden"
       animate="visible"
-      className="text-center w-full"
+      className="text-center w-full min-w-screen-lg"
     >
       {/* Header */}
       <div className="heading-stack">
@@ -109,9 +109,9 @@ const TricksComponent: React.FC = () => {
 
       {/* Single Streaming Card */}
       {selectedTrick && (
-        <div className="w-full">
-          <div className="card-floating rounded-2xl p-3 border border-white/10 bg-black/20 backdrop-blur-xl w-full h-24 flex items-center justify-center">
-            <div className="text-left w-full overflow-hidden whitespace-nowrap px-4">
+        <div className="w-full min-w-screen-lg">
+          <div className="card-floating rounded-lg p-3 w-full flex items-center justify-center min-w-screen-lg">
+            <div className="text-left w-full overflow-hidden whitespace-nowrap">
               <SimpleTypewriter text={selectedTrick.text} />
             </div>
           </div>
