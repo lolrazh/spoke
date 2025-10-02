@@ -74,7 +74,7 @@ const TricksComponent: React.FC = () => {
       variants={tagVariants}
       initial="hidden"
       animate="visible"
-      className="text-center w-full min-w-screen-lg"
+      className="text-center w-full max-w-4xl mx-auto px-6"
     >
       {/* Header */}
       <div className="heading-stack">
@@ -109,9 +109,9 @@ const TricksComponent: React.FC = () => {
 
       {/* Single Streaming Card */}
       {selectedTrick && (
-        <div className="w-full min-w-screen-lg">
-          <div className="card-floating rounded-lg p-3 w-full flex items-center justify-center min-w-screen-lg">
-            <div className="text-left w-full overflow-hidden whitespace-nowrap">
+        <div className="w-full">
+          <div className="card-floating rounded-lg p-3 w-full flex items-center justify-center">
+            <div className="text-left w-full overflow-hidden">
               <SimpleTypewriter text={selectedTrick.text} />
             </div>
           </div>
