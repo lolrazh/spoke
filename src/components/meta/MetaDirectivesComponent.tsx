@@ -79,15 +79,15 @@ const TricksComponent: React.FC = () => {
       {/* Header */}
       <div className="heading-stack">
         <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-          Voice Tricks & Shortcuts
+          Some More Tricks You Can Try
         </h2>
         <p className="text-sm text-subtle leading-relaxed subheading">
-          Click any trick to see it in action. These commands make dictation incredibly powerful.
+          These commands make dictating with Sonic Flow incredibly powerful.
         </p>
       </div>
 
       {/* Compact Tag Cloud */}
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap justify-center gap-2 mb-8">
         {tricks.map((trick) => (
           <motion.button
             key={trick.id}
@@ -110,8 +110,8 @@ const TricksComponent: React.FC = () => {
       {/* Single Streaming Card */}
       {selectedTrick && (
         <div className="w-full">
-          <div className="card-floating rounded-2xl p-4 border border-white/10 bg-black/20 backdrop-blur-xl w-full h-32 flex items-center justify-center">
-            <div className="text-left w-full overflow-hidden whitespace-nowrap">
+          <div className="card-floating rounded-2xl p-3 border border-white/10 bg-black/20 backdrop-blur-xl w-full h-24 flex items-center justify-center">
+            <div className="text-left w-full overflow-hidden whitespace-nowrap px-4">
               <SimpleTypewriter text={selectedTrick.text} />
             </div>
           </div>
