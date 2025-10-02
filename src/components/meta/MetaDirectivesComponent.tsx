@@ -27,10 +27,11 @@ const tricks: Trick[] = [
   // Other tricks will be added later once we perfect the first one
 ];
 
-const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) => {
+const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (show: boolean) => void }> = ({ segments, onSuccessGlow }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
   const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean; isDisappearing: boolean; measuredWidth?: number }[]>([]);
+  const [showSuccessGlow, setShowSuccessGlow] = useState(false);
   const [isTyping, setIsTyping] = useState(true);
   const segmentRefs = React.useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -115,7 +116,18 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
                 });
               });
             }
-          }, 1000); // 500ms delay + 250ms strikethrough + 250ms gap
+          }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
+          
+          // Trigger success glow after disappearance completes
+          setTimeout(() => {
+            setShowSuccessGlow(true);
+            onSuccessGlow?.(true);
+            // Remove glow after animation
+            setTimeout(() => {
+              setShowSuccessGlow(false);
+              onSuccessGlow?.(false);
+            }, 800);
+          }, 2050); // 1050ms before disappear starts + 1000ms disappear animation
         }
       });
     }
@@ -157,6 +169,7 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
 
 const TricksComponent: React.FC = () => {
   const [selectedTrick, setSelectedTrick] = useState<Trick | null>(tricks[0]);
+  const [showCardGlow, setShowCardGlow] = useState(false);
 
   const handleTrickClick = (trick: Trick) => {
     setSelectedTrick(trick);
@@ -215,9 +228,9 @@ const TricksComponent: React.FC = () => {
       {/* Single Streaming Card */}
       {selectedTrick && (
         <div className="w-full flex justify-center px-8">
-          <div className="card-floating rounded-lg p-4 inline-block">
+          <div className={`card-floating rounded-lg p-4 inline-block transition-all ${showCardGlow ? 'success-container-glow' : ''}`}>
             <div className="text-left overflow-x-auto whitespace-nowrap">
-              <SegmentTypewriter segments={selectedTrick.segments} />
+              <SegmentTypewriter segments={selectedTrick.segments} onSuccessGlow={setShowCardGlow} />
             </div>
           </div>
         </div>

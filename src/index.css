@@ -472,6 +472,27 @@
     transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
   }
 
+  /* Success container glow - soft cosmic halo */
+  @keyframes success-container-glow {
+    0% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    50% {
+      box-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.5),
+        0 0 0 2px rgba(255, 255, 255, 0.15),
+        0 0 15px 2px rgba(255, 255, 255, 0.3), 
+        0 0 30px 2px rgba(255, 255, 255, 0.15);
+    }
+    100% {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  .success-container-glow {
+    animation: success-container-glow 0.8s ease-in-out forwards;
+  }
+
   /* Collapsed state dots - smaller size but maintain the same spacing */
   .dot.collapsed {
     width: 2px;
