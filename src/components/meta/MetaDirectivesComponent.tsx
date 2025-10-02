@@ -20,7 +20,7 @@ const tricks: Trick[] = [
     description: "Fix mistakes by saying what you actually meant",
     segments: [
       { text: "I need it by ", type: "normal" },
-      { text: "12pm Friday. Actually, scratch that.", type: "strikethrough" },
+      { text: "12pm Friday. Actually, scratch that. ", type: "strikethrough" },
       { text: "11am Thursday.", type: "normal" }
     ]
   },
