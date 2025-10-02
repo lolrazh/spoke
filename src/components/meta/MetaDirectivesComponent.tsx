@@ -1,13 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import SfIcon from "../icons/SfIcon";
+
+interface CharacterState {
+  char: string;
+  status: 'typing' | 'stable' | 'strikethrough' | 'fading' | 'sliding' | 'final';
+  id: string; // Unique identifier for each character
+  originalIndex?: number; // Original position for sliding animations
+}
+
+interface AnimationStage {
+  type: 'typing' | 'strikethrough' | 'fade-out' | 'slide-together' | 'pause';
+  duration: number; // in milliseconds
+  targetText?: string;
+  startIndex?: number;
+  endIndex?: number;
+  params?: Record<string, unknown>; // Additional parameters for specific animations
+}
 
 interface Trick {
   id: string;
   title: string;
   description: string;
-  inputExample: string;
-  outputExample: string;
+  inputText: string;
+  stages: AnimationStage[];
 }
 
 const tricks: Trick[] = [
@@ -15,69 +30,274 @@ const tricks: Trick[] = [
     id: "correction",
     title: "Quick Correction",
     description: "Fix mistakes by saying what you actually meant",
-    inputExample: "lets meet 12pm thursday, actually wait no, 11am friday",
-    outputExample: "lets meet 11am friday",
+    inputText: "I need it by 12pm Friday. Actually, scratch that. 11am Thursday.",
+    stages: [
+      { type: 'typing', duration: 2000, targetText: "I need it by 12pm Friday. Actually, scratch that. 11am Thursday." },
+      { type: 'pause', duration: 500 },
+      { type: 'strikethrough', duration: 800, startIndex: 14, endIndex: 46 }, // "12pm Friday. Actually, scratch that."
+      { type: 'pause', duration: 300 },
+      { type: 'fade-out', duration: 600, startIndex: 14, endIndex: 46 },
+      { type: 'pause', duration: 300 },
+      { type: 'slide-together', duration: 500, startIndex: 0, endIndex: 13, joinIndex: 47 }, // Join "I need it by " with "11am Thursday."
+      { type: 'pause', duration: 1000 },
+    ]
   },
-  {
-    id: "scratch",
-    title: "Scratch That",
-    description: "Delete the last thing you said",
-    inputExample: "Scratch that",
-    outputExample: "[previous text removed]",
-  },
-  {
-    id: "spell",
-    title: "Spell That",
-    description: "Make Sonic Flow spell out the last word",
-    inputExample: "Can you spell that",
-    outputExample: "h-e-l-l-o",
-  },
-  {
-    id: "quotes",
-    title: "Put in Quotes",
-    description: "Wrap text in quotation marks",
-    inputExample: "Put hello world in quotes",
-    outputExample: '"hello world"',
-  },
-  {
-    id: "caps",
-    title: "Write in Caps",
-    description: "Convert text to uppercase",
-    inputExample: "Write hello in caps",
-    outputExample: "HELLO",
-  },
-  {
-    id: "replace",
-    title: "Replace Words",
-    description: "Replace one word with another",
-    inputExample: "Replace hello with hi",
-    outputExample: "hi",
-  },
-  {
-    id: "emphasis",
-    title: "Add Emphasis",
-    description: "Make text bold or add emphasis",
-    inputExample: "Add emphasis on important",
-    outputExample: "**important**",
-  },
+  // Other tricks will be added later once we perfect the first one
 ];
+
+const StreamingText: React.FC<{ trick: Trick }> = ({ trick }) => {
+  const [characters, setCharacters] = useState<CharacterState[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Initialize streaming when trick changes
+  useEffect(() => {
+    if (!trick) return;
+
+    setCharacters([]);
+    startStreaming(trick);
+  }, [trick]);
+
+  const startStreaming = (currentTrick: Trick) => {
+    let stageIndex = 0;
+
+    const executeStage = () => {
+      if (stageIndex >= currentTrick.stages.length) {
+        return;
+      }
+
+      const stage = currentTrick.stages[stageIndex];
+  
+      switch (stage.type) {
+        case 'typing':
+          if (stage.targetText) {
+            typewriterEffect(stage.targetText, stage.duration, () => {
+              stageIndex++;
+              executeStage();
+            });
+          }
+          break;
+
+        case 'strikethrough':
+          if (stage.startIndex !== undefined && stage.endIndex !== undefined) {
+            strikethroughEffect(stage.startIndex, stage.endIndex, () => {
+              stageIndex++;
+              executeStage();
+            });
+          }
+          break;
+
+        case 'fade-out':
+          if (stage.startIndex !== undefined && stage.endIndex !== undefined) {
+            fadeOutEffect(stage.startIndex, stage.endIndex, () => {
+              stageIndex++;
+              executeStage();
+            });
+          }
+          break;
+
+        case 'slide-together':
+          if (stage.startIndex !== undefined && stage.endIndex !== undefined && stage.joinIndex !== undefined) {
+            slideTogetherEffect(stage.startIndex, stage.endIndex, stage.joinIndex, () => {
+              stageIndex++;
+              executeStage();
+            });
+          }
+          break;
+
+        case 'pause':
+          setTimeout(() => {
+            stageIndex++;
+            executeStage();
+          }, stage.duration);
+          break;
+      }
+    };
+
+    executeStage();
+  };
+
+  const typewriterEffect = (targetText: string, duration: number, onComplete: () => void) => {
+    setIsTyping(true);
+    const charsPerSecond = targetText.length / (duration / 1000);
+    const intervalMs = 1000 / charsPerSecond;
+    let currentCharIndex = 0;
+
+    const interval = setInterval(() => {
+      if (currentCharIndex >= targetText.length) {
+        clearInterval(interval);
+        setIsTyping(false);
+        setCharacters(prev => prev.map(char => ({ ...char, status: 'stable' as const })));
+        onComplete();
+        return;
+      }
+
+      const newChar: CharacterState = {
+        char: targetText[currentCharIndex],
+        status: 'typing',
+        id: `${Date.now()}-${currentCharIndex}`,
+        originalIndex: currentCharIndex
+      };
+
+      setCharacters(prev => {
+        const updated = [...prev, newChar];
+        // Mark previous characters as stable
+        return updated.map((char, index) =>
+          index < updated.length - 1 ? { ...char, status: 'stable' as const } : char
+        );
+      });
+
+      currentCharIndex++;
+    }, intervalMs);
+  };
+
+  const strikethroughEffect = (startIndex: number, endIndex: number, onComplete: () => void) => {
+    setCharacters(prev =>
+      prev.map((char, index) =>
+        index >= startIndex && index < endIndex
+          ? { ...char, status: 'strikethrough' as const }
+          : char
+      )
+    );
+
+    setTimeout(onComplete, 100);
+  };
+
+  const fadeOutEffect = (startIndex: number, endIndex: number, onComplete: () => void) => {
+    setCharacters(prev =>
+      prev.map((char, index) =>
+        index >= startIndex && index < endIndex
+          ? { ...char, status: 'fading' as const }
+          : char
+      )
+    );
+
+    // Remove faded characters after animation
+    setTimeout(() => {
+      setCharacters(prev =>
+        prev.filter((char, index) => !(index >= startIndex && index < endIndex))
+          .map(char => ({ ...char, status: 'final' as const }))
+      );
+      onComplete();
+    }, 600);
+  };
+
+  const slideTogetherEffect = (startIndex: number, endIndex: number, joinIndex: number, onComplete: () => void) => {
+    // Mark characters that will slide
+    setCharacters(prev =>
+      prev.map((char, index) => {
+        if (index >= startIndex && index < endIndex) {
+          return { ...char, status: 'sliding' as const };
+        }
+        if (index >= joinIndex) {
+          return { ...char, status: 'sliding' as const };
+        }
+        return char;
+      })
+    );
+
+    setTimeout(() => {
+      setCharacters(prev => prev.map(char => ({ ...char, status: 'final' as const })));
+      onComplete();
+    }, 500);
+  };
+
+  const renderCharacter = (char: CharacterState, index: number) => {
+    const baseClasses = "transition-all duration-300 inline-block";
+
+    switch (char.status) {
+      case 'typing':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white opacity-70 animate-pulse`}
+          >
+            {char.char}
+          </span>
+        );
+
+      case 'stable':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white`}
+          >
+            {char.char}
+          </span>
+        );
+
+      case 'strikethrough':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white/40 line-through decoration-2`}
+          >
+            {char.char}
+          </span>
+        );
+
+      case 'fading':
+        return (
+          <motion.span
+            key={char.id}
+            initial={{ opacity: 1, scale: 1 }}
+            animate={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className={`${baseClasses} text-white/20`}
+          >
+            {char.char}
+          </motion.span>
+        );
+
+      case 'sliding': {
+        const slideOffset = index >= 13 ? -100 : 0; // Slide right part left
+        return (
+          <motion.span
+            key={char.id}
+            initial={{ x: 0 }}
+            animate={{ x: slideOffset }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className={`${baseClasses} text-white`}
+          >
+            {char.char}
+          </motion.span>
+        );
+      }
+
+      case 'final':
+        return (
+          <span
+            key={char.id}
+            className={`${baseClasses} text-white`}
+          >
+            {char.char}
+          </span>
+        );
+
+      default:
+        return <span key={char.id}>{char.char}</span>;
+    }
+  };
+
+  return (
+    <div className="font-mono text-lg leading-relaxed">
+      {characters.map((char, index) => renderCharacter(char, index))}
+      {isTyping && <span className="animate-pulse text-white/60">|</span>}
+    </div>
+  );
+};
 
 const TricksComponent: React.FC = () => {
   const [selectedTrick, setSelectedTrick] = useState<Trick | null>(tricks[0]);
   const [isAutoRotating, setIsAutoRotating] = useState(true);
-  const [rotationIndex, setRotationIndex] = useState(0);
 
   // Auto-rotation through tricks
   useEffect(() => {
     if (!isAutoRotating) return;
 
     const interval = setInterval(() => {
-      setRotationIndex((prev) => {
-        const nextIndex = (prev + 1) % tricks.length;
-        setSelectedTrick(tricks[nextIndex]);
-        return nextIndex;
-      });
-    }, 4000); // Rotate every 4 seconds
+      const nextIndex = (Math.floor(Date.now() / 8000) % tricks.length);
+      setSelectedTrick(tricks[nextIndex]);
+    }, 8000); // Rotate every 8 seconds (increased for full animation cycle)
 
     return () => clearInterval(interval);
   }, [isAutoRotating]);
@@ -85,11 +305,6 @@ const TricksComponent: React.FC = () => {
   const handleTrickClick = (trick: Trick) => {
     setSelectedTrick(trick);
     setIsAutoRotating(false); // Stop auto-rotation when user interacts
-    setRotationIndex(tricks.findIndex(t => t.id === trick.id));
-  };
-
-  const handleResumeRotation = () => {
-    setIsAutoRotating(true);
   };
 
   const containerVariants = {
@@ -136,7 +351,7 @@ const TricksComponent: React.FC = () => {
 
       {/* Compact Tag Cloud */}
       <div className="flex flex-wrap justify-center gap-2 mb-8 max-w-5xl mx-auto">
-        {tricks.map((trick, index) => (
+        {tricks.map((trick) => (
           <motion.button
             key={trick.id}
             variants={tagVariants}
@@ -155,7 +370,7 @@ const TricksComponent: React.FC = () => {
         ))}
       </div>
 
-      {/* Input/Output Example Cards */}
+      {/* Single Streaming Card */}
       <AnimatePresence mode="wait">
         {selectedTrick && (
           <motion.div
@@ -165,48 +380,21 @@ const TricksComponent: React.FC = () => {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3, ease: [0.25, 0.8, 0.25, 1] as const }}
             layoutId={`detail-${selectedTrick.id}`}
-            className="max-w-4xl mx-auto"
+            className="max-w-5xl mx-auto"
           >
-            {/* Simple Input/Output with Arrow */}
-            <div className="flex items-center justify-center gap-3 mb-6">
-              {/* Input Card */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex-1 max-w-md"
-              >
-                <div className="card-floating rounded-lg p-3 border border-white/10">
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {selectedTrick.inputExample}
-                  </p>
+            {/* Streaming Text Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="w-full"
+            >
+              <div className="card-floating rounded-xl p-6 border border-white/10 bg-black/20 backdrop-blur-xl">
+                <div className="text-left">
+                  <StreamingText trick={selectedTrick} />
                 </div>
-              </motion.div>
-
-              {/* Simple Arrow */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3 }}
-                className="flex-shrink-0 text-primary/70 text-2xl"
-              >
-                →
-              </motion.div>
-
-              {/* Output Card */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 }}
-                className="flex-1 max-w-md"
-              >
-                <div className="card-floating rounded-lg p-3 border border-white/10">
-                  <p className="text-sm text-foreground leading-relaxed">
-                    {selectedTrick.outputExample}
-                  </p>
-                </div>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
