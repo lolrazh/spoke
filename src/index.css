@@ -411,19 +411,43 @@
     }
   }
 
-  @keyframes strikethrough-reveal {
+  @keyframes strikethrough-text-reveal {
     0% {
-      text-decoration: none;
+      color: rgba(255, 255, 255, 1);
+    }
+    30% {
+      color: rgba(255, 255, 255, 0.6);
     }
     100% {
-      text-decoration: line-through;
-      text-decoration-color: rgba(255, 255, 255, 0.6);
-      text-decoration-thickness: 2px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+  }
+
+  @keyframes strikethrough-line-reveal {
+    0% {
+      background-position: 0% 50%;
+      background-size: 0% 2px;
+    }
+    30% {
+      background-size: 0% 2px;
+    }
+    100% {
+      background-position: 0% 50%;
+      background-size: 100% 2px;
     }
   }
 
   .strikethrough-animate {
-    animation: strikethrough-reveal 0.8s ease-out forwards;
+    background-repeat: no-repeat;
+    background-image: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.6) 0%,
+      rgba(255, 255, 255, 0.6) 100%
+    );
+    background-position: 0% 50%;
+    background-size: 0% 2px;
+    animation: strikethrough-text-reveal 0.4s ease-out forwards,
+               strikethrough-line-reveal 0.5s ease-out forwards;
   }
 
   /* Collapsed state dots - smaller size but maintain the same spacing */
