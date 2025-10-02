@@ -19,8 +19,8 @@ const tricks: Trick[] = [
     title: "Quick Correction",
     description: "Fix mistakes by saying what you actually meant",
     segments: [
-      { text: "I need it by 12pm Friday. ", type: "normal" },
-      { text: "Actually, scratch that.", type: "strikethrough" },
+      { text: "I need it by ", type: "normal" },
+      { text: "12pm Friday. Actually, scratch that.", type: "strikethrough" },
       { text: " 11am Thursday.", type: "normal" }
     ]
   },
@@ -136,7 +136,7 @@ const TricksComponent: React.FC = () => {
       variants={tagVariants}
       initial="hidden"
       animate="visible"
-      className="text-center w-full max-w-4xl mx-auto px-6"
+      className="text-center w-full max-w-6xl mx-auto px-6"
     >
       {/* Header */}
       <div className="heading-stack">
@@ -171,9 +171,9 @@ const TricksComponent: React.FC = () => {
 
       {/* Single Streaming Card */}
       {selectedTrick && (
-        <div className="w-full">
-          <div className="card-floating rounded-lg p-3 w-full flex items-center justify-center">
-            <div className="text-left w-full overflow-hidden">
+        <div className="w-full max-w-none">
+          <div className="card-floating rounded-lg p-4 w-full flex items-center justify-center">
+            <div className="text-left w-full overflow-x-auto whitespace-nowrap">
               <SegmentTypewriter segments={selectedTrick.segments} />
             </div>
           </div>
