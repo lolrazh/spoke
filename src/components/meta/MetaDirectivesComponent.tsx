@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 
 interface Trick {
   id: string;
@@ -42,7 +43,7 @@ const SimpleTypewriter: React.FC<{ text: string }> = ({ text }) => {
   }, [currentIndex, text]);
 
   return (
-    <div className="font-mono text-lg leading-relaxed text-white">
+    <div className="text-lg leading-relaxed text-white font-sans">
       {displayedText}
       {isTyping && <span className="animate-pulse text-white/60">|</span>}
     </div>
@@ -56,10 +57,27 @@ const TricksComponent: React.FC = () => {
     setSelectedTrick(trick);
   };
 
+  const tagVariants = {
+    hidden: { opacity: 0, scale: 0.9 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: {
+        duration: 0.3,
+        ease: [0.25, 0.8, 0.25, 1] as const,
+      },
+    },
+  };
+
   return (
-    <div className="text-center max-w-6xl mx-auto">
+    <motion.div
+      variants={tagVariants}
+      initial="hidden"
+      animate="visible"
+      className="text-center w-full"
+    >
       {/* Header */}
-      <div className="heading-stack mb-8">
+      <div className="heading-stack">
         <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
           Voice Tricks & Shortcuts
         </h2>
@@ -68,17 +86,38 @@ const TricksComponent: React.FC = () => {
         </p>
       </div>
 
+      {/* Compact Tag Cloud */}
+      <div className="flex flex-wrap justify-center gap-2">
+        {tricks.map((trick) => (
+          <motion.button
+            key={trick.id}
+            variants={tagVariants}
+            className={`meta-directive-tag px-3 py-1.5 ${
+              selectedTrick?.id === trick.id
+                ? "meta-directive-tag-active"
+                : "meta-directive-tag-inactive"
+            }`}
+            onClick={() => handleTrickClick(trick)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            layoutId={`tag-${trick.id}`}
+          >
+            <span className="font-medium text-xs leading-tight">{trick.title}</span>
+          </motion.button>
+        ))}
+      </div>
+
       {/* Single Streaming Card */}
       {selectedTrick && (
-        <div className="max-w-5xl mx-auto">
-          <div className="card-floating rounded-2xl p-8 border border-white/10 bg-black/20 backdrop-blur-xl max-w-4xl mx-auto h-32 flex items-center justify-center">
-            <div className="text-left w-full overflow-hidden">
+        <div className="w-full">
+          <div className="card-floating rounded-2xl p-4 border border-white/10 bg-black/20 backdrop-blur-xl w-full h-32 flex items-center justify-center">
+            <div className="text-left w-full overflow-hidden whitespace-nowrap">
               <SimpleTypewriter text={selectedTrick.text} />
             </div>
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 
