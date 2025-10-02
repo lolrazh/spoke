@@ -66,7 +66,7 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
         });
 
         setCurrentCharIndex(prev => prev + 1);
-      }, 50); // 50ms per character
+      }, 25); // 25ms per character for faster typing
 
       return () => clearTimeout(timeout);
     } else {
