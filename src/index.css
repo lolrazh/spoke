@@ -442,12 +442,28 @@
       transform: translateX(0);
       max-width: 100%;
       clip-path: inset(0 0 0 0);
+      background-repeat: no-repeat;
+      background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0.6) 100%
+      );
+      background-position: 0% 50%;
+      background-size: 100% 2px;
     }
     100% {
       color: rgba(255, 255, 255, 0.6);
       transform: translateX(-10px);
       max-width: 0;
       clip-path: inset(0 100% 0 0);
+      background-repeat: no-repeat;
+      background-image: linear-gradient(
+        to right,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0.6) 100%
+      );
+      background-position: 0% 50%;
+      background-size: 100% 2px;
     }
   }
 
