@@ -30,7 +30,7 @@ const tricks: Trick[] = [
 const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean }[]>([]);
+  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean; isDisappearing: boolean }[]>([]);
   const [isTyping, setIsTyping] = useState(true);
 
   // Reset when segments change
@@ -58,7 +58,7 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
         setDisplayedSegments(prev => {
           const updated = [...prev];
           if (updated.length <= currentSegmentIndex) {
-            updated.push({ segment: currentSegment, text: newChar, shouldStrike: false });
+            updated.push({ segment: currentSegment, text: newChar, shouldStrike: false, isDisappearing: false });
           } else {
             updated[currentSegmentIndex].text += newChar;
           }
@@ -76,7 +76,7 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
     }
   }, [currentSegmentIndex, currentCharIndex, segments]);
 
-  // Trigger strikethrough animation only after ALL text is finished typing
+  // Trigger strikethrough animation and disappearance after ALL text is finished typing
   useEffect(() => {
     if (!isTyping && displayedSegments.length === segments.length) {
       // Find all strikethrough segments and trigger animation with a slight delay
@@ -89,6 +89,15 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
               return updated;
             });
           }, 500); // Delay after all text is complete
+
+          // Trigger disappearance after strikethrough completes with extra gap
+          setTimeout(() => {
+            setDisplayedSegments(prev => {
+              const updated = [...prev];
+              updated[index].isDisappearing = true;
+              return updated;
+            });
+          }, 1000); // 500ms delay + 250ms strikethrough + 250ms gap
         }
       });
     }
@@ -99,7 +108,10 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) 
       {displayedSegments.map((displayed, index) => (
         <span key={index}>
           {displayed.segment.type === 'strikethrough' ? (
-            <span className={displayed.shouldStrike ? 'strikethrough-animate' : ''}>
+            <span
+              className={`${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
+              style={displayed.isDisappearing ? { animationDelay: '0ms' } : {}}
+            >
               {displayed.text}
             </span>
           ) : (

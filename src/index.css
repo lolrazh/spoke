@@ -436,6 +436,25 @@
     animation: strikethrough-sync 0.25s ease-out forwards;
   }
 
+  @keyframes disappear-reverse {
+    0% {
+      color: rgba(255, 255, 255, 0.6);
+      transform: translateX(0);
+      max-width: 100%;
+      clip-path: inset(0 0 0 0);
+    }
+    100% {
+      color: rgba(255, 255, 255, 0.6);
+      transform: translateX(-10px);
+      max-width: 0;
+      clip-path: inset(0 100% 0 0);
+    }
+  }
+
+  .disappear-reverse {
+    animation: disappear-reverse 0.6s ease-out forwards;
+  }
+
   /* Collapsed state dots - smaller size but maintain the same spacing */
   .dot.collapsed {
     width: 2px;
