@@ -1,7 +1,7 @@
 # Text Correction Animation Implementation
 
 **Date:** 2025-10-02
-**Agent:** Claude (GLM-4.6)
+**Agent:** Claude Code (GLM-4.6)
 **Status:** 🔄 In Progress
 
 ## User Intention
