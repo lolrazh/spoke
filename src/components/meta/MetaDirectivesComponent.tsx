@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
+interface TextSegment {
+  text: string;
+  type: 'normal' | 'strikethrough';
+}
+
 interface Trick {
   id: string;
   title: string;
   description: string;
-  text: string;
+  segments: TextSegment[];
 }
 
 const tricks: Trick[] = [
@@ -13,38 +18,95 @@ const tricks: Trick[] = [
     id: "correction",
     title: "Quick Correction",
     description: "Fix mistakes by saying what you actually meant",
-    text: "I need it by 12pm Friday. Actually, scratch that. 11am Thursday."
+    segments: [
+      { text: "I need it by 12pm Friday. ", type: "normal" },
+      { text: "Actually, scratch that.", type: "strikethrough" },
+      { text: " 11am Thursday.", type: "normal" }
+    ]
   },
   // Other tricks will be added later once we perfect the first one
 ];
 
-const SimpleTypewriter: React.FC<{ text: string }> = ({ text }) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
+const SegmentTypewriter: React.FC<{ segments: TextSegment[] }> = ({ segments }) => {
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [currentCharIndex, setCurrentCharIndex] = useState(0);
+  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean }[]>([]);
   const [isTyping, setIsTyping] = useState(true);
 
+  // Reset when segments change
   useEffect(() => {
-    setDisplayedText('');
-    setCurrentIndex(0);
+    setCurrentSegmentIndex(0);
+    setCurrentCharIndex(0);
+    setDisplayedSegments([]);
     setIsTyping(true);
-  }, [text]);
+  }, [segments]);
 
   useEffect(() => {
-    if (currentIndex < text.length) {
+    if (currentSegmentIndex >= segments.length) {
+      setIsTyping(false);
+      return;
+    }
+
+    const currentSegment = segments[currentSegmentIndex];
+    const segmentText = currentSegment.text;
+
+    if (currentCharIndex < segmentText.length) {
       const timeout = setTimeout(() => {
-        setDisplayedText(prev => prev + text[currentIndex]);
-        setCurrentIndex(prev => prev + 1);
-      }, 50); // 50ms per character for smooth typing
+        // Add current character
+        const newChar = segmentText[currentCharIndex];
+
+        setDisplayedSegments(prev => {
+          const updated = [...prev];
+          if (updated.length <= currentSegmentIndex) {
+            updated.push({ segment: currentSegment, text: newChar, shouldStrike: false });
+          } else {
+            updated[currentSegmentIndex].text += newChar;
+          }
+          return updated;
+        });
+
+        setCurrentCharIndex(prev => prev + 1);
+      }, 50); // 50ms per character
 
       return () => clearTimeout(timeout);
     } else {
-      setIsTyping(false);
+      // Segment complete, move to next segment
+      setCurrentSegmentIndex(prev => prev + 1);
+      setCurrentCharIndex(0);
     }
-  }, [currentIndex, text]);
+  }, [currentSegmentIndex, currentCharIndex, segments]);
+
+  // Trigger strikethrough animation only after ALL text is finished typing
+  useEffect(() => {
+    if (!isTyping && displayedSegments.length === segments.length) {
+      // Find all strikethrough segments and trigger animation with a slight delay
+      displayedSegments.forEach((displayed, index) => {
+        if (displayed.segment.type === 'strikethrough' && !displayed.shouldStrike) {
+          setTimeout(() => {
+            setDisplayedSegments(prev => {
+              const updated = [...prev];
+              updated[index].shouldStrike = true;
+              return updated;
+            });
+          }, 500); // Delay after all text is complete
+        }
+      });
+    }
+  }, [isTyping, displayedSegments, segments]);
 
   return (
     <div className="text-sm leading-relaxed text-white font-sans">
-      {displayedText}
+      {displayedSegments.map((displayed, index) => (
+        <span key={index}>
+          {displayed.segment.type === 'strikethrough' ? (
+            <span className={displayed.shouldStrike ? 'strikethrough-animate' : ''}>
+              {displayed.text}
+            </span>
+          ) : (
+            <span>{displayed.text}</span>
+          )}
+        </span>
+      ))}
       {isTyping && <span className="animate-pulse text-white/60">|</span>}
     </div>
   );
@@ -112,7 +174,7 @@ const TricksComponent: React.FC = () => {
         <div className="w-full">
           <div className="card-floating rounded-lg p-3 w-full flex items-center justify-center">
             <div className="text-left w-full overflow-hidden">
-              <SimpleTypewriter text={selectedTrick.text} />
+              <SegmentTypewriter segments={selectedTrick.segments} />
             </div>
           </div>
         </div>

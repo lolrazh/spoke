@@ -411,6 +411,21 @@
     }
   }
 
+  @keyframes strikethrough-reveal {
+    0% {
+      text-decoration: none;
+    }
+    100% {
+      text-decoration: line-through;
+      text-decoration-color: rgba(255, 255, 255, 0.6);
+      text-decoration-thickness: 2px;
+    }
+  }
+
+  .strikethrough-animate {
+    animation: strikethrough-reveal 0.8s ease-out forwards;
+  }
+
   /* Collapsed state dots - smaller size but maintain the same spacing */
   .dot.collapsed {
     width: 2px;
