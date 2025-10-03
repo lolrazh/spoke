@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 interface TextSegment {
   text: string;
   type: 'normal' | 'strikethrough';
+  replacementText?: string; // For character-level replacements (e.g., 'a' -> 'e')
 }
 
 interface Trick {
@@ -24,14 +25,32 @@ const tricks: Trick[] = [
       { text: "11am Thursday.", type: "normal" }
     ]
   },
-  // Other tricks will be added later once we perfect the first one
+  {
+    id: "spelling",
+    title: "Spelling Mode",
+    description: "Spell out words exactly as you want them",
+    segments: [
+      { text: "Have you seen Google's new model Gamm", type: "normal" },
+      { text: "a", type: "strikethrough", replacementText: "e" },
+      { text: "? ", type: "normal" },
+      { text: "Spell that G-E-M-M-A.", type: "strikethrough" }
+    ]
+  },
+  // Other tricks will be added later
 ];
 
 const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (show: boolean) => void }> = ({ segments, onSuccessGlow }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [displayedSegments, setDisplayedSegments] = useState<{ segment: TextSegment; text: string; shouldStrike: boolean; isDisappearing: boolean; measuredWidth?: number }[]>([]);
-  const [showSuccessGlow, setShowSuccessGlow] = useState(false);
+  const [displayedSegments, setDisplayedSegments] = useState<{ 
+    segment: TextSegment; 
+    text: string; 
+    shouldStrike: boolean; 
+    isDisappearing: boolean; 
+    isReplacing: boolean; 
+    measuredWidth?: number; 
+    replacementWidth?: number;
+  }[]>([]);
   const [isTyping, setIsTyping] = useState(true);
   const segmentRefs = React.useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -60,7 +79,13 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
         setDisplayedSegments(prev => {
           const updated = [...prev];
           if (updated.length <= currentSegmentIndex) {
-            updated.push({ segment: currentSegment, text: newChar, shouldStrike: false, isDisappearing: false });
+            updated.push({ 
+              segment: currentSegment, 
+              text: newChar, 
+              shouldStrike: false, 
+              isDisappearing: false,
+              isReplacing: false
+            });
           } else {
             updated[currentSegmentIndex].text += newChar;
           }
@@ -81,57 +106,98 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
   // Trigger strikethrough animation and disappearance after ALL text is finished typing
   useEffect(() => {
     if (!isTyping && displayedSegments.length === segments.length) {
-      // Find all strikethrough segments and trigger animation with a slight delay
-      displayedSegments.forEach((displayed, index) => {
-        if (displayed.segment.type === 'strikethrough' && !displayed.shouldStrike) {
-          setTimeout(() => {
+      // Find all strikethrough segments
+      const strikethroughIndices = displayedSegments
+        .map((displayed, index) => displayed.segment.type === 'strikethrough' && !displayed.shouldStrike ? index : -1)
+        .filter(index => index !== -1);
+
+      if (strikethroughIndices.length === 0) return;
+
+      // Strike all strikethrough segments simultaneously
+      setTimeout(() => {
+        setDisplayedSegments(prev => {
+          const updated = [...prev];
+          strikethroughIndices.forEach(index => {
+            updated[index].shouldStrike = true;
+          });
+          return updated;
+        });
+      }, 500); // Delay after all text is complete
+
+      // Measure widths and trigger disappearance/replacement
+      setTimeout(() => {
+        strikethroughIndices.forEach(index => {
+          const element = segmentRefs.current[index];
+          if (!element) return;
+
+          const segment = displayedSegments[index].segment;
+          const isReplacement = !!segment.replacementText;
+
+          if (isReplacement) {
+            // For replacement: measure both old and new widths
+            const oldWidth = element.offsetWidth;
+            
+            // Temporarily measure replacement text width
+            const tempSpan = document.createElement('span');
+            tempSpan.style.cssText = window.getComputedStyle(element).cssText;
+            tempSpan.style.visibility = 'hidden';
+            tempSpan.style.position = 'absolute';
+            tempSpan.textContent = segment.replacementText || '';
+            document.body.appendChild(tempSpan);
+            const newWidth = tempSpan.offsetWidth;
+            document.body.removeChild(tempSpan);
+
+            // Set widths and trigger replacement
             setDisplayedSegments(prev => {
               const updated = [...prev];
-              updated[index].shouldStrike = true;
+              updated[index].measuredWidth = oldWidth;
+              updated[index].replacementWidth = newWidth;
               return updated;
             });
-          }, 500); // Delay after all text is complete
 
-          // Measure width before disappearing, then trigger disappearance
-          setTimeout(() => {
-            // Measure the actual width of the segment
-            const element = segmentRefs.current[index];
-            if (element) {
-              const width = element.offsetWidth;
-              
-              setDisplayedSegments(prev => {
-                const updated = [...prev];
-                updated[index].measuredWidth = width;
-                return updated;
-              });
-
-              // Wait a frame for width to be set, then trigger collapse
+            // Trigger replacement animation
+            requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  setDisplayedSegments(prev => {
-                    const updated = [...prev];
-                    updated[index].isDisappearing = true;
-                    return updated;
-                  });
+                setDisplayedSegments(prev => {
+                  const updated = [...prev];
+                  updated[index].isReplacing = true;
+                  return updated;
                 });
               });
-            }
-          }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
-          
-          // Trigger success glow after disappearance completes
-          setTimeout(() => {
-            setShowSuccessGlow(true);
-            onSuccessGlow?.(true);
-            // Remove glow after animation (hold at peak for a moment)
-            setTimeout(() => {
-              setShowSuccessGlow(false);
-              onSuccessGlow?.(false);
-            }, 1000); // Full glow cycle
-          }, 2050); // 1050ms before disappear starts + 1000ms disappear animation
-        }
-      });
+            });
+          } else {
+            // For regular removal: measure and collapse
+            const width = element.offsetWidth;
+            
+            setDisplayedSegments(prev => {
+              const updated = [...prev];
+              updated[index].measuredWidth = width;
+              return updated;
+            });
+
+            // Trigger collapse animation
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                setDisplayedSegments(prev => {
+                  const updated = [...prev];
+                  updated[index].isDisappearing = true;
+                  return updated;
+                });
+              });
+            });
+          }
+        });
+      }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
+      
+      // Trigger success glow after all animations complete
+      setTimeout(() => {
+        onSuccessGlow?.(true);
+        setTimeout(() => {
+          onSuccessGlow?.(false);
+        }, 1000); // Full glow cycle
+      }, 2050); // 1050ms before animations start + 1000ms animation duration
     }
-  }, [isTyping, displayedSegments, segments]);
+  }, [isTyping, displayedSegments, segments, onSuccessGlow]);
 
   return (
     <div className="text-sm leading-relaxed text-white font-sans">
@@ -142,20 +208,39 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
             ref={el => segmentRefs.current[index] = el}
             className={`inline-block overflow-hidden ${
               displayed.isDisappearing ? 'segment-collapsing' : ''
+            } ${
+              displayed.isReplacing ? 'segment-replacing' : ''
             }`}
             style={{
               width: displayed.measuredWidth !== undefined 
-                ? (displayed.isDisappearing ? '0px' : `${displayed.measuredWidth}px`)
+                ? (displayed.isDisappearing 
+                    ? '0px' 
+                    : displayed.isReplacing && displayed.replacementWidth !== undefined
+                      ? `${displayed.replacementWidth}px`
+                      : `${displayed.measuredWidth}px`)
                 : 'auto',
             }}
           >
             {displayed.segment.type === 'strikethrough' ? (
-              <span
-                className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
-                style={{ whiteSpace: 'pre' }}
-              >
-                {displayed.text}
-              </span>
+              displayed.segment.replacementText && displayed.isReplacing ? (
+                // Replacement: show both old and new text with crossfade
+                <span className="relative inline-block" style={{ whiteSpace: 'pre' }}>
+                  <span className="replacement-fade-out">
+                    {displayed.text}
+                  </span>
+                  <span className="replacement-fade-in absolute top-0 left-0">
+                    {displayed.segment.replacementText}
+                  </span>
+                </span>
+              ) : (
+                // Regular strikethrough or pre-replacement state
+                <span
+                  className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
+                  style={{ whiteSpace: 'pre' }}
+                >
+                  {displayed.text}
+                </span>
+              )
             ) : (
               <span className="inline-block" style={{ whiteSpace: 'pre' }}>{displayed.text}</span>
             )}
