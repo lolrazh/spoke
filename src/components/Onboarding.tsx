@@ -1924,7 +1924,7 @@ const Onboarding: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-center justify-center">
                   {/* Screen outline container */}
-                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-12">
+                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
                     {/* Pill container - positioned at top like real macOS island */}
                     <div className="relative">
                       {/* First ripple */}
