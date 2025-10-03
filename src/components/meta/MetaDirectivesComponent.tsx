@@ -367,10 +367,28 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
 const TricksComponent: React.FC = () => {
   const [selectedTrick, setSelectedTrick] = useState<Trick | null>(tricks[0]);
   const [showCardGlow, setShowCardGlow] = useState(false);
+  const [isAutoCycling, setIsAutoCycling] = useState(true);
 
   const handleTrickClick = (trick: Trick) => {
     setSelectedTrick(trick);
+    setIsAutoCycling(false); // Stop auto-cycling when user manually selects
   };
+
+  // Auto-cycle through examples
+  useEffect(() => {
+    if (!isAutoCycling) return;
+
+    const interval = setInterval(() => {
+      setSelectedTrick(prev => {
+        if (!prev) return tricks[0];
+        const currentIndex = tricks.findIndex(t => t.id === prev.id);
+        const nextIndex = (currentIndex + 1) % tricks.length;
+        return tricks[nextIndex];
+      });
+    }, 6000); // Change every 6 seconds (gives time for animation to complete)
+
+    return () => clearInterval(interval);
+  }, [isAutoCycling]);
 
   const tagVariants = {
     hidden: { opacity: 0, scale: 0.9 },
@@ -413,7 +431,7 @@ const TricksComponent: React.FC = () => {
                 : "meta-directive-tag-inactive"
             }`}
             onClick={() => handleTrickClick(trick)}
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ opacity: 0.8 }}
             whileTap={{ scale: 0.98 }}
             layoutId={`tag-${trick.id}`}
           >

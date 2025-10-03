@@ -1320,13 +1320,13 @@ body {
   }
 
   .meta-directive-tag-active {
-    /* Use btn-primary styling for active state */
+    /* Match hover state styling for consistency */
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg-strong);
+    border: 1px solid var(--stroke-fg-xstrong);
     color: rgba(255, 255, 255, 0.9);
     opacity: 1;
     filter: blur(0px);
-    transform: scale(1.02);
+    transform: translateY(-1px);
   }
 
   /* Smooth transitions for when tags become active/inactive */
