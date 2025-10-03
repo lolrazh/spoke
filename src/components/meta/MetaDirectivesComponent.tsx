@@ -47,6 +47,27 @@ const tricks: Trick[] = [
       { text: '"', type: "insertion" }
     ]
   },
+  {
+    id: "replace",
+    title: "Replace Words",
+    description: "Transform verbose phrases into clean punctuation",
+    segments: [
+      { text: "We're on ", type: "normal" },
+      { text: "Windows", type: "strikethrough", replacementText: "MacOS" },
+      { text: ", dictating. ", type: "normal" },
+      { text: "Wait, replace Windows with MacOS.", type: "strikethrough" }
+    ]
+  },
+  {
+    id: "emphasis",
+    title: "Emphasize Words",
+    description: "Add emphasis to specific words or phrases",
+    segments: [
+      { text: "Okay that was like ", type: "normal" },
+      { text: "really", type: "strikethrough", replacementText: "**really**" },
+      { text: " good.", type: "normal" }
+    ]
+  }
   // Other tricks will be added later
 ];
 
