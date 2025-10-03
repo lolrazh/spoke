@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { MOTION } from "../../config/motionTokens";
 
 interface TextSegment {
   text: string;
@@ -70,6 +71,11 @@ const tricks: Trick[] = [
   // Other tricks will be added later
 ];
 
+const TRANSITION_EASE = [0.25, 0.8, 0.25, 1] as const;
+const EXIT_DURATION_MS = MOTION.durations.standard * 1000;
+const ENTRY_DURATION_MS = MOTION.durations.standard * 1000;
+const POST_ANIMATION_DELAY_MS = 600; // Slight dwell between cycles per UX guidance
+
 // Helper function to split text for smart strikethrough (ignores leading/trailing spaces)
 const splitTextForStrikethrough = (text: string) => {
   const leadingSpaces = text.match(/^(\s*)/)?.[1] || '';
@@ -79,21 +85,43 @@ const splitTextForStrikethrough = (text: string) => {
   return { leadingSpaces, middleContent, trailingSpaces };
 };
 
-const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (show: boolean) => void }> = ({ segments, onSuccessGlow }) => {
+const SegmentTypewriter: React.FC<{
+  segments: TextSegment[];
+  onSuccessGlow?: (show: boolean) => void;
+  onCycleComplete?: () => void;
+}> = ({ segments, onSuccessGlow, onCycleComplete }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [displayedSegments, setDisplayedSegments] = useState<{ 
-    segment: TextSegment; 
-    text: string; 
-    shouldStrike: boolean; 
-    isDisappearing: boolean; 
+  const [displayedSegments, setDisplayedSegments] = useState<{
+    segment: TextSegment;
+    text: string;
+    shouldStrike: boolean;
+    isDisappearing: boolean;
     isReplacing: boolean;
     isInserting: boolean;
-    measuredWidth?: number; 
+    measuredWidth?: number;
     replacementWidth?: number;
   }[]>([]);
   const [isTyping, setIsTyping] = useState(true);
   const segmentRefs = React.useRef<(HTMLSpanElement | null)[]>([]);
+  const triggeredAnimationsRef = React.useRef(false);
+  const completionSignalledRef = React.useRef(false);
+  const timeoutsRef = React.useRef<number[]>([]);
+
+  const clearScheduledTimeouts = React.useCallback(() => {
+    timeoutsRef.current.forEach(timeoutId => window.clearTimeout(timeoutId));
+    timeoutsRef.current = [];
+  }, []);
+
+  const scheduleTimeout = React.useCallback((callback: () => void, delay: number) => {
+    const timeoutId = window.setTimeout(() => {
+      timeoutsRef.current = timeoutsRef.current.filter(id => id !== timeoutId);
+      callback();
+    }, delay);
+
+    timeoutsRef.current.push(timeoutId);
+    return timeoutId;
+  }, []);
 
   // Reset when segments change
   useEffect(() => {
@@ -101,7 +129,15 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
     setCurrentCharIndex(0);
     setDisplayedSegments([]);
     setIsTyping(true);
-  }, [segments]);
+    triggeredAnimationsRef.current = false;
+    completionSignalledRef.current = false;
+    segmentRefs.current = [];
+    clearScheduledTimeouts();
+  }, [segments, clearScheduledTimeouts]);
+
+  useEffect(() => {
+    return () => clearScheduledTimeouts();
+  }, [clearScheduledTimeouts]);
 
   useEffect(() => {
     if (currentSegmentIndex >= segments.length) {
@@ -147,140 +183,156 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
 
   // Trigger strikethrough animation and disappearance after ALL text is finished typing
   useEffect(() => {
-    if (!isTyping && displayedSegments.length === segments.length) {
-      // Find all strikethrough segments
-      const strikethroughIndices = displayedSegments
-        .map((displayed, index) => displayed.segment.type === 'strikethrough' && !displayed.shouldStrike ? index : -1)
-        .filter(index => index !== -1);
-      
-      // Find all insertion segments
-      const insertionIndices = displayedSegments
-        .map((displayed, index) => displayed.segment.type === 'insertion' && !displayed.isInserting ? index : -1)
-        .filter(index => index !== -1);
+    if (isTyping || displayedSegments.length !== segments.length || triggeredAnimationsRef.current) {
+      return;
+    }
 
-      if (strikethroughIndices.length === 0 && insertionIndices.length === 0) return;
+    triggeredAnimationsRef.current = true;
 
-      // Strike all strikethrough segments simultaneously
-      setTimeout(() => {
-        setDisplayedSegments(prev => {
-          const updated = [...prev];
-          strikethroughIndices.forEach(index => {
-            updated[index].shouldStrike = true;
-          });
-          return updated;
-        });
-      }, 500); // Delay after all text is complete
+    // Find all strikethrough segments
+    const strikethroughIndices = displayedSegments
+      .map((displayed, index) => (displayed.segment.type === "strikethrough" && !displayed.shouldStrike ? index : -1))
+      .filter(index => index !== -1);
 
-      // Measure widths and trigger disappearance/replacement
-      setTimeout(() => {
+    // Find all insertion segments
+    const insertionIndices = displayedSegments
+      .map((displayed, index) => (displayed.segment.type === "insertion" && !displayed.isInserting ? index : -1))
+      .filter(index => index !== -1);
+
+    if (strikethroughIndices.length === 0 && insertionIndices.length === 0) {
+      scheduleTimeout(() => {
+        if (!completionSignalledRef.current) {
+          completionSignalledRef.current = true;
+          onCycleComplete?.();
+        }
+      }, 2050);
+      return;
+    }
+
+    // Strike all strikethrough segments simultaneously
+    scheduleTimeout(() => {
+      setDisplayedSegments(prev => {
+        const updated = [...prev];
         strikethroughIndices.forEach(index => {
-          const element = segmentRefs.current[index];
-          if (!element) return;
-
-          const segment = displayedSegments[index].segment;
-          const isReplacement = !!segment.replacementText;
-
-          if (isReplacement) {
-            // For replacement: measure both old and new widths
-            const oldWidth = element.offsetWidth;
-            
-            // Temporarily measure replacement text width
-            const tempSpan = document.createElement('span');
-            tempSpan.style.cssText = window.getComputedStyle(element).cssText;
-            tempSpan.style.visibility = 'hidden';
-            tempSpan.style.position = 'absolute';
-            tempSpan.textContent = segment.replacementText || '';
-            document.body.appendChild(tempSpan);
-            const newWidth = tempSpan.offsetWidth;
-            document.body.removeChild(tempSpan);
-
-            // Set widths and trigger replacement
-            setDisplayedSegments(prev => {
-              const updated = [...prev];
-              updated[index].measuredWidth = oldWidth;
-              updated[index].replacementWidth = newWidth;
-              return updated;
-            });
-
-            // Trigger replacement animation
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                setDisplayedSegments(prev => {
-                  const updated = [...prev];
-                  updated[index].isReplacing = true;
-                  return updated;
-                });
-              });
-            });
-          } else {
-            // For regular removal: measure and collapse
-            const width = element.offsetWidth;
-            
-            setDisplayedSegments(prev => {
-              const updated = [...prev];
-              updated[index].measuredWidth = width;
-              return updated;
-            });
-
-            // Trigger collapse animation
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                setDisplayedSegments(prev => {
-                  const updated = [...prev];
-                  updated[index].isDisappearing = true;
-                  return updated;
-                });
-              });
-            });
-          }
+          updated[index].shouldStrike = true;
         });
+        return updated;
+      });
+    }, 500); // Delay after all text is complete
 
-        // Handle insertions - measure and trigger insertion animation
-        insertionIndices.forEach(index => {
-          const element = segmentRefs.current[index];
-          if (!element) return;
+    // Measure widths and trigger disappearance/replacement
+    scheduleTimeout(() => {
+      strikethroughIndices.forEach(index => {
+        const element = segmentRefs.current[index];
+        if (!element) return;
 
-          const segment = displayedSegments[index].segment;
-          
-          // Temporarily measure insertion text width
-          const tempSpan = document.createElement('span');
+        const segment = displayedSegments[index].segment;
+        const isReplacement = !!segment.replacementText;
+
+        if (isReplacement) {
+          // For replacement: measure both old and new widths
+          const oldWidth = element.offsetWidth;
+
+          // Temporarily measure replacement text width
+          const tempSpan = document.createElement("span");
           tempSpan.style.cssText = window.getComputedStyle(element).cssText;
-          tempSpan.style.visibility = 'hidden';
-          tempSpan.style.position = 'absolute';
-          tempSpan.textContent = segment.text;
+          tempSpan.style.visibility = "hidden";
+          tempSpan.style.position = "absolute";
+          tempSpan.textContent = segment.replacementText || "";
           document.body.appendChild(tempSpan);
-          const insertionWidth = tempSpan.offsetWidth;
+          const newWidth = tempSpan.offsetWidth;
           document.body.removeChild(tempSpan);
 
-          // Set measured width (start from 0, will expand to this)
+          // Set widths and trigger replacement
           setDisplayedSegments(prev => {
             const updated = [...prev];
-            updated[index].measuredWidth = insertionWidth;
+            updated[index].measuredWidth = oldWidth;
+            updated[index].replacementWidth = newWidth;
             return updated;
           });
 
-          // Trigger insertion animation
+          // Trigger replacement animation
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               setDisplayedSegments(prev => {
                 const updated = [...prev];
-                updated[index].isInserting = true;
+                updated[index].isReplacing = true;
                 return updated;
               });
             });
           });
+        } else {
+          // For regular removal: measure and collapse
+          const width = element.offsetWidth;
+
+          setDisplayedSegments(prev => {
+            const updated = [...prev];
+            updated[index].measuredWidth = width;
+            return updated;
+          });
+
+          // Trigger collapse animation
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setDisplayedSegments(prev => {
+                const updated = [...prev];
+                updated[index].isDisappearing = true;
+                return updated;
+              });
+            });
+          });
+        }
+      });
+
+      // Handle insertions - measure and trigger insertion animation
+      insertionIndices.forEach(index => {
+        const element = segmentRefs.current[index];
+        if (!element) return;
+
+        const segment = displayedSegments[index].segment;
+
+        // Temporarily measure insertion text width
+        const tempSpan = document.createElement("span");
+        tempSpan.style.cssText = window.getComputedStyle(element).cssText;
+        tempSpan.style.visibility = "hidden";
+        tempSpan.style.position = "absolute";
+        tempSpan.textContent = segment.text;
+        document.body.appendChild(tempSpan);
+        const insertionWidth = tempSpan.offsetWidth;
+        document.body.removeChild(tempSpan);
+
+        // Set measured width (start from 0, will expand to this)
+        setDisplayedSegments(prev => {
+          const updated = [...prev];
+          updated[index].measuredWidth = insertionWidth;
+          return updated;
         });
-      }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
-      
-      // Trigger success glow after all animations complete
-      setTimeout(() => {
-        onSuccessGlow?.(true);
-        setTimeout(() => {
-          onSuccessGlow?.(false);
-        }, 1000); // Full glow cycle
-      }, 2050); // 1050ms before animations start + 1000ms animation duration
-    }
-  }, [isTyping, displayedSegments, segments, onSuccessGlow]);
+
+        // Trigger insertion animation
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setDisplayedSegments(prev => {
+              const updated = [...prev];
+              updated[index].isInserting = true;
+              return updated;
+            });
+          });
+        });
+      });
+    }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
+
+    // Trigger success glow after all animations complete
+    scheduleTimeout(() => {
+      onSuccessGlow?.(true);
+      scheduleTimeout(() => {
+        onSuccessGlow?.(false);
+        if (!completionSignalledRef.current) {
+          completionSignalledRef.current = true;
+          onCycleComplete?.();
+        }
+      }, 1000); // Full glow cycle
+    }, 2050); // 1050ms before animations start + 1000ms animation duration
+  }, [isTyping, displayedSegments, segments, onSuccessGlow, onCycleComplete, scheduleTimeout]);
 
   return (
     <div className="text-sm leading-relaxed text-white font-sans">
@@ -365,32 +417,104 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
 };
 
 const TricksComponent: React.FC = () => {
-  const [selectedTrick, setSelectedTrick] = useState<Trick | null>(tricks[0]);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [showCardGlow, setShowCardGlow] = useState(false);
-  const [isAutoCycling, setIsAutoCycling] = useState(true);
+  const [cardPhase, setCardPhase] = useState<"entering" | "steady" | "exiting">("entering");
+  const [cycleId, setCycleId] = useState(0);
+  const hoveredIndexRef = React.useRef<number | null>(null);
+  const transitionTimersRef = React.useRef<number[]>([]);
 
-  const handleTrickClick = (trick: Trick) => {
-    setSelectedTrick(trick);
-    setIsAutoCycling(false); // Stop auto-cycling when user manually selects
-    setShowCardGlow(false); // Reset glow state when switching examples
+  const selectedTrick = tricks[activeCardIndex];
+
+  const clearTransitionTimers = React.useCallback(() => {
+    transitionTimersRef.current.forEach(timerId => window.clearTimeout(timerId));
+    transitionTimersRef.current = [];
+  }, []);
+
+  const scheduleTransitionTimeout = React.useCallback((callback: () => void, delay: number) => {
+    const timerId = window.setTimeout(() => {
+      transitionTimersRef.current = transitionTimersRef.current.filter(id => id !== timerId);
+      callback();
+    }, delay);
+    transitionTimersRef.current.push(timerId);
+    return timerId;
+  }, []);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => setCardPhase("steady"), ENTRY_DURATION_MS);
+    return () => window.clearTimeout(timerId);
+  }, []);
+
+  useEffect(() => () => clearTransitionTimers(), [clearTransitionTimers]);
+
+  const beginCardTransition = React.useCallback(
+    (
+      nextIndex: number,
+      options?: { delayBeforeExit?: number; forceRestart?: boolean; immediateHighlight?: boolean }
+    ) => {
+      const { delayBeforeExit = 0, forceRestart = false, immediateHighlight = false } = options || {};
+      const shouldTransitionCard = forceRestart || nextIndex !== activeCardIndex;
+
+      clearTransitionTimers();
+      setShowCardGlow(false);
+
+      const applyHighlight = () => setHighlightedIndex(nextIndex);
+
+      if (immediateHighlight) {
+        applyHighlight();
+      } else if (delayBeforeExit > 0) {
+        scheduleTransitionTimeout(applyHighlight, delayBeforeExit);
+      } else {
+        applyHighlight();
+      }
+
+      if (!shouldTransitionCard) {
+        return;
+      }
+
+      scheduleTransitionTimeout(() => {
+        setCardPhase("exiting");
+
+        scheduleTransitionTimeout(() => {
+          setActiveCardIndex(nextIndex);
+          setCycleId(prev => prev + 1);
+          setCardPhase("entering");
+
+          scheduleTransitionTimeout(() => {
+            setCardPhase("steady");
+          }, ENTRY_DURATION_MS);
+        }, EXIT_DURATION_MS);
+      }, delayBeforeExit);
+    },
+    [activeCardIndex, clearTransitionTimers, scheduleTransitionTimeout]
+  );
+
+  const handleTypewriterComplete = React.useCallback(() => {
+    if (hoveredIndexRef.current !== null) return;
+    const nextIndex = (highlightedIndex + 1) % tricks.length;
+    const willLoopSameIndex = nextIndex === highlightedIndex;
+    beginCardTransition(nextIndex, {
+      delayBeforeExit: POST_ANIMATION_DELAY_MS,
+      forceRestart: willLoopSameIndex,
+    });
+  }, [beginCardTransition, highlightedIndex]);
+
+  const handlePointerEnter = (index: number) => {
+    hoveredIndexRef.current = index;
+    const forceRestart = index === activeCardIndex;
+    beginCardTransition(index, {
+      delayBeforeExit: 0,
+      forceRestart,
+      immediateHighlight: true,
+    });
   };
 
-  // Auto-cycle through examples
-  useEffect(() => {
-    if (!isAutoCycling) return;
-
-    const interval = setInterval(() => {
-      setSelectedTrick(prev => {
-        if (!prev) return tricks[0];
-        const currentIndex = tricks.findIndex(t => t.id === prev.id);
-        const nextIndex = (currentIndex + 1) % tricks.length;
-        setShowCardGlow(false); // Reset glow state when auto-cycling
-        return tricks[nextIndex];
-      });
-    }, 6000); // Change every 6 seconds (gives time for animation to complete)
-
-    return () => clearInterval(interval);
-  }, [isAutoCycling]);
+  const handlePointerLeave = (index: number) => {
+    if (hoveredIndexRef.current === index) {
+      hoveredIndexRef.current = null;
+    }
+  };
 
   const tagVariants = {
     hidden: { opacity: 0, scale: 0.9 },
@@ -398,8 +522,8 @@ const TricksComponent: React.FC = () => {
       opacity: 1,
       scale: 1,
       transition: {
-        duration: 0.3,
-        ease: [0.25, 0.8, 0.25, 1] as const,
+        duration: MOTION.durations.standard,
+        ease: TRANSITION_EASE,
       },
     },
   };
@@ -423,19 +547,20 @@ const TricksComponent: React.FC = () => {
 
       {/* Compact Tag Cloud */}
       <div className="flex flex-wrap justify-center gap-2 mb-8">
-        {tricks.map((trick) => (
+        {tricks.map((trick, index) => (
           <motion.button
             key={trick.id}
             variants={tagVariants}
             className={`meta-directive-tag px-3 py-1.5 ${
-              selectedTrick?.id === trick.id
-                ? "meta-directive-tag-active"
-                : "meta-directive-tag-inactive"
+              highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
             }`}
-            onClick={() => handleTrickClick(trick)}
-            whileHover={{ opacity: 0.8 }}
-            whileTap={{ scale: 0.98 }}
+            type="button"
+            onMouseEnter={() => handlePointerEnter(index)}
+            onMouseLeave={() => handlePointerLeave(index)}
+            onFocus={() => handlePointerEnter(index)}
+            onBlur={() => handlePointerLeave(index)}
             layoutId={`tag-${trick.id}`}
+            whileHover={{ opacity: 0.85 }}
           >
             <span className="font-medium text-xs leading-tight">{trick.title}</span>
           </motion.button>
@@ -445,11 +570,25 @@ const TricksComponent: React.FC = () => {
       {/* Single Streaming Card */}
       {selectedTrick && (
         <div className="w-full flex justify-center px-8">
-          <div className={`card-floating rounded-lg p-4 inline-block transition-all ${showCardGlow ? 'success-container-glow' : ''}`}>
+          <motion.div
+            className={`card-floating rounded-lg p-4 inline-block ${showCardGlow ? "success-container-glow" : ""}`}
+            animate={
+              cardPhase === "exiting"
+                ? { opacity: 0, scale: 0.94 }
+                : { opacity: 1, scale: 1 }
+            }
+            initial={false}
+            transition={{ duration: MOTION.durations.standard, ease: TRANSITION_EASE }}
+          >
             <div className="text-left overflow-x-auto whitespace-nowrap">
-              <SegmentTypewriter key={selectedTrick?.id} segments={selectedTrick.segments} onSuccessGlow={setShowCardGlow} />
+              <SegmentTypewriter
+                key={`${selectedTrick.id}-${cycleId}`}
+                segments={selectedTrick.segments}
+                onSuccessGlow={setShowCardGlow}
+                onCycleComplete={handleTypewriterComplete}
+              />
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </motion.div>
