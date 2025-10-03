@@ -82,6 +82,7 @@ type OnboardingStep =
   | "mic-check"
   | "hotkey-info"
   | "hotkey-test"
+  | "hands-free-test"
   | "edit-test"
   | "meta-directives"
   | "cancel-info"
@@ -539,6 +540,7 @@ const Onboarding: React.FC = () => {
     "mic-check",
     "hotkey-info",
     "hotkey-test",
+    "hands-free-test",
     "edit-test",
     "cancel-info",
     "meta-directives",
@@ -763,7 +765,7 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       // Reset Option key visual state when leaving hotkey pages
-      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test" || currentStep === "hands-free-test") {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex + 1]);
@@ -775,17 +777,17 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       // Reset Option key visual state when leaving hotkey pages
-      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test" || currentStep === "hands-free-test") {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex - 1]);
     }
   };
 
-  // Prepare the pill (create main window + tray) when entering either hotkey test step
+  // Prepare the pill (create main window + tray) when entering test steps
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if ((currentStep === "hotkey-test" || currentStep === "edit-test") && !pillPreparedRef.current) {
+    if ((currentStep === "hotkey-test" || currentStep === "hands-free-test" || currentStep === "edit-test") && !pillPreparedRef.current) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -797,7 +799,7 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (currentStep === "hotkey-test" || currentStep === "edit-test") {
+    if (currentStep === "hotkey-test" || currentStep === "hands-free-test" || currentStep === "edit-test") {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try { (window.electron as any)?.revealPillForTest?.(); } catch {}
@@ -952,7 +954,7 @@ const Onboarding: React.FC = () => {
 
   // Auto-focus the text box on test steps for better UX
   useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "edit-test") return;
+    if (currentStep !== "hotkey-test" && currentStep !== "hands-free-test" && currentStep !== "edit-test") return;
     const id = setTimeout(() => {
       textAreaRef.current?.focus();
     }, 50);
@@ -1045,9 +1047,9 @@ const Onboarding: React.FC = () => {
     currentStep !== "complete" &&
     (currentStep !== "auth" || Boolean(signedInAccount));
 
-  // --- Dictation test wiring for Hotkey step ---
+  // --- Dictation test wiring for test steps ---
   useEffect(() => {
-    if (currentStep === "hotkey-test") {
+    if (currentStep === "hotkey-test" || currentStep === "hands-free-test") {
       setTestText("");
     } else if (currentStep === "edit-test") {
       setTestTextTap(sampleEditText);
@@ -1741,7 +1743,52 @@ const Onboarding: React.FC = () => {
                   <div className="space-y-3">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
-                      Try saying: "I wanna fix app.py and test.py. Add at symbols before the file names."
+                      Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
+                    </div>
+
+                    {/* Dictation Textarea */}
+                    <div className="onboarding-content-gap">
+                      {/* removed the small label above the textarea */}
+                      <textarea
+                        className={
+                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                        }
+                        placeholder="Say something…"
+                        value={testText}
+                        onChange={(e) => setTestText(e.target.value)}
+                        ref={textAreaRef}
+                      />
+                    </div>
+
+                    {/* No CTA here; proceed with Next to the completion screen */}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Hands-Free Test Step */}
+            {currentStep === "hands-free-test" && (
+              <motion.div
+                key="hands-free-test"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center overflow-hidden"
+              >
+                <div className="max-w-xl mx-auto text-left">
+                  <div className="text-center heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Let's Try Hands-Free Mode
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Double tap the hotkey to start dictation. Tap again to stop.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {/* Sample hint as tertiary text for improved hierarchy */}
+                    <div className="text-[11px] text-dimmed text-left">
+                      Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
                     </div>
 
                     {/* Dictation Textarea */}
@@ -1932,7 +1979,7 @@ const Onboarding: React.FC = () => {
             )}
 
             {/* Next button appears consistently; permissions step still gated */}
-            {currentStep !== "hotkey-test" ? (
+            {currentStep !== "hotkey-test" && currentStep !== "hands-free-test" ? (
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -1949,7 +1996,13 @@ const Onboarding: React.FC = () => {
             ) : (
               <Button
                 variant="secondary"
-                onClick={() => setCurrentStep("edit-test")}
+                onClick={() => {
+                  if (currentStep === "hotkey-test") {
+                    setCurrentStep("hands-free-test");
+                  } else if (currentStep === "hands-free-test") {
+                    setCurrentStep("edit-test");
+                  }
+                }}
                 className="px-3 py-1.5"
               >
                 Next
