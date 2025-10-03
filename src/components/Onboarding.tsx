@@ -86,6 +86,7 @@ type OnboardingStep =
   | "edit-test"
   | "meta-directives"
   | "cancel-info"
+  | "settings-info"
   | "complete";
 
 type AccountSummary = {
@@ -544,6 +545,7 @@ const Onboarding: React.FC = () => {
     "edit-test",
     "cancel-info",
     "meta-directives",
+    "settings-info",
     "complete",
   ];
 
@@ -1898,6 +1900,88 @@ const Onboarding: React.FC = () => {
                     </div>
                     <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Settings Info Step */}
+            {currentStep === "settings-info" && (
+              <motion.div
+                key="settings-info"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Quick Access to Settings
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Double-click the island anytime to open settings.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center justify-center mt-8">
+                  {/* Screen outline container */}
+                  <div className="relative w-[320px] h-[200px] rounded-2xl border-2 border-white/10 flex items-center justify-center">
+                    {/* Pill container - centered */}
+                    <div className="relative flex items-center justify-center">
+                      {/* First ripple */}
+                      <motion.div
+                        className="absolute inset-0 rounded-full border-2 border-white/30"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{
+                          scale: [0.8, 2.5],
+                          opacity: [0.6, 0],
+                        }}
+                        transition={{
+                          duration: 0.8,
+                          ease: "easeOut",
+                          repeat: Infinity,
+                          repeatDelay: 1.2,
+                        }}
+                        style={{ width: "80px", height: "40px" }}
+                      />
+                      {/* Second ripple */}
+                      <motion.div
+                        className="absolute inset-0 rounded-full border-2 border-white/30"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{
+                          scale: [0.8, 2.5],
+                          opacity: [0.6, 0],
+                        }}
+                        transition={{
+                          duration: 0.8,
+                          ease: "easeOut",
+                          delay: 0.15,
+                          repeat: Infinity,
+                          repeatDelay: 1.2,
+                        }}
+                        style={{ width: "80px", height: "40px" }}
+                      />
+                      {/* Pill shape */}
+                      <motion.div
+                        className="relative rounded-full bg-white/5 border border-white/20 backdrop-blur-sm"
+                        initial={{ width: "80px", height: "40px" }}
+                        animate={{
+                          width: ["80px", "80px", "160px"],
+                          height: ["40px", "40px", "80px"],
+                        }}
+                        transition={{
+                          duration: 0.6,
+                          ease: [0.25, 0.8, 0.25, 1],
+                          times: [0, 0.7, 1],
+                          delay: 1.0,
+                          repeat: Infinity,
+                          repeatDelay: 1.2,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <p className="onboarding-note mt-6">
+                    Customize hotkeys, audio devices, and more.
+                  </p>
                 </div>
               </motion.div>
             )}
