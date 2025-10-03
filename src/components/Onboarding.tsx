@@ -1922,9 +1922,9 @@ const Onboarding: React.FC = () => {
                     Double-click the island anytime to open settings.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center mt-8">
+                <div className="flex flex-col items-center justify-center">
                   {/* Screen outline container */}
-                  <div className="relative w-[320px] h-[200px] rounded-2xl border-2 border-white/10 flex items-center justify-center">
+                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-center justify-center">
                     {/* Pill container - centered */}
                     <div className="relative flex items-center justify-center">
                       {/* First ripple */}
@@ -1979,9 +1979,6 @@ const Onboarding: React.FC = () => {
                       />
                     </div>
                   </div>
-                  <p className="onboarding-note mt-6">
-                    Customize hotkeys, audio devices, and more.
-                  </p>
                 </div>
               </motion.div>
             )}
