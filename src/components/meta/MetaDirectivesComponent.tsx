@@ -70,6 +70,15 @@ const tricks: Trick[] = [
   // Other tricks will be added later
 ];
 
+// Helper function to split text for smart strikethrough (ignores leading/trailing spaces)
+const splitTextForStrikethrough = (text: string) => {
+  const leadingSpaces = text.match(/^(\s*)/)?.[1] || '';
+  const trailingSpaces = text.match(/(\s*)$/)?.[1] || '';
+  const middleContent = text.slice(leadingSpaces.length, text.length - trailingSpaces.length);
+
+  return { leadingSpaces, middleContent, trailingSpaces };
+};
+
 const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (show: boolean) => void }> = ({ segments, onSuccessGlow }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
@@ -313,13 +322,31 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
                   </span>
                 </span>
               ) : (
-                // Regular strikethrough or pre-replacement state
-                <span
-                  className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
-                  style={{ whiteSpace: 'pre' }}
-                >
-                  {displayed.text}
-                </span>
+                // Regular strikethrough or pre-replacement state - Smart split rendering
+                (() => {
+                  const { leadingSpaces, middleContent, trailingSpaces } = splitTextForStrikethrough(displayed.text);
+                  return (
+                    <span className="inline-block" style={{ whiteSpace: 'pre' }}>
+                      {leadingSpaces && (
+                        <span className={`inline-block ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}>
+                          {leadingSpaces}
+                        </span>
+                      )}
+                      {middleContent && (
+                        <span
+                          className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
+                        >
+                          {middleContent}
+                        </span>
+                      )}
+                      {trailingSpaces && (
+                        <span className={`inline-block ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}>
+                          {trailingSpaces}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()
               )
             ) : displayed.segment.type === 'insertion' ? (
               // Insertion: fade in from invisible
