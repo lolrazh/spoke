@@ -107,7 +107,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
             >
               <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                So Good You'll Want To Lick It.
+                So Good You'll Want to Lick It
               </h1>
               <p className="text-sm text-subtle leading-relaxed">
                 Let's get you set up for blazing fast dictation.

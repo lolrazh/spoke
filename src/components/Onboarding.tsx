@@ -1234,7 +1234,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    {signedInAccount ? "You're signed in" : "Let's get you signed in"}
+                    {signedInAccount ? "You're Signed In" : "Let's Get You Signed In"}
                   </h1>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     {signedInAccount
@@ -1337,7 +1337,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Hotkey is the Right Option Key
+                    Your Hotkey Is the Right Option Key
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     Press your Right Option key now to test it.
@@ -1380,7 +1380,7 @@ const Onboarding: React.FC = () => {
                     Enable Required Permissions
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Sonic Flow needs these macOS permissions to work.
+                    Sonic Flow needs these permissions to work.
                   </p>
                 </div>
 
@@ -1780,7 +1780,7 @@ const Onboarding: React.FC = () => {
                       Let's Try Edit Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Select the text, then hold the hotkey and give it instructions.
+                      Select the text, hold the hotkey and give it instructions.
                     </p>
                   </div>
                   <div className="space-y-3">
@@ -1833,10 +1833,10 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Cancel Key is the Right Command Key
+                    Your Cancel Key Is the Right Command Key
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    Press Right Command to cancel dictation.
+                    Press your Right Command key now to test it.
                   </p>
                 </div>
                 <div className="space-y-4">

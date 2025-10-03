@@ -539,7 +539,7 @@ const TricksComponent: React.FC = () => {
       {/* Header */}
       <div className="heading-stack">
         <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-          Some More Tricks You Can Try
+          More Tricks to Try
         </h2>
         <p className="text-sm text-subtle leading-relaxed subheading">
           These commands make Sonic Flow feel like magic.
