@@ -17,7 +17,7 @@ interface Trick {
 const tricks: Trick[] = [
   {
     id: "correction",
-    title: "Quick Correction",
+    title: "Quick Corrections",
     description: "Fix mistakes by saying what you actually meant",
     segments: [
       { text: "I need it by ", type: "normal" },
@@ -27,7 +27,7 @@ const tricks: Trick[] = [
   },
   {
     id: "spelling",
-    title: "Spelling Mode",
+    title: "Spelling Words",
     description: "Spell out words exactly as you want them",
     segments: [
       { text: "Have you seen Google's new G", type: "normal" },
@@ -397,7 +397,7 @@ const TricksComponent: React.FC = () => {
           Some More Tricks You Can Try
         </h2>
         <p className="text-sm text-subtle leading-relaxed subheading">
-          These commands make dictating with Sonic Flow incredibly powerful.
+          These commands make Sonic Flow feel like magic.
         </p>
       </div>
 
