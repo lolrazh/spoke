@@ -1980,17 +1980,15 @@ const Onboarding: React.FC = () => {
                         }}
                         initial={{ width: "35px", height: "3px" }}
                         animate={{
-                          width: ["35px", "35px", "100px"],
-                          height: ["3px", "3px", "117px"],
-                          borderRadius: ["1.5px", "1.5px", "4px"],
+                          width: ["35px", "100px", "100px", "35px"],
+                          height: ["3px", "117px", "117px", "3px"],
+                          borderRadius: ["1.5px", "4px", "4px", "1.5px"],
                         }}
                         transition={{
-                          duration: 0.6,
+                          duration: 2.5,
                           ease: [0.25, 0.8, 0.25, 1],
-                          times: [0, 0.7, 1],
-                          delay: 1.0,
+                          times: [0, 0.2, 0.6, 0.8], // Expand at 0-0.5s, hold 0.5-1.5s, contract 1.5-2s, pause 2-2.5s
                           repeat: Infinity,
-                          repeatDelay: 1.2,
                         }}
                       />
                     </div>
