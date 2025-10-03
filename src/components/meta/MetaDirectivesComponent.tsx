@@ -560,7 +560,6 @@ const TricksComponent: React.FC = () => {
             onFocus={() => handlePointerEnter(index)}
             onBlur={() => handlePointerLeave(index)}
             layoutId={`tag-${trick.id}`}
-            whileHover={{ opacity: 0.85 }}
           >
             <span className="font-medium text-xs leading-tight">{trick.title}</span>
           </motion.button>

@@ -540,8 +540,8 @@ const Onboarding: React.FC = () => {
     "hotkey-info",
     "hotkey-test",
     "edit-test",
-    "meta-directives",
     "cancel-info",
+    "meta-directives",
     "complete",
   ];
 

@@ -1306,31 +1306,19 @@ body {
     transition: all var(--duration-standard) var(--ease-standard);
   }
 
-  .meta-directive-tag:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg-xstrong);
-    color: rgba(255, 255, 255, 0.8);
-    transform: translateY(-1px);
-  }
-
   .meta-directive-tag-inactive {
     opacity: 0.6;
     filter: blur(0.3px);
     transition: all var(--duration-standard) var(--ease-standard);
   }
 
-  .meta-directive-tag-active {
-    /* Match hover state styling for consistency */
+  .meta-directive-tag-active,
+  .meta-directive-tag:hover,
+  .meta-directive-tag:focus-visible,
+  .meta-directive-tag-inactive:hover {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     border: 1px solid var(--stroke-fg-xstrong);
     color: rgba(255, 255, 255, 0.9);
-    opacity: 1;
-    filter: blur(0px);
-    transform: translateY(-1px);
-  }
-
-  /* Smooth transitions for when tags become active/inactive */
-  .meta-directive-tag-inactive:hover {
     opacity: 1;
     filter: blur(0px);
     transform: translateY(-1px);
