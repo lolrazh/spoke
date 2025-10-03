@@ -1930,46 +1930,67 @@ const Onboarding: React.FC = () => {
                       {/* First ripple */}
                       <motion.div
                         className="absolute rounded-full border-2 border-white/30"
-                        style={{ 
-                          width: "35px", 
-                          height: "35px",
+                        style={{
+                          width: "26px",
+                          height: "26px",
                           top: "50%",
                           left: "50%",
-                          transform: "translate(-50%, -50%)"
+                          transform: "translate(-50%, -50%)",
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
-                          scale: [0.8, 2.5],
-                          opacity: [0.6, 0],
+                          scale: [0.75, 1.6, 2.05, 0.75, 0.75],
+                          opacity: [0, 0.65, 0.25, 0, 0],
                         }}
                         transition={{
-                          duration: 0.8,
+                          duration: 3,
                           ease: "easeOut",
+                          times: [0, 0.046, 0.116, 0.2, 1],
                           repeat: Infinity,
-                          repeatDelay: 1.2,
                         }}
                       />
                       {/* Second ripple */}
                       <motion.div
                         className="absolute rounded-full border-2 border-white/30"
-                        style={{ 
-                          width: "35px", 
-                          height: "35px",
+                        style={{
+                          width: "26px",
+                          height: "26px",
                           top: "50%",
                           left: "50%",
-                          transform: "translate(-50%, -50%)"
+                          transform: "translate(-50%, -50%)",
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
-                          scale: [0.8, 2.5],
-                          opacity: [0.6, 0],
+                          scale: [0.75, 0.75, 1.7, 2.1, 0.75, 0.75],
+                          opacity: [0, 0, 0.65, 0.25, 0, 0],
                         }}
                         transition={{
-                          duration: 0.8,
+                          duration: 3,
                           ease: "easeOut",
-                          delay: 0.15,
+                          times: [0, 0.06, 0.106, 0.17, 0.23, 1],
                           repeat: Infinity,
-                          repeatDelay: 1.2,
+                        }}
+                      />
+                      {/* Close tap ripple */}
+                      <motion.div
+                        className="absolute rounded-full border-2 border-white/30"
+                        style={{
+                          width: "30px",
+                          height: "30px",
+                          top: "calc(100% - 14px)",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{
+                          scale: [0.8, 0.8, 2.6, 2.6, 0.8],
+                          opacity: [0, 0, 0.5, 0, 0],
+                        }}
+                        transition={{
+                          duration: 3,
+                          ease: "linear",
+                          times: [0, 0.44, 0.49, 0.5, 1],
+                          repeat: Infinity,
                         }}
                       />
                       {/* Pill shape - single stroke line that expands to settings */}
@@ -1980,14 +2001,14 @@ const Onboarding: React.FC = () => {
                         }}
                         initial={{ width: "35px", height: "3px" }}
                         animate={{
-                          width: ["35px", "100px", "100px", "35px"],
-                          height: ["3px", "117px", "117px", "3px"],
-                          borderRadius: ["1.5px", "4px", "4px", "1.5px"],
+                          width: ["35px", "35px", "100px", "100px", "35px"],
+                          height: ["3px", "3px", "117px", "117px", "3px"],
+                          borderRadius: ["1.5px", "1.5px", "4px", "4px", "1.5px"],
                         }}
                         transition={{
                           duration: 3.0,
                           ease: [0.25, 0.8, 0.25, 1],
-                          times: [0, 0.17, 0.5, 0.67], // Expand at 0-0.5s, hold 0.5-2s, contract 2-2.5s, hold 2.5-4s (equal time in both states)
+                          times: [0, 0.17, 0.33, 0.5, 0.67], // Hold at rest, expand, hold expanded, contract, hold resting
                           repeat: Infinity,
                         }}
                       />
