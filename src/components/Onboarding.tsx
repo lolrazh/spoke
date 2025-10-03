@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
+import TricksComponent from "./meta/MetaDirectivesComponent";
 import {
   getSupabase,
   getGoogleOAuthUrl,
@@ -82,6 +83,7 @@ type OnboardingStep =
   | "hotkey-info"
   | "hotkey-test"
   | "edit-test"
+  | "meta-directives"
   | "cancel-info"
   | "complete";
 
@@ -539,6 +541,7 @@ const Onboarding: React.FC = () => {
     "hotkey-test",
     "edit-test",
     "cancel-info",
+    "meta-directives",
     "complete",
   ];
 
@@ -1674,7 +1677,7 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Let’s check your microphone
+                    Let’s Check Your Microphone
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
                     Pick the right input and say a few words. The bars should bounce.
@@ -1729,7 +1732,7 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's try Push-to-Talk Mode
+                      Let's Try Push-to-Talk Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       Hold the hotkey to start dictation. Release to stop.
@@ -1774,7 +1777,7 @@ const Onboarding: React.FC = () => {
                 <div className="max-w-xl mx-auto text-left">
                   <div className="text-center heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's try Edit Mode
+                      Let's Try Edit Mode
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       Select the text, then hold the hotkey and give it instructions.
@@ -1801,6 +1804,20 @@ const Onboarding: React.FC = () => {
 
                   </div>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Meta-Directives Step */}
+            {currentStep === "meta-directives" && (
+              <motion.div
+                key="meta-directives"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <TricksComponent />
               </motion.div>
             )}
 

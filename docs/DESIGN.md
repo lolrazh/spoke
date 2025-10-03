@@ -621,11 +621,11 @@ export const MOTION = {
 }
 ```
 
-**Pulse Animation** (Active states):
+**Pill Wave Animation** (Active states):
 ```css
-@keyframes pulse {
+@keyframes pill-wave {
   0%, 100% {
-    height: 3px;
+    height: 5px;
     opacity: 0.7;
   }
   50% {
