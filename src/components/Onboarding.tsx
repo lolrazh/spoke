@@ -1985,9 +1985,9 @@ const Onboarding: React.FC = () => {
                           borderRadius: ["1.5px", "4px", "4px", "1.5px"],
                         }}
                         transition={{
-                          duration: 2.5,
+                          duration: 3.0,
                           ease: [0.25, 0.8, 0.25, 1],
-                          times: [0, 0.2, 0.6, 0.8], // Expand at 0-0.5s, hold 0.5-1.5s, contract 1.5-2s, pause 2-2.5s
+                          times: [0, 0.17, 0.5, 0.67], // Expand at 0-0.5s, hold 0.5-2s, contract 2-2.5s, hold 2.5-4s (equal time in both states)
                           repeat: Infinity,
                         }}
                       />
