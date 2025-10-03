@@ -65,7 +65,8 @@ const tricks: Trick[] = [
     segments: [
       { text: "Okay that was like", type: "normal" },
       { text: " really ", type: "strikethrough", replacementText: " **really** " },
-      { text: "good.", type: "normal" }
+      { text: "good.", type: "normal" },
+      { text: " Emphasize really ", type: "strikethrough" }
     ]
   }
   // Other tricks will be added later
