@@ -1,7 +1,7 @@
 # Onboarding Settings Page Implementation
 
 **Date:** 2025-01-21  
-**Agent:** factory-droid[bot]  
+**Agent:** Droid (GLM 4.6)
 **Status:** ✅ Completed  
 
 ## User Intention
