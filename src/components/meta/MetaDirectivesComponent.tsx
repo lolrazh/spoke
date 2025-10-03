@@ -32,8 +32,8 @@ const tricks: Trick[] = [
     segments: [
       { text: "Have you seen Google's new G", type: "normal" },
       { text: "a", type: "strikethrough", replacementText: "e" },
-      { text: "mma model? ", type: "normal" },
-      { text: "Spell that G-E-M-M-A.", type: "strikethrough" }
+      { text: "mma model?", type: "normal" },
+      { text: " Spell that G-E-M-M-A.", type: "strikethrough" },
     ]
   },
   {
@@ -50,12 +50,11 @@ const tricks: Trick[] = [
   {
     id: "replace",
     title: "Replace Words",
-    description: "Transform verbose phrases into clean punctuation",
+    description: "Change specific words or phrases instantly",
     segments: [
-      { text: "We're on ", type: "normal" },
-      { text: "Windows", type: "strikethrough", replacementText: "MacOS" },
-      { text: ", dictating. ", type: "normal" },
-      { text: "Wait, replace Windows with MacOS.", type: "strikethrough" }
+      { text: "Now we're dictating on ", type: "normal" },
+      { text: "Windows. Wait, replace Windows with ", type: "strikethrough" },
+      { text: "MacOS", type: "normal" }
     ]
   },
   {
@@ -63,9 +62,9 @@ const tricks: Trick[] = [
     title: "Emphasize Words",
     description: "Add emphasis to specific words or phrases",
     segments: [
-      { text: "Okay that was like ", type: "normal" },
-      { text: "really", type: "strikethrough", replacementText: "**really**" },
-      { text: " good.", type: "normal" }
+      { text: "Okay that was like", type: "normal" },
+      { text: " really ", type: "strikethrough", replacementText: " **really** " },
+      { text: "good.", type: "normal" }
     ]
   }
   // Other tricks will be added later
