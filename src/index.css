@@ -545,6 +545,26 @@
   .segment-replacing {
     transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
   }
+  
+  /* Insertion animations - materialize from nothing */
+  @keyframes insertion-fade-in {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  
+  .insertion-fade-in {
+    animation: insertion-fade-in 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+    display: inline-block;
+  }
+  
+  /* Segment width transition for insertions */
+  .segment-inserting {
+    transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+  }
 
   /* Collapsed state dots - smaller size but maintain the same spacing */
   .dot.collapsed {

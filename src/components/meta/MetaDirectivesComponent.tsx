@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 
 interface TextSegment {
   text: string;
-  type: 'normal' | 'strikethrough';
+  type: 'normal' | 'strikethrough' | 'insertion';
   replacementText?: string; // For character-level replacements (e.g., 'a' -> 'e')
 }
 
@@ -30,10 +30,21 @@ const tricks: Trick[] = [
     title: "Spelling Mode",
     description: "Spell out words exactly as you want them",
     segments: [
-      { text: "Have you seen Google's new model Gamm", type: "normal" },
+      { text: "Have you seen Google's new G", type: "normal" },
       { text: "a", type: "strikethrough", replacementText: "e" },
-      { text: "? ", type: "normal" },
+      { text: "mma model? ", type: "normal" },
       { text: "Spell that G-E-M-M-A.", type: "strikethrough" }
+    ]
+  },
+  {
+    id: "quotes",
+    title: "Add Quotes",
+    description: "Transform verbose phrases into clean punctuation",
+    segments: [
+      { text: "They said I was ", type: "normal" },
+      { text: "quote-unquote ", type: "strikethrough", replacementText: '"' },
+      { text: "lucky.", type: "normal" },
+      { text: '"', type: "insertion" }
     ]
   },
   // Other tricks will be added later
@@ -47,7 +58,8 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
     text: string; 
     shouldStrike: boolean; 
     isDisappearing: boolean; 
-    isReplacing: boolean; 
+    isReplacing: boolean;
+    isInserting: boolean;
     measuredWidth?: number; 
     replacementWidth?: number;
   }[]>([]);
@@ -84,7 +96,8 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
               text: newChar, 
               shouldStrike: false, 
               isDisappearing: false,
-              isReplacing: false
+              isReplacing: false,
+              isInserting: false
             });
           } else {
             updated[currentSegmentIndex].text += newChar;
@@ -110,8 +123,13 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
       const strikethroughIndices = displayedSegments
         .map((displayed, index) => displayed.segment.type === 'strikethrough' && !displayed.shouldStrike ? index : -1)
         .filter(index => index !== -1);
+      
+      // Find all insertion segments
+      const insertionIndices = displayedSegments
+        .map((displayed, index) => displayed.segment.type === 'insertion' && !displayed.isInserting ? index : -1)
+        .filter(index => index !== -1);
 
-      if (strikethroughIndices.length === 0) return;
+      if (strikethroughIndices.length === 0 && insertionIndices.length === 0) return;
 
       // Strike all strikethrough segments simultaneously
       setTimeout(() => {
@@ -187,6 +205,42 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
             });
           }
         });
+
+        // Handle insertions - measure and trigger insertion animation
+        insertionIndices.forEach(index => {
+          const element = segmentRefs.current[index];
+          if (!element) return;
+
+          const segment = displayedSegments[index].segment;
+          
+          // Temporarily measure insertion text width
+          const tempSpan = document.createElement('span');
+          tempSpan.style.cssText = window.getComputedStyle(element).cssText;
+          tempSpan.style.visibility = 'hidden';
+          tempSpan.style.position = 'absolute';
+          tempSpan.textContent = segment.text;
+          document.body.appendChild(tempSpan);
+          const insertionWidth = tempSpan.offsetWidth;
+          document.body.removeChild(tempSpan);
+
+          // Set measured width (start from 0, will expand to this)
+          setDisplayedSegments(prev => {
+            const updated = [...prev];
+            updated[index].measuredWidth = insertionWidth;
+            return updated;
+          });
+
+          // Trigger insertion animation
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setDisplayedSegments(prev => {
+                const updated = [...prev];
+                updated[index].isInserting = true;
+                return updated;
+              });
+            });
+          });
+        });
       }, 1050); // 500ms delay + 250ms strikethrough + 300ms tiny pause
       
       // Trigger success glow after all animations complete
@@ -210,6 +264,8 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
               displayed.isDisappearing ? 'segment-collapsing' : ''
             } ${
               displayed.isReplacing ? 'segment-replacing' : ''
+            } ${
+              displayed.isInserting ? 'segment-inserting' : ''
             }`}
             style={{
               width: displayed.measuredWidth !== undefined 
@@ -217,8 +273,12 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
                     ? '0px' 
                     : displayed.isReplacing && displayed.replacementWidth !== undefined
                       ? `${displayed.replacementWidth}px`
-                      : `${displayed.measuredWidth}px`)
-                : 'auto',
+                      : displayed.isInserting
+                        ? `${displayed.measuredWidth}px`
+                        : `${displayed.measuredWidth}px`)
+                : displayed.segment.type === 'insertion' && !displayed.isInserting
+                  ? '0px'
+                  : 'auto',
             }}
           >
             {displayed.segment.type === 'strikethrough' ? (
@@ -241,6 +301,11 @@ const SegmentTypewriter: React.FC<{ segments: TextSegment[]; onSuccessGlow?: (sh
                   {displayed.text}
                 </span>
               )
+            ) : displayed.segment.type === 'insertion' ? (
+              // Insertion: fade in from invisible
+              <span className={`inline-block ${displayed.isInserting ? 'insertion-fade-in' : ''}`} style={{ whiteSpace: 'pre', opacity: displayed.isInserting ? undefined : 0 }}>
+                {displayed.text}
+              </span>
             ) : (
               <span className="inline-block" style={{ whiteSpace: 'pre' }}>{displayed.text}</span>
             )}
