@@ -372,6 +372,7 @@ const TricksComponent: React.FC = () => {
   const handleTrickClick = (trick: Trick) => {
     setSelectedTrick(trick);
     setIsAutoCycling(false); // Stop auto-cycling when user manually selects
+    setShowCardGlow(false); // Reset glow state when switching examples
   };
 
   // Auto-cycle through examples
@@ -383,6 +384,7 @@ const TricksComponent: React.FC = () => {
         if (!prev) return tricks[0];
         const currentIndex = tricks.findIndex(t => t.id === prev.id);
         const nextIndex = (currentIndex + 1) % tricks.length;
+        setShowCardGlow(false); // Reset glow state when auto-cycling
         return tricks[nextIndex];
       });
     }, 6000); // Change every 6 seconds (gives time for animation to complete)
@@ -445,7 +447,7 @@ const TricksComponent: React.FC = () => {
         <div className="w-full flex justify-center px-8">
           <div className={`card-floating rounded-lg p-4 inline-block transition-all ${showCardGlow ? 'success-container-glow' : ''}`}>
             <div className="text-left overflow-x-auto whitespace-nowrap">
-              <SegmentTypewriter segments={selectedTrick.segments} onSuccessGlow={setShowCardGlow} />
+              <SegmentTypewriter key={selectedTrick?.id} segments={selectedTrick.segments} onSuccessGlow={setShowCardGlow} />
             </div>
           </div>
         </div>
