@@ -1924,12 +1924,19 @@ const Onboarding: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-center justify-center">
                   {/* Screen outline container */}
-                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-center justify-center">
-                    {/* Pill container - centered */}
-                    <div className="relative flex items-center justify-center">
+                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-12">
+                    {/* Pill container - positioned at top like real macOS island */}
+                    <div className="relative">
                       {/* First ripple */}
                       <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-white/30"
+                        className="absolute rounded-full border-2 border-white/30"
+                        style={{ 
+                          width: "35px", 
+                          height: "35px",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)"
+                        }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.8, 2.5],
@@ -1941,11 +1948,17 @@ const Onboarding: React.FC = () => {
                           repeat: Infinity,
                           repeatDelay: 1.2,
                         }}
-                        style={{ width: "80px", height: "40px" }}
                       />
                       {/* Second ripple */}
                       <motion.div
-                        className="absolute inset-0 rounded-full border-2 border-white/30"
+                        className="absolute rounded-full border-2 border-white/30"
+                        style={{ 
+                          width: "35px", 
+                          height: "35px",
+                          top: "50%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)"
+                        }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.8, 2.5],
@@ -1958,15 +1971,18 @@ const Onboarding: React.FC = () => {
                           repeat: Infinity,
                           repeatDelay: 1.2,
                         }}
-                        style={{ width: "80px", height: "40px" }}
                       />
-                      {/* Pill shape */}
+                      {/* Pill shape - single stroke line that expands to settings */}
                       <motion.div
-                        className="relative rounded-full bg-white/5 border border-white/20 backdrop-blur-sm"
-                        initial={{ width: "80px", height: "40px" }}
+                        className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
+                        style={{
+                          borderRadius: "1.5px",
+                        }}
+                        initial={{ width: "35px", height: "3px" }}
                         animate={{
-                          width: ["80px", "80px", "160px"],
-                          height: ["40px", "40px", "80px"],
+                          width: ["35px", "35px", "100px"],
+                          height: ["3px", "3px", "117px"],
+                          borderRadius: ["1.5px", "1.5px", "4px"],
                         }}
                         transition={{
                           duration: 0.6,
