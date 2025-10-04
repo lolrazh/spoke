@@ -1933,7 +1933,7 @@ const Onboarding: React.FC = () => {
                         style={{
                           width: "24px",
                           height: "24px",
-                          top: "calc(50% - 6px)",
+                          top: "calc(50% - 9px)",
                           left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
                         }}
@@ -1955,7 +1955,7 @@ const Onboarding: React.FC = () => {
                         style={{
                           width: "24px",
                           height: "24px",
-                          top: "calc(50% - 6px)",
+                          top: "calc(50% - 9px)",
                           left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
                         }}
@@ -1973,23 +1973,23 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Close tap ripple */}
                       <motion.div
-                        className="absolute rounded-full border border-white/40"
+                        className="absolute rounded-full border border-white/50"
                         style={{
-                          width: "28px",
-                          height: "28px",
-                          top: "calc(100% - 18px)",
+                          width: "24px",
+                          height: "24px",
+                          top: "calc(100% - 19px)",
                           left: "calc(50% - 4px)",
                           transform: "translate(-50%, -50%)",
                         }}
-                        initial={{ scale: 0.8, opacity: 0 }}
+                        initial={{ scale: 0.75, opacity: 0 }}
                         animate={{
-                          scale: [0.8, 0.8, 2.6, 2.6, 0.8],
-                          opacity: [0, 0, 0.5, 0, 0],
+                          scale: [0.75, 0.75, 0.75, 1.6, 2.05, 0.75],
+                          opacity: [0, 0, 0, 0.65, 0.2, 0],
                         }}
                         transition={{
                           duration: 3,
-                          ease: "linear",
-                          times: [0, 0.44, 0.49, 0.5, 1],
+                          ease: "easeOut",
+                          times: [0, 0.44, 0.48, 0.5, 0.54, 1],
                           repeat: Infinity,
                         }}
                       />
