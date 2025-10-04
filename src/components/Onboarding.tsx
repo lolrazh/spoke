@@ -1929,7 +1929,7 @@ const Onboarding: React.FC = () => {
                     <div className="relative">
                       {/* First ripple */}
                       <motion.div
-                        className="absolute rounded-full border-[1.5px] border-white/80"
+                        className="absolute rounded-full border border-white/35"
                         style={{
                           width: "24px",
                           height: "24px",
@@ -1942,7 +1942,7 @@ const Onboarding: React.FC = () => {
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.75, 1.6, 2.05, 0.75, 0.75],
-                          opacity: [0, 0.85, 0.15, 0, 0],
+                          opacity: [0, 0.55, 0.12, 0, 0],
                         }}
                         transition={{
                           duration: 3,
@@ -1953,7 +1953,7 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Second ripple */}
                       <motion.div
-                        className="absolute rounded-full border-[1.5px] border-white/80"
+                        className="absolute rounded-full border border-white/35"
                         style={{
                           width: "24px",
                           height: "24px",
@@ -1966,7 +1966,7 @@ const Onboarding: React.FC = () => {
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.75, 0.75, 1.7, 2.1, 0.75, 0.75],
-                          opacity: [0, 0, 0.85, 0.15, 0, 0],
+                          opacity: [0, 0, 0.55, 0.12, 0, 0],
                         }}
                         transition={{
                           duration: 3,
@@ -1977,7 +1977,7 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Close tap ripple */}
                       <motion.div
-                        className="absolute rounded-full border-[1.5px] border-white/80"
+                        className="absolute rounded-full border border-white/35"
                         style={{
                           width: "24px",
                           height: "24px",
@@ -1989,13 +1989,13 @@ const Onboarding: React.FC = () => {
                         }}
                         initial={{ scale: 0.75, opacity: 0 }}
                         animate={{
-                          scale: [0.75, 0.75, 0.75, 1.6, 1.95, 0.75],
-                          opacity: [0, 0, 0, 0.85, 0, 0],
+                          scale: [0.75, 0.75, 0.75, 1.3, 1.7, 1.95, 0.75],
+                          opacity: [0, 0, 0, 0.6, 0.35, 0.08, 0],
                         }}
                         transition={{
                           duration: 3,
                           ease: "easeOut",
-                          times: [0, 0.41, 0.42, 0.44, 0.46, 1],
+                          times: [0, 0.41, 0.42, 0.435, 0.45, 0.47, 1],
                           repeat: Infinity,
                         }}
                       />
