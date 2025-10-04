@@ -60,4 +60,20 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.model).toBe('custom-model');
     expect(decision.matchedRuleIds).toEqual(['custom']);
   });
+
+  it('routes long transcripts to Kimi even without regex matches', () => {
+    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+    const decision = selectLLMRoute(longText, baseRuntime);
+    expect(decision.provider).toBe('groq');
+    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
+    expect(decision.matchedRuleIds[0]).toBe('length-threshold');
+  });
+
+  it('does not trigger length rule for shorter transcripts', () => {
+    const shorterText = Array.from({ length: 150 }, (_, i) => `word${i}`).join(' ');
+    const decision = selectLLMRoute(shorterText, baseRuntime);
+    expect(decision.provider).toBe(baseRuntime.provider);
+    expect(decision.model).toBe(baseRuntime.model);
+    expect(decision.matchedRuleIds).toEqual([]);
+  });
 });

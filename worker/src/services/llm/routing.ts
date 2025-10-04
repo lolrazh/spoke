@@ -15,6 +15,9 @@ export type LLMRoutingDecision = {
 };
 
 const KIMI_MODEL = 'moonshotai/kimi-k2-instruct-0905';
+const LENGTH_THRESHOLD_CHARS = 1200;
+const LENGTH_THRESHOLD_WORDS = 180;
+const LENGTH_RULE_ID = 'length-threshold';
 
 export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
   {
@@ -54,6 +57,22 @@ export function selectLLMRoute(
   }
 
   const matches = rules.filter((rule) => rule.pattern.test(normalized));
+  const matchedRuleIds = matches.map((rule) => rule.id);
+
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const exceedsLengthThreshold =
+    normalized.length >= LENGTH_THRESHOLD_CHARS || wordCount >= LENGTH_THRESHOLD_WORDS;
+
+  if (exceedsLengthThreshold) {
+    return {
+      provider: 'groq',
+      model: KIMI_MODEL,
+      matchedRuleIds: matchedRuleIds.length
+        ? [LENGTH_RULE_ID, ...matchedRuleIds]
+        : [LENGTH_RULE_ID],
+    };
+  }
+
   if (matches.length === 0) {
     return { provider: runtime.provider, model: runtime.model, matchedRuleIds: [] };
   }
@@ -64,6 +83,6 @@ export function selectLLMRoute(
   return {
     provider: winner.provider,
     model,
-    matchedRuleIds: matches.map((rule) => rule.id),
+    matchedRuleIds,
   };
 }
