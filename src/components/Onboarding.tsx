@@ -1983,13 +1983,13 @@ const Onboarding: React.FC = () => {
                         }}
                         initial={{ scale: 0.75, opacity: 0 }}
                         animate={{
-                          scale: [0.75, 0.75, 0.75, 1.6, 2.05, 0.75],
-                          opacity: [0, 0, 0, 0.65, 0.2, 0],
+                          scale: [0.75, 0.75, 0.75, 1.6, 1.95, 0.75],
+                          opacity: [0, 0, 0, 0.7, 0.1, 0],
                         }}
                         transition={{
                           duration: 3,
                           ease: "easeOut",
-                          times: [0, 0.44, 0.48, 0.5, 0.54, 1],
+                          times: [0, 0.46, 0.485, 0.5, 0.505, 1],
                           repeat: Infinity,
                         }}
                       />
