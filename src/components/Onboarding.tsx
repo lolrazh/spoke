@@ -1929,12 +1929,12 @@ const Onboarding: React.FC = () => {
                     <div className="relative">
                       {/* First ripple */}
                       <motion.div
-                        className="absolute rounded-full border-2 border-white/30"
+                        className="absolute rounded-full border border-white/50"
                         style={{
-                          width: "26px",
-                          height: "26px",
-                          top: "50%",
-                          left: "50%",
+                          width: "24px",
+                          height: "24px",
+                          top: "calc(50% - 6px)",
+                          left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
@@ -1951,12 +1951,12 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Second ripple */}
                       <motion.div
-                        className="absolute rounded-full border-2 border-white/30"
+                        className="absolute rounded-full border border-white/50"
                         style={{
-                          width: "26px",
-                          height: "26px",
-                          top: "50%",
-                          left: "50%",
+                          width: "24px",
+                          height: "24px",
+                          top: "calc(50% - 6px)",
+                          left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
@@ -1973,12 +1973,12 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Close tap ripple */}
                       <motion.div
-                        className="absolute rounded-full border-2 border-white/30"
+                        className="absolute rounded-full border border-white/40"
                         style={{
-                          width: "30px",
-                          height: "30px",
-                          top: "calc(100% - 14px)",
-                          left: "50%",
+                          width: "28px",
+                          height: "28px",
+                          top: "calc(100% - 18px)",
+                          left: "calc(50% - 4px)",
                           transform: "translate(-50%, -50%)",
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
