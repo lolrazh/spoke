@@ -1962,11 +1962,11 @@ const Onboarding: React.FC = () => {
                     {/* Pill container - positioned at top like real macOS island */}
                     <div className="relative">
                       {/* First ripple */}
-                      <TapRipple delay={0} top="calc(50% - 9px)" left="calc(50% - 8px)" />
+                      <TapRipple delay={0} top="calc(50% - 11px)" left="calc(50% - 11px)" />
                       {/* Second ripple */}
-                      <TapRipple delay={0.2} top="calc(50% - 9px)" left="calc(50% - 8px)" />
+                      <TapRipple delay={0.2} top="calc(50% - 11px)" left="calc(50% - 11px)" />
                       {/* Close tap ripple */}
-                      <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 4px)" />
+                      <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 11px)" />
                       {/* Pill shape - single stroke line that expands to settings */}
                       <motion.div
                         className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
