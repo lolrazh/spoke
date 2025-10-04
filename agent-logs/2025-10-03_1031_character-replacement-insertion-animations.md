@@ -1,7 +1,7 @@
 # Character-Level Replacement & Insertion Animations
 
 **Date:** 2025-10-03  
-**Agent:** Claude Code (Sonnet 3.5)  
+**Agent:** Claude Code (Sonnet 4.5)  
 **Status:** ✅ Completed  
 
 ## User Intention

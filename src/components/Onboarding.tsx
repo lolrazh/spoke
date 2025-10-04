@@ -86,6 +86,7 @@ type OnboardingStep =
   | "edit-test"
   | "meta-directives"
   | "cancel-info"
+  | "settings-info"
   | "complete";
 
 type AccountSummary = {
@@ -117,6 +118,40 @@ const deriveAccountSummary = (
     email,
     avatarUrl: profile?.avatar_url ?? metadata.avatar_url ?? null,
   };
+};
+
+// TapRipple component for settings demo
+const TapRipple: React.FC<{
+  delay: number; // delay in seconds within the 3s loop
+  top: string;
+  left: string;
+}> = ({ delay, top, left }) => {
+  return (
+    <motion.div
+      className="absolute rounded-full border border-white/35"
+      style={{
+        width: "24px",
+        height: "24px",
+        top,
+        left,
+        transform: "translate(-50%, -50%)",
+        background: "transparent",
+        zIndex: 10,
+      }}
+      initial={{ scale: 0.3, opacity: 0 }}
+      animate={{
+        scale: [0.3, 1.2, 2.0, 2.0, 0.3],
+        opacity: [0, 0.6, 0.15, 0, 0],
+      }}
+      transition={{
+        duration: 3,
+        ease: "easeOut",
+        times: [0, 0.05, 0.1, 0.15, 1],
+        repeat: Infinity,
+        delay: delay,
+      }}
+    />
+  );
 };
 
 const Onboarding: React.FC = () => {
@@ -544,6 +579,7 @@ const Onboarding: React.FC = () => {
     "edit-test",
     "cancel-info",
     "meta-directives",
+    "settings-info",
     "complete",
   ];
 
@@ -1897,6 +1933,60 @@ const Onboarding: React.FC = () => {
                       <span className="keycap-legend-bottom text-[10px] font-system">command</span>
                     </div>
                     <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Settings Info Step */}
+            {currentStep === "settings-info" && (
+              <motion.div
+                key="settings-info"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Quick Access to Settings
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    Double-click the island anytime to open settings.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center justify-center">
+                  {/* Screen outline container */}
+                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
+                    {/* Pill container - positioned at top like real macOS island */}
+                    <div className="relative">
+                      {/* First ripple */}
+                      <TapRipple delay={0} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                      {/* Second ripple */}
+                      <TapRipple delay={0.2} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                      {/* Close tap ripple */}
+                      <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 11px)" />
+                      {/* Pill shape - single stroke line that expands to settings */}
+                      <motion.div
+                        className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
+                        style={{
+                          borderRadius: "1.5px",
+                        }}
+                        initial={{ width: "35px", height: "3px" }}
+                        animate={{
+                          width: ["35px", "35px", "100px", "100px", "35px"],
+                          height: ["3px", "3px", "117px", "117px", "3px"],
+                          borderRadius: ["1.5px", "1.5px", "4px", "4px", "1.5px"],
+                        }}
+                        transition={{
+                          duration: 3.0,
+                          ease: [0.25, 0.8, 0.25, 1],
+                          times: [0, 0.17, 0.33, 0.5, 0.67], // Hold at rest, expand, hold expanded, contract, hold resting
+                          repeat: Infinity,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </motion.div>
