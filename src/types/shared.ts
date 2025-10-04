@@ -37,4 +37,6 @@ export type ActiveDisplayPayload = {
   scaleFactor: number;
   scale: number;
   window: Rect | null;
+  internal?: boolean;
+  physicalWidth?: number;
 };
