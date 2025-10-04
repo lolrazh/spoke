@@ -1964,7 +1964,7 @@ const Onboarding: React.FC = () => {
                       {/* First ripple */}
                       <TapRipple delay={0} top="calc(50% - 9px)" left="calc(50% - 8px)" />
                       {/* Second ripple */}
-                      <TapRipple delay={0.08} top="calc(50% - 9px)" left="calc(50% - 8px)" />
+                      <TapRipple delay={0.2} top="calc(50% - 9px)" left="calc(50% - 8px)" />
                       {/* Close tap ripple */}
                       <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 4px)" />
                       {/* Pill shape - single stroke line that expands to settings */}
