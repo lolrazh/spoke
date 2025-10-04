@@ -1929,18 +1929,20 @@ const Onboarding: React.FC = () => {
                     <div className="relative">
                       {/* First ripple */}
                       <motion.div
-                        className="absolute rounded-full border border-white/50"
+                        className="absolute rounded-full border-[1.5px] border-white/80"
                         style={{
                           width: "24px",
                           height: "24px",
                           top: "calc(50% - 9px)",
                           left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
+                          background: "transparent",
+                          zIndex: 10,
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.75, 1.6, 2.05, 0.75, 0.75],
-                          opacity: [0, 0.65, 0.25, 0, 0],
+                          opacity: [0, 0.85, 0.15, 0, 0],
                         }}
                         transition={{
                           duration: 3,
@@ -1951,18 +1953,20 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Second ripple */}
                       <motion.div
-                        className="absolute rounded-full border border-white/50"
+                        className="absolute rounded-full border-[1.5px] border-white/80"
                         style={{
                           width: "24px",
                           height: "24px",
                           top: "calc(50% - 9px)",
                           left: "calc(50% - 8px)",
                           transform: "translate(-50%, -50%)",
+                          background: "transparent",
+                          zIndex: 10,
                         }}
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{
                           scale: [0.75, 0.75, 1.7, 2.1, 0.75, 0.75],
-                          opacity: [0, 0, 0.65, 0.25, 0, 0],
+                          opacity: [0, 0, 0.85, 0.15, 0, 0],
                         }}
                         transition={{
                           duration: 3,
@@ -1973,23 +1977,25 @@ const Onboarding: React.FC = () => {
                       />
                       {/* Close tap ripple */}
                       <motion.div
-                        className="absolute rounded-full border border-white/50"
+                        className="absolute rounded-full border-[1.5px] border-white/80"
                         style={{
                           width: "24px",
                           height: "24px",
                           top: "calc(100% - 19px)",
                           left: "calc(50% - 4px)",
                           transform: "translate(-50%, -50%)",
+                          background: "transparent",
+                          zIndex: 10,
                         }}
                         initial={{ scale: 0.75, opacity: 0 }}
                         animate={{
                           scale: [0.75, 0.75, 0.75, 1.6, 1.95, 0.75],
-                          opacity: [0, 0, 0, 0.7, 0.1, 0],
+                          opacity: [0, 0, 0, 0.85, 0, 0],
                         }}
                         transition={{
                           duration: 3,
                           ease: "easeOut",
-                          times: [0, 0.46, 0.485, 0.5, 0.505, 1],
+                          times: [0, 0.41, 0.42, 0.44, 0.46, 1],
                           repeat: Infinity,
                         }}
                       />
