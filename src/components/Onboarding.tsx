@@ -140,13 +140,13 @@ const TapRipple: React.FC<{
       }}
       initial={{ scale: 0.3, opacity: 0 }}
       animate={{
-        scale: [0.3, 1.2, 2.0, 2.0],
-        opacity: [0, 0.6, 0.15, 0],
+        scale: [0.3, 1.2, 2.0, 2.0, 0.3],
+        opacity: [0, 0.6, 0.15, 0, 0],
       }}
       transition={{
         duration: 3,
         ease: "easeOut",
-        times: [0, 0.05, 0.1, 0.15],
+        times: [0, 0.05, 0.1, 0.15, 1],
         repeat: Infinity,
         delay: delay,
       }}
