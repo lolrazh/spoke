@@ -120,6 +120,40 @@ const deriveAccountSummary = (
   };
 };
 
+// TapRipple component for settings demo
+const TapRipple: React.FC<{
+  delay: number; // delay in seconds within the 3s loop
+  top: string;
+  left: string;
+}> = ({ delay, top, left }) => {
+  return (
+    <motion.div
+      className="absolute rounded-full border border-white/35"
+      style={{
+        width: "24px",
+        height: "24px",
+        top,
+        left,
+        transform: "translate(-50%, -50%)",
+        background: "transparent",
+        zIndex: 10,
+      }}
+      initial={{ scale: 0.3, opacity: 0 }}
+      animate={{
+        scale: [0.3, 1.2, 2.0, 2.0],
+        opacity: [0, 0.6, 0.15, 0],
+      }}
+      transition={{
+        duration: 3,
+        ease: "easeOut",
+        times: [0, 0.05, 0.1, 0.15],
+        repeat: Infinity,
+        delay: delay,
+      }}
+    />
+  );
+};
+
 const Onboarding: React.FC = () => {
   const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
@@ -1928,77 +1962,11 @@ const Onboarding: React.FC = () => {
                     {/* Pill container - positioned at top like real macOS island */}
                     <div className="relative">
                       {/* First ripple */}
-                      <motion.div
-                        className="absolute rounded-full border border-white/35"
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          top: "calc(50% - 9px)",
-                          left: "calc(50% - 8px)",
-                          transform: "translate(-50%, -50%)",
-                          background: "transparent",
-                          zIndex: 10,
-                        }}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{
-                          scale: [0.75, 1.6, 2.05, 0.75, 0.75],
-                          opacity: [0, 0.55, 0.12, 0, 0],
-                        }}
-                        transition={{
-                          duration: 3,
-                          ease: "easeOut",
-                          times: [0, 0.046, 0.116, 0.2, 1],
-                          repeat: Infinity,
-                        }}
-                      />
+                      <TapRipple delay={0} top="calc(50% - 9px)" left="calc(50% - 8px)" />
                       {/* Second ripple */}
-                      <motion.div
-                        className="absolute rounded-full border border-white/35"
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          top: "calc(50% - 9px)",
-                          left: "calc(50% - 8px)",
-                          transform: "translate(-50%, -50%)",
-                          background: "transparent",
-                          zIndex: 10,
-                        }}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{
-                          scale: [0.75, 0.75, 1.7, 2.1, 0.75, 0.75],
-                          opacity: [0, 0, 0.55, 0.12, 0, 0],
-                        }}
-                        transition={{
-                          duration: 3,
-                          ease: "easeOut",
-                          times: [0, 0.06, 0.106, 0.17, 0.23, 1],
-                          repeat: Infinity,
-                        }}
-                      />
+                      <TapRipple delay={0.08} top="calc(50% - 9px)" left="calc(50% - 8px)" />
                       {/* Close tap ripple */}
-                      <motion.div
-                        className="absolute rounded-full border border-white/35"
-                        style={{
-                          width: "24px",
-                          height: "24px",
-                          top: "calc(100% - 19px)",
-                          left: "calc(50% - 4px)",
-                          transform: "translate(-50%, -50%)",
-                          background: "transparent",
-                          zIndex: 10,
-                        }}
-                        initial={{ scale: 0.75, opacity: 0 }}
-                        animate={{
-                          scale: [0.75, 0.75, 0.75, 1.3, 1.7, 1.95, 0.75],
-                          opacity: [0, 0, 0, 0.6, 0.35, 0.08, 0],
-                        }}
-                        transition={{
-                          duration: 3,
-                          ease: "easeOut",
-                          times: [0, 0.41, 0.42, 0.435, 0.45, 0.47, 1],
-                          repeat: Infinity,
-                        }}
-                      />
+                      <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 4px)" />
                       {/* Pill shape - single stroke line that expands to settings */}
                       <motion.div
                         className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
