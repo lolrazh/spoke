@@ -390,6 +390,7 @@ The worker can optionally run the final STT text through an LLM “clean‑up”
 - Groq: chat completions (OpenAI‑compatible)
 - OpenAI: chat completions (SSE streaming)
 - Baseten (Base Ten): chat completions (OpenAI‑compatible, SSE streaming)
+- Kimi (via Groq routing): automatically selected for long-form cleanups
 
 #### Configuration
 ```bash
@@ -420,6 +421,9 @@ When enabled, the worker streams LLM improvements in real-time:
 1. Send `llm_status` message when LLM processing starts
 2. Stream `llm_delta` messages with text chunks as they arrive
 3. Final result contains complete enhanced text
+
+#### Routing Rules
+`worker/src/services/llm/routing.ts` first checks regex-driven heuristics (spelling requests, formatting directives, etc.) and now also applies a length guard. Any transcript that meets either threshold—≥1200 characters or ≥180 words—routes to `moonshotai/kimi-k2-instruct-0905` so longer dictations stay within high token limits. Matched rule IDs (including the new `length-threshold`) are appended when reporting the decision.
 
 ---
 
