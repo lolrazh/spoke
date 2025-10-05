@@ -13,7 +13,6 @@ import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 import { getSignals, setLastToastTs } from "../utils/authSignals";
 import { shouldToastSignIn } from "../utils/shouldToastSignIn";
-import type { ActiveDisplayPayload } from "../types/shared";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -123,38 +122,6 @@ type PillMetrics = {
   devicePixelRatio: number;
 };
 
-const PHYSICAL_WIDTH_TOLERANCE = 8; // px
-
-const BUILT_IN_BASE_WIDTH_CAPS: Array<{
-  physicalWidth: number;
-  cap: number;
-}> = [
-  // 14" MacBook Pro (3024 x 1964 physical)
-  { physicalWidth: 3024, cap: 196 },
-  // 13" & 15" MacBook Air (2560 / 2880 physical) share a wide notch; cap keeps baseline behaviour
-  { physicalWidth: 2560, cap: 207 },
-  { physicalWidth: 2880, cap: 207 },
-  // 16" MacBook Pro (3456 x 2234 physical)
-  { physicalWidth: 3456, cap: 214 },
-];
-
-function resolveBuiltInBaseWidthCap(
-  display: ActiveDisplayPayload | null,
-): number | null {
-  if (!display?.internal) return null;
-  const { physicalWidth } = display;
-  if (typeof physicalWidth !== "number" || Number.isNaN(physicalWidth)) {
-    return null;
-  }
-
-  const match = BUILT_IN_BASE_WIDTH_CAPS.find(
-    ({ physicalWidth: target }) =>
-      Math.abs(target - physicalWidth) <= PHYSICAL_WIDTH_TOLERANCE,
-  );
-
-  return match?.cap ?? null;
-}
-
 const usePillMachine = () => {
   const [machine, dispatch] = useReducer(
     (state: PillMachineState, event: PillEvent) => {
@@ -218,8 +185,6 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
-  const [activeDisplay, setActiveDisplay] =
-    useState<ActiveDisplayPayload | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
   const lastToastTsRef = useRef<number | null>(null);
   const lastFocusTsRef = useRef<number | null>(
@@ -575,19 +540,7 @@ const App: React.FC = () => {
     if (typeof window.onActiveDisplay !== "function") return;
     window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
-      setUiScale((prev) => (prev === s ? prev : s));
-      setActiveDisplay((prev) => {
-        if (
-          prev &&
-          prev.id === payload.id &&
-          prev.scale === payload.scale &&
-          prev.scaleFactor === payload.scaleFactor &&
-          prev.physicalWidth === payload.physicalWidth
-        ) {
-          return prev;
-        }
-        return payload;
-      });
+      setUiScale(s);
     });
   }, []);
 
@@ -1049,17 +1002,12 @@ const App: React.FC = () => {
   const MAX_UI_SCALE = 1.0;
   // Derived scaled dimensions based on active display scale
   const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
-  const scaledTokenBaseW = Math.round(TOKENS.PILL_BASE_W * S);
-  const builtinBaseCap = resolveBuiltInBaseWidthCap(activeDisplay);
-  const BASE_W =
-    builtinBaseCap != null
-      ? Math.min(scaledTokenBaseW, builtinBaseCap)
-      : scaledTokenBaseW;
+  const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
   const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
   const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
-  const MAX_W = Math.max(BASE_W, Math.round(TOKENS.PILL_MAX_W * S));
+  const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
@@ -1460,18 +1408,6 @@ const App: React.FC = () => {
             Notif Length: {debugInfo.notificationText?.length ?? "N/A"} chars
           </p>
           <p>Device Pixel Ratio: {debugInfo.devicePixelRatio}</p>
-          <p>
-            Target Base Width: {BASE_W}px (scaled token: {scaledTokenBaseW}px)
-          </p>
-          <p>
-            UI Scale: raw {uiScale.toFixed(3)} → clamped {S.toFixed(3)}
-          </p>
-          {activeDisplay && (
-            <p>
-              Display {activeDisplay.id}: physical {activeDisplay.physicalWidth ?? "?"} px ·
-              internal {activeDisplay.internal ? "yes" : "no"}
-            </p>
-          )}
           <div style={{ marginTop: "10px", borderTop: "1px solid white" }}>
             <p>Trace (last 15 events):</p>
             <ul style={{ listStyle: "none", padding: 0 }}>

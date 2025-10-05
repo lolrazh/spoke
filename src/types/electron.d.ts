@@ -124,8 +124,6 @@ declare global {
         workArea: { x: number; y: number; width: number; height: number };
         scaleFactor: number;
         scale: number;
-        internal?: boolean;
-        physicalWidth?: number;
         window: { x: number; y: number; width: number; height: number } | null;
       }) => void,
     ) => void;

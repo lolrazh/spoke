@@ -563,10 +563,6 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
       workArea: display.workArea,
       scaleFactor: display.scaleFactor,
       scale,
-      internal: Boolean((display as Electron.Display & { internal?: boolean }).internal),
-      physicalWidth: Math.round(
-        display.size.width * (display.scaleFactor || 1),
-      ),
       // Current window envelope for reference
       window: mainWindow?.getBounds() ?? null,
     };
