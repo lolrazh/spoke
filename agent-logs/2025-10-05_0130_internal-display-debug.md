@@ -43,3 +43,33 @@ The user wanted the floating pill to reliably snap to the MacBook’s notch widt
 
 ## Context for Future
 We now know the current approach mis-handles the transition back from larger externals; the next pass should focus on logging the display payload ordering so we can rebuild the notch targeting with reliable state and minimal flicker.
+
+---
+
+## Follow-up Attempt: Oversample-Aware Bucketing
+
+**Date:** 2025-10-05 (later session)  
+**Status:** ❌ Failed
+
+### What We Tried
+Implemented a 3-step bucketing strategy in `estimateNativeWidth()` to handle "More Space" oversampling:
+1. Tight snap (±64px) to exact native widths
+2. Oversample detection: when physical width > 3520px, use DIP width threshold (1900px) to distinguish 14" vs 16" MBP
+3. Fallback to nearest-neighbor for edge cases
+
+**Theory:** The 14" in "More Space" reports ~3600px physical (oversampled), which was being bucketed as 3456px (16" MBP), causing the pill to snap to 214px instead of 196px.
+
+**Files Modified:**
+- `src/components/App.tsx` – Replaced simple nearest-neighbor bucketing with oversample-aware logic
+- Debug HUD updated to show DIP width and physical width for verification
+
+### Outcome
+❌ Still didn't work when starting from external display and moving to MacBook screen.
+
+### Analysis
+The issue is likely **not** in the bucketing heuristic itself, but rather:
+- **State persistence:** The renderer might be caching/holding onto the external display's width or scale
+- **Timing:** The active-display payload might arrive in the wrong order or get ignored during display transitions
+- **Window envelope:** The main process window sizing might be locking in a wider width before the renderer can react
+
+The previous session's conclusion still stands: we need **detailed telemetry** to understand the sequencing of display payloads and renderer width decisions during display transitions.
