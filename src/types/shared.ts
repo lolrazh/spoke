@@ -28,6 +28,28 @@ export type SelectionInspectSnapshot = {
 // Shared IPC payload types
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Size = { width: number; height: number };
+export type EdgeInsets = {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+};
+
+export type DisplayNotchInfo = {
+  id: number;
+  isBuiltIn: boolean;
+  hasNotch: boolean;
+  notchWidth: number;
+  notchCenterX: number;
+  menuBarHeight: number;
+  frame: Rect;
+  visibleFrame: Rect;
+  safeAreaInsets: EdgeInsets;
+  auxiliaryLeft: Rect | null;
+  auxiliaryRight: Rect | null;
+  scaleFactor: number;
+  timestamp: number;
+};
 
 export type ActiveDisplayPayload = {
   id: number;
@@ -37,4 +59,5 @@ export type ActiveDisplayPayload = {
   scaleFactor: number;
   scale: number;
   window: Rect | null;
+  notch?: DisplayNotchInfo | null;
 };

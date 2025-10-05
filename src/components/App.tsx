@@ -185,6 +185,7 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
+  const [notchWidth, setNotchWidth] = useState<number | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
   const lastToastTsRef = useRef<number | null>(null);
   const lastFocusTsRef = useRef<number | null>(
@@ -541,6 +542,12 @@ const App: React.FC = () => {
     window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
+      const notch = payload?.notch;
+      if (notch && notch.hasNotch && notch.notchWidth > 0) {
+        setNotchWidth(notch.notchWidth);
+      } else {
+        setNotchWidth(null);
+      }
     });
   }, []);
 
@@ -1002,7 +1009,10 @@ const App: React.FC = () => {
   const MAX_UI_SCALE = 1.0;
   // Derived scaled dimensions based on active display scale
   const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
-  const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
+  const notchTarget = notchWidth && notchWidth > 0 ? notchWidth : null;
+  const baseWidthTarget = notchTarget ?? TOKENS.PILL_BASE_W;
+  const baseWidthScale = notchTarget ? 1 : S;
+  const BASE_W = Math.round(baseWidthTarget * baseWidthScale);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
   const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
@@ -1319,7 +1329,7 @@ const App: React.FC = () => {
           expandedH: EXPANDED_H,
           maxW: MAX_W,
         }}
-        onStartDictation={() => {}}
+        onStartDictation={() => undefined}
         onStopDictation={() => {
           pendingStartTokenRef.current = null;
           pillDispatch({ type: "PTT_STOP" });

@@ -47,6 +47,7 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/Sonic Flow Helper.app",
+      "./native/bin/notch-reporter",
     ],
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: ({
@@ -56,6 +57,7 @@ const config: ForgeConfig = {
       binaries: [
         "Contents/Resources/Sonic Flow Helper.app",
         "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
+        "Contents/Resources/notch-reporter",
       ],
       optionsForFile: (filePath) => {
         // Base options applied to all files
