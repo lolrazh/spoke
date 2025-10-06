@@ -694,6 +694,13 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
   try {
     const notch = getNotchInfoForDisplay(display.id);
     const notchPayload = notch ? cloneDisplayNotchInfo(notch) : null;
+    if (!notchPayload) {
+      const knownIds = notchReport?.screens.map((s) => s.id).join(", ") ?? "none";
+      const scaleStr = Number.isFinite(scale) ? scale.toFixed(3) : String(scale);
+      logger.main.info(
+        `[Notch] no match for display id=${display.id}. Known notch ids: ${knownIds} (scale=${scaleStr})`,
+      );
+    }
     const payload = {
       id: display.id,
       bounds: display.bounds,
@@ -733,7 +740,7 @@ async function refreshNotchInfo(reason: string): Promise<void> {
   const reporterPath = getNotchReporterPath();
   if (!reporterPath || !fs.existsSync(reporterPath)) {
     if (!notchReporterMissingWarned) {
-      console.warn(`[Notch] Reporter binary missing at ${reporterPath}`);
+      logger.main.warn(`[Notch] Reporter binary missing at ${reporterPath}`);
       notchReporterMissingWarned = true;
     }
     notchReport = null;
@@ -749,8 +756,22 @@ async function refreshNotchInfo(reason: string): Promise<void> {
     const parsed = sanitizeNotchReport(JSON.parse(raw) as NotchRawReport);
     notchReport = parsed;
     notchReporterMissingWarned = false;
+    const summary = parsed
+      ? parsed.screens
+          .map((screen) => {
+            const width =
+              screen.hasNotch && screen.notchWidth > 0 && Number.isFinite(screen.notchWidth)
+                ? `${screen.notchWidth.toFixed(2)}px`
+                : "no-notch";
+            return `id=${screen.id}:${width}`;
+          })
+          .join(", ")
+      : null;
+    logger.main.info(
+      `[Notch] refresh ${reason}: ${summary && summary.length > 0 ? summary : "no valid screens"}`,
+    );
   } catch (err) {
-    console.warn(`[Notch] Failed to refresh notch info (${reason}):`, err);
+    logger.main.warn(`[Notch] Failed to refresh notch info (${reason}): ${String(err)}`);
     return;
   }
 

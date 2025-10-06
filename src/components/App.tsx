@@ -186,6 +186,7 @@ const App: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
+  const notchDecisionLogRef = useRef<string | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
   const lastToastTsRef = useRef<number | null>(null);
   const lastFocusTsRef = useRef<number | null>(
@@ -543,10 +544,25 @@ const App: React.FC = () => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
       const notch = payload?.notch;
-      if (notch && notch.hasNotch && notch.notchWidth > 0) {
-        setNotchWidth(notch.notchWidth);
-      } else {
-        setNotchWidth(null);
+      const nextNotchWidth =
+        notch && notch.hasNotch && notch.notchWidth > 0 ? notch.notchWidth : null;
+      setNotchWidth(nextNotchWidth);
+      const scaleStr = Number.isFinite(s) ? s.toFixed(3) : "?";
+      const notchStr =
+        nextNotchWidth && Number.isFinite(nextNotchWidth)
+          ? nextNotchWidth.toFixed(2)
+          : "none";
+      const source = notch?.hasNotch ? "native-notch" : "fallback";
+      console.log(
+        `[Display] active=${payload?.id ?? "?"} scale=${scaleStr} notch=${notchStr} source=${source}`,
+      );
+      if (notch) {
+        console.log("[Display] notch payload", {
+          hasNotch: notch.hasNotch,
+          notchWidth: notch.notchWidth,
+          id: notch.id,
+          scaleFactor: notch.scaleFactor,
+        });
       }
     });
   }, []);
@@ -1018,6 +1034,18 @@ const App: React.FC = () => {
   const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
   const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
+
+  useEffect(() => {
+    const notchAvailable = typeof notchTarget === "number" && notchTarget > 0;
+    const reason = notchAvailable
+      ? `locked to notch width ${notchTarget.toFixed(2)}`
+      : `fallback to TOKENS.PILL_BASE_W (${TOKENS.PILL_BASE_W}) * scale ${S.toFixed(3)}`;
+    const key = `${BASE_W}-${reason}`;
+    if (notchDecisionLogRef.current !== key) {
+      notchDecisionLogRef.current = key;
+      console.log(`[PillWidth] base=${BASE_W}px (${reason})`);
+    }
+  }, [BASE_W, S, notchTarget]);
 
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
