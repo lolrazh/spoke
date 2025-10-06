@@ -3,7 +3,7 @@
  * Centralized settings and feature flags for voice activity detection.
  */
 
-export const VAD_ENABLED = false;
+export const VAD_ENABLED = true;
 
 // Modes: currently only gate silence; auto-chunking can be added later
 export type VadMode = "gate" | "autoChunk";
