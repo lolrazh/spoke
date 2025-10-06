@@ -980,7 +980,8 @@ export function useTranscription(
       );
 
       // Initial unconditional streaming window to avoid start clipping
-      let initialBypassSamplesRemaining = TARGET_SAMPLE_RATE * 0.3; // ~300ms at 16k
+      // When VAD is enabled, rely on pre-roll + gate instead of bypassing
+      let initialBypassSamplesRemaining = VAD_ENABLED ? 0 : TARGET_SAMPLE_RATE * 0.3; // ~300ms at 16k
       workletNodeRef.current.port.onmessage = (ev: MessageEvent) => {
         const msg = ev.data as unknown as { type?: string; samples?: ArrayBuffer };
         if (msg?.type !== "audio" || !msg?.samples) return;
@@ -1469,6 +1470,38 @@ export function useTranscription(
                   typeof performance !== "undefined"
                     ? performance.now()
                     : Date.now();
+
+              // If VAD is enabled and absolutely no speech was forwarded, do not send 'end'.
+              const noSpeechForwarded = VAD_ENABLED && ((metricsRef.current?.framesForwarded ?? 0) <= 0);
+              if (noSpeechForwarded) {
+                try {
+                  // Remove listeners and timers before we proactively close
+                  cleanup();
+                  if (ws.readyState === WebSocket.OPEN) {
+                    try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
+                  }
+                  try { ws.close(1000, "no_speech"); } catch {}
+                } catch {}
+
+                // Disconnect nodes and teardown audio immediately
+                try { sourceNodeRef.current?.disconnect(); } catch {}
+                try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
+                try { workletNodeRef.current?.disconnect(); } catch {}
+                if (audioContextRef.current) {
+                  try { await audioContextRef.current.close(); } catch {}
+                  audioContextRef.current = null;
+                }
+                if (streamRef.current) {
+                  try { streamRef.current.getTracks().forEach((track) => track.stop()); } catch {}
+                  streamRef.current = null;
+                  setReady(false);
+                }
+
+                // Resolve the stop() promise without waiting for any server response
+                settled = true;
+                resolve();
+                return;
+              }
 
               // Send 'end' immediately after drain completes to minimize latency.
               try {
