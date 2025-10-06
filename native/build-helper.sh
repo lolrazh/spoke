@@ -60,6 +60,6 @@ if [ -f "$NOTCH_SOURCE_FILE" ]; then
       "$NOTCH_SOURCE_FILE"
 
     chmod +x "$NOTCH_OUTPUT_PATH"
-    echo "$NOTCH_EXECUTABLE_NAME built successfully at $NOTCH_OUTPUT_PATH"
+    echo "$NOTCH_EXECUTABLE_NAME built successfully at $NOTCH_OUTPUT_PATH (will be signed by Forge)"
   fi
 fi

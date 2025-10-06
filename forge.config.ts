@@ -66,6 +66,13 @@ const config: ForgeConfig = {
           signatureFlags: "runtime" as const,
           entitlements: "./build/entitlements/main.plist",
         } as const;
+        // Apply minimal entitlements on notch-reporter (only needs display APIs)
+        if (filePath.endsWith("/notch-reporter")) {
+          return {
+            ...base,
+            entitlements: "./build/entitlements/notch-reporter.plist",
+          };
+        }
         // Apply tighter inherit entitlements on the helper
         if (
           filePath.endsWith("/Sonic Flow Helper.app") ||
