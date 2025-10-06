@@ -362,6 +362,8 @@ let micPrefsPath: string; // Will be initialized in app.whenReady()
 // Pill preferences (notch width, etc.)
 let pillPreferences: import("./types/shared").PillPreferences = {};
 let pillPrefsPath: string; // Will be initialized in app.whenReady()
+// Optical adjustment for notch width (pixels to subtract for better visual alignment)
+const NOTCH_WIDTH_OPTICAL_ADJUSTMENT = 2;
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean } = {};
@@ -795,13 +797,13 @@ async function refreshNotchInfo(reason: string): Promise<void> {
 }
 
 async function detectAndStoreNotchWidth(): Promise<number | null> {
-  console.log("[PillPrefs] Detecting notch width for the first time...");
+  logger.main.info("[PillPrefs] Detecting notch width for the first time...");
   
   // Refresh notch info to get all displays
   await refreshNotchInfo("initial-detection");
   
   if (!notchReport || !notchReport.screens || notchReport.screens.length === 0) {
-    console.log("[PillPrefs] No notch report available");
+    logger.main.info("[PillPrefs] No notch report available");
     return null;
   }
   
@@ -811,26 +813,26 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
   );
   
   if (!builtInWithNotch) {
-    console.log("[PillPrefs] No built-in display with notch found");
+    logger.main.info("[PillPrefs] No built-in display with notch found");
     return null;
   }
   
   const detectedWidth = builtInWithNotch.notchWidth;
-  // Optical adjustment: subtract 2px for better visual alignment
-  const adjustedWidth = detectedWidth - 2;
+  // Optical adjustment: subtract constant for better visual alignment
+  const adjustedWidth = detectedWidth - NOTCH_WIDTH_OPTICAL_ADJUSTMENT;
   
   // Validate width bounds (14" MBP = ~196px, 16" MBP = ~207px)
   // Clamp to reasonable range to handle unexpected hardware or API quirks
   let finalWidth = adjustedWidth;
   if (adjustedWidth < 195) {
-    console.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 196px`);
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 196px`);
     finalWidth = 196;
   } else if (adjustedWidth > 215) {
-    console.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 214px`);
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 214px`);
     finalWidth = 214;
   }
   
-  console.log(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  logger.main.info(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
   
   // Store the validated width
   pillPreferences.notchWidth = finalWidth;
@@ -1289,14 +1291,14 @@ function loadPillPreferences(): import("./types/shared").PillPreferences {
     if (fs.existsSync(pillPrefsPath)) {
       const data = fs.readFileSync(pillPrefsPath, "utf8");
       const prefs = JSON.parse(data);
-      console.log("[PillPrefs] Loaded preferences:", prefs);
+      logger.main.info("[PillPrefs] Loaded preferences:", prefs);
       return prefs;
     }
   } catch (error) {
-    console.error("[PillPrefs] Failed to load preferences:", error);
+    logger.main.error("[PillPrefs] Failed to load preferences:", error);
   }
 
-  console.log("[PillPrefs] No stored preferences found");
+  logger.main.info("[PillPrefs] No stored preferences found");
   return {};
 }
 
@@ -1309,9 +1311,9 @@ function savePillPreferences(prefs: import("./types/shared").PillPreferences): v
     }
 
     fs.writeFileSync(pillPrefsPath, JSON.stringify(prefs, null, 2));
-    console.log("[PillPrefs] Saved preferences:", prefs);
+    logger.main.info("[PillPrefs] Saved preferences:", prefs);
   } catch (error) {
-    console.error("[PillPrefs] Failed to save preferences:", error);
+    logger.main.error("[PillPrefs] Failed to save preferences:", error);
   }
 }
 
@@ -2622,7 +2624,7 @@ app.whenReady().then(async () => {
             emitActiveDisplayInfo(display, scale);
           }
         }).catch((err) => {
-          console.error("[PillPrefs] Failed to detect notch width:", err);
+          logger.main.error("[PillPrefs] Failed to detect notch width:", err);
         });
       }
       
