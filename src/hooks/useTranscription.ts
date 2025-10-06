@@ -1475,7 +1475,17 @@ export function useTranscription(
               const noSpeechForwarded = VAD_ENABLED && ((metricsRef.current?.framesForwarded ?? 0) <= 0);
               if (noSpeechForwarded) {
                 try {
-                  // Remove the per-call listeners/timers and resolve without sending any WS control
+                  // Inform server to drop the logical session; keep socket for reuse
+                  if (ws.readyState === WebSocket.OPEN) {
+                    try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
+                  } else if (ws.readyState === WebSocket.CONNECTING) {
+                    const sendOnOpen = () => {
+                      try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
+                      ws.removeEventListener("open", sendOnOpen as EventListener);
+                    };
+                    ws.addEventListener("open", sendOnOpen as EventListener, { once: true } as AddEventListenerOptions);
+                  }
+                  // Remove the per-call listeners/timers now that cancel was sent
                   cleanup();
                 } catch {}
 
