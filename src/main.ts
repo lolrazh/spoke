@@ -2783,7 +2783,7 @@ app.whenReady().then(async () => {
           emitActiveDisplayInfo(display, scale);
         }
       }).catch((err) => {
-        console.error("[PillPrefs] Failed to detect notch width:", err);
+        logger.main.error("[PillPrefs] Failed to detect notch width:", err);
       });
     }
 
