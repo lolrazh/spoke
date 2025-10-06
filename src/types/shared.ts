@@ -8,6 +8,8 @@ export type MicDevice = { id: string; label: string };
 
 export type MicPreferences = { selectedMicId?: string };
 
+export type PillPreferences = { notchWidth?: number };
+
 export type PttTarget = "auto" | "onboarding" | "main";
 
 export type SelectionRange = { location: number; length: number };
@@ -60,4 +62,5 @@ export type ActiveDisplayPayload = {
   scale: number;
   window: Rect | null;
   notch?: DisplayNotchInfo | null;
+  storedNotchWidth?: number | null;
 };

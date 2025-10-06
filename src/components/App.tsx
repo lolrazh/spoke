@@ -537,33 +537,28 @@ const App: React.FC = () => {
     latestTransRef.current = trans;
   }, [trans]);
 
-  // Listen for active display updates from main (provides computed scale)
+  // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;
     window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
-      const notch = payload?.notch;
-      const nextNotchWidth =
-        notch && notch.hasNotch && notch.notchWidth > 0 ? notch.notchWidth : null;
+      
+      // Use stored notch width if available (calculated once on first launch)
+      const storedWidth = payload?.storedNotchWidth;
+      const nextNotchWidth = 
+        storedWidth && storedWidth > 0 ? storedWidth : null;
       setNotchWidth(nextNotchWidth);
+      
       const scaleStr = Number.isFinite(s) ? s.toFixed(3) : "?";
       const notchStr =
         nextNotchWidth && Number.isFinite(nextNotchWidth)
           ? nextNotchWidth.toFixed(2)
           : "none";
-      const source = notch?.hasNotch ? "native-notch" : "fallback";
+      const source = storedWidth ? "stored-preference" : "fallback";
       console.log(
         `[Display] active=${payload?.id ?? "?"} scale=${scaleStr} notch=${notchStr} source=${source}`,
       );
-      if (notch) {
-        console.log("[Display] notch payload", {
-          hasNotch: notch.hasNotch,
-          notchWidth: notch.notchWidth,
-          id: notch.id,
-          scaleFactor: notch.scaleFactor,
-        });
-      }
     });
   }, []);
 

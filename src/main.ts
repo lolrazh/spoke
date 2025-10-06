@@ -359,6 +359,9 @@ let micDevices: MicDevice[] = [
 ];
 let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
+// Pill preferences (notch width, etc.)
+let pillPreferences: import("./types/shared").PillPreferences = {};
+let pillPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean } = {};
@@ -701,6 +704,10 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
         `[Notch] no match for display id=${display.id}. Known notch ids: ${knownIds} (scale=${scaleStr})`,
       );
     }
+    
+    // Include stored notch width if available
+    const storedNotchWidth = pillPreferences.notchWidth ?? null;
+    
     const payload = {
       id: display.id,
       bounds: display.bounds,
@@ -711,6 +718,7 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
       // Current window envelope for reference
       window: mainWindow?.getBounds() ?? null,
       notch: notchPayload,
+      storedNotchWidth,
     };
     mainWindow?.webContents.send("active-display", payload);
   } catch (e) {
@@ -784,6 +792,37 @@ async function refreshNotchInfo(reason: string): Promise<void> {
   } catch (err) {
     logger.main.warn("[Notch] Failed to emit updated notch info", err);
   }
+}
+
+async function detectAndStoreNotchWidth(): Promise<number | null> {
+  console.log("[PillPrefs] Detecting notch width for the first time...");
+  
+  // Refresh notch info to get all displays
+  await refreshNotchInfo("initial-detection");
+  
+  if (!notchReport || !notchReport.screens || notchReport.screens.length === 0) {
+    console.log("[PillPrefs] No notch report available");
+    return null;
+  }
+  
+  // Find the built-in display with a notch
+  const builtInWithNotch = notchReport.screens.find(
+    (screen) => screen.isBuiltIn && screen.hasNotch && screen.notchWidth > 0
+  );
+  
+  if (!builtInWithNotch) {
+    console.log("[PillPrefs] No built-in display with notch found");
+    return null;
+  }
+  
+  const notchWidth = builtInWithNotch.notchWidth;
+  console.log(`[PillPrefs] Detected notch width: ${notchWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  
+  // Store it
+  pillPreferences.notchWidth = notchWidth;
+  savePillPreferences(pillPreferences);
+  
+  return notchWidth;
 }
 
 function startFollowCursor(): void {
@@ -1227,6 +1266,38 @@ function saveMicPreferences(prefs: MicPreferences): void {
     console.log("[MicPrefs] Saved preferences:", prefs);
   } catch (error) {
     console.error("[MicPrefs] Failed to save preferences:", error);
+  }
+}
+
+// Pill preference management functions
+function loadPillPreferences(): import("./types/shared").PillPreferences {
+  try {
+    if (fs.existsSync(pillPrefsPath)) {
+      const data = fs.readFileSync(pillPrefsPath, "utf8");
+      const prefs = JSON.parse(data);
+      console.log("[PillPrefs] Loaded preferences:", prefs);
+      return prefs;
+    }
+  } catch (error) {
+    console.error("[PillPrefs] Failed to load preferences:", error);
+  }
+
+  console.log("[PillPrefs] No stored preferences found");
+  return {};
+}
+
+function savePillPreferences(prefs: import("./types/shared").PillPreferences): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+
+    fs.writeFileSync(pillPrefsPath, JSON.stringify(prefs, null, 2));
+    console.log("[PillPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    console.error("[PillPrefs] Failed to save preferences:", error);
   }
 }
 
@@ -2387,6 +2458,7 @@ app.whenReady().then(async () => {
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -2397,6 +2469,9 @@ app.whenReady().then(async () => {
   } catch {
     onboardingPrefs = {};
   }
+  
+  // Load pill preferences
+  pillPreferences = loadPillPreferences();
 
   const isDev = !app.isPackaged;
   // Log the WebSocket endpoint the app intends to use (terminal)
@@ -2511,6 +2586,21 @@ app.whenReady().then(async () => {
       pttTarget = "main";
       startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
+      
+      // Detect and store notch width if not already stored
+      if (!pillPreferences.notchWidth) {
+        detectAndStoreNotchWidth().then((width) => {
+          if (width && mainWindow && !mainWindow.isDestroyed()) {
+            // Re-emit display info with the newly stored width
+            const display = getDisplayForWindow();
+            const scale = computeScaleForDisplay(display);
+            emitActiveDisplayInfo(display, scale);
+          }
+        }).catch((err) => {
+          console.error("[PillPrefs] Failed to detect notch width:", err);
+        });
+      }
+      
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
     } catch (error) {
@@ -2655,6 +2745,20 @@ app.whenReady().then(async () => {
     pttTarget = "main";
     startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
+
+    // Detect and store notch width if not already stored (for new users)
+    if (!pillPreferences.notchWidth) {
+      detectAndStoreNotchWidth().then((width) => {
+        if (width && mainWindow && !mainWindow.isDestroyed()) {
+          // Re-emit display info with the newly stored width
+          const display = getDisplayForWindow();
+          const scale = computeScaleForDisplay(display);
+          emitActiveDisplayInfo(display, scale);
+        }
+      }).catch((err) => {
+        console.error("[PillPrefs] Failed to detect notch width:", err);
+      });
+    }
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
