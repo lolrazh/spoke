@@ -824,12 +824,12 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
   // Validate width bounds (14" MBP = ~196px, 16" MBP = ~207px)
   // Clamp to reasonable range to handle unexpected hardware or API quirks
   let finalWidth = adjustedWidth;
-  if (adjustedWidth < 195) {
-    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 196px`);
-    finalWidth = 196;
-  } else if (adjustedWidth > 215) {
-    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 214px`);
-    finalWidth = 214;
+  if (adjustedWidth < 150) {
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 150px`);
+    finalWidth = 150;
+  } else if (adjustedWidth > 250) {
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 250px`);
+    finalWidth = 250;
   }
   
   logger.main.info(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
