@@ -1827,6 +1827,17 @@ const createWindow = () => {
     } catch (e) {
       console.warn("[renderer-ready] Top-align failed:", e);
     }
+    
+    // Re-emit active display info now that renderer is ready to receive it
+    try {
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const scale = computeScaleForDisplay(display);
+      emitActiveDisplayInfo(display, scale);
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to emit display info:", e);
+    }
+    
     try {
       smoothShow(mainWindow);
       logBounds("renderer-ready -> show");
