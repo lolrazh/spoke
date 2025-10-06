@@ -2,7 +2,7 @@
  * TypeScript declarations for the Electron API exposed to the renderer process
  */
 
-import type { SelectionInspectSnapshot } from "./shared";
+import type { SelectionInspectSnapshot, ActiveDisplayPayload } from "./shared";
 
 declare global {
   interface Window {
@@ -116,17 +116,7 @@ declare global {
       invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
     };
     /** Receive active display information and computed UI scale from main */
-    onActiveDisplay?: (
-      cb: (payload: {
-        id: number;
-        bounds: { x: number; y: number; width: number; height: number };
-        size: { width: number; height: number };
-        workArea: { x: number; y: number; width: number; height: number };
-        scaleFactor: number;
-        scale: number;
-        window: { x: number; y: number; width: number; height: number } | null;
-      }) => void,
-    ) => void;
+    onActiveDisplay?: (cb: (payload: ActiveDisplayPayload) => void) => void;
     mic: {
       updateDevices: (
         devices: Array<{ id: string; label: string }>,

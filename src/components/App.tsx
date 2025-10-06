@@ -185,6 +185,8 @@ const App: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
+  const [notchWidth, setNotchWidth] = useState<number | null>(null);
+  const notchDecisionLogRef = useRef<string | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
   const lastToastTsRef = useRef<number | null>(null);
   const lastFocusTsRef = useRef<number | null>(
@@ -535,12 +537,28 @@ const App: React.FC = () => {
     latestTransRef.current = trans;
   }, [trans]);
 
-  // Listen for active display updates from main (provides computed scale)
+  // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;
     window.onActiveDisplay?.((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
+      
+      // Use stored notch width if available (calculated once on first launch)
+      const storedWidth = payload?.storedNotchWidth;
+      const nextNotchWidth = 
+        storedWidth && storedWidth > 0 ? storedWidth : null;
+      setNotchWidth(nextNotchWidth);
+      
+      const scaleStr = Number.isFinite(s) ? s.toFixed(3) : "?";
+      const notchStr =
+        nextNotchWidth && Number.isFinite(nextNotchWidth)
+          ? nextNotchWidth.toFixed(2)
+          : "none";
+      const source = storedWidth ? "stored-preference" : "fallback";
+      console.log(
+        `[Display] active=${payload?.id ?? "?"} scale=${scaleStr} notch=${notchStr} source=${source}`,
+      );
     });
   }, []);
 
@@ -1002,12 +1020,27 @@ const App: React.FC = () => {
   const MAX_UI_SCALE = 1.0;
   // Derived scaled dimensions based on active display scale
   const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
-  const BASE_W = Math.round(TOKENS.PILL_BASE_W * S);
+  const notchTarget = notchWidth && notchWidth > 0 ? notchWidth : null;
+  const baseWidthTarget = notchTarget ?? TOKENS.PILL_BASE_W;
+  const baseWidthScale = notchTarget ? 1 : S;
+  const BASE_W = Math.round(baseWidthTarget * baseWidthScale);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
   const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
   const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
+
+  useEffect(() => {
+    const notchAvailable = typeof notchTarget === "number" && notchTarget > 0;
+    const reason = notchAvailable
+      ? `locked to notch width ${notchTarget.toFixed(2)}`
+      : `fallback to TOKENS.PILL_BASE_W (${TOKENS.PILL_BASE_W}) * scale ${S.toFixed(3)}`;
+    const key = `${BASE_W}-${reason}`;
+    if (notchDecisionLogRef.current !== key) {
+      notchDecisionLogRef.current = key;
+      console.log(`[PillWidth] base=${BASE_W}px (${reason})`);
+    }
+  }, [BASE_W, S, notchTarget]);
 
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
@@ -1319,7 +1352,7 @@ const App: React.FC = () => {
           expandedH: EXPANDED_H,
           maxW: MAX_W,
         }}
-        onStartDictation={() => {}}
+        onStartDictation={() => undefined}
         onStopDictation={() => {
           pendingStartTokenRef.current = null;
           pillDispatch({ type: "PTT_STOP" });

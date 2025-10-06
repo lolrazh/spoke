@@ -8,6 +8,8 @@ export type MicDevice = { id: string; label: string };
 
 export type MicPreferences = { selectedMicId?: string };
 
+export type PillPreferences = { notchWidth?: number };
+
 export type PttTarget = "auto" | "onboarding" | "main";
 
 export type SelectionRange = { location: number; length: number };
@@ -28,6 +30,28 @@ export type SelectionInspectSnapshot = {
 // Shared IPC payload types
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Size = { width: number; height: number };
+export type EdgeInsets = {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+};
+
+export type DisplayNotchInfo = {
+  id: number;
+  isBuiltIn: boolean;
+  hasNotch: boolean;
+  notchWidth: number;
+  notchCenterX: number;
+  menuBarHeight: number;
+  frame: Rect;
+  visibleFrame: Rect;
+  safeAreaInsets: EdgeInsets;
+  auxiliaryLeft: Rect | null;
+  auxiliaryRight: Rect | null;
+  scaleFactor: number;
+  timestamp: number;
+};
 
 export type ActiveDisplayPayload = {
   id: number;
@@ -37,4 +61,6 @@ export type ActiveDisplayPayload = {
   scaleFactor: number;
   scale: number;
   window: Rect | null;
+  notch?: DisplayNotchInfo | null;
+  storedNotchWidth?: number | null;
 };

@@ -47,6 +47,7 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
       "./native/bin/Sonic Flow Helper.app",
+      "./native/bin/notch-reporter",
     ],
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: ({
@@ -56,6 +57,7 @@ const config: ForgeConfig = {
       binaries: [
         "Contents/Resources/Sonic Flow Helper.app",
         "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
+        "Contents/Resources/notch-reporter",
       ],
       optionsForFile: (filePath) => {
         // Base options applied to all files
@@ -64,6 +66,13 @@ const config: ForgeConfig = {
           signatureFlags: "runtime" as const,
           entitlements: "./build/entitlements/main.plist",
         } as const;
+        // Apply minimal entitlements on notch-reporter (only needs display APIs)
+        if (filePath.endsWith("/notch-reporter")) {
+          return {
+            ...base,
+            entitlements: "./build/entitlements/notch-reporter.plist",
+          };
+        }
         // Apply tighter inherit entitlements on the helper
         if (
           filePath.endsWith("/Sonic Flow Helper.app") ||

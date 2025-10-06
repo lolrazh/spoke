@@ -19,11 +19,12 @@ import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { spawn, execSync } from "child_process";
+import { spawn, execSync, execFile } from "child_process";
 import http from "node:http";
 import https from "node:https";
 
 import fs from "node:fs";
+import { promisify } from "node:util";
 
 import {
   ISLAND_HIDDEN_Y,
@@ -40,6 +41,7 @@ import type {
   MicPreferences,
   PttTarget,
   SelectionInspectSnapshot,
+  DisplayNotchInfo,
 } from "./types/shared";
 import {
   buildMicrophoneSubmenu,
@@ -53,6 +55,137 @@ import {
 type SelectionInspectOptions = {
   contextChars?: number;
 };
+
+const execFileAsync = promisify(execFile);
+
+type NotchReport = {
+  timestamp: number;
+  screens: DisplayNotchInfo[];
+};
+
+type NotchRawRect = {
+  x: unknown;
+  y: unknown;
+  width: unknown;
+  height: unknown;
+};
+
+type NotchRawEdgeInsets = {
+  top: unknown;
+  left: unknown;
+  bottom: unknown;
+  right: unknown;
+};
+
+type NotchRawScreen = {
+  id: unknown;
+  isBuiltIn: unknown;
+  hasNotch: unknown;
+  notchWidth: unknown;
+  notchCenterX: unknown;
+  menuBarHeight: unknown;
+  frame: NotchRawRect;
+  visibleFrame: NotchRawRect;
+  safeAreaInsets: NotchRawEdgeInsets;
+  auxiliaryLeft: NotchRawRect | null;
+  auxiliaryRight: NotchRawRect | null;
+  scaleFactor: unknown;
+};
+
+type NotchRawReport = {
+  timestamp: unknown;
+  screens: unknown;
+};
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizeRect(raw: NotchRawRect | null | undefined): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const x = toNumber(raw.x, 0);
+  const y = toNumber(raw.y, 0);
+  const width = toNumber(raw.width, 0);
+  const height = toNumber(raw.height, 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return { x, y, width, height };
+}
+
+function sanitizeEdgeInsets(raw: NotchRawEdgeInsets | null | undefined): {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+} {
+  if (!raw || typeof raw !== "object") {
+    return { top: 0, left: 0, bottom: 0, right: 0 };
+  }
+  return {
+    top: toNumber(raw.top, 0),
+    left: toNumber(raw.left, 0),
+    bottom: toNumber(raw.bottom, 0),
+    right: toNumber(raw.right, 0),
+  };
+}
+
+function sanitizeScreen(raw: NotchRawScreen, timestamp: number): DisplayNotchInfo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const id = Math.trunc(toNumber(raw.id, -1));
+  if (id < 0) return null;
+
+  const frame = sanitizeRect(raw.frame);
+  const visibleFrame = sanitizeRect(raw.visibleFrame);
+  if (!frame || !visibleFrame) return null;
+
+  const safeAreaInsets = sanitizeEdgeInsets(raw.safeAreaInsets);
+  const auxiliaryLeft = sanitizeRect(raw.auxiliaryLeft ?? null);
+  const auxiliaryRight = sanitizeRect(raw.auxiliaryRight ?? null);
+
+  return {
+    id,
+    isBuiltIn: Boolean(raw.isBuiltIn),
+    hasNotch: Boolean(raw.hasNotch),
+    notchWidth: toNumber(raw.notchWidth, 0),
+    notchCenterX: toNumber(raw.notchCenterX, frame.x + frame.width / 2),
+    menuBarHeight: toNumber(raw.menuBarHeight, 0),
+    frame,
+    visibleFrame,
+    safeAreaInsets,
+    auxiliaryLeft,
+    auxiliaryRight,
+    scaleFactor: toNumber(raw.scaleFactor, 1),
+    timestamp,
+  };
+}
+
+function sanitizeNotchReport(raw: NotchRawReport | null | undefined): NotchReport | null {
+  if (!raw || typeof raw !== "object") return null;
+  const timestamp = toNumber(raw.timestamp, Date.now() / 1000);
+  const screensRaw = Array.isArray(raw.screens) ? (raw.screens as NotchRawScreen[]) : [];
+  const screens: DisplayNotchInfo[] = [];
+  for (const item of screensRaw) {
+    const screen = sanitizeScreen(item, timestamp);
+    if (screen) screens.push(screen);
+  }
+  return { timestamp, screens };
+}
+
+function cloneDisplayNotchInfo(info: DisplayNotchInfo): DisplayNotchInfo {
+  return {
+    ...info,
+    frame: { ...info.frame },
+    visibleFrame: { ...info.visibleFrame },
+    safeAreaInsets: { ...info.safeAreaInsets },
+    auxiliaryLeft: info.auxiliaryLeft ? { ...info.auxiliaryLeft } : null,
+    auxiliaryRight: info.auxiliaryRight ? { ...info.auxiliaryRight } : null,
+  };
+}
 
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -226,6 +359,11 @@ let micDevices: MicDevice[] = [
 ];
 let micPreferences: MicPreferences = {};
 let micPrefsPath: string; // Will be initialized in app.whenReady()
+// Pill preferences (notch width, etc.)
+let pillPreferences: import("./types/shared").PillPreferences = {};
+let pillPrefsPath: string; // Will be initialized in app.whenReady()
+// Optical adjustment for notch width (pixels to subtract for better visual alignment)
+const NOTCH_WIDTH_OPTICAL_ADJUSTMENT = 2;
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean } = {};
@@ -457,6 +595,9 @@ let hideEndTime: number | null = null;
 // Preference-level flag to reflect user's intent (Settings toggle)
 let floatingBarEnabled = true;
 
+let notchReport: NotchReport | null = null;
+let notchReporterMissingWarned = false;
+
 // === Active display tracking for continuous follow ===
 let activeDisplayId: number | null = null;
 let followCursorInterval: NodeJS.Timeout | null = null;
@@ -556,6 +697,19 @@ function ensureEnvelopeForDisplay(
 
 function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
   try {
+    const notch = getNotchInfoForDisplay(display.id);
+    const notchPayload = notch ? cloneDisplayNotchInfo(notch) : null;
+    if (!notchPayload) {
+      const knownIds = notchReport?.screens.map((s) => s.id).join(", ") ?? "none";
+      const scaleStr = Number.isFinite(scale) ? scale.toFixed(3) : String(scale);
+      logger.main.info(
+        `[Notch] no match for display id=${display.id}. Known notch ids: ${knownIds} (scale=${scaleStr})`,
+      );
+    }
+    
+    // Include stored notch width if available
+    const storedNotchWidth = pillPreferences.notchWidth ?? null;
+    
     const payload = {
       id: display.id,
       bounds: display.bounds,
@@ -565,11 +719,126 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
       scale,
       // Current window envelope for reference
       window: mainWindow?.getBounds() ?? null,
+      notch: notchPayload,
+      storedNotchWidth,
     };
     mainWindow?.webContents.send("active-display", payload);
   } catch (e) {
     logger.main.warn("emitActiveDisplayInfo failed", e);
   }
+}
+
+function getNotchReporterPath(): string {
+  if (process.platform !== "darwin") return "";
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "notch-reporter")
+    : path.join(app.getAppPath(), "native", "bin", "notch-reporter");
+}
+
+function getNotchInfoForDisplay(displayId: number): DisplayNotchInfo | null {
+  if (!notchReport) return null;
+  const match = notchReport.screens.find((s) => s.id === displayId);
+  if (match) return match;
+  return null;
+}
+
+async function refreshNotchInfo(reason: string): Promise<void> {
+  if (process.platform !== "darwin") {
+    notchReport = null;
+    return;
+  }
+  const reporterPath = getNotchReporterPath();
+  if (!reporterPath || !fs.existsSync(reporterPath)) {
+    if (!notchReporterMissingWarned) {
+      logger.main.warn(`[Notch] Reporter binary missing at ${reporterPath}`);
+      notchReporterMissingWarned = true;
+    }
+    notchReport = null;
+    return;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(reporterPath, [], {
+      timeout: 2000,
+      maxBuffer: 512 * 1024,
+    });
+    const raw = typeof stdout === "string" ? stdout : stdout.toString("utf8");
+    const parsed = sanitizeNotchReport(JSON.parse(raw) as NotchRawReport);
+    notchReport = parsed;
+    notchReporterMissingWarned = false;
+    const summary = parsed
+      ? parsed.screens
+          .map((screen) => {
+            const width =
+              screen.hasNotch && screen.notchWidth > 0 && Number.isFinite(screen.notchWidth)
+                ? `${screen.notchWidth.toFixed(2)}px`
+                : "no-notch";
+            return `id=${screen.id}:${width}`;
+          })
+          .join(", ")
+      : null;
+    logger.main.info(
+      `[Notch] refresh ${reason}: ${summary && summary.length > 0 ? summary : "no valid screens"}`,
+    );
+  } catch (err) {
+    logger.main.warn(`[Notch] Failed to refresh notch info (${reason}): ${String(err)}`);
+    return;
+  }
+
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const display = getDisplayForWindow();
+      const scale = computeScaleForDisplay(display);
+      emitActiveDisplayInfo(display, scale);
+    }
+  } catch (err) {
+    logger.main.warn("[Notch] Failed to emit updated notch info", err);
+  }
+}
+
+async function detectAndStoreNotchWidth(): Promise<number | null> {
+  logger.main.info("[PillPrefs] Detecting notch width for the first time...");
+  
+  // Refresh notch info to get all displays
+  await refreshNotchInfo("initial-detection");
+  
+  if (!notchReport || !notchReport.screens || notchReport.screens.length === 0) {
+    logger.main.info("[PillPrefs] No notch report available");
+    return null;
+  }
+  
+  // Find the built-in display with a notch
+  const builtInWithNotch = notchReport.screens.find(
+    (screen) => screen.isBuiltIn && screen.hasNotch && screen.notchWidth > 0
+  );
+  
+  if (!builtInWithNotch) {
+    logger.main.info("[PillPrefs] No built-in display with notch found");
+    return null;
+  }
+  
+  const detectedWidth = builtInWithNotch.notchWidth;
+  // Optical adjustment: subtract constant for better visual alignment
+  const adjustedWidth = detectedWidth - NOTCH_WIDTH_OPTICAL_ADJUSTMENT;
+  
+  // Validate width bounds (14" MBP = ~196px, 16" MBP = ~207px)
+  // Clamp to reasonable range to handle unexpected hardware or API quirks
+  let finalWidth = adjustedWidth;
+  if (adjustedWidth < 195) {
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 196px`);
+    finalWidth = 196;
+  } else if (adjustedWidth > 215) {
+    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 214px`);
+    finalWidth = 214;
+  }
+  
+  logger.main.info(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  
+  // Store the validated width
+  pillPreferences.notchWidth = finalWidth;
+  savePillPreferences(pillPreferences);
+  
+  return finalWidth;
 }
 
 function startFollowCursor(): void {
@@ -1016,6 +1285,38 @@ function saveMicPreferences(prefs: MicPreferences): void {
   }
 }
 
+// Pill preference management functions
+function loadPillPreferences(): import("./types/shared").PillPreferences {
+  try {
+    if (fs.existsSync(pillPrefsPath)) {
+      const data = fs.readFileSync(pillPrefsPath, "utf8");
+      const prefs = JSON.parse(data);
+      logger.main.info("[PillPrefs] Loaded preferences:", prefs);
+      return prefs;
+    }
+  } catch (error) {
+    logger.main.error("[PillPrefs] Failed to load preferences:", error);
+  }
+
+  logger.main.info("[PillPrefs] No stored preferences found");
+  return {};
+}
+
+function savePillPreferences(prefs: import("./types/shared").PillPreferences): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+
+    fs.writeFileSync(pillPrefsPath, JSON.stringify(prefs, null, 2));
+    logger.main.info("[PillPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    logger.main.error("[PillPrefs] Failed to save preferences:", error);
+  }
+}
+
 function updateMicDevices(devices: MicDevice[]): void {
   console.log("[MicMgmt] Updating device list:", devices);
 
@@ -1456,6 +1757,7 @@ const createWindow = () => {
     cursorDisplay,
     sized?.scale ?? computeScaleForDisplay(cursorDisplay),
   );
+  void refreshNotchInfo("window-init");
 
   // Collapse request on blur: if user clicks outside our window, renderer can decide to collapse
   mainWindow.on("blur", () => {
@@ -1541,6 +1843,17 @@ const createWindow = () => {
     } catch (e) {
       console.warn("[renderer-ready] Top-align failed:", e);
     }
+    
+    // Re-emit active display info now that renderer is ready to receive it
+    try {
+      const current = mainWindow.getBounds();
+      const display = screen.getDisplayMatching(current);
+      const scale = computeScaleForDisplay(display);
+      emitActiveDisplayInfo(display, scale);
+    } catch (e) {
+      console.warn("[renderer-ready] Failed to emit display info:", e);
+    }
+    
     try {
       smoothShow(mainWindow);
       logBounds("renderer-ready -> show");
@@ -2172,6 +2485,7 @@ app.whenReady().then(async () => {
 
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
+  pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -2182,6 +2496,9 @@ app.whenReady().then(async () => {
   } catch {
     onboardingPrefs = {};
   }
+  
+  // Load pill preferences
+  pillPreferences = loadPillPreferences();
 
   const isDev = !app.isPackaged;
   // Log the WebSocket endpoint the app intends to use (terminal)
@@ -2296,6 +2613,21 @@ app.whenReady().then(async () => {
       pttTarget = "main";
       startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
+      
+      // Detect and store notch width if not already stored
+      if (!pillPreferences.notchWidth) {
+        detectAndStoreNotchWidth().then((width) => {
+          if (width && mainWindow && !mainWindow.isDestroyed()) {
+            // Re-emit display info with the newly stored width
+            const display = getDisplayForWindow();
+            const scale = computeScaleForDisplay(display);
+            emitActiveDisplayInfo(display, scale);
+          }
+        }).catch((err) => {
+          logger.main.error("[PillPrefs] Failed to detect notch width:", err);
+        });
+      }
+      
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
     } catch (error) {
@@ -2440,6 +2772,20 @@ app.whenReady().then(async () => {
     pttTarget = "main";
     startHelperIfIMGranted();
     // (Removed) silent app location check after onboarding
+
+    // Detect and store notch width if not already stored (for new users)
+    if (!pillPreferences.notchWidth) {
+      detectAndStoreNotchWidth().then((width) => {
+        if (width && mainWindow && !mainWindow.isDestroyed()) {
+          // Re-emit display info with the newly stored width
+          const display = getDisplayForWindow();
+          const scale = computeScaleForDisplay(display);
+          emitActiveDisplayInfo(display, scale);
+        }
+      }).catch((err) => {
+        logger.main.error("[PillPrefs] Failed to detect notch width:", err);
+      });
+    }
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
@@ -2600,11 +2946,18 @@ app.whenReady().then(async () => {
   });
 
   // React to OS display changes to keep the pill consistent
-  screen.on("display-added", () => syncToCurrentDisplay("display-added"));
-  screen.on("display-removed", () => syncToCurrentDisplay("display-removed"));
-  screen.on("display-metrics-changed", () =>
-    syncToCurrentDisplay("display-metrics-changed"),
-  );
+  screen.on("display-added", () => {
+    syncToCurrentDisplay("display-added");
+    void refreshNotchInfo("display-added");
+  });
+  screen.on("display-removed", () => {
+    syncToCurrentDisplay("display-removed");
+    void refreshNotchInfo("display-removed");
+  });
+  screen.on("display-metrics-changed", () => {
+    syncToCurrentDisplay("display-metrics-changed");
+    void refreshNotchInfo("display-metrics-changed");
+  });
 
   // Handle pill expansion requests
   ipcMain.on("expand-pill", () => {

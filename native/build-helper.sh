@@ -44,3 +44,22 @@ echo "Updating CFBundleExecutable in Info.plist..."
 
 echo "$APP_BUNDLE_NAME built (unsigned). Will be signed by Forge."
 echo "Native helper built successfully at $APP_BUNDLE_PATH"
+
+# --- Compile notch reporter ---
+NOTCH_EXECUTABLE_NAME="notch-reporter"
+NOTCH_SOURCE_FILE="$SOURCE_DIR/notch-reporter.swift"
+NOTCH_OUTPUT_PATH="$DEST_DIR/$NOTCH_EXECUTABLE_NAME"
+
+if [ -f "$NOTCH_SOURCE_FILE" ]; then
+  if ! command -v swiftc >/dev/null 2>&1; then
+    echo "Warning: swiftc not found. Skipping notch reporter build. Install Xcode Command Line Tools to enable this step." >&2
+  else
+    echo "Compiling $NOTCH_EXECUTABLE_NAME (Swift notch reporter)..."
+    swiftc -O -parse-as-library -target arm64-apple-macos13 \
+      -o "$NOTCH_OUTPUT_PATH" \
+      "$NOTCH_SOURCE_FILE"
+
+    chmod +x "$NOTCH_OUTPUT_PATH"
+    echo "$NOTCH_EXECUTABLE_NAME built successfully at $NOTCH_OUTPUT_PATH (will be signed by Forge)"
+  fi
+fi
