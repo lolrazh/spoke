@@ -1475,15 +1475,11 @@ export function useTranscription(
               const noSpeechForwarded = VAD_ENABLED && ((metricsRef.current?.framesForwarded ?? 0) <= 0);
               if (noSpeechForwarded) {
                 try {
-                  // Remove listeners and timers before we proactively close
+                  // Remove the per-call listeners/timers and resolve without sending any WS control
                   cleanup();
-                  if (ws.readyState === WebSocket.OPEN) {
-                    try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
-                  }
-                  try { ws.close(1000, "no_speech"); } catch {}
                 } catch {}
 
-                // Disconnect nodes and teardown audio immediately
+                // Teardown audio nodes locally; leave WS lifecycle to existing client logic
                 try { sourceNodeRef.current?.disconnect(); } catch {}
                 try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
                 try { workletNodeRef.current?.disconnect(); } catch {}
