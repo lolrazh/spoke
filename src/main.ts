@@ -818,13 +818,25 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
   const detectedWidth = builtInWithNotch.notchWidth;
   // Optical adjustment: subtract 2px for better visual alignment
   const adjustedWidth = detectedWidth - 2;
-  console.log(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${adjustedWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
   
-  // Store the adjusted width
-  pillPreferences.notchWidth = adjustedWidth;
+  // Validate width bounds (14" MBP = ~196px, 16" MBP = ~207px)
+  // Clamp to reasonable range to handle unexpected hardware or API quirks
+  let finalWidth = adjustedWidth;
+  if (adjustedWidth < 195) {
+    console.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 196px`);
+    finalWidth = 196;
+  } else if (adjustedWidth > 215) {
+    console.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 214px`);
+    finalWidth = 214;
+  }
+  
+  console.log(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  
+  // Store the validated width
+  pillPreferences.notchWidth = finalWidth;
   savePillPreferences(pillPreferences);
   
-  return adjustedWidth;
+  return finalWidth;
 }
 
 function startFollowCursor(): void {
