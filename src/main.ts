@@ -815,14 +815,16 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
     return null;
   }
   
-  const notchWidth = builtInWithNotch.notchWidth;
-  console.log(`[PillPrefs] Detected notch width: ${notchWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  const detectedWidth = builtInWithNotch.notchWidth;
+  // Optical adjustment: subtract 2px for better visual alignment
+  const adjustedWidth = detectedWidth - 2;
+  console.log(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${adjustedWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
   
-  // Store it
-  pillPreferences.notchWidth = notchWidth;
+  // Store the adjusted width
+  pillPreferences.notchWidth = adjustedWidth;
   savePillPreferences(pillPreferences);
   
-  return notchWidth;
+  return adjustedWidth;
 }
 
 function startFollowCursor(): void {
