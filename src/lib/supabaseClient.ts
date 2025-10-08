@@ -237,6 +237,14 @@ export async function signOut(): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) return;
   await supabase.auth.signOut();
+  
+  // Clear cached user identity on sign-out
+  try {
+    const { clearUserIdentityCache } = await import("../state/userIdentity");
+    clearUserIdentityCache();
+  } catch {
+    // Ignore if import fails
+  }
 }
 
 export async function getProfile(): Promise<{
