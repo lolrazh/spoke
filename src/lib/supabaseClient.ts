@@ -229,8 +229,25 @@ export async function handleAuthCallbackUrl(
 export async function getCurrentUser() {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user ?? null;
+  try {
+    const session = await supabase.auth.getSession();
+    const localUser = session.data.session?.user ?? null;
+    if (localUser) return localUser;
+
+    if (typeof navigator !== "undefined" && navigator && !navigator.onLine) {
+      return localUser;
+    }
+
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.warn("[Supabase] getUser failed", error);
+      return null;
+    }
+    return data.user ?? null;
+  } catch (error) {
+    console.warn("[Supabase] Failed to resolve current user", error);
+    return null;
+  }
 }
 
 export async function signOut(): Promise<void> {

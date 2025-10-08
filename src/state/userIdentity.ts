@@ -70,17 +70,28 @@ function emit(next: UserIdentity) {
 }
 
 async function refreshIdentity(): Promise<UserIdentity> {
+  if (typeof navigator !== "undefined" && navigator && !navigator.onLine) {
+    console.info("[UserIdentity] Offline; using cached identity");
+    return identity;
+  }
+
   try {
     const user = await getCurrentUser();
-    const metadata = (user?.user_metadata as UserMetadata | undefined) ?? null;
+    if (!user) {
+      emit({ name: null, email: null });
+      return identity;
+    }
+
+    const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
     emit({
       name: metadata?.name ?? null,
-      email: user?.email ?? null,
+      email: user.email ?? null,
     });
-  } catch {
-    emit({ name: null, email: null });
+    return identity;
+  } catch (error) {
+    console.warn("[UserIdentity] Failed to refresh identity", error);
+    return identity;
   }
-  return identity;
 }
 
 function subscribeToAuthChanges() {
