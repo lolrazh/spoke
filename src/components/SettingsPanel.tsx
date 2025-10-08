@@ -13,8 +13,9 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { getCurrentUser, signOut as supaSignOut } from "../lib/supabaseClient";
+import { signOut as supaSignOut } from "../lib/supabaseClient";
 import { usePermissions } from "../hooks/usePermissions";
+import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -117,11 +118,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [appVersion, setAppVersion] = useState<string>("");
-  // Auth state for settings panel
-  // Remove inline login from Settings Panel — this surface should only show when signed in
+  // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  // Avatar URL available in metadata, not currently displayed in UI
   const [authReady, setAuthReady] = useState(false);
 
   // Permissions (deduplicated via shared hook)
@@ -158,52 +157,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           }
         }
       } catch {}
-      try {
-        // Initialize auth view – optimistic seed from cache to reduce flicker
-        const cachedEmail = localStorage.getItem("sf.lastUserEmail");
-        if (cachedEmail && isMounted) setUserEmail(cachedEmail);
-        // Fast path: hydrate from local session first to avoid UI flicker
-        try {
-          const { getSupabase } = await import("../lib/supabaseClient");
-          const sb = getSupabase();
-          const sess = await sb?.auth.getSession();
-          const fastUser = sess?.data.session?.user;
-          if (fastUser && isMounted) {
-            setUserEmail(fastUser.email ?? null);
-            const md = fastUser.user_metadata as unknown as {
-              name?: string;
-              avatar_url?: string;
-            };
-            setUserName(md?.name ?? null);
-            // avatar_url available via md if needed for future UI
-            if (fastUser.email)
-              localStorage.setItem("sf.lastUserEmail", fastUser.email);
-          }
-        } catch {}
-        // Authoritative fetch
-        const u = await getCurrentUser();
-        if (u && isMounted) {
-          setUserEmail(u.email ?? null);
-          const md = u.user_metadata as unknown as {
-            name?: string;
-            avatar_url?: string;
-          };
-          setUserName(md?.name ?? null);
-          // avatar_url available via md if needed for future UI
-          if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
-        } else if (isMounted) {
-          setUserEmail(null);
-          setUserName(null);
-        }
-        if (isMounted) setAuthReady(true);
-      } catch {
-        if (isMounted) setAuthReady(true);
-      }
     })();
 
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  // Subscribe to centralized user identity cache
+  useEffect(() => {
+    // Initialize user identity (loads from cache immediately, then fetches from DB)
+    initUserIdentity().then((identity) => {
+      setUserEmail(identity.email);
+      setUserName(identity.name);
+      setAuthReady(true);
+    }).catch(() => {
+      setAuthReady(true);
+    });
+
+    // Subscribe to identity changes (handles sign-in/sign-out automatically)
+    const unsubscribe = subscribeUserIdentity((identity) => {
+      setUserEmail(identity.email);
+      setUserName(identity.name);
+    });
+
+    return unsubscribe;
   }, []);
 
   // If not signed in, automatically route to onboarding
@@ -218,41 +196,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   }, [authReady, userEmail]);
 
-  // Minimal auth state hydration listener
-  useEffect(() => {
-    // Lazy import to avoid adding supabase client to this component directly
-    let unsubscribe: (() => void) | undefined;
-    (async () => {
-      try {
-        const { getSupabase } = await import("../lib/supabaseClient");
-        const supabase = getSupabase();
-        if (!supabase) return;
-        const {
-          data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-          const u = session?.user;
-          if (u) {
-            setUserEmail(u.email ?? null);
-            const md = u.user_metadata as unknown as {
-              name?: string;
-              avatar_url?: string;
-            };
-            setUserName(md?.name ?? null);
-            // avatar_url available via md if needed for future UI
-            if (u.email) localStorage.setItem("sf.lastUserEmail", u.email);
-          } else {
-            setUserEmail(null);
-            setUserName(null);
-          }
-          setAuthReady(true);
-        });
-        unsubscribe = () => subscription.unsubscribe();
-      } catch {}
-    })();
-    return () => {
-      unsubscribe && unsubscribe();
-    };
-  }, []);
+
 
   // Listen for microphone device updates and selection changes
   useEffect(() => {
@@ -376,16 +320,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       try {
         // Collapse the pill first so UI returns to resting before we transition
         try { onRequestCollapse?.(); } catch {}
-        // Sign out; App.tsx will orchestrate notification + hide + onboarding
+        // Sign out; cache will be cleared automatically by supaSignOut()
+        // and userIdentity subscription will update our local state
         await supaSignOut();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("Failed to sign out:", msg);
       }
-      // Let App.tsx's auth handler orchestrate tasteful hide + onboarding.
-      setUserEmail(null);
-      setUserName(null);
-      // clear any derived avatar state if used in the future
     })();
   };
 

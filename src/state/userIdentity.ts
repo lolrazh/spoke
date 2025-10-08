@@ -5,17 +5,26 @@ export type UserIdentity = {
   email: string | null;
 };
 
+const CACHE_KEY_NAME = "sf.userName";
+const CACHE_KEY_EMAIL = "sf.userEmail";
+
 const listeners = new Set<(identity: UserIdentity) => void>();
 let identity: UserIdentity = { name: null, email: null };
 let initialized = false;
 let authUnsubscribe: (() => void) | null = null;
 let initPromise: Promise<UserIdentity> | null = null;
 
+// Hydrate from cache on startup for offline support
 try {
   if (typeof window !== "undefined" && window.localStorage) {
-    const cachedEmail = window.localStorage.getItem("sf.lastUserEmail");
-    if (cachedEmail) {
-      identity = { ...identity, email: cachedEmail };
+    const cachedName = window.localStorage.getItem(CACHE_KEY_NAME);
+    const cachedEmail = window.localStorage.getItem(CACHE_KEY_EMAIL);
+    if (cachedName || cachedEmail) {
+      identity = {
+        name: cachedName,
+        email: cachedEmail,
+      };
+      console.log("[UserIdentity] Hydrated from cache:", { name: cachedName, email: cachedEmail });
     }
   }
 } catch {
@@ -29,17 +38,28 @@ function emit(next: UserIdentity) {
   };
   if (identity.name === sanitized.name && identity.email === sanitized.email) return;
   identity = sanitized;
+  
+  // Update cache with both name and email
   try {
     if (typeof window !== "undefined" && window.localStorage) {
-      if (sanitized.email) {
-        window.localStorage.setItem("sf.lastUserEmail", sanitized.email);
+      if (sanitized.name) {
+        window.localStorage.setItem(CACHE_KEY_NAME, sanitized.name);
       } else {
-        window.localStorage.removeItem("sf.lastUserEmail");
+        window.localStorage.removeItem(CACHE_KEY_NAME);
       }
+      
+      if (sanitized.email) {
+        window.localStorage.setItem(CACHE_KEY_EMAIL, sanitized.email);
+      } else {
+        window.localStorage.removeItem(CACHE_KEY_EMAIL);
+      }
+      
+      console.log("[UserIdentity] Cache updated:", { name: sanitized.name, email: sanitized.email });
     }
   } catch {
     // ignore storage failures
   }
+  
   for (const listener of listeners) {
     try {
       listener(identity);
@@ -50,17 +70,28 @@ function emit(next: UserIdentity) {
 }
 
 async function refreshIdentity(): Promise<UserIdentity> {
+  if (typeof navigator !== "undefined" && navigator && !navigator.onLine) {
+    console.info("[UserIdentity] Offline; using cached identity");
+    return identity;
+  }
+
   try {
     const user = await getCurrentUser();
-    const metadata = (user?.user_metadata as UserMetadata | undefined) ?? null;
+    if (!user) {
+      emit({ name: null, email: null });
+      return identity;
+    }
+
+    const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
     emit({
       name: metadata?.name ?? null,
-      email: user?.email ?? null,
+      email: user.email ?? null,
     });
-  } catch {
-    emit({ name: null, email: null });
+    return identity;
+  } catch (error) {
+    console.warn("[UserIdentity] Failed to refresh identity", error);
+    return identity;
   }
-  return identity;
 }
 
 function subscribeToAuthChanges() {
@@ -107,6 +138,30 @@ export function isUserIdentityInitialized(): boolean {
   return initialized;
 }
 
+/**
+ * Clear user identity cache (used on sign-out)
+ */
+export function clearUserIdentityCache() {
+  identity = { name: null, email: null };
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(CACHE_KEY_NAME);
+      window.localStorage.removeItem(CACHE_KEY_EMAIL);
+      // Remove legacy key for backward compatibility
+      window.localStorage.removeItem("sf.lastUserEmail");
+      console.log("[UserIdentity] Cache cleared");
+    }
+  } catch {
+    // ignore storage failures
+  }
+  // Notify listeners about the cleared state
+  for (const listener of listeners) {
+    try {
+      listener(identity);
+    } catch {}
+  }
+}
+
 export function resetUserIdentityForTests() {
   identity = { name: null, email: null };
   initialized = false;
@@ -120,6 +175,8 @@ export function resetUserIdentityForTests() {
   listeners.clear();
   try {
     if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(CACHE_KEY_NAME);
+      window.localStorage.removeItem(CACHE_KEY_EMAIL);
       window.localStorage.removeItem("sf.lastUserEmail");
     }
   } catch {}
