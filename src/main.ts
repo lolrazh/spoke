@@ -762,7 +762,7 @@ async function refreshNotchInfo(reason: string): Promise<void> {
       timeout: 2000,
       maxBuffer: 512 * 1024,
     });
-    const raw = typeof stdout === "string" ? stdout : stdout.toString("utf8");
+    const raw = typeof stdout === "string" ? stdout : (stdout as Buffer).toString("utf8");
     const parsed = sanitizeNotchReport(JSON.parse(raw) as NotchRawReport);
     notchReport = parsed;
     notchReporterMissingWarned = false;
