@@ -762,7 +762,7 @@ async function refreshNotchInfo(reason: string): Promise<void> {
       timeout: 2000,
       maxBuffer: 512 * 1024,
     });
-    const raw = typeof stdout === "string" ? stdout : stdout.toString("utf8");
+    const raw = typeof stdout === "string" ? stdout : (stdout as Buffer).toString("utf8");
     const parsed = sanitizeNotchReport(JSON.parse(raw) as NotchRawReport);
     notchReport = parsed;
     notchReporterMissingWarned = false;
@@ -1614,6 +1614,7 @@ const createWindow = () => {
     focusable: false, // <-- Keeps the previous app front-most
     acceptFirstMouse: true, // <-- Allows first click to pass through to the webview
     hiddenInMissionControl: true, // <-- Hides from exposé
+    type: process.platform === "darwin" ? "panel" : undefined, // <-- Panel type for full-screen overlay on macOS
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
@@ -1658,7 +1659,15 @@ const createWindow = () => {
   // Set window behaviors for macOS
   if (process.platform === "darwin") {
     mainWindow.setAlwaysOnTop(true, "screen-saver");
-    mainWindow.setVisibleOnAllWorkspaces(true);
+    // Critical flags for full-screen overlay while keeping dock icon:
+    // - visibleOnFullScreen: allows window to appear in full-screen Spaces
+    // - skipTransformProcessType: prevents app from becoming UIElement/accessory, keeping dock icon
+    mainWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true,
+    });
+    // Prevent pill itself from going fullscreen
+    mainWindow.setFullScreenable(false);
   }
 
   // Prepare DevTools behavior; actual show happens on renderer-ready handshake
