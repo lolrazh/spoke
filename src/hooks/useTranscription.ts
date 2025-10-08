@@ -27,6 +27,17 @@ import {
   initUserIdentity,
   subscribeUserIdentity,
 } from "../state/userIdentity";
+import { ErrorCode } from "../types/errors";
+import {
+  createAppError,
+  parseServerError,
+  detectNetworkError,
+  parseMediaError,
+  parseWebSocketError,
+  getUserMessage,
+  logError,
+} from "../utils/errorHandler";
+import type { ServerErrorResponse } from "../types/errors";
 
 // Define the hook's return type
 export interface UseTranscriptionReturn {
@@ -325,7 +336,14 @@ export function useTranscription(
     // Circuit breaker: stop trying after max attempts
     if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
       console.warn("[useTranscription] Max reconnect attempts exceeded, entering circuit breaker mode");
-      setError("Connection failed. Please check your internet connection and try again.");
+      const networkError = detectNetworkError();
+      const error = networkError || createAppError(
+        ErrorCode.WS_CONNECTION_FAILED,
+        "Max reconnect attempts exceeded",
+        { attempts: reconnectAttemptRef.current }
+      );
+      logError(error, "[useTranscription]");
+      setError(getUserMessage(error));
       
       // Set a longer timeout before allowing reconnect attempts again
       reconnectTimerRef.current = window.setTimeout(() => {
@@ -408,8 +426,10 @@ export function useTranscription(
       // Start health monitoring when WebSocket is ready
       startWebSocketHealthCheck();
     };
-    ws.onerror = () => {
-      wsErrorRef.current = "WebSocket error";
+    ws.onerror = (event) => {
+      const error = parseWebSocketError(event, { readyState: ws.readyState });
+      wsErrorRef.current = getUserMessage(error);
+      logError(error, "[useTranscription] WebSocket");
       wsLastActivityRef.current = Date.now(); // Track error as activity
       if (ws.readyState !== WebSocket.OPEN) {
         if (wsRef.current === ws) wsRef.current = null;
@@ -494,7 +514,13 @@ export function useTranscription(
           pauseAudioWorklet();
         } else if (sendQueueBytesRef.current > MAX_CLIENT_BUFFER_BYTES) {
           console.error(`[useTranscription] Buffer limit exceeded: ${Math.round(sendQueueBytesRef.current / 1024)}KB, stopping recording`);
-          setError("Network unavailable: buffered audio limit reached");
+          const error = createAppError(
+            ErrorCode.BUFFER_OVERFLOW,
+            "Buffer limit exceeded",
+            { bufferKB: Math.round(sendQueueBytesRef.current / 1024) }
+          );
+          logError(error, "[useTranscription]");
+          setError(getUserMessage(error));
           // Emergency stop - pause worklet and stop recording
           pauseAudioWorklet();
           setRecording(false);
@@ -693,6 +719,43 @@ export function useTranscription(
     return unsubscribe;
   }, [enumerateAndSendDevices, autoEnumerateDevices]);
 
+  // Monitor network connectivity
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log("[useTranscription] Network connection restored");
+      // Clear any network-related errors when coming back online
+      if (error && (error.includes("connection") || error.includes("internet"))) {
+        setError(null);
+      }
+      // Try to reconnect if we have pending data
+      if (sendQueueRef.current.length > 0) {
+        ensureStreamingSocket();
+      }
+    };
+
+    const handleOffline = () => {
+      console.log("[useTranscription] Network connection lost");
+      const networkError = detectNetworkError();
+      if (networkError) {
+        logError(networkError, "[useTranscription] Network");
+        setError(getUserMessage(networkError));
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    // Check initial state
+    if (!navigator.onLine) {
+      handleOffline();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [error, ensureStreamingSocket]);
+
   // Helper to open a microphone stream for the currently selected device
   const openStreamForSelectedDevice =
     useCallback(async (): Promise<boolean> => {
@@ -758,9 +821,9 @@ export function useTranscription(
           "[useTranscription] Failed to open microphone stream:",
           err,
         );
-        setError(
-          "Microphone permissions denied or selected microphone not available.",
-        );
+        const error = parseMediaError(err);
+        logError(error, "[useTranscription]");
+        setError(getUserMessage(error));
         setReady(false);
         return false;
       }
@@ -1044,7 +1107,12 @@ export function useTranscription(
         });
       }
     } catch (err) {
-      setError((err as Error).message);
+      const error = createAppError(
+        ErrorCode.AUDIO_PROCESSING_FAILED,
+        err instanceof Error ? err.message : String(err)
+      );
+      logError(error, "[useTranscription]");
+      setError(getUserMessage(error));
       setRecording(false);
     }
   }, [
@@ -1385,13 +1453,17 @@ export function useTranscription(
               } else if (msg.type === "error") {
                 if (!settled) {
                   settled = true;
+                  // Parse structured server error
+                  const serverError = msg as ServerErrorResponse;
+                  const appError = parseServerError(serverError);
+                  logError(appError, "[useTranscription] Server");
                   // Close after receiving error response
                   try {
                     ws.close(1011, "server error");
                   } catch {}
                   cleanup();
                   reject(
-                    new Error(`Server error: ${msg.body || "Unknown error"}`),
+                    new Error(getUserMessage(appError)),
                   );
                 }
               }

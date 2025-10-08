@@ -585,8 +585,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           } catch (e: any) {
             safely(() => sttAbort?.abort());
             if (!socketClosed) {
+              // Determine error code based on error type
+              let errorCode = 4001; // STT_API_ERROR default
+              const errorMsg = String(e?.message || e || '');
+              if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+                errorCode = 4002; // STT_TIMEOUT
+              } else if (errorMsg.includes('abort')) {
+                errorCode = 4004; // AUDIO_PROCESSING_FAILED
+              }
               const ok = safely(() => server.send(
-                JSON.stringify({ type: 'error', body: e?.message || 'Transcription error' })
+                JSON.stringify({ type: 'error', code: errorCode, body: e?.message || 'Transcription error', retryable: errorCode === 4002 })
               ));
               if (!ok) connLog.error('[WS] error send failed');
               safeClose(server, 1011, 'stt error');
@@ -800,7 +808,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
         const MAX_BYTES = 20 * 1024 * 1024;
         if (session.totalBytes + payload.byteLength > MAX_BYTES) {
-          server.send(JSON.stringify({ type: 'error', body: 'audio too large' }));
+          server.send(JSON.stringify({ type: 'error', code: 4003, body: 'audio too large', retryable: false }));
           safeClose(server, 1009, 'payload too large');
           session = createEmptySession();
           return;
@@ -812,7 +820,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     } catch (e: any) {
       connLog.error('[WS] message error', { error: String(e) });
       safely(() => {
-        server.send(JSON.stringify({ type: 'error', body: e?.message || 'ws error' }));
+        server.send(JSON.stringify({ type: 'error', code: 9999, body: e?.message || 'ws error', retryable: false }));
         safeClose(server, 1011, 'message processing error');
       });
       session = createEmptySession();
