@@ -9,6 +9,19 @@ const baseRuntime = {
   timeoutMs: 25_000,
   currentDate: '2024-09-30',
   provider: 'groq' as const,
+  routerEnabled: true,
+};
+
+const baseTenRuntime = {
+  ...baseRuntime,
+  provider: 'baseten' as const,
+  model: 'Qwen/Qwen3-235B-A22B-Instruct-2507',
+};
+
+const openaiRuntime = {
+  ...baseRuntime,
+  provider: 'openai' as const,
+  model: 'gpt-4.1-mini',
 };
 
 describe('services/llm/routing.selectLLMRoute', () => {
@@ -19,11 +32,21 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.matchedRuleIds).toEqual([]);
   });
 
-  it('routes spelled sequences to Kimi', () => {
-    const decision = selectLLMRoute('Please write D N A sequence', baseRuntime);
-    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
-    expect(decision.provider).toBe('groq');
-    expect(decision.matchedRuleIds).toContain('spelled-sequence');
+  it('routes spelled sequences to edit model based on provider', () => {
+    const groqDecision = selectLLMRoute('Please write D N A sequence', baseRuntime);
+    expect(groqDecision.model).toBe('moonshotai/kimi-k2-instruct-0905');
+    expect(groqDecision.provider).toBe('groq');
+    expect(groqDecision.matchedRuleIds).toContain('spelled-sequence');
+
+    const baseTenDecision = selectLLMRoute('Please write D N A sequence', baseTenRuntime);
+    expect(baseTenDecision.model).toBe('moonshotai/Kimi-K2-Instruct-0905');
+    expect(baseTenDecision.provider).toBe('baseten');
+    expect(baseTenDecision.matchedRuleIds).toContain('spelled-sequence');
+
+    const openaiDecision = selectLLMRoute('Please write D N A sequence', openaiRuntime);
+    expect(openaiDecision.model).toBe('gpt-4.1-mini');
+    expect(openaiDecision.provider).toBe('openai');
+    expect(openaiDecision.matchedRuleIds).toContain('spelled-sequence');
   });
 
   it('matches explicit spell instructions case-insensitively', () => {
@@ -32,7 +55,7 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
   });
 
-  it('routes "can you" phrasing to Kimi', () => {
+  it('routes "can you" phrasing to edit model based on provider', () => {
     const decision = selectLLMRoute('can you format this exactly?', baseRuntime);
     expect(decision.matchedRuleIds).toContain('can-you-instruction');
     expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
@@ -61,12 +84,18 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.matchedRuleIds).toEqual(['custom']);
   });
 
-  it('routes long transcripts to Kimi even without regex matches', () => {
+  it('routes long transcripts to edit model based on provider even without regex matches', () => {
     const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
-    const decision = selectLLMRoute(longText, baseRuntime);
-    expect(decision.provider).toBe('groq');
-    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
-    expect(decision.matchedRuleIds[0]).toBe('length-threshold');
+    
+    const groqDecision = selectLLMRoute(longText, baseRuntime);
+    expect(groqDecision.provider).toBe('groq');
+    expect(groqDecision.model).toBe('moonshotai/kimi-k2-instruct-0905');
+    expect(groqDecision.matchedRuleIds[0]).toBe('length-threshold');
+
+    const baseTenDecision = selectLLMRoute(longText, baseTenRuntime);
+    expect(baseTenDecision.provider).toBe('baseten');
+    expect(baseTenDecision.model).toBe('moonshotai/Kimi-K2-Instruct-0905');
+    expect(baseTenDecision.matchedRuleIds[0]).toBe('length-threshold');
   });
 
   it('does not trigger length rule for shorter transcripts', () => {
@@ -75,5 +104,28 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.provider).toBe(baseRuntime.provider);
     expect(decision.model).toBe(baseRuntime.model);
     expect(decision.matchedRuleIds).toEqual([]);
+  });
+
+  it('bypasses routing when router is disabled', () => {
+    const disabledRuntime = { ...baseRuntime, routerEnabled: false };
+    
+    // Test with spelled sequence (would normally route to Kimi)
+    const decision1 = selectLLMRoute('Please write D N A sequence', disabledRuntime);
+    expect(decision1.provider).toBe(disabledRuntime.provider);
+    expect(decision1.model).toBe(disabledRuntime.model);
+    expect(decision1.matchedRuleIds).toEqual([]);
+    
+    // Test with "can you" instruction (would normally route to Kimi)
+    const decision2 = selectLLMRoute('can you format this exactly?', disabledRuntime);
+    expect(decision2.provider).toBe(disabledRuntime.provider);
+    expect(decision2.model).toBe(disabledRuntime.model);
+    expect(decision2.matchedRuleIds).toEqual([]);
+    
+    // Test with long text (would normally route to Kimi)
+    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+    const decision3 = selectLLMRoute(longText, disabledRuntime);
+    expect(decision3.provider).toBe(disabledRuntime.provider);
+    expect(decision3.model).toBe(disabledRuntime.model);
+    expect(decision3.matchedRuleIds).toEqual([]);
   });
 });
