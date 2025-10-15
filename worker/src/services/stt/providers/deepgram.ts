@@ -1,12 +1,5 @@
 import * as Sentry from '@sentry/cloudflare';
-import {
-  DEEPGRAM_STT_ENDPOINT,
-  DEEPGRAM_STT_DEFAULT_MODEL,
-  DEEPGRAM_STT_DEFAULT_PARAGRAPHS,
-  DEEPGRAM_STT_DEFAULT_PUNCTUATE,
-  STT_DEFAULT_LANGUAGE,
-  STT_DEFAULT_TIMEOUT_MS,
-} from '../../../config';
+import { DEEPGRAM_STT_ENDPOINT, DEEPGRAM_STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../../config';
 
 type BasicTimings = {
   startAt: number;
@@ -25,8 +18,6 @@ type TranscribeOpts = {
   language?: string;
   prompt?: string;
   model?: string;
-  punctuate?: boolean;
-  paragraphs?: boolean;
 };
 
 const DEEPGRAM_HOSTNAME = new URL(DEEPGRAM_STT_ENDPOINT).hostname;
@@ -40,8 +31,6 @@ export async function transcribeWav(
   const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
   const model = opts?.model ?? DEEPGRAM_STT_DEFAULT_MODEL;
   const language = opts?.language ?? STT_DEFAULT_LANGUAGE;
-  const punctuate = opts?.punctuate ?? DEEPGRAM_STT_DEFAULT_PUNCTUATE;
-  const paragraphs = opts?.paragraphs ?? DEEPGRAM_STT_DEFAULT_PARAGRAPHS;
 
   const controller = new AbortController();
   const onExternalAbort = () => controller.abort();
@@ -54,8 +43,6 @@ export async function transcribeWav(
   const endpointUrl = new URL(DEEPGRAM_STT_ENDPOINT);
   endpointUrl.searchParams.set('model', model);
   endpointUrl.searchParams.set('language', language);
-  endpointUrl.searchParams.set('punctuate', punctuate ? 'true' : 'false');
-  endpointUrl.searchParams.set('paragraphs', paragraphs ? 'true' : 'false');
 
   const audioBuffer = wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength);
 
@@ -71,14 +58,13 @@ export async function transcribeWav(
           'stt.provider': 'deepgram',
           'deepgram.model': model,
           'deepgram.language': language,
-          'deepgram.punctuate': punctuate,
-          'deepgram.paragraphs': paragraphs,
           'audio.size_bytes': wav.length,
           'deepgram.timeout_ms': timeoutMs,
         },
       },
       async (span) => {
-        const res = await fetch(endpointUrl.toString(), {
+        const requestUrl = endpointUrl.toString();
+        const res = await fetch(requestUrl, {
           method: 'POST',
           headers: {
             Authorization: `Token ${apiKey}`,

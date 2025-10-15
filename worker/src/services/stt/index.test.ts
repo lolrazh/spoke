@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEEPGRAM_STT_DEFAULT_MODEL, STT_DEFAULT_MODEL } from '../../config';
+import { STT_DEFAULT_MODEL, STT_DEFAULT_PROVIDER } from '../../config';
 
 vi.mock('./providers/groq', () => ({
   transcribeWav: vi.fn().mockResolvedValue({
@@ -36,17 +36,29 @@ describe('services/stt index transcribeWav', () => {
     vi.clearAllMocks();
   });
 
-  it('defaults to groq provider', async () => {
+  it('defaults to the configured provider', async () => {
     const wav = new Uint8Array([0, 1]);
-    const result = await transcribeWav(wav, { apiKey: 'groq-key' });
+    const result = await transcribeWav(wav, { apiKey: 'default-key' });
 
-    expect(result.text).toBe('groq-text');
-    expect(groqMock).toHaveBeenCalledTimes(1);
-    expect(fireworksMock).not.toHaveBeenCalled();
-    expect(deepgramMock).not.toHaveBeenCalled();
-    const [, , opts] = groqMock.mock.calls[0];
-    expect(opts.model).toBe(STT_DEFAULT_MODEL);
-    expect(opts.language).toBeTruthy();
+    if (STT_DEFAULT_PROVIDER === 'groq') {
+      expect(result.text).toBe('groq-text');
+      expect(groqMock).toHaveBeenCalledTimes(1);
+      expect(fireworksMock).not.toHaveBeenCalled();
+      expect(deepgramMock).not.toHaveBeenCalled();
+      const [, , opts] = groqMock.mock.calls[0];
+      expect(opts.model).toBe(STT_DEFAULT_MODEL);
+      expect(opts.language).toBeTruthy();
+    } else if (STT_DEFAULT_PROVIDER === 'fireworks') {
+      expect(result.text).toBe('fireworks-text');
+      expect(fireworksMock).toHaveBeenCalledTimes(1);
+      expect(groqMock).not.toHaveBeenCalled();
+      expect(deepgramMock).not.toHaveBeenCalled();
+    } else {
+      expect(result.text).toBe('deepgram-text');
+      expect(deepgramMock).toHaveBeenCalledTimes(1);
+      expect(groqMock).not.toHaveBeenCalled();
+      expect(fireworksMock).not.toHaveBeenCalled();
+    }
   });
 
   it('routes to fireworks provider when specified', async () => {

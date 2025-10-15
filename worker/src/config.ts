@@ -37,8 +37,6 @@ export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
-export const DEEPGRAM_STT_DEFAULT_PUNCTUATE = true;
-export const DEEPGRAM_STT_DEFAULT_PARAGRAPHS = true;
 
 export const STT_DEFAULT_MODEL = DEEPGRAM_STT_DEFAULT_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';

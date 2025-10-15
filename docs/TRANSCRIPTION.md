@@ -372,7 +372,7 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Endpoint**: `https://api.deepgram.com/v1/listen`
 - **Auth**: `Authorization: Token <DEEPGRAM_API_KEY>`
 - **Default model**: `nova-3` (via `DEEPGRAM_STT_DEFAULT_MODEL`)
-- **Query params**: Appends `punctuate=true` and `paragraphs=true` by default; both can be overridden via the dispatcher options if needed.
+- **Query params**: Sends only `model` and `language` so the service applies its own defaults.
 - **Instrumentation**: Emits `stt.provider = deepgram` plus Deepgram-specific timing and transcript attributes, matching the structure used by other providers.
 
 > **Switching providers**: Set `STT_PROVIDER=fireworks` or `STT_PROVIDER=deepgram` (and supply the matching API key) to flip at runtime. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.

@@ -22,8 +22,6 @@ type BaseOptions = {
 
 export type TranscribeOptions = BaseOptions & {
   provider?: STTProvider;
-  punctuate?: boolean;
-  paragraphs?: boolean;
 };
 
 export type TranscriptionResult = {
@@ -75,8 +73,6 @@ export async function transcribeWav(
       prompt: opts.prompt,
       timeoutMs,
       signal: opts.signal,
-      punctuate: opts.punctuate,
-      paragraphs: opts.paragraphs,
     });
   }
 

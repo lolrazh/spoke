@@ -9,7 +9,7 @@ describe('services/stt/deepgram.transcribeWav', () => {
     vi.restoreAllMocks();
   });
 
-  it('posts wav to deepgram with default query params', async () => {
+  it('posts wav to deepgram without optional query params', async () => {
     const wav = new Uint8Array([1, 2, 3]);
     const jsonBody = {
       results: {
@@ -46,8 +46,8 @@ describe('services/stt/deepgram.transcribeWav', () => {
     expect(`${parsed.origin}${parsed.pathname}`).toBe(DEEPGRAM_STT_ENDPOINT);
     expect(parsed.searchParams.get('model')).toBe(DEEPGRAM_STT_DEFAULT_MODEL);
     expect(parsed.searchParams.get('language')).toBe('en');
-    expect(parsed.searchParams.get('punctuate')).toBe('true');
-    expect(parsed.searchParams.get('paragraphs')).toBe('true');
+    expect(parsed.searchParams.has('punctuate')).toBe(false);
+    expect(parsed.searchParams.has('paragraphs')).toBe(false);
     const headers = (init as any).headers;
     expect(headers.Authorization).toBe(`Token ${apiKey}`);
     expect(headers['Content-Type']).toBe('audio/wav');
