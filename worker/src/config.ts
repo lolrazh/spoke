@@ -9,21 +9,22 @@ export const OPENROUTER_LLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/comple
 export const GROQ_LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 export const GROQ_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const OPENAI_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
-export const BASETEN_LLM_DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B-Instruct-2507';
+export const BASETEN_LLM_DEFAULT_MODEL = 'moonshotai/Kimi-K2-Instruct-0905';
+export const BASETEN_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/Kimi-K2-Instruct-0905';
 export const OPENROUTER_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
 
-export const LLM_DEFAULT_MODEL = GROQ_LLM_DEFAULT_MODEL;
+export const LLM_DEFAULT_MODEL = BASETEN_LLM_DEFAULT_MODEL;
 export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
-export const LLM_DEFAULT_PROVIDER = 'groq' as const;
+export const LLM_DEFAULT_PROVIDER = 'baseten' as const;
 export type LLMProvider = 'groq' | 'openai' | 'baseten' | 'openrouter';
 
-export const EDIT_LLM_DEFAULT_MODEL = GROQ_EDIT_LLM_DEFAULT_MODEL;
+export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = true;
-export const EDIT_LLM_DEFAULT_PROVIDER = 'groq' as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 
 // STT (Audio Transcriptions)
