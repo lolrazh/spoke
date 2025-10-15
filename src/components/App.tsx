@@ -133,17 +133,20 @@ const usePillMachine = () => {
   return { state: machine.state, context: machine.context, dispatch };
 };
 
-const debounce = <T extends (...args: unknown[]) => void>(
-  func: T,
+const leadingThrottle = <T extends (...args: unknown[]) => void>(
+  fn: T,
   delay: number,
 ) => {
   let timeoutId: NodeJS.Timeout | null = null;
   return (...args: Parameters<T>) => {
+    if (timeoutId == null) {
+      fn(...args);
+    }
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
     timeoutId = setTimeout(() => {
-      func(...args);
+      timeoutId = null;
     }, delay);
   };
 };
@@ -1065,7 +1068,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
-    const HOLD_DURATION_MS = 80;
+    const HOLD_DURATION_MS = 100; // small buffer so quick taps don't fall into hold
 
     const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);
@@ -1214,7 +1217,7 @@ const App: React.FC = () => {
         }
       } else {
         const now = Date.now();
-        const DOUBLE_MS = 220;
+        const DOUBLE_MS = 300; // tolerate slightly slower double taps
         if (lastTapUpRef.current && now - lastTapUpRef.current <= DOUBLE_MS) {
           if (doubleTapTimerRef.current) {
             clearTimeout(doubleTapTimerRef.current);
@@ -1312,11 +1315,10 @@ const App: React.FC = () => {
       isLongPressRef.current = false;
     };
 
-    const debouncedKeyDown = debounce(handleFunctionKeyDown, 25);
-    const debouncedKeyUp = debounce(handleFunctionKeyUp, 25);
-
-    const cleanupOnDown = window.ptt.onDown(debouncedKeyDown);
-    const cleanupOnUp = window.ptt.onUp(debouncedKeyUp);
+    const throttledKeyDown = leadingThrottle(handleFunctionKeyDown, 25);
+    const throttledKeyUp = leadingThrottle(handleFunctionKeyUp, 25);
+    const cleanupOnDown = window.ptt.onDown(throttledKeyDown);
+    const cleanupOnUp = window.ptt.onUp(throttledKeyUp);
 
     return () => {
       cleanupOnDown();

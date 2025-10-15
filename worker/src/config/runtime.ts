@@ -17,6 +17,8 @@ import {
   STT_DEFAULT_MODEL,
   STT_DEFAULT_TIMEOUT_MS,
   STT_DEFAULT_PROVIDER,
+  FIREWORKS_STT_TURBO_MODEL,
+  DEEPGRAM_STT_DEFAULT_MODEL,
 } from '../config';
 import type { LLMProvider, STTProvider } from '../config';
 
@@ -87,7 +89,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
   // STT
   const sttProvider = parseSttProvider(env.STT_PROVIDER, STT_DEFAULT_PROVIDER);
-  const sttModel = env.STT_MODEL || STT_DEFAULT_MODEL;
+  const sttModel = env.STT_MODEL || defaultSttModelFor(sttProvider);
   const sttLanguage = env.STT_LANGUAGE || STT_DEFAULT_LANGUAGE;
   const sttPrompt = env.STT_PROMPT || undefined;
   const sttTimeoutMs = Number.isFinite(Number(env.STT_TIMEOUT_MS))
@@ -120,6 +122,12 @@ function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
 
 function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'fireworks') return s as STTProvider;
+  if (s === 'groq' || s === 'fireworks' || s === 'deepgram') return s as STTProvider;
   return fallback;
+}
+
+function defaultSttModelFor(provider: STTProvider): string {
+  if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
+  if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
+  return STT_DEFAULT_MODEL;
 }

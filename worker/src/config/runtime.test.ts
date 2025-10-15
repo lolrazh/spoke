@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getRuntimeConfig } from './runtime';
+import { DEEPGRAM_STT_DEFAULT_MODEL } from '../config';
 
 describe('config/runtime.getRuntimeConfig', () => {
   it('returns sane defaults when env is empty', () => {
@@ -10,7 +11,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(['groq','openai','baseten','openrouter']).toContain(cfg.llm.provider);
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
-    expect(['groq','fireworks']).toContain(cfg.stt.provider);
+    expect(['groq','fireworks','deepgram']).toContain(cfg.stt.provider);
   });
 
   it('coerces booleans (reasoning removed)', () => {
@@ -29,8 +30,11 @@ describe('config/runtime.getRuntimeConfig', () => {
   it('parses STT provider override', () => {
     const cfg = getRuntimeConfig({ STT_PROVIDER: 'fireworks' });
     expect(cfg.stt.provider).toBe('fireworks');
+    const deepgram = getRuntimeConfig({ STT_PROVIDER: 'deepgram' });
+    expect(deepgram.stt.provider).toBe('deepgram');
+    expect(deepgram.stt.model).toBe(DEEPGRAM_STT_DEFAULT_MODEL);
     const fallback = getRuntimeConfig({ STT_PROVIDER: 'invalid' });
-    expect(['groq','fireworks']).toContain(fallback.stt.provider);
+    expect(['groq','fireworks','deepgram']).toContain(fallback.stt.provider);
   });
 
   it('parses LLM provider from env (LLM_PROVIDER preferred)', () => {

@@ -3,10 +3,13 @@ import {
   STT_DEFAULT_PROVIDER,
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_TIMEOUT_MS,
+  FIREWORKS_STT_TURBO_MODEL,
+  DEEPGRAM_STT_DEFAULT_MODEL,
   type STTProvider,
 } from '../../config';
 import { transcribeWav as transcribeGroq } from './providers/groq';
 import { transcribeWav as transcribeFireworks } from './providers/fireworks';
+import { transcribeWav as transcribeDeepgram } from './providers/deepgram';
 
 type BaseOptions = {
   apiKey: string;
@@ -17,7 +20,9 @@ type BaseOptions = {
   signal?: AbortSignal;
 };
 
-export type TranscribeOptions = BaseOptions & { provider?: STTProvider };
+export type TranscribeOptions = BaseOptions & {
+  provider?: STTProvider;
+};
 
 export type TranscriptionResult = {
   text: string;
@@ -33,7 +38,7 @@ export async function transcribeWav(
   opts: TranscribeOptions,
 ): Promise<TranscriptionResult> {
   const provider = opts.provider ?? STT_DEFAULT_PROVIDER;
-  const model = opts.model ?? STT_DEFAULT_MODEL;
+  const model = opts.model ?? defaultModelFor(provider);
   const language = opts.language ?? STT_DEFAULT_LANGUAGE;
   const timeoutMs = opts.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
 
@@ -61,5 +66,21 @@ export async function transcribeWav(
     });
   }
 
+  if (provider === 'deepgram') {
+    return transcribeDeepgram(wav, opts.apiKey, {
+      model,
+      language,
+      prompt: opts.prompt,
+      timeoutMs,
+      signal: opts.signal,
+    });
+  }
+
   throw new Error(`Unsupported STT provider: ${String(provider)}`);
+}
+
+function defaultModelFor(provider: STTProvider): string {
+  if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
+  if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
+  return STT_DEFAULT_MODEL;
 }
