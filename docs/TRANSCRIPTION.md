@@ -350,7 +350,7 @@ export function wrapWav(pcm: Uint8Array, rate = 16000, channels = 1, bitsPerSamp
 The worker now supports multiple STT providers behind a small dispatcher so the default can be flipped by editing `worker/src/config.ts` (no `.dev.vars` required).
 
 - **Switcher**: `worker/src/services/stt/index.ts` — selects provider based on `STT_DEFAULT_PROVIDER` and forwards normalized options.
-- **Provider configs**: toggle `STT_DEFAULT_PROVIDER`, `STT_DEFAULT_MODEL`, and the endpoint you want in `worker/src/config.ts` by commenting/uncommenting the desired exports (mirrors the existing LLM workflow).
+- **Provider configs**: default provider/model live in `worker/src/config.ts`, while the runtime `STT_PROVIDER` env (or the config fallback) selects the active service without touching `.dev.vars`.
 
 #### Groq Whisper Large v3 (default)
 - **Location**: `worker/src/services/stt/providers/groq.ts`
@@ -367,7 +367,15 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Signal options**: Uses fallback decoding with `temperature=0.0,0.2,0.4`, `vad_model=silero`, `alignment_model=tdnn_ffn`, and `preprocessing=none` for minimal latency; language defaults to `en` unless overridden.
 - **Instrumentation**: Emits `stt.provider = fireworks` with timing metrics mirroring the Groq span fields.
 
-> **Switching providers**: Uncomment the Fireworks exports for `STT_DEFAULT_PROVIDER` and `STT_DEFAULT_MODEL` (plus any alternate endpoint constants) in `worker/src/config.ts`. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
+#### Deepgram Nova (punctuation + paragraphs)
+- **Location**: `worker/src/services/stt/providers/deepgram.ts`
+- **Endpoint**: `https://api.deepgram.com/v1/listen`
+- **Auth**: `Authorization: Token <DEEPGRAM_API_KEY>`
+- **Default model**: `nova-3` (via `DEEPGRAM_STT_DEFAULT_MODEL`)
+- **Query params**: Appends `punctuate=true` and `paragraphs=true` by default; both can be overridden via the dispatcher options if needed.
+- **Instrumentation**: Emits `stt.provider = deepgram` plus Deepgram-specific timing and transcript attributes, matching the structure used by other providers.
+
+> **Switching providers**: Set `STT_PROVIDER=fireworks` or `STT_PROVIDER=deepgram` (and supply the matching API key) to flip at runtime. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
 
 ### Edit Mode LLM Flow
 
@@ -726,12 +734,14 @@ VITE_TRANSCRIBE_WS_URL=wss://api.sonicflow.app/ws  # Production endpoint
 VITE_SENTRY_DSN=...                     # Error reporting
 
 # Worker configuration
-GROQ_API_KEY=...                        # Required for transcription
+STT_PROVIDER=groq                       # groq | fireworks | deepgram (optional; defaults to groq)
+GROQ_API_KEY=...                        # Required for Groq STT or Groq LLM
+FIREWORKS_API_KEY=...                   # Required when STT_PROVIDER=fireworks
+DEEPGRAM_API_KEY=...                    # Required when STT_PROVIDER=deepgram
 # LLM provider + options (choose provider and set its key)
 LLM_PROVIDER=openai                     # openai | groq | baseten
 LLM_DEFAULT_PROVIDER=openai             # Fallback when LLM_PROVIDER is unset
 OPENAI_API_KEY=...                      # When provider=openai
-GROQ_API_KEY=...                        # When provider=groq
 BASETEN_API_KEY=...                     # When provider=baseten
 ENABLE_LLM=1                            # Enable post-processing (default true)
 LLM_STREAM=1                            # Stream progressive updates (default true)

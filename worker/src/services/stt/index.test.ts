@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEEPGRAM_STT_DEFAULT_MODEL, STT_DEFAULT_MODEL } from '../../config';
 
 vi.mock('./providers/groq', () => ({
   transcribeWav: vi.fn().mockResolvedValue({
@@ -14,12 +15,21 @@ vi.mock('./providers/fireworks', () => ({
   }),
 }));
 
+vi.mock('./providers/deepgram', () => ({
+  transcribeWav: vi.fn().mockResolvedValue({
+    text: 'deepgram-text',
+    timings: { startAt: 2, headersAt: 4, bodyDoneAt: 6 },
+  }),
+}));
+
 import { transcribeWav } from '.';
 import { transcribeWav as groqTranscribe } from './providers/groq';
 import { transcribeWav as fireworksTranscribe } from './providers/fireworks';
+import { transcribeWav as deepgramTranscribe } from './providers/deepgram';
 
 const groqMock = vi.mocked(groqTranscribe);
 const fireworksMock = vi.mocked(fireworksTranscribe);
+const deepgramMock = vi.mocked(deepgramTranscribe);
 
 describe('services/stt index transcribeWav', () => {
   beforeEach(() => {
@@ -33,8 +43,9 @@ describe('services/stt index transcribeWav', () => {
     expect(result.text).toBe('groq-text');
     expect(groqMock).toHaveBeenCalledTimes(1);
     expect(fireworksMock).not.toHaveBeenCalled();
+    expect(deepgramMock).not.toHaveBeenCalled();
     const [, , opts] = groqMock.mock.calls[0];
-    expect(opts.model).toBeTruthy();
+    expect(opts.model).toBe(STT_DEFAULT_MODEL);
     expect(opts.language).toBeTruthy();
   });
 
@@ -45,8 +56,22 @@ describe('services/stt index transcribeWav', () => {
     expect(result.text).toBe('fireworks-text');
     expect(fireworksMock).toHaveBeenCalledTimes(1);
     expect(groqMock).not.toHaveBeenCalled();
+    expect(deepgramMock).not.toHaveBeenCalled();
     const [, , opts] = fireworksMock.mock.calls[0];
     expect(opts.model).toBe('whisper-v3-turbo');
+  });
+
+  it('routes to deepgram provider when specified', async () => {
+    const wav = new Uint8Array([7, 8]);
+    const result = await transcribeWav(wav, { apiKey: 'dg-key', provider: 'deepgram' });
+
+    expect(result.text).toBe('deepgram-text');
+    expect(deepgramMock).toHaveBeenCalledTimes(1);
+    expect(groqMock).not.toHaveBeenCalled();
+    expect(fireworksMock).not.toHaveBeenCalled();
+    const [, , opts] = deepgramMock.mock.calls[0];
+    expect(opts.model).toBeTruthy();
+    expect(opts.language).toBeTruthy();
   });
 
   it('throws when apiKey missing', async () => {

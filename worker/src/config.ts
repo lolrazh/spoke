@@ -31,12 +31,16 @@ export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 export const GROQ_STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
 export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
+export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
 
 export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
+export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
+export const DEEPGRAM_STT_DEFAULT_PUNCTUATE = true;
+export const DEEPGRAM_STT_DEFAULT_PARAGRAPHS = true;
 
-export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
+export const STT_DEFAULT_MODEL = DEEPGRAM_STT_DEFAULT_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';
 export const FIREWORKS_STT_DEFAULT_ALIGNMENT_MODEL = 'tdnn_ffn';
 export const FIREWORKS_STT_DEFAULT_PREPROCESSING = 'none';
@@ -44,5 +48,5 @@ export const FIREWORKS_STT_DEFAULT_TEMPERATURES = '0.0,0.2,0.4';
 
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-export const STT_DEFAULT_PROVIDER = 'groq' as const;
-export type STTProvider = 'groq' | 'fireworks';
+export const STT_DEFAULT_PROVIDER = 'deepgram' as const;
+export type STTProvider = 'groq' | 'fireworks' | 'deepgram';

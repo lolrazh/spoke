@@ -18,6 +18,7 @@ import { safely } from '../utils/safely';
 import {
   GROQ_STT_ENDPOINT,
   FIREWORKS_STT_TURBO_ENDPOINT,
+  DEEPGRAM_STT_ENDPOINT,
   GROQ_LLM_ENDPOINT,
   OPENAI_LLM_ENDPOINT,
   BASETEN_LLM_ENDPOINT,
@@ -27,6 +28,7 @@ import {
 type Bindings = {
   GROQ_API_KEY?: string;
   FIREWORKS_API_KEY?: string;
+  DEEPGRAM_API_KEY?: string;
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
@@ -139,7 +141,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     return c.text('Too many connections from your IP. Please try again later.', 429);
   }
 
-  const { GROQ_API_KEY, FIREWORKS_API_KEY, OPENROUTER_API_KEY } = c.env;
+  const { GROQ_API_KEY, FIREWORKS_API_KEY, DEEPGRAM_API_KEY, OPENROUTER_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
@@ -251,10 +253,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               sessionSpan.setAttribute('dataset.allowed', session.shareTranscriptions ? 1 : 0);
               
-              const sttApiKey = sttProvider === 'fireworks' ? FIREWORKS_API_KEY : GROQ_API_KEY;
-              const sttEndpoint = sttProvider === 'fireworks'
-                ? FIREWORKS_STT_TURBO_ENDPOINT
-                : GROQ_STT_ENDPOINT;
+              const sttApiKey =
+                sttProvider === 'fireworks'
+                  ? FIREWORKS_API_KEY
+                  : sttProvider === 'deepgram'
+                    ? DEEPGRAM_API_KEY
+                    : GROQ_API_KEY;
+              const sttEndpoint =
+                sttProvider === 'fireworks'
+                  ? FIREWORKS_STT_TURBO_ENDPOINT
+                  : sttProvider === 'deepgram'
+                    ? DEEPGRAM_STT_ENDPOINT
+                    : GROQ_STT_ENDPOINT;
 
               sessionSpan.setAttribute('stt.provider', sttProvider);
 
