@@ -1068,7 +1068,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
 
-    const HOLD_DURATION_MS = 100; // small buffer so quick taps don't fall into hold
+    const HOLD_DURATION_MS = 130; // slightly longer to avoid interfering with slow double-taps
 
     const handleFunctionKeyDown = () => {
       pushTrace(`PTT down`);
@@ -1217,7 +1217,7 @@ const App: React.FC = () => {
         }
       } else {
         const now = Date.now();
-        const DOUBLE_MS = 300; // tolerate slightly slower double taps
+        const DOUBLE_MS = 450; // more forgiving window for double-taps to avoid PTT interference
         if (lastTapUpRef.current && now - lastTapUpRef.current <= DOUBLE_MS) {
           if (doubleTapTimerRef.current) {
             clearTimeout(doubleTapTimerRef.current);
