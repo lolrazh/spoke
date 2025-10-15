@@ -56,6 +56,11 @@ export function selectLLMRoute(
     return { provider: runtime.provider, model: runtime.model, matchedRuleIds: [] };
   }
 
+  // If router is disabled, always use default provider/model
+  if (!runtime.routerEnabled) {
+    return { provider: runtime.provider, model: runtime.model, matchedRuleIds: [] };
+  }
+
   const matches = rules.filter((rule) => rule.pattern.test(normalized));
   const matchedRuleIds = matches.map((rule) => rule.id);
 

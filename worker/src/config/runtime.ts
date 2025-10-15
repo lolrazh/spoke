@@ -4,6 +4,7 @@ import {
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
   LLM_DEFAULT_PROVIDER,
+  LLM_ROUTER_ENABLED,
   GROQ_LLM_DEFAULT_MODEL,
   OPENAI_LLM_DEFAULT_MODEL,
   BASETEN_LLM_DEFAULT_MODEL,
@@ -54,6 +55,7 @@ export type RuntimeConfig = {
     timeoutMs: number;
     currentDate: string;
     provider: LLMProvider;
+    routerEnabled: boolean;
   };
   stt: {
     provider: STTProvider;
@@ -86,6 +88,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     ? Number(env.LLM_TIMEOUT_MS)
     : LLM_DEFAULT_TIMEOUT_MS;
   const currentDate = (env.LLM_CURRENT_DATE || new Date().toISOString().slice(0, 10)) as string;
+  const routerEnabled = toBool(env.LLM_ROUTER_ENABLED, LLM_ROUTER_ENABLED);
 
   // STT
   const sttProvider = parseSttProvider(env.STT_PROVIDER, STT_DEFAULT_PROVIDER);
@@ -108,7 +111,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     : EDIT_LLM_DEFAULT_TIMEOUT_MS;
 
   return {
-    llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider },
+    llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider, routerEnabled },
     stt: { provider: sttProvider, model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
     edit: { enabled: editEnabled, stream: editStream, model: editModel, temperature: editTemperature, timeoutMs: editTimeoutMs, provider: editProvider },
   };

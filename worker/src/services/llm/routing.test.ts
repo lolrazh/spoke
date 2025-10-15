@@ -9,6 +9,7 @@ const baseRuntime = {
   timeoutMs: 25_000,
   currentDate: '2024-09-30',
   provider: 'groq' as const,
+  routerEnabled: true,
 };
 
 describe('services/llm/routing.selectLLMRoute', () => {
@@ -75,5 +76,28 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.provider).toBe(baseRuntime.provider);
     expect(decision.model).toBe(baseRuntime.model);
     expect(decision.matchedRuleIds).toEqual([]);
+  });
+
+  it('bypasses routing when router is disabled', () => {
+    const disabledRuntime = { ...baseRuntime, routerEnabled: false };
+    
+    // Test with spelled sequence (would normally route to Kimi)
+    const decision1 = selectLLMRoute('Please write D N A sequence', disabledRuntime);
+    expect(decision1.provider).toBe(disabledRuntime.provider);
+    expect(decision1.model).toBe(disabledRuntime.model);
+    expect(decision1.matchedRuleIds).toEqual([]);
+    
+    // Test with "can you" instruction (would normally route to Kimi)
+    const decision2 = selectLLMRoute('can you format this exactly?', disabledRuntime);
+    expect(decision2.provider).toBe(disabledRuntime.provider);
+    expect(decision2.model).toBe(disabledRuntime.model);
+    expect(decision2.matchedRuleIds).toEqual([]);
+    
+    // Test with long text (would normally route to Kimi)
+    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+    const decision3 = selectLLMRoute(longText, disabledRuntime);
+    expect(decision3.provider).toBe(disabledRuntime.provider);
+    expect(decision3.model).toBe(disabledRuntime.model);
+    expect(decision3.matchedRuleIds).toEqual([]);
   });
 });
