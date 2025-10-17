@@ -990,11 +990,50 @@ const Onboarding: React.FC = () => {
 
   // Auto-focus the text box on test steps for better UX
   useEffect(() => {
-    if (currentStep !== "hotkey-test" && currentStep !== "hands-free-test" && currentStep !== "edit-test") return;
-    const id = setTimeout(() => {
-      textAreaRef.current?.focus();
-    }, 50);
-    return () => clearTimeout(id);
+    if (
+      currentStep !== "hotkey-test" &&
+      currentStep !== "hands-free-test" &&
+      currentStep !== "edit-test"
+    ) {
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let rafId: number | null = null;
+
+    const focusActiveTextArea = () => {
+      if (cancelled) return;
+      const active =
+        textAreaRef.current?.dataset?.onboardingStep === currentStep
+          ? textAreaRef.current
+          : document.querySelector<HTMLTextAreaElement>(
+              `textarea[data-onboarding-step="${currentStep}"]`,
+            );
+
+      if (!active) {
+        timeoutId = setTimeout(focusActiveTextArea, 80);
+        return;
+      }
+
+      textAreaRef.current = active;
+      if (document.activeElement !== active) {
+        try {
+          active.focus({ preventScroll: true });
+        } catch {
+          active.focus();
+        }
+      }
+    };
+
+    rafId = window.requestAnimationFrame(focusActiveTextArea);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [currentStep]);
 
   // Permission handlers are now provided by the shared hook
@@ -1793,6 +1832,7 @@ const Onboarding: React.FC = () => {
                         value={testText}
                         onChange={(e) => setTestText(e.target.value)}
                         ref={textAreaRef}
+                        data-onboarding-step="hotkey-test"
                       />
                     </div>
 
@@ -1838,6 +1878,7 @@ const Onboarding: React.FC = () => {
                         value={testText}
                         onChange={(e) => setTestText(e.target.value)}
                         ref={textAreaRef}
+                        data-onboarding-step="hands-free-test"
                       />
                     </div>
 
@@ -1882,6 +1923,7 @@ const Onboarding: React.FC = () => {
                         value={testTextTap}
                         onChange={(e) => setTestTextTap(e.target.value)}
                         ref={textAreaRef}
+                        data-onboarding-step="edit-test"
                       />
                     </div>
 
