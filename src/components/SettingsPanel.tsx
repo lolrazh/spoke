@@ -121,7 +121,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  const [authReady, setAuthReady] = useState(false);
 
   // Permissions (deduplicated via shared hook)
   const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
@@ -170,10 +169,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     initUserIdentity().then((identity) => {
       setUserEmail(identity.email);
       setUserName(identity.name);
-      setAuthReady(true);
-    }).catch(() => {
-      setAuthReady(true);
-    });
+    }).catch(() => null);
 
     // Subscribe to identity changes (handles sign-in/sign-out automatically)
     const unsubscribe = subscribeUserIdentity((identity) => {
@@ -183,20 +179,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
     return unsubscribe;
   }, []);
-
-  // If not signed in, automatically route to onboarding
-  useEffect(() => {
-    if (!authReady) return;
-    if (!userEmail) {
-      (async () => {
-        try {
-          await window.electron?.showOnboarding?.();
-        } catch {}
-      })();
-    }
-  }, [authReady, userEmail]);
-
-
 
   // Listen for microphone device updates and selection changes
   useEffect(() => {
