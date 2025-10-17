@@ -1,10 +1,16 @@
 import type { LLMProvider } from '../../config';
 import type { RuntimeConfig } from '../../config/runtime';
+import {
+  GROQ_EDIT_LLM_DEFAULT_MODEL,
+  OPENAI_EDIT_LLM_DEFAULT_MODEL,
+  BASETEN_EDIT_LLM_DEFAULT_MODEL,
+  OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
+} from '../../config';
 
 export type LLMRoutingRule = {
   id: string;
   pattern: RegExp;
-  provider: LLMProvider;
+  provider?: LLMProvider;
   model?: string;
 };
 
@@ -14,35 +20,41 @@ export type LLMRoutingDecision = {
   matchedRuleIds: string[];
 };
 
-const KIMI_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 const LENGTH_THRESHOLD_CHARS = 1200;
 const LENGTH_THRESHOLD_WORDS = 180;
 const LENGTH_RULE_ID = 'length-threshold';
+
+function getEditModelForProvider(provider: LLMProvider): string {
+  switch (provider) {
+    case 'groq':
+      return GROQ_EDIT_LLM_DEFAULT_MODEL;
+    case 'openai':
+      return OPENAI_EDIT_LLM_DEFAULT_MODEL;
+    case 'baseten':
+      return BASETEN_EDIT_LLM_DEFAULT_MODEL;
+    case 'openrouter':
+      return OPENROUTER_EDIT_LLM_DEFAULT_MODEL;
+    default:
+      return BASETEN_EDIT_LLM_DEFAULT_MODEL;
+  }
+}
 
 export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
   {
     id: 'spelled-sequence',
     pattern: /\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/i,
-    provider: 'groq',
-    model: KIMI_MODEL,
   },
   {
     id: 'can-you-instruction',
     pattern: /\bcan\s+you\b/i,
-    provider: 'groq',
-    model: KIMI_MODEL,
   },
   {
     id: 'spell-instruction',
     pattern: /\bspell(?:ing|ed)?\b/i,
-    provider: 'groq',
-    model: KIMI_MODEL,
   },
   {
     id: 'formatting-instruction',
     pattern: /\b(?:uppercase|lowercase|caps|capitals|capitalise|capitalised|capitalize|capitalized|emphasize|emphasise|emphasis)\b/i,
-    provider: 'groq',
-    model: KIMI_MODEL,
   },
 ] as const;
 
@@ -56,6 +68,11 @@ export function selectLLMRoute(
     return { provider: runtime.provider, model: runtime.model, matchedRuleIds: [] };
   }
 
+  // If router is disabled, always use default provider/model
+  if (!runtime.routerEnabled) {
+    return { provider: runtime.provider, model: runtime.model, matchedRuleIds: [] };
+  }
+
   const matches = rules.filter((rule) => rule.pattern.test(normalized));
   const matchedRuleIds = matches.map((rule) => rule.id);
 
@@ -65,8 +82,8 @@ export function selectLLMRoute(
 
   if (exceedsLengthThreshold) {
     return {
-      provider: 'groq',
-      model: KIMI_MODEL,
+      provider: runtime.provider,
+      model: getEditModelForProvider(runtime.provider),
       matchedRuleIds: matchedRuleIds.length
         ? [LENGTH_RULE_ID, ...matchedRuleIds]
         : [LENGTH_RULE_ID],
@@ -78,10 +95,11 @@ export function selectLLMRoute(
   }
 
   const winner = matches[0];
-  const model = winner.model ?? runtime.model;
+  const provider = winner.provider ?? runtime.provider;
+  const model = winner.model ?? getEditModelForProvider(provider);
 
   return {
-    provider: winner.provider,
+    provider,
     model,
     matchedRuleIds,
   };
