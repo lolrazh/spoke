@@ -698,6 +698,9 @@ const AppInner: React.FC = () => {
     const currentCount = missingPermissions.length;
 
     if (currentCount > 0) {
+      if (panelView !== "permissions") {
+        setPanelView("permissions");
+      }
       if (prevCount === 0) {
         logPermissionsDebug("missing:detected", missingPermissions);
         triggerPermissionNotification("detected");
@@ -713,9 +716,6 @@ const AppInner: React.FC = () => {
       if (prevCount > 0) {
         logPermissionsDebug("missing:resolved");
         clearPermissionNotificationLoop();
-        try {
-          window.notifications?.send?.("All permissions look good!");
-        } catch {}
         if (panelView === "permissions") {
           setPanelView("settings");
         }
