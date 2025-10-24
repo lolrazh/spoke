@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
+import PermissionsPanel from "./PermissionsPanel";
 import SfIcon from "./icons/SfIcon";
 
 type PillMetrics = {
@@ -18,6 +19,7 @@ interface PillProps {
   pillContext: {
     pendingNotif?: string;
     notifMsg?: string;
+    notifAction?: string | null;
   };
   notifWidth: number | null;
   isTextTruncated: boolean;
@@ -39,10 +41,12 @@ interface PillProps {
   onExpand: () => void;
   onCollapse: () => void;
   onToggleFloatingBar?: (enabled: boolean) => void;
+  onNotificationAction?: (actionId: string) => void;
   shareTranscriptionsEnabled?: boolean;
   shareTranscriptionsLoading?: boolean;
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
+  panelView: "settings" | "permissions";
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -61,10 +65,12 @@ const Pill: React.FC<PillProps> = ({
   onExpand,
   onCollapse,
   onToggleFloatingBar,
+  onNotificationAction,
   shareTranscriptionsEnabled,
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
+  panelView,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -173,6 +179,15 @@ const Pill: React.FC<PillProps> = ({
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
+    }
+
+    if (
+      pillState === "NOTIFICATION" &&
+      pillContext.notifAction &&
+      onNotificationAction
+    ) {
+      onNotificationAction(pillContext.notifAction);
+      return;
     }
   };
 
@@ -307,35 +322,55 @@ const Pill: React.FC<PillProps> = ({
           <AnimatePresence mode="wait">
             {isExpanded ? (
               <motion.div
-                key="settings-content"
-                className="w-full h-full relative"
+                key="panel-content"
+                className="w-full h-full"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.standard }}
               >
-                <SettingsPanel
-                  embeddedMode={true}
-                  onToggleFloatingBar={onToggleFloatingBar}
-                  onRequestCollapse={onCollapse}
-                  shareTranscriptionsEnabled={shareTranscriptionsEnabled}
-                  shareTranscriptionsLoading={shareTranscriptionsLoading}
-                  shareTranscriptionsUpdating={shareTranscriptionsUpdating}
-                  onShareTranscriptionsChange={onShareTranscriptionsChange}
-                />
-                {/* Collapse chevron at bottom */}
-                <button
-                  className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2"
-                  onClick={onCollapse}
-                  aria-label="Collapse"
-                >
-                  <SfIcon name="chevron.up" size={14} />
-                </button>
+                <div className="w-full h-full relative">
+                  {panelView === "permissions" ? (
+                    <PermissionsPanel />
+                  ) : (
+                    <SettingsPanel
+                      embeddedMode={true}
+                      onToggleFloatingBar={onToggleFloatingBar}
+                      onRequestCollapse={onCollapse}
+                      shareTranscriptionsEnabled={shareTranscriptionsEnabled}
+                      shareTranscriptionsLoading={shareTranscriptionsLoading}
+                      shareTranscriptionsUpdating={shareTranscriptionsUpdating}
+                      onShareTranscriptionsChange={onShareTranscriptionsChange}
+                    />
+                  )}
+                  {/* Collapse chevron at bottom */}
+                  <button
+                    className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2"
+                    onClick={onCollapse}
+                    aria-label="Collapse"
+                  >
+                    <SfIcon name="chevron.up" size={14} />
+                  </button>
+                </div>
               </motion.div>
             ) : isShowingNotification ? (
               <motion.span
                 key="notification"
-                className={`notification-text ${isTextTruncated ? "truncated" : ""}`}
+                className={`notification-text ${isTextTruncated ? "truncated" : ""} ${
+                  pillContext.notifAction ? "cursor-pointer" : ""
+                }`}
+                role={pillContext.notifAction ? "button" : undefined}
+                tabIndex={pillContext.notifAction ? 0 : undefined}
+                onKeyDown={
+                  pillContext.notifAction && onNotificationAction
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onNotificationAction(pillContext.notifAction!);
+                        }
+                      }
+                    : undefined
+                }
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

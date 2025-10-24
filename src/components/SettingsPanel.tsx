@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useIntervalManager } from "../hooks/useIntervalManager";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -14,7 +13,6 @@ import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
-import { usePermissions } from "../hooks/usePermissions";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 
 // --- Animation Variants --- //
@@ -80,7 +78,7 @@ const SelectField: React.FC<{
 
 // Cleaned out legacy row components; cards are now the single layout primitive
 
-const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
+export const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
     <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
@@ -121,11 +119,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-
-  // Permissions (deduplicated via shared hook)
-  const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
-    usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
-  const { cancelAll } = useIntervalManager();
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -240,15 +233,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
-  // Initial permission check + initial mic selection + passive refresh (focus + 5s interval while open)
+  // Initial mic selection + passive refresh (focus + visibility while open)
   useEffect(() => {
-    const initPerms = async () => {
-      try {
-        await initPermissions();
-      } catch (e) {
-        // ignore
-      }
-    };
     const initSelectedMic = async () => {
       try {
         const res = await window.mic?.getSelected?.();
@@ -257,16 +243,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         // ignore
       }
     };
-    initPerms();
     initSelectedMic();
 
     const handleFocus = () => {
-      initPerms();
       initSelectedMic();
     };
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        initPerms();
         initSelectedMic();
       }
     };
@@ -274,28 +257,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      // Cleanup all scheduled intervals (centralized)
-      cancelAll();
-      // Permission polling is managed by usePermissions; no local timers to clear
-
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
-
-  // Permission handlers – collapse first so macOS sheets are visible
-  const handleRequestMicrophone = async () => {
-    try { onRequestCollapse?.(); } catch {}
-    await requestMicrophone();
-  };
-  const handleRequestAccessibility = async () => {
-    try { onRequestCollapse?.(); } catch {}
-    await requestAccessibility();
-  };
-  const handleRequestInputMonitoring = async () => {
-    try { onRequestCollapse?.(); } catch {}
-    await requestInputMonitoring();
-  };
 
   const handleSignOut = () => {
     (async () => {
@@ -349,204 +314,59 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             variants={containerVariants}
             className="space-y-4"
           >
-            {/* Section 1: Defaults */}
-            <motion.div variants={sectionVariants}>
-              <SectionSeparator title="Defaults" />
+              {/* Section 1: Defaults */}
+              <motion.div variants={sectionVariants}>
+                <SectionSeparator title="Defaults" />
 
-              <div className="space-y-3 no-drag">
-                <SelectField
-                  label="Microphone"
-                  description="Select your preferred input device"
-                  value={selectedMicId}
-                  onChange={handleMicChange}
-                  options={micOptions}
-                />
+                <div className="space-y-3 no-drag">
+                  <SelectField
+                    label="Microphone"
+                    description="Select your preferred input device"
+                    value={selectedMicId}
+                    onChange={handleMicChange}
+                    options={micOptions}
+                  />
 
-                <Toggle
-                  label="Show Floating Bar"
-                  description="Display the floating dictation bar"
-                  enabled={showFloatingBar}
-                  onChange={(enabled) => {
-                    setShowFloatingBar(enabled);
-                    if (onToggleFloatingBar) onToggleFloatingBar(enabled);
-                  }}
-                  icon={
-                    <SfIcon
-                      name="eye.fill"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                />
-
-                <Toggle
-                  label="Improve the Model for Everyone"
-                  description="Share anonymous usage to improve responses"
-                  enabled={shareTranscriptionsEnabled ?? false}
-                  onChange={(enabled) =>
-                    onShareTranscriptionsChange?.(enabled)
-                  }
-                  icon={
-                    <SfIcon
-                      name="point.3.filled.connected.trianglepath.dotted"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                  disabled={
-                    !!shareTranscriptionsLoading ||
-                    !!shareTranscriptionsUpdating
-                  }
-                />
-              </div>
-            </motion.div>
-
-            {/* Section 2: System */}
-            <motion.div variants={sectionVariants}>
-              <SectionSeparator title="System" />
-
-              <div className="space-y-3">
-                {/* Microphone Permission */}
-                <SettingsCard
-                  title="Microphone"
-                  description="Capture your voice for dictation"
-                  icon={
-                    <SfIcon
-                      name="microphone.fill"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                >
-                  {!permissions.microphone ? (
-                    <Button
-                      size="sm"
-                      onClick={handleRequestMicrophone}
-                      disabled={ui.microphone.loading}
-                      className="text-xs onboarding-cta"
-                    >
-                      <div className="relative flex items-center justify-center h-4 w-14">
-                        {ui.microphone.loading ? (
-                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                        ) : (
-                          <span>Enable</span>
-                        )}
-                      </div>
-                    </Button>
-                  ) : (
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      className="text-white/80"
-                    >
-                      <path
-                        d="M5 13l4 4L19 7"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                  <Toggle
+                    label="Show Floating Bar"
+                    description="Display the floating dictation bar"
+                    enabled={showFloatingBar}
+                    onChange={(enabled) => {
+                      setShowFloatingBar(enabled);
+                      if (onToggleFloatingBar) onToggleFloatingBar(enabled);
+                    }}
+                    icon={
+                      <SfIcon
+                        name="eye.fill"
+                        size={16}
+                        className="text-primary/70"
                       />
-                    </svg>
-                  )}
-                </SettingsCard>
+                    }
+                  />
 
-                {/* Accessibility Permission */}
-                <SettingsCard
-                  title="Accessibility"
-                  description="Insert recognized text into your apps"
-                  icon={
-                    <SfIcon
-                      name="accessibility"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                >
-                  {!permissions.accessibility ? (
-                    <Button
-                      size="sm"
-                      onClick={handleRequestAccessibility}
-                      disabled={ui.accessibility.loading}
-                      className="text-xs onboarding-cta"
-                    >
-                      <div className="relative flex items-center justify-center h-4 w-14">
-                        {ui.accessibility.loading ? (
-                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                        ) : (
-                          <span>Enable</span>
-                        )}
-                      </div>
-                    </Button>
-                  ) : (
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      className="text-white/80"
-                    >
-                      <path
-                        d="M5 13l4 4L19 7"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                  <Toggle
+                    label="Improve the Model for Everyone"
+                    description="Share anonymous usage to improve responses"
+                    enabled={shareTranscriptionsEnabled ?? false}
+                    onChange={(enabled) =>
+                      onShareTranscriptionsChange?.(enabled)
+                    }
+                    icon={
+                      <SfIcon
+                        name="point.3.filled.connected.trianglepath.dotted"
+                        size={16}
+                        className="text-primary/70"
                       />
-                    </svg>
-                  )}
-                </SettingsCard>
+                    }
+                    disabled={
+                      !!shareTranscriptionsLoading ||
+                      !!shareTranscriptionsUpdating
+                    }
+                  />
+                </div>
+              </motion.div>
 
-                {/* Input Monitoring Permission */}
-                <SettingsCard
-                  title="Input Monitoring"
-                  description="Detect the Hotkey for dictation."
-                  icon={
-                    <SfIcon
-                      name="keyboard.badge.eye.fill"
-                      size={20}
-                      className="text-primary/70"
-                    />
-                  }
-                >
-                  {!permissions.inputMonitoring ? (
-                    <Button
-                      size="sm"
-                      onClick={handleRequestInputMonitoring}
-                      disabled={ui.inputMonitoring.loading}
-                      className="text-xs onboarding-cta"
-                    >
-                      <div className="relative flex items-center justify-center h-4 w-14">
-                        {ui.inputMonitoring.loading ? (
-                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                        ) : (
-                          <span>Enable</span>
-                        )}
-                      </div>
-                    </Button>
-                  ) : (
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      className="text-white/80"
-                    >
-                      <path
-                        d="M5 13l4 4L19 7"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
-                </SettingsCard>
-              </div>
-            </motion.div>
-
-            {/* Section 3: Account */}
+              {/* Section 3: Account */}
             <motion.div variants={sectionVariants}>
               <SectionSeparator title="Account" />
               {userEmail ? (

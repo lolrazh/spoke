@@ -8,11 +8,20 @@ import React, {
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
-import { CONTENT_WIDTH, CONTENT_HEIGHT } from "../constants/window";
+import {
+  CONTENT_WIDTH,
+  CONTENT_HEIGHT,
+  PERMISSIONS_CONTENT_WIDTH,
+  PERMISSIONS_CONTENT_HEIGHT,
+} from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 import { getSignals, setLastToastTs } from "../utils/authSignals";
 import { shouldToastSignIn } from "../utils/shouldToastSignIn";
+import {
+  PermissionsProvider,
+  usePermissionsController,
+} from "../state/permissionsContext";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -27,7 +36,7 @@ export type PillEvent =
   | { type: "PTT_START" }
   | { type: "PTT_STOP" }
   | { type: "CANCEL" }
-  | { type: "NOTIFY"; msg: string }
+  | { type: "NOTIFY"; msg: string; actionId?: string | null }
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
@@ -39,7 +48,9 @@ export interface PillMachineState {
   state: PillStateType;
   context: {
     pendingNotif?: string;
+    pendingNotifAction?: string | null;
     notifMsg?: string;
+    notifAction?: string | null;
   };
 }
 
@@ -56,7 +67,13 @@ const pillReducer = (
       if (event.type === "NOTIFY")
         return {
           state: "NOTIFICATION",
-          context: { ...state.context, notifMsg: event.msg },
+          context: {
+            ...state.context,
+            notifMsg: event.msg,
+            notifAction: event.actionId ?? null,
+            pendingNotif: undefined,
+            pendingNotifAction: undefined,
+          },
         };
       if (event.type === "HOVER_ENTER")
         return { ...state, state: "HOVER_PREVIEW" };
@@ -68,7 +85,11 @@ const pillReducer = (
       if (event.type === "NOTIFY")
         return {
           ...state,
-          context: { ...state.context, pendingNotif: event.msg },
+          context: {
+            ...state.context,
+            pendingNotif: event.msg,
+            pendingNotifAction: event.actionId ?? null,
+          },
         };
       return state;
     case "PROCESSING":
@@ -79,7 +100,9 @@ const pillReducer = (
             state: "NOTIFICATION",
             context: {
               notifMsg: state.context.pendingNotif,
+              notifAction: state.context.pendingNotifAction ?? null,
               pendingNotif: undefined,
+              pendingNotifAction: undefined,
             },
           };
         }
@@ -90,13 +113,21 @@ const pillReducer = (
       if (event.type === "PTT_START")
         return {
           state: "LISTENING",
-          context: { ...state.context, pendingNotif: state.context.notifMsg },
+          context: {
+            ...state.context,
+            pendingNotif: state.context.notifMsg,
+            pendingNotifAction: state.context.notifAction ?? null,
+          },
         };
       if (event.type === "ANIM_DONE")
         return {
           ...state,
           state: "IDLE",
-          context: { ...state.context, notifMsg: undefined },
+          context: {
+            ...state.context,
+            notifMsg: undefined,
+            notifAction: undefined,
+          },
         };
       return state;
     case "HOVER_PREVIEW":
@@ -113,8 +144,25 @@ const pillReducer = (
   }
 };
 
-// Simple fixed notification duration
-const NOTIFICATION_DURATION_MS = 2000;
+// Notification timing tokens
+const DEFAULT_NOTIFICATION_DURATION_MS = 2000;
+const PERMISSION_NOTIFICATION_DURATION_MS = 6000;
+const PERMISSION_NOTIFICATION_REPEAT_DELAY_MS =
+  PERMISSION_NOTIFICATION_DURATION_MS + 2000;
+const PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS = 3500;
+
+const PERMISSION_NOTIFICATION_MESSAGE = "Permissions required. Double click to review.";
+const PERMISSION_NOTIFICATION_ACTION_ID = "open-permissions";
+
+const logPermissionsDebug = (...args: unknown[]) => {
+  if (typeof window === "undefined") return;
+  if (!window?.devFlags?.devConsoleLogs) return;
+  try {
+    console.debug("[Permissions]", new Date().toISOString(), ...args);
+  } catch {
+    // ignore logging errors
+  }
+};
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -151,40 +199,7 @@ const leadingThrottle = <T extends (...args: unknown[]) => void>(
   };
 };
 
-// Centralized dictation gate: require auth (unless dev skip) and mic permission.
-// Returns true if dictation may proceed, else notifies and returns false.
-const canProceedWithStartBasedOnMicPermission = async (): Promise<boolean> => {
-  try {
-    const skipAuth = !!window.devFlags?.skipAuth;
-    if (!skipAuth) {
-      try {
-        const { getCurrentUser } = await import("../lib/supabaseClient");
-        const user = await getCurrentUser();
-        if (!user) {
-          try {
-            window.notifications?.send?.("Sign in to dictate");
-          } catch {}
-          try {
-            await window.electron?.showOnboarding?.();
-          } catch {}
-          return false;
-        }
-      } catch {}
-    }
-    const mic = await window.electron?.checkMicrophonePermission?.();
-    if (!mic?.granted) {
-      window.notifications?.send?.(
-        "Microphone permission is off. Double-click to open Settings.",
-      );
-      return false;
-    }
-  } catch {
-    // Fall through and attempt to start; useTranscription will surface errors
-  }
-  return true;
-};
-
-const App: React.FC = () => {
+const AppInner: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
@@ -203,10 +218,112 @@ const App: React.FC = () => {
     useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
+  const { missingPermissions } = usePermissionsController();
+  const [panelView, setPanelView] = useState<"settings" | "permissions">(
+    "settings",
+  );
+  const autoPermissionsRef = useRef(false);
+  const lastMissingCountRef = useRef<number>(missingPermissions.length);
+  const missingSignatureRef = useRef<string>(
+    missingPermissions.slice().sort().join("|"),
+  );
+  const missingCountRef = useRef<number>(missingPermissions.length);
+  const permissionNotificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearPermissionNotificationLoop = useCallback(() => {
+    if (permissionNotificationTimerRef.current) {
+      clearTimeout(permissionNotificationTimerRef.current);
+      permissionNotificationTimerRef.current = null;
+    }
+  }, []);
+
+  const sendPermissionNotification = useCallback(
+    (reason: "detected" | "repeat" | "changed" | "ptt" | "manual") => {
+      logPermissionsDebug("notify:permissions", {
+        reason,
+        missing: missingSignatureRef.current,
+      });
+      try {
+        window.notifications?.send?.(
+          PERMISSION_NOTIFICATION_MESSAGE,
+          PERMISSION_NOTIFICATION_ACTION_ID,
+        );
+      } catch {}
+    },
+    [],
+  );
+
+  const schedulePermissionNotification = useCallback(
+    (delay: number) => {
+      clearPermissionNotificationLoop();
+      permissionNotificationTimerRef.current = setTimeout(() => {
+        permissionNotificationTimerRef.current = null;
+        if (missingCountRef.current > 0) {
+          sendPermissionNotification("repeat");
+          schedulePermissionNotification(
+            PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
+          );
+        }
+      }, Math.max(delay, 0));
+    },
+    [clearPermissionNotificationLoop, sendPermissionNotification],
+  );
+
+  const triggerPermissionNotification = useCallback(
+    (
+      reason: "detected" | "changed" | "ptt" | "manual",
+      delay?: number,
+    ) => {
+      sendPermissionNotification(reason);
+      schedulePermissionNotification(
+        delay ?? PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
+      );
+    },
+    [schedulePermissionNotification, sendPermissionNotification],
+  );
+
+  useEffect(
+    () => () => {
+      clearPermissionNotificationLoop();
+    },
+    [clearPermissionNotificationLoop],
+  );
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
+
+  const canProceedWithStart = useCallback(async (): Promise<boolean> => {
+    try {
+      const skipAuth = !!window.devFlags?.skipAuth;
+      if (!skipAuth) {
+        try {
+          const { getCurrentUser } = await import("../lib/supabaseClient");
+          const user = await getCurrentUser();
+          if (!user) {
+            try {
+              window.notifications?.send?.("Sign in to dictate");
+            } catch {}
+            try {
+              await window.electron?.showOnboarding?.();
+            } catch {}
+            return false;
+          }
+        } catch {}
+      }
+      const mic = await window.electron?.checkMicrophonePermission?.();
+      if (!mic?.granted) {
+        triggerPermissionNotification(
+          "ptt",
+          PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
+        );
+        return false;
+      }
+    } catch {
+      // Fall through and attempt to start; downstream flows will surface errors.
+    }
+    return true;
+  }, [triggerPermissionNotification]);
 
   const loadSharePreference = useCallback(async (userId: string | null) => {
     if (!userId) {
@@ -494,7 +611,7 @@ const App: React.FC = () => {
     const nextToken = permissionCheckNonceRef.current + 1;
     permissionCheckNonceRef.current = nextToken;
     permissionCheckStateRef.current = { token: nextToken, result: null };
-    const promise = canProceedWithStartBasedOnMicPermission();
+    const promise = canProceedWithStart();
     permissionCheckPromiseRef.current = promise;
     promise
       .then((allowed) => {
@@ -509,7 +626,7 @@ const App: React.FC = () => {
         }
       });
     return { token: nextToken, promise };
-  }, []);
+  }, [canProceedWithStart]);
 
   const pushTrace = useCallback((msg: string) => {
     setTrace((t) => [
@@ -570,6 +687,58 @@ const App: React.FC = () => {
     context: pillContext,
     dispatch: pillDispatch,
   } = usePillMachine();
+
+  useEffect(() => {
+    missingCountRef.current = missingPermissions.length;
+    const previousSignature = missingSignatureRef.current;
+    const nextSignature = missingPermissions.slice().sort().join("|");
+    missingSignatureRef.current = nextSignature;
+
+    const prevCount = lastMissingCountRef.current;
+    const currentCount = missingPermissions.length;
+
+    if (currentCount > 0) {
+      if (panelView !== "permissions") {
+        setPanelView("permissions");
+      }
+      if (prevCount === 0) {
+        logPermissionsDebug("missing:detected", missingPermissions);
+        triggerPermissionNotification("detected");
+      } else if (nextSignature !== previousSignature) {
+        logPermissionsDebug("missing:changed", missingPermissions);
+        triggerPermissionNotification("changed");
+      } else if (!permissionNotificationTimerRef.current) {
+        schedulePermissionNotification(
+          PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
+        );
+      }
+    } else {
+      if (prevCount > 0) {
+        logPermissionsDebug("missing:resolved");
+        clearPermissionNotificationLoop();
+        if (panelView === "permissions") {
+          setPanelView("settings");
+        }
+        if (autoPermissionsRef.current) {
+          autoPermissionsRef.current = false;
+          setTimeout(() => {
+            pillDispatch({ type: "COLLAPSE" });
+          }, 240);
+        }
+      } else {
+        clearPermissionNotificationLoop();
+      }
+    }
+
+    lastMissingCountRef.current = currentCount;
+  }, [
+    missingPermissions,
+    clearPermissionNotificationLoop,
+    schedulePermissionNotification,
+    triggerPermissionNotification,
+    panelView,
+    pillDispatch,
+  ]);
 
   const beginCaptureSession = useCallback(
     (token: number, kind: "hold" | "doubleTap") => {
@@ -647,7 +816,7 @@ const App: React.FC = () => {
           postStartActionRef.current.delete(token);
         });
     },
-    [clearActiveCapture, pillDispatch, pushTrace],
+    [clearActiveCapture, pillDispatch, pushTrace, triggerPermissionNotification],
   );
 
   useEffect(() => {
@@ -732,17 +901,18 @@ const App: React.FC = () => {
           latestTransRef.current.cancel();
         } catch {}
         pushTrace(`PTT ${kind} gate denied`);
+        pillDispatch({ type: "CANCEL" });
         try {
           const mic = await window.electron?.checkMicrophonePermission?.();
-          const msg =
-            mic && mic.granted === false
-              ? "Microphone permission is off. Double-click to open Settings."
-              : "Sign in to dictate";
-          pillDispatch({ type: "CANCEL" });
-          pillDispatch({ type: "NOTIFY", msg });
-        } catch {
-          pillDispatch({ type: "CANCEL" });
-        }
+          if (mic && mic.granted === false) {
+            triggerPermissionNotification(
+              "ptt",
+              PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
+            );
+          } else {
+            window.notifications?.send?.("Sign in to dictate");
+          }
+        } catch {}
         clearActiveCapture(tokenId);
         return;
       }
@@ -793,43 +963,20 @@ const App: React.FC = () => {
   }, [pushTrace, trans.error]);
 
   useEffect(() => {
-    const cleanup = window.notifications.on((message: string) => {
-      pushTrace(`Notify: "${message}" `);
-      pillDispatch({ type: "NOTIFY", msg: message });
+    const cleanup = window.notifications.on(({ message, actionId }) => {
+      pushTrace(
+        `Notify: "${message}"${
+          actionId ? ` (action=${actionId})` : ""
+        } `,
+      );
+      logPermissionsDebug("notification:received", {
+        message,
+        actionId,
+      });
+      pillDispatch({ type: "NOTIFY", msg: message, actionId });
     });
     return cleanup;
   }, [pillDispatch, pushTrace]);
-
-  // Lightweight polling for microphone permission to keep UI honest
-  useEffect(() => {
-    let pollId: number | null = null;
-    const startPolling = () => {
-      if (pollId != null) return;
-      pollId = window.setInterval(async () => {
-        try {
-          const mic = await window.electron?.checkMicrophonePermission?.();
-          if (mic && !mic.granted) {
-            // Surface a user-friendly heads-up; pill will show NOTIFICATION state
-            window.notifications?.send?.(
-              "Microphone permission is off. Double-click to open Settings.",
-            );
-          }
-        } catch {}
-      }, 8000);
-    };
-    const stopPolling = () => {
-      if (pollId != null) {
-        clearInterval(pollId);
-        pollId = null;
-      }
-    };
-
-    // Start polling when idle (not recording/processing)
-    if (!trans.recording && !trans.processing) startPolling();
-    else stopPolling();
-
-    return () => stopPolling();
-  }, [trans.recording, trans.processing]);
 
   // Listen for window show events to reset pill state when shown from tray menu
   useEffect(() => {
@@ -972,6 +1119,10 @@ const App: React.FC = () => {
     if (pillState === "NOTIFICATION" && pillContext.notifMsg) {
       const shouldHideAfter = pendingHideAfterCollapse.active;
       const onAfter = pendingHideAfterCollapse.onAfter;
+      const duration =
+        pillContext.notifAction === PERMISSION_NOTIFICATION_ACTION_ID
+          ? PERMISSION_NOTIFICATION_DURATION_MS
+          : DEFAULT_NOTIFICATION_DURATION_MS;
       const timeout = setTimeout(async () => {
         pillDispatch({ type: "ANIM_DONE" });
 
@@ -989,10 +1140,43 @@ const App: React.FC = () => {
             }, 180);
           }, 100); // let pill reach IDLE state properly before starting fade-out
         }
-      }, NOTIFICATION_DURATION_MS);
+      }, duration);
       return () => clearTimeout(timeout);
     }
-  }, [pillState, pillContext.notifMsg, pendingHideAfterCollapse.active, pendingHideAfterCollapse.onAfter]);
+  }, [
+    pillState,
+    pillContext.notifMsg,
+    pillContext.notifAction,
+    pendingHideAfterCollapse.active,
+    pendingHideAfterCollapse.onAfter,
+    pillDispatch,
+  ]);
+
+  const handleNotificationAction = useCallback(
+    (actionId: string) => {
+      pushTrace(`Notification action triggered: ${actionId}`);
+      logPermissionsDebug("notification:action-triggered", { actionId });
+      switch (actionId) {
+        case PERMISSION_NOTIFICATION_ACTION_ID:
+          autoPermissionsRef.current = true;
+          setPanelView("permissions");
+          pillDispatch({ type: "EXPAND" });
+          if (missingCountRef.current > 0) {
+            schedulePermissionNotification(
+              PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
+            );
+          }
+          try {
+            window.electron?.focusWindow?.();
+          } catch {}
+          break;
+        default:
+          logPermissionsDebug("notification:action-unknown", { actionId });
+      }
+      pillDispatch({ type: "ANIM_DONE" });
+    },
+    [pillDispatch, pushTrace, schedulePermissionNotification],
+  );
 
   const notifyThenHide = useCallback((message: string, onAfter?: () => void) => {
     try {
@@ -1001,6 +1185,24 @@ const App: React.FC = () => {
     // Defer actual hide until NOTIFICATION finishes and we return to IDLE
     setPendingHideAfterCollapse({ active: true, message, onAfter });
   }, []);
+
+  const handleCollapse = useCallback(() => {
+    const { active, message, onAfter } = pendingHideAfterCollapse;
+    setPanelView("settings");
+    autoPermissionsRef.current = false;
+    pillDispatch({ type: "COLLAPSE" });
+    if (active && message) {
+      setPendingHideAfterCollapse({ active: false, message: "" });
+      setTimeout(() => {
+        try {
+          window.notifications?.send?.(message);
+        } catch {}
+        try {
+          onAfter && onAfter();
+        } catch {}
+      }, 0);
+    }
+  }, [pendingHideAfterCollapse, pillDispatch]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
@@ -1029,8 +1231,12 @@ const App: React.FC = () => {
   const BASE_W = Math.round(baseWidthTarget * baseWidthScale);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
-  const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
-  const EXPANDED_H = Math.round(CONTENT_HEIGHT * S);
+  const expandedWidthTarget =
+    panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
+  const expandedHeightTarget =
+    panelView === "permissions" ? PERMISSIONS_CONTENT_HEIGHT : CONTENT_HEIGHT;
+  const EXPANDED_W = Math.round(expandedWidthTarget * S);
+  const EXPANDED_H = Math.round(expandedHeightTarget * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   useEffect(() => {
@@ -1371,20 +1577,7 @@ const App: React.FC = () => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={() => pillDispatch({ type: "EXPAND" })}
-        onCollapse={() => {
-          pillDispatch({ type: "COLLAPSE" });
-          // If a deferred hide is pending (from toggle while expanded), show the heads-up now
-          if (
-            pendingHideAfterCollapse.active &&
-            pendingHideAfterCollapse.message
-          ) {
-            setTimeout(() => {
-              try {
-                window.notifications?.send?.(pendingHideAfterCollapse.message);
-              } catch {}
-            }, 0);
-          }
-        }}
+        onCollapse={handleCollapse}
         onToggleFloatingBar={async (enabled: boolean) => {
           // Cancel any pending hide if user turns it back on
           if (enabled) {
@@ -1412,6 +1605,8 @@ const App: React.FC = () => {
         shareTranscriptionsLoading={shareTranscriptionsLoading}
         shareTranscriptionsUpdating={shareTranscriptionsUpdating}
         onShareTranscriptionsChange={handleSharePreferenceToggle}
+        onNotificationAction={handleNotificationAction}
+        panelView={panelView}
       />
       <span
         id="pill-ghost-measure"
@@ -1457,5 +1652,11 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => (
+  <PermissionsProvider>
+    <AppInner />
+  </PermissionsProvider>
+);
 
 export default App;

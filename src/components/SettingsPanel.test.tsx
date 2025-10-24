@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
+import { PermissionsProvider } from "../state/permissionsContext";
 
 vi.mock("../lib/supabaseClient", () => ({
   getCurrentUser: vi.fn(async () => null),
@@ -13,7 +14,7 @@ function render(ui: React.ReactElement) {
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
-    root.render(ui);
+    root.render(React.createElement(PermissionsProvider, null, ui));
   });
   return {
     container,

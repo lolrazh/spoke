@@ -1,0 +1,182 @@
+import React, { useMemo } from "react";
+import { motion, Variants } from "framer-motion";
+import SettingsCard from "./SettingsCard";
+import { Button } from "./ui/button";
+import SfIcon from "./icons/SfIcon";
+import { MOTION } from "../config/motionTokens";
+import { usePermissionsController } from "../state/permissionsContext";
+import { SectionSeparator } from "./SettingsPanel";
+
+type PermissionKey = "microphone" | "accessibility" | "inputMonitoring";
+
+const PERMISSION_COPY: Record<
+  PermissionKey,
+  {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+  }
+> = {
+  microphone: {
+    title: "Microphone",
+    description: "Capture your voice for dictation",
+    icon: (
+      <SfIcon
+        name="microphone.fill"
+        size={18}
+        className="text-primary/70"
+      />
+    ),
+  },
+  accessibility: {
+    title: "Accessibility",
+    description: "Insert recognized text into your apps",
+    icon: (
+      <SfIcon
+        name="accessibility"
+        size={18}
+        className="text-primary/70"
+      />
+    ),
+  },
+  inputMonitoring: {
+    title: "Input Monitoring",
+    description: "Detect the Sonic Flow hotkey",
+    icon: (
+      <SfIcon
+        name="keyboard.badge.eye.fill"
+        size={20}
+        className="text-primary/70"
+      />
+    ),
+  },
+};
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { type: "spring", ...MOTION.springs.quick },
+  },
+};
+
+const PermissionsPanel: React.FC = () => {
+  const {
+    permissions,
+    ui,
+    requestMicrophone,
+    requestAccessibility,
+    requestInputMonitoring,
+  } = usePermissionsController();
+
+  const permissionEntries = useMemo(() => {
+    const entries: Array<{
+      key: PermissionKey;
+      granted: boolean;
+      loading: boolean;
+      onRequest: () => Promise<void> | void;
+    }> = [
+      {
+        key: "microphone",
+        granted: permissions.microphone,
+        loading: ui.microphone.loading,
+        onRequest: requestMicrophone,
+      },
+      {
+        key: "accessibility",
+        granted: permissions.accessibility,
+        loading: ui.accessibility.loading,
+        onRequest: requestAccessibility,
+      },
+      {
+        key: "inputMonitoring",
+        granted: permissions.inputMonitoring,
+        loading: ui.inputMonitoring.loading,
+        onRequest: requestInputMonitoring,
+      },
+    ];
+
+    return entries;
+  }, [
+    permissions,
+    ui,
+    requestMicrophone,
+    requestAccessibility,
+    requestInputMonitoring,
+  ]);
+
+  return (
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <div className="flex-1 overflow-y-auto">
+        <motion.div
+          className="max-w-lg mx-auto px-5 py-4 space-y-3"
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+        >
+          <motion.div variants={itemVariants}>
+            <SectionSeparator title="Permissions" />
+          </motion.div>
+          {permissionEntries.map((entry) => {
+            const copy = PERMISSION_COPY[entry.key];
+            return (
+              <motion.div key={entry.key} variants={itemVariants}>
+                <SettingsCard
+                  title={copy.title}
+                  description={copy.description}
+                  icon={copy.icon}
+                >
+                  {entry.granted ? (
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      className="text-white/80"
+                    >
+                      <path
+                        d="M5 13l4 4L19 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={entry.loading}
+                      onClick={() => entry.onRequest()}
+                      className="text-xs onboarding-cta"
+                    >
+                      <div className="relative flex items-center justify-center h-4 w-14">
+                        {entry.loading ? (
+                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </div>
+                    </Button>
+                  )}
+                </SettingsCard>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      </div>
+    </div>
+  );
+};
+
+export default PermissionsPanel;

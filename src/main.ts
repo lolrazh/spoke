@@ -2978,11 +2978,29 @@ app.whenReady().then(async () => {
 
   ipcMain.on(
     "show-notification",
-    (event: Electron.IpcMainEvent, message: string) => {
+    (
+      _event: Electron.IpcMainEvent,
+      payload:
+        | string
+        | {
+            message: string;
+            actionId?: string | null;
+          },
+    ) => {
+      const next =
+        typeof payload === "string"
+          ? { message: payload, actionId: null }
+          : {
+              message: payload?.message ?? "",
+              actionId:
+                typeof payload?.actionId === "string" ? payload.actionId : null,
+            };
       console.log(
-        `[IPC Main] Received show-notification request, forwarding to renderer: ${message}`,
+        `[IPC Main] Received show-notification request, forwarding to renderer: ${next.message}${
+          next.actionId ? ` (action=${next.actionId})` : ""
+        }`,
       );
-      mainWindow?.webContents.send("notify", message);
+      mainWindow?.webContents.send("notify", next);
     },
   );
 
