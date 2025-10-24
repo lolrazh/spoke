@@ -2,15 +2,21 @@ import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
+import { PermissionsProvider } from "../state/permissionsContext";
 
 function render(ui: React.ReactElement) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  act(() => { root.render(ui); });
+  act(() => {
+    root.render(React.createElement(PermissionsProvider, null, ui));
+  });
   return {
     container,
-    unmount: () => { act(() => root.unmount()); container.remove(); },
+    unmount: () => {
+      act(() => root.unmount());
+      container.remove();
+    },
   };
 }
 
@@ -60,4 +66,3 @@ describe("components/SettingsPanel behavior", () => {
     unmount();
   });
 });
-

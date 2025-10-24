@@ -10,8 +10,8 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 | [x] | Wire provider to `App.tsx` and expose context hook (Milestone 1) |  | App now wraps children with `PermissionsProvider` |
 | [x] | Extend notification bridge to support actions (Milestone 2) |  | Action payloads flow via preload/main to renderer |
 | [x] | Teach pill reducer to handle actionable notifications (Milestone 2) |  | Pill stores `notifAction` and triggers callbacks |
-| [ ] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  |  |
-| [ ] | Update Settings tests + mocks for provider (Milestone 3) |  |  |
+| [x] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  | Now reads from `usePermissionsController` |
+| [x] | Update Settings tests + mocks for provider (Milestone 3) |  | Test helpers wrap panel with `PermissionsProvider` |
 | [ ] | Build `PermissionsPanel` component with success/attention states (Milestone 4) |  |  |
 | [ ] | Add manual “Review permissions” entry point from Settings (Milestone 4) |  |  |
 | [ ] | Replace mic-only polling with controller-driven alerts (Milestone 5) |  |  |

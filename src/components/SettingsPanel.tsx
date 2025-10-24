@@ -14,7 +14,7 @@ import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
-import { usePermissions } from "../hooks/usePermissions";
+import { usePermissionsController } from "../state/permissionsContext";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 
 // --- Animation Variants --- //
@@ -123,8 +123,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userName, setUserName] = useState<string | null>(null);
 
   // Permissions (deduplicated via shared hook)
-  const { permissions, ui, init: initPermissions, requestMicrophone, requestAccessibility, requestInputMonitoring } =
-    usePermissions(undefined, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
+  const {
+    permissions,
+    ui,
+    init: initPermissions,
+    requestMicrophone,
+    requestAccessibility,
+    requestInputMonitoring,
+  } = usePermissionsController();
   const { cancelAll } = useIntervalManager();
 
   // Load app version from main via preload bridge
