@@ -33,8 +33,10 @@ declare global {
       inspect: (options?: { contextChars?: number }) => Promise<SelectionInspectSnapshot>;
     };
     notifications: {
-      send: (message: string) => void;
-      on: (callback: (message: string) => void) => () => void;
+      send: (message: string, actionId?: string | null) => void;
+      on: (
+        callback: (payload: { message: string; actionId: string | null }) => void,
+      ) => () => void;
     };
     ptt: {
       onDown: (cb: () => void) => () => void;

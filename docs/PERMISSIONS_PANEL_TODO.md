@@ -8,8 +8,8 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 | [x] | Implement `debugPermLog` flag and verify existing flows (Milestone 0) |  | Added logging hooks in `usePermissions` (see commit) |
 | [x] | Introduce `PermissionsProvider` and centralize polling (Milestone 1) |  | Added shared context in `src/state/permissionsContext.tsx` |
 | [x] | Wire provider to `App.tsx` and expose context hook (Milestone 1) |  | App now wraps children with `PermissionsProvider` |
-| [ ] | Extend notification bridge to support actions (Milestone 2) |  |  |
-| [ ] | Teach pill reducer to handle actionable notifications (Milestone 2) |  |  |
+| [x] | Extend notification bridge to support actions (Milestone 2) |  | Action payloads flow via preload/main to renderer |
+| [x] | Teach pill reducer to handle actionable notifications (Milestone 2) |  | Pill stores `notifAction` and triggers callbacks |
 | [ ] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  |  |
 | [ ] | Update Settings tests + mocks for provider (Milestone 3) |  |  |
 | [ ] | Build `PermissionsPanel` component with success/attention states (Milestone 4) |  |  |

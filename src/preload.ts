@@ -62,12 +62,29 @@ contextBridge.exposeInMainWorld("selection", {
 });
 
 contextBridge.exposeInMainWorld("notifications", {
-  send: (message: string) => ipcRenderer.send("show-notification", message),
-  on: (callback: (message: string) => void) => {
-    ipcRenderer.on("notify", (_event, message) => callback(message));
+  send: (message: string, actionId?: string | null) =>
+    ipcRenderer.send("show-notification", { message, actionId: actionId ?? null }),
+  on: (
+    callback: (payload: { message: string; actionId?: string | null }) => void,
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: { message: string; actionId?: string | null } | string,
+    ) => {
+      if (typeof payload === "string") {
+        callback({ message: payload, actionId: null });
+        return;
+      }
+      callback({
+        message: payload?.message ?? "",
+        actionId:
+          typeof payload?.actionId === "string" ? payload.actionId : null,
+      });
+    };
+    ipcRenderer.on("notify", listener);
 
     return () => {
-      ipcRenderer.removeAllListeners("notify");
+      ipcRenderer.removeListener("notify", listener);
     };
   },
 });

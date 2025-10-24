@@ -28,7 +28,7 @@ export type PillEvent =
   | { type: "PTT_START" }
   | { type: "PTT_STOP" }
   | { type: "CANCEL" }
-  | { type: "NOTIFY"; msg: string }
+  | { type: "NOTIFY"; msg: string; actionId?: string | null }
   | { type: "ANIM_DONE" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
@@ -40,7 +40,9 @@ export interface PillMachineState {
   state: PillStateType;
   context: {
     pendingNotif?: string;
+    pendingNotifAction?: string | null;
     notifMsg?: string;
+    notifAction?: string | null;
   };
 }
 
@@ -57,7 +59,13 @@ const pillReducer = (
       if (event.type === "NOTIFY")
         return {
           state: "NOTIFICATION",
-          context: { ...state.context, notifMsg: event.msg },
+          context: {
+            ...state.context,
+            notifMsg: event.msg,
+            notifAction: event.actionId ?? null,
+            pendingNotif: undefined,
+            pendingNotifAction: undefined,
+          },
         };
       if (event.type === "HOVER_ENTER")
         return { ...state, state: "HOVER_PREVIEW" };
@@ -69,7 +77,11 @@ const pillReducer = (
       if (event.type === "NOTIFY")
         return {
           ...state,
-          context: { ...state.context, pendingNotif: event.msg },
+          context: {
+            ...state.context,
+            pendingNotif: event.msg,
+            pendingNotifAction: event.actionId ?? null,
+          },
         };
       return state;
     case "PROCESSING":
@@ -80,7 +92,9 @@ const pillReducer = (
             state: "NOTIFICATION",
             context: {
               notifMsg: state.context.pendingNotif,
+              notifAction: state.context.pendingNotifAction ?? null,
               pendingNotif: undefined,
+              pendingNotifAction: undefined,
             },
           };
         }
@@ -91,13 +105,21 @@ const pillReducer = (
       if (event.type === "PTT_START")
         return {
           state: "LISTENING",
-          context: { ...state.context, pendingNotif: state.context.notifMsg },
+          context: {
+            ...state.context,
+            pendingNotif: state.context.notifMsg,
+            pendingNotifAction: state.context.notifAction ?? null,
+          },
         };
       if (event.type === "ANIM_DONE")
         return {
           ...state,
           state: "IDLE",
-          context: { ...state.context, notifMsg: undefined },
+          context: {
+            ...state.context,
+            notifMsg: undefined,
+            notifAction: undefined,
+          },
         };
       return state;
     case "HOVER_PREVIEW":
@@ -116,6 +138,16 @@ const pillReducer = (
 
 // Simple fixed notification duration
 const NOTIFICATION_DURATION_MS = 2000;
+
+const logPermissionsDebug = (...args: unknown[]) => {
+  if (typeof window === "undefined") return;
+  if (!window?.devFlags?.devConsoleLogs) return;
+  try {
+    console.debug("[Permissions]", new Date().toISOString(), ...args);
+  } catch {
+    // ignore logging errors
+  }
+};
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -794,9 +826,17 @@ const App: React.FC = () => {
   }, [pushTrace, trans.error]);
 
   useEffect(() => {
-    const cleanup = window.notifications.on((message: string) => {
-      pushTrace(`Notify: "${message}" `);
-      pillDispatch({ type: "NOTIFY", msg: message });
+    const cleanup = window.notifications.on(({ message, actionId }) => {
+      pushTrace(
+        `Notify: "${message}"${
+          actionId ? ` (action=${actionId})` : ""
+        } `,
+      );
+      logPermissionsDebug("notification:received", {
+        message,
+        actionId,
+      });
+      pillDispatch({ type: "NOTIFY", msg: message, actionId });
     });
     return cleanup;
   }, [pillDispatch, pushTrace]);
@@ -994,6 +1034,22 @@ const App: React.FC = () => {
       return () => clearTimeout(timeout);
     }
   }, [pillState, pillContext.notifMsg, pendingHideAfterCollapse.active, pendingHideAfterCollapse.onAfter]);
+
+  const handleNotificationAction = useCallback(
+    (actionId: string) => {
+      pushTrace(`Notification action triggered: ${actionId}`);
+      logPermissionsDebug("notification:action-triggered", { actionId });
+      switch (actionId) {
+        case "open-permissions":
+          // Placeholder: dedicated permissions flow will hook in Milestone 5
+          break;
+        default:
+          logPermissionsDebug("notification:action-unknown", { actionId });
+      }
+      pillDispatch({ type: "ANIM_DONE" });
+    },
+    [pillDispatch, pushTrace],
+  );
 
   const notifyThenHide = useCallback((message: string, onAfter?: () => void) => {
     try {
@@ -1414,6 +1470,7 @@ const App: React.FC = () => {
         shareTranscriptionsLoading={shareTranscriptionsLoading}
         shareTranscriptionsUpdating={shareTranscriptionsUpdating}
         onShareTranscriptionsChange={handleSharePreferenceToggle}
+        onNotificationAction={handleNotificationAction}
       />
       <span
         id="pill-ghost-measure"
