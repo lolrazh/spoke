@@ -12,8 +12,8 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 | [x] | Teach pill reducer to handle actionable notifications (Milestone 2) |  | Pill stores `notifAction` and triggers callbacks |
 | [x] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  | Now reads from `usePermissionsController` |
 | [x] | Update Settings tests + mocks for provider (Milestone 3) |  | Test helpers wrap panel with `PermissionsProvider` |
-| [ ] | Build `PermissionsPanel` component with success/attention states (Milestone 4) |  |  |
-| [ ] | Add manual “Review permissions” entry point from Settings (Milestone 4) |  |  |
+| [x] | Build `PermissionsPanel` component with success/attention states (Milestone 4) |  | Implemented in `src/components/PermissionsPanel.tsx` with unit test |
+| [x] | Add manual “Review permissions” entry point from Settings (Milestone 4) |  | Settings card opens panel via `setShowPermissionsPanel` |
 | [ ] | Replace mic-only polling with controller-driven alerts (Milestone 5) |  |  |
 | [ ] | Auto-open panel from actionable notification (Milestone 5) |  |  |
 | [ ] | Collapse rules & success toast after permissions granted (Milestone 5) |  |  |
