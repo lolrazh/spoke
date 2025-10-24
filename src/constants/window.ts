@@ -11,5 +11,5 @@ export const PERMISSIONS_CONTENT_WIDTH = 520;
 export const PERMISSIONS_CONTENT_HEIGHT = 320;
 
 // Window envelope includes padding on all sides for shadows
-export const ISLAND_WIDTH = CONTENT_WIDTH + SHADOW_PAD * 2; // 640
-export const ISLAND_HEIGHT = CONTENT_HEIGHT + SHADOW_PAD * 2; // 680
+export const ISLAND_WIDTH = CONTENT_WIDTH + SHADOW_PAD * 2;
+export const ISLAND_HEIGHT = CONTENT_HEIGHT + SHADOW_PAD * 2;
