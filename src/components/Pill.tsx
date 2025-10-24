@@ -48,7 +48,6 @@ interface PillProps {
   onShareTranscriptionsChange?: (enabled: boolean) => void;
   panelView: "settings" | "permissions";
   onOpenPermissionsPanel?: () => void;
-  onPermissionsDismiss?: () => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -74,7 +73,6 @@ const Pill: React.FC<PillProps> = ({
   onShareTranscriptionsChange,
   panelView,
   onOpenPermissionsPanel,
-  onPermissionsDismiss,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -335,11 +333,7 @@ const Pill: React.FC<PillProps> = ({
               >
                 <div className="w-full h-full relative">
                   {panelView === "permissions" ? (
-                    <PermissionsPanel
-                      onDismiss={() => {
-                        onPermissionsDismiss?.();
-                      }}
-                    />
+                    <PermissionsPanel />
                   ) : (
                     <SettingsPanel
                       embeddedMode={true}

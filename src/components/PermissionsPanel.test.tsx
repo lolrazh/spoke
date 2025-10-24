@@ -35,9 +35,8 @@ describe("components/PermissionsPanel", () => {
   });
 
   it("renders all permission cards and wires enable buttons", async () => {
-    const onDismiss = vi.fn();
     const { container, unmount } = render(
-      React.createElement(PermissionsPanel, { onDismiss }),
+      React.createElement(PermissionsPanel, null),
     );
 
     await act(async () => {
@@ -47,14 +46,13 @@ describe("components/PermissionsPanel", () => {
     const cards = container.querySelectorAll(".settings-card");
     expect(cards.length).toBeGreaterThanOrEqual(3);
 
-    const buttons = Array.from(container.querySelectorAll("button")).filter((btn) =>
-      btn.textContent?.toLowerCase().includes("enable"),
-    );
-    expect(buttons.length).toBeGreaterThanOrEqual(1);
+    const micCard = container.querySelector(
+      '.settings-card[aria-label="Microphone"]',
+    ) as HTMLElement | null;
+    expect(micCard).not.toBeNull();
 
-    const micButton = buttons.find((btn) =>
-      btn.textContent?.toLowerCase().includes("microphone"),
-    ) as HTMLButtonElement;
+    const micButton = micCard?.querySelector("button") as HTMLButtonElement | null;
+    expect(micButton).not.toBeNull();
 
     micButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
@@ -67,4 +65,3 @@ describe("components/PermissionsPanel", () => {
     unmount();
   });
 });
-
