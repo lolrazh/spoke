@@ -5,7 +5,7 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 | Status | Task | Owner | Notes |
 | --- | --- | --- | --- |
 | [ ] | Capture baseline permission polling logs (Milestone 0) |  |  |
-| [ ] | Implement `debugPermLog` flag and verify existing flows (Milestone 0) |  |  |
+| [x] | Implement `debugPermLog` flag and verify existing flows (Milestone 0) |  | Added logging hooks in `usePermissions` (see commit) |
 | [ ] | Introduce `PermissionsProvider` and centralize polling (Milestone 1) |  |  |
 | [ ] | Wire provider to `App.tsx` and expose context hook (Milestone 1) |  |  |
 | [ ] | Extend notification bridge to support actions (Milestone 2) |  |  |

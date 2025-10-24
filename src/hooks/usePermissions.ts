@@ -41,31 +41,67 @@ type Options = {
   deepLinkGraceMs?: number;
 };
 
+const debugPermLog = (...args: unknown[]) => {
+  if (typeof window === "undefined") return;
+  if (!window?.devFlags?.devConsoleLogs) return;
+  try {
+    console.debug(
+      "[Permissions]",
+      new Date().toISOString(),
+      ...args,
+    );
+  } catch {
+    // ignore logging errors
+  }
+};
+
 const defaultProvider: PermissionProvider | null =
   typeof window !== "undefined" && window.electron
     ? {
-        checkPermissions: async () =>
-          (await window.electron?.checkPermissions?.()) || {},
-        checkMicrophonePermission: async () =>
-          (await window.electron?.checkMicrophonePermission?.()) || {
-            granted: false,
-          },
-        requestMicrophonePermission: async () =>
-          (await window.electron?.requestMicrophonePermission?.()) || {
-            success: false,
-            granted: false,
-          },
-        askIM: async () =>
-          (await window.electron?.askIM?.()) || {
-            success: false,
-            status: "denied",
-          },
-        requestAccessibilityPermission: async () =>
-          (await window.electron?.requestAccessibilityPermission?.()) || {
-            success: false,
-          },
-        openSystemPreferences: (pane) =>
-          window.electron?.openSystemPreferences?.(pane),
+        checkPermissions: async () => {
+          const res = await window.electron?.checkPermissions?.();
+          return {
+            needAX: res?.needAX ?? true,
+            needIM: res?.needIM ?? true,
+            isDev: res?.isDev ?? false,
+          };
+        },
+        checkMicrophonePermission: async () => {
+          const res = await window.electron?.checkMicrophonePermission?.();
+          return {
+            granted: res?.granted ?? false,
+            status: res?.status ?? "unknown",
+          };
+        },
+        requestMicrophonePermission: async () => {
+          const res = await window.electron?.requestMicrophonePermission?.();
+          return {
+            success: !!res?.success,
+            granted: res?.granted ?? false,
+          };
+        },
+        askIM: async () => {
+          const res = await window.electron?.askIM?.();
+          return {
+            success: !!res?.success,
+            status: (res?.status as "authorized" | "denied" | string) ?? "denied",
+          };
+        },
+        requestAccessibilityPermission: async () => {
+          const res = (await window.electron?.requestAccessibilityPermission?.()) as
+            | { success?: boolean }
+            | void
+            | undefined;
+          return {
+            success:
+              !!res && typeof res === "object" && "success" in res
+                ? !!(res as { success?: boolean }).success
+                : false,
+          };
+        },
+        openSystemPreferences: (pane) => {
+          void window.electron?.openSystemPreferences?.(pane);
+        },
       }
     : null;
 
@@ -93,6 +129,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     accessibility: { loading: false, justGranted: false },
   });
 
+  const prevPermissionsRef = useRef<PermissionsState | null>(null);
   const timersRef = useRef<{
     mic: ReturnType<typeof setInterval> | null;
     im: ReturnType<typeof setInterval> | null;
@@ -107,6 +144,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       if (timersRef.current.im) clearInterval(timersRef.current.im);
       if (timersRef.current.ax) clearInterval(timersRef.current.ax);
       timersRef.current = { mic: null, im: null, ax: null };
+      debugPermLog("cleanup:cleared-pollers");
     };
   }, []);
 
@@ -117,10 +155,17 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         p.checkMicrophonePermission(),
       ]);
       if (!mountedRef.current) return;
-      setPermissions({
+      const nextPermissions: PermissionsState = {
         microphone: !!mic?.granted,
         inputMonitoring: !(sys?.needIM ?? true),
         accessibility: !(sys?.needAX ?? true),
+      };
+      setPermissions(nextPermissions);
+      debugPermLog("init:snapshot", {
+        needAX: sys?.needAX ?? true,
+        needIM: sys?.needIM ?? true,
+        micStatus: mic?.status ?? "unknown",
+        permissions: nextPermissions,
       });
     } catch {}
   };
@@ -128,10 +173,12 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   const requestMicrophone = async () => {
     try {
       setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: true } }));
+      debugPermLog("request:microphone:start");
       const res = await p.requestMicrophonePermission();
       if (res?.success && res?.granted) {
         setPermissions((prev) => ({ ...prev, microphone: true }));
         setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+        debugPermLog("request:microphone:granted");
         try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
         setTimeout(() => {
           if (!mountedRef.current) return;
@@ -141,6 +188,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       }
       // Open System Settings and poll
       try { p.openSystemPreferences("microphone"); } catch {}
+      debugPermLog("request:microphone:polling");
       if (timersRef.current.mic) clearInterval(timersRef.current.mic);
       timersRef.current.mic = setInterval(async () => {
         const status = await p.checkMicrophonePermission();
@@ -149,6 +197,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           timersRef.current.mic = null;
           setPermissions((prev) => ({ ...prev, microphone: true }));
           setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+          debugPermLog("request:microphone:granted-via-poll");
           try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
           setTimeout(() => {
             if (!mountedRef.current) return;
@@ -165,10 +214,12 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   const requestInputMonitoring = async () => {
     try {
       setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: true } }));
+      debugPermLog("request:input-monitoring:start");
       const out = await p.askIM();
       if (out?.success && out.status === "authorized") {
         setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
         setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+        debugPermLog("request:input-monitoring:authorized");
         setTimeout(() => {
           if (!mountedRef.current) return;
           setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
@@ -176,6 +227,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         return;
       }
       try { p.openSystemPreferences("input-monitoring"); } catch {}
+      debugPermLog("request:input-monitoring:polling");
       if (timersRef.current.im) clearInterval(timersRef.current.im);
       timersRef.current.im = setInterval(async () => {
         const sys = await p.checkPermissions();
@@ -184,6 +236,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           timersRef.current.im = null;
           setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
           setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+          debugPermLog("request:input-monitoring:authorized-via-poll");
           setTimeout(() => {
             if (!mountedRef.current) return;
             setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
@@ -200,6 +253,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     {
       try {
         setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
+        debugPermLog("request:accessibility:start");
         const out = await p.requestAccessibilityPermission();
         if (out?.success) {
           // Will still require user to toggle in System Settings; start polling
@@ -212,6 +266,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
             timersRef.current.ax = null;
             setPermissions((prev) => ({ ...prev, accessibility: true }));
             setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
+            debugPermLog("request:accessibility:authorized");
             try { await window.electron?.postPermissionGrant?.("accessibility"); } catch {}
             setTimeout(() => {
               if (!mountedRef.current) return;
@@ -221,9 +276,29 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         }, pollMs);
         setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
       } catch {
-        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
-      }
-    };
+      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+    }
+  };
+
+  useEffect(() => {
+    const previous = prevPermissionsRef.current;
+    if (!previous) {
+      debugPermLog("state:init", permissions);
+      prevPermissionsRef.current = permissions;
+      return;
+    }
+    if (
+      previous.microphone !== permissions.microphone ||
+      previous.inputMonitoring !== permissions.inputMonitoring ||
+      previous.accessibility !== permissions.accessibility
+    ) {
+      debugPermLog("state:change", {
+        from: previous,
+        to: permissions,
+      });
+    }
+    prevPermissionsRef.current = permissions;
+  }, [permissions]);
 
   return useMemo(
     () => ({
