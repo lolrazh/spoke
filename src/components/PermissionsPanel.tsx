@@ -12,11 +12,13 @@ const PERMISSION_COPY: Record<
   PermissionKey,
   {
     title: string;
+    description: string;
     icon: React.ReactNode;
   }
 > = {
   microphone: {
     title: "Microphone",
+    description: "Capture your voice for dictation",
     icon: (
       <SfIcon
         name="microphone.fill"
@@ -27,6 +29,7 @@ const PERMISSION_COPY: Record<
   },
   accessibility: {
     title: "Accessibility",
+    description: "Insert recognized text into your apps",
     icon: (
       <SfIcon
         name="accessibility"
@@ -37,6 +40,7 @@ const PERMISSION_COPY: Record<
   },
   inputMonitoring: {
     title: "Input Monitoring",
+    description: "Detect the Sonic Flow hotkey",
     icon: (
       <SfIcon
         name="keyboard.badge.eye.fill"
@@ -115,7 +119,7 @@ const PermissionsPanel: React.FC = () => {
     <div className="flex h-full flex-col bg-background text-foreground">
       <div className="flex-1 overflow-y-auto">
         <motion.div
-          className="max-w-lg mx-auto px-5 py-4 space-y-3"
+          className="max-w-lg mx-auto px-5 py-3 space-y-2.5"
           initial="hidden"
           animate="visible"
           variants={containerVariants}
@@ -124,7 +128,11 @@ const PermissionsPanel: React.FC = () => {
             const copy = PERMISSION_COPY[entry.key];
             return (
               <motion.div key={entry.key} variants={itemVariants}>
-                <SettingsCard title={copy.title} icon={copy.icon}>
+                <SettingsCard
+                  title={copy.title}
+                  description={copy.description}
+                  icon={copy.icon}
+                >
                   {entry.granted ? (
                     <svg
                       width="22"
