@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
+import PermissionsPanel from "./PermissionsPanel";
 import SfIcon from "./icons/SfIcon";
 
 type PillMetrics = {
@@ -45,6 +46,9 @@ interface PillProps {
   shareTranscriptionsLoading?: boolean;
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
+  panelView: "settings" | "permissions";
+  onOpenPermissionsPanel?: () => void;
+  onPermissionsDismiss?: () => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -68,6 +72,9 @@ const Pill: React.FC<PillProps> = ({
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
+  panelView,
+  onOpenPermissionsPanel,
+  onPermissionsDismiss,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -319,30 +326,41 @@ const Pill: React.FC<PillProps> = ({
           <AnimatePresence mode="wait">
             {isExpanded ? (
               <motion.div
-                key="settings-content"
-                className="w-full h-full relative"
+                key="panel-content"
+                className="w-full h-full"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.standard }}
               >
-                <SettingsPanel
-                  embeddedMode={true}
-                  onToggleFloatingBar={onToggleFloatingBar}
-                  onRequestCollapse={onCollapse}
-                  shareTranscriptionsEnabled={shareTranscriptionsEnabled}
-                  shareTranscriptionsLoading={shareTranscriptionsLoading}
-                  shareTranscriptionsUpdating={shareTranscriptionsUpdating}
-                  onShareTranscriptionsChange={onShareTranscriptionsChange}
-                />
-                {/* Collapse chevron at bottom */}
-                <button
-                  className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2"
-                  onClick={onCollapse}
-                  aria-label="Collapse"
-                >
-                  <SfIcon name="chevron.up" size={14} />
-                </button>
+                <div className="w-full h-full relative">
+                  {panelView === "permissions" ? (
+                    <PermissionsPanel
+                      onDismiss={() => {
+                        onPermissionsDismiss?.();
+                      }}
+                    />
+                  ) : (
+                    <SettingsPanel
+                      embeddedMode={true}
+                      onToggleFloatingBar={onToggleFloatingBar}
+                      onRequestCollapse={onCollapse}
+                      shareTranscriptionsEnabled={shareTranscriptionsEnabled}
+                      shareTranscriptionsLoading={shareTranscriptionsLoading}
+                      shareTranscriptionsUpdating={shareTranscriptionsUpdating}
+                      onShareTranscriptionsChange={onShareTranscriptionsChange}
+                      onOpenPermissionsPanel={onOpenPermissionsPanel}
+                    />
+                  )}
+                  {/* Collapse chevron at bottom */}
+                  <button
+                    className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2"
+                    onClick={onCollapse}
+                    aria-label="Collapse"
+                  >
+                    <SfIcon name="chevron.up" size={14} />
+                  </button>
+                </div>
               </motion.div>
             ) : isShowingNotification ? (
               <motion.span

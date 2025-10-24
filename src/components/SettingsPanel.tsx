@@ -15,7 +15,6 @@ import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
 import { usePermissionsController } from "../state/permissionsContext";
-import PermissionsPanel from "./PermissionsPanel";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 
 // --- Animation Variants --- //
@@ -101,6 +100,7 @@ interface SettingsPanelProps {
   shareTranscriptionsLoading?: boolean;
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
+  onOpenPermissionsPanel?: () => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -111,6 +111,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
+  onOpenPermissionsPanel,
 }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
@@ -118,8 +119,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
-  const [showPermissionsPanel, setShowPermissionsPanel] =
-    useState<boolean>(false);
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -357,26 +356,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-lg mx-auto px-5 py-4">
-          {showPermissionsPanel ? (
-            <motion.div
-              key="permissions-panel"
-              variants={sectionVariants}
-              initial="hidden"
-              animate="visible"
-            >
-              <div className="rounded-[var(--radius-xl)] border border-border/60 bg-background/80 overflow-hidden">
-                <PermissionsPanel
-                  onDismiss={() => setShowPermissionsPanel(false)}
-                />
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={containerVariants}
-              className="space-y-4"
-            >
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={containerVariants}
+            className="space-y-4"
+          >
               {/* Section 1: Defaults */}
               <motion.div variants={sectionVariants}>
                 <SectionSeparator title="Defaults" />
@@ -449,7 +434,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => setShowPermissionsPanel(true)}
+                      onClick={() => onOpenPermissionsPanel?.()}
                       className="text-xs"
                     >
                       Review Permissions
@@ -648,7 +633,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </motion.footer>
             )}
           </motion.div>
-          )}
         </div>
       </div>
     </div>

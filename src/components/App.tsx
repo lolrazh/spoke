@@ -13,7 +13,10 @@ import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 import { getSignals, setLastToastTs } from "../utils/authSignals";
 import { shouldToastSignIn } from "../utils/shouldToastSignIn";
-import { PermissionsProvider } from "../state/permissionsContext";
+import {
+  PermissionsProvider,
+  usePermissionsController,
+} from "../state/permissionsContext";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -217,7 +220,7 @@ const canProceedWithStartBasedOnMicPermission = async (): Promise<boolean> => {
   return true;
 };
 
-const App: React.FC = () => {
+const AppInner: React.FC = () => {
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
@@ -236,6 +239,12 @@ const App: React.FC = () => {
     useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
+  const { missingPermissions } = usePermissionsController();
+  const [panelView, setPanelView] = useState<"settings" | "permissions">(
+    "settings",
+  );
+  const autoPermissionsRef = useRef(false);
+  const lastMissingCountRef = useRef<number>(missingPermissions.length);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -604,6 +613,36 @@ const App: React.FC = () => {
     dispatch: pillDispatch,
   } = usePillMachine();
 
+  useEffect(() => {
+    const prevCount = lastMissingCountRef.current;
+    const currentCount = missingPermissions.length;
+    if (prevCount === 0 && currentCount > 0) {
+      logPermissionsDebug("missing:detected", missingPermissions);
+      try {
+        window.notifications?.send?.(
+          "Permissions required — click to review",
+          "open-permissions",
+        );
+      } catch {}
+    }
+    if (prevCount > 0 && currentCount === 0) {
+      logPermissionsDebug("missing:resolved");
+      try {
+        window.notifications?.send?.("All permissions look good!");
+      } catch {}
+      if (panelView === "permissions") {
+        setPanelView("settings");
+      }
+      if (autoPermissionsRef.current) {
+        autoPermissionsRef.current = false;
+        setTimeout(() => {
+          pillDispatch({ type: "COLLAPSE" });
+        }, 240);
+      }
+    }
+    lastMissingCountRef.current = currentCount;
+  }, [missingPermissions, panelView, pillDispatch]);
+
   const beginCaptureSession = useCallback(
     (token: number, kind: "hold" | "doubleTap") => {
       activeCaptureRef.current = { token, kind };
@@ -841,37 +880,6 @@ const App: React.FC = () => {
     return cleanup;
   }, [pillDispatch, pushTrace]);
 
-  // Lightweight polling for microphone permission to keep UI honest
-  useEffect(() => {
-    let pollId: number | null = null;
-    const startPolling = () => {
-      if (pollId != null) return;
-      pollId = window.setInterval(async () => {
-        try {
-          const mic = await window.electron?.checkMicrophonePermission?.();
-          if (mic && !mic.granted) {
-            // Surface a user-friendly heads-up; pill will show NOTIFICATION state
-            window.notifications?.send?.(
-              "Microphone permission is off. Double-click to open Settings.",
-            );
-          }
-        } catch {}
-      }, 8000);
-    };
-    const stopPolling = () => {
-      if (pollId != null) {
-        clearInterval(pollId);
-        pollId = null;
-      }
-    };
-
-    // Start polling when idle (not recording/processing)
-    if (!trans.recording && !trans.processing) startPolling();
-    else stopPolling();
-
-    return () => stopPolling();
-  }, [trans.recording, trans.processing]);
-
   // Listen for window show events to reset pill state when shown from tray menu
   useEffect(() => {
     const handleWindowShow = () => {
@@ -1041,7 +1049,12 @@ const App: React.FC = () => {
       logPermissionsDebug("notification:action-triggered", { actionId });
       switch (actionId) {
         case "open-permissions":
-          // Placeholder: dedicated permissions flow will hook in Milestone 5
+          autoPermissionsRef.current = true;
+          setPanelView("permissions");
+          pillDispatch({ type: "EXPAND" });
+          try {
+            window.electron?.focusWindow?.();
+          } catch {}
           break;
         default:
           logPermissionsDebug("notification:action-unknown", { actionId });
@@ -1058,6 +1071,33 @@ const App: React.FC = () => {
     // Defer actual hide until NOTIFICATION finishes and we return to IDLE
     setPendingHideAfterCollapse({ active: true, message, onAfter });
   }, []);
+
+  const handleOpenPermissionsPanel = useCallback(() => {
+    autoPermissionsRef.current = false;
+    setPanelView("permissions");
+  }, []);
+
+  const handlePermissionsDismiss = useCallback(() => {
+    setPanelView("settings");
+  }, []);
+
+  const handleCollapse = useCallback(() => {
+    const { active, message, onAfter } = pendingHideAfterCollapse;
+    setPanelView("settings");
+    autoPermissionsRef.current = false;
+    pillDispatch({ type: "COLLAPSE" });
+    if (active && message) {
+      setPendingHideAfterCollapse({ active: false, message: "" });
+      setTimeout(() => {
+        try {
+          window.notifications?.send?.(message);
+        } catch {}
+        try {
+          onAfter && onAfter();
+        } catch {}
+      }, 0);
+    }
+  }, [pendingHideAfterCollapse, pillDispatch]);
 
   const handlePillMetrics = useCallback((metrics: PillMetrics) => {
     setDebugInfo(metrics);
@@ -1397,8 +1437,7 @@ const App: React.FC = () => {
   ]);
 
   return (
-    <PermissionsProvider>
-      <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
+    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill
         pillState={pillState}
         pillContext={pillContext}
@@ -1429,20 +1468,7 @@ const App: React.FC = () => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={() => pillDispatch({ type: "EXPAND" })}
-        onCollapse={() => {
-          pillDispatch({ type: "COLLAPSE" });
-          // If a deferred hide is pending (from toggle while expanded), show the heads-up now
-          if (
-            pendingHideAfterCollapse.active &&
-            pendingHideAfterCollapse.message
-          ) {
-            setTimeout(() => {
-              try {
-                window.notifications?.send?.(pendingHideAfterCollapse.message);
-              } catch {}
-            }, 0);
-          }
-        }}
+        onCollapse={handleCollapse}
         onToggleFloatingBar={async (enabled: boolean) => {
           // Cancel any pending hide if user turns it back on
           if (enabled) {
@@ -1471,6 +1497,9 @@ const App: React.FC = () => {
         shareTranscriptionsUpdating={shareTranscriptionsUpdating}
         onShareTranscriptionsChange={handleSharePreferenceToggle}
         onNotificationAction={handleNotificationAction}
+        panelView={panelView}
+        onOpenPermissionsPanel={handleOpenPermissionsPanel}
+        onPermissionsDismiss={handlePermissionsDismiss}
       />
       <span
         id="pill-ghost-measure"
@@ -1514,8 +1543,13 @@ const App: React.FC = () => {
         </div>
       )}
     </div>
-    </PermissionsProvider>
   );
 };
+
+const App: React.FC = () => (
+  <PermissionsProvider>
+    <AppInner />
+  </PermissionsProvider>
+);
 
 export default App;

@@ -22,7 +22,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
       ? "border border-emerald-400/60 bg-emerald-500/5"
       : status === "warning"
         ? "border border-amber-400/60 bg-amber-500/5"
-        : "";
+        : "border border-border/40";
 
   return (
     <div
