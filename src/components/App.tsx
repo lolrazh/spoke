@@ -1186,11 +1186,6 @@ const AppInner: React.FC = () => {
     setPendingHideAfterCollapse({ active: true, message, onAfter });
   }, []);
 
-  const handleOpenPermissionsPanel = useCallback(() => {
-    autoPermissionsRef.current = false;
-    setPanelView("permissions");
-  }, []);
-
   const handleCollapse = useCallback(() => {
     const { active, message, onAfter } = pendingHideAfterCollapse;
     setPanelView("settings");
@@ -1612,7 +1607,6 @@ const AppInner: React.FC = () => {
         onShareTranscriptionsChange={handleSharePreferenceToggle}
         onNotificationAction={handleNotificationAction}
         panelView={panelView}
-        onOpenPermissionsPanel={handleOpenPermissionsPanel}
       />
       <span
         id="pill-ghost-measure"

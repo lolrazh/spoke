@@ -47,7 +47,6 @@ interface PillProps {
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
   panelView: "settings" | "permissions";
-  onOpenPermissionsPanel?: () => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -72,7 +71,6 @@ const Pill: React.FC<PillProps> = ({
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
   panelView,
-  onOpenPermissionsPanel,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -343,7 +341,6 @@ const Pill: React.FC<PillProps> = ({
                       shareTranscriptionsLoading={shareTranscriptionsLoading}
                       shareTranscriptionsUpdating={shareTranscriptionsUpdating}
                       onShareTranscriptionsChange={onShareTranscriptionsChange}
-                      onOpenPermissionsPanel={onOpenPermissionsPanel}
                     />
                   )}
                   {/* Collapse chevron at bottom */}

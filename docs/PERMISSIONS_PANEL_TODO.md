@@ -13,12 +13,12 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 | [x] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  | Now reads from `usePermissionsController` |
 | [x] | Update Settings tests + mocks for provider (Milestone 3) |  | Test helpers wrap panel with `PermissionsProvider` |
 | [x] | Build `PermissionsPanel` component with success/attention states (Milestone 4) |  | Implemented in `src/components/PermissionsPanel.tsx` with unit test |
-| [x] | Add manual “Review permissions” entry point from Settings (Milestone 4) |  | Settings card calls new `onOpenPermissionsPanel` hook |
+| [x] | Add manual “Review permissions” entry point from Settings (Milestone 4) |  | Superseded by Milestone 6 cleanup; actionable toast remains primary entry |
 | [x] | Replace mic-only polling with controller-driven alerts (Milestone 5) |  | App watches `missingPermissions` and emits actionable toasts |
 | [x] | Auto-open panel from actionable notification (Milestone 5) |  | `open-permissions` action expands pill + switches view |
 | [x] | Collapse rules & success toast after permissions granted (Milestone 5) |  | Controller sends “all clear” toast and auto-collapses when resolved |
-| [ ] | Remove System cards from Settings panel; add slim link (Milestone 6) |  |  |
-| [ ] | Update docs/tests to reflect new layout (Milestone 6) |  |  |
+| [x] | Remove System cards from Settings panel; add slim link (Milestone 6) |  | System section deleted; permissions managed exclusively via notifications |
+| [x] | Update docs/tests to reflect new layout (Milestone 6) |  | SettingsPanel now purely defaults/account; existing tests remain valid without permission stubs |
 | [ ] | Document flow in `docs/AUTH.md` + agent log (Milestone 7) |  |  |
 | [ ] | Evaluate telemetry hooks for permissions panel (Milestone 7) |  |  |
 
