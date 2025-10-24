@@ -151,7 +151,7 @@ const PERMISSION_NOTIFICATION_REPEAT_DELAY_MS =
   PERMISSION_NOTIFICATION_DURATION_MS + 2000;
 const PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS = 3500;
 
-const PERMISSION_NOTIFICATION_MESSAGE = "Permissions required — click to review";
+const PERMISSION_NOTIFICATION_MESSAGE = "Permissions required. Double click to review.";
 const PERMISSION_NOTIFICATION_ACTION_ID = "open-permissions";
 
 const logPermissionsDebug = (...args: unknown[]) => {
