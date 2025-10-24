@@ -590,6 +590,7 @@ const AppInner: React.FC = () => {
     active: boolean;
     message: string;
     onAfter?: () => void;
+    deferNotification?: boolean;
   }>({ active: false, message: "" });
 
   const permissionCheckNonceRef = useRef(0);
@@ -1183,22 +1184,27 @@ const AppInner: React.FC = () => {
       window.notifications?.send?.(message);
     } catch {}
     // Defer actual hide until NOTIFICATION finishes and we return to IDLE
-    setPendingHideAfterCollapse({ active: true, message, onAfter });
+    setPendingHideAfterCollapse({
+      active: true,
+      message,
+      onAfter,
+      deferNotification: false,
+    });
   }, []);
 
   const handleCollapse = useCallback(() => {
-    const { active, message, onAfter } = pendingHideAfterCollapse;
+    const { active, message, deferNotification } = pendingHideAfterCollapse;
     setPanelView("settings");
     autoPermissionsRef.current = false;
     pillDispatch({ type: "COLLAPSE" });
-    if (active && message) {
-      setPendingHideAfterCollapse({ active: false, message: "" });
+    if (active && message && deferNotification) {
+      setPendingHideAfterCollapse((prev) => ({
+        ...prev,
+        deferNotification: false,
+      }));
       setTimeout(() => {
         try {
           window.notifications?.send?.(message);
-        } catch {}
-        try {
-          onAfter && onAfter();
         } catch {}
       }, 0);
     }
@@ -1595,7 +1601,11 @@ const AppInner: React.FC = () => {
           const message = "Floating Bar Hidden. Use the Tray Menu to bring it back.";
           // If expanded, defer notification until collapse to avoid jank
           if (pillState === "EXPANDED") {
-            setPendingHideAfterCollapse({ active: true, message });
+            setPendingHideAfterCollapse({
+              active: true,
+              message,
+              deferNotification: true,
+            });
             return;
           }
           // If not expanded, show heads-up now and then hide after it settles
