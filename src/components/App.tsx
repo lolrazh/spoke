@@ -11,6 +11,7 @@ import { useTranscription } from "../hooks/useTranscription";
 import {
   CONTENT_WIDTH,
   CONTENT_HEIGHT,
+  PERMISSIONS_CONTENT_WIDTH,
   PERMISSIONS_CONTENT_HEIGHT,
 } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
@@ -1126,9 +1127,11 @@ const AppInner: React.FC = () => {
   const BASE_W = Math.round(baseWidthTarget * baseWidthScale);
   const BASE_H = Math.round(TOKENS.PILL_BASE_H * S);
   const RESTING_H = Math.round(TOKENS.PILL_RESTING_H * S);
-  const EXPANDED_W = Math.round(CONTENT_WIDTH * S);
+  const expandedWidthTarget =
+    panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
   const expandedHeightTarget =
     panelView === "permissions" ? PERMISSIONS_CONTENT_HEIGHT : CONTENT_HEIGHT;
+  const EXPANDED_W = Math.round(expandedWidthTarget * S);
   const EXPANDED_H = Math.round(expandedHeightTarget * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 

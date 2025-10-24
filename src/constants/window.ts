@@ -7,6 +7,7 @@ export const ISLAND_VISIBLE_Y = -SHADOW_PAD;
 // Base content dimensions for the expanded pill
 export const CONTENT_WIDTH = 600;
 export const CONTENT_HEIGHT = 700;
+export const PERMISSIONS_CONTENT_WIDTH = 520;
 export const PERMISSIONS_CONTENT_HEIGHT = 320;
 
 // Window envelope includes padding on all sides for shadows

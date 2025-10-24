@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import SfIcon from "./icons/SfIcon";
 import { MOTION } from "../config/motionTokens";
 import { usePermissionsController } from "../state/permissionsContext";
+import { SectionSeparator } from "./SettingsPanel";
 
 type PermissionKey = "microphone" | "accessibility" | "inputMonitoring";
 
@@ -119,11 +120,14 @@ const PermissionsPanel: React.FC = () => {
     <div className="flex h-full flex-col bg-background text-foreground">
       <div className="flex-1 overflow-y-auto">
         <motion.div
-          className="max-w-lg mx-auto px-5 py-3 space-y-2.5"
+          className="max-w-lg mx-auto px-5 py-4 space-y-3"
           initial="hidden"
           animate="visible"
           variants={containerVariants}
         >
+          <motion.div variants={itemVariants}>
+            <SectionSeparator title="Permissions" />
+          </motion.div>
           {permissionEntries.map((entry) => {
             const copy = PERMISSION_COPY[entry.key];
             return (

@@ -80,7 +80,7 @@ const SelectField: React.FC<{
 
 // Cleaned out legacy row components; cards are now the single layout primitive
 
-const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
+export const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
   <div className="relative my-6">
     <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
