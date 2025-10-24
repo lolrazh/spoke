@@ -1587,7 +1587,20 @@ const AppInner: React.FC = () => {
         onToggleFloatingBar={async (enabled: boolean) => {
           // Cancel any pending hide if user turns it back on
           if (enabled) {
-            setPendingHideAfterCollapse({ active: false, message: "" });
+            const cancelledDeferredHide =
+              pendingHideAfterCollapse.active &&
+              pendingHideAfterCollapse.deferNotification;
+
+            setPendingHideAfterCollapse({
+              active: false,
+              message: "",
+              deferNotification: false,
+            });
+
+            if (cancelledDeferredHide) {
+              // Pill never hid; avoid re-triggering smoothShow flicker
+              return;
+            }
             // Ensure pill is in clean IDLE state when showing the floating bar
             if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
               pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state

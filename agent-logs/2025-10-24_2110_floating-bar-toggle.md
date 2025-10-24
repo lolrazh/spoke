@@ -9,6 +9,7 @@ User wanted the floating bar visibility toggle to behave consistently so that di
 
 ## What We Accomplished
 - ✅ **Restored deferred hide workflow** - Preserved the pending hide reminder through panel collapse so the main process receives the hide command after notifications finish.
+- ✅ **Eliminated toggle-on flicker** - Skipped redundant `showFloatingBar()` when cancelling a deferred hide, keeping the expanded pill steady when users change their mind immediately.
 - ✅ **Maintained notification UX** - Ensured the existing “floating bar hidden” toast still fires exactly once when collapsing from the expanded panel.
 - ✅ **Regression check** - Re-ran `SettingsPanel.behavior.test.tsx` to confirm toggle wiring continues to fire the external handler.
 
@@ -16,11 +17,13 @@ User wanted the floating bar visibility toggle to behave consistently so that di
 The toggle now tracks whether its notification should be deferred until after collapse, allowing the post-notification effect to make the actual `hideFloatingBarIndefinitely` call. This keeps renderer state and the main-process `floatingBarEnabled` flag in sync without duplicating notifications.
 
 **Files Modified:**
-- `src/components/App.tsx` - Added `deferNotification` state, updated collapse handler, and ensured deferred hides trigger after the pill settles.
+- `src/components/App.tsx` - Added `deferNotification` state, updated collapse handler, and short-circuited `showFloatingBar()` when cancelling a deferred hide to prevent flicker.
 
 ## Bugs & Issues Encountered
 1. **Pending hide cleared too early** - Collapsing the panel reset `pendingHideAfterCollapse`, preventing the hide effect from firing.
    - **Fix:** Retained the pending state until after the notification-run path completes, with a `deferNotification` marker for collapse-triggered hides.
+2. **Immediate re-enable flicker** - Running `showFloatingBar()` after cancelling a deferred hide made the window briefly re-animate.
+   - **Fix:** Recognized deferred-cancel scenarios and skipped the redundant show call so the bar stays steady.
 
 ## Key Learnings
 - **State hand-off timing matters** - Deferring UI affordances across animation transitions requires keeping reminder state alive until the final effect runs.
