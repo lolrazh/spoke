@@ -4,10 +4,10 @@ Each item lines up with the milestones in `docs/PERMISSIONS_PANEL_ARCHITECTURE.m
 
 | Status | Task | Owner | Notes |
 | --- | --- | --- | --- |
-| [ ] | Capture baseline permission polling logs (Milestone 0) |  |  |
+| [x] | Capture baseline permission polling logs (Milestone 0) |  | Confirmed manual `window.electron.*` checks with `[Permissions]` output |
 | [x] | Implement `debugPermLog` flag and verify existing flows (Milestone 0) |  | Added logging hooks in `usePermissions` (see commit) |
-| [ ] | Introduce `PermissionsProvider` and centralize polling (Milestone 1) |  |  |
-| [ ] | Wire provider to `App.tsx` and expose context hook (Milestone 1) |  |  |
+| [x] | Introduce `PermissionsProvider` and centralize polling (Milestone 1) |  | Added shared context in `src/state/permissionsContext.tsx` |
+| [x] | Wire provider to `App.tsx` and expose context hook (Milestone 1) |  | App now wraps children with `PermissionsProvider` |
 | [ ] | Extend notification bridge to support actions (Milestone 2) |  |  |
 | [ ] | Teach pill reducer to handle actionable notifications (Milestone 2) |  |  |
 | [ ] | Refactor `SettingsPanel` to consume shared provider (Milestone 3) |  |  |

@@ -13,6 +13,7 @@ import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 import { getSignals, setLastToastTs } from "../utils/authSignals";
 import { shouldToastSignIn } from "../utils/shouldToastSignIn";
+import { PermissionsProvider } from "../state/permissionsContext";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -1340,7 +1341,8 @@ const App: React.FC = () => {
   ]);
 
   return (
-    <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
+    <PermissionsProvider>
+      <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">
       <Pill
         pillState={pillState}
         pillContext={pillContext}
@@ -1455,6 +1457,7 @@ const App: React.FC = () => {
         </div>
       )}
     </div>
+    </PermissionsProvider>
   );
 };
 
