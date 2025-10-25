@@ -46,10 +46,13 @@ const config: ForgeConfig = {
       "./public/assets/icon.png",
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
+      "./public/assets/Assets.car",
       "./native/bin/Sonic Flow Helper.app",
       "./native/bin/notch-reporter",
-      "./build/icon-assets/Assets.car",
     ],
+    extendInfo: {
+      CFBundleIconName: 'SonicFlow'
+    },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: ({
       identity: signIdentity,
