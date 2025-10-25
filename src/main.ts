@@ -2597,18 +2597,6 @@ app.whenReady().then(async () => {
 
   app.commandLine.appendSwitch("disable-http-cache");
 
-  // macOS dock icon setup
-  try {
-    // Try to set the dock icon explicitly (fallback if app bundle icon fails)
-    const dockIcon = nativeImage.createFromPath(iconPath);
-    if (!dockIcon.isEmpty()) {
-      app.dock.setIcon(dockIcon);
-      console.log("[Main Process] Dock icon set successfully");
-    }
-  } catch (error) {
-    console.warn("[Main Process] Failed to set dock icon:", error.message);
-  }
-
   // Startup flow:
   // - FORCE_ONBOARDING => always show onboarding (ignore local flag)
   // - Otherwise, skip onboarding when SKIP_ONBOARDING or local done flag
