@@ -1897,8 +1897,8 @@ function createOnboardingWindow() {
     skipTaskbar: false,
     show: false, // FIX 1: Don't show immediately - wait for content to load
     center: true,
-    minWidth: 600,
-    minHeight: 400,
+    minWidth: 900,
+    minHeight: 600,
     webPreferences: {
       contextIsolation: true,
       sandbox: false,
