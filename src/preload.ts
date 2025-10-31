@@ -193,6 +193,11 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("floating-bar:hide-indefinitely"),
   showFloatingBar: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("floating-bar:show"),
+  // Dock visibility helpers (macOS only)
+  getDockVisible: (): Promise<{ visible: boolean }> =>
+    ipcRenderer.invoke("dock:get-visible"),
+  setDockVisible: (visible: boolean): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("dock:set-visible", { visible }),
   // Generic external URL opener for OAuth links
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Return the active redirect URL the renderer should use

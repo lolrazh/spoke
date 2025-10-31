@@ -10,6 +10,8 @@ export type MicPreferences = { selectedMicId?: string };
 
 export type PillPreferences = { notchWidth?: number };
 
+export type AppPreferences = { showInDock?: boolean };
+
 export type PttTarget = "auto" | "onboarding" | "main";
 
 export type SelectionRange = { location: number; length: number };

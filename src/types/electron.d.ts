@@ -109,6 +109,9 @@ declare global {
         error?: string;
       }>;
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
+      // Dock visibility helpers (macOS only)
+      getDockVisible: () => Promise<{ visible: boolean }>;
+      setDockVisible: (visible: boolean) => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       getAuthRedirectUrl: () => Promise<{ url: string }>;
       // Renderer lifecycle

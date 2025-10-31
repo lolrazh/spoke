@@ -115,6 +115,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
+  const [showInDock, setShowInDock] = useState<boolean>(true);
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -135,7 +136,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Initialize from main visibility state (source of truth)
   useEffect(() => {
     let isMounted = true;
-    
+
     (async () => {
       try {
         // Prefer persisted intent if available; fallback to current visibility
@@ -147,6 +148,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           if (vis && typeof vis.visible === "boolean") {
             if (isMounted) setShowFloatingBar(vis.visible);
           }
+        }
+      } catch {}
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Initialize dock visibility from main process
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const result = await window.electron?.getDockVisible?.();
+        if (result && typeof result.visible === "boolean") {
+          if (isMounted) setShowInDock(result.visible);
         }
       } catch {}
     })();
@@ -338,6 +357,27 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     icon={
                       <SfIcon
                         name="eye.fill"
+                        size={16}
+                        className="text-primary/70"
+                      />
+                    }
+                  />
+
+                  <Toggle
+                    label="Show in Dock"
+                    description="Display app icon in the macOS Dock"
+                    enabled={showInDock}
+                    onChange={async (enabled) => {
+                      setShowInDock(enabled);
+                      try {
+                        await window.electron?.setDockVisible?.(enabled);
+                      } catch (error) {
+                        console.error("[Settings] Failed to set dock visibility:", error);
+                      }
+                    }}
+                    icon={
+                      <SfIcon
+                        name="dock.rectangle"
                         size={16}
                         className="text-primary/70"
                       />

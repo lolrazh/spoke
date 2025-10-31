@@ -364,6 +364,9 @@ let pillPreferences: import("./types/shared").PillPreferences = {};
 let pillPrefsPath: string; // Will be initialized in app.whenReady()
 // Optical adjustment for notch width (pixels to subtract for better visual alignment)
 const NOTCH_WIDTH_OPTICAL_ADJUSTMENT = 2;
+// App preferences (dock visibility, etc.)
+let appPreferences: import("./types/shared").AppPreferences = {};
+let appPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean } = {};
@@ -1314,6 +1317,37 @@ function savePillPreferences(prefs: import("./types/shared").PillPreferences): v
     logger.main.info("[PillPrefs] Saved preferences:", prefs);
   } catch (error) {
     logger.main.error("[PillPrefs] Failed to save preferences:", error);
+  }
+}
+
+function loadAppPreferences(): import("./types/shared").AppPreferences {
+  try {
+    if (fs.existsSync(appPrefsPath)) {
+      const data = fs.readFileSync(appPrefsPath, "utf8");
+      const prefs = JSON.parse(data);
+      logger.main.info("[AppPrefs] Loaded preferences:", prefs);
+      return prefs;
+    }
+  } catch (error) {
+    logger.main.error("[AppPrefs] Failed to load preferences:", error);
+  }
+
+  logger.main.info("[AppPrefs] No stored preferences found");
+  return {};
+}
+
+function saveAppPreferences(prefs: import("./types/shared").AppPreferences): void {
+  try {
+    // Ensure userData directory exists
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+
+    fs.writeFileSync(appPrefsPath, JSON.stringify(prefs, null, 2));
+    logger.main.info("[AppPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    logger.main.error("[AppPrefs] Failed to save preferences:", error);
   }
 }
 
@@ -2495,6 +2529,7 @@ app.whenReady().then(async () => {
   // Initialize paths after app is ready to avoid keychain dialog
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
   pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
+  appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -2508,6 +2543,24 @@ app.whenReady().then(async () => {
   
   // Load pill preferences
   pillPreferences = loadPillPreferences();
+
+  // Load app preferences and apply dock visibility
+  appPreferences = loadAppPreferences();
+  // Default to showing in dock if preference not set
+  const showInDock = appPreferences.showInDock ?? true;
+  if (process.platform === 'darwin') {
+    try {
+      if (showInDock) {
+        app.dock.show();
+        logger.main.info("[AppPrefs] Dock icon visible");
+      } else {
+        app.dock.hide();
+        logger.main.info("[AppPrefs] Dock icon hidden");
+      }
+    } catch (error) {
+      logger.main.error("[AppPrefs] Failed to set dock visibility:", error);
+    }
+  }
 
   const isDev = !app.isPackaged;
   // Log the WebSocket endpoint the app intends to use (terminal)
@@ -3043,6 +3096,38 @@ app.whenReady().then(async () => {
       floatingBarEnabled = true;
       return { ok: true };
     } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
+
+  // Dock visibility controls (macOS only)
+  ipcMain.handle("dock:get-visible", () => {
+    const visible = appPreferences.showInDock ?? true;
+    return { visible };
+  });
+
+  ipcMain.handle("dock:set-visible", (_event, payload: { visible: boolean }) => {
+    try {
+      const { visible } = payload;
+
+      // Only apply dock operations on macOS
+      if (process.platform === 'darwin') {
+        if (visible) {
+          app.dock.show();
+          logger.main.info("[Dock] Showing dock icon");
+        } else {
+          app.dock.hide();
+          logger.main.info("[Dock] Hiding dock icon");
+        }
+      }
+
+      // Save preference regardless of platform
+      appPreferences.showInDock = visible;
+      saveAppPreferences(appPreferences);
+
+      return { ok: true };
+    } catch (e) {
+      logger.main.error("[Dock] Failed to set visibility:", e);
       return { ok: false, error: (e as Error).message };
     }
   });
