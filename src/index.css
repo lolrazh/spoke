@@ -132,7 +132,7 @@
 
   .sf-intro-sub {
     font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
-    font-size: 21px !important;
+    font-size: 16px !important;
     font-weight: 300;
     color: rgba(255,255,255,0.7);
   }
@@ -997,7 +997,7 @@ body {
   }
   .subheading {
     font-weight: 300; /* light subheading */
-    font-size: 1.3125rem !important; /* 21px */
+    font-size: 1rem !important; /* 16px */
     margin-bottom: var(
       --spacing-lg
     ); /* extra space below subheading pushes content down */
