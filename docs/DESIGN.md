@@ -117,7 +117,7 @@ This addresses a token space mismatch (HSL semantic tokens vs RGBA glass/solid t
 ```css
 /* Font families */
 --font-family-body: "Lexend Deca", -apple-system, BlinkMacSystemFont, sans-serif;
---font-family-heading: "DM Serif Display", Georgia, serif;
+--font-family-heading: "Instrument Serif", Georgia, serif;
 
 /* Heading scale */
 --font-weight-heading: 400;
@@ -734,7 +734,7 @@ module.exports = {
       },
       fontFamily: {
         sans: ["Lexend Deca", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
-        serif: ["DM Serif Display", "Georgia", "serif"],
+        serif: ["Instrument Serif", "Georgia", "serif"],
       },
     },
   },
