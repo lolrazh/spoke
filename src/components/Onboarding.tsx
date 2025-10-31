@@ -1296,7 +1296,7 @@ const Onboarding: React.FC = () => {
 
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
+        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           {!showIntro && (
           <AnimatePresence mode="wait">
             {/* Auth Step */}
