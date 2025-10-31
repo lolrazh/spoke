@@ -18,3 +18,7 @@ Guidelines:
 
 Vite’s `import.meta.glob` eagerly bundles all SVGs placed here, so rebuilding
 the app after adding or removing icons is enough—no manual JSON updates needed.
+
+How-to: 
+
+Literally just go to the SF Symbols app, pick the symbol you want, right click, and select the option 'Copy Image as' which should let you copy in SVG.
