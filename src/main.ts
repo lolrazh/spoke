@@ -597,6 +597,8 @@ let hideTimer: NodeJS.Timeout | null = null;
 let hideEndTime: number | null = null;
 // Preference-level flag to reflect user's intent (Settings toggle)
 let floatingBarEnabled = true;
+// Dock operation in progress (prevents blur from collapsing during dock show/hide)
+let dockOperationInProgress = false;
 
 let notchReport: NotchReport | null = null;
 let notchReporterMissingWarned = false;
@@ -1805,6 +1807,8 @@ const createWindow = () => {
   // Collapse request on blur: if user clicks outside our window, renderer can decide to collapse
   mainWindow.on("blur", () => {
     try {
+      // Skip collapse during dock operations to prevent unwanted UX disruption
+      if (dockOperationInProgress) return;
       mainWindow?.webContents.send("collapse-request");
     } catch {
       // ignore
@@ -3106,14 +3110,17 @@ app.whenReady().then(async () => {
     return { visible };
   });
 
-  ipcMain.handle("dock:set-visible", (_event, payload: { visible: boolean }) => {
+  ipcMain.handle("dock:set-visible", async (_event, payload: { visible: boolean }) => {
     try {
       const { visible } = payload;
+
+      // Set flag to prevent blur-triggered collapse during dock operation
+      dockOperationInProgress = true;
 
       // Only apply dock operations on macOS
       if (process.platform === 'darwin') {
         if (visible) {
-          app.dock.show();
+          await app.dock.show();
           logger.main.info("[Dock] Showing dock icon");
         } else {
           app.dock.hide();
@@ -3125,8 +3132,14 @@ app.whenReady().then(async () => {
       appPreferences.showInDock = visible;
       saveAppPreferences(appPreferences);
 
+      // Clear flag after a brief delay to allow focus to settle
+      setTimeout(() => {
+        dockOperationInProgress = false;
+      }, 300);
+
       return { ok: true };
     } catch (e) {
+      dockOperationInProgress = false; // Clear flag on error
       logger.main.error("[Dock] Failed to set visibility:", e);
       return { ok: false, error: (e as Error).message };
     }
