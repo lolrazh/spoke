@@ -121,8 +121,8 @@ This addresses a token space mismatch (HSL semantic tokens vs RGBA glass/solid t
 
 /* Heading scale */
 --font-weight-heading: 400;
---font-size-heading-xl: 1.875rem; /* 30px */
---font-size-heading-lg: 1.5rem;   /* 24px */
+--font-size-heading-xl: 2.8125rem; /* 45px */
+--font-size-heading-lg: 2.25rem;   /* 36px */
 --line-height-heading: 1.3;
 --letter-spacing-heading: 0;
 ```

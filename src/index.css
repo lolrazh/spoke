@@ -122,7 +122,7 @@
 
   .sf-intro-heading {
     font-family: "Instrument Serif", Georgia, serif;
-    font-size: clamp(20px, 4.8vw, 40px);
+    font-size: clamp(30px, 7.2vw, 60px);
     line-height: 1.25;
     letter-spacing: -0.01em;
     background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 100%);
@@ -132,7 +132,7 @@
 
   .sf-intro-sub {
     font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
-    font-size: 14px;
+    font-size: 21px !important;
     color: rgba(255,255,255,0.7);
   }
 
@@ -820,8 +820,8 @@ body {
     --font-family-heading:
       "Instrument Serif", Georgia, "Times New Roman", serif;
     --font-weight-heading: 400; /* Match website hero (Instrument Serif 400) */
-    --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
-    --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
+    --font-size-heading-xl: 2.8125rem; /* 45px */
+    --font-size-heading-lg: 2.25rem; /* 36px */
     --line-height-heading: 1.3;
     --letter-spacing-heading: 0; /* match site hero tracking-normal */
 
@@ -996,6 +996,7 @@ body {
   }
   .subheading {
     font-weight: 500; /* stronger subheading */
+    font-size: 1.3125rem !important; /* 21px */
     margin-bottom: var(
       --spacing-lg
     ); /* extra space below subheading pushes content down */
