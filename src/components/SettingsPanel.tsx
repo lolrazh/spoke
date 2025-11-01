@@ -311,10 +311,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       className={`${embeddedMode ? "h-full" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Version text on bottom-right (embedded mode) */}
-      {embeddedMode && (
-        <div className="absolute right-3 bottom-2 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap">
-          {appVersion ? `Sonic Flow Beta ${appVersion}` : ""}
-        </div>
+      {embeddedMode && appVersion && (
+        <a
+          href="https://sonicflow.app/changelog"
+          onClick={(e) => {
+            e.preventDefault();
+            window.electron?.openExternal?.("https://sonicflow.app/changelog");
+          }}
+          className="absolute right-3 bottom-2 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+        >
+          Sonic Flow Beta {appVersion}
+        </a>
       )}
 
       {/* Draggable Header - only show in standalone mode */}
