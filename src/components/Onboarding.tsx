@@ -1944,9 +1944,7 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center"
               >
-                <div className="onboarding-section max-w-xl mx-auto text-left">
-                  <TricksComponent />
-                </div>
+                <TricksComponent />
               </motion.div>
             )}
 

@@ -546,51 +546,54 @@ const TricksComponent: React.FC = () => {
         </p>
       </div>
 
-      {/* Compact Tag Cloud */}
-      <div className="flex flex-wrap justify-center gap-2 mb-8">
-        {tricks.map((trick, index) => (
-          <motion.button
-            key={trick.id}
-            variants={tagVariants}
-            className={`meta-directive-tag px-3 py-1.5 ${
-              highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
-            }`}
-            type="button"
-            onMouseEnter={() => handlePointerEnter(index)}
-            onMouseLeave={() => handlePointerLeave(index)}
-            onFocus={() => handlePointerEnter(index)}
-            onBlur={() => handlePointerLeave(index)}
-            layoutId={`tag-${trick.id}`}
-          >
-            <span className="font-medium text-xs leading-tight">{trick.title}</span>
-          </motion.button>
-        ))}
-      </div>
-
-      {/* Single Streaming Card */}
-      {selectedTrick && (
-        <div className="w-full flex justify-center px-8">
-          <motion.div
-            className={`card-floating rounded-lg p-4 inline-block ${showCardGlow ? "success-container-glow" : ""}`}
-            animate={
-              cardPhase === "exiting"
-                ? { opacity: 0, scale: 0.94 }
-                : { opacity: 1, scale: 1 }
-            }
-            initial={false}
-            transition={{ duration: MOTION.durations.standard, ease: TRANSITION_EASE }}
-          >
-            <div className="text-left overflow-x-auto whitespace-nowrap">
-              <SegmentTypewriter
-                key={`${selectedTrick.id}-${cycleId}`}
-                segments={selectedTrick.segments}
-                onSuccessGlow={setShowCardGlow}
-                onCycleComplete={handleTypewriterComplete}
-              />
-            </div>
-          </motion.div>
+      {/* Content section with consistent spacing */}
+      <div className="onboarding-section">
+        {/* Compact Tag Cloud */}
+        <div className="flex flex-wrap justify-center gap-2 mb-8">
+          {tricks.map((trick, index) => (
+            <motion.button
+              key={trick.id}
+              variants={tagVariants}
+              className={`meta-directive-tag px-3 py-1.5 ${
+                highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
+              }`}
+              type="button"
+              onMouseEnter={() => handlePointerEnter(index)}
+              onMouseLeave={() => handlePointerLeave(index)}
+              onFocus={() => handlePointerEnter(index)}
+              onBlur={() => handlePointerLeave(index)}
+              layoutId={`tag-${trick.id}`}
+            >
+              <span className="font-medium text-xs leading-tight">{trick.title}</span>
+            </motion.button>
+          ))}
         </div>
-      )}
+
+        {/* Single Streaming Card */}
+        {selectedTrick && (
+          <div className="w-full flex justify-center px-8">
+            <motion.div
+              className={`card-floating rounded-lg p-4 inline-block ${showCardGlow ? "success-container-glow" : ""}`}
+              animate={
+                cardPhase === "exiting"
+                  ? { opacity: 0, scale: 0.94 }
+                  : { opacity: 1, scale: 1 }
+              }
+              initial={false}
+              transition={{ duration: MOTION.durations.standard, ease: TRANSITION_EASE }}
+            >
+              <div className="text-left overflow-x-auto whitespace-nowrap">
+                <SegmentTypewriter
+                  key={`${selectedTrick.id}-${cycleId}`}
+                  segments={selectedTrick.segments}
+                  onSuccessGlow={setShowCardGlow}
+                  onCycleComplete={handleTypewriterComplete}
+                />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 };
