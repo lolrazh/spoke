@@ -1944,7 +1944,9 @@ const Onboarding: React.FC = () => {
                 exit="exit"
                 className="text-center"
               >
-                <TricksComponent />
+                <div className="onboarding-section max-w-xl mx-auto text-left">
+                  <TricksComponent />
+                </div>
               </motion.div>
             )}
 
@@ -2000,7 +2002,7 @@ const Onboarding: React.FC = () => {
                     Double-click the island anytime to open settings.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center">
+                <div className="onboarding-section flex flex-col items-center justify-center">
                   {/* Screen outline container */}
                   <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
                     {/* Pill container - positioned at top like real macOS island */}
