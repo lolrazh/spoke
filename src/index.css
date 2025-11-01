@@ -928,6 +928,13 @@ body {
   .onboarding-content-gap {
     margin-top: var(--spacing-md);
   }
+  .onboarding-section {
+    margin-block: clamp(
+      calc(var(--spacing-lg) * 1.5),
+      7vh,
+      calc(var(--spacing-xl) * 2)
+    );
+  }
 
   /* Onboarding Card and UI Utilities */
   .onboarding-card {
@@ -1042,6 +1049,9 @@ body {
     font-size: 21px;
     font-weight: 300;
     line-height: 1;
+    color: rgba(255, 255, 255, 0.92);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
   }
   .keycap-legend-bottom {
     position: absolute;
@@ -1050,8 +1060,10 @@ body {
     font-size: 15px;
     font-weight: 300;
     line-height: 1;
-    letter-spacing: 0.3px;
-    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.2px;
+    color: rgba(255, 255, 255, 0.8);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
   }
   .keycap.keycap-active {
     background-color: rgba(255, 255, 255, 0.005);

@@ -1420,7 +1420,7 @@ const Onboarding: React.FC = () => {
                     Press your Right Option key now to test it.
                   </p>
                 </div>
-                <div className="space-y-4">
+                <div className="onboarding-section space-y-4">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
@@ -1761,36 +1761,38 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Mic selector */}
-                <div className="mx-auto w-full max-w-xl">
-                  <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select microphone" />
-                    </SelectTrigger>
-                    <SelectContent inPlace>
-                      {micDevices.map((d) => (
-                        <SelectItem key={d.id} value={d.id} className="text-sm">
-                          {d.label || "Microphone"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <div className="onboarding-section space-y-5">
+                  {/* Mic selector */}
+                  <div className="mx-auto w-full max-w-xl">
+                    <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select microphone" />
+                      </SelectTrigger>
+                      <SelectContent inPlace>
+                        {micDevices.map((d) => (
+                          <SelectItem key={d.id} value={d.id} className="text-sm">
+                            {d.label || "Microphone"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="flex items-center justify-center py-3">
-                  <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-                    {barValues.map((v, i) => {
-                      const h = Math.max(6, Math.round(6 + v * 80));
-                      const opacity = 0.45 + v * 0.55;
-                      return (
-                        <div
-                          key={i}
-                          className="flex-1 rounded-[3px] bg-white/70"
-                          style={{ height: `${h}px`, opacity }}
-                          aria-hidden
-                        />
-                      );
-                    })}
+                  <div className="flex items-center justify-center py-3">
+                    <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
+                      {barValues.map((v, i) => {
+                        const h = Math.max(6, Math.round(6 + v * 80));
+                        const opacity = 0.45 + v * 0.55;
+                        return (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-[3px] bg-white/70"
+                            style={{ height: `${h}px`, opacity }}
+                            aria-hidden
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1815,7 +1817,7 @@ const Onboarding: React.FC = () => {
                       Hold the hotkey to start dictation. Release to stop.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section space-y-4">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
                       Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
@@ -1861,7 +1863,7 @@ const Onboarding: React.FC = () => {
                       Double tap the hotkey to start dictation. Tap again to stop.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section space-y-4">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left">
                       Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
@@ -1907,7 +1909,7 @@ const Onboarding: React.FC = () => {
                       Select the text, hold the hotkey and give it instructions.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section space-y-4">
                     {/* Sample hint as tertiary text for improved hierarchy */}
                     <div className="text-[11px] text-dimmed text-left ml-2">
                       Try saying: "Can you write how and why in caps."
@@ -1964,7 +1966,7 @@ const Onboarding: React.FC = () => {
                     Press your Right Command key now to test it.
                   </p>
                 </div>
-                <div className="space-y-4">
+                <div className="onboarding-section space-y-4">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
