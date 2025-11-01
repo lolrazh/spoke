@@ -1012,7 +1012,7 @@ body {
     min-width: 44px;
     height: 28px;
     padding: 0 10px;
-    border-radius: var(--radius-md);
+    border-radius: calc(var(--radius-lg) + 2px);
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     border: 1px solid var(--stroke-fg);
     transition:
@@ -1040,6 +1040,7 @@ body {
     top: 9px;
     right: 12px;
     font-size: 21px;
+    font-weight: 300;
     line-height: 1;
   }
   .keycap-legend-bottom {
@@ -1047,6 +1048,7 @@ body {
     bottom: 9px;
     right: 12px;
     font-size: 15px;
+    font-weight: 300;
     line-height: 1;
     letter-spacing: 0.3px;
     color: rgba(255, 255, 255, 0.85);
