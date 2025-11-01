@@ -930,9 +930,9 @@ body {
   }
   .onboarding-section {
     margin-block: clamp(
-      calc(var(--spacing-lg) * 1.5),
-      7vh,
-      calc(var(--spacing-xl) * 2)
+      calc(var(--spacing-lg) * 0.75),
+      4vh,
+      calc(var(--spacing-xl))
     );
   }
 

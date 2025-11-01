@@ -1327,7 +1327,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-[19rem] space-y-3 text-left"
+                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
                     >
                       <div
                         className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
@@ -1381,7 +1381,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-[19rem] space-y-4 text-left"
+                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-4 text-left"
                     >
                       <Button
                         className="w-full onboarding-cta"
@@ -1461,7 +1461,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="space-y-3">
+                <div className="onboarding-section space-y-3">
                   {/* Microphone Permission */}
                   <div
                     className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
