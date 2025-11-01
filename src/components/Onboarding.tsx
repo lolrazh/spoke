@@ -1819,7 +1819,7 @@ const Onboarding: React.FC = () => {
                   </div>
                   <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
                     </div>
 
@@ -1865,7 +1865,7 @@ const Onboarding: React.FC = () => {
                   </div>
                   <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
                     </div>
 
@@ -1911,7 +1911,7 @@ const Onboarding: React.FC = () => {
                   </div>
                   <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed ml-2">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Can you write how and why in caps."
                     </div>
 

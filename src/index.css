@@ -932,7 +932,7 @@ body {
 
   /* Standard content gap following headings/subheadings */
   .onboarding-content-gap {
-    margin-top: 0;
+    margin-top: calc(var(--onboarding-section-gap) * 0.4);
   }
   .onboarding-section {
     margin-block: var(--onboarding-section-gap);
@@ -945,6 +945,12 @@ body {
   .onboarding-hint-before {
     display: block;
     padding-bottom: var(--onboarding-section-gap);
+  }
+  .onboarding-hint-centered {
+    display: block;
+    text-align: center !important;
+    padding-bottom: calc(var(--onboarding-section-gap) * 0.5);
+    margin-inline: auto;
   }
   .onboarding-permission-desc {
     font-size: 0.6875rem; /* 11px */
