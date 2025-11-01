@@ -54,6 +54,22 @@ function sanitizeSvg(svg: string, title?: string): string {
 
   cleaned = cleaned.replace(/<title>[\s\S]*?<\/title>/gi, "");
 
+  cleaned = cleaned.replace(/\sfill="([^"]*)"/gi, (match, value) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "none" || normalized.startsWith("url(")) {
+      return ` fill="${value}"`;
+    }
+    return ' fill="currentColor"';
+  });
+
+  cleaned = cleaned.replace(/\sstroke="([^"]*)"/gi, (match, value) => {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "none" || normalized.startsWith("url(")) {
+      return ` stroke="${value}"`;
+    }
+    return ' stroke="currentColor"';
+  });
+
   if (title) {
     cleaned = cleaned.replace(
       /<svg([^>]*)>/i,
