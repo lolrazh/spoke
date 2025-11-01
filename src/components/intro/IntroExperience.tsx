@@ -109,7 +109,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                 So Good You'll Want to Lick It
               </h1>
-              <p className="text-sm text-subtle leading-relaxed">
+              <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
                 Let's get you set up for blazing fast dictation.
               </p>
             </motion.div>
@@ -134,5 +134,4 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 };
 
 export default IntroExperience;
-
 

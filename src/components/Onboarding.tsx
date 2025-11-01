@@ -1296,7 +1296,7 @@ const Onboarding: React.FC = () => {
 
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
-        <div className="max-w-lg w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
+        <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           {!showIntro && (
           <AnimatePresence mode="wait">
             {/* Auth Step */}
@@ -1327,7 +1327,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-[19rem] space-y-3 text-left"
+                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
                     >
                       <div
                         className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
@@ -1381,7 +1381,7 @@ const Onboarding: React.FC = () => {
                       initial="hidden"
                       animate="visible"
                       exit="exit"
-                      className="mx-auto w-full max-w-[19rem] space-y-4 text-left"
+                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-4 text-left"
                     >
                       <Button
                         className="w-full onboarding-cta"
@@ -1420,7 +1420,7 @@ const Onboarding: React.FC = () => {
                     Press your Right Option key now to test it.
                   </p>
                 </div>
-                <div className="space-y-4">
+                <div className="onboarding-section">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
@@ -1431,10 +1431,10 @@ const Onboarding: React.FC = () => {
                       }
                       aria-live="polite"
                     >
-                      <span className="keycap-legend-top text-[14px] font-system">⌥</span>
-                      <span className="keycap-legend-bottom text-[10px] font-system">option</span>
+                      <span className="keycap-legend-top font-system">⌥</span>
+                      <span className="keycap-legend-bottom font-system">option</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Hold for push-to-talk, double tap for hands-free mode.</p>
+                    <p className="onboarding-note">Hold for push-to-talk, double tap for hands-free mode.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1461,7 +1461,7 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="space-y-3">
+                <div className="onboarding-section space-y-3">
                   {/* Microphone Permission */}
                   <div
                     className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
@@ -1479,7 +1479,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Microphone
                           </p>
-                          <p className="text-[11px] text-subtle">
+                          <p className="onboarding-permission-desc text-subtle">
                             Capture your voice for dictation.
                           </p>
                         </div>
@@ -1572,7 +1572,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Accessibility
                           </p>
-                          <p className="text-[11px] text-subtle">
+                          <p className="onboarding-permission-desc text-subtle">
                             Insert recognized text into your apps.
                           </p>
                         </div>
@@ -1664,7 +1664,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
-                          <p className="text-[11px] text-subtle">Detect the Hotkey for dictation..</p>
+                          <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -1761,36 +1761,38 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Mic selector */}
-                <div className="mx-auto w-full max-w-xl">
-                  <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select microphone" />
-                    </SelectTrigger>
-                    <SelectContent inPlace>
-                      {micDevices.map((d) => (
-                        <SelectItem key={d.id} value={d.id} className="text-sm">
-                          {d.label || "Microphone"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <div className="onboarding-section space-y-5">
+                  {/* Mic selector */}
+                  <div className="mx-auto w-full max-w-xl">
+                    <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select microphone" />
+                      </SelectTrigger>
+                      <SelectContent inPlace>
+                        {micDevices.map((d) => (
+                          <SelectItem key={d.id} value={d.id} className="text-sm">
+                            {d.label || "Microphone"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="flex items-center justify-center py-3">
-                  <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-                    {barValues.map((v, i) => {
-                      const h = Math.max(6, Math.round(6 + v * 80));
-                      const opacity = 0.45 + v * 0.55;
-                      return (
-                        <div
-                          key={i}
-                          className="flex-1 rounded-[3px] bg-white/70"
-                          style={{ height: `${h}px`, opacity }}
-                          aria-hidden
-                        />
-                      );
-                    })}
+                  <div className="flex items-center justify-center py-3">
+                    <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
+                      {barValues.map((v, i) => {
+                        const h = Math.max(6, Math.round(6 + v * 80));
+                        const opacity = 0.45 + v * 0.55;
+                        return (
+                          <div
+                            key={i}
+                            className="flex-1 rounded-[3px] bg-white/70"
+                            style={{ height: `${h}px`, opacity }}
+                            aria-hidden
+                          />
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1815,9 +1817,9 @@ const Onboarding: React.FC = () => {
                       Hold the hotkey to start dictation. Release to stop.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
                     </div>
 
@@ -1861,9 +1863,9 @@ const Onboarding: React.FC = () => {
                       Double tap the hotkey to start dictation. Tap again to stop.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
                     </div>
 
@@ -1907,9 +1909,9 @@ const Onboarding: React.FC = () => {
                       Select the text, hold the hotkey and give it instructions.
                     </p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left ml-2">
+                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
                       Try saying: "Can you write how and why in caps."
                     </div>
 
@@ -1964,17 +1966,17 @@ const Onboarding: React.FC = () => {
                     Press your Right Command key now to test it.
                   </p>
                 </div>
-                <div className="space-y-4">
+                <div className="onboarding-section">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
                       aria-label={"Command key - press to cancel dictation"}
                       aria-live="polite"
                     >
-                      <span className="keycap-legend-top text-[14px] font-system">⌘</span>
-                      <span className="keycap-legend-bottom text-[10px] font-system">command</span>
+                      <span className="keycap-legend-top font-system">⌘</span>
+                      <span className="keycap-legend-bottom font-system">command</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
+                    <p className="onboarding-note">You can tap this key any time to cancel dictation.</p>
                   </div>
                 </div>
               </motion.div>
@@ -1998,7 +2000,7 @@ const Onboarding: React.FC = () => {
                     Double-click the island anytime to open settings.
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-center">
+                <div className="onboarding-section flex flex-col items-center justify-center">
                   {/* Screen outline container */}
                   <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
                     {/* Pill container - positioned at top like real macOS island */}

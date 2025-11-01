@@ -1,10 +1,11 @@
 /* Self-hosted font faces (preferred in production). Place .woff2 files in public/fonts/ */
 @font-face {
-  font-family: "DM Serif Display";
+  font-family: "Instrument Serif";
   src:
-    local("DM Serif Display Regular"),
-    local("DMSerifDisplay-Regular"),
-    url("../fonts/DMSerifDisplay-Regular.woff2") format("woff2");
+    local("Instrument Serif"),
+    local("Instrument Serif Regular"),
+    local("InstrumentSerif-Regular"),
+    url("../fonts/InstrumentSerif-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -120,8 +121,8 @@
   }
 
   .sf-intro-heading {
-    font-family: "DM Serif Display", Georgia, serif;
-    font-size: clamp(20px, 4.8vw, 40px);
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: clamp(30px, 7.2vw, 60px);
     line-height: 1.25;
     letter-spacing: -0.01em;
     background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 100%);
@@ -131,7 +132,8 @@
 
   .sf-intro-sub {
     font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
-    font-size: 14px;
+    font-size: 16px !important;
+    font-weight: 300;
     color: rgba(255,255,255,0.7);
   }
 
@@ -817,10 +819,10 @@ body {
       "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       Helvetica, Arial, sans-serif;
     --font-family-heading:
-      "DM Serif Display", Georgia, "Times New Roman", serif;
-    --font-weight-heading: 400; /* Match website hero (DM Serif Display 400) */
-    --font-size-heading-xl: 1.875rem; /* Tailwind text-3xl like website h1 */
-    --font-size-heading-lg: 1.5rem; /* Tailwind text-2xl like website h2 */
+      "Instrument Serif", Georgia, "Times New Roman", serif;
+    --font-weight-heading: 400; /* Match website hero (Instrument Serif 400) */
+    --font-size-heading-xl: 2.8125rem; /* 45px */
+    --font-size-heading-lg: 2.25rem; /* 36px */
     --line-height-heading: 1.3;
     --letter-spacing-heading: 0; /* match site hero tracking-normal */
 
@@ -830,6 +832,11 @@ body {
     --spacing-md: 1rem; /* 16px */
     --spacing-lg: 1.5rem; /* 24px */
     --spacing-xl: 2rem; /* 32px */
+    --onboarding-section-gap: clamp(
+      calc(var(--spacing-lg) * 0.75),
+      4vh,
+      var(--spacing-xl)
+    );
 
     /* Surface and effect tokens */
     --surface-base-rgb: 10, 10, 10;
@@ -916,15 +923,41 @@ body {
 
   /* Unified subtext spacing & styling for onboarding */
   .onboarding-note {
-    font-size: 12px;
-    line-height: 1.35;
-    color: rgba(255, 255, 255, 0.4); /* text-dimmed */
-    margin-top: var(--spacing-xs);
+    font-size: 0.9rem; /* ~14.4px */
+    line-height: 1.45;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.55);
+    padding-top: var(--onboarding-section-gap);
   }
 
   /* Standard content gap following headings/subheadings */
   .onboarding-content-gap {
-    margin-top: var(--spacing-md);
+    margin-top: calc(var(--onboarding-section-gap) * 0.4);
+  }
+  .onboarding-section {
+    margin-block: var(--onboarding-section-gap);
+  }
+  .onboarding-hint {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 1.5;
+    font-weight: 300;
+  }
+  .onboarding-hint-before {
+    display: block;
+    padding-bottom: var(--onboarding-section-gap);
+  }
+  .onboarding-hint-centered {
+    display: block;
+    text-align: center !important;
+    padding-bottom: calc(var(--onboarding-section-gap) * 0.5);
+    margin-inline: auto;
+  }
+  .onboarding-permission-desc {
+    font-size: 0.6875rem; /* 11px */
+    line-height: 1.5;
+    font-weight: 300;
+    display: block;
+    padding-top: calc(var(--spacing-xs) / 2);
   }
 
   /* Onboarding Card and UI Utilities */
@@ -994,7 +1027,9 @@ body {
     ); /* tighter gap between heading and subheading */
   }
   .subheading {
-    font-weight: 500; /* stronger subheading */
+    font-weight: 300; /* light subheading */
+    font-size: 1rem !important; /* 16px */
+    color: rgba(255, 255, 255, 0.8);
     margin-bottom: var(
       --spacing-lg
     ); /* extra space below subheading pushes content down */
@@ -1009,7 +1044,7 @@ body {
     min-width: 44px;
     height: 28px;
     padding: 0 10px;
-    border-radius: var(--radius-md);
+    border-radius: calc(var(--radius-lg) + 2px);
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
     border: 1px solid var(--stroke-fg);
     transition:
@@ -1019,34 +1054,41 @@ body {
       transform 220ms var(--ease-emphasized);
   }
   .keycap-lg {
-    width: 56px;
-    height: 56px;
+    width: 84px;
+    height: 84px;
     padding: 0;
   }
   .keycap-wide {
-    width: 74px;
+    width: 111px;
   }
   .keycap-label {
     position: absolute;
-    bottom: 6px;
-    right: 8px;
+    bottom: 9px;
+    right: 12px;
   }
   /* Legends for Option keycap: symbol on top, label on bottom */
   .keycap-legend-top {
     position: absolute;
-    top: 6px;
-    right: 8px;
-    font-size: 14px;
+    top: 9px;
+    right: 12px;
+    font-size: 21px;
+    font-weight: 300;
     line-height: 1;
+    color: rgba(255, 255, 255, 0.92);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
   }
   .keycap-legend-bottom {
     position: absolute;
-    bottom: 6px;
-    right: 8px;
-    font-size: 10px;
+    bottom: 9px;
+    right: 12px;
+    font-size: 15px;
+    font-weight: 300;
     line-height: 1;
     letter-spacing: 0.2px;
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.8);
+    -webkit-text-stroke: 0;
+    text-shadow: none;
   }
   .keycap.keycap-active {
     background-color: rgba(255, 255, 255, 0.005);
@@ -1270,6 +1312,7 @@ body {
 
   .text-subtle {
     color: rgba(255, 255, 255, 0.6);
+    font-weight: 300;
   }
 
   .text-dimmed {

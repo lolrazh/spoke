@@ -243,7 +243,7 @@ sonic-flow-app/
 │   └── INSTRUMENTATION.md      # Monitoring and metrics
 ├── public/                       # Static assets
 │   ├── assets/                  # Icons, sounds, DMG backgrounds
-│   ├── fonts/                   # Custom fonts (Lexend, DM Serif)
+│   ├── fonts/                   # Custom fonts (Lexend, Instrument Serif)
 │   └── worklets/                # Web Audio worklets
 ├── agent-logs/                   # Development session logs
 └── CLAUDE.md                     # AI assistant instructions
@@ -266,7 +266,7 @@ Sonic Flow uses a comprehensive glassmorphic design system:
 
 - **CSS Variables**: Centralized design tokens
 - **Tailwind Integration**: Extended theme with custom utilities
-- **Typography**: Lexend Deca (body) + DM Serif Display (headings)
+- **Typography**: Lexend Deca (body) + Instrument Serif (headings)
 - **Glass Effects**: Multi-layer transparency with backdrop blur
 - **Motion Design**: Spring physics with reduced motion support
 

@@ -11,7 +11,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        // Prefer Lexend/DM Serif like the site; fall back to system fonts
+        // Prefer Lexend/Instrument Serif like the site; fall back to system fonts
         sans: [
           "Lexend Deca",
           "-apple-system",
@@ -22,7 +22,7 @@ module.exports = {
           "Arial",
           "sans-serif",
         ],
-        serif: ["DM Serif Display", "Georgia", "Times New Roman", "serif"],
+        serif: ["Instrument Serif", "Georgia", "Times New Roman", "serif"],
       },
       colors: {
         // Design system colors (CSS variables)
