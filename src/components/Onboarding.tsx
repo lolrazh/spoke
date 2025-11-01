@@ -1420,7 +1420,7 @@ const Onboarding: React.FC = () => {
                     Press your Right Option key now to test it.
                   </p>
                 </div>
-                <div className="onboarding-section space-y-4">
+                <div className="onboarding-section">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
@@ -1434,7 +1434,7 @@ const Onboarding: React.FC = () => {
                       <span className="keycap-legend-top font-system">⌥</span>
                       <span className="keycap-legend-bottom font-system">option</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">Hold for push-to-talk, double tap for hands-free mode.</p>
+                    <p className="onboarding-note">Hold for push-to-talk, double tap for hands-free mode.</p>
                   </div>
                 </div>
                 {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1479,7 +1479,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Microphone
                           </p>
-                          <p className="text-[11px] text-subtle">
+                          <p className="onboarding-hint text-subtle">
                             Capture your voice for dictation.
                           </p>
                         </div>
@@ -1572,7 +1572,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Accessibility
                           </p>
-                          <p className="text-[11px] text-subtle">
+                          <p className="onboarding-hint text-subtle">
                             Insert recognized text into your apps.
                           </p>
                         </div>
@@ -1664,7 +1664,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
-                          <p className="text-[11px] text-subtle">Detect the Hotkey for dictation..</p>
+                          <p className="onboarding-hint text-subtle">Detect the Hotkey for dictation..</p>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -1817,9 +1817,9 @@ const Onboarding: React.FC = () => {
                       Hold the hotkey to start dictation. Release to stop.
                     </p>
                   </div>
-                  <div className="onboarding-section space-y-4">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left">
+                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed">
                       Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
                     </div>
 
@@ -1863,9 +1863,9 @@ const Onboarding: React.FC = () => {
                       Double tap the hotkey to start dictation. Tap again to stop.
                     </p>
                   </div>
-                  <div className="onboarding-section space-y-4">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left">
+                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed">
                       Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
                     </div>
 
@@ -1909,9 +1909,9 @@ const Onboarding: React.FC = () => {
                       Select the text, hold the hotkey and give it instructions.
                     </p>
                   </div>
-                  <div className="onboarding-section space-y-4">
+                  <div className="onboarding-section">
                     {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="text-[11px] text-dimmed text-left ml-2">
+                    <div className="onboarding-hint onboarding-hint-before text-left text-dimmed ml-2">
                       Try saying: "Can you write how and why in caps."
                     </div>
 
@@ -1966,7 +1966,7 @@ const Onboarding: React.FC = () => {
                     Press your Right Command key now to test it.
                   </p>
                 </div>
-                <div className="onboarding-section space-y-4">
+                <div className="onboarding-section">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
@@ -1976,7 +1976,7 @@ const Onboarding: React.FC = () => {
                       <span className="keycap-legend-top font-system">⌘</span>
                       <span className="keycap-legend-bottom font-system">command</span>
                     </div>
-                    <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
+                    <p className="onboarding-note">You can tap this key any time to cancel dictation.</p>
                   </div>
                 </div>
               </motion.div>

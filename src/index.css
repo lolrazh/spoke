@@ -832,6 +832,11 @@ body {
     --spacing-md: 1rem; /* 16px */
     --spacing-lg: 1.5rem; /* 24px */
     --spacing-xl: 2rem; /* 32px */
+    --onboarding-section-gap: clamp(
+      calc(var(--spacing-lg) * 0.75),
+      4vh,
+      var(--spacing-xl)
+    );
 
     /* Surface and effect tokens */
     --surface-base-rgb: 10, 10, 10;
@@ -918,22 +923,25 @@ body {
 
   /* Unified subtext spacing & styling for onboarding */
   .onboarding-note {
-    font-size: 12px;
-    line-height: 1.35;
-    color: rgba(255, 255, 255, 0.4); /* text-dimmed */
-    margin-top: var(--spacing-xs);
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.55);
+    padding-top: var(--onboarding-section-gap);
   }
 
   /* Standard content gap following headings/subheadings */
   .onboarding-content-gap {
-    margin-top: var(--spacing-md);
+    margin-top: var(--onboarding-section-gap);
   }
   .onboarding-section {
-    margin-block: clamp(
-      calc(var(--spacing-lg) * 0.75),
-      4vh,
-      calc(var(--spacing-xl))
-    );
+    margin-block: var(--onboarding-section-gap);
+  }
+  .onboarding-hint {
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.5;
+  }
+  .onboarding-hint-before {
+    display: block;
   }
 
   /* Onboarding Card and UI Utilities */
@@ -1047,7 +1055,7 @@ body {
     top: 9px;
     right: 12px;
     font-size: 21px;
-    font-weight: 300;
+    font-weight: 200;
     line-height: 1;
     color: rgba(255, 255, 255, 0.92);
     -webkit-text-stroke: 0;
@@ -1058,7 +1066,7 @@ body {
     bottom: 9px;
     right: 12px;
     font-size: 15px;
-    font-weight: 300;
+    font-weight: 200;
     line-height: 1;
     letter-spacing: 0.2px;
     color: rgba(255, 255, 255, 0.8);
