@@ -1431,8 +1431,8 @@ const Onboarding: React.FC = () => {
                       }
                       aria-live="polite"
                     >
-                      <span className="keycap-legend-top text-[14px] font-system">⌥</span>
-                      <span className="keycap-legend-bottom text-[10px] font-system">option</span>
+                      <span className="keycap-legend-top font-system">⌥</span>
+                      <span className="keycap-legend-bottom font-system">option</span>
                     </div>
                     <p className="onboarding-note onboarding-content-gap">Hold for push-to-talk, double tap for hands-free mode.</p>
                   </div>
@@ -1971,8 +1971,8 @@ const Onboarding: React.FC = () => {
                       aria-label={"Command key - press to cancel dictation"}
                       aria-live="polite"
                     >
-                      <span className="keycap-legend-top text-[14px] font-system">⌘</span>
-                      <span className="keycap-legend-bottom text-[10px] font-system">command</span>
+                      <span className="keycap-legend-top font-system">⌘</span>
+                      <span className="keycap-legend-bottom font-system">command</span>
                     </div>
                     <p className="onboarding-note onboarding-content-gap">You can tap this key any time to cancel dictation.</p>
                   </div>

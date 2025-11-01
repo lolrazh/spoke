@@ -1022,33 +1022,33 @@ body {
       transform 220ms var(--ease-emphasized);
   }
   .keycap-lg {
-    width: 56px;
-    height: 56px;
+    width: 84px;
+    height: 84px;
     padding: 0;
   }
   .keycap-wide {
-    width: 74px;
+    width: 111px;
   }
   .keycap-label {
     position: absolute;
-    bottom: 6px;
-    right: 8px;
+    bottom: 9px;
+    right: 12px;
   }
   /* Legends for Option keycap: symbol on top, label on bottom */
   .keycap-legend-top {
     position: absolute;
-    top: 6px;
-    right: 8px;
-    font-size: 14px;
+    top: 9px;
+    right: 12px;
+    font-size: 21px;
     line-height: 1;
   }
   .keycap-legend-bottom {
     position: absolute;
-    bottom: 6px;
-    right: 8px;
-    font-size: 10px;
+    bottom: 9px;
+    right: 12px;
+    font-size: 15px;
     line-height: 1;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.3px;
     color: rgba(255, 255, 255, 0.85);
   }
   .keycap.keycap-active {
