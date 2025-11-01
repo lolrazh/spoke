@@ -1479,7 +1479,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Microphone
                           </p>
-                          <p className="onboarding-hint text-subtle">
+                          <p className="onboarding-permission-desc text-subtle">
                             Capture your voice for dictation.
                           </p>
                         </div>
@@ -1572,7 +1572,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Accessibility
                           </p>
-                          <p className="onboarding-hint text-subtle">
+                          <p className="onboarding-permission-desc text-subtle">
                             Insert recognized text into your apps.
                           </p>
                         </div>
@@ -1664,7 +1664,7 @@ const Onboarding: React.FC = () => {
                           <p className="text-[13px] font-medium text-foreground">
                             Input Monitoring
                           </p>
-                          <p className="onboarding-hint text-subtle">Detect the Hotkey for dictation..</p>
+                          <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
                         </div>
                       </div>
                       <div className="flex items-center">

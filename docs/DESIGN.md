@@ -134,6 +134,7 @@ This addresses a token space mismatch (HSL semantic tokens vs RGBA glass/solid t
 --spacing-md: 1rem;     /* 16px */
 --spacing-lg: 1.5rem;   /* 24px */
 --spacing-xl: 2rem;     /* 32px */
+--onboarding-section-gap: clamp(calc(var(--spacing-lg) * 0.75), 4vh, var(--spacing-xl));
 ```
 
 #### Border Radius Scale
