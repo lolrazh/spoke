@@ -3085,6 +3085,7 @@ app.whenReady().then(async () => {
         smoothHide(mainWindow);
       }
       floatingBarEnabled = false;
+      rebuildTrayMenu(); // Update tray menu to reflect new state
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
@@ -3098,6 +3099,7 @@ app.whenReady().then(async () => {
         smoothShow(mainWindow);
       }
       floatingBarEnabled = true;
+      rebuildTrayMenu(); // Update tray menu to reflect new state
       return { ok: true };
     } catch (e) {
       return { ok: false, error: (e as Error).message };
