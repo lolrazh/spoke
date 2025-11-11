@@ -1638,7 +1638,17 @@ export function useTranscription(
           })();
         });
       } else {
-        throw new Error("WebSocket not ready for streaming");
+        const error = createAppError(
+          ErrorCode.WS_CONNECTION_FAILED,
+          "WebSocket connection not available for transcription",
+          {
+            wsExists: !!wsRef.current,
+            wsError: wsErrorRef.current,
+            reconnectAttempts: reconnectAttemptRef.current
+          }
+        );
+        logError(error, "[useTranscription] stop()");
+        throw new Error(getUserMessage(error));
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
