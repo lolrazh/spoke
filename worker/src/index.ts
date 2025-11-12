@@ -92,7 +92,6 @@ app.post('/metrics/session', async (c) => {
           insertDictationLog(supabase, {
             userId,
             sessionId: summary.id,
-            traceId: summary.id,
             pipeline: summary.pipeline,
             durations: summary.durations,
             traffic: summary.traffic,
@@ -100,7 +99,6 @@ app.post('/metrics/session', async (c) => {
             dataset: summary.dataset,
             llm: summary.llm,
             ws: summary.ws,
-            meta: body?.meta,
           }).catch((err) => {
             console.error('[Supabase] Failed to insert dictation log:', err);
           });

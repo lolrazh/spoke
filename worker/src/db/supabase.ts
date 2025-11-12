@@ -47,13 +47,11 @@ function countWords(text: string | null | undefined): number {
 export type DictationLogRow = {
   user_id: string;
   session_id: string;
-  trace_id: string | null;
   created_at?: string;
   completed_at?: string;
   dictation_ms: number | null;
   e2e_ms: number | null;
   total_ms: number | null;
-  ws_accept_to_final_ms: number | null;
   stt_ms: number | null;
   llm_ms: number | null;
   audio_duration_ms: number | null;
@@ -62,7 +60,6 @@ export type DictationLogRow = {
   llm_provider: string | null;
   llm_model: string | null;
   stt_provider: string | null;
-  app_version: string | null;
   ws_close_code: number | null;
   ws_close_reason: string | null;
 };
@@ -75,13 +72,11 @@ export async function insertDictationLog(
   data: {
     userId: string;
     sessionId: string;
-    traceId: string;
     pipeline: string;
     durations: {
       dictationMs?: number | null;
       e2eMs?: number | null;
       totalMs?: number | null;
-      wsAcceptToFinalMs?: number | null;
       sttMs?: number | null;
       llmMs?: number | null;
     };
@@ -103,9 +98,6 @@ export async function insertDictationLog(
       closeCode?: number;
       closeReason?: string;
     };
-    meta?: {
-      appVersion?: string;
-    };
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -116,12 +108,10 @@ export async function insertDictationLog(
     const row: DictationLogRow = {
       user_id: data.userId,
       session_id: data.sessionId,
-      trace_id: data.traceId,
       completed_at: new Date().toISOString(),
       dictation_ms: data.durations.dictationMs ?? null,
       e2e_ms: data.durations.e2eMs ?? null,
       total_ms: data.durations.totalMs ?? null,
-      ws_accept_to_final_ms: data.durations.wsAcceptToFinalMs ?? null,
       stt_ms: data.durations.sttMs ?? null,
       llm_ms: data.durations.llmMs ?? null,
       audio_duration_ms: data.traffic.firstToLastArrivalMs ?? null,
@@ -130,7 +120,6 @@ export async function insertDictationLog(
       llm_provider: data.llm?.provider ?? null,
       llm_model: data.llm?.model ?? null,
       stt_provider: 'groq', // Currently hardcoded
-      app_version: data.meta?.appVersion ?? null,
       ws_close_code: data.ws.closeCode ?? 1000,
       ws_close_reason: data.ws.closeReason ?? 'done',
     };
