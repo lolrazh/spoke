@@ -15,7 +15,7 @@ type Bindings = {
   SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: any;
   SUPABASE_URL?: string;
-  SUPABASE_SERVICE_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
