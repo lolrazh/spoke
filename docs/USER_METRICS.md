@@ -1,7 +1,7 @@
 # User-Specific Metrics & Analytics
 
 **Last Updated:** 2025-11-12
-**Status:** 🚧 In Development
+**Status:** ✅ Implemented
 
 ## Purpose
 
@@ -135,56 +135,49 @@ We chose to write metrics from the **Worker** rather than the **Client** for sev
 
 ### Always Tracked (Metadata Only)
 
-These metrics are always stored for every dictation session, regardless of privacy settings:
+These metrics are stored for every dictation session. **No transcription text is ever stored** - only metadata about usage patterns and performance.
 
-**User Identity:**
+**User & Session:**
+- `id` - Unique row identifier (auto-generated UUID)
 - `user_id` - Supabase auth user ID (links to profiles table)
-
-**Timing:**
-- `created_at` - When the dictation session started
+- `session_id` - Client-generated UUID for this dictation (unique, used for Sentry correlation)
+- `created_at` - When the dictation session started (auto-generated)
 - `completed_at` - When the session finished
-- `dictation_ms` - How long the user spoke (milliseconds)
-- `e2e_ms` - End-to-end latency from stop to paste
-- `total_ms` - Total session time from start to completion
 
-**Performance Metrics:**
-- `stt_ms` - Speech-to-text processing time (Groq API)
-- `llm_ms` - LLM processing time (if used, otherwise null)
-- `paste_ms` - Text insertion time
-- `ws_accept_to_final_ms` - Server-side processing time
+**Timing Metrics (milliseconds):**
+- `dictation_ms` - How long the user spoke (PTT down → stop)
+- `e2e_ms` - End-to-end latency (stop → text pasted)
+- `total_ms` - Total session time (PTT down → paste complete)
+
+**Performance Metrics (milliseconds):**
+- `stt_ms` - Speech-to-text processing time
+- `llm_ms` - LLM processing time (null if not used)
 
 **Audio Metrics:**
-- `frames_produced` - Number of audio frames sent
-- `bytes_produced` - Total audio data size in bytes
-- `audio_duration_ms` - Actual length of audio captured
+- `audio_duration_ms` - Actual length of audio captured (first frame → last frame arrival)
 
 **Result Metrics (Privacy-Preserving):**
-- `word_count` - Number of words in the result
-- `character_count` - Number of characters in the result
+- `word_count` - Number of words in the transcription result (calculated from text length, not stored)
 
 **Feature Usage:**
-- `llm_enabled` - Boolean, did the user enable LLM processing?
-- `llm_provider` - Which LLM provider was used (e.g., "groq")
-- `stt_provider` - Which STT provider was used (default: "groq")
+- `pipeline` - Mode used: `edit` | `dictation` | `stt+llm` | `stt`
+- `stt_provider` - Which STT provider was used (e.g., "groq", "fireworks", "deepgram")
+- `stt_model` - Which STT model was used (e.g., "whisper-large-v3")
+- `llm_provider` - Which LLM provider was used (e.g., "groq") - null if not used
+- `llm_model` - Which LLM model was used (e.g., "llama-3.3-70b-versatile") - null if not used
 
-**Client Context:**
-- `app_version` - Electron app version (for debugging version-specific issues)
-- `os_version` - macOS version
-
-**Session Identifiers:**
-- `session_id` - Client-generated UUID for this dictation
-- `trace_id` - Same as session_id, used for correlating with Sentry logs
+**WebSocket Info:**
+- `ws_close_code` - WebSocket close code (1000 = normal closure)
+- `ws_close_reason` - WebSocket close reason (e.g., "done")
 
 ### Privacy: No Transcription Text Storage
 
-**Important:** We do **NOT** store the actual transcription text by default. We only store:
+**Important:** We do **NOT** store the actual transcription text. We only store:
 - How many words (count)
-- How many characters (count)
 - How long they spoke
+- Performance metrics
 
-This tells us **how** users are using the app without knowing **what** they're saying.
-
-**Note on share_transcriptions feature:** This feature (which allowed users to opt-in to sharing actual transcription text) is currently disabled app-wide. The `result_text` column will remain null for all sessions. This may be re-enabled in the future if needed for training datasets, but for now, all transcription content remains completely private.
+This tells us **how** users are using the app without knowing **what** they're saying. All transcription content remains completely private.
 
 ---
 
@@ -193,6 +186,47 @@ This tells us **how** users are using the app without knowing **what** they're s
 ### Table: `dictation_logs`
 
 A single table stores one row per dictation session for all users.
+
+**Current Schema:**
+
+```sql
+CREATE TABLE dictation_logs (
+  -- Identifiers
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id text NOT NULL UNIQUE,
+
+  -- Timestamps
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  completed_at timestamptz,
+
+  -- Timing metrics (milliseconds)
+  dictation_ms integer,
+  e2e_ms integer,
+  total_ms integer,
+
+  -- Performance metrics (milliseconds)
+  stt_ms integer,
+  llm_ms integer,
+
+  -- Audio metrics
+  audio_duration_ms integer,
+
+  -- Result metrics
+  word_count integer,
+
+  -- Feature usage
+  pipeline text,
+  stt_provider text,
+  stt_model text,
+  llm_provider text,
+  llm_model text,
+
+  -- WebSocket info
+  ws_close_code integer,
+  ws_close_reason text
+);
+```
 
 **Why one table for everyone?**
 - This is standard database design for analytics
@@ -205,7 +239,8 @@ A single table stores one row per dictation session for all users.
 - Index on `user_id` (for per-user queries)
 - Index on `created_at` (for time-based queries)
 - Composite index on `(user_id, created_at)` (for user timeline queries)
-- Unique constraint on `session_id` (prevent duplicates)
+- Index on `pipeline` (for filtering by mode)
+- Unique constraint on `session_id` (prevent duplicates & enable Sentry correlation)
 
 **Retention Policy:**
 - Raw session data retained indefinitely (it's just metadata, very small)
@@ -241,27 +276,28 @@ They serve complementary purposes. Sentry tells you "what's happening right now,
 
 ### Data Mapping
 
-The data we store in `dictation_logs` comes directly from the session summary that's already being constructed in `buildSessionSummary()`:
+The data we store in `dictation_logs` comes directly from the session summary that's being constructed in `buildSessionSummary()`:
 
-| Session Summary Field | Database Column |
-|----------------------|-----------------|
-| `sessionId` | `session_id` (unique identifier for correlation with Sentry) |
-| `userId` (from meta) | `user_id` |
-| `durations.dictationMs` | `dictation_ms` |
-| `durations.e2eMs` | `e2e_ms` |
-| `durations.totalMs` | `total_ms` |
-| `durations.sttMs` | `stt_ms` |
-| `durations.llmMs` | `llm_ms` |
-| `traffic.firstToLastArrivalMs` | `audio_duration_ms` |
-| (calculated from dataset text) | `word_count` |
-| `pipeline` | `pipeline` (edit/dictation/stt/stt+llm) |
-| `llm.provider` | `llm_provider` |
-| `llm.model` | `llm_model` |
-| (always "groq" currently) | `stt_provider` |
-| `ws.closeCode` | `ws_close_code` |
-| `ws.closeReason` | `ws_close_reason` |
-| (current timestamp) | `created_at` |
-| (current timestamp) | `completed_at` |
+| Session Summary Field | Database Column | Notes |
+|----------------------|-----------------|-------|
+| `sessionId` | `session_id` | Unique identifier for correlation with Sentry |
+| `meta.userId` | `user_id` | From client auth |
+| `durations.dictationMs` | `dictation_ms` | How long user spoke |
+| `durations.e2eMs` | `e2e_ms` | Post-dictation latency |
+| `durations.totalMs` | `total_ms` | Total session time |
+| `durations.sttMs` | `stt_ms` | STT processing time |
+| `durations.llmMs` | `llm_ms` | LLM processing time (null if not used) |
+| `traffic.firstToLastArrivalMs` | `audio_duration_ms` | Audio stream duration |
+| (calculated from dataset text) | `word_count` | Splits text on whitespace, counts words |
+| `pipeline` | `pipeline` | edit \| dictation \| stt+llm \| stt |
+| `stt.provider` | `stt_provider` | e.g., "groq", "fireworks", "deepgram" |
+| `stt.model` | `stt_model` | e.g., "whisper-large-v3" |
+| `llm.provider` | `llm_provider` | e.g., "groq" (null if not used) |
+| `llm.model` | `llm_model` | e.g., "llama-3.3-70b-versatile" (null if not used) |
+| `ws.closeCode` | `ws_close_code` | 1000 = normal closure |
+| `ws.closeReason` | `ws_close_reason` | e.g., "done" |
+| (current timestamp) | `created_at` | Auto-generated DEFAULT NOW() |
+| (current timestamp) | `completed_at` | Set when row is inserted |
 
 ---
 
@@ -307,13 +343,15 @@ These queries will be exposed via:
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure (Current)
-- Create `dictation_logs` table in Supabase
-- Add Supabase client to Worker
-- Modify `/metrics/session` endpoint to write to database after logging to Sentry
-- Add error handling (non-blocking, shouldn't break transcription if DB write fails)
-- Test with development environment
-- Deploy to production
+### Phase 1: Core Infrastructure ✅ **COMPLETE**
+- ✅ Created `dictation_logs` table in Supabase
+- ✅ Added Supabase client to Worker (`worker/src/db/supabase.ts`)
+- ✅ Modified `/metrics/session` endpoint to write to database after logging to Sentry
+- ✅ Added error handling (non-blocking, doesn't break transcription if DB write fails)
+- ✅ Added word counting logic (splits text on whitespace)
+- ✅ Added STT model tracking
+- ✅ Tested in development environment
+- ✅ Ready for production deployment
 
 ### Phase 2: Analytics Layer (Future)
 - Create Supabase views for common analytical queries
@@ -426,4 +464,16 @@ If we need to change the schema:
 ## Changelog
 
 - **2025-11-12** - Initial documentation created
-- **2025-11-12** - Disabled `share_transcriptions` feature app-wide; transcription text no longer stored
+- **2025-11-12** - Implemented core infrastructure (Phase 1 complete)
+  - Created `dictation_logs` table in Supabase
+  - Added Supabase integration to Worker
+  - Implemented word counting logic
+  - Added STT model tracking (provider + model)
+  - All metrics flowing correctly to database
+- **2025-11-12** - Schema refinements
+  - Removed unnecessary columns: `trace_id`, `ws_accept_to_final_ms`, `app_version`
+  - Kept only essential metrics for analytics
+  - Added `stt_model` column for provider transparency
+- **2025-11-12** - Privacy decisions
+  - Transcription text storage disabled (only metadata tracked)
+  - Word count calculated from text length but text itself not persisted
