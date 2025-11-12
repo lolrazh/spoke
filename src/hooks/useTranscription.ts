@@ -553,6 +553,29 @@ export function useTranscription(
     [flushQueue],
   );
 
+  const waitForConnection = useCallback(
+    async (timeoutMs = 500): Promise<boolean> => {
+      const start = Date.now();
+      return new Promise<boolean>((resolve) => {
+        const tick = () => {
+          const ws = wsRef.current;
+          // Connection ready
+          if (ws && wsReadyRef.current && ws.readyState === WebSocket.OPEN) {
+            return resolve(true);
+          }
+          // Timeout reached
+          if (Date.now() - start > timeoutMs) {
+            return resolve(false);
+          }
+          // Check again in 10ms
+          setTimeout(tick, 10);
+        };
+        tick();
+      });
+    },
+    [],
+  );
+
   // WebSocket health monitoring
   const wsHealthCheckRef = useRef<number | null>(null);
   const wsLastActivityRef = useRef<number>(Date.now());
@@ -1144,6 +1167,14 @@ export function useTranscription(
         typeof performance !== "undefined" ? performance.now() : Date.now();
     }
 
+    // Wait briefly for connection if it's still establishing
+    if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING && !wsErrorRef.current) {
+      if (window.devFlags?.devConsoleLogs) {
+        console.info("[SF] WebSocket still connecting, waiting for readiness...");
+      }
+      await waitForConnection(500);
+    }
+
     try {
       // Streaming-only: flush any queued frames and signal end; wait for final
       if (wsRef.current && !wsErrorRef.current) {
@@ -1638,7 +1669,17 @@ export function useTranscription(
           })();
         });
       } else {
-        throw new Error("WebSocket not ready for streaming");
+        const error = createAppError(
+          ErrorCode.WS_CONNECTION_FAILED,
+          "WebSocket connection not available for transcription",
+          {
+            wsExists: !!wsRef.current,
+            wsError: wsErrorRef.current,
+            reconnectAttempts: reconnectAttemptRef.current
+          }
+        );
+        logError(error, "[useTranscription] stop()");
+        throw new Error(getUserMessage(error));
       }
     } catch (err) {
       // Swallow aborts quietly; surface other errors
@@ -1676,7 +1717,7 @@ export function useTranscription(
       sendQueueBytesRef.current = 0;
       resetReconnectBackoff();
     }
-  }, [recording]);
+  }, [recording, waitForConnection]);
 
   const cancel = useCallback(async () => {
     // Cancel discards current capture, does not send audio, and does not close WS
