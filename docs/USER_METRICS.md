@@ -245,24 +245,23 @@ The data we store in `dictation_logs` comes directly from the session summary th
 
 | Session Summary Field | Database Column |
 |----------------------|-----------------|
-| `sessionId` | `session_id` |
-| `traceId` | `trace_id` |
-| `userId` (from identity) | `user_id` |
+| `sessionId` | `session_id` (unique identifier for correlation with Sentry) |
+| `userId` (from meta) | `user_id` |
 | `durations.dictationMs` | `dictation_ms` |
 | `durations.e2eMs` | `e2e_ms` |
 | `durations.totalMs` | `total_ms` |
 | `durations.sttMs` | `stt_ms` |
 | `durations.llmMs` | `llm_ms` |
-| `durations.pasteMs` | `paste_ms` |
-| `durations.wsAcceptToFinalMs` | `ws_accept_to_final_ms` |
-| `traffic.frames` | `frames_produced` |
-| `traffic.bytesKB * 1024` | `bytes_produced` |
-| `result.textLen` | `character_count` |
-| (calculated from text) | `word_count` |
+| `traffic.firstToLastArrivalMs` | `audio_duration_ms` |
+| (calculated from dataset text) | `word_count` |
+| `pipeline` | `pipeline` (edit/dictation/stt/stt+llm) |
 | `llm.provider` | `llm_provider` |
+| `llm.model` | `llm_model` |
 | (always "groq" currently) | `stt_provider` |
-| `pttDownMs` (timestamp) | `created_at` |
-| (current time) | `completed_at` |
+| `ws.closeCode` | `ws_close_code` |
+| `ws.closeReason` | `ws_close_reason` |
+| (current timestamp) | `created_at` |
+| (current timestamp) | `completed_at` |
 
 ---
 
@@ -282,9 +281,10 @@ Once data is in Supabase, we can answer analytical questions:
 - Can group by day to see trends
 
 **LLM feature adoption rate:**
-- Count sessions where `llm_enabled = true`
+- Count sessions where `llm_ms IS NOT NULL` (LLM was used)
 - Divide by total session count
 - Can group by user to see who uses LLM
+- Can also filter by `pipeline = 'edit'` or `pipeline = 'dictation'` to see mode-specific usage
 
 **Power users (>1000 words dictated this month):**
 - Filter where `created_at` is in current month
