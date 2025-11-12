@@ -97,6 +97,7 @@ app.post('/metrics/session', async (c) => {
             traffic: summary.traffic,
             result: summary.result,
             dataset: summary.dataset,
+            stt: summary.stt,
             llm: summary.llm,
             ws: summary.ws,
           }).catch((err) => {

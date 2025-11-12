@@ -57,9 +57,10 @@ export type DictationLogRow = {
   audio_duration_ms: number | null;
   word_count: number | null;
   pipeline: string | null;
+  stt_provider: string | null;
+  stt_model: string | null;
   llm_provider: string | null;
   llm_model: string | null;
-  stt_provider: string | null;
   ws_close_code: number | null;
   ws_close_reason: string | null;
 };
@@ -90,6 +91,10 @@ export async function insertDictationLog(
       sttText?: string | null;
       llmText?: string | null;
     } | null;
+    stt?: {
+      provider?: string | null;
+      model?: string | null;
+    } | null;
     llm?: {
       provider?: string | null;
       model?: string | null;
@@ -117,9 +122,10 @@ export async function insertDictationLog(
       audio_duration_ms: data.traffic.firstToLastArrivalMs ?? null,
       word_count: wordCount,
       pipeline: data.pipeline || null,
+      stt_provider: data.stt?.provider ?? null,
+      stt_model: data.stt?.model ?? null,
       llm_provider: data.llm?.provider ?? null,
       llm_model: data.llm?.model ?? null,
-      stt_provider: 'groq', // Currently hardcoded
       ws_close_code: data.ws.closeCode ?? 1000,
       ws_close_reason: data.ws.closeReason ?? 'done',
     };

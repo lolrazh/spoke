@@ -636,6 +636,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 stt: timings
                   ? {
                       provider: sttProvider,
+                      model: runtime.stt.model,
                       startAt: timings.startAt,
                       headersAt: timings.headersAt,
                       bodyDoneAt: timings.bodyDoneAt,
