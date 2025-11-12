@@ -159,6 +159,7 @@ export function useTranscription(
     name: initialIdentity.name,
     email: initialIdentity.email,
   });
+  const userIdRef = useRef<string | null>(null);
   const sttPromptRef = useRef<string>(
     buildSTTPrompt({ identity: identityRef.current })
   );
@@ -205,6 +206,19 @@ export function useTranscription(
   useEffect(() => {
     shareTranscriptionsRef.current = !!shareTranscriptionsEnabled;
   }, [shareTranscriptionsEnabled]);
+
+  // Fetch and cache user ID for metrics
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getCurrentUser } = await import("../lib/supabaseClient");
+        const user = await getCurrentUser();
+        userIdRef.current = user?.id ?? null;
+      } catch {
+        userIdRef.current = null;
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeUserIdentity((next) => {
@@ -1462,6 +1476,7 @@ export function useTranscription(
                                   }).electronAppVersion || undefined
                                 ),
                               platform: navigator.userAgent,
+                              userId: userIdRef.current ?? undefined,
                             },
                           };
                           const url = getMetricsUrl();
