@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/cloudflare';
 import { wsRoute } from './handlers/ws';
 import { safely } from './utils/safely';
 import { buildSessionSummary } from './utils/summary';
+import { getSupabaseClient, insertDictationLog } from './db/supabase';
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -13,6 +14,8 @@ type Bindings = {
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: any;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -79,6 +82,30 @@ app.post('/metrics/session', async (c) => {
       span.setAttribute('ws.code', summary.ws.closeCode);
       span.setAttribute('ws.reason', summary.ws.closeReason);
     });
+
+    // Store metrics in database (non-blocking)
+    const userId = body?.meta?.userId as string | undefined;
+    if (userId) {
+      safely(() => {
+        const supabase = getSupabaseClient(c.env as any);
+        if (supabase) {
+          insertDictationLog(supabase, {
+            userId,
+            sessionId: summary.id,
+            pipeline: summary.pipeline,
+            durations: summary.durations,
+            traffic: summary.traffic,
+            result: summary.result,
+            dataset: summary.dataset,
+            stt: summary.stt,
+            llm: summary.llm,
+            ws: summary.ws,
+          }).catch((err) => {
+            console.error('[Supabase] Failed to insert dictation log:', err);
+          });
+        }
+      });
+    }
 
     return c.body(null, 204);
   } catch (e: any) {

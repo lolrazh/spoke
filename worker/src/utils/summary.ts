@@ -5,6 +5,7 @@ export type ClientMetrics = {
 
 export type SttMetrics = {
   provider?: string | null;
+  model?: string | null;
   startAt?: number | null;
   headersAt?: number | null;
   bodyDoneAt?: number | null;
@@ -134,6 +135,13 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
 
   const result = { textLen: (worker as any)?.textLen ?? null };
 
+  const sttInfo = stt
+    ? {
+        provider: stt.provider ?? null,
+        model: stt.model ?? null,
+      }
+    : null;
+
   const llmInfo = llm
     ? {
         provider: llm.provider ?? null,
@@ -149,6 +157,7 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     durations,
     traffic,
     result,
+    stt: sttInfo,
     llm: llmInfo,
     dataset: shareTranscriptions ? body?.dataset ?? null : null,
     ws,
