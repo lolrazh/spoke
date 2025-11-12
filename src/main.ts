@@ -12,6 +12,7 @@ import {
   dialog,
   systemPreferences,
   powerMonitor,
+  globalShortcut,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import * as Sentry from "@sentry/electron/main";
@@ -2454,6 +2455,81 @@ ipcMain.handle(
   },
 );
 
+// Helper function to paste the last transcript
+async function pasteLastTranscript() {
+  if (!lastTranscript || lastTranscript.trim().length === 0) {
+    console.log("[PasteShortcut] No transcript available to paste");
+    return;
+  }
+
+  try {
+    console.log("[PasteShortcut] Pasting last transcript via Command+Shift+V");
+
+    const originalClipboardText = clipboard.readText();
+    const payloadText = lastTranscript.trimStart();
+    clipboard.writeText(payloadText);
+
+    const helperPath = getHelperPath();
+    if (!fs.existsSync(helperPath)) {
+      console.error("[PasteShortcut] Helper binary not found");
+      return;
+    }
+
+    // Use pre-spawned helper if available
+    if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
+      console.log("[PasteShortcut] Using pre-spawned paste helper");
+
+      // Send paste command to daemon
+      preSpawnedPasteHelper.stdin?.write("paste\n");
+
+      // Wait for paste completion
+      await new Promise<void>((resolve) => {
+        const onData = (data: Buffer) => {
+          const output = data.toString().trim();
+          if (output === "paste-done") {
+            preSpawnedPasteHelper?.stdout?.off("data", onData);
+            console.log("[PasteShortcut] Paste completed");
+            resolve();
+          }
+        };
+        preSpawnedPasteHelper?.stdout?.on("data", onData);
+
+        // Fallback timeout
+        setTimeout(() => {
+          preSpawnedPasteHelper?.stdout?.off("data", onData);
+          console.log("[PasteShortcut] Paste timeout, assuming success");
+          resolve();
+        }, 1000);
+      });
+    } else {
+      // Fallback: spawn new helper
+      console.log("[PasteShortcut] Using direct spawn");
+      const proc = spawnHelper(helperPath, ["--mode=paste"], false);
+
+      await new Promise<void>((resolve) => {
+        proc.on("close", () => {
+          console.log("[PasteShortcut] Paste completed");
+          resolve();
+        });
+        proc.on("error", (error) => {
+          console.error("[PasteShortcut] Error:", error);
+          resolve();
+        });
+      });
+    }
+
+    // Restore original clipboard
+    setTimeout(() => {
+      try {
+        clipboard.writeText(originalClipboardText);
+      } catch {}
+    }, 300);
+
+  } catch (error) {
+    console.error("[PasteShortcut] Error pasting transcript:", error);
+  }
+}
+
 // Preference checking for first run
 // Removed onboarding persistence - always show onboarding
 
@@ -3611,6 +3687,20 @@ app.whenReady().then(async () => {
       }
     }
   });
+
+  // Register global shortcut for pasting last transcript
+  const shortcutRegistered = globalShortcut.register('CommandOrControl+Shift+V', () => {
+    console.log('[GlobalShortcut] Command+Shift+V pressed');
+    pasteLastTranscript().catch(err => {
+      console.error('[GlobalShortcut] Error in pasteLastTranscript:', err);
+    });
+  });
+
+  if (shortcutRegistered) {
+    console.log('[GlobalShortcut] Command+Shift+V successfully registered');
+  } else {
+    console.error('[GlobalShortcut] Failed to register Command+Shift+V (may be in use by another app)');
+  }
 });
 
 // Ensure local dev auth server is closed on quit to avoid EADDRINUSE on restart
@@ -3618,6 +3708,10 @@ app.on("before-quit", () => {
   try {
     devAuthServer?.close();
   } catch {}
+
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
+  console.log('[GlobalShortcut] All shortcuts unregistered');
 });
 
 // Handle deep links like sonicflow://auth/callback?code=...
