@@ -85,24 +85,28 @@ const PermissionsPanel: React.FC = () => {
       key: PermissionKey;
       granted: boolean;
       loading: boolean;
+      disabled: boolean;
       onRequest: () => Promise<void> | void;
     }> = [
       {
         key: "microphone",
         granted: permissions.microphone,
         loading: ui.microphone.loading,
+        disabled: false,
         onRequest: requestMicrophone,
       },
       {
         key: "accessibility",
         granted: permissions.accessibility,
         loading: ui.accessibility.loading,
+        disabled: false,
         onRequest: requestAccessibility,
       },
       {
         key: "inputMonitoring",
         granted: permissions.inputMonitoring,
         loading: ui.inputMonitoring.loading,
+        disabled: !permissions.accessibility,
         onRequest: requestInputMonitoring,
       },
     ];
@@ -156,7 +160,7 @@ const PermissionsPanel: React.FC = () => {
                   ) : (
                     <Button
                       size="sm"
-                      disabled={entry.loading}
+                      disabled={entry.loading || entry.disabled}
                       onClick={() => entry.onRequest()}
                       className="text-xs onboarding-cta"
                     >
