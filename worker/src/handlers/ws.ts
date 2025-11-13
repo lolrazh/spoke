@@ -594,13 +594,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             });
           } catch (e: any) {
             safely(() => sttAbort?.abort());
+            const errorMsg = String(e?.message || e || '');
+            const isAbortError = e?.name === 'AbortError' || errorMsg.includes('abort');
+            const isExpectedAbort = isAbortError && (session.canceled || socketClosed);
+
             if (!socketClosed) {
               // Determine error code based on error type
               let errorCode = 4001; // STT_API_ERROR default
-              const errorMsg = String(e?.message || e || '');
               if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
                 errorCode = 4002; // STT_TIMEOUT
-              } else if (errorMsg.includes('abort')) {
+              } else if (isAbortError) {
                 errorCode = 4004; // AUDIO_PROCESSING_FAILED
               }
               const ok = safely(() => server.send(
@@ -609,7 +612,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               if (!ok) connLog.error('[WS] error send failed');
               safeClose(server, 1011, 'stt error');
             }
-            connLog.error('[WS] Transcription error', { error: String(e) });
+
+            // Only log unexpected errors; expected aborts are normal flow
+            if (!isExpectedAbort) {
+              connLog.error('[WS] Transcription error', { error: String(e) });
+            }
             session = createEmptySession();
             sessionActive = false;
             return;
