@@ -1649,7 +1649,7 @@ const Onboarding: React.FC = () => {
 
                   {/* Input Monitoring Permission (restart required) */}
                   <div
-                    className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}
+                    className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : !permissions.accessibility ? "opacity-40" : "opacity-100"}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
@@ -1685,7 +1685,7 @@ const Onboarding: React.FC = () => {
                                 <Button
                                   size="sm"
                                   onClick={handleRequestInputMonitoring}
-                                  disabled={ui.inputMonitoring.loading}
+                                  disabled={ui.inputMonitoring.loading || !permissions.accessibility}
                                   className="text-xs onboarding-cta w-full"
                                 >
                                   <div className="relative flex items-center justify-center h-4">
