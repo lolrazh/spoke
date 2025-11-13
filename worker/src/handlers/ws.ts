@@ -283,10 +283,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     model: runtime.stt.model,
                     endpoint: sttEndpoint,
                     language: clientLanguage || runtime.stt.language,
+                    timeoutMs: runtime.stt.timeoutMs,
+                    audioSizeKB: Number((wav.length / 1024).toFixed(2)),
                     traceId: session.traceId,
                   } as const;
                   console.log(JSON.stringify(sttLog));
                 } catch {}
+                const sttStartTime = Date.now();
                 const res = await transcribeWav(wav, {
                   provider: sttProvider,
                   apiKey: sttApiKey,
@@ -296,7 +299,19 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   prompt: sttPrompt,
                   timeoutMs: runtime.stt.timeoutMs,
                 });
+                const sttDuration = Date.now() - sttStartTime;
                 finalText = res.text;
+                // Log STT completion
+                try {
+                  const sttCompleteLog = {
+                    event: 'stt.complete',
+                    provider: sttProvider,
+                    durationMs: sttDuration,
+                    textLength: finalText.length,
+                    traceId: session.traceId,
+                  } as const;
+                  console.log(JSON.stringify(sttCompleteLog));
+                } catch {}
                 timings = res.timings;
 
                 const editPlan =
@@ -367,12 +382,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         provider,
                         model,
                         endpoint: llmEndpoint,
+                        timeoutMs: runtime.edit.timeoutMs,
+                        stream: runtime.edit.stream,
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(editLog));
                     } catch {}
                     try {
                       const streamEdit = runtime.edit.stream;
+                      const editStartTime = Date.now();
                       const editRes = await chatCompleteByProvider(provider, {
                         apiKey: apiKeyForProvider,
                         model,
@@ -409,7 +427,33 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       llmSuccess = Boolean(editRes.text && editRes.text.length > 0);
                       llmText = editRes.text || editPlan.originalText;
                       llmTimings = editRes.timings;
+                      const editDuration = Date.now() - editStartTime;
+                      // Log edit completion
+                      try {
+                        const editCompleteLog = {
+                          event: 'edit.complete',
+                          provider,
+                          durationMs: editDuration,
+                          textLength: llmText.length,
+                          success: llmSuccess,
+                          traceId: session.traceId,
+                        } as const;
+                        console.log(JSON.stringify(editCompleteLog));
+                      } catch {}
                     } catch (error) {
+                      const editDuration = Date.now() - editStartTime;
+                      // Log edit error
+                      try {
+                        const editErrorLog = {
+                          event: 'edit.error',
+                          provider,
+                          durationMs: editDuration,
+                          error: String(error),
+                          errorName: (error as any)?.name,
+                          traceId: session.traceId,
+                        } as const;
+                        console.log(JSON.stringify(editErrorLog));
+                      } catch {}
                       sessionSpan.setAttribute('edit.error', String(error));
                       llmText = editPlan.originalText;
                     }
@@ -463,11 +507,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         model,
                         endpoint: llmEndpoint,
                         stream: streamLLM,
+                        timeoutMs: runtime.llm.timeoutMs,
                         routeRules: llmRouteRules.length ? llmRouteRules : undefined,
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(llmLog));
                     } catch {}
+                    const llmStartTime = Date.now();
                     const llmRes = await chatCompleteByProvider(provider, {
                       apiKey: apiKeyForProvider,
                       model,
@@ -494,9 +540,22 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         }
                       },
                     });
+                    const llmDuration = Date.now() - llmStartTime;
                     llmText = llmRes.text || '';
                     llmTimings = llmRes.timings;
                     llmSuccess = llmText.length > 0;
+                    // Log LLM completion
+                    try {
+                      const llmCompleteLog = {
+                        event: 'llm.complete',
+                        provider,
+                        durationMs: llmDuration,
+                        textLength: llmText.length,
+                        success: llmSuccess,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(llmCompleteLog));
+                    } catch {}
                   } else {
                     sessionSpan.setAttribute('llm.api_key_missing', true);
                   }
@@ -598,24 +657,47 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             const isAbortError = e?.name === 'AbortError' || errorMsg.includes('abort');
             const isExpectedAbort = isAbortError && (session.canceled || socketClosed);
 
+            // Determine which stage failed based on whether we got STT results
+            const failedStage = finalText ? 'llm' : 'stt';
+
+            // Log detailed error information
+            if (!isExpectedAbort) {
+              try {
+                const errorLog = {
+                  event: 'pipeline.error',
+                  stage: failedStage,
+                  errorName: e?.name || 'Unknown',
+                  errorMessage: errorMsg,
+                  isAbortError,
+                  isTimeout: errorMsg.includes('timeout') || errorMsg.includes('timed out') || isAbortError,
+                  sttCompleted: !!finalText,
+                  traceId: session.traceId,
+                } as const;
+                console.log(JSON.stringify(errorLog));
+              } catch {}
+            }
+
             if (!socketClosed) {
               // Determine error code based on error type
               let errorCode = 4001; // STT_API_ERROR default
-              if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+              if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || isAbortError) {
                 errorCode = 4002; // STT_TIMEOUT
               } else if (isAbortError) {
                 errorCode = 4004; // AUDIO_PROCESSING_FAILED
               }
+              const errorBody = failedStage === 'llm'
+                ? `LLM processing failed: ${e?.message || 'Unknown error'}`
+                : `STT failed: ${e?.message || 'Unknown error'}`;
               const ok = safely(() => server.send(
-                JSON.stringify({ type: 'error', code: errorCode, body: e?.message || 'Transcription error', retryable: errorCode === 4002 })
+                JSON.stringify({ type: 'error', code: errorCode, body: errorBody, retryable: errorCode === 4002 })
               ));
               if (!ok) connLog.error('[WS] error send failed');
-              safeClose(server, 1011, 'stt error');
+              safeClose(server, 1011, `${failedStage} error`);
             }
 
             // Only log unexpected errors; expected aborts are normal flow
             if (!isExpectedAbort) {
-              connLog.error('[WS] Transcription error', { error: String(e) });
+              connLog.error(`[WS] ${failedStage.toUpperCase()} error`, { error: String(e), stage: failedStage });
             }
             session = createEmptySession();
             sessionActive = false;

@@ -37,8 +37,31 @@ export async function transcribeWav(
   form.append('prompt', prompt);
 
   const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let timeoutTriggered = false;
+  const onExternalAbort = () => {
+    try {
+      console.log(JSON.stringify({
+        event: 'stt.abort',
+        provider: 'groq',
+        reason: 'external_signal',
+        elapsedMs: Date.now() - startAt,
+      }));
+    } catch {}
+    controller.abort();
+  };
+  const timeoutId = setTimeout(() => {
+    timeoutTriggered = true;
+    try {
+      console.log(JSON.stringify({
+        event: 'stt.abort',
+        provider: 'groq',
+        reason: 'timeout',
+        timeoutMs,
+        elapsedMs: Date.now() - startAt,
+      }));
+    } catch {}
+    controller.abort();
+  }, timeoutMs);
   if (opts?.signal) {
     if (opts.signal.aborted) controller.abort();
     else opts.signal.addEventListener('abort', onExternalAbort);
