@@ -6,6 +6,7 @@ import { trackConnection, releaseConnection } from '../utils/connLimit';
 import { createLogger } from '../utils/logger';
 import { safeClose, safeJson } from '../utils/ws';
 import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
+import { stripHallucinations } from '../utils/stripHallucinations';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
@@ -296,7 +297,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   prompt: sttPrompt,
                   timeoutMs: runtime.stt.timeoutMs,
                 });
-                finalText = res.text;
+                finalText = stripHallucinations(res.text);
                 timings = res.timings;
 
                 const editPlan =
