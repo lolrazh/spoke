@@ -35,6 +35,7 @@ export async function transcribeWav(
   form.append('model', model);
   form.append('language', language);
   form.append('prompt', prompt);
+  form.append('temperature', '0');
 
   const controller = new AbortController();
   const onExternalAbort = () => controller.abort();
