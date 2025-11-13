@@ -189,13 +189,11 @@ const leadingThrottle = <T extends (...args: unknown[]) => void>(
   return (...args: Parameters<T>) => {
     if (timeoutId == null) {
       fn(...args);
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+      }, delay);
     }
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      timeoutId = null;
-    }, delay);
+    // Ignore subsequent calls while throttled - do NOT reset the timeout
   };
 };
 
