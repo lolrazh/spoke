@@ -32,11 +32,11 @@ export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 // STT (Audio Transcriptions)
 export const GROQ_STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
-export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
-export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.us-virginia-1.direct.fireworks.ai/v1/audio/transcriptions';
+export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions';
+export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.api.fireworks.ai/v1/audio/transcriptions';
 export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
 
-export const GROQ_STT_MODEL = 'whisper-large-v3';
+export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
