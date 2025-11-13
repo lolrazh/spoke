@@ -44,8 +44,31 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<BasetenCh
 
   const startAt = Date.now();
   const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let timeoutTriggered = false;
+  const onExternalAbort = () => {
+    try {
+      console.log(JSON.stringify({
+        event: 'llm.abort',
+        provider: 'baseten',
+        reason: 'external_signal',
+        elapsedMs: Date.now() - startAt,
+      }));
+    } catch {}
+    controller.abort();
+  };
+  const timeoutId = setTimeout(() => {
+    timeoutTriggered = true;
+    try {
+      console.log(JSON.stringify({
+        event: 'llm.abort',
+        provider: 'baseten',
+        reason: 'timeout',
+        timeoutMs,
+        elapsedMs: Date.now() - startAt,
+      }));
+    } catch {}
+    controller.abort();
+  }, timeoutMs);
   if (signal) {
     if (signal.aborted) controller.abort();
     else signal.addEventListener('abort', onExternalAbort);
