@@ -388,9 +388,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       } as const;
                       console.log(JSON.stringify(editLog));
                     } catch {}
+                    const editStartTime = Date.now();
                     try {
                       const streamEdit = runtime.edit.stream;
-                      const editStartTime = Date.now();
                       const editRes = await chatCompleteByProvider(provider, {
                         apiKey: apiKeyForProvider,
                         model,
