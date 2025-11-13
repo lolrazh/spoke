@@ -703,18 +703,25 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
                     (unsigned)code, (unsigned long long)flags, (int)state->optL, (int)state->optR, (int)state->cmdL, (int)state->cmdR);
         }
 
-        // Track Option sides independently by toggling per-keycode
+        // Track Option sides by reading flag state (not toggling)
+        // This prevents duplicate events from flipping state incorrectly
         if (code == kVK_RightOption) {
-            state->optR = !state->optR;
-            puts(state->optR ? "optR-down" : "optR-up");
-            fflush(stdout);
+            bool optionPressed = (flags & OPT_MASK) != 0;
+            if (optionPressed != state->optR) {
+                state->optR = optionPressed;
+                puts(state->optR ? "optR-down" : "optR-up");
+                fflush(stdout);
+            }
         }
 
-        // Track Command sides independently by toggling per-keycode
+        // Track Command sides by reading flag state (not toggling)
         if (code == kVK_RightCommand) {
-            state->cmdR = !state->cmdR;
-            puts(state->cmdR ? "cmdR-down" : "cmdR-up");
-            fflush(stdout);
+            bool commandPressed = (flags & kCGEventFlagMaskCommand) != 0;
+            if (commandPressed != state->cmdR) {
+                state->cmdR = commandPressed;
+                puts(state->cmdR ? "cmdR-down" : "cmdR-up");
+                fflush(stdout);
+            }
         }
     }
     // Ignore keyDown/Up for modifiers; they are not reliable sources for Option state
