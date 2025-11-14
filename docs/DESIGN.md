@@ -135,6 +135,8 @@ This addresses a token space mismatch (HSL semantic tokens vs RGBA glass/solid t
 --spacing-lg: 1.5rem;   /* 24px */
 --spacing-xl: 2rem;     /* 32px */
 --onboarding-section-gap: clamp(calc(var(--spacing-lg) * 0.75), 4vh, var(--spacing-xl));
+--panel-section-offset: var(--spacing-md); /* Vertical offset before each pill/settings section */
+--panel-heading-gap: var(--spacing-md);    /* Space between section headers and their cards */
 ```
 
 #### Border Radius Scale

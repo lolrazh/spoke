@@ -141,7 +141,10 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
             animate="visible"
             variants={containerVariants}
           >
-            <motion.div variants={itemVariants} className="mt-4">
+            <motion.div
+              variants={itemVariants}
+              style={{ marginTop: "var(--panel-section-offset)" }}
+            >
               <SectionSeparator title="Permissions" />
             </motion.div>
             {permissionEntries.map((entry) => {
