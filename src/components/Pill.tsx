@@ -47,6 +47,8 @@ interface PillProps {
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
   panelView: "settings" | "permissions";
+  onSettingsPanelHeightChange?: (height: number) => void;
+  onPermissionsPanelHeightChange?: (height: number) => void;
 }
 
 const Pill: React.FC<PillProps> = ({
@@ -71,6 +73,8 @@ const Pill: React.FC<PillProps> = ({
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
   panelView,
+  onSettingsPanelHeightChange,
+  onPermissionsPanelHeightChange,
 }) => {
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
@@ -331,7 +335,9 @@ const Pill: React.FC<PillProps> = ({
               >
                 <div className="w-full h-full relative">
                   {panelView === "permissions" ? (
-                    <PermissionsPanel />
+                    <PermissionsPanel
+                      onHeightChange={onPermissionsPanelHeightChange}
+                    />
                   ) : (
                     <SettingsPanel
                       embeddedMode={true}
@@ -341,6 +347,7 @@ const Pill: React.FC<PillProps> = ({
                       shareTranscriptionsLoading={shareTranscriptionsLoading}
                       shareTranscriptionsUpdating={shareTranscriptionsUpdating}
                       onShareTranscriptionsChange={onShareTranscriptionsChange}
+                      onHeightChange={onSettingsPanelHeightChange}
                     />
                   )}
                   {/* Collapse chevron at bottom */}

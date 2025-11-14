@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import { motion, Variants } from "framer-motion";
 import SettingsCard from "./SettingsCard";
 import { Button } from "./ui/button";
@@ -6,6 +6,7 @@ import SfIcon from "./icons/SfIcon";
 import { MOTION } from "../config/motionTokens";
 import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
+import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 
 type PermissionKey = "microphone" | "accessibility" | "inputMonitoring";
 
@@ -71,7 +72,11 @@ const itemVariants: Variants = {
   },
 };
 
-const PermissionsPanel: React.FC = () => {
+interface PermissionsPanelProps {
+  onHeightChange?: (height: number) => void;
+}
+
+const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) => {
   const {
     permissions,
     ui,
@@ -120,64 +125,72 @@ const PermissionsPanel: React.FC = () => {
     requestInputMonitoring,
   ]);
 
+  const contentRef = useRef<HTMLDivElement>(null);
+  usePanelAutoHeight(contentRef, onHeightChange);
+
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <div className="flex-1 overflow-y-auto">
-        <motion.div
-          className="max-w-lg mx-auto px-5 py-4 space-y-3"
-          initial="hidden"
-          animate="visible"
-          variants={containerVariants}
+        <div
+          ref={contentRef}
+          className="max-w-lg mx-auto w-full px-5 pt-5 pb-14"
         >
-          <motion.div variants={itemVariants}>
-            <SectionSeparator title="Permissions" />
+          <motion.div
+            className="flex flex-col gap-4"
+            initial="hidden"
+            animate="visible"
+            variants={containerVariants}
+          >
+            <motion.div variants={itemVariants}>
+              <SectionSeparator title="Permissions" />
+            </motion.div>
+            {permissionEntries.map((entry) => {
+              const copy = PERMISSION_COPY[entry.key];
+              return (
+                <motion.div key={entry.key} variants={itemVariants}>
+                  <SettingsCard
+                    title={copy.title}
+                    description={copy.description}
+                    icon={copy.icon}
+                  >
+                    {entry.granted ? (
+                      <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        className="text-white/80"
+                      >
+                        <path
+                          d="M5 13l4 4L19 7"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={entry.loading || entry.disabled}
+                        onClick={() => entry.onRequest()}
+                        className="text-xs onboarding-cta"
+                      >
+                        <div className="relative flex items-center justify-center h-4 w-14">
+                          {entry.loading ? (
+                            <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                          ) : (
+                            <span>Enable</span>
+                          )}
+                        </div>
+                      </Button>
+                    )}
+                  </SettingsCard>
+                </motion.div>
+              );
+            })}
           </motion.div>
-          {permissionEntries.map((entry) => {
-            const copy = PERMISSION_COPY[entry.key];
-            return (
-              <motion.div key={entry.key} variants={itemVariants}>
-                <SettingsCard
-                  title={copy.title}
-                  description={copy.description}
-                  icon={copy.icon}
-                >
-                  {entry.granted ? (
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      className="text-white/80"
-                    >
-                      <path
-                        d="M5 13l4 4L19 7"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={entry.loading || entry.disabled}
-                      onClick={() => entry.onRequest()}
-                      className="text-xs onboarding-cta"
-                    >
-                      <div className="relative flex items-center justify-center h-4 w-14">
-                        {entry.loading ? (
-                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                        ) : (
-                          <span>Enable</span>
-                        )}
-                      </div>
-                    </Button>
-                  )}
-                </SettingsCard>
-              </motion.div>
-            );
-          })}
-        </motion.div>
+        </div>
       </div>
     </div>
   );
