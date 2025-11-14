@@ -141,8 +141,8 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
             animate="visible"
             variants={containerVariants}
           >
-            <motion.div variants={itemVariants}>
-              <SectionSeparator title="Permissions" className="mt-0 mb-0" />
+            <motion.div variants={itemVariants} className="mt-4">
+              <SectionSeparator title="Permissions" />
             </motion.div>
             {permissionEntries.map((entry) => {
               const copy = PERMISSION_COPY[entry.key];
