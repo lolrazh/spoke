@@ -83,7 +83,10 @@ const SelectContent = React.forwardRef<
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className,
       )}
-      style={{ WebkitAppRegion: "no-drag" }}
+      style={{
+        WebkitAppRegion: "no-drag",
+        backgroundColor: "rgb(10, 10, 10)" // Solid background matching settings panel
+      }}
       position={position}
       side="bottom"
       align="end"
