@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -14,6 +14,7 @@ import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
+import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -78,8 +79,18 @@ const SelectField: React.FC<{
 
 // Cleaned out legacy row components; cards are now the single layout primitive
 
-export const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
-  <div className="relative my-6">
+export const SectionSeparator: React.FC<{
+  title: string;
+  className?: string;
+  style?: React.CSSProperties;
+}> = ({ title, className = "mt-0", style }) => (
+  <div
+    className={`relative ${className}`}
+    style={{
+      marginBottom: "var(--panel-heading-gap)",
+      ...(style ?? {}),
+    }}
+  >
     <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
       <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
@@ -98,6 +109,7 @@ interface SettingsPanelProps {
   shareTranscriptionsLoading?: boolean;
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
+  onHeightChange?: (height: number) => void;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -108,6 +120,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
+  onHeightChange,
 }) => {
   // State
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
@@ -306,9 +319,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     // No explicit cleanup; outer FSM restores click-through when collapsing
   }, [embeddedMode]);
 
+  const contentRef = useRef<HTMLDivElement>(null);
+  usePanelAutoHeight(contentRef, embeddedMode ? onHeightChange : undefined);
+
   return (
     <div
-      className={`${embeddedMode ? "h-full" : "h-screen"} bg-background text-foreground flex flex-col relative`}
+      className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Version text on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
@@ -333,88 +349,96 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-lg mx-auto px-5 py-4">
+        <div
+          ref={contentRef}
+          className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
+        >
           <motion.div
             initial="hidden"
             animate="visible"
             variants={containerVariants}
-            className="space-y-4"
+            className="flex flex-col"
           >
-              {/* Section 1: Defaults */}
-              <motion.div variants={sectionVariants}>
-                <SectionSeparator title="Defaults" />
+            {/* Section 1: Defaults */}
+            <motion.section
+              variants={sectionVariants}
+              className="space-y-4"
+              style={{ marginTop: "var(--panel-section-offset)" }}
+            >
+              <SectionSeparator title="Defaults" />
 
-                <div className="space-y-3 no-drag">
-                  <SelectField
-                    label="Microphone"
-                    description="Select your preferred input device"
-                    value={selectedMicId}
-                    onChange={handleMicChange}
-                    options={micOptions}
-                  />
+              <div className="space-y-3 no-drag">
+                <SelectField
+                  label="Microphone"
+                  description="Select your preferred input device"
+                  value={selectedMicId}
+                  onChange={handleMicChange}
+                  options={micOptions}
+                />
 
-                  <Toggle
-                    label="Show Floating Bar"
-                    description="Display the floating dictation bar"
-                    enabled={showFloatingBar}
-                    onChange={(enabled) => {
-                      setShowFloatingBar(enabled);
-                      if (onToggleFloatingBar) onToggleFloatingBar(enabled);
-                    }}
-                    icon={
-                      <SfIcon
-                        name="eye.fill"
-                        size={16}
-                        className="text-primary/70"
-                      />
-                    }
-                  />
+                <Toggle
+                  label="Show Floating Bar"
+                  description="Display the floating dictation bar"
+                  enabled={showFloatingBar}
+                  onChange={(enabled) => {
+                    setShowFloatingBar(enabled);
+                    if (onToggleFloatingBar) onToggleFloatingBar(enabled);
+                  }}
+                  icon={
+                    <SfIcon
+                      name="eye.fill"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
+                />
 
-                  <Toggle
-                    label="Show in Dock"
-                    description="Display app icon in the macOS Dock"
-                    enabled={showInDock}
-                    onChange={async (enabled) => {
-                      setShowInDock(enabled);
-                      try {
-                        await window.electron?.setDockVisible?.(enabled);
-                      } catch (error) {
-                        console.error("[Settings] Failed to set dock visibility:", error);
-                      }
-                    }}
-                    icon={
-                      <SfIcon
-                        name="dock.rectangle"
-                        size={16}
-                        className="text-primary/70"
-                      />
+                <Toggle
+                  label="Show in Dock"
+                  description="Display app icon in the macOS Dock"
+                  enabled={showInDock}
+                  onChange={async (enabled) => {
+                    setShowInDock(enabled);
+                    try {
+                      await window.electron?.setDockVisible?.(enabled);
+                    } catch (error) {
+                      console.error("[Settings] Failed to set dock visibility:", error);
                     }
-                  />
+                  }}
+                  icon={
+                    <SfIcon
+                      name="dock.rectangle"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
+                />
 
-                  <Toggle
-                    label="Improve the Model for Everyone"
-                    description="Share anonymous usage to improve responses"
-                    enabled={shareTranscriptionsEnabled ?? false}
-                    onChange={(enabled) =>
-                      onShareTranscriptionsChange?.(enabled)
-                    }
-                    icon={
-                      <SfIcon
-                        name="point.3.filled.connected.trianglepath.dotted"
-                        size={16}
-                        className="text-primary/70"
-                      />
-                    }
-                    disabled={
-                      !!shareTranscriptionsLoading ||
-                      !!shareTranscriptionsUpdating
-                    }
-                  />
-                </div>
-              </motion.div>
+                <Toggle
+                  label="Improve the Model for Everyone"
+                  description="Share anonymous usage to improve responses"
+                  enabled={shareTranscriptionsEnabled ?? false}
+                  onChange={(enabled) => onShareTranscriptionsChange?.(enabled)}
+                  icon={
+                    <SfIcon
+                      name="point.3.filled.connected.trianglepath.dotted"
+                      size={16}
+                      className="text-primary/70"
+                    />
+                  }
+                  disabled={
+                    !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
+                  }
+                />
+              </div>
+            </motion.section>
 
-              {/* Section 3: Account */}
-            <motion.div variants={sectionVariants}>
+            {/* Section 3: Account */}
+            <motion.section
+              variants={sectionVariants}
+              className="space-y-4"
+              style={{ marginTop: "var(--panel-section-offset)" }}
+            >
               <SectionSeparator title="Account" />
               {userEmail ? (
                 <SettingsCard
@@ -448,7 +472,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </Button>
                 </div>
               )}
-            </motion.div>
+            </motion.section>
 
             {/* Footer with logo and version - only in standalone mode */}
             {!embeddedMode && (

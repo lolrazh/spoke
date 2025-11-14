@@ -844,6 +844,8 @@ body {
       4vh,
       var(--spacing-xl)
     );
+    --panel-section-offset: var(--spacing-md);
+    --panel-heading-gap: var(--spacing-md);
 
     /* Surface and effect tokens */
     --surface-base-rgb: 10, 10, 10;

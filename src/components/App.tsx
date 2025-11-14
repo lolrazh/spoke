@@ -215,6 +215,10 @@ const AppInner: React.FC = () => {
   const [shareTranscriptionsUpdating, setShareTranscriptionsUpdating] =
     useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
+    useState(CONTENT_HEIGHT);
+  const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
+    useState(PERMISSIONS_CONTENT_HEIGHT);
   const currentUserIdRef = useRef<string | null>(null);
   const { missingPermissions } = usePermissionsController();
   const [panelView, setPanelView] = useState<"settings" | "permissions">(
@@ -233,6 +237,22 @@ const AppInner: React.FC = () => {
       clearTimeout(permissionNotificationTimerRef.current);
       permissionNotificationTimerRef.current = null;
     }
+  }, []);
+
+  const handleSettingsPanelHeight = useCallback((height: number) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const normalized = Math.round(height);
+    setSettingsPanelContentHeight((prev) =>
+      prev === normalized ? prev : normalized,
+    );
+  }, []);
+
+  const handlePermissionsPanelHeight = useCallback((height: number) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const normalized = Math.round(height);
+    setPermissionsPanelContentHeight((prev) =>
+      prev === normalized ? prev : normalized,
+    );
   }, []);
 
   const sendPermissionNotification = useCallback(
@@ -1238,7 +1258,9 @@ const AppInner: React.FC = () => {
   const expandedWidthTarget =
     panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
   const expandedHeightTarget =
-    panelView === "permissions" ? PERMISSIONS_CONTENT_HEIGHT : CONTENT_HEIGHT;
+    panelView === "permissions"
+      ? permissionsPanelContentHeight
+      : settingsPanelContentHeight;
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
   const EXPANDED_H = Math.round(expandedHeightTarget * S);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
@@ -1628,6 +1650,8 @@ const AppInner: React.FC = () => {
         onShareTranscriptionsChange={handleSharePreferenceToggle}
         onNotificationAction={handleNotificationAction}
         panelView={panelView}
+        onSettingsPanelHeightChange={handleSettingsPanelHeight}
+        onPermissionsPanelHeightChange={handlePermissionsPanelHeight}
       />
       <span
         id="pill-ghost-measure"
