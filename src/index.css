@@ -188,7 +188,7 @@
   .pill-wrapper {
     --pill-background: var(--surface-solid);
     --pill-border: 1px solid rgba(255, 255, 255, 0.02);
-    --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --pill-shadow: var(--shadow-floating);
 
     /* It is now a flex item centered by its parent. */
     display: flex;
@@ -208,6 +208,8 @@
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
     overflow: hidden;
+    /* Smooth shadow transitions for hover/state changes */
+    transition: box-shadow var(--duration-fast) var(--ease-standard);
     /* Performance: avoid flicker by promoting and isolating */
     will-change: transform, opacity, filter;
     transform: translateZ(0);
@@ -218,6 +220,12 @@
   /* Show hand cursor when pill is clickable (non-expanded) */
   .pill-core:not(.expanded) {
     cursor: pointer;
+  }
+
+  /* Hover state for non-expanded pill - lift effect like Dynamic Island */
+  .pill-core:not(.expanded):hover {
+    box-shadow: var(--shadow-interactive-hover);
+    transition: box-shadow var(--duration-fast) var(--ease-standard);
   }
 
   /* Afterglow overlay for micro-physics impact */
@@ -477,17 +485,16 @@
   /* Success container glow - slow and passionate */
   @keyframes success-container-glow {
     0% {
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
     }
     50% {
-      box-shadow: 
-        0 1px 3px rgba(0, 0, 0, 0.5),
+      box-shadow:
+        0 1px 6px rgba(0, 0, 0, 0.35),
         0 0 0 2px rgba(255, 255, 255, 0.12),
-        0 0 12px 2px rgba(255, 255, 255, 0.25), 
-        0 0 24px 2px rgba(255, 255, 255, 0.12);
+        0 0 12px 2px rgba(255, 255, 255, 0.25);
     }
     100% {
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
     }
   }
 
@@ -858,13 +865,11 @@ body {
     --stroke-fg-strong: rgba(255, 255, 255, 0.12);
     --stroke-fg-xstrong: rgba(255, 255, 255, 0.15);
 
-    /* Shadow tokens */
-    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
-    --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
-    --shadow-interactive:
-      0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
-    --shadow-interactive-hover:
-      0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+    /* Shadow tokens - simple ambient shadows for performance */
+    --shadow-elevated: 0 1px 4px rgba(0, 0, 0, 0.3);
+    --shadow-floating: 0 1px 6px rgba(0, 0, 0, 0.35);
+    --shadow-interactive: 0 2px 12px rgba(0, 0, 0, 0.4);
+    --shadow-interactive-hover: 0 3px 16px rgba(0, 0, 0, 0.45);
 
     /* Motion tokens (CSS) */
     --duration-instant: 0s;
@@ -915,12 +920,6 @@ body {
 
 /* Glassmorphic Design System Components (from website) */
 @layer components {
-  /* Dropdown surface tuned for transparent/vibrant windows */
-  .dropdown-glass {
-    background-color: rgba(20, 20, 30, 0.96);
-    backdrop-filter: blur(var(--blur-md));
-  }
-
   /* Unified subtext spacing & styling for onboarding */
   .onboarding-note {
     font-size: 0.9rem; /* ~14.4px */
@@ -1154,25 +1153,6 @@ body {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
     border: 1px solid var(--stroke-fg);
     box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
-  }
-
-  /* Localized backdrop blur for dropdowns/popovers to avoid full-window artifact */
-  .dropdown-glass {
-    position: relative;
-    isolation: isolate;
-    contain: paint;
-    overflow: hidden;
-  }
-  .dropdown-glass::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background: rgba(var(--surface-base-rgb), 0.56);
-    -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(130%);
-    backdrop-filter: blur(var(--blur-lg)) saturate(130%);
-    z-index: -1;
   }
 
   /* Interactive card with hover effects */
