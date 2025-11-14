@@ -43,9 +43,9 @@ The user wanted the embedded settings and permissions panels inside the pill to 
 - **Drive expanded height entirely from measured content** rather than approximations, trading a small hook for perfect chevron alignment.
 
 ## Ready for Next Session
-- ✅ `usePanelAutoHeight` + spacing tokens are reusable for other panels.
-- ✅ Settings/permissions views now resize automatically, so adding/removing cards won’t need envelope changes.
-- 🔧 If new UI surfaces need different rhythms, consider promoting additional spacing tokens instead of inline overrides.
+- ✅ `usePanelAutoHeight` + spacing tokens are reusable for other panels and live behind a single hook + CSS tokens (no additional plumbing needed if you stick to the same pattern).
+- ✅ Settings/permissions views now resize automatically, so adding/removing cards won’t need envelope changes (Pill/App already listen for height changes).
+- 🔧 Onboarding glass panels and any future expanded views still rely on hand-tuned `gap-*` / `mt-*` utilities; when refreshing those surfaces, refactor them to use `--panel-section-offset` / `--panel-heading-gap` (or create new tokens) so spacing stays coherent across the product.
 
 ## Context for Future
 These changes ensure the floating pill can host richer settings/permissions content without manual envelope tuning; future UI work can rely on the new spacing tokens and height hook to stay responsive across devices.
