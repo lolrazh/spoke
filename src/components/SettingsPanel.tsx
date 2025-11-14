@@ -79,8 +79,8 @@ const SelectField: React.FC<{
 
 // Cleaned out legacy row components; cards are now the single layout primitive
 
-export const SectionSeparator: React.FC<{ title: string }> = ({ title }) => (
-  <div className="relative my-6">
+export const SectionSeparator: React.FC<{ title: string; className?: string }> = ({ title, className = "my-6" }) => (
+  <div className={`relative ${className}`}>
     <div className="border-b-2 border-border/40" />
     <div className="absolute inset-0 flex items-center justify-center">
       <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
@@ -341,17 +341,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div className="flex-1 overflow-y-auto">
         <div
           ref={contentRef}
-          className="max-w-lg mx-auto w-full px-5 pt-5 pb-14"
+          className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
         >
           <motion.div
             initial="hidden"
             animate="visible"
             variants={containerVariants}
-            className="flex flex-col gap-8"
+            className="flex flex-col gap-6"
           >
             {/* Section 1: Defaults */}
             <motion.section variants={sectionVariants} className="space-y-4">
-              <SectionSeparator title="Defaults" />
+              <SectionSeparator title="Defaults" className="mt-4 mb-0" />
 
               <div className="space-y-3 no-drag">
                 <SelectField
@@ -421,7 +421,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             {/* Section 3: Account */}
             <motion.section variants={sectionVariants} className="space-y-4">
-              <SectionSeparator title="Account" />
+              <SectionSeparator title="Account" className="mt-0 mb-4" />
               {userEmail ? (
                 <SettingsCard
                   title={userName || userEmail}

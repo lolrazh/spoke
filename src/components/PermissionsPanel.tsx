@@ -133,7 +133,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
       <div className="flex-1 overflow-y-auto">
         <div
           ref={contentRef}
-          className="max-w-lg mx-auto w-full px-5 pt-5 pb-14"
+          className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
         >
           <motion.div
             className="flex flex-col gap-4"
@@ -142,7 +142,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
             variants={containerVariants}
           >
             <motion.div variants={itemVariants}>
-              <SectionSeparator title="Permissions" />
+              <SectionSeparator title="Permissions" className="mt-0 mb-0" />
             </motion.div>
             {permissionEntries.map((entry) => {
               const copy = PERMISSION_COPY[entry.key];
