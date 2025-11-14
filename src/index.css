@@ -188,7 +188,7 @@
   .pill-wrapper {
     --pill-background: var(--surface-solid);
     --pill-border: 1px solid rgba(255, 255, 255, 0.02);
-    --pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --pill-shadow: var(--shadow-floating);
 
     /* It is now a flex item centered by its parent. */
     display: flex;
@@ -208,6 +208,8 @@
     box-shadow: var(--pill-shadow);
     /* Let framer-motion handle all transitions */
     overflow: hidden;
+    /* Smooth shadow transitions for hover/state changes */
+    transition: box-shadow var(--duration-fast) var(--ease-standard);
     /* Performance: avoid flicker by promoting and isolating */
     will-change: transform, opacity, filter;
     transform: translateZ(0);
@@ -218,6 +220,12 @@
   /* Show hand cursor when pill is clickable (non-expanded) */
   .pill-core:not(.expanded) {
     cursor: pointer;
+  }
+
+  /* Hover state for non-expanded pill - lift effect like Dynamic Island */
+  .pill-core:not(.expanded):hover {
+    box-shadow: var(--shadow-interactive-hover);
+    transition: box-shadow var(--duration-fast) var(--ease-standard);
   }
 
   /* Afterglow overlay for micro-physics impact */
@@ -477,17 +485,18 @@
   /* Success container glow - slow and passionate */
   @keyframes success-container-glow {
     0% {
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.3), 0 2px 24px rgba(0, 0, 0, 0.25);
     }
     50% {
-      box-shadow: 
-        0 1px 3px rgba(0, 0, 0, 0.5),
+      box-shadow:
+        0 0 12px rgba(0, 0, 0, 0.3),
+        0 2px 24px rgba(0, 0, 0, 0.25),
         0 0 0 2px rgba(255, 255, 255, 0.12),
-        0 0 12px 2px rgba(255, 255, 255, 0.25), 
+        0 0 12px 2px rgba(255, 255, 255, 0.25),
         0 0 24px 2px rgba(255, 255, 255, 0.12);
     }
     100% {
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.3), 0 2px 24px rgba(0, 0, 0, 0.25);
     }
   }
 
@@ -858,13 +867,13 @@ body {
     --stroke-fg-strong: rgba(255, 255, 255, 0.12);
     --stroke-fg-xstrong: rgba(255, 255, 255, 0.15);
 
-    /* Shadow tokens */
-    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
-    --shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
+    /* Shadow tokens - ambient floating system inspired by Dynamic Island */
+    --shadow-elevated: 0 0 8px rgba(0, 0, 0, 0.25), 0 1px 16px rgba(0, 0, 0, 0.2);
+    --shadow-floating: 0 0 12px rgba(0, 0, 0, 0.3), 0 2px 24px rgba(0, 0, 0, 0.25);
     --shadow-interactive:
-      0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
+      0 4px 22px rgba(0, 0, 0, 0.35), 0 12px 60px rgba(0, 0, 0, 0.25);
     --shadow-interactive-hover:
-      0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+      0 6px 28px rgba(0, 0, 0, 0.4), 0 16px 70px rgba(0, 0, 0, 0.3);
 
     /* Motion tokens (CSS) */
     --duration-instant: 0s;
