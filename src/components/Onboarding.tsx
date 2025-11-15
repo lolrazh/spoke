@@ -843,7 +843,13 @@ const Onboarding: React.FC = () => {
   // }, [currentStep, allPermissionsGranted]);
 
   // Navigation functions
-  const nextStep = () => {
+  const nextStep = async () => {
+    // Handle name verification step - save before advancing
+    if (currentStep === "name-verification") {
+      await handleNameVerificationContinue();
+      return; // handleNameVerificationContinue handles navigation on success
+    }
+
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
@@ -2213,11 +2219,19 @@ const Onboarding: React.FC = () => {
                 }}
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount))
+                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
+                  (currentStep === "name-verification" && (!editableName.trim() || isUpdatingName))
                 }
                 className="px-3 py-1.5"
               >
-                Next
+                {currentStep === "name-verification" && isUpdatingName ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                    <span>Saving...</span>
+                  </div>
+                ) : (
+                  "Next"
+                )}
               </Button>
             ) : (
               <Button
