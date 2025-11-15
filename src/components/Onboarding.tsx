@@ -655,6 +655,8 @@ const Onboarding: React.FC = () => {
       if (!res.ok) {
         setAuthError(res.error || "Login failed");
         switchAccountIntentRef.current = false;
+        // Hide intro so user can see the error and retry
+        setShowIntro(false);
         return;
       }
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
