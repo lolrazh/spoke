@@ -11,6 +11,7 @@ User wanted to streamline the onboarding flow by reducing friction before authen
 - ✅ **Moved Google OAuth to IntroExperience** - Replaced "Start Setup" button with "Continue with Google" button directly on intro screen
 - ✅ **Fixed PKCE code verifier error** - Resolved "both auth code and code verifier should be non-empty" error by removing duplicate callback handlers
 - ✅ **Fixed OAuth error visibility** - Ensured errors display correctly by hiding intro overlay when OAuth callback fails
+- ✅ **Fixed button flash on click** - Removed jarring visual flash when clicking Google login button
 - ✅ **Maintained existing flow** - Onboarding component automatically skips auth step when user is already authenticated
 - ❌ **Button scaling (reverted)** - Attempted to scale buttons proportionally to larger window size, but user didn't like the result and reverted
 
@@ -51,6 +52,11 @@ User wanted to streamline the onboarding flow by reducing friction before authen
    - **Symptoms:** When OAuth callback failed, error was set in state but invisible to user because intro overlay remained visible
    - **Fix:** Added `setShowIntro(false)` in error handling path of callback, revealing the auth step with error message
 
+4. **Button flash when clicking Google login**
+   - **Symptoms:** Clicking "Continue with Google" caused jarring visual flash - button text changed to "Opening Google…", opacity dimmed to 50%, then immediately reverted back within ~50-200ms
+   - **Root Cause:** Code set `authLoading=true` before opening browser, then immediately set it to `false` after. Since browser opens instantly, the loading state lasted only a split second, creating a distracting flash effect
+   - **Fix:** Removed loading state entirely for successful OAuth flow. Browser opening provides immediate user feedback. Button stays constant (no text change, no opacity change, no disabled state). Only errors use authLoading for error display context.
+
 ## Key Learnings
 
 - **Duplicate callback handlers cause PKCE failures** - OAuth authorization codes are single-use. Multiple handlers trying to exchange the same code will cause the PKCE error. Only one component should handle callbacks.
@@ -60,6 +66,8 @@ User wanted to streamline the onboarding flow by reducing friction before authen
 - **PKCE flow requires early client initialization** - Supabase's PKCE flow stores the code verifier in localStorage when generating the OAuth URL. The client must be initialized before `getGoogleOAuthUrl()` is called, not lazily on first use.
 
 - **Button scaling needs user testing** - Programmatic scaling calculations don't always match user aesthetic preferences. What seems "proportional" mathematically may not feel right visually. Always test UI changes with users before finalizing.
+
+- **Instant feedback doesn't need loading states** - When an action provides immediate visual feedback (like opening a browser window), adding a loading state creates a distracting flash instead of improving UX. Only use loading states when the operation takes noticeable time (>300ms).
 
 ## Architecture Decisions
 
