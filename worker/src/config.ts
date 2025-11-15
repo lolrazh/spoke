@@ -41,7 +41,7 @@ export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
 
-export const STT_DEFAULT_MODEL = DEEPGRAM_STT_DEFAULT_MODEL;
+export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';
 export const FIREWORKS_STT_DEFAULT_ALIGNMENT_MODEL = 'tdnn_ffn';
 export const FIREWORKS_STT_DEFAULT_PREPROCESSING = 'none';
@@ -49,5 +49,5 @@ export const FIREWORKS_STT_DEFAULT_TEMPERATURES = '0.0,0.2,0.4';
 
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-export const STT_DEFAULT_PROVIDER = 'deepgram' as const;
+export const STT_DEFAULT_PROVIDER = 'groq' as const;
 export type STTProvider = 'groq' | 'fireworks' | 'deepgram';
