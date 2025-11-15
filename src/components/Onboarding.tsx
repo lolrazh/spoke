@@ -1501,15 +1501,15 @@ const Onboarding: React.FC = () => {
               >
                 <div className="heading-stack">
                   <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Is This Your Name?
+                    Is This Your Full Name?
                   </h2>
                   <p className="text-sm text-subtle leading-relaxed subheading">
-                    This helps Sonic Flow spell your name correctly when transcribing
+                    This is for Sonic Flow to spell your name right.
                   </p>
                 </div>
 
                 <div className="onboarding-section mx-auto w-full max-w-[28rem] space-y-4">
-                  <div className="space-y-2">
+                  <div>
                     <input
                       type="text"
                       value={editableName}
@@ -1523,9 +1523,6 @@ const Onboarding: React.FC = () => {
                         }
                       }}
                     />
-                    <p className="text-xs text-subtle">
-                      Example: Ada Lovelace, Robert Smith
-                    </p>
                   </div>
 
                   {nameUpdateError && (
@@ -1533,21 +1530,6 @@ const Onboarding: React.FC = () => {
                       {nameUpdateError}
                     </div>
                   )}
-
-                  <Button
-                    onClick={handleNameVerificationContinue}
-                    disabled={isUpdatingName || !editableName.trim()}
-                    className="w-full onboarding-cta"
-                  >
-                    {isUpdatingName ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                        <span>Saving...</span>
-                      </div>
-                    ) : (
-                      "Continue"
-                    )}
-                  </Button>
                 </div>
               </motion.div>
             )}
