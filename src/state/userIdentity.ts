@@ -82,9 +82,24 @@ async function refreshIdentity(): Promise<UserIdentity> {
       return identity;
     }
 
-    const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
+    // Prefer display_name from profile over user_metadata
+    let displayName: string | null = null;
+    try {
+      const { getProfile } = await import("../lib/supabaseClient");
+      const profile = await getProfile();
+      displayName = profile?.display_name ?? null;
+    } catch (e) {
+      console.warn("[UserIdentity] Failed to fetch profile, falling back to metadata", e);
+    }
+
+    // Fallback to user_metadata.name if profile doesn't have a display_name
+    if (!displayName) {
+      const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
+      displayName = metadata?.name ?? null;
+    }
+
     emit({
-      name: metadata?.name ?? null,
+      name: displayName,
       email: user.email ?? null,
     });
     return identity;

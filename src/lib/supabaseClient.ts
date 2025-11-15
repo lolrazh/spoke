@@ -444,3 +444,58 @@ export async function setShareTranscriptionsPreference(
     return false;
   }
 }
+
+/**
+ * Update the user's display name in the profiles table.
+ * This will automatically refresh the user identity cache.
+ * Retries once on failure for resilience.
+ */
+export async function updateDisplayName(
+  displayName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, error: "Supabase not configured" };
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "NO_USER" };
+
+  const trimmedName = displayName.trim();
+  if (!trimmedName) {
+    return { ok: false, error: "Display name cannot be empty" };
+  }
+
+  const attemptUpdate = async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: trimmedName })
+        .eq("id", user.id);
+
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+
+      // Refresh identity cache to pick up the new name
+      try {
+        const { initUserIdentity } = await import("../state/userIdentity");
+        await initUserIdentity();
+      } catch (e) {
+        console.warn("[updateDisplayName] Failed to refresh identity:", e);
+        // Continue anyway - update succeeded
+      }
+
+      return { ok: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, error: msg };
+    }
+  };
+
+  // First attempt
+  const result = await attemptUpdate();
+  if (result.ok) return result;
+
+  // Retry once on failure
+  console.warn("[updateDisplayName] First attempt failed, retrying...", result.error);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return attemptUpdate();
+}

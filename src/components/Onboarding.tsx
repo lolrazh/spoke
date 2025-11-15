@@ -26,6 +26,7 @@ import {
   markOnboardingDone,
   ensureProfileRow,
   signOut,
+  updateDisplayName,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
 // eslint-disable-next-line import/no-unresolved
@@ -78,6 +79,7 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = 
 
 type OnboardingStep =
   | "auth"
+  | "name-verification"
   | "permissions"
   | "mic-check"
   | "hotkey-info"
@@ -167,6 +169,10 @@ const Onboarding: React.FC = () => {
   const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [sessionValid, setSessionValid] = useState(false);
+  // Name verification state
+  const [editableName, setEditableName] = useState<string>("");
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
+  const [nameUpdateError, setNameUpdateError] = useState<string | null>(null);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -571,6 +577,7 @@ const Onboarding: React.FC = () => {
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] => [
     "auth",
+    "name-verification",
     "permissions",
     "mic-check",
     "hotkey-info",
@@ -632,7 +639,8 @@ const Onboarding: React.FC = () => {
         if (isMountedRef.current) setSignedInAccount(null);
       }
 
-      setCurrentStep("permissions");
+      // New users go to name verification first
+      setCurrentStep("name-verification");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
@@ -674,12 +682,20 @@ const Onboarding: React.FC = () => {
         return;
       }
       switchAccountIntentRef.current = false;
-      setCurrentStep("permissions");
+      // New users go to name verification first
+      setCurrentStep("name-verification");
     });
     return () => {
       off && off();
     };
   }, [introOnly]);
+
+  // Populate editable name when account is loaded
+  useEffect(() => {
+    if (signedInAccount?.displayName && !editableName) {
+      setEditableName(signedInAccount.displayName);
+    }
+  }, [signedInAccount, editableName]);
 
   const startGoogleOAuth = async () => {
     try {
@@ -757,6 +773,37 @@ const Onboarding: React.FC = () => {
       } else {
         setIsSwitchingAccount(false);
       }
+    }
+  };
+
+  const handleNameVerificationContinue = async () => {
+    const trimmedName = editableName.trim();
+    if (!trimmedName) {
+      setNameUpdateError("Please enter your name");
+      return;
+    }
+
+    setIsUpdatingName(true);
+    setNameUpdateError(null);
+
+    try {
+      const result = await updateDisplayName(trimmedName);
+      if (!result.ok) {
+        setNameUpdateError(result.error || "Failed to update name");
+        setIsUpdatingName(false);
+        return;
+      }
+
+      // Refresh account summary with updated name
+      await refreshAccountSummary();
+
+      // Success - move to permissions step
+      setIsUpdatingName(false);
+      setCurrentStep("permissions");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setNameUpdateError(msg || "An error occurred");
+      setIsUpdatingName(false);
     }
   };
 
@@ -1272,7 +1319,7 @@ const Onboarding: React.FC = () => {
       )}
 
       {/* Speaker toggle - show before mic-check only */}
-      {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
+      {(showIntro || currentStep === "auth" || currentStep === "name-verification" || currentStep === "permissions") && (
         <AnimatePresence initial={false}>
           {(showIntro ? introControlsReady : true) && (
             <motion.button
@@ -1441,6 +1488,69 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
             {/* Legacy welcome step removed (block fully deleted) */}
+
+            {/* Name Verification Step */}
+            {currentStep === "name-verification" && (
+              <motion.div
+                key="name-verification"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Is This Your Name?
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    This helps Sonic Flow spell your name correctly when transcribing
+                  </p>
+                </div>
+
+                <div className="onboarding-section mx-auto w-full max-w-[28rem] space-y-4">
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editableName}
+                      onChange={(e) => setEditableName(e.target.value)}
+                      placeholder="Your full name"
+                      disabled={isUpdatingName}
+                      className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-center text-base"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !isUpdatingName && editableName.trim()) {
+                          handleNameVerificationContinue();
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-subtle">
+                      Example: Ada Lovelace, Robert Smith
+                    </p>
+                  </div>
+
+                  {nameUpdateError && (
+                    <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                      {nameUpdateError}
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleNameVerificationContinue}
+                    disabled={isUpdatingName || !editableName.trim()}
+                    className="w-full onboarding-cta"
+                  >
+                    {isUpdatingName ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        <span>Saving...</span>
+                      </div>
+                    ) : (
+                      "Continue"
+                    )}
+                  </Button>
+                </div>
+              </motion.div>
+            )}
 
             {/* Combined Permissions Step */}
             {currentStep === "permissions" && (
