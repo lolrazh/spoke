@@ -26,8 +26,10 @@ import {
   markOnboardingDone,
   ensureProfileRow,
   signOut,
+  updateDisplayName,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
+import { updateIdentityLocal } from "../state/userIdentity";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
@@ -78,6 +80,7 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = 
 
 type OnboardingStep =
   | "auth"
+  | "name-verification"
   | "permissions"
   | "mic-check"
   | "hotkey-info"
@@ -167,6 +170,8 @@ const Onboarding: React.FC = () => {
   const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [sessionValid, setSessionValid] = useState(false);
+  // Name verification state
+  const [editableName, setEditableName] = useState<string>("");
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -571,6 +576,7 @@ const Onboarding: React.FC = () => {
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] => [
     "auth",
+    "name-verification",
     "permissions",
     "mic-check",
     "hotkey-info",
@@ -632,7 +638,8 @@ const Onboarding: React.FC = () => {
         if (isMountedRef.current) setSignedInAccount(null);
       }
 
-      setCurrentStep("permissions");
+      // New users go to name verification first
+      setCurrentStep("name-verification");
     })();
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
@@ -674,12 +681,20 @@ const Onboarding: React.FC = () => {
         return;
       }
       switchAccountIntentRef.current = false;
-      setCurrentStep("permissions");
+      // New users go to name verification first
+      setCurrentStep("name-verification");
     });
     return () => {
       off && off();
     };
   }, [introOnly]);
+
+  // Populate editable name when account is loaded
+  useEffect(() => {
+    if (signedInAccount?.displayName && !editableName) {
+      setEditableName(signedInAccount.displayName);
+    }
+  }, [signedInAccount, editableName]);
 
   const startGoogleOAuth = async () => {
     try {
@@ -760,6 +775,38 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  const handleNameVerificationContinue = () => {
+    const trimmedName = editableName.trim();
+    if (!trimmedName) {
+      // Don't advance if name is empty
+      return;
+    }
+
+    // IMMEDIATELY update client-side cache and notify all subscribers (synchronous)
+    // This ensures settings panel, pill, etc. show the new name instantly
+    updateIdentityLocal({ name: trimmedName });
+
+    // Fire off the database update in the background (non-blocking)
+    updateDisplayName(trimmedName)
+      .then((result) => {
+        if (result.ok) {
+          // Refresh account summary with updated name
+          refreshAccountSummary().catch(() => {
+            // Ignore refresh errors - not critical
+          });
+        } else {
+          // Log error but don't block user
+          console.warn("[Onboarding] Name update failed:", result.error);
+        }
+      })
+      .catch((error) => {
+        console.warn("[Onboarding] Name update error:", error);
+      });
+
+    // Immediately advance to permissions step
+    setCurrentStep("permissions");
+  };
+
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
     if (currentStep === "hotkey-info" && !pttApiReady) {
@@ -797,6 +844,12 @@ const Onboarding: React.FC = () => {
 
   // Navigation functions
   const nextStep = () => {
+    // Handle name verification step - save in background before advancing
+    if (currentStep === "name-verification") {
+      handleNameVerificationContinue();
+      return; // handleNameVerificationContinue handles navigation
+    }
+
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
@@ -1272,7 +1325,7 @@ const Onboarding: React.FC = () => {
       )}
 
       {/* Speaker toggle - show before mic-check only */}
-      {(showIntro || currentStep === "auth" || currentStep === "permissions") && (
+      {(showIntro || currentStep === "auth" || currentStep === "name-verification" || currentStep === "permissions") && (
         <AnimatePresence initial={false}>
           {(showIntro ? introControlsReady : true) && (
             <motion.button
@@ -1441,6 +1494,42 @@ const Onboarding: React.FC = () => {
               </motion.div>
             )}
             {/* Legacy welcome step removed (block fully deleted) */}
+
+            {/* Name Verification Step */}
+            {currentStep === "name-verification" && (
+              <motion.div
+                key="name-verification"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                className="text-center"
+              >
+                <div className="heading-stack">
+                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                    Is This Your Full Name?
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed subheading">
+                    This is for Sonic Flow to spell your name right.
+                  </p>
+                </div>
+
+                <div className="onboarding-section mx-auto w-full max-w-[28rem]">
+                  <input
+                    type="text"
+                    value={editableName}
+                    onChange={(e) => setEditableName(e.target.value)}
+                    placeholder="Your full name"
+                    className="w-full onboarding-textarea px-4 py-3 text-base outline-none text-center"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editableName.trim()) {
+                        handleNameVerificationContinue();
+                      }
+                    }}
+                  />
+                </div>
+              </motion.div>
+            )}
 
             {/* Combined Permissions Step */}
             {currentStep === "permissions" && (
@@ -2121,7 +2210,8 @@ const Onboarding: React.FC = () => {
                 }}
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount))
+                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
+                  (currentStep === "name-verification" && !editableName.trim())
                 }
                 className="px-3 py-1.5"
               >

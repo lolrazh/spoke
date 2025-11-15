@@ -82,9 +82,24 @@ async function refreshIdentity(): Promise<UserIdentity> {
       return identity;
     }
 
-    const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
+    // Prefer display_name from profile over user_metadata
+    let displayName: string | null = null;
+    try {
+      const { getProfile } = await import("../lib/supabaseClient");
+      const profile = await getProfile();
+      displayName = profile?.display_name ?? null;
+    } catch (e) {
+      console.warn("[UserIdentity] Failed to fetch profile, falling back to metadata", e);
+    }
+
+    // Fallback to user_metadata.name if profile doesn't have a display_name
+    if (!displayName) {
+      const metadata = (user.user_metadata as UserMetadata | undefined) ?? null;
+      displayName = metadata?.name ?? null;
+    }
+
     emit({
-      name: metadata?.name ?? null,
+      name: displayName,
       email: user.email ?? null,
     });
     return identity;
@@ -128,6 +143,26 @@ export async function initUserIdentity(): Promise<UserIdentity> {
     return identity;
   })();
   return initPromise;
+}
+
+/**
+ * Force refresh user identity from the database and notify all subscribers.
+ * Use this when you know the identity has changed (e.g., after updating display_name).
+ */
+export async function forceRefreshIdentity(): Promise<UserIdentity> {
+  return refreshIdentity();
+}
+
+/**
+ * Immediately update the local identity cache and notify all subscribers.
+ * Use this for instant client-side updates while database saves happen in background.
+ */
+export function updateIdentityLocal(updates: Partial<UserIdentity>): void {
+  const nextIdentity: UserIdentity = {
+    name: updates.name !== undefined ? updates.name : identity.name,
+    email: updates.email !== undefined ? updates.email : identity.email,
+  };
+  emit(nextIdentity);
 }
 
 export function getUserIdentity(): UserIdentity {
