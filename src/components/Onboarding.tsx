@@ -29,6 +29,7 @@ import {
   updateDisplayName,
 } from "../lib/supabaseClient";
 import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
+import { updateIdentityLocal } from "../state/userIdentity";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
@@ -781,7 +782,11 @@ const Onboarding: React.FC = () => {
       return;
     }
 
-    // Fire off the update in the background (non-blocking)
+    // IMMEDIATELY update client-side cache and notify all subscribers (synchronous)
+    // This ensures settings panel, pill, etc. show the new name instantly
+    updateIdentityLocal({ name: trimmedName });
+
+    // Fire off the database update in the background (non-blocking)
     updateDisplayName(trimmedName)
       .then((result) => {
         if (result.ok) {

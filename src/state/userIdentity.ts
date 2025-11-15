@@ -153,6 +153,18 @@ export async function forceRefreshIdentity(): Promise<UserIdentity> {
   return refreshIdentity();
 }
 
+/**
+ * Immediately update the local identity cache and notify all subscribers.
+ * Use this for instant client-side updates while database saves happen in background.
+ */
+export function updateIdentityLocal(updates: Partial<UserIdentity>): void {
+  const nextIdentity: UserIdentity = {
+    name: updates.name !== undefined ? updates.name : identity.name,
+    email: updates.email !== undefined ? updates.email : identity.email,
+  };
+  emit(nextIdentity);
+}
+
 export function getUserIdentity(): UserIdentity {
   return identity;
 }
