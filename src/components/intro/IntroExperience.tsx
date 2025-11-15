@@ -31,7 +31,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
-  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
@@ -67,7 +66,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 
   const handleGoogleLogin = async () => {
     try {
-      setAuthLoading(true);
       setAuthError(null);
 
       const url = await getGoogleOAuthUrl();
@@ -75,16 +73,13 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
         setAuthError(
           "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
         );
-        setAuthLoading(false);
         return;
       }
 
       await window.electron?.openExternal(url);
-      setAuthLoading(false);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setAuthError(msg || "Could not start Google sign-in");
-      setAuthLoading(false);
     }
   };
 
@@ -160,12 +155,11 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             >
               <Button
                 onClick={handleGoogleLogin}
-                disabled={authLoading}
                 className="btn-primary shimmer"
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-primary font-medium text-lg">G</span>
-                  <span>{authLoading ? "Opening Google…" : "Continue with Google"}</span>
+                  <span>Continue with Google</span>
                 </div>
               </Button>
               {authError && (
