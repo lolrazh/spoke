@@ -1516,7 +1516,7 @@ const Onboarding: React.FC = () => {
                       onChange={(e) => setEditableName(e.target.value)}
                       placeholder="Your full name"
                       disabled={isUpdatingName}
-                      className="card-floating w-full px-4 py-3 rounded-lg bg-transparent border border-white/10 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/10 focus:border-white/20 focus:bg-white/5 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-center text-base"
+                      className="w-full onboarding-textarea px-4 py-3 text-base outline-none disabled:opacity-50 disabled:cursor-not-allowed text-center"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !isUpdatingName && editableName.trim()) {
                           handleNameVerificationContinue();
