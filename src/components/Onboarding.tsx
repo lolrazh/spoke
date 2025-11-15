@@ -171,8 +171,6 @@ const Onboarding: React.FC = () => {
   const [sessionValid, setSessionValid] = useState(false);
   // Name verification state
   const [editableName, setEditableName] = useState<string>("");
-  const [isUpdatingName, setIsUpdatingName] = useState(false);
-  const [nameUpdateError, setNameUpdateError] = useState<string | null>(null);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
@@ -776,35 +774,32 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  const handleNameVerificationContinue = async () => {
+  const handleNameVerificationContinue = () => {
     const trimmedName = editableName.trim();
     if (!trimmedName) {
-      setNameUpdateError("Please enter your name");
+      // Don't advance if name is empty
       return;
     }
 
-    setIsUpdatingName(true);
-    setNameUpdateError(null);
+    // Fire off the update in the background (non-blocking)
+    updateDisplayName(trimmedName)
+      .then((result) => {
+        if (result.ok) {
+          // Refresh account summary with updated name
+          refreshAccountSummary().catch(() => {
+            // Ignore refresh errors - not critical
+          });
+        } else {
+          // Log error but don't block user
+          console.warn("[Onboarding] Name update failed:", result.error);
+        }
+      })
+      .catch((error) => {
+        console.warn("[Onboarding] Name update error:", error);
+      });
 
-    try {
-      const result = await updateDisplayName(trimmedName);
-      if (!result.ok) {
-        setNameUpdateError(result.error || "Failed to update name");
-        setIsUpdatingName(false);
-        return;
-      }
-
-      // Refresh account summary with updated name
-      await refreshAccountSummary();
-
-      // Success - move to permissions step
-      setIsUpdatingName(false);
-      setCurrentStep("permissions");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      setNameUpdateError(msg || "An error occurred");
-      setIsUpdatingName(false);
-    }
+    // Immediately advance to permissions step
+    setCurrentStep("permissions");
   };
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
@@ -843,11 +838,11 @@ const Onboarding: React.FC = () => {
   // }, [currentStep, allPermissionsGranted]);
 
   // Navigation functions
-  const nextStep = async () => {
-    // Handle name verification step - save before advancing
+  const nextStep = () => {
+    // Handle name verification step - save in background before advancing
     if (currentStep === "name-verification") {
-      await handleNameVerificationContinue();
-      return; // handleNameVerificationContinue handles navigation on success
+      handleNameVerificationContinue();
+      return; // handleNameVerificationContinue handles navigation
     }
 
     const steps = getSteps();
@@ -1514,28 +1509,19 @@ const Onboarding: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="onboarding-section mx-auto w-full max-w-[28rem] space-y-4">
-                  <div>
-                    <input
-                      type="text"
-                      value={editableName}
-                      onChange={(e) => setEditableName(e.target.value)}
-                      placeholder="Your full name"
-                      disabled={isUpdatingName}
-                      className="w-full onboarding-textarea px-4 py-3 text-base outline-none disabled:opacity-50 disabled:cursor-not-allowed text-center"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !isUpdatingName && editableName.trim()) {
-                          handleNameVerificationContinue();
-                        }
-                      }}
-                    />
-                  </div>
-
-                  {nameUpdateError && (
-                    <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                      {nameUpdateError}
-                    </div>
-                  )}
+                <div className="onboarding-section mx-auto w-full max-w-[28rem]">
+                  <input
+                    type="text"
+                    value={editableName}
+                    onChange={(e) => setEditableName(e.target.value)}
+                    placeholder="Your full name"
+                    className="w-full onboarding-textarea px-4 py-3 text-base outline-none text-center"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editableName.trim()) {
+                        handleNameVerificationContinue();
+                      }
+                    }}
+                  />
                 </div>
               </motion.div>
             )}
@@ -2220,18 +2206,11 @@ const Onboarding: React.FC = () => {
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
                   (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
-                  (currentStep === "name-verification" && (!editableName.trim() || isUpdatingName))
+                  (currentStep === "name-verification" && !editableName.trim())
                 }
                 className="px-3 py-1.5"
               >
-                {currentStep === "name-verification" && isUpdatingName ? (
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                    <span>Saving...</span>
-                  </div>
-                ) : (
-                  "Next"
-                )}
+                Next
               </Button>
             ) : (
               <Button
