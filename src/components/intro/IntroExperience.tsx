@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
-import { getGoogleOAuthUrl, handleAuthCallbackUrl, ensureProfileRow } from "../../lib/supabaseClient";
+import { getSupabase, getGoogleOAuthUrl } from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -43,8 +43,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     mass: 0.45,
   };
 
-  // Cleanup on unmount
+  // Initialize Supabase client early so PKCE flow works correctly
   useEffect(() => {
+    getSupabase(); // Initialize singleton client
     return () => {
       isMountedRef.current = false;
     };
@@ -94,40 +95,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     } catch {}
     setVisible(false);
   };
-
-  // Handle Google OAuth callback
-  useEffect(() => {
-    const off = window.auth?.onCallback?.(async ({ url }) => {
-      if (!isMountedRef.current) return;
-
-      setAuthLoading(true);
-      setAuthError(null);
-
-      const res = await handleAuthCallbackUrl(url);
-
-      if (!isMountedRef.current) return;
-      setAuthLoading(false);
-
-      if (!res.ok) {
-        setAuthError(res.error || "Login failed");
-        return;
-      }
-
-      try {
-        // Ensure profile row exists after successful login
-        await ensureProfileRow();
-      } catch (e) {
-        console.warn("[IntroExperience] ensureProfileRow failed:", e);
-      }
-
-      // Transition to onboarding (which will skip auth step since user is now authenticated)
-      handleSkip();
-    });
-
-    return () => {
-      off && off();
-    };
-  }, [handleSkip]);
 
   // Notify parent when content is fully visible
   const notifiedRef = useRef(false);

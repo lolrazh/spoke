@@ -595,7 +595,7 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.inputMonitoring;
 
-  // Initial auth check and deep-link listener
+  // Initial auth check
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
     getSupabase();
@@ -641,6 +641,11 @@ const Onboarding: React.FC = () => {
       // New users go to name verification first
       setCurrentStep("name-verification");
     })();
+  }, [introOnly]);
+
+  // Auth callback listener (always active, even during intro)
+  useEffect(() => {
+    getSupabase(); // Ensure client is initialized
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
@@ -681,13 +686,15 @@ const Onboarding: React.FC = () => {
         return;
       }
       switchAccountIntentRef.current = false;
+      // Hide intro if it's showing
+      setShowIntro(false);
       // New users go to name verification first
       setCurrentStep("name-verification");
     });
     return () => {
       off && off();
     };
-  }, [introOnly]);
+  }, []); // Always register callback, even during intro
 
   // Populate editable name when account is loaded
   useEffect(() => {
