@@ -1427,7 +1427,7 @@ const Onboarding: React.FC = () => {
                           type="button"
                           onClick={handleSwitchAccount}
                           disabled={authLoading}
-                          className="w-full justify-center px-3 py-1.5"
+                          className="w-full justify-center"
                         >
                           {authLoading ? "Opening Google…" : "Switch Account"}
                         </Button>
@@ -2181,7 +2181,7 @@ const Onboarding: React.FC = () => {
                 <div className="pt-2 flex justify-center">
                   <Button
                     onClick={handleComplete}
-                    className="px-5 py-2 onboarding-cta shimmer"
+                    className="onboarding-cta shimmer"
                   >
                     Start Dictating
                   </Button>
@@ -2200,7 +2200,6 @@ const Onboarding: React.FC = () => {
                 variant="secondary"
                 onClick={prevStep}
                 disabled={getProgressStepIndex() <= 0}
-                className="px-3 py-1.5"
               >
                 Back
               </Button>
@@ -2222,7 +2221,6 @@ const Onboarding: React.FC = () => {
                   (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
                   (currentStep === "name-verification" && !editableName.trim())
                 }
-                className="px-3 py-1.5"
               >
                 Next
               </Button>
@@ -2236,7 +2234,6 @@ const Onboarding: React.FC = () => {
                     setCurrentStep("edit-test");
                   }
                 }}
-                className="px-3 py-1.5"
               >
                 Next
               </Button>

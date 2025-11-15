@@ -161,7 +161,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               <Button
                 onClick={handleGoogleLogin}
                 disabled={authLoading}
-                className="px-5 py-2 btn-primary shimmer"
+                className="btn-primary shimmer"
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-primary font-medium text-lg">G</span>
