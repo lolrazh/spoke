@@ -145,6 +145,14 @@ export async function initUserIdentity(): Promise<UserIdentity> {
   return initPromise;
 }
 
+/**
+ * Force refresh user identity from the database and notify all subscribers.
+ * Use this when you know the identity has changed (e.g., after updating display_name).
+ */
+export async function forceRefreshIdentity(): Promise<UserIdentity> {
+  return refreshIdentity();
+}
+
 export function getUserIdentity(): UserIdentity {
   return identity;
 }

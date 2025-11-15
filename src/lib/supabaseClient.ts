@@ -474,10 +474,10 @@ export async function updateDisplayName(
         return { ok: false, error: error.message };
       }
 
-      // Refresh identity cache to pick up the new name
+      // Force refresh identity cache to pick up the new name and notify all subscribers
       try {
-        const { initUserIdentity } = await import("../state/userIdentity");
-        await initUserIdentity();
+        const { forceRefreshIdentity } = await import("../state/userIdentity");
+        await forceRefreshIdentity();
       } catch (e) {
         console.warn("[updateDisplayName] Failed to refresh identity:", e);
         // Continue anyway - update succeeded
