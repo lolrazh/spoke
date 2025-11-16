@@ -595,7 +595,7 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.inputMonitoring;
 
-  // Initial auth check and deep-link listener
+  // Initial auth check
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
     getSupabase();
@@ -641,6 +641,11 @@ const Onboarding: React.FC = () => {
       // New users go to name verification first
       setCurrentStep("name-verification");
     })();
+  }, [introOnly]);
+
+  // Auth callback listener (always active, even during intro)
+  useEffect(() => {
+    getSupabase(); // Ensure client is initialized
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
@@ -650,6 +655,8 @@ const Onboarding: React.FC = () => {
       if (!res.ok) {
         setAuthError(res.error || "Login failed");
         switchAccountIntentRef.current = false;
+        // Hide intro so user can see the error and retry
+        setShowIntro(false);
         return;
       }
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
@@ -681,13 +688,15 @@ const Onboarding: React.FC = () => {
         return;
       }
       switchAccountIntentRef.current = false;
+      // Hide intro if it's showing
+      setShowIntro(false);
       // New users go to name verification first
       setCurrentStep("name-verification");
     });
     return () => {
       off && off();
     };
-  }, [introOnly]);
+  }, []); // Always register callback, even during intro
 
   // Populate editable name when account is loaded
   useEffect(() => {
@@ -1418,7 +1427,7 @@ const Onboarding: React.FC = () => {
                           type="button"
                           onClick={handleSwitchAccount}
                           disabled={authLoading}
-                          className="w-full justify-center px-3 py-1.5"
+                          className="w-full justify-center"
                         >
                           {authLoading ? "Opening Google…" : "Switch Account"}
                         </Button>
@@ -2172,7 +2181,7 @@ const Onboarding: React.FC = () => {
                 <div className="pt-2 flex justify-center">
                   <Button
                     onClick={handleComplete}
-                    className="px-5 py-2 onboarding-cta shimmer"
+                    className="onboarding-cta shimmer"
                   >
                     Start Dictating
                   </Button>
@@ -2191,7 +2200,6 @@ const Onboarding: React.FC = () => {
                 variant="secondary"
                 onClick={prevStep}
                 disabled={getProgressStepIndex() <= 0}
-                className="px-3 py-1.5"
               >
                 Back
               </Button>
@@ -2213,7 +2221,6 @@ const Onboarding: React.FC = () => {
                   (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
                   (currentStep === "name-verification" && !editableName.trim())
                 }
-                className="px-3 py-1.5"
               >
                 Next
               </Button>
@@ -2227,7 +2234,6 @@ const Onboarding: React.FC = () => {
                     setCurrentStep("edit-test");
                   }
                 }}
-                className="px-3 py-1.5"
               >
                 Next
               </Button>

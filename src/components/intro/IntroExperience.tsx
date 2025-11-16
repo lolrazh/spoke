@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
+import { getSupabase, getGoogleOAuthUrl } from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -30,6 +31,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
   // Match onboarding page transition spring
   const spring = {
     type: "spring" as const,
@@ -38,6 +42,15 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     mass: 0.45,
   };
 
+  // Initialize Supabase client early so PKCE flow works correctly
+  useEffect(() => {
+    getSupabase(); // Initialize singleton client
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Animation stages
   useEffect(() => {
     if (reduced) {
       // Skip to final stage quickly
@@ -50,6 +63,33 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     const t2 = setTimeout(() => setStage(3), 1800);
     return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); };
   }, [reduced]);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setAuthError(null);
+
+      const url = await getGoogleOAuthUrl();
+      if (!url) {
+        setAuthError(
+          "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
+        );
+        return;
+      }
+
+      await window.electron?.openExternal(url);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAuthError(msg || "Could not start Google sign-in");
+    }
+  };
+
+  const handleSkip = () => {
+    try {
+      const root = document.querySelector('.onboarding-window');
+      if (root) root.classList.remove('resizing');
+    } catch {}
+    setVisible(false);
+  };
 
   // Notify parent when content is fully visible
   const notifiedRef = useRef(false);
@@ -65,13 +105,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     }
   }, [stage, onReadyForControls, reduced]);
 
-  const handleSkip = () => {
-    try {
-      const root = document.querySelector('.onboarding-window');
-      if (root) root.classList.remove('resizing');
-    } catch {}
-    setVisible(false);
-  };
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
@@ -118,13 +151,20 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 10 }}
               transition={{ duration: 0.55, ease: [0.25, 0.8, 0.25, 1], delay: 0.1 }}
+              className="space-y-2"
             >
               <Button
-                onClick={handleSkip}
-                className="px-5 py-2 btn-primary shimmer"
+                onClick={handleGoogleLogin}
+                className="btn-primary shimmer"
               >
-                Start Setup
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-primary font-medium text-lg">G</span>
+                  <span>Continue with Google</span>
+                </div>
               </Button>
+              {authError && (
+                <div className="text-[12px] text-red-300 text-center">{authError}</div>
+              )}
             </motion.div>
           </div>
         </motion.div>
