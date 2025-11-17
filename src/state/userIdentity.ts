@@ -115,7 +115,7 @@ function subscribeToAuthChanges() {
   if (!supabase) return;
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange(async (event, _session) => {
+  } = supabase.auth.onAuthStateChange(async (event) => {
     // Clear identity on sign out
     if (event === "SIGNED_OUT") {
       emit({ name: null, email: null });
