@@ -48,7 +48,7 @@ import {
   buildMicrophoneSubmenu,
   buildCommonAppItems,
   buildFeedbackAndAboutItems,
-  buildCopyTranscriptItem,
+  buildPasteTranscriptItem,
 } from "./utils/menuBuilders";
 
 // Types moved to ./types/shared
@@ -2208,13 +2208,12 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
       submenu: micSubmenu,
     },
     { type: "separator" },
-    buildCopyTranscriptItem(
+    buildPasteTranscriptItem(
       () => lastTranscript,
       () => {
-        mainWindow?.webContents.send(
-          "notify",
-          "Transcript copied to clipboard",
-        );
+        pasteLastTranscript().catch(err => {
+          console.error('[ContextMenu] Error pasting transcript:', err);
+        });
       },
     ),
     ...buildFloatingBarMenuItems(),
