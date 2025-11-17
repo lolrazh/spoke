@@ -1,9 +1,9 @@
 // Centralized config for Worker services
 
 // LLM (Chat Completions)
-export const GROQ_LLM_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+export const GROQ_LLM_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/chat/completions';
 export const OPENAI_LLM_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-export const BASETEN_LLM_ENDPOINT = 'https://inference.baseten.co/v1/chat/completions';
+export const BASETEN_LLM_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/baseten/v1/chat/completions';
 export const OPENROUTER_LLM_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
 export const GROQ_LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
@@ -31,7 +31,7 @@ export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 
 // STT (Audio Transcriptions)
-export const GROQ_STT_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
+export const GROQ_STT_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/sonic-flow/groq/audio/transcriptions';
 export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions';
 export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.api.fireworks.ai/v1/audio/transcriptions';
 export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
