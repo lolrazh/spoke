@@ -49,5 +49,5 @@ export const FIREWORKS_STT_DEFAULT_TEMPERATURES = '0.0,0.2,0.4';
 
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-export const STT_DEFAULT_PROVIDER = 'deepgram' as const;
+export const STT_DEFAULT_PROVIDER = 'groq' as const;
 export type STTProvider = 'groq' | 'fireworks' | 'deepgram';
