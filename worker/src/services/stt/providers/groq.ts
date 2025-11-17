@@ -17,7 +17,6 @@ import {
   STT_DEFAULT_TIMEOUT_MS,
 } from '../../../config';
 import { DEFAULT_STT_PROMPT } from '../prompt';
-import { stripHallucinations } from '../postprocess';
 
 export async function transcribeWav(
   wav: Uint8Array,
@@ -108,10 +107,8 @@ export async function transcribeWav(
       const bodyDoneAt = Date.now();
 
       // Set transcription result attributes
-      const rawText = json?.text ?? '';
-      const transcriptionText = stripHallucinations(rawText);
+      const transcriptionText = json?.text ?? '';
       span.setAttribute('groq.transcription_text', transcriptionText);
-      span.setAttribute('groq.raw_text', rawText);
       span.setAttribute('groq.total_duration_ms', bodyDoneAt - startAt);
       span.setAttribute('groq.body_processing_ms', bodyDoneAt - headersAt);
 
