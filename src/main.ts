@@ -2170,6 +2170,15 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
       submenu: micSubmenu,
     },
     { type: "separator" },
+    buildPasteTranscriptItem(
+      () => lastTranscript,
+      () => {
+        pasteLastTranscript().catch(err => {
+          console.error('[TrayMenu] Error pasting transcript:', err);
+        });
+      },
+    ),
+    { type: "separator" },
     ...buildFeedbackAndAboutItems(),
     { type: "separator" },
     {
