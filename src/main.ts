@@ -2183,6 +2183,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     { type: "separator" },
     {
       label: "Quit Sonic Flow",
+      accelerator: 'CommandOrControl+Q',
       click: () => {
         console.log("[Tray Menu] Quit Sonic Flow clicked");
         isQuitting = true;
