@@ -115,13 +115,21 @@ function subscribeToAuthChanges() {
   if (!supabase) return;
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    const user = session?.user;
-    const metadata = (user?.user_metadata as UserMetadata | undefined) ?? undefined;
-    emit({
-      name: metadata?.name ?? null,
-      email: user?.email ?? null,
-    });
+  } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Clear identity on sign out
+    if (event === "SIGNED_OUT") {
+      emit({ name: null, email: null });
+      return;
+    }
+
+    // Fetch fresh data from Supabase profile on sign in
+    if (event === "SIGNED_IN") {
+      await refreshIdentity();
+      return;
+    }
+
+    // Ignore TOKEN_REFRESHED and other events - don't overwrite cached identity
+    // The cached identity comes from Supabase profile (source of truth) via refreshIdentity()
   });
   authUnsubscribe = () => subscription.unsubscribe();
 }
