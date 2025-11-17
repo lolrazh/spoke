@@ -27,7 +27,7 @@ export function buildCommonAppItems(
 ): MenuItemConstructorOptions[] {
   return [
     {
-      label: "Open Settings",
+      label: "Settings",
       click: openSettings,
     },
   ];

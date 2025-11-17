@@ -2155,7 +2155,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 
   return [
     ...buildCommonAppItems(() => {
-      console.log("[Tray Menu] Open Settings clicked");
+      console.log("[Tray Menu] Settings clicked");
       if (mainWindow) {
         mainWindow.show();
         mainWindow.webContents.send("expand-pill");
@@ -2163,12 +2163,6 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     }),
     // Update controls
     ...updateItems,
-    { type: "separator" },
-    ...buildFloatingBarMenuItems(),
-    {
-      label: "Select Microphone",
-      submenu: micSubmenu,
-    },
     { type: "separator" },
     buildPasteTranscriptItem(
       () => lastTranscript,
@@ -2178,6 +2172,12 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         });
       },
     ),
+    { type: "separator" },
+    ...buildFloatingBarMenuItems(),
+    {
+      label: "Select Microphone",
+      submenu: micSubmenu,
+    },
     { type: "separator" },
     ...buildFeedbackAndAboutItems(),
     { type: "separator" },
@@ -2206,7 +2206,7 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
 
   return [
     ...buildCommonAppItems(() => {
-      console.log("[Pill Menu] Open Settings clicked");
+      console.log("[Pill Menu] Settings clicked");
       if (mainWindow) {
         mainWindow.show();
         mainWindow.webContents.send("expand-pill");
