@@ -27,7 +27,7 @@ export function buildCommonAppItems(
 ): MenuItemConstructorOptions[] {
   return [
     {
-      label: "Open Settings",
+      label: "Settings",
       click: openSettings,
     },
   ];
@@ -59,20 +59,17 @@ export function buildFeedbackAndAboutItems(): MenuItemConstructorOptions[] {
   ];
 }
 
-export function buildCopyTranscriptItem(
+export function buildPasteTranscriptItem(
   getText: () => string,
-  onCopied?: (text: string) => void,
+  onPaste?: () => void,
 ): MenuItemConstructorOptions {
   const text = getText();
   return {
-    label: "Copy Last Transcript",
+    label: "Paste Last Transcript",
     enabled: text.length > 0,
+    accelerator: 'CommandOrControl+Control+V',
     click: () => {
-      const t = getText();
-      if (t) {
-        clipboard.writeText(t);
-        if (onCopied) onCopied(t);
-      }
+      if (onPaste) onPaste();
     },
   };
 }

@@ -48,7 +48,7 @@ import {
   buildMicrophoneSubmenu,
   buildCommonAppItems,
   buildFeedbackAndAboutItems,
-  buildCopyTranscriptItem,
+  buildPasteTranscriptItem,
 } from "./utils/menuBuilders";
 
 // Types moved to ./types/shared
@@ -2155,7 +2155,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 
   return [
     ...buildCommonAppItems(() => {
-      console.log("[Tray Menu] Open Settings clicked");
+      console.log("[Tray Menu] Settings clicked");
       if (mainWindow) {
         mainWindow.show();
         mainWindow.webContents.send("expand-pill");
@@ -2163,6 +2163,15 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     }),
     // Update controls
     ...updateItems,
+    { type: "separator" },
+    buildPasteTranscriptItem(
+      () => lastTranscript,
+      () => {
+        pasteLastTranscript().catch(err => {
+          console.error('[TrayMenu] Error pasting transcript:', err);
+        });
+      },
+    ),
     { type: "separator" },
     ...buildFloatingBarMenuItems(),
     {
@@ -2197,7 +2206,7 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
 
   return [
     ...buildCommonAppItems(() => {
-      console.log("[Pill Menu] Open Settings clicked");
+      console.log("[Pill Menu] Settings clicked");
       if (mainWindow) {
         mainWindow.show();
         mainWindow.webContents.send("expand-pill");
@@ -2208,13 +2217,12 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
       submenu: micSubmenu,
     },
     { type: "separator" },
-    buildCopyTranscriptItem(
+    buildPasteTranscriptItem(
       () => lastTranscript,
       () => {
-        mainWindow?.webContents.send(
-          "notify",
-          "Transcript copied to clipboard",
-        );
+        pasteLastTranscript().catch(err => {
+          console.error('[ContextMenu] Error pasting transcript:', err);
+        });
       },
     ),
     ...buildFloatingBarMenuItems(),
@@ -2463,7 +2471,7 @@ async function pasteLastTranscript() {
   }
 
   try {
-    console.log("[PasteShortcut] Pasting last transcript via Command+Shift+V");
+    console.log("[PasteShortcut] Pasting last transcript via Command+Control+V");
 
     const originalClipboardText = clipboard.readText();
     const payloadText = lastTranscript.trimStart();
@@ -3689,17 +3697,17 @@ app.whenReady().then(async () => {
   });
 
   // Register global shortcut for pasting last transcript
-  const shortcutRegistered = globalShortcut.register('CommandOrControl+Shift+V', () => {
-    console.log('[GlobalShortcut] Command+Shift+V pressed');
+  const shortcutRegistered = globalShortcut.register('CommandOrControl+Control+V', () => {
+    console.log('[GlobalShortcut] Command+Control+V pressed');
     pasteLastTranscript().catch(err => {
       console.error('[GlobalShortcut] Error in pasteLastTranscript:', err);
     });
   });
 
   if (shortcutRegistered) {
-    console.log('[GlobalShortcut] Command+Shift+V successfully registered');
+    console.log('[GlobalShortcut] Command+Control+V successfully registered');
   } else {
-    console.error('[GlobalShortcut] Failed to register Command+Shift+V (may be in use by another app)');
+    console.error('[GlobalShortcut] Failed to register Command+Control+V (may be in use by another app)');
   }
 });
 
