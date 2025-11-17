@@ -46,8 +46,16 @@ function baseVocabularyTokens(base: string): string[] {
 
 export function buildSTTPrompt(options?: BuildOptions): string {
   const base = (options?.basePrompt ?? DEFAULT_STT_PROMPT).trim();
+
+  // Split name by whitespace into separate vocabulary tokens
+  // e.g., "Sandeep Rajkumar" → ["Sandeep", "Rajkumar"]
+  // e.g., "John Doe Smith" → ["John", "Doe", "Smith"]
+  const nameTokens = options?.identity?.name
+    ? options.identity.name.split(/\s+/).filter(Boolean)
+    : [];
+
   const identityTokens = formatTokens([
-    options?.identity?.name ?? null,
+    ...nameTokens,
     options?.identity?.email ?? null,
   ]);
   const extraTokens = formatTokens(options?.extraVocab ?? []);

@@ -11,9 +11,14 @@ describe('services/stt/prompt', () => {
     expect(p).toBe('Your vocabulary includes: Sonic Flow, Groq');
   });
 
-  it('appends identity tokens when available', () => {
+  it('appends identity tokens when available (splits name into separate tokens)', () => {
     const p = buildSTTPrompt({ identity: { name: 'Taylor Swift', email: 'taylor@example.com' } });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow, Taylor Swift, taylor@example.com');
+    expect(p).toBe('Your vocabulary includes: Sonic Flow, Taylor, Swift, taylor@example.com');
+  });
+
+  it('splits names with three or more parts into separate tokens', () => {
+    const p = buildSTTPrompt({ identity: { name: 'John Doe Smith', email: 'john@example.com' } });
+    expect(p).toBe('Your vocabulary includes: Sonic Flow, John, Doe, Smith, john@example.com');
   });
 
   it('dedupes tokens already present in base prompt', () => {
