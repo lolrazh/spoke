@@ -10,6 +10,7 @@ import {
 import { transcribeWav as transcribeGroq } from './providers/groq';
 import { transcribeWav as transcribeFireworks } from './providers/fireworks';
 import { transcribeWav as transcribeDeepgram } from './providers/deepgram';
+import { stripHallucinations } from './postprocess';
 
 type BaseOptions = {
   apiKey: string;
@@ -46,37 +47,41 @@ export async function transcribeWav(
     throw new Error(`Missing API key for STT provider: ${provider}`);
   }
 
+  let result: TranscriptionResult;
+
   if (provider === 'groq') {
-    return transcribeGroq(wav, opts.apiKey, {
+    result = await transcribeGroq(wav, opts.apiKey, {
       model,
       language,
       prompt: opts.prompt,
       timeoutMs,
       signal: opts.signal,
     });
-  }
-
-  if (provider === 'fireworks') {
-    return transcribeFireworks(wav, opts.apiKey, {
+  } else if (provider === 'fireworks') {
+    result = await transcribeFireworks(wav, opts.apiKey, {
       model,
       language,
       prompt: opts.prompt,
       timeoutMs,
       signal: opts.signal,
     });
-  }
-
-  if (provider === 'deepgram') {
-    return transcribeDeepgram(wav, opts.apiKey, {
+  } else if (provider === 'deepgram') {
+    result = await transcribeDeepgram(wav, opts.apiKey, {
       model,
       language,
       prompt: opts.prompt,
       timeoutMs,
       signal: opts.signal,
     });
+  } else {
+    throw new Error(`Unsupported STT provider: ${String(provider)}`);
   }
 
-  throw new Error(`Unsupported STT provider: ${String(provider)}`);
+  // Apply post-processing to filter out hallucinations
+  return {
+    ...result,
+    text: stripHallucinations(result.text),
+  };
 }
 
 function defaultModelFor(provider: STTProvider): string {

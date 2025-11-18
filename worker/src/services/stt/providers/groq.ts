@@ -105,13 +105,13 @@ export async function transcribeWav(
       
       const json = (await res.json()) as { text?: string };
       const bodyDoneAt = Date.now();
-      
+
       // Set transcription result attributes
       const transcriptionText = json?.text ?? '';
       span.setAttribute('groq.transcription_text', transcriptionText);
       span.setAttribute('groq.total_duration_ms', bodyDoneAt - startAt);
       span.setAttribute('groq.body_processing_ms', bodyDoneAt - headersAt);
-      
+
       return {
         text: transcriptionText,
         timings: { startAt, headersAt, bodyDoneAt },
