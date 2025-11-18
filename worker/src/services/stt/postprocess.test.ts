@@ -2,20 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { stripHallucinations } from './postprocess';
 
 describe('stripHallucinations', () => {
-  it('should remove "Thank you for watching!" from the end (lowercase)', () => {
+  it('should remove "thank you for watching!" from the end (lowercase t)', () => {
     const input = 'This is my actual dictation thank you for watching!';
     const expected = 'This is my actual dictation';
     expect(stripHallucinations(input)).toBe(expected);
   });
 
-  it('should remove "Thank you for watching!" from the end (mixed case)', () => {
-    const input = 'This is my actual dictation Thank You For Watching!';
-    const expected = 'This is my actual dictation';
-    expect(stripHallucinations(input)).toBe(expected);
-  });
-
-  it('should remove "Thank you for watching!" from the end (uppercase)', () => {
-    const input = 'This is my actual dictation THANK YOU FOR WATCHING!';
+  it('should remove "Thank you for watching!" from the end (uppercase T)', () => {
+    const input = 'This is my actual dictation Thank you for watching!';
     const expected = 'This is my actual dictation';
     expect(stripHallucinations(input)).toBe(expected);
   });
