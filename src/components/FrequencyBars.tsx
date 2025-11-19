@@ -56,8 +56,8 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
     if (isProcessing) {
       const time = ticker / 2; // Wave speed
       return baseHeights.map((baseHeight, index) => {
-        // Create flowing sine wave with shorter wavelength and variation
-        const wave = Math.sin(time + index * 0.8) * 0.5 + 0.5; // Shorter wavelength (0.5 -> 0.8)
+        // Create flowing sine wave with longer wavelength and variation
+        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // Longer wavelength (0.8 -> 0.5)
         const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1; // Fast variation
         // Reduced amplitude for lower wave height
         const scaledHeight = baseHeight * (0.35 + wave * 1.8) * variation;
