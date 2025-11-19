@@ -38,8 +38,19 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
   // Calculate reactive heights based on audio level
   const reactiveHeights = useMemo(() => {
+    // Processing state: flowing sine wave animation
+    if (isProcessing) {
+      const time = Date.now() / 400; // Wave speed
+      return baseHeights.map((baseHeight, index) => {
+        // Create flowing sine wave across bars
+        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // 0-1 range
+        const height = 3 + wave * 6; // Oscillate between 3px and 9px
+        return height;
+      });
+    }
+
     if (!isListening) {
-      return baseHeights.map(() => 3); // Small dots when not listening or processing
+      return baseHeights.map(() => 3); // Small dots when not listening
     }
 
     // Apply audio level with subtle variation for visual interest
@@ -51,26 +62,26 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       // Reduced max height to 12px (10% less than 14px)
       return Math.max(2, Math.min(12, scaledHeight));
     });
-  }, [audioLevel, isListening, baseHeights]);
+  }, [audioLevel, isListening, isProcessing, baseHeights]);
 
   return (
     <div className="frequency-bars-container">
       {reactiveHeights.map((height, index) => {
-        const isBar = isListening;
-        const isDot = !isListening;
+        const isBar = isListening || isProcessing;
+        const isDot = !isListening && !isProcessing;
 
         return (
           <motion.div
             key={`freq-${index}`}
-            className={`frequency-element ${isDot ? 'as-dot' : 'as-bar'} ${isProcessing ? 'processing' : ''}`}
+            className={`frequency-element ${isDot ? 'as-dot' : 'as-bar'}`}
             animate={{
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
               borderRadius: isDot ? '50%' : '1px',
-              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 0.75 + audioLevel * 0.25,
+              opacity: isDot ? (isHovered ? 0.8 : 0.6) : isProcessing ? 0.7 : 0.75 + audioLevel * 0.25,
             }}
             transition={{
-              height: {
+              height: isProcessing ? { duration: 0.05 } : {
                 type: "spring",
                 stiffness: isListening ? 750 : 350,
                 damping: isListening ? 19 : 28,
@@ -79,9 +90,6 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               width: { duration: 0.15 },
               borderRadius: { duration: 0.15 },
               opacity: { duration: 0.1 },
-            }}
-            style={{
-              animationDelay: `${index * 0.05}s`,
             }}
           />
         );
