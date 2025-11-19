@@ -59,9 +59,9 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
         // Create flowing sine wave with shorter wavelength and variation
         const wave = Math.sin(time + index * 0.8) * 0.5 + 0.5; // Shorter wavelength (0.5 -> 0.8)
         const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1; // Fast variation
-        // Same scaling as listening bars for consistent look
-        const scaledHeight = baseHeight * (0.35 + wave * 2.6) * variation;
-        return Math.max(2, Math.min(12, scaledHeight));
+        // Reduced amplitude for lower wave height
+        const scaledHeight = baseHeight * (0.35 + wave * 1.8) * variation;
+        return Math.max(2, Math.min(9, scaledHeight)); // Lower max: 12 -> 9
       });
     }
 
