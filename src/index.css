@@ -349,6 +349,34 @@
     align-items: center;
   }
 
+  /* Frequency bars container - denser layout */
+  .frequency-bars-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    align-items: center;
+  }
+
+  /* Frequency element - can be dot or bar */
+  .frequency-element {
+    background: #c0c0c0;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
+    will-change: height, opacity, border-radius;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+  }
+
+  .frequency-element.as-dot {
+    min-width: 2px;
+    min-height: 2px;
+  }
+
+  .frequency-element.as-bar {
+    min-width: 2px;
+  }
+
   /* Dot styling - used in all states */
   .dot {
     width: 3px;

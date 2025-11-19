@@ -48,6 +48,7 @@ export interface UseTranscriptionReturn {
   error: string | null;
   mode: ClientSessionMode;
   selection: SelectionInspectSnapshot | null;
+  audioLevel: number; // 0-1 range representing current audio input level
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -141,6 +142,7 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ClientSessionMode>("dictation");
+  const [audioLevel, setAudioLevel] = useState<number>(0);
   const selectionRef = useRef<SelectionInspectSnapshot | null>(null);
   const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(null);
   const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
@@ -324,6 +326,27 @@ export function useTranscription(
       return BigInt(Math.round(relMs * 1e6));
     } catch {
       return BigInt(0);
+    }
+  };
+
+  // Calculate RMS (Root Mean Square) audio level from PCM16 samples
+  const calculateAudioLevel = (buffer: ArrayBuffer): number => {
+    try {
+      const samples = new Int16Array(buffer);
+      if (samples.length === 0) return 0;
+
+      let sum = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const normalized = samples[i] / 32768; // Normalize to -1 to 1
+        sum += normalized * normalized;
+      }
+
+      const rms = Math.sqrt(sum / samples.length);
+      // Apply smoothing and boost for better visualization
+      const boosted = Math.min(1, rms * 8); // Boost sensitivity
+      return boosted;
+    } catch {
+      return 0;
     }
   };
 
@@ -1087,6 +1110,10 @@ export function useTranscription(
         if (msg?.type !== "audio" || !msg?.samples) return;
         const buf: ArrayBuffer = msg.samples as ArrayBuffer;
 
+        // Calculate and update audio level for visualization
+        const level = calculateAudioLevel(buf);
+        setAudioLevel(level);
+
         if (initialBypassSamplesRemaining > 0) {
           const int16 = new Int16Array(buf);
           const take = Math.min(initialBypassSamplesRemaining, int16.length);
@@ -1169,6 +1196,7 @@ export function useTranscription(
 
     playToggleOff();
     setRecording(false);
+    setAudioLevel(0); // Reset audio level visualization
 
     // Pause audio worklet when stopping to prevent buffer buildup
     pauseAudioWorklet();
@@ -1744,6 +1772,8 @@ export function useTranscription(
       abortControllerRef.current = null;
     }
 
+    setAudioLevel(0); // Reset audio level visualization
+
     // Pause audio worklet when canceling to prevent buffer buildup
     pauseAudioWorklet();
     // Stop health monitoring when canceling
@@ -1876,6 +1906,7 @@ export function useTranscription(
     error,
     mode,
     selection,
+    audioLevel,
     start,
     stop,
     cancel,
