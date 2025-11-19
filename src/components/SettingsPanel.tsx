@@ -326,16 +326,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     <div
       className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
-      {/* Logo on bottom-left (embedded mode) */}
-      {embeddedMode && (
-        <img
-          src="/assets/transparent-logo-w-text.png"
-          alt="Sonic Flow"
-          className="absolute left-4 bottom-3 h-[11px] w-auto opacity-50"
-          style={{ imageRendering: '-webkit-optimize-contrast' }}
-        />
-      )}
-
       {/* Version text on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <a
