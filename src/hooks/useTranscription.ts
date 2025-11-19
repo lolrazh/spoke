@@ -348,7 +348,7 @@ export function useTranscription(
 
       // Smooth the transition using exponential moving average
       // Higher smoothing factor = smoother but slower response
-      const smoothingFactor = 0.65; // 0-1, higher = more smoothing
+      const smoothingFactor = 0.45; // 0-1, higher = more smoothing (reduced for better reactivity)
       const smoothedLevel = audioLevelRef.current * smoothingFactor + rawLevel * (1 - smoothingFactor);
       audioLevelRef.current = smoothedLevel;
 
