@@ -143,6 +143,7 @@ export function useTranscription(
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ClientSessionMode>("dictation");
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const audioLevelRef = useRef<number>(0); // For smoothing
   const selectionRef = useRef<SelectionInspectSnapshot | null>(null);
   const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(null);
   const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
@@ -329,11 +330,11 @@ export function useTranscription(
     }
   };
 
-  // Calculate RMS (Root Mean Square) audio level from PCM16 samples
+  // Calculate RMS (Root Mean Square) audio level from PCM16 samples with smoothing
   const calculateAudioLevel = (buffer: ArrayBuffer): number => {
     try {
       const samples = new Int16Array(buffer);
-      if (samples.length === 0) return 0;
+      if (samples.length === 0) return audioLevelRef.current;
 
       let sum = 0;
       for (let i = 0; i < samples.length; i++) {
@@ -343,10 +344,17 @@ export function useTranscription(
 
       const rms = Math.sqrt(sum / samples.length);
       // Apply exponential scaling for more dramatic response to voice input
-      const boosted = Math.min(1, Math.pow(rms * 5, 0.7) * 2);
-      return boosted;
+      const rawLevel = Math.min(1, Math.pow(rms * 5, 0.7) * 2);
+
+      // Smooth the transition using exponential moving average
+      // Higher smoothing factor = smoother but slower response
+      const smoothingFactor = 0.65; // 0-1, higher = more smoothing
+      const smoothedLevel = audioLevelRef.current * smoothingFactor + rawLevel * (1 - smoothingFactor);
+      audioLevelRef.current = smoothedLevel;
+
+      return smoothedLevel;
     } catch {
-      return 0;
+      return audioLevelRef.current;
     }
   };
 
@@ -1197,6 +1205,7 @@ export function useTranscription(
     playToggleOff();
     setRecording(false);
     setAudioLevel(0); // Reset audio level visualization
+    audioLevelRef.current = 0; // Reset smoothing ref
 
     // Pause audio worklet when stopping to prevent buffer buildup
     pauseAudioWorklet();
@@ -1773,6 +1782,7 @@ export function useTranscription(
     }
 
     setAudioLevel(0); // Reset audio level visualization
+    audioLevelRef.current = 0; // Reset smoothing ref
 
     // Pause audio worklet when canceling to prevent buffer buildup
     pauseAudioWorklet();

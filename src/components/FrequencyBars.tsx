@@ -26,7 +26,8 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       const distFromCenter = Math.abs(i - mid);
       // Create a smooth curve - taller in middle, shorter at edges
       const normalizedDist = distFromCenter / mid;
-      const baseHeight = 2 + (6 - 2) * (1 - Math.pow(normalizedDist, 1.5));
+      // Reduced height range for 10% less vertical space
+      const baseHeight = 2 + (5.4 - 2) * (1 - Math.pow(normalizedDist, 1.5));
       heights.push(baseHeight);
     }
 
@@ -45,7 +46,8 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       const variation = Math.sin(Date.now() / 100 + index) * 0.4 + 1;
       // Scale by audio level with higher multiplier for more dramatic response
       const scaledHeight = baseHeight * (0.3 + audioLevel * 2.5) * variation;
-      return Math.max(2, Math.min(14, scaledHeight));
+      // Reduced max height to 12px (10% less than 14px)
+      return Math.max(2, Math.min(12, scaledHeight));
     });
   }, [audioLevel, isListening, baseHeights]);
 
