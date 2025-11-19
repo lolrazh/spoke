@@ -387,15 +387,25 @@ const Pill: React.FC<PillProps> = ({
                     isListening={true}
                     isIdle={false}
                     isHovered={false}
+                    isProcessing={false}
                   />
                 )}
-                {pillState === "PROCESSING" && <>{renderDots("animated")}</>}
+                {pillState === "PROCESSING" && (
+                  <FrequencyBars
+                    audioLevel={0}
+                    isListening={false}
+                    isIdle={false}
+                    isHovered={false}
+                    isProcessing={true}
+                  />
+                )}
                 {pillState === "HOVER_PREVIEW" && (
                   <FrequencyBars
                     audioLevel={0}
                     isListening={false}
                     isIdle={false}
                     isHovered={true}
+                    isProcessing={false}
                   />
                 )}
                 {pillState === "IDLE" && <div className="resting-indicator" />}

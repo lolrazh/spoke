@@ -6,6 +6,7 @@ interface FrequencyBarsProps {
   isListening: boolean;
   isIdle?: boolean;
   isHovered?: boolean;
+  isProcessing?: boolean;
 }
 
 const FrequencyBars: React.FC<FrequencyBarsProps> = ({
@@ -13,6 +14,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   isListening,
   isIdle = false,
   isHovered = false,
+  isProcessing = false,
 }) => {
   // More bars for denser visualization (increased from 7 to 18)
   const barCount = 18;
@@ -37,7 +39,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   // Calculate reactive heights based on audio level
   const reactiveHeights = useMemo(() => {
     if (!isListening) {
-      return baseHeights.map(() => 3); // Small dots when not listening
+      return baseHeights.map(() => 3); // Small dots when not listening or processing
     }
 
     // Apply audio level with subtle variation for visual interest
@@ -60,7 +62,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
         return (
           <motion.div
             key={`freq-${index}`}
-            className={`frequency-element ${isDot ? 'as-dot' : 'as-bar'}`}
+            className={`frequency-element ${isDot ? 'as-dot' : 'as-bar'} ${isProcessing ? 'processing' : ''}`}
             animate={{
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
@@ -79,7 +81,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               opacity: { duration: 0.1 },
             }}
             style={{
-              animationDelay: `${index * 0.04}s`,
+              animationDelay: `${index * 0.05}s`,
             }}
           />
         );
