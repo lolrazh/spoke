@@ -28,7 +28,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
     const interval = setInterval(() => {
       setTicker((t) => t + 1);
-    }, 30); // Update every 30ms for fast, smooth animation
+    }, 33); // Update every 33ms for 10% slower animation
 
     return () => clearInterval(interval);
   }, [isProcessing]);
@@ -54,10 +54,10 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   const reactiveHeights = useMemo(() => {
     // Processing state: fast flowing sine wave like listening bars
     if (isProcessing) {
-      const time = ticker / 2; // Much faster wave speed
+      const time = ticker / 2; // Wave speed
       return baseHeights.map((baseHeight, index) => {
-        // Create flowing sine wave with variation like listening bars
-        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // Main wave 0-1 range
+        // Create flowing sine wave with shorter wavelength and variation
+        const wave = Math.sin(time + index * 0.8) * 0.5 + 0.5; // Shorter wavelength (0.5 -> 0.8)
         const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1; // Fast variation
         // Same scaling as listening bars for consistent look
         const scaledHeight = baseHeight * (0.35 + wave * 2.6) * variation;
@@ -94,7 +94,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
               borderRadius: isDot ? '50%' : '1px',
-              opacity: isDot ? (isHovered ? 0.8 : 0.6) : isProcessing ? 0.7 : 0.75 + audioLevel * 0.25,
+              opacity: isDot ? (isHovered ? 0.8 : 0.6) : isProcessing ? 0.8 : 0.75 + audioLevel * 0.25,
             }}
             transition={{
               height: {
