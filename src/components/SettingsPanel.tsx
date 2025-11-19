@@ -334,9 +334,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             e.preventDefault();
             window.electron?.openExternal?.("https://sonicflow.app/changelog");
           }}
-          className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+          className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200 flex items-center gap-1.5"
         >
-          Sonic Flow Beta {appVersion}
+          <img
+            src="/assets/transparent-logo-w-text.png"
+            alt="Sonic Flow"
+            className="h-[10px] w-auto opacity-70"
+          />
+          Beta {appVersion}
         </a>
       )}
 
