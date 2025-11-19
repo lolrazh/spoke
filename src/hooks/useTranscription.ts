@@ -344,14 +344,14 @@ export function useTranscription(
 
       const rms = Math.sqrt(sum / samples.length);
 
-      // Sigmoid-like aggressive response curve for bold, confident visualization
-      // This makes small sounds respond dramatically while preventing clipping
-      const x = rms * 6; // Increased sensitivity
-      const sigmoid = 1 / (1 + Math.exp(-8 * (x - 0.5))); // Steep sigmoid curve
-      const rawLevel = Math.min(1, sigmoid * 1.3); // Boost output
+      // Logarithmic response curve - natural audio perception
+      // Expands quiet sounds, compresses loud sounds, prevents flat-topping
+      const x = rms * 5; // Sensitivity multiplier
+      const log = Math.log10(1 + x * 9) / Math.log10(10); // log10(1 to 10) normalized to 0-1
+      const rawLevel = Math.min(1, log * 1.15); // Slight boost
 
-      // Minimal smoothing for maximum reactivity
-      const smoothingFactor = 0.25; // Much less smoothing for bold response
+      // Light smoothing for responsive but stable visualization
+      const smoothingFactor = 0.3; // Balanced smoothing
       const smoothedLevel = audioLevelRef.current * smoothingFactor + rawLevel * (1 - smoothingFactor);
       audioLevelRef.current = smoothedLevel;
 

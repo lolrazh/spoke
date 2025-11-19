@@ -44,8 +44,8 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
     return baseHeights.map((baseHeight, index) => {
       // Reduced variation to prevent jittery appearance at peaks
       const variation = Math.sin(Date.now() / 100 + index) * 0.15 + 1;
-      // Bold, confident scaling - more dramatic response to voice
-      const scaledHeight = baseHeight * (0.25 + audioLevel * 3.2) * variation;
+      // Natural scaling that works well with logarithmic curve
+      const scaledHeight = baseHeight * (0.35 + audioLevel * 2.6) * variation;
       // Reduced max height to 12px (10% less than 14px)
       return Math.max(2, Math.min(12, scaledHeight));
     });
