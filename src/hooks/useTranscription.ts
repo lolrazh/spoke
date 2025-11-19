@@ -48,6 +48,7 @@ export interface UseTranscriptionReturn {
   error: string | null;
   mode: ClientSessionMode;
   selection: SelectionInspectSnapshot | null;
+  audioLevel: number; // 0-1 range representing current audio input level
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -141,6 +142,8 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ClientSessionMode>("dictation");
+  const [audioLevel, setAudioLevel] = useState<number>(0);
+  const audioLevelRef = useRef<number>(0); // For smoothing
   const selectionRef = useRef<SelectionInspectSnapshot | null>(null);
   const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(null);
   const sessionSelectionPayloadRef = useRef<SelectionSnapshotPayload | null>(null);
@@ -324,6 +327,37 @@ export function useTranscription(
       return BigInt(Math.round(relMs * 1e6));
     } catch {
       return BigInt(0);
+    }
+  };
+
+  // Calculate RMS (Root Mean Square) audio level from PCM16 samples with smoothing
+  const calculateAudioLevel = (buffer: ArrayBuffer): number => {
+    try {
+      const samples = new Int16Array(buffer);
+      if (samples.length === 0) return audioLevelRef.current;
+
+      let sum = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const normalized = samples[i] / 32768; // Normalize to -1 to 1
+        sum += normalized * normalized;
+      }
+
+      const rms = Math.sqrt(sum / samples.length);
+
+      // Logarithmic response curve - natural audio perception
+      // Expands quiet sounds, compresses loud sounds, prevents flat-topping
+      const x = rms * 5; // Sensitivity multiplier
+      const log = Math.log10(1 + x * 9) / Math.log10(10); // log10(1 to 10) normalized to 0-1
+      const rawLevel = Math.min(1, log * 1.15); // Slight boost
+
+      // Light smoothing for responsive but stable visualization
+      const smoothingFactor = 0.3; // Balanced smoothing
+      const smoothedLevel = audioLevelRef.current * smoothingFactor + rawLevel * (1 - smoothingFactor);
+      audioLevelRef.current = smoothedLevel;
+
+      return smoothedLevel;
+    } catch {
+      return audioLevelRef.current;
     }
   };
 
@@ -1087,6 +1121,10 @@ export function useTranscription(
         if (msg?.type !== "audio" || !msg?.samples) return;
         const buf: ArrayBuffer = msg.samples as ArrayBuffer;
 
+        // Calculate and update audio level for visualization
+        const level = calculateAudioLevel(buf);
+        setAudioLevel(level);
+
         if (initialBypassSamplesRemaining > 0) {
           const int16 = new Int16Array(buf);
           const take = Math.min(initialBypassSamplesRemaining, int16.length);
@@ -1169,6 +1207,8 @@ export function useTranscription(
 
     playToggleOff();
     setRecording(false);
+    setAudioLevel(0); // Reset audio level visualization
+    audioLevelRef.current = 0; // Reset smoothing ref
 
     // Pause audio worklet when stopping to prevent buffer buildup
     pauseAudioWorklet();
@@ -1744,6 +1784,9 @@ export function useTranscription(
       abortControllerRef.current = null;
     }
 
+    setAudioLevel(0); // Reset audio level visualization
+    audioLevelRef.current = 0; // Reset smoothing ref
+
     // Pause audio worklet when canceling to prevent buffer buildup
     pauseAudioWorklet();
     // Stop health monitoring when canceling
@@ -1876,6 +1919,7 @@ export function useTranscription(
     error,
     mode,
     selection,
+    audioLevel,
     start,
     stop,
     cancel,

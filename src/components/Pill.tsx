@@ -4,6 +4,7 @@ import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
 import PermissionsPanel from "./PermissionsPanel";
 import SfIcon from "./icons/SfIcon";
+import FrequencyBars from "./FrequencyBars";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -23,6 +24,7 @@ interface PillProps {
   };
   notifWidth: number | null;
   isTextTruncated: boolean;
+  audioLevel: number;
   dims: {
     baseW: number;
     baseH: number;
@@ -54,6 +56,7 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
+  audioLevel,
   onStartDictation,
   onStopDictation,
   onHoverChange,
@@ -134,30 +137,13 @@ const Pill: React.FC<PillProps> = ({
     };
   }, []);
 
-  // Generate frequency bars for the waveform (active state)
-  const renderFrequencyBars = useMemo(() => {
-    // Deterministic, symmetric base heights (px) for consistent visuals
-    const heightsPx = [3, 4.2, 6.4, 8, 6.4, 4.2, 3];
-    return heightsPx.map((h, index) => (
-      <div
-        key={`bar-${index}`}
-        className="waveform-bar"
-        style={{ animationDelay: `${index * 0.1}s`, height: `${h}px` }}
-      />
-    ));
-  }, []);
-
-  // Unified function to render dots with different styles
-  const renderDots = (type: "static" | "animated" | "collapsed") => {
+  // Unified function to render animated dots (for processing state only)
+  const renderDots = (type: "animated") => {
     return Array.from({ length: 7 }).map((_, index) => (
       <div
         key={`dot-${type}-${index}`}
         className={`dot ${type}`}
-        style={
-          type === "animated"
-            ? { animationDelay: `${index * 0.06}s` }
-            : undefined
-        }
+        style={{ animationDelay: `${index * 0.06}s` }}
       />
     ));
   };
@@ -395,9 +381,33 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {/* Visuals for non-notification states */}
-                {pillState === "LISTENING" && <>{renderFrequencyBars}</>}
-                {pillState === "PROCESSING" && <>{renderDots("animated")}</>}
-                {pillState === "HOVER_PREVIEW" && <>{renderDots("static")}</>}
+                {pillState === "LISTENING" && (
+                  <FrequencyBars
+                    audioLevel={audioLevel}
+                    isListening={true}
+                    isIdle={false}
+                    isHovered={false}
+                    isProcessing={false}
+                  />
+                )}
+                {pillState === "PROCESSING" && (
+                  <FrequencyBars
+                    audioLevel={0}
+                    isListening={false}
+                    isIdle={false}
+                    isHovered={false}
+                    isProcessing={true}
+                  />
+                )}
+                {pillState === "HOVER_PREVIEW" && (
+                  <FrequencyBars
+                    audioLevel={0}
+                    isListening={false}
+                    isIdle={false}
+                    isHovered={true}
+                    isProcessing={false}
+                  />
+                )}
                 {pillState === "IDLE" && <div className="resting-indicator" />}
               </motion.div>
             )}
