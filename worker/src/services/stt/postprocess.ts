@@ -4,13 +4,24 @@
  */
 
 /**
- * Removes "Thank you for watching!" hallucination from the end of transcriptions.
- * This is a common Whisper hallucination from YouTube video training data.
+ * Hallucination patterns to remove from the end of transcriptions.
+ * These are common Whisper hallucinations from YouTube video training data.
+ */
+const HALLUCINATION_PATTERNS = [
+  /[Tt]hank you for watching!$/, // YouTube outro (case-insensitive first letter)
+  /Subtitles by the Amara\.org community\.$/, // Amara subtitles (exact match)
+];
+
+/**
+ * Removes common hallucinations from the end of transcriptions.
  *
- * Matches both "thank you for watching!" and "Thank you for watching!"
- * (case-insensitive for the first letter only).
+ * Patterns removed:
+ * - "Thank you for watching!" / "thank you for watching!"
+ * - "Subtitles by the Amara.org community."
  *
- * Note: This may remove legitimate dictation that ends with this exact phrase.
+ * Note: This may remove legitimate dictation that ends with these exact phrases.
+ * If the entire transcription is ONLY a hallucination phrase, it will NOT be removed
+ * to allow users to retry dictation.
  *
  * @param text - The transcription text to process
  * @returns The text with hallucination removed if present
@@ -18,11 +29,18 @@
 export function stripHallucinations(text: string): string {
   const trimmed = text.trim();
 
-  // Check if text ends with "thank you for watching!" (case insensitive for T only)
-  const pattern = /[Tt]hank you for watching!$/;
+  // Try to match and remove each hallucination pattern
+  for (const pattern of HALLUCINATION_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      const cleaned = trimmed.replace(pattern, '').trim();
 
-  if (pattern.test(trimmed)) {
-    return trimmed.replace(pattern, '').trim();
+      // Don't strip if the result would be empty - let user retry dictation
+      if (cleaned.length === 0) {
+        return trimmed;
+      }
+
+      return cleaned;
+    }
   }
 
   return trimmed;
