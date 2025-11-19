@@ -28,7 +28,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
     const interval = setInterval(() => {
       setTicker((t) => t + 1);
-    }, 50); // Update every 50ms for smooth animation
+    }, 30); // Update every 30ms for fast, smooth animation
 
     return () => clearInterval(interval);
   }, [isProcessing]);
@@ -52,14 +52,16 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
   // Calculate reactive heights based on audio level
   const reactiveHeights = useMemo(() => {
-    // Processing state: flowing sine wave animation
+    // Processing state: fast flowing sine wave like listening bars
     if (isProcessing) {
-      const time = ticker / 8; // Wave speed based on ticker
+      const time = ticker / 2; // Much faster wave speed
       return baseHeights.map((baseHeight, index) => {
-        // Create flowing sine wave across bars
-        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // 0-1 range
-        const height = 3 + wave * 6; // Oscillate between 3px and 9px
-        return height;
+        // Create flowing sine wave with variation like listening bars
+        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // Main wave 0-1 range
+        const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1; // Fast variation
+        // Same scaling as listening bars for consistent look
+        const scaledHeight = baseHeight * (0.35 + wave * 2.6) * variation;
+        return Math.max(2, Math.min(12, scaledHeight));
       });
     }
 
@@ -95,10 +97,10 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               opacity: isDot ? (isHovered ? 0.8 : 0.6) : isProcessing ? 0.7 : 0.75 + audioLevel * 0.25,
             }}
             transition={{
-              height: isProcessing ? { duration: 0.05 } : {
+              height: {
                 type: "spring",
-                stiffness: isListening ? 750 : 350,
-                damping: isListening ? 19 : 28,
+                stiffness: (isListening || isProcessing) ? 750 : 350,
+                damping: (isListening || isProcessing) ? 19 : 28,
                 mass: 0.25,
               },
               width: { duration: 0.15 },
