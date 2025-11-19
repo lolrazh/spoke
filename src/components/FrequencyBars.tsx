@@ -44,8 +44,8 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
     return baseHeights.map((baseHeight, index) => {
       // Reduced variation to prevent jittery appearance at peaks
       const variation = Math.sin(Date.now() / 100 + index) * 0.15 + 1;
-      // Scale by audio level with higher multiplier for more dramatic response
-      const scaledHeight = baseHeight * (0.3 + audioLevel * 2.5) * variation;
+      // Bold, confident scaling - more dramatic response to voice
+      const scaledHeight = baseHeight * (0.25 + audioLevel * 3.2) * variation;
       // Reduced max height to 12px (10% less than 14px)
       return Math.max(2, Math.min(12, scaledHeight));
     });
@@ -70,9 +70,9 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
             transition={{
               height: {
                 type: "spring",
-                stiffness: isListening ? 650 : 350,
-                damping: isListening ? 20 : 28,
-                mass: 0.3,
+                stiffness: isListening ? 750 : 350,
+                damping: isListening ? 19 : 28,
+                mass: 0.25,
               },
               width: { duration: 0.15 },
               borderRadius: { duration: 0.15 },

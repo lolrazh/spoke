@@ -343,12 +343,15 @@ export function useTranscription(
       }
 
       const rms = Math.sqrt(sum / samples.length);
-      // Apply exponential scaling for more dramatic response to voice input
-      const rawLevel = Math.min(1, Math.pow(rms * 5, 0.7) * 2);
 
-      // Smooth the transition using exponential moving average
-      // Higher smoothing factor = smoother but slower response
-      const smoothingFactor = 0.45; // 0-1, higher = more smoothing (reduced for better reactivity)
+      // Sigmoid-like aggressive response curve for bold, confident visualization
+      // This makes small sounds respond dramatically while preventing clipping
+      const x = rms * 6; // Increased sensitivity
+      const sigmoid = 1 / (1 + Math.exp(-8 * (x - 0.5))); // Steep sigmoid curve
+      const rawLevel = Math.min(1, sigmoid * 1.3); // Boost output
+
+      // Minimal smoothing for maximum reactivity
+      const smoothingFactor = 0.25; // Much less smoothing for bold response
       const smoothedLevel = audioLevelRef.current * smoothingFactor + rawLevel * (1 - smoothingFactor);
       audioLevelRef.current = smoothedLevel;
 
