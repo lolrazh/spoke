@@ -86,12 +86,21 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       return Math.max(2, Math.min(12, scaledHeight));
     });
 
-    // Calculate processing heights (sine wave)
+    // Calculate processing heights (sine wave with layered variation)
     const time = ticker / 2;
     const processingHeights = baseHeights.map((baseHeight, index) => {
+      // Primary flowing wave
       const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
-      const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1;
-      const scaledHeight = baseHeight * (0.35 + wave * 1.8) * variation;
+
+      // Layered variations for organic, dynamic movement
+      const slowVariation = Math.sin(ticker / 6 + index * 0.4) * 0.12; // Slow rhythm
+      const fastVariation = Math.sin(ticker / 3 + index * 0.8) * 0.08; // Fast texture
+      const microVariation = Math.sin(ticker / 2.5 + index * 1.2) * 0.05; // Subtle shimmer
+
+      // Combine variations for complex, organic feel
+      const totalVariation = 1 + slowVariation + fastVariation + microVariation;
+
+      const scaledHeight = baseHeight * (0.35 + wave * 1.8) * totalVariation;
       return Math.max(2, Math.min(9, scaledHeight));
     });
 
