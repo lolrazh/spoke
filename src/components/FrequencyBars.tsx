@@ -41,11 +41,11 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
     // Apply audio level with some variation for visual interest
     return baseHeights.map((baseHeight, index) => {
-      // Add some randomness to make it feel more organic
-      const variation = Math.sin(Date.now() / 200 + index) * 0.3 + 1;
-      // Scale by audio level (with a minimum to keep it visible)
-      const scaledHeight = baseHeight * (0.4 + audioLevel * 1.8) * variation;
-      return Math.max(2, Math.min(12, scaledHeight));
+      // Add some randomness to make it feel more organic, but faster
+      const variation = Math.sin(Date.now() / 100 + index) * 0.4 + 1;
+      // Scale by audio level with higher multiplier for more dramatic response
+      const scaledHeight = baseHeight * (0.3 + audioLevel * 2.5) * variation;
+      return Math.max(2, Math.min(14, scaledHeight));
     });
   }, [audioLevel, isListening, baseHeights]);
 
@@ -63,18 +63,18 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
               borderRadius: isDot ? '50%' : '1px',
-              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 0.7 + audioLevel * 0.3,
+              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 0.75 + audioLevel * 0.25,
             }}
             transition={{
               height: {
                 type: "spring",
-                stiffness: isListening ? 400 : 300,
-                damping: isListening ? 25 : 30,
-                mass: 0.5,
+                stiffness: isListening ? 800 : 350,
+                damping: isListening ? 18 : 28,
+                mass: 0.3,
               },
-              width: { duration: 0.2 },
-              borderRadius: { duration: 0.2 },
-              opacity: { duration: 0.15 },
+              width: { duration: 0.15 },
+              borderRadius: { duration: 0.15 },
+              opacity: { duration: 0.1 },
             }}
             style={{
               animationDelay: `${index * 0.04}s`,

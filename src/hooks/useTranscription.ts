@@ -342,8 +342,8 @@ export function useTranscription(
       }
 
       const rms = Math.sqrt(sum / samples.length);
-      // Apply smoothing and boost for better visualization
-      const boosted = Math.min(1, rms * 8); // Boost sensitivity
+      // Apply exponential scaling for more dramatic response to voice input
+      const boosted = Math.min(1, Math.pow(rms * 5, 0.7) * 2);
       return boosted;
     } catch {
       return 0;

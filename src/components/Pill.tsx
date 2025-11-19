@@ -398,14 +398,7 @@ const Pill: React.FC<PillProps> = ({
                     isHovered={true}
                   />
                 )}
-                {pillState === "IDLE" && (
-                  <FrequencyBars
-                    audioLevel={0}
-                    isListening={false}
-                    isIdle={true}
-                    isHovered={false}
-                  />
-                )}
+                {pillState === "IDLE" && <div className="resting-indicator" />}
               </motion.div>
             )}
           </AnimatePresence>
