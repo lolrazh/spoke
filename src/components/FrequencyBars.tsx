@@ -94,7 +94,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
               borderRadius: isDot ? '50%' : '1px',
-              opacity: isDot ? (isHovered ? 0.8 : 0.6) : isProcessing ? 0.8 : 0.75 + audioLevel * 0.25,
+              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 1.0,
             }}
             transition={{
               height: {
