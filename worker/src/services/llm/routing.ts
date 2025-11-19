@@ -45,10 +45,6 @@ export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
     pattern: /\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/i,
   },
   {
-    id: 'can-you-instruction',
-    pattern: /\bcan\s+you\b/i,
-  },
-  {
     id: 'spell-instruction',
     pattern: /\bspell(?:ing|ed)?\b/i,
   },

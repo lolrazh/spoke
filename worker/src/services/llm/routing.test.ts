@@ -55,12 +55,6 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
   });
 
-  it('routes "can you" phrasing to edit model based on provider', () => {
-    const decision = selectLLMRoute('can you format this exactly?', baseRuntime);
-    expect(decision.matchedRuleIds).toContain('can-you-instruction');
-    expect(decision.model).toBe('moonshotai/kimi-k2-instruct-0905');
-  });
-
   it('returns all matched rule ids in order using defaults', () => {
     const text = 'Make this uppercase A B C';
     const decision = selectLLMRoute(text, baseRuntime);
@@ -115,17 +109,11 @@ describe('services/llm/routing.selectLLMRoute', () => {
     expect(decision1.model).toBe(disabledRuntime.model);
     expect(decision1.matchedRuleIds).toEqual([]);
     
-    // Test with "can you" instruction (would normally route to Kimi)
-    const decision2 = selectLLMRoute('can you format this exactly?', disabledRuntime);
+    // Test with long text (would normally route to Kimi)
+    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+    const decision2 = selectLLMRoute(longText, disabledRuntime);
     expect(decision2.provider).toBe(disabledRuntime.provider);
     expect(decision2.model).toBe(disabledRuntime.model);
     expect(decision2.matchedRuleIds).toEqual([]);
-    
-    // Test with long text (would normally route to Kimi)
-    const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
-    const decision3 = selectLLMRoute(longText, disabledRuntime);
-    expect(decision3.provider).toBe(disabledRuntime.provider);
-    expect(decision3.model).toBe(disabledRuntime.model);
-    expect(decision3.matchedRuleIds).toEqual([]);
   });
 });
