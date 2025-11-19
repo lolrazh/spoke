@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface FrequencyBarsProps {
@@ -18,6 +18,20 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 }) => {
   // More bars for denser visualization (increased from 7 to 18)
   const barCount = 18;
+
+  // Animation ticker for processing wave
+  const [ticker, setTicker] = useState(0);
+
+  // Animate the wave continuously when processing
+  useEffect(() => {
+    if (!isProcessing) return;
+
+    const interval = setInterval(() => {
+      setTicker((t) => t + 1);
+    }, 50); // Update every 50ms for smooth animation
+
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   // Generate symmetric height pattern for base heights
   const baseHeights = useMemo(() => {
@@ -40,7 +54,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   const reactiveHeights = useMemo(() => {
     // Processing state: flowing sine wave animation
     if (isProcessing) {
-      const time = Date.now() / 400; // Wave speed
+      const time = ticker / 8; // Wave speed based on ticker
       return baseHeights.map((baseHeight, index) => {
         // Create flowing sine wave across bars
         const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // 0-1 range
@@ -62,7 +76,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       // Reduced max height to 12px (10% less than 14px)
       return Math.max(2, Math.min(12, scaledHeight));
     });
-  }, [audioLevel, isListening, isProcessing, baseHeights]);
+  }, [audioLevel, isListening, isProcessing, ticker, baseHeights]);
 
   return (
     <div className="frequency-bars-container">
