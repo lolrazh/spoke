@@ -1,367 +1,526 @@
-# Sonic Flow's Intelligent Vocabulary: A Journey to Human-Like Memory
+# Vocabulary Learning System
 
-## The Problem Nobody's Solving
+## The Core Problem
 
-Every dictation app on the market is stupid. They either:
-- Have no vocabulary learning at all (Wispr Flow)
-- Force you to manually add words like it's 1995 (Dragon Dictate)
-- Try to guess from global datasets (which never work for personal terms)
+Whisper consistently gets certain words wrong:
+- Proper nouns: "Groq" → "grok", "Anthropic" → "antropic"
+- Multi-word corrections: "Base 10" → "Baseten"
+- Technical terms: "PostgreSQL" → "postgres quill"
+- Personal names: Custom spellings
+- Domain vocabulary: Medical, legal, technical terms
 
-But here's the thing: **you already correct these mistakes every single day**. When Sonic Flow says "grow queue" and you think "Groq," that's a correction event. When you say "my name is Sandheep" and it writes "Sandeep," that's a learning opportunity.
+These errors are **systematic** - they happen every time. Users correct them every time. That's wasted effort.
 
-The question isn't "should we learn vocabulary?" It's "how do we learn vocabulary without making it feel like work?"
-
----
-
-## The Philosophy: Dictation Should Feel Like Talking to Someone
-
-Think about how humans handle vocabulary in conversation:
-
-**Human conversation:**
-1. "I'm working with the Groq API"
-2. "The Groq documentation says..."
-3. "Send this to Groq for processing"
-
-You don't re-explain "Groq" every time. You establish context once, then reference it naturally.
-
-**Sonic Flow should work the same way.** If you've been talking about "Groq" for the last few minutes, the app should remember that. If your cursor is in a document that mentions "Sandheep," it should know that's your name.
-
-The key insight: **dictation isn't isolated utterances. It's a conversation with context.**
+**Solution:** Learn from corrections automatically. No manual dictionary. Zero friction.
 
 ---
 
-## The Journey: From Over-Engineered to Elegantly Simple
+## Design Philosophy: It's 2025, Not 1995
 
-### Attempt 1: The Complex Architecture (We Were Wrong)
+### No Manual Dictionary
 
-Initially, I proposed a three-tier system:
-- Session vocabulary (5 minutes)
-- Personal vocabulary (persistent)
-- Base vocabulary (hardcoded)
+**The Question:** Would Steve Jobs build dictation software with a dictionary dashboard?
 
-It had confidence scoring, variant detection, disambiguation rules, and complex ranking algorithms.
+**The Answer:** No. He'd make it fucking work without asking users to manage vocabulary.
 
-**Why we abandoned it:** It was trying to be too smart. We were building a vocabulary database when we should have been building a conversation memory.
+**Dragon Dictate had manual dictionaries 20 years ago. Why is that still a thing?**
 
-### Attempt 2: The 80-90% Solution (Better, But Still Not Right)
+We're building the future of software. The future doesn't come with a "Manage Vocabulary" dashboard.
 
-Then I simplified: just store corrections locally, inject them into prompts, done.
+**Core Principle:**
+- ❌ Don't make the user do the work
+- ✅ Make the algorithm smart enough
+- ❌ Don't shift complexity to the UI
+- ✅ Fix the problem, don't give the user a workaround
 
-**Why we improved it:** It worked for simple cases, but missed the human element. "Groq" in one context isn't the same as "Groq" in another context.
-
-### Attempt 3: Conversation-First (The Breakthrough)
-
-The real insight: **send your recent dictations along with every request**.
-
-It's like you're continuing a conversation:
-- "Hey LLM, remember what I just said about Groq?"
-- "And look at what's around my cursor - that might give you context too."
-
-This is human-like. When you talk to someone, you reference what you just said, and you point to things around you.
+If we need a dictionary UI to handle "Base 10" → "Baseten", **we haven't solved the problem - we've just made it the user's problem.**
 
 ---
 
-## The Core Architecture: Two-Layer Memory
+## The Three-Tier System (Phased Approach)
 
-### Layer 1: Short-Term Memory (The Conversation)
+### Tier 1: Whisper Vocabulary
 
-**What:** Last 5 dictations + 5 minutes expiry
-
-**Why:** Humans remember what they just said. If you've been talking about "Groq" for 2 minutes, you don't need to re-establish that context.
-
-**Implementation:**
-```typescript
-// Simple, in-memory
-interface ConversationHistory {
-  entries: Array<{text: string, timestamp: number}>;
-  maxEntries: 5;
-  expiryMs: 5 * 60 * 1000; // 5 minutes
-}
-```
+**What:** Pass learned words to Whisper's prompt parameter
+**Limit:** ~200 words (Whisper's token limit)
+**How:** "Your vocabulary includes: Groq, Anthropic, PostgreSQL..."
 
 **Example:**
-```
-Dictation 1: "Send this to Groq"
-Dictation 2: "The Groq API is fast"
-Dictation 3: "Let me check Groq docs"
+- You say "Groq"
+- Whisper has "Groq" in vocabulary
+- Whisper transcribes "Groq" correctly ✓
 
-→ Next dictation gets: "Recent: Send this to Groq. The Groq API is fast. Let me check Groq docs."
-→ LLM understands "Groq" is established vocabulary
-```
+### Tier 2: LLM Disambiguation (When Needed)
 
-### Layer 2: Long-Term Memory (The Embedding Layer)
-
-**What:** Embeddings-based retrieval of past corrections
-
-**Why:** Humans have long-term memory too. You remember "myocardial infarction" from that medical report you dictated 3 months ago, especially if you're dictating in a medical document now.
-
-**Implementation:**
-```typescript
-// Embed correction events, not just words
-interface CorrectionEvent {
-  sttText: "grow queue API",
-  correctedText: "Groq API",
-  context: "AI development",
-  embedding: [0.123, -0.456, ...]
-}
-```
+**What:** When homophones exist, let LLM pick the right one
+**When:** Only triggered if multiple words sound the same
+**How:** Add context to LLM prompt
 
 **Example:**
-```
-3 months ago: "grow queue API" → "Groq API" in AI context
+- Whisper outputs "grok"
+- Database has both "Groq" (inference provider) and "Grok" (AI model)
+- LLM sees context: "using grok for API calls"
+- LLM picks: "Groq" ✓
 
-Today: Dictating in code file with "GROQ_API_KEY"
-→ Query: "GROQ_API_KEY AI development context"
-→ Retrieve: Old "grow queue → Groq" correction
-→ STT prompt includes: "Groq"
+### Tier 3: Learn from Corrections
+
+**What:** Detect when user fixes mistakes, learn the pattern
+**How:** Diff-based detection after insertion
+**Confidence:** Only learn high confidence corrections automatically
+
+**Example:**
+- Whisper: "using Base 10 for this"
+- User fixes: "using Baseten for this"
+- System detects via diff: "Base 10" → "Baseten"
+- Auto-learns (high confidence) → Stored
+- Next time: Whisper recognizes "Baseten" ✓
+
+---
+
+## The Database (Super Simple)
+
+```sql
+CREATE TABLE vocabulary (
+  word TEXT PRIMARY KEY,           -- Correct spelling: "Groq", "Baseten"
+  frequency INTEGER DEFAULT 1,     -- Usage count (for ranking)
+  last_used INTEGER                -- Timestamp (for pruning)
+);
+
+CREATE INDEX idx_frequency ON vocabulary(frequency DESC);
+```
+
+**That's it.** No `whisper_hears`, no `context`, no complexity for MVP.
+
+**Why so simple?**
+- We learn what words SHOULD exist, not mappings
+- Diff-based detection handles multi-word corrections automatically
+- Context can be added later if needed (homophones)
+
+**Examples:**
+- `("Groq", 5, ...)`
+- `("Baseten", 2, ...)`
+- `("Anthropic", 3, ...)`
+
+**Storage:** `~/Library/Application Support/Sonic Flow/vocabulary.db`
+
+---
+
+## How Detection Works (Diff-Based Approach)
+
+### Why Not N-grams?
+
+**Initial approach:** Generate 1-grams, 2-grams, 3-grams from entire sentence.
+
+**Problem:** For a 10-word sentence:
+- 10 unigrams + 9 bigrams + 8 trigrams = 27 n-grams
+- Check each against every edited word
+- Works, but feels wasteful
+
+**Insight:** If we're using diff, we already GET the multi-word changes automatically!
+
+### Diff-Based Detection (The Smart Way)
+
+**How it works:**
+
+1. **Run diff to find what changed:**
+   ```
+   Original: "Let's use Base 10 for inference"
+   Edited:   "Let's use Baseten for inference"
+
+   Diff:
+   - DELETE: "Base 10"
+   - INSERT: "Baseten"
+   - KEEP: everything else
+   ```
+
+2. **Compare deleted vs inserted segments:**
+   ```
+   "Base 10" vs "Baseten"
+   Edit distance: 3
+   Similarity: ~57%
+   Confidence: Medium → Learn it
+   ```
+
+3. **Store the correction:**
+   ```sql
+   INSERT INTO vocabulary (word, frequency, last_used)
+   VALUES ("Baseten", 1, NOW());
+   ```
+
+**Benefits:**
+- ✅ Naturally handles multi-word corrections ("Base 10" → "Baseten")
+- ✅ Only looks at what changed (efficient)
+- ✅ No n-gram complexity needed
+- ✅ Works for 1-word, 2-word, 3-word corrections automatically
+
+**Example test cases:**
+```
+✓ "grok" → "Groq" (single word)
+✓ "Base 10" → "Baseten" (multi-word to single)
+✓ "postgres quill" → "PostgreSQL" (multi-word to single)
+✓ "my cardial infection" → "myocardial infarction" (multi-word)
+✗ "cat" → "dog" (too different, ignore)
+✗ "follow" → "fall off" (word count changed, ignore)
 ```
 
 ---
 
-## The Technical Beauty: Leverage What We Already Have
+## Confidence Scoring (Automatic Learning)
 
-### Existing Infrastructure (No New Dependencies)
+### The Problem: Not All Corrections Are Vocabulary
 
-**Selection Inspector:** Already reads surrounding text for edit mode. We can use this for dictation too.
+**Type 1: Vocabulary Errors** (Systematic - SHOULD learn)
+```
+User says: "I'm using Groq"
+Whisper hears: "I'm using grok"
+User fixes: → "Groq"
+✅ Will happen every time → Learn it automatically
+```
 
-**Dataset Logging:** Already captures `sttText` → `llmText` diffs. This is our learning signal.
+**Type 2: Acoustic Mishearings** (Random - should NOT learn)
+```
+User says: "fall off"
+Whisper hears: "follow"
+User fixes: → "fall off"
+❌ One-time mistake → Don't learn it
+```
 
-**WebSocket Protocol:** Already sends metadata in `start` messages. We just add conversation history.
+If we learn Type 2, we create problems: next time you actually say "follow", we'd incorrectly change it.
 
-**Local Models:** ONNX runtime already set up for VAD. We can use this for embeddings too.
-
-### The Elegant Part: The LLM Does the Hard Work
-
-**We don't parse or classify.** We send context to the LLM and let it figure out what matters.
+### Confidence Calculation
 
 ```typescript
-// Before dictation
-const prompt = `
-You are a verbatim ASR cleaner for Sonic Flow.
+function calculateConfidence(from: string, to: string): number {
+  const distance = levenshteinDistance(from.toLowerCase(), to.toLowerCase());
+  const maxLen = Math.max(from.length, to.length);
+  const similarity = 1 - (distance / maxLen);
 
-<conversation_history>
-Recent dictations:
-1. Send this to Groq.
-2. The Groq API is fast.
-
-Use this context to understand vocabulary the user has been using.
-</conversation_history>
-
-<surrounding_text>
-Text near cursor: const apiKey = process.env.GROQ_API_KEY;
-</surrounding_text>
-
-Fix the ASR input while respecting established vocabulary.
-`;
-```
-
-The LLM sees "Groq" in recent history AND "GROQ" in surrounding text, so it knows to correct "grow queue" to "Groq."
-
----
-
-## Why This Solves the Real Problems
-
-### Problem 1: "Groq" vs "grok"
-
-**Human behavior:** You say "Groq" once, then reference it naturally.
-
-**Our solution:** Conversation history shows "I've been talking about Groq."
-
-**Result:** LLM understands context and corrects appropriately.
-
-### Problem 2: "Sandheep" vs "Sandeep"
-
-**Human behavior:** You distinguish by context ("my name" vs "meeting with").
-
-**Our solution:** Conversation history shows "My name is Sandheep with an H."
-
-**Result:** LLM knows "Sandheep" is the user's name, "Sandeep" is someone else.
-
-### Problem 3: Burst Dictations
-
-**Human behavior:** You dictate multiple things in a row about the same topic.
-
-**Our solution:** Recent dictations show the ongoing conversation.
-
-**Result:** No need to re-establish context every time.
-
-### Problem 4: Long-Term Memory
-
-**Human behavior:** You remember things from previous conversations.
-
-**Our solution:** Embeddings retrieve semantically similar corrections.
-
-**Result:** "That medical term I used 3 months ago? I need it again."
-
----
-
-## The Privacy Philosophy: Nothing Leaves Your Machine
-
-**Short-term memory:** In-memory only, expires after 5 minutes.
-
-**Long-term memory:** Local embeddings, stored in IndexedDB, never sent to cloud.
-
-**Conversation history:** Sent to worker, but anonymized and temporary.
-
-This isn't just privacy-first. It's **privacy-only**. Your vocabulary is yours.
-
----
-
-## The Implementation Journey
-
-### Phase 1: Short-Term Memory (Week 1)
-
-**Goal:** Make dictation remember what you just said.
-
-**What we build:**
-- Conversation history class (last 5 dictations)
-- Send recent dictations in `start` message
-- Let LLM use conversation context
-
-**Success metric:** If you dictate "Send this to Groq" then "The Groq API is fast" 30 seconds later, it should correctly recognize "Groq" the second time.
-
-### Phase 2: Context Integration (Week 2)
-
-**Goal:** Use surrounding text for additional context.
-
-**What we build:**
-- Extend selection inspector for dictation mode
-- Send surrounding text in `start` message
-- Enhanced LLM prompt with context sections
-
-**Success metric:** If you're in a document mentioning "GROQ_API_KEY" and dictate "grow queue," it should correct to "Groq."
-
-### Phase 3: Long-Term Memory (Week 3-4)
-
-**Goal:** Remember corrections from days/weeks ago.
-
-**What we build:**
-- Local embeddings model (BGE-small, 33M params)
-- Vector store in IndexedDB
-- Semantic retrieval based on current context
-
-**Success metric:** If you used "myocardial infarction" in a medical report 3 months ago, and now you're dictating in another medical document, it should remember that correction.
-
-### Phase 4: Polish & Scale (Week 5)
-
-**Goal:** Make it invisible and reliable.
-
-**What we build:**
-- Automatic pruning of old corrections
-- Confidence scoring based on frequency
-- Optional UI for viewing learned vocabulary
-
----
-
-## Why This Is Revolutionary
-
-### For Users
-
-**Before:** Dictation apps are dumb. They don't learn, don't remember, don't adapt.
-
-**After:** Sonic Flow remembers what you say, learns from your corrections, and gets smarter over time. It feels like talking to someone who actually listens.
-
-### For the Product
-
-**Differentiation:** No other dictation app has this level of intelligence. This is the "sticky" feature that makes users never want to leave.
-
-**Technical elegance:** We leverage existing infrastructure, local models, and the LLM's intelligence rather than building complex parsing systems.
-
-### For the Future
-
-**Extensibility:** This architecture scales to:
-- Domain-specific vocabulary (medical, legal, technical)
-- Multi-language support
-- Collaborative contexts (if users opt in)
-- Local STT models (Whisper.cpp + MLX)
-
----
-
-## The Technical Details (For Nerds)
-
-### Short-Term Memory Implementation
-
-```typescript
-class ConversationHistory {
-  private entries: Array<{text: string, timestamp: number}> = [];
-
-  add(text: string) {
-    this.entries.push({text, timestamp: Date.now()});
-    if (this.entries.length > 5) this.entries.shift();
-
-    // Expire after 5 minutes
-    this.entries = this.entries.filter(
-      e => Date.now() - e.timestamp < 5 * 60 * 1000
-    );
-  }
-
-  getRecent(): string[] {
-    return this.entries.map(e => e.text);
-  }
+  // High similarity = likely vocabulary
+  if (similarity > 0.7) return 0.9;  // Auto-learn
+  if (similarity > 0.5) return 0.6;  // Consider
+  return 0.3;                        // Ignore
 }
 ```
 
-### Long-Term Memory Implementation
+**Learning Rules:**
+- **High confidence (>0.7):** Auto-learn silently
+- **Medium confidence (0.5-0.7):** Requires multiple occurrences
+- **Low confidence (<0.5):** Ignore (probably mishearing)
+
+**Examples:**
+- "grok" → "Groq": 75% similar → Auto-learn ✓
+- "Base 10" → "Baseten": 57% similar → Auto-learn ✓
+- "follow" → "fall off": 14% similar → Ignore ✓
+- "cat" → "dog": 0% similar → Ignore ✓
+
+---
+
+## Edge Cases & Design Decisions
+
+### Multi-Word Corrections (The Critical Test)
+
+**Problem:** "Base 10" → "Baseten"
+
+**Old approach (word-by-word):**
+- Detects "Base" → "Baseten" (wrong!)
+- Misses that "10" was part of it
+
+**New approach (diff-based):**
+- Diff shows: DELETE "Base 10", INSERT "Baseten"
+- Compares the segments directly
+- Learns "Baseten" (correct!)
+
+**This was the key insight that validated diff-based detection.**
+
+### Homophones (Future Problem)
+
+**Example:** "Groq" (API provider) vs "Grok" (AI model from xAI)
+
+**MVP approach:**
+- Learn both words separately
+- LLM disambiguates using surrounding context
+- No manual context needed
+
+**Future approach (if needed):**
+- Add optional context column to database
+- User can add context via speech: "That's Groq the inference provider"
+- LLM extracts and stores context
+
+**For now:** Keep it simple. Let LLM handle disambiguation.
+
+### Spelled-Out Words
+
+**Scenario:** User dictates "spell it G-R-O-Q"
+
+**What Whisper outputs:** "spell it G. R. O. Q." (with periods)
+
+**MVP approach:**
+- User fixes manually to "Groq"
+- We learn "Groq" from the correction
+- Works, but requires one manual fix
+
+**Future approach:**
+- LLM detects spelling pattern
+- Extracts "GROQ" → "Groq"
+- Auto-adds to vocabulary
+- Next time works immediately
+
+**For MVP:** Manual fix is acceptable. Optimize later if users hit this often.
+
+### Verbs and Common Words
+
+**Observation:** Words like "replace"/"replay", "follow"/"fall off" are verbs and common words.
+
+**Strategy:**
+- These get lower confidence scores (moderate similarity but high ambiguity)
+- Require multiple occurrences before learning
+- Less likely to be vocabulary, more likely to be mishearings
+
+**The algorithm naturally handles this** via confidence scoring.
+
+---
+
+## Testing Strategy: Dataset-Driven Development
+
+### The Old Way (Manual Testing)
+- Click through playground examples
+- Manually verify each one
+- Inconsistent, slow, error-prone
+
+### The New Way (Systematic Testing)
+
+**Dataset of test cases:**
+```javascript
+[
+  {
+    original: "using grok",
+    corrected: "using Groq",
+    expected: "should-detect"
+  },
+  {
+    original: "using Base 10",
+    corrected: "using Baseten",
+    expected: "should-detect"  // THE KEY TEST
+  },
+  {
+    original: "cat sat",
+    corrected: "dog ran",
+    expected: "should-ignore"
+  }
+]
+```
+
+**Automated validation:**
+- Run algorithm against all test cases
+- Check: Did it detect what it should? Did it ignore what it should?
+- Show pass/fail for each case
+- Tune algorithm parameters, re-run
+- Iterate until all tests pass
+
+**Table view:**
+```
+┌────────────────┬────────────────┬──────────────┬──────────┬────────┐
+│ Original       │ Corrected      │ Detected     │ Expected │ Result │
+├────────────────┼────────────────┼──────────────┼──────────┼────────┤
+│ using grok     │ using Groq     │ grok → Groq  │ ✓        │ ✅ PASS│
+│ using Base 10  │ using Baseten  │ Base10→      │ ✓        │ ✅ PASS│
+│                │                │ Baseten      │          │        │
+│ cat sat        │ dog ran        │ (none)       │ ✓        │ ✅ PASS│
+└────────────────┴────────────────┴──────────────┴──────────┴────────┘
+```
+
+**This lets us:**
+- Systematically test every edge case
+- Tune confidence thresholds
+- Compare different algorithms
+- Ensure we don't regress
+- Add new test cases as we discover issues
+
+**Playground:** `src/lib/vocabulary/playground-dataset.html`
+
+---
+
+## User Experience
+
+### Completely Invisible (Default)
+
+**What the user sees:** Nothing.
+
+**What happens:**
+1. You dictate
+2. Get "using grok for this"
+3. Fix it to "using Groq for this"
+4. Keep working
+5. Next dictation with "Groq" → It just works now
+
+**No popups, no dialogs, no confirmations, no dictionary UI.**
+
+**The app just gets smarter silently.**
+
+### Why No Manual Dictionary?
+
+**Arguments against:**
+- "But users might want to pre-load medical terms!"
+- "But what about power users who want control!"
+- "But Dragon Dictate had this!"
+
+**Counterarguments:**
+- It's 2025. Make it work without asking users to manage vocabulary.
+- If the algorithm can't handle it, fix the algorithm, not the UX.
+- Manual dictionaries become abandoned databases nobody maintains.
+- 95% of users never use them, 5% who do get frustrated.
+
+**Core belief:**
+The future of software is not dictionaries and dashboards. It's software that learns and adapts invisibly.
+
+**If we need a UI to make it work, we haven't solved the problem.**
+
+---
+
+## Phased Implementation
+
+### Phase 1: Foundation (Week 1 - MVP)
+- ✅ SQLite database (simple schema: word, frequency)
+- ✅ Diff-based correction detection
+- ✅ Automatic learning (high confidence only)
+- ✅ Pass top 200 to Whisper prompt
+- ✅ Dataset test playground
+
+**Goal:** Validate that automatic learning works for 80%+ of cases
+
+**Shipped:** Detection algorithm + playground for testing
+
+### Phase 2: Integration (Week 2)
+- ⏳ Monitor text after insertion (poll via AX inspection)
+- ⏳ Integrate detector into useTranscription hook
+- ⏳ Store learned words in database
+- ⏳ Update buildSTTPrompt to include learned vocabulary
+
+**Goal:** End-to-end learning flow working
+
+### Phase 3: Polish (Week 3)
+- ⏳ Tune confidence thresholds based on real usage
+- ⏳ Frequency-based ranking (top 200 words)
+- ⏳ Pruning old/unused words
+- ⏳ Handle edge cases discovered in testing
+
+**Goal:** Production-ready, reliable
+
+### Future (If Users Need It)
+- ❌ LLM-based disambiguation for homophones
+- ❌ Explicit spelling commands ("spell it G-R-O-Q")
+- ❌ Context extraction from speech
+- ❌ Import vocabulary from documents
+
+**But:** Only build these if users actually hit the limitations. Start lean.
+
+---
+
+## Technical Details
+
+### Diff Algorithm (Simplified)
 
 ```typescript
-// Embed corrections, retrieve by similarity
-interface CorrectionEvent {
-  sttText: string;
-  correctedText: string;
-  context: string;
-  embedding: number[]; // 384-dim vector
+function diffWords(original: string, edited: string) {
+  const origWords = original.split(/\s+/);
+  const editWords = edited.split(/\s+/);
+
+  // Find matching and non-matching segments
+  // Returns: [{ deleted: ["Base", "10"], inserted: ["Baseten"] }]
 }
-
-const relevant = await vectorStore.search(queryEmbedding, {
-  topK: 10,
-  threshold: 0.7
-});
 ```
 
-### The LLM Prompt Enhancement
+**Key insight:** The diff algorithm naturally groups consecutive changes, so "Base 10" stays together.
+
+### Whisper Prompt Integration
 
 ```typescript
-const prompt = `
-<conversation_history>
-${recentDictations.map((text, i) => `${i + 1}. ${text}`).join('\n')}
-</conversation_history>
+// Get top 200 most frequently used learned words
+const topWords = db.query(`
+  SELECT word FROM vocabulary
+  ORDER BY frequency DESC
+  LIMIT 200
+`);
 
-<surrounding_text>
-${surroundingText}
-</surrounding_text>
-
-Fix the ASR input while respecting established vocabulary and context.
-`;
+// Add to existing STT prompt
+const prompt = `Your vocabulary includes: ${topWords.join(', ')}`;
 ```
+
+### Detection Integration
+
+```typescript
+// After text insertion
+const inserted = "using grok for this";
+
+// Monitor for changes
+setTimeout(async () => {
+  const current = await inspectText();
+  const corrections = detectCorrections(inserted, current);
+
+  for (const correction of corrections) {
+    if (correction.confidence > 0.7) {
+      db.learn(correction.to);  // Auto-learn
+    }
+  }
+}, 3000);
+```
+
+---
+
+## Why This Approach Works
+
+### Self-Improving
+- Week 1: Learning your vocabulary (some corrections needed)
+- Month 1: Rarely makes vocabulary mistakes
+- Gets smarter with use, no maintenance
+
+### Zero Maintenance
+- No manual entry required
+- No dictionary to manage
+- No decision fatigue
+- Just works in background
+
+### Handles Edge Cases
+- Multi-word corrections: Diff handles automatically
+- Homophones: LLM disambiguates
+- Spelled-out words: Learn from manual correction
+- All without UI complexity
+
+### Privacy First
+- All data stored locally (SQLite on your machine)
+- Nothing sent to cloud except during transcription
+- No sync, no accounts, no servers
+
+---
+
+## Success Metrics
+
+**Week 1 (MVP):**
+- Algorithm detects 90%+ of test cases correctly
+- Diff-based approach handles "Base 10" → "Baseten" ✓
+
+**Month 1:**
+- System learns 10+ words per active user
+- 80% reduction in repeated vocabulary errors
+- Zero complaints about "dictionary UI missing"
+
+**Month 3:**
+- 95% reduction in repeated vocabulary errors
+- System feels invisible - "it just works"
+- Users don't think about vocabulary anymore
 
 ---
 
 ## The Philosophy in Action
 
-**This isn't just a feature. It's a different kind of intelligence.**
+**Traditional dictation:** "Here's what I heard. If it's wrong, add it to your dictionary."
 
-Traditional dictation: "Here's what I heard. Fix it if you can."
+**Sonic Flow:** "Here's what I heard. If you fix it, I'll remember. Next time I'll get it right."
 
-Sonic Flow: "Here's what I heard. Here's what you just said. Here's what's around your cursor. Here's what you've taught me before. Now, what did you actually mean?"
+It's the difference between asking the user to manage complexity and making the software adapt intelligently.
 
-It's the difference between a dumb transcription service and a dictation assistant that actually understands you.
-
----
-
-## Future Vision: Fully Local Intelligence
-
-With the embeddings layer in place, we can go further:
-
-**Local STT:** Run Whisper.cpp in MLX for fully offline dictation
-
-**Advanced Memory:** Remember not just corrections, but conversation patterns
-
-**Context Awareness:** Know that "in this codebase, 'Groq' means the API" vs "in this document, 'Groq' might mean something else"
-
-**Privacy by Design:** All learning happens locally, no cloud processing of your data
-
-This is dictation that respects your intelligence rather than treating you like a voice input device.
+**It's 2025. We can do better than dictionary dashboards.**
 
 ---
 
-*This document represents the evolution of our thinking about vocabulary in Sonic Flow. It's not just about being smart—it's about being human.*
+*This document represents our commitment to zero-friction vocabulary learning. No manual work, no interruptions, just software that gets smarter as you use it.*
