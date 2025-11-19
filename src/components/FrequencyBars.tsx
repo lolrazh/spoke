@@ -22,6 +22,9 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   // Animation ticker for processing wave
   const [ticker, setTicker] = useState(0);
 
+  // Transition blend: 0 = listening, 1 = processing
+  const [transitionBlend, setTransitionBlend] = useState(isProcessing ? 1 : 0);
+
   // Animate the wave continuously when processing
   useEffect(() => {
     if (!isProcessing) return;
@@ -32,6 +35,25 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
     return () => clearInterval(interval);
   }, [isProcessing]);
+
+  // Smooth transition between listening and processing states
+  useEffect(() => {
+    const targetBlend = isProcessing ? 1 : (isListening ? 0 : transitionBlend);
+
+    let rafId: number;
+    const animate = () => {
+      setTransitionBlend(prev => {
+        const diff = targetBlend - prev;
+        if (Math.abs(diff) < 0.01) return targetBlend;
+        // Smooth spring-like interpolation
+        return prev + diff * 0.18;
+      });
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
+  }, [isProcessing, isListening]);
 
   // Generate symmetric height pattern for base heights
   const baseHeights = useMemo(() => {
@@ -52,33 +74,34 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
   // Calculate reactive heights based on audio level
   const reactiveHeights = useMemo(() => {
-    // Processing state: fast flowing sine wave like listening bars
-    if (isProcessing) {
-      const time = ticker / 2; // Wave speed
-      return baseHeights.map((baseHeight, index) => {
-        // Create flowing sine wave with longer wavelength and variation
-        const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5; // Longer wavelength (0.8 -> 0.5)
-        const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1; // Fast variation
-        // Reduced amplitude for lower wave height
-        const scaledHeight = baseHeight * (0.35 + wave * 1.8) * variation;
-        return Math.max(2, Math.min(9, scaledHeight)); // Lower max: 12 -> 9
-      });
+    // Dots when neither listening nor processing
+    if (!isListening && !isProcessing) {
+      return baseHeights.map(() => 3); // Small dots when not active
     }
 
-    if (!isListening) {
-      return baseHeights.map(() => 3); // Small dots when not listening
-    }
-
-    // Apply audio level with subtle variation for visual interest
-    return baseHeights.map((baseHeight, index) => {
-      // Reduced variation to prevent jittery appearance at peaks
+    // Calculate listening heights (voice-reactive)
+    const listeningHeights = baseHeights.map((baseHeight, index) => {
       const variation = Math.sin(Date.now() / 100 + index) * 0.15 + 1;
-      // Natural scaling that works well with logarithmic curve
       const scaledHeight = baseHeight * (0.35 + audioLevel * 2.6) * variation;
-      // Reduced max height to 12px (10% less than 14px)
       return Math.max(2, Math.min(12, scaledHeight));
     });
-  }, [audioLevel, isListening, isProcessing, ticker, baseHeights]);
+
+    // Calculate processing heights (sine wave)
+    const time = ticker / 2;
+    const processingHeights = baseHeights.map((baseHeight, index) => {
+      const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
+      const variation = Math.sin(ticker / 4 + index * 0.3) * 0.15 + 1;
+      const scaledHeight = baseHeight * (0.35 + wave * 1.8) * variation;
+      return Math.max(2, Math.min(9, scaledHeight));
+    });
+
+    // Blend between listening and processing based on transition state
+    return baseHeights.map((_, index) => {
+      const listeningHeight = listeningHeights[index];
+      const processingHeight = processingHeights[index];
+      return listeningHeight * (1 - transitionBlend) + processingHeight * transitionBlend;
+    });
+  }, [audioLevel, isListening, isProcessing, ticker, baseHeights, transitionBlend]);
 
   return (
     <div className="frequency-bars-container">
