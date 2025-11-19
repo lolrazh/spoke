@@ -331,7 +331,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <img
           src="/assets/transparent-logo-w-text.png"
           alt="Sonic Flow"
-          className="absolute left-4 bottom-3 h-[11px] w-auto opacity-70"
+          className="absolute left-4 bottom-3 h-[11px] w-auto opacity-50"
           style={{ imageRendering: '-webkit-optimize-contrast' }}
         />
       )}
