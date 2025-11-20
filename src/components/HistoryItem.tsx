@@ -32,25 +32,27 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", ...MOTION.springs.quick }}
-      className="group relative p-3 border-b border-border/20 hover:bg-white/5 transition-colors cursor-default"
+      className="group flex border-b border-border/20 hover:bg-white/5 transition-colors cursor-default"
     >
-      {/* Text */}
-      <p className="text-xs text-foreground/80 leading-relaxed font-normal">
-        {item.text}
-      </p>
+      {/* Text - left side with max width */}
+      <div className="flex-1 p-3 pr-2">
+        <p className="text-xs text-foreground/80 leading-relaxed font-normal">
+          {item.text}
+        </p>
+      </div>
 
-      {/* Bottom row: Time and Copy */}
-      <div className="flex items-center justify-end gap-2 mt-2">
-        <span className="text-[10px] text-muted-foreground/60">
-          {formatTime(item.timestamp)}
-        </span>
+      {/* Right band - copy button centered, time at bottom */}
+      <div className="flex flex-col items-center justify-between py-2 px-3 min-w-[48px]">
         <button
           onClick={onCopy}
           className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all"
           title="Copy to clipboard"
         >
-          <SfIcon name="doc.on.doc" size={12} className="text-muted-foreground hover:text-foreground transition-colors" />
+          <SfIcon name="document.on.document" size={12} className="text-muted-foreground hover:text-foreground transition-colors" />
         </button>
+        <span className="text-[9px] text-muted-foreground/50">
+          {formatTime(item.timestamp)}
+        </span>
       </div>
     </motion.div>
   );

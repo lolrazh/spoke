@@ -351,7 +351,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {/* Tab Navigation */}
       <div className="bg-background flex-shrink-0 no-drag">
-        <div className="flex items-center justify-center gap-4 px-6 py-2">
+        <div className="flex items-center justify-center gap-1 px-6 py-1">
           <button
             onClick={() => setActiveTab("settings")}
             className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
@@ -378,17 +378,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto relative" style={{ maxHeight: "420px" }}>
-        {/* Fade out gradient at bottom */}
-        <div
-          className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none z-10"
-          style={{
-            background: "linear-gradient(to bottom, transparent, var(--background))"
-          }}
-        />
+      <div className="flex-1 overflow-y-auto relative">
         <div
           ref={contentRef}
-          className="max-w-lg mx-auto w-full px-5 pt-4 pb-16"
+          className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
         >
           {activeTab === "settings" ? (
             <motion.div
