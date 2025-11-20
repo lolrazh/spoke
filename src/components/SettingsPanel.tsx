@@ -437,7 +437,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             >
               <SectionSeparator title="Defaults" />
 
-              <div className="border border-white/10 rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"
@@ -514,7 +514,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Account" />
-              <div className="border border-white/10 rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
+              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
                 {userEmail ? (
                   <SettingsCard
                     title={userName || userEmail}

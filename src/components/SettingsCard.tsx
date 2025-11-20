@@ -25,8 +25,8 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
       : status === "warning"
         ? "border border-amber-400/60 bg-amber-500/5"
         : inGroup
-          ? "border-0 border-b border-white/10"
-          : "border border-white/10";
+          ? "border-0 border-b border-white/[0.08]"
+          : "border border-white/[0.08]";
 
   const roundedClass = inGroup ? "" : "rounded-[var(--radius-lg)]";
 
