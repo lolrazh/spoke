@@ -350,8 +350,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       )}
 
       {/* Tab Navigation */}
-      <div className="bg-background flex-shrink-0 no-drag">
-        <div className="flex items-center justify-center gap-1 px-6 pt-3 pb-1">
+      <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "var(--nav-bar-padding-bottom)" }}>
+        <div className="flex items-center justify-center gap-1 px-6">
           <button
             onClick={() => setActiveTab("settings")}
             className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
