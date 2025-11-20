@@ -2,7 +2,7 @@
  * TypeScript declarations for the Electron API exposed to the renderer process
  */
 
-import type { SelectionInspectSnapshot, ActiveDisplayPayload } from "./shared";
+import type { SelectionInspectSnapshot, ActiveDisplayPayload, TranscriptionItem } from "./shared";
 
 declare global {
   interface Window {
@@ -134,6 +134,12 @@ declare global {
     };
     auth: {
       onCallback: (cb: (payload: { url: string }) => void) => () => void;
+    };
+    transcriptions: {
+      getAll: () => Promise<TranscriptionItem[]>;
+      save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => Promise<TranscriptionItem>;
+      delete: (id: string) => Promise<boolean>;
+      clear: () => Promise<{ ok: boolean }>;
     };
   }
 }

@@ -50,6 +50,12 @@ import {
   buildFeedbackAndAboutItems,
   buildPasteTranscriptItem,
 } from "./utils/menuBuilders";
+import {
+  getTranscriptions,
+  saveTranscription,
+  deleteTranscription,
+  clearTranscriptions,
+} from "./lib/transcriptionStorage";
 
 // Types moved to ./types/shared
 
@@ -3230,6 +3236,24 @@ app.whenReady().then(async () => {
       logger.main.error("[Dock] Failed to set visibility:", e);
       return { ok: false, error: (e as Error).message };
     }
+  });
+
+  // Transcription history storage handlers
+  ipcMain.handle("transcriptions:get-all", () => {
+    return getTranscriptions();
+  });
+
+  ipcMain.handle("transcriptions:save", (_event, payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => {
+    return saveTranscription(payload);
+  });
+
+  ipcMain.handle("transcriptions:delete", (_event, payload: { id: string }) => {
+    return deleteTranscription(payload.id);
+  });
+
+  ipcMain.handle("transcriptions:clear", () => {
+    clearTranscriptions();
+    return { ok: true };
   });
 
   // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)

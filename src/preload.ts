@@ -2,7 +2,7 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { ActiveDisplayPayload, MicDevice } from "./types/shared";
+import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types/shared";
 
 // Expose dev flags so renderer can bypass auth/onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
@@ -209,6 +209,18 @@ contextBridge.exposeInMainWorld("electron", {
 // Expose application metadata
 contextBridge.exposeInMainWorld("app", {
   getVersion: (): Promise<string> => ipcRenderer.invoke("app:get-version"),
+});
+
+// Transcription history storage bridge
+contextBridge.exposeInMainWorld("transcriptions", {
+  getAll: (): Promise<TranscriptionItem[]> =>
+    ipcRenderer.invoke("transcriptions:get-all"),
+  save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }): Promise<TranscriptionItem> =>
+    ipcRenderer.invoke("transcriptions:save", payload),
+  delete: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("transcriptions:delete", { id }),
+  clear: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("transcriptions:clear"),
 });
 
 // (Removed) dev-only Sentry verification hooks

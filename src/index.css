@@ -27,6 +27,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   /* Intro overlay */
   .sf-intro-overlay {
@@ -874,6 +884,8 @@ body {
     );
     --panel-section-offset: var(--spacing-md);
     --panel-heading-gap: var(--spacing-md);
+    --nav-bar-padding-top: var(--spacing-md);
+    --nav-bar-padding-bottom: 0px;
 
     /* Surface and effect tokens */
     --surface-base-rgb: 10, 10, 10;

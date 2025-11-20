@@ -15,6 +15,7 @@ import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
+import TranscriptionHistoryView from "./TranscriptionHistoryView";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -42,8 +43,9 @@ const Toggle: React.FC<{
   description?: string;
   icon?: React.ReactNode;
   disabled?: boolean;
-}> = ({ enabled, onChange, label, description, icon, disabled }) => (
-  <SettingsCard title={label} description={description} icon={icon}>
+  inGroup?: boolean;
+}> = ({ enabled, onChange, label, description, icon, disabled, inGroup }) => (
+  <SettingsCard title={label} description={description} icon={icon} inGroup={inGroup}>
     <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
   </SettingsCard>
 );
@@ -54,11 +56,13 @@ const SelectField: React.FC<{
   options: { value: string; label: string }[];
   label: string;
   description?: string;
-}> = ({ value, onChange, options, label, description }) => (
+  inGroup?: boolean;
+}> = ({ value, onChange, options, label, description, inGroup }) => (
   <SettingsCard
     title={label}
     description={description}
     icon={<SfIcon name="microphone.fill" size={16} className="text-primary/70" />}
+    inGroup={inGroup}
   >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
@@ -123,6 +127,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onHeightChange,
 }) => {
   // State
+  const [activeTab, setActiveTab] = useState<"settings" | "history">("settings");
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
     [],
   );
@@ -320,7 +325,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [embeddedMode]);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   usePanelAutoHeight(contentRef, embeddedMode ? onHeightChange : undefined);
+
+  // Scroll indicator state
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  // Update scroll indicators
+  const updateScrollIndicators = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    setCanScrollUp(el.scrollTop > 0);
+    setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  };
+
+  // Check scroll state on mount and when tab changes
+  useEffect(() => {
+    // Small delay to ensure content is rendered
+    const timer = setTimeout(updateScrollIndicators, 50);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
 
   return (
     <div
@@ -334,7 +360,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             e.preventDefault();
             window.electron?.openExternal?.("https://sonicflow.app/changelog");
           }}
-          className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+          className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200 z-30"
         >
           Sonic Flow Beta {appVersion}
         </a>
@@ -347,19 +373,65 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div
-          ref={contentRef}
-          className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
-        >
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={containerVariants}
-            className="flex flex-col"
+      {/* Content container for height measurement - includes navbar */}
+      <div ref={contentRef}>
+        {/* Tab Navigation - top bezel */}
+        <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
+          <div className="flex items-center justify-center px-6">
+            <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden">
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${
+                activeTab === "settings"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <SfIcon name="gearshape.fill" size={18} />
+              <span className="text-[10px] text-muted-foreground">Settings</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${
+                activeTab === "history"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
+              <span className="text-[10px] text-muted-foreground">History</span>
+            </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable Content - the screen */}
+        <div className="relative flex-1">
+          {/* Top fade gradient - dynamic */}
+          <div
+            className="absolute top-0 left-0 right-0 h-12 pointer-events-none z-20 transition-opacity duration-200"
+            style={{
+              background: "linear-gradient(to bottom, hsl(var(--background)), transparent)",
+              opacity: canScrollUp ? 1 : 0,
+            }}
+          />
+          <div
+            ref={scrollRef}
+            className="overflow-y-auto h-full scrollbar-hide"
+            style={{ maxHeight: "530px" }}
+            onScroll={updateScrollIndicators}
           >
-            {/* Section 1: Defaults */}
+          <div
+            className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
+          >
+          {activeTab === "settings" ? (
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={containerVariants}
+              className="flex flex-col"
+            >
+              {/* Section 1: Defaults */}
             <motion.section
               variants={sectionVariants}
               className="space-y-4"
@@ -367,13 +439,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             >
               <SectionSeparator title="Defaults" />
 
-              <div className="space-y-3 no-drag">
+              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"
                   value={selectedMicId}
                   onChange={handleMicChange}
                   options={micOptions}
+                  inGroup
                 />
 
                 <Toggle
@@ -391,6 +464,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className="text-primary/70"
                     />
                   }
+                  inGroup
                 />
 
                 <Toggle
@@ -412,6 +486,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className="text-primary/70"
                     />
                   }
+                  inGroup
                 />
 
                 <Toggle
@@ -429,6 +504,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   disabled={
                     !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
                   }
+                  inGroup
                 />
               </div>
             </motion.section>
@@ -440,55 +516,74 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Account" />
-              {userEmail ? (
-                <SettingsCard
-                  title={userName || userEmail}
-                  description={userEmail}
-                  icon={
-                    <span className="text-[11px] font-semibold tracking-wide">
-                      {(userName || userEmail || "").slice(0, 1).toUpperCase()}
-                    </span>
-                  }
-                >
-                  <Button variant="secondary" size="sm" onClick={handleSignOut}>
-                    Sign Out
-                  </Button>
-                </SettingsCard>
-              ) : (
-                // If not signed in, do not render login UI here — redirect to onboarding
-                <div className="space-y-3">
-                  <div className="text-[12px] text-subtle">
-                    You are signed out.
-                  </div>
-                  <Button
-                    className="w-full onboarding-cta"
-                    onClick={async () => {
-                      try {
-                        await window.electron?.showOnboarding?.();
-                      } catch {}
-                    }}
+              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
+                {userEmail ? (
+                  <SettingsCard
+                    title={userName || userEmail}
+                    description={userEmail}
+                    icon={
+                      <span className="text-[11px] font-semibold tracking-wide">
+                        {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                      </span>
+                    }
+                    inGroup
                   >
-                    Open Onboarding to Sign In
-                  </Button>
-                </div>
-              )}
+                    <Button variant="secondary" size="sm" onClick={handleSignOut}>
+                      Sign Out
+                    </Button>
+                  </SettingsCard>
+                ) : (
+                  // If not signed in, do not render login UI here — redirect to onboarding
+                  <div className="p-3">
+                    <div className="text-[12px] text-subtle mb-3">
+                      You are signed out.
+                    </div>
+                    <Button
+                      className="w-full onboarding-cta"
+                      onClick={async () => {
+                        try {
+                          await window.electron?.showOnboarding?.();
+                        } catch {}
+                      }}
+                    >
+                      Open Onboarding to Sign In
+                    </Button>
+                  </div>
+                )}
+              </div>
             </motion.section>
 
-            {/* Footer with logo and version - only in standalone mode */}
+          </motion.div>
+          ) : (
+            <TranscriptionHistoryView />
+          )}
+        </div>
+      </div>
+      </div>
+
+        {/* Fixed bottom band - bezel with footer and chevron space */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 bg-background">
+          {/* Bottom fade gradient - dynamic */}
+          <div
+            className="absolute -top-12 left-0 right-0 h-12 pointer-events-none transition-opacity duration-200"
+            style={{
+              background: "linear-gradient(to bottom, transparent, hsl(var(--background)))",
+              opacity: canScrollDown ? 1 : 0,
+            }}
+          />
+          {/* Band content with footer */}
+          <div className="px-5 pt-8 pb-4">
             {!embeddedMode && (
-              <motion.footer
-                variants={sectionVariants}
-                className="flex items-center gap-2 pt-6 pb-3"
-              >
+              <div className="flex items-center justify-center gap-2">
                 <img
                   src="/assets/TrayTemplate.png"
                   alt="Sonic Flow Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
                 <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
-              </motion.footer>
+              </div>
             )}
-          </motion.div>
+          </div>
         </div>
       </div>
     </div>

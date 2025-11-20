@@ -7,6 +7,7 @@ type SettingsCardProps = {
   children?: React.ReactNode; // Right-aligned control area
   className?: string;
   status?: "default" | "success" | "warning";
+  inGroup?: boolean; // When true, removes individual border/rounding for use in grouped container
 };
 
 const SettingsCard: React.FC<SettingsCardProps> = ({
@@ -16,17 +17,26 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   children,
   className = "",
   status = "default",
+  inGroup = false,
 }) => {
   const statusClass =
     status === "success"
       ? "border border-emerald-400/60 bg-emerald-500/5"
       : status === "warning"
         ? "border border-amber-400/60 bg-amber-500/5"
-        : "border border-border/40";
+        : inGroup
+          ? "border-0 border-b border-white/[0.08]"
+          : "border border-white/[0.08]";
+
+  const roundedClass = inGroup ? "" : "rounded-[var(--radius-lg)]";
+
+  const baseClass = inGroup
+    ? "p-3 flex items-center justify-between gap-3"
+    : "settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3";
 
   return (
     <div
-      className={`settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3 rounded-[var(--radius-lg)] ${statusClass} ${className}`}
+      className={`${baseClass} ${roundedClass} ${statusClass} ${className}`}
       role="group"
       aria-label={title}
     >

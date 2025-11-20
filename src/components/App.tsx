@@ -22,6 +22,7 @@ import {
   PermissionsProvider,
   usePermissionsController,
 } from "../state/permissionsContext";
+import { initTranscriptionHistory } from "../state/transcriptionHistory";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -310,6 +311,11 @@ const AppInner: React.FC = () => {
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
+
+  // Initialize transcription history on app start
+  useEffect(() => {
+    initTranscriptionHistory().catch(() => {});
+  }, []);
 
   const canProceedWithStart = useCallback(async (): Promise<boolean> => {
     try {
