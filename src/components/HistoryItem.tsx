@@ -75,10 +75,13 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={{
-                    type: "spring",
-                    stiffness: 600,
-                    damping: 15,
-                    mass: 0.5
+                    default: {
+                      type: "spring",
+                      stiffness: 600,
+                      damping: 15,
+                      mass: 0.5
+                    },
+                    exit: { duration: 0.05 }
                   }}
                 >
                   <motion.path
@@ -95,10 +98,13 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.6, opacity: 0 }}
                   transition={{
-                    type: "spring",
-                    stiffness: 600,
-                    damping: 15,
-                    mass: 0.5
+                    default: {
+                      type: "spring",
+                      stiffness: 600,
+                      damping: 15,
+                      mass: 0.5
+                    },
+                    exit: { duration: 0.05 }
                   }}
                 >
                   <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
