@@ -20,7 +20,7 @@ const DateGroup: React.FC<DateGroupProps> = ({ label, children }) => {
       <SectionSeparator title={label} />
 
       {/* Items - with card outline */}
-      <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm">
+      <div className="border border-border/30 rounded-lg overflow-hidden bg-background">
         {children}
       </div>
     </motion.div>

@@ -873,7 +873,8 @@ body {
       var(--spacing-xl)
     );
     --panel-section-offset: var(--spacing-md);
-    --panel-heading-gap: var(--spacing-md);
+    --panel-heading-gap: var(--spacing-sm);
+    --section-heading-padding-left: var(--spacing-xs);
     --nav-bar-padding-top: var(--spacing-md);
     --nav-bar-padding-bottom: 0px;
 

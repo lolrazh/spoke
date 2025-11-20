@@ -92,6 +92,7 @@ export const SectionSeparator: React.FC<{
     className={`${className}`}
     style={{
       marginBottom: "var(--panel-heading-gap)",
+      paddingLeft: "var(--section-heading-padding-left)",
       ...(style ?? {}),
     }}
   >
@@ -404,7 +405,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             >
               <SectionSeparator title="Defaults" />
 
-              <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm no-drag">
+              <div className="border border-border/30 rounded-lg overflow-hidden bg-background no-drag">
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"
@@ -481,7 +482,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Account" />
-              <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm">
+              <div className="border border-border/30 rounded-lg overflow-hidden bg-background">
                 {userEmail ? (
                   <SettingsCard
                     title={userName || userEmail}
