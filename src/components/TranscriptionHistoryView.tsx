@@ -152,7 +152,6 @@ const TranscriptionHistoryView: React.FC<TranscriptionHistoryViewProps> = () => 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: MOTION.durations.standard }}
-      className="py-4"
     >
       {groupedItems.map((group) => (
         <DateGroup key={group.label} label={group.label}>
