@@ -1,5 +1,5 @@
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
 
@@ -26,6 +26,14 @@ const formatTime = (timestamp: number): string => {
 };
 
 const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    onCopy();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -46,11 +54,47 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
         {/* Copy button - takes remaining space, centered within */}
         <div className="flex-1 flex items-center justify-center">
           <button
-            onClick={onCopy}
-            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={handleCopy}
+            className={`transition-opacity w-[14px] h-[14px] flex items-center justify-center ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
             title="Copy to clipboard"
           >
-            <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
+            <AnimatePresence mode="wait">
+              {copied ? (
+                <motion.svg
+                  key="check"
+                  width={14}
+                  height={14}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-foreground"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.1 }}
+                >
+                  <motion.path
+                    d="M4 12l5 5L20 6"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  />
+                </motion.svg>
+              ) : (
+                <motion.div
+                  key="copy"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.1 }}
+                >
+                  <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </button>
         </div>
         {/* Time - anchored at bottom */}

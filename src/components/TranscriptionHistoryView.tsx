@@ -76,7 +76,6 @@ const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<HistoryItemData[]>(() =>
     getTranscriptionHistory().map(toHistoryItem)
   );
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Subscribe to transcription history changes
   useEffect(() => {
@@ -89,12 +88,8 @@ const TranscriptionHistoryView: React.FC = () => {
   const groupedItems = groupItemsByDate(historyItems);
 
   const handleCopy = (item: HistoryItemData) => {
-    // Copy to clipboard
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(item.text).then(() => {
-        setCopiedId(item.id);
-        setTimeout(() => setCopiedId(null), 2000); // Reset after 2s
-      });
+      navigator.clipboard.writeText(item.text);
     }
   };
 
@@ -134,18 +129,6 @@ const TranscriptionHistoryView: React.FC = () => {
           ))}
         </DateGroup>
       ))}
-
-      {/* Copy success toast (optional, simple version) */}
-      {copiedId && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 20 }}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-foreground text-background px-4 py-2 rounded-lg shadow-lg text-sm font-medium z-50"
-        >
-          Copied to clipboard
-        </motion.div>
-      )}
     </motion.div>
   );
 };
