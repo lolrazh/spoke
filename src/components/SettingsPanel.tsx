@@ -354,8 +354,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {/* Content container for height measurement - includes navbar */}
       <div ref={contentRef}>
-        {/* Tab Navigation */}
-        <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "var(--nav-bar-padding-bottom)" }}>
+        {/* Tab Navigation - top bezel */}
+        <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "12px" }}>
           <div className="flex items-center justify-center gap-1 px-6">
             <button
               onClick={() => setActiveTab("settings")}
@@ -382,10 +382,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Content */}
+        {/* Scrollable Content - the screen */}
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "530px" }}>
           <div
-            className="max-w-lg mx-auto w-full px-5 pt-2 pb-24"
+            className="max-w-lg mx-auto w-full px-5 pt-0 pb-20"
           >
           {activeTab === "settings" ? (
             <motion.div
