@@ -383,9 +383,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content - the screen */}
-        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "530px" }}>
+        <div className="flex-1 overflow-y-auto relative z-10" style={{ maxHeight: "530px" }}>
           <div
-            className="max-w-lg mx-auto w-full px-5 pt-0 pb-6"
+            className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
           >
           {activeTab === "settings" ? (
             <motion.div
@@ -520,7 +520,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             {!embeddedMode && (
               <motion.footer
                 variants={sectionVariants}
-                className="flex items-center gap-2 pt-6 pb-3 relative z-20"
+                className="flex items-center gap-2 pt-6 pb-3"
               >
                 <img
                   src="/assets/TrayTemplate.png"
@@ -538,14 +538,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
         {/* Fixed bottom band with fade gradient for chevron - absolutely positioned */}
-        <div className="absolute bottom-0 left-0 right-0 pointer-events-none">
+        <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-0">
           {/* Fade gradient */}
           <div
-            className="h-12"
+            className="h-8"
             style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
           />
           {/* Solid band for chevron */}
-          <div className="h-10 bg-background" />
+          <div className="h-6 bg-background" />
         </div>
       </div>
     </div>
