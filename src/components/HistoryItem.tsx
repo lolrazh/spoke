@@ -71,25 +71,35 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   className="text-foreground"
-                  initial={{ scale: 0.8, opacity: 0 }}
+                  initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  transition={{ duration: 0.1 }}
+                  exit={{ scale: 0.6, opacity: 0 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 600,
+                    damping: 15,
+                    mass: 0.5
+                  }}
                 >
                   <motion.path
                     d="M4 12l5 5L20 6"
                     initial={{ pathLength: 0 }}
                     animate={{ pathLength: 1 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
                   />
                 </motion.svg>
               ) : (
                 <motion.div
                   key="copy"
-                  initial={{ scale: 0.8, opacity: 0 }}
+                  initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.8, opacity: 0 }}
-                  transition={{ duration: 0.1 }}
+                  exit={{ scale: 0.6, opacity: 0 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 600,
+                    damping: 15,
+                    mass: 0.5
+                  }}
                 >
                   <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
                 </motion.div>
