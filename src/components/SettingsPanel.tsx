@@ -377,10 +377,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div ref={contentRef}>
         {/* Tab Navigation - top bezel */}
         <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
-          <div className="flex items-center justify-center gap-1 px-6">
+          <div className="flex items-center justify-center px-6">
+            <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden">
             <button
               onClick={() => setActiveTab("settings")}
-              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
+              className={`flex flex-col items-center gap-1 px-4 py-2 transition-all duration-200 ${
                 activeTab === "settings"
                   ? "bg-white/10 text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
@@ -391,7 +392,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </button>
             <button
               onClick={() => setActiveTab("history")}
-              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
+              className={`flex flex-col items-center gap-1 px-4 py-2 transition-all duration-200 ${
                 activeTab === "history"
                   ? "bg-white/10 text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
@@ -400,6 +401,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
               <span className="text-[10px] text-muted-foreground">History</span>
             </button>
+            </div>
           </div>
         </div>
 
