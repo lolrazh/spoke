@@ -524,14 +524,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
         {/* Fixed bottom band - bezel with footer and chevron space */}
-        <div className="absolute bottom-0 left-0 right-0 z-20">
-          {/* Fade gradient - no pointer events */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 bg-background">
+          {/* Fade gradient overlay */}
           <div
-            className="h-8 pointer-events-none"
+            className="absolute -top-8 left-0 right-0 h-8 pointer-events-none"
             style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
           />
-          {/* Solid band with footer */}
-          <div className="bg-background px-5 pb-3 pt-1">
+          {/* Band content with footer */}
+          <div className="px-5 py-3">
             {!embeddedMode && (
               <div className="flex items-center justify-center gap-2">
                 <img
