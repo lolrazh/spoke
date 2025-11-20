@@ -349,40 +349,41 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "var(--nav-bar-padding-bottom)" }}>
-        <div className="flex items-center justify-center gap-1 px-6">
-          <button
-            onClick={() => setActiveTab("settings")}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
-              activeTab === "settings"
-                ? "bg-white/10 text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-            }`}
-          >
-            <SfIcon name="gearshape.fill" size={18} />
-            <span className="text-[10px] text-muted-foreground">Settings</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
-              activeTab === "history"
-                ? "bg-white/10 text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-            }`}
-          >
-            <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
-            <span className="text-[10px] text-muted-foreground">History</span>
-          </button>
+      {/* Content container for height measurement - includes navbar */}
+      <div ref={contentRef}>
+        {/* Tab Navigation */}
+        <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "var(--nav-bar-padding-bottom)" }}>
+          <div className="flex items-center justify-center gap-1 px-6">
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
+                activeTab === "settings"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <SfIcon name="gearshape.fill" size={18} />
+              <span className="text-[10px] text-muted-foreground">Settings</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
+                activeTab === "history"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
+              <span className="text-[10px] text-muted-foreground">History</span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto relative">
-        <div
-          ref={contentRef}
-          className="max-w-lg mx-auto w-full px-5 pt-2 pb-14"
-        >
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto relative">
+          <div
+            className="max-w-lg mx-auto w-full px-5 pt-2 pb-14"
+          >
           {activeTab === "settings" ? (
             <motion.div
               initial="hidden"
@@ -524,6 +525,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <TranscriptionHistoryView />
           )}
         </div>
+      </div>
       </div>
     </div>
   );
