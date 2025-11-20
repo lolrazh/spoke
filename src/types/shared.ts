@@ -66,3 +66,11 @@ export type ActiveDisplayPayload = {
   notch?: DisplayNotchInfo | null;
   storedNotchWidth?: number | null;
 };
+
+// Transcription history types
+export type TranscriptionItem = {
+  id: string;
+  text: string;
+  timestamp: number; // Unix timestamp in ms
+  mode: "dictation" | "edit";
+};

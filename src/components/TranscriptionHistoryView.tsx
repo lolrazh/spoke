@@ -1,70 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import DateGroup from "./DateGroup";
 import HistoryItem, { HistoryItemData } from "./HistoryItem";
-
-// Mock data for development/testing
-const generateMockData = (): HistoryItemData[] => {
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-  const oneDay = 24 * oneHour;
-
-  return [
-    // Today
-    {
-      id: "1",
-      text: "Hey team, let's schedule a meeting for tomorrow afternoon to discuss the project roadmap and align on priorities.",
-      timestamp: now - 2 * oneHour,
-      mode: "dictation" as const,
-    },
-    {
-      id: "2",
-      text: "Quick reminder to follow up with the client about their feedback on the latest prototype we sent last week.",
-      timestamp: now - 4 * oneHour,
-      mode: "dictation" as const,
-    },
-    {
-      id: "3",
-      text: "Meeting notes: Discussed the new feature requirements, timeline constraints, and resource allocation for Q2.",
-      timestamp: now - 6 * oneHour,
-      mode: "dictation" as const,
-    },
-    // Yesterday
-    {
-      id: "4",
-      text: "Project update: We've completed the initial design phase and are ready to move into development this week.",
-      timestamp: now - oneDay - 5 * oneHour,
-      mode: "dictation" as const,
-    },
-    {
-      id: "5",
-      text: "Thanks for the great presentation today. The stakeholders were really impressed with the progress we've made.",
-      timestamp: now - oneDay - 8 * oneHour,
-      mode: "dictation" as const,
-    },
-    // This Week (3 days ago)
-    {
-      id: "6",
-      text: "Don't forget to submit your timesheet by end of day Friday. Also, please update the project tracker with your progress.",
-      timestamp: now - 3 * oneDay - 2 * oneHour,
-      mode: "dictation" as const,
-    },
-    {
-      id: "7",
-      text: "The new design system documentation is now live on Confluence. Check it out and let me know if you have any questions.",
-      timestamp: now - 3 * oneDay - 6 * oneHour,
-      mode: "dictation" as const,
-    },
-    // This Week (5 days ago)
-    {
-      id: "8",
-      text: "Reminder: Team lunch this Friday at 12:30 PM. Please RSVP in the calendar invite so we can get an accurate headcount.",
-      timestamp: now - 5 * oneDay - 3 * oneHour,
-      mode: "dictation" as const,
-    },
-  ];
-};
+import {
+  subscribeTranscriptionHistory,
+  getTranscriptionHistory,
+} from "../state/transcriptionHistory";
+import type { TranscriptionItem } from "../types/shared";
 
 // Helper function to format date as "MMM DD, YYYY" in caps
 const formatDateLabel = (timestamp: number): string => {
@@ -121,15 +64,27 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
   return groups;
 };
 
-interface TranscriptionHistoryViewProps {
-  // In the future, we'll pass real data here
-  // historyItems?: HistoryItemData[];
-}
+// Convert TranscriptionItem to HistoryItemData
+const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
+  id: item.id,
+  text: item.text,
+  timestamp: item.timestamp,
+  mode: item.mode,
+});
 
-const TranscriptionHistoryView: React.FC<TranscriptionHistoryViewProps> = () => {
-  // For now, using mock data - will be replaced with real data later
-  const [historyItems] = useState<HistoryItemData[]>(generateMockData());
+const TranscriptionHistoryView: React.FC = () => {
+  const [historyItems, setHistoryItems] = useState<HistoryItemData[]>(() =>
+    getTranscriptionHistory().map(toHistoryItem)
+  );
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Subscribe to transcription history changes
+  useEffect(() => {
+    const unsubscribe = subscribeTranscriptionHistory((items) => {
+      setHistoryItems(items.map(toHistoryItem));
+    });
+    return unsubscribe;
+  }, []);
 
   const groupedItems = groupItemsByDate(historyItems);
 
@@ -148,20 +103,6 @@ const TranscriptionHistoryView: React.FC<TranscriptionHistoryViewProps> = () => 
     return (
       <div className="flex flex-col items-center justify-center py-16 px-4">
         <div className="text-center">
-          <div className="mb-4 opacity-30">
-            <svg
-              width="64"
-              height="64"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </div>
           <p className="text-sm text-muted-foreground">No transcriptions yet</p>
           <p className="text-xs text-muted-foreground/60 mt-1">
             Your transcription history will appear here

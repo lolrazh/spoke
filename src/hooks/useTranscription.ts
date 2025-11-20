@@ -27,6 +27,7 @@ import {
   initUserIdentity,
   subscribeUserIdentity,
 } from "../state/userIdentity";
+import { addTranscription } from "../state/transcriptionHistory";
 import { ErrorCode } from "../types/errors";
 import {
   createAppError,
@@ -1317,6 +1318,10 @@ export function useTranscription(
                                 : Date.now();
                         } catch {}
                       }
+                      // Save transcription to history
+                      try {
+                        await addTranscription(msg.text, sessionModeRef.current);
+                      } catch {}
                     }
                     if (metricsRef.current) {
                       metricsRef.current.sttEndMs =
