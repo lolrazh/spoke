@@ -417,7 +417,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           />
           <div
             ref={scrollRef}
-            className="overflow-y-auto h-full"
+            className="overflow-y-auto h-full scrollbar-hide"
             style={{ maxHeight: "530px" }}
             onScroll={updateScrollIndicators}
           >
