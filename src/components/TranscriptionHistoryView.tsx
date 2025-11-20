@@ -66,35 +66,59 @@ const generateMockData = (): HistoryItemData[] => {
   ];
 };
 
+// Helper function to format date as "MMM DD, YYYY" in caps
+const formatDateLabel = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const month = months[date.getMonth()];
+  const day = date.getDate();
+  const year = date.getFullYear();
+  return `${month} ${day}, ${year}`;
+};
+
+// Helper function to get start of day for a timestamp
+const getStartOfDay = (timestamp: number): number => {
+  const date = new Date(timestamp);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+};
+
 // Helper function to group items by date categories
 const groupItemsByDate = (items: HistoryItemData[]) => {
-  const now = Date.now();
-  const oneDay = 24 * 60 * 60 * 1000;
   const startOfToday = new Date().setHours(0, 0, 0, 0);
+  const oneDay = 24 * 60 * 60 * 1000;
   const startOfYesterday = startOfToday - oneDay;
-  const startOfThisWeek = startOfToday - 7 * oneDay;
 
-  const groups: { label: string; items: HistoryItemData[] }[] = [
-    { label: "TODAY", items: [] },
-    { label: "YESTERDAY", items: [] },
-    { label: "THIS WEEK", items: [] },
-    { label: "OLDER", items: [] },
-  ];
+  // Use a Map to collect items by their date key
+  const groupMap = new Map<string, { label: string; items: HistoryItemData[]; sortKey: number }>();
 
   items.forEach((item) => {
+    let label: string;
+    let sortKey: number;
+
     if (item.timestamp >= startOfToday) {
-      groups[0].items.push(item);
+      label = "TODAY";
+      sortKey = startOfToday;
     } else if (item.timestamp >= startOfYesterday) {
-      groups[1].items.push(item);
-    } else if (item.timestamp >= startOfThisWeek) {
-      groups[2].items.push(item);
+      label = "YESTERDAY";
+      sortKey = startOfYesterday;
     } else {
-      groups[3].items.push(item);
+      // For older items, group by individual day
+      const dayStart = getStartOfDay(item.timestamp);
+      label = formatDateLabel(item.timestamp);
+      sortKey = dayStart;
     }
+
+    if (!groupMap.has(label)) {
+      groupMap.set(label, { label, items: [], sortKey });
+    }
+    groupMap.get(label)!.items.push(item);
   });
 
-  // Filter out empty groups
-  return groups.filter((group) => group.items.length > 0);
+  // Convert to array and sort by date (most recent first)
+  const groups = Array.from(groupMap.values());
+  groups.sort((a, b) => b.sortKey - a.sortKey);
+
+  return groups;
 };
 
 interface TranscriptionHistoryViewProps {
