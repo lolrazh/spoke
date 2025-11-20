@@ -383,7 +383,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content - the screen */}
-        <div className="flex-1 overflow-y-auto relative z-10" style={{ maxHeight: "530px" }}>
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "530px" }}>
           <div
             className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
           >
@@ -516,20 +516,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </motion.section>
 
-            {/* Footer with logo and version - only in standalone mode */}
-            {!embeddedMode && (
-              <motion.footer
-                variants={sectionVariants}
-                className="flex items-center gap-2 pt-6 pb-3"
-              >
-                <img
-                  src="/assets/TrayTemplate.png"
-                  alt="Sonic Flow Icon"
-                  className="w-4 h-4 brightness-0 invert"
-                />
-                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
-              </motion.footer>
-            )}
           </motion.div>
           ) : (
             <TranscriptionHistoryView />
@@ -537,15 +523,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       </div>
 
-        {/* Fixed bottom band with fade gradient for chevron - absolutely positioned */}
-        <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-0">
-          {/* Fade gradient */}
+        {/* Fixed bottom band - bezel with footer and chevron space */}
+        <div className="absolute bottom-0 left-0 right-0 z-20">
+          {/* Fade gradient - no pointer events */}
           <div
-            className="h-8"
+            className="h-8 pointer-events-none"
             style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
           />
-          {/* Solid band for chevron */}
-          <div className="h-6 bg-background" />
+          {/* Solid band with footer */}
+          <div className="bg-background px-5 pb-3 pt-1">
+            {!embeddedMode && (
+              <div className="flex items-center justify-center gap-2">
+                <img
+                  src="/assets/TrayTemplate.png"
+                  alt="Sonic Flow Icon"
+                  className="w-4 h-4 brightness-0 invert"
+                />
+                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
