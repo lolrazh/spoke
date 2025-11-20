@@ -32,7 +32,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", ...MOTION.springs.quick }}
-      className="group flex border-b border-border/20 hover:bg-white/5 transition-colors cursor-default"
+      className="group flex border-b border-white/10 hover:bg-white/5 transition-colors cursor-default"
     >
       {/* Text - left side with max width */}
       <div className="flex-1 p-3 pr-2">

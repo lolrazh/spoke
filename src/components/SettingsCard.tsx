@@ -25,14 +25,18 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
       : status === "warning"
         ? "border border-amber-400/60 bg-amber-500/5"
         : inGroup
-          ? "border-b border-border/20"
-          : "border border-border/40";
+          ? "border-0 border-b border-white/10"
+          : "border border-white/10";
 
   const roundedClass = inGroup ? "" : "rounded-[var(--radius-lg)]";
 
+  const baseClass = inGroup
+    ? "p-3 flex items-center justify-between gap-3"
+    : "settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3";
+
   return (
     <div
-      className={`settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3 ${roundedClass} ${statusClass} ${className}`}
+      className={`${baseClass} ${roundedClass} ${statusClass} ${className}`}
       role="group"
       aria-label={title}
     >
