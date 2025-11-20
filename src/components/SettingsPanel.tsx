@@ -516,20 +516,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </motion.section>
 
-            {/* Footer with logo and version - only in standalone mode */}
-            {!embeddedMode && (
-              <motion.footer
-                variants={sectionVariants}
-                className="flex items-center gap-2 pt-6 pb-3"
-              >
-                <img
-                  src="/assets/TrayTemplate.png"
-                  alt="Sonic Flow Icon"
-                  className="w-4 h-4 brightness-0 invert"
-                />
-                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
-              </motion.footer>
-            )}
           </motion.div>
           ) : (
             <TranscriptionHistoryView />
@@ -538,14 +524,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
         {/* Fixed bottom band with fade gradient */}
-        <div className="relative">
+        <div className="relative bg-background">
           {/* Fade gradient at top of band */}
           <div
-            className="absolute top-0 left-0 right-0 h-8 pointer-events-none -translate-y-full"
+            className="absolute top-0 left-0 right-0 h-8 pointer-events-none -translate-y-full z-10"
             style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
           />
-          {/* Solid band for chevron space */}
-          <div className="h-10 bg-background" />
+          {/* Band content with padding for chevron */}
+          <div className="pt-2 pb-4 px-5">
+            {/* Footer with logo and version - only in standalone mode */}
+            {!embeddedMode && (
+              <div className="flex items-center justify-center gap-2">
+                <img
+                  src="/assets/TrayTemplate.png"
+                  alt="Sonic Flow Icon"
+                  className="w-4 h-4 brightness-0 invert"
+                />
+                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
