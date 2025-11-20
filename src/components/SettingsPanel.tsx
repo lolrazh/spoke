@@ -531,7 +531,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
           />
           {/* Band content with footer */}
-          <div className="px-5 py-3">
+          <div className="px-5 pt-8 pb-4">
             {!embeddedMode && (
               <div className="flex items-center justify-center gap-2">
                 <img
