@@ -42,14 +42,18 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
       </div>
 
       {/* Right band - copy button centered, time at bottom */}
-      <div className="flex flex-col items-center justify-between py-2 px-3 min-w-[48px]">
-        <button
-          onClick={onCopy}
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Copy to clipboard"
-        >
-          <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
-        </button>
+      <div className="flex flex-col items-center pt-2 pb-1 px-3 min-w-[48px]">
+        {/* Copy button - takes remaining space, centered within */}
+        <div className="flex-1 flex items-center justify-center">
+          <button
+            onClick={onCopy}
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Copy to clipboard"
+          >
+            <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
+          </button>
+        </div>
+        {/* Time - anchored at bottom */}
         <span className="text-[10px] text-muted-foreground/50">
           {formatTime(item.timestamp)}
         </span>
