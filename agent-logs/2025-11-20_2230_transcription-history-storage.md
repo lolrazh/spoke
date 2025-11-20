@@ -15,6 +15,7 @@ User wanted to complete the transcription history feature by implementing actual
 - ✅ **Real data integration** - TranscriptionHistoryView now uses actual stored data
 - ✅ **Clean empty state** - Removed ugly dollar sign icon, now just text
 - ✅ **Animated checkmark on copy** - Replaced toast with spring-animated checkmark (pop effect)
+- ✅ **Hidden scrollbar** - Added scrollbar-hide utility to remove ugly Chrome scrollbar on hover
 
 ## Technical Implementation
 
@@ -55,6 +56,8 @@ Tab Switch → getTranscriptionHistory() → Instant read from memory (no I/O)
 - `src/components/App.tsx` - Initializes history on app start
 - `src/components/TranscriptionHistoryView.tsx` - Uses real data, removed toast
 - `src/components/HistoryItem.tsx` - Animated checkmark on copy
+- `src/components/SettingsPanel.tsx` - Added scrollbar-hide class to scroll container
+- `src/index.css` - Added scrollbar-hide utility class
 
 ## Bugs & Issues Encountered
 
@@ -85,6 +88,10 @@ Tab Switch → getTranscriptionHistory() → Instant read from memory (no I/O)
 7. **Flicker during icon swap**
    - Exit scale 0.8 was still partially visible
    - **User reverted:** Kept 0.6 scale which they preferred
+
+8. **Ugly scrollbar on hover**
+   - Default Chrome scrollbar appearing on right side of scrollable panel
+   - **Fix:** Added `scrollbar-hide` utility class to hide scrollbar while preserving scroll functionality
 
 ## Key Learnings
 
