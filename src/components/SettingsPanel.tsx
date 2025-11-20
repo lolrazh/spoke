@@ -325,7 +325,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [embeddedMode]);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   usePanelAutoHeight(contentRef, embeddedMode ? onHeightChange : undefined);
+
+  // Scroll indicator state
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  // Update scroll indicators
+  const updateScrollIndicators = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    setCanScrollUp(el.scrollTop > 0);
+    setCanScrollDown(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  };
+
+  // Check scroll state on mount and when tab changes
+  useEffect(() => {
+    // Small delay to ensure content is rendered
+    const timer = setTimeout(updateScrollIndicators, 50);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
 
   return (
     <div
@@ -383,7 +404,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content - the screen */}
-        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "530px" }}>
+        <div className="relative flex-1">
+          {/* Top fade gradient - dynamic */}
+          <div
+            className="absolute top-0 left-0 right-0 h-12 pointer-events-none z-20 transition-opacity duration-200"
+            style={{
+              background: "linear-gradient(to bottom, hsl(var(--background)), transparent)",
+              opacity: canScrollUp ? 1 : 0,
+            }}
+          />
+          <div
+            ref={scrollRef}
+            className="overflow-y-auto h-full"
+            style={{ maxHeight: "530px" }}
+            onScroll={updateScrollIndicators}
+          >
           <div
             className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
           >
@@ -522,13 +557,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           )}
         </div>
       </div>
+      </div>
 
         {/* Fixed bottom band - bezel with footer and chevron space */}
         <div className="absolute bottom-0 left-0 right-0 z-20 bg-background">
-          {/* Fade gradient overlay */}
+          {/* Bottom fade gradient - dynamic */}
           <div
-            className="absolute -top-8 left-0 right-0 h-8 pointer-events-none"
-            style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
+            className="absolute -top-12 left-0 right-0 h-12 pointer-events-none transition-opacity duration-200"
+            style={{
+              background: "linear-gradient(to bottom, transparent, hsl(var(--background)))",
+              opacity: canScrollDown ? 1 : 0,
+            }}
           />
           {/* Band content with footer */}
           <div className="px-5 pt-8 pb-4">
