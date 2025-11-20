@@ -45,12 +45,12 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
       <div className="flex flex-col items-center justify-between py-2 px-3 min-w-[48px]">
         <button
           onClick={onCopy}
-          className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-all"
+          className="opacity-0 group-hover:opacity-100 transition-opacity"
           title="Copy to clipboard"
         >
-          <SfIcon name="document.on.document" size={12} className="text-muted-foreground hover:text-foreground transition-colors" />
+          <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
         </button>
-        <span className="text-[9px] text-muted-foreground/50">
+        <span className="text-[10px] text-muted-foreground/50">
           {formatTime(item.timestamp)}
         </span>
       </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
+import { SectionSeparator } from "./SettingsPanel";
 
 interface DateGroupProps {
   label: string; // e.g., "TODAY", "YESTERDAY", "THIS WEEK"
@@ -13,17 +14,13 @@ const DateGroup: React.FC<DateGroupProps> = ({ label, children }) => {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", ...MOTION.springs.quick }}
-      className="mb-6"
+      style={{ marginTop: "var(--panel-section-offset)" }}
     >
-      {/* Date Label */}
-      <div className="px-4 py-2 mb-2">
-        <h3 className="text-[10px] font-semibold text-muted-foreground/70 tracking-widest uppercase">
-          {label}
-        </h3>
-      </div>
+      {/* Date Label - using same style as settings sections */}
+      <SectionSeparator title={label} />
 
       {/* Items */}
-      <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm">
+      <div className="space-y-0">
         {children}
       </div>
     </motion.div>
