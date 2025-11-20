@@ -89,16 +89,18 @@ export const SectionSeparator: React.FC<{
   style?: React.CSSProperties;
 }> = ({ title, className = "mt-0", style }) => (
   <div
-    className={`${className}`}
+    className={`relative ${className}`}
     style={{
       marginBottom: "var(--panel-heading-gap)",
-      paddingLeft: "var(--section-heading-padding-left)",
       ...(style ?? {}),
     }}
   >
-    <span className="text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
-      {title}
-    </span>
+    <div className="border-b-2 border-border/40" />
+    <div className="absolute inset-0 flex items-center justify-center">
+      <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
+        {title}
+      </span>
+    </div>
   </div>
 );
 
@@ -381,7 +383,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto relative" style={{ maxHeight: "480px" }}>
+        <div className="flex-1 overflow-y-auto relative" style={{ maxHeight: "530px" }}>
           {/* Fade gradient at bottom */}
           <div
             className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none z-10"
