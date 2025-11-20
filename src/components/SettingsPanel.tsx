@@ -43,8 +43,9 @@ const Toggle: React.FC<{
   description?: string;
   icon?: React.ReactNode;
   disabled?: boolean;
-}> = ({ enabled, onChange, label, description, icon, disabled }) => (
-  <SettingsCard title={label} description={description} icon={icon}>
+  inGroup?: boolean;
+}> = ({ enabled, onChange, label, description, icon, disabled, inGroup }) => (
+  <SettingsCard title={label} description={description} icon={icon} inGroup={inGroup}>
     <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
   </SettingsCard>
 );
@@ -55,11 +56,13 @@ const SelectField: React.FC<{
   options: { value: string; label: string }[];
   label: string;
   description?: string;
-}> = ({ value, onChange, options, label, description }) => (
+  inGroup?: boolean;
+}> = ({ value, onChange, options, label, description, inGroup }) => (
   <SettingsCard
     title={label}
     description={description}
     icon={<SfIcon name="microphone.fill" size={16} className="text-primary/70" />}
+    inGroup={inGroup}
   >
     <div className="ml-2">
       <Select value={value} onValueChange={onChange}>
@@ -86,18 +89,15 @@ export const SectionSeparator: React.FC<{
   style?: React.CSSProperties;
 }> = ({ title, className = "mt-0", style }) => (
   <div
-    className={`relative ${className}`}
+    className={`${className}`}
     style={{
       marginBottom: "var(--panel-heading-gap)",
       ...(style ?? {}),
     }}
   >
-    <div className="border-b-2 border-border/40" />
-    <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
-        {title}
-      </span>
-    </div>
+    <span className="text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
+      {title}
+    </span>
   </div>
 );
 
@@ -380,9 +380,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto relative">
+        <div className="flex-1 overflow-y-auto relative" style={{ maxHeight: "480px" }}>
+          {/* Fade gradient at bottom */}
           <div
-            className="max-w-lg mx-auto w-full px-5 pt-2 pb-14"
+            className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none z-10"
+            style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
+          />
+          <div
+            className="max-w-lg mx-auto w-full px-5 pt-2 pb-12"
           >
           {activeTab === "settings" ? (
             <motion.div
@@ -399,13 +404,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             >
               <SectionSeparator title="Defaults" />
 
-              <div className="space-y-3 no-drag">
+              <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm no-drag">
                 <SelectField
                   label="Microphone"
                   description="Select your preferred input device"
                   value={selectedMicId}
                   onChange={handleMicChange}
                   options={micOptions}
+                  inGroup
                 />
 
                 <Toggle
@@ -423,6 +429,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className="text-primary/70"
                     />
                   }
+                  inGroup
                 />
 
                 <Toggle
@@ -444,6 +451,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className="text-primary/70"
                     />
                   }
+                  inGroup
                 />
 
                 <Toggle
@@ -461,6 +469,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   disabled={
                     !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
                   }
+                  inGroup
                 />
               </div>
             </motion.section>
@@ -472,38 +481,41 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Account" />
-              {userEmail ? (
-                <SettingsCard
-                  title={userName || userEmail}
-                  description={userEmail}
-                  icon={
-                    <span className="text-[11px] font-semibold tracking-wide">
-                      {(userName || userEmail || "").slice(0, 1).toUpperCase()}
-                    </span>
-                  }
-                >
-                  <Button variant="secondary" size="sm" onClick={handleSignOut}>
-                    Sign Out
-                  </Button>
-                </SettingsCard>
-              ) : (
-                // If not signed in, do not render login UI here — redirect to onboarding
-                <div className="space-y-3">
-                  <div className="text-[12px] text-subtle">
-                    You are signed out.
-                  </div>
-                  <Button
-                    className="w-full onboarding-cta"
-                    onClick={async () => {
-                      try {
-                        await window.electron?.showOnboarding?.();
-                      } catch {}
-                    }}
+              <div className="border border-border/30 rounded-lg overflow-hidden bg-background/30 backdrop-blur-sm">
+                {userEmail ? (
+                  <SettingsCard
+                    title={userName || userEmail}
+                    description={userEmail}
+                    icon={
+                      <span className="text-[11px] font-semibold tracking-wide">
+                        {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                      </span>
+                    }
+                    inGroup
                   >
-                    Open Onboarding to Sign In
-                  </Button>
-                </div>
-              )}
+                    <Button variant="secondary" size="sm" onClick={handleSignOut}>
+                      Sign Out
+                    </Button>
+                  </SettingsCard>
+                ) : (
+                  // If not signed in, do not render login UI here — redirect to onboarding
+                  <div className="p-3">
+                    <div className="text-[12px] text-subtle mb-3">
+                      You are signed out.
+                    </div>
+                    <Button
+                      className="w-full onboarding-cta"
+                      onClick={async () => {
+                        try {
+                          await window.electron?.showOnboarding?.();
+                        } catch {}
+                      }}
+                    >
+                      Open Onboarding to Sign In
+                    </Button>
+                  </div>
+                )}
+              </div>
             </motion.section>
 
             {/* Footer with logo and version - only in standalone mode */}
