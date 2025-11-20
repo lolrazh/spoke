@@ -383,14 +383,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto relative" style={{ maxHeight: "530px" }}>
-          {/* Fade gradient at bottom */}
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "480px" }}>
           <div
-            className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none z-10"
-            style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
-          />
-          <div
-            className="max-w-lg mx-auto w-full px-5 pt-2 pb-12"
+            className="max-w-lg mx-auto w-full px-5 pt-2 pb-4"
           >
           {activeTab === "settings" ? (
             <motion.div
@@ -541,6 +536,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           )}
         </div>
       </div>
+
+        {/* Fixed bottom band with fade gradient */}
+        <div className="relative">
+          {/* Fade gradient at top of band */}
+          <div
+            className="absolute top-0 left-0 right-0 h-8 pointer-events-none -translate-y-full"
+            style={{ background: "linear-gradient(to bottom, transparent, var(--background))" }}
+          />
+          {/* Solid band for chevron space */}
+          <div className="h-10 bg-background" />
+        </div>
       </div>
     </div>
   );
