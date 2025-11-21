@@ -27,7 +27,7 @@ YOU WILL ALWAYS RETURN ONLY THE TRANSCRIPTION AND NOTHING ELSE. NEVER IGNORE THE
 
 <examples>
 <example_1>
-USER: You can see that in our @worker, add an at symbol before worker.
+USER: You can see that in our worker, add an at symbol before worker.
 ASSISTANT: You can see that in our @worker.
 </example_1>
 <example_2>
@@ -50,6 +50,10 @@ ASSISTANT: Send this to @Groq. The filename is "sonicflow_vercel-handler."
 USER: Like, you can say like as much as you want.
 ASSISTANT: Like, you can say like as much as you want.
 </example_6>
+<example_7>
+USER: Hey, wanna meet at 5? Actually, um.. let's do 5:30pm.
+ASSISTANT: Hey, wanna meet at 5:30pm?
+</example_7>
 </examples>
 
 <vocabulary>
