@@ -29,10 +29,10 @@ Scope
 - Flow: Hosted Checkout Sessions by Dodo; webhook-driven entitlements; zero-DB hot path for the Worker via short-lived entitlement tokens.
 
 High-level architecture
-- Client App (desktop) → opens website pricing → Next.js server creates Dodo Checkout Session → Dodo hosted checkout (trial=7 days) → return_url → webhook posts subscription status → server updates DB and entitlement cache → server issues short-lived entitlement token → Worker validates token per request/connection (no DB call).
+- Client App (desktop) → opens website pricing → Next.js server creates Dodo Checkout Session → Dodo hosted checkout (trial=7 days) → return_url → webhook posts subscription status → server updates subscriptions and profiles.entitlement_ver (for revocation) → server issues short-lived entitlement token → Worker validates token per request/connection (no DB call).
 - Primary components:
   - Next.js API routes (server-only) to: create checkout, issue entitlement tokens, expose billing status, and process Dodo webhooks.
-  - Supabase Postgres for billing state + entitlement cache (RLS; service role only writes).
+  - Supabase Postgres for billing state (subscriptions) and profiles fields; service role only writes.
   - Cloudflare Worker enforces Authorization: Bearer entitlement token.
 
 Suggested file layout (clickable references per path conventions)
@@ -49,45 +49,31 @@ Suggested file layout (clickable references per path conventions)
 Data model (Supabase SQL + RLS)
 - Important: enable RLS and restrict writes to service-role only (Next.js server + webhook). Client never writes these tables directly.
 
-[sql.supabase_schema()](docs/PAYMENTS_BLUEPRINT.md:1)
+[sql.supabase_schema()](plans/PAYMENTS_BLUEPRINT.md:1)
 ```sql
--- 1) Customers map (Supabase user_id ↔ Dodo customer_id)
-create table if not exists public.billing_customers (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  dodo_customer_id text unique,
-  email text not null,
-  created_at timestamptz not null default now()
-);
+-- Extend profiles for Dodo linkage + fast entitlement revocation
+alter table public.profiles
+  add column if not exists dodo_customer_id text unique,
+  add column if not exists entitlement_ver integer not null default 1;
 
--- 2) Subscriptions (mirror Dodo; denormalize interval and periods)
+-- Subscriptions (mirror Dodo; denormalize interval and periods)
 create table if not exists public.subscriptions (
-  id bigserial primary key,
-  dodo_subscription_id text unique not null,
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  product_id text not null,          -- Dodo product_id (monthly/yearly)
-  status text not null,              -- pending|active|on_hold|cancelled|failed|expired
-  plan_interval text not null,       -- month|year (denormalized)
+  dodo_subscription_id text unique,
+  plan_id text not null,              -- 'monthly' | 'yearly' (app-facing)
+  product_id text,                    -- Dodo product_id for the chosen plan
+  status text not null,               -- 'active' | 'canceled' | 'past_due' | 'on_hold' | 'expired'
+  plan_interval text,                 -- 'month' | 'year' (denormalized)
   current_period_start timestamptz,
   current_period_end timestamptz,
   trial_end timestamptz,
   cancel_at_period_end boolean default false,
-  cancelled_at timestamptz,
-  metadata jsonb default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
--- 3) Entitlement cache (authoritative for Worker gating)
-create table if not exists public.entitlement_cache (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  is_active boolean not null default false,
-  plan text not null default 'free', -- free|pro_monthly|pro_yearly
-  trial boolean not null default false,
-  expires_at timestamptz,            -- next revalidation time
-  ver integer not null default 1,    -- revocation/version counter
-  updated_at timestamptz not null default now()
-);
-
--- 4) Webhook events (idempotency and audit)
+-- Webhook events (idempotency + audit)
 create table if not exists public.webhook_events (
   event_id text primary key,
   type text not null,
@@ -95,31 +81,23 @@ create table if not exists public.webhook_events (
   raw jsonb not null
 );
 
--- RLS: block public; only service-role can write
-alter table public.billing_customers enable row level security;
+-- RLS: restrict public; service-role writes via server/webhook only
 alter table public.subscriptions enable row level security;
-alter table public.entitlement_cache enable row level security;
 alter table public.webhook_events enable row level security;
 
--- READ: allow authenticated users to read their own entitlement & basic sub info (optional)
-create policy "entitlement_read_own"
-on public.entitlement_cache for select
-to authenticated
-using (user_id = auth.uid());
+-- READ: allow users to read their own subscription records
+create policy if not exists "Users can view own subscription"
+  on public.subscriptions for select
+  using (auth.uid() = user_id);
 
-create policy "subs_read_own"
-on public.subscriptions for select
-to authenticated
-using (user_id = auth.uid());
-
--- WRITE: no public writes; perform inserts/updates with Supabase service key only (Next.js server/webhook).
+-- WRITE: no public writes; service role bypasses RLS.
 ```
 
 Server API surface (Next.js on Vercel)
 - POST /api/billing/checkout → create Dodo Checkout Session with trial=7 days
   - Input: product_id (monthly|yearly)
   - Behavior:
-    - Ensure billing_customers row for user_id (create if missing)
+    - Ensure profiles.dodo_customer_id is set (reuse by email or attach_existing)
     - Dodo create_checkout_sessions:
       - product_cart: [{ product_id, quantity: 1 }]
       - subscription_data: { trial_period_days: 7 }
@@ -130,8 +108,8 @@ Server API surface (Next.js on Vercel)
       - feature_flags.always_create_new_customer = false
     - Return: { checkout_url, session_id }
 - POST /api/dodo/webhook → process events (signature-verified; idempotent)
-  - Updates subscriptions + entitlement_cache atomically per event
-- GET /api/billing/status → read entitlement for logged-in user (from entitlement_cache)
+  - Updates subscriptions; bumps profiles.entitlement_ver on cancel/on_hold/failed for fast token revocation
+- GET /api/billing/status → read entitlement for logged-in user (from subscriptions)
 - POST /api/billing/entitlement-token → mint short-lived entitlement token (JWT/JWE)
 
 Entitlement token design (JWT/JWE)
@@ -140,13 +118,13 @@ Entitlement token design (JWT/JWE)
   - is_active: boolean
   - plan: 'free' | 'pro_monthly' | 'pro_yearly'
   - trial: boolean
-  - ver: integer (copied from entitlement_cache.ver)
-  - iat, exp: timestamp; exp ≈ 10 minutes (tunable)
+  - ver: integer (copied from profiles.entitlement_ver)
+  - iat, exp: timestamp; exp = 30 minutes
 - Signing:
   - Server signs with HS256 (shared secret) or ES256/EdDSA (preferred with JWK)
   - Store secrets in Vercel project env; Worker loads verification key via CF secrets
 - Revocation:
-  - On critical events (cancel/on_hold/failed), bump entitlement_cache.ver and mint new tokens; Worker rejects tokens with stale ver.
+  - On critical events (cancel/on_hold/failed), bump profiles.entitlement_ver and mint new tokens; Worker rejects tokens with stale ver.
 
 Cloudflare Worker gating (zero-DB hot path)
 - Client sets Authorization: Bearer <entitlement-token> when connecting/using WS.
@@ -156,7 +134,7 @@ Cloudflare Worker gating (zero-DB hot path)
   - ver (optional: compare against embedded policy value if you push ver to Worker via config; practical approach: rely on short exp, and bump ver for rapid rotation)
   - is_active === true
 - If invalid/inactive → close with 401/402 and message prompting refresh or upgrade.
-- Grace period: optional small grace (e.g., 30–60s) if exp lapses mid-stream; notify client to refresh token.
+- Grace period: 120 seconds if exp lapses mid-stream; Worker allows request but notifies client to refresh token immediately.
 
 Webhook processing (Dodo)
 - Endpoint: [route.ts](apps/web/src/app/api/dodo/webhook/route.ts:1)
@@ -164,20 +142,37 @@ Webhook processing (Dodo)
 - Idempotency: INSERT INTO webhook_events(event_id); if conflict → skip processing.
 - Event handling (minimum):
   - subscription.active:
-    - subscriptions: upsert status=active, set trial_end/current_period_start/end/plan_interval/product_id
-    - entitlement_cache: set is_active=true, plan (map product_id→plan), trial = (now <= trial_end), expires_at = least(trial_end, current_period_end)
+    - subscriptions: upsert status=active; set trial_end/current_period_start/end/plan_interval/product_id (and plan_id mapping as needed)
+    - profiles: leave entitlement_ver unchanged
   - subscription.renewed:
-    - update period dates; entitlement_cache.expires_at = current_period_end
+    - subscriptions: update current_period_*; status remains active
   - subscription.on_hold / subscription.failed:
-    - entitlement_cache.is_active=false (consider UX grace)
+    - subscriptions: update status accordingly
+    - profiles: entitlement_ver = entitlement_ver + 1 (revoke existing tokens)
   - subscription.cancelled / subscription.expired:
-    - entitlement_cache.is_active=false; mark cancelled_at if provided
+    - subscriptions: update status and set cancelled_at if provided
+    - profiles: entitlement_ver = entitlement_ver + 1 (revoke existing tokens)
   - subscription.plan_changed:
-    - update product_id/plan_interval; entitlement_cache.plan accordingly
+    - subscriptions: update product_id/plan_interval/plan_id as appropriate
   - payment.succeeded/failed (optional analytics)
 - Return 200 quickly; store raw payload for audit.
 
 End-to-end flows
+
+Desktop App → API Authentication
+- Desktop app holds Supabase session (access_token JWT from Google OAuth)
+- To call Next.js API routes, app includes: Authorization: Bearer <supabase_access_token>
+- Next.js API route verifies Supabase JWT using supabase.auth.getUser() with service role
+- If valid, route proceeds; user_id extracted from JWT claims
+- Entitlement token is then minted and returned to app
+- App stores entitlement token in electron-store (short-lived, refreshable, not highly sensitive)
+- App refreshes token proactively at 20-minute mark (before 30-min expiry)
+
+Token refresh flow:
+1. App checks token exp on startup and before each dictation
+2. If exp < 10 minutes remaining → call POST /api/billing/entitlement-token
+3. If refresh fails (offline, expired session) → show "Re-authenticate" prompt
+4. On Supabase session refresh → also refresh entitlement token
 
 A) App → Pricing → Checkout (auth-first, recommended)
 - Desktop app Upgrade opens https://yourdomain.com/pricing?source=app
@@ -222,8 +217,9 @@ Sandbox testing plan
   - Immediate cancel/on_hold/failed → entitlement false (respect grace if enabled)
 - Webhook idempotency: replay same event_id, verify no duplicate effects
 - Token path:
-  - Entitlement token minted, exp ~10m; Worker accepts; expiry triggers refresh flow
+  - Entitlement token minted, exp = 30m; Worker accepts; app refreshes at 20m mark
   - Ver bump revokes old tokens on next check
+  - Grace period (120s) allows completion of in-progress dictations
 - Sentry/observability: alert on webhook non-2xx, Worker 401/402 spikes
 
 Production rollout checklist
@@ -260,7 +256,7 @@ Implementation steps (sequenced)
 2) Next.js:
    - Implement [route.ts](apps/web/src/app/api/billing/checkout/route.ts:1) using Dodo SDK/REST (include trial_period_days=7; pass return_url)
    - Implement [route.ts](apps/web/src/app/api/dodo/webhook/route.ts:1) with signature verification + idempotency + status mapping
-   - Implement [route.ts](apps/web/src/app/api/billing/status/route.ts:1) reading entitlement_cache
+   - Implement [route.ts](apps/web/src/app/api/billing/status/route.ts:1) deriving entitlement from subscriptions
    - Implement [route.ts](apps/web/src/app/api/billing/entitlement-token/route.ts:1) minting short-lived token
 3) Pricing page: call /api/billing/checkout; redirect to checkout_url
 4) Desktop app: open pricing; on success, fetch entitlement token and refresh periodically
