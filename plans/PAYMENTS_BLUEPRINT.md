@@ -102,7 +102,7 @@ Server API surface (Next.js on Vercel)
       - product_cart: [{ product_id, quantity: 1 }]
       - subscription_data: { trial_period_days: 7 }
       - customer: { email } OR attach_existing by dodo_customer_id
-      - return_url: https://yourdomain.com/billing/return
+      - return_url: https://sonicflow.app/billing/return
       - show_saved_payment_methods: true
       - allowed_payment_method_types: ['credit','debit', wallets as desired]
       - feature_flags.always_create_new_customer = false
@@ -175,7 +175,7 @@ Token refresh flow:
 4. On Supabase session refresh → also refresh entitlement token
 
 A) App → Pricing → Checkout (auth-first, recommended)
-- Desktop app Upgrade opens https://yourdomain.com/pricing?source=app
+- Desktop app Upgrade opens https://sonicflow.app/pricing?source=app
 - If not signed-in → Supabase sign-in → back to pricing
 - User selects plan → POST /api/billing/checkout → redirect to checkout_url
 - Dodo hosted checkout completes → return_url (/billing/return)
@@ -241,7 +241,7 @@ Configuration matrix (env vars)
   - ENTITLEMENT_SIGNING_KEY or ENTITLEMENT_JWK (private)
   - SUPABASE_SERVICE_ROLE_KEY
   - SUPABASE_URL
-  - RETURN_URL (e.g., https://yourdomain.com/billing/return)
+  - RETURN_URL=https://sonicflow.app/billing/return
 - Cloudflare Worker
   - ENTITLEMENT_VERIFY_KEY or ENTITLEMENT_JWK_PUBLIC
   - SENTRY_DSN (optional)
