@@ -86,7 +86,7 @@ The worklet performs real-time audio processing in a dedicated audio thread:
 #### Frame Buffering
 ```javascript
 // Default configuration
-frameSamples: 1600,     // 100ms at 16kHz (configurable to 400ms/6400 samples)
+frameSamples: 1600,     // 100ms at 16kHz
 targetRate: 16000,      // ASR model expected rate
 ```
 
@@ -248,7 +248,12 @@ export function encodeFrameHeader(seq: number, nbytes: number, tsNs: bigint): Ar
 }
 
 // Error condition
-{ type: "error", body: "Transcription failed" }
+{
+  type: "error",
+  code: 4001,                    // Error code (4001=STT_API_ERROR, 4002=STT_TIMEOUT, etc.)
+  body: "Transcription failed",
+  retryable: false               // Whether client should retry
+}
 ```
 
 ---
@@ -352,11 +357,11 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Switcher**: `worker/src/services/stt/index.ts` — selects provider based on `STT_DEFAULT_PROVIDER` and forwards normalized options.
 - **Provider configs**: default provider/model live in `worker/src/config.ts`, while the runtime `STT_PROVIDER` env (or the config fallback) selects the active service without touching `.dev.vars`.
 
-#### Groq Whisper Large v3 (default)
+#### Groq Whisper Large v3 Turbo (default)
 - **Location**: `worker/src/services/stt/providers/groq.ts`
 - **Endpoint**: `https://api.groq.com/openai/v1/audio/transcriptions`
 - **Auth**: `Authorization: Bearer <GROQ_API_KEY>`
-- **Default model**: `whisper-large-v3` (set via `GROQ_STT_MODEL`)
+- **Default model**: `whisper-large-v3-turbo` (set via `GROQ_STT_MODEL`)
 - **Instrumentation**: Records `stt.provider = groq` plus Groq-specific timing attributes for TTFB, body processing, and total duration.
 
 #### Fireworks Whisper Turbo
@@ -376,6 +381,24 @@ The worker now supports multiple STT providers behind a small dispatcher so the 
 - **Instrumentation**: Emits `stt.provider = deepgram` plus Deepgram-specific timing and transcript attributes, matching the structure used by other providers.
 
 > **Switching providers**: Set `STT_PROVIDER=fireworks` or `STT_PROVIDER=deepgram` (and supply the matching API key) to flip at runtime. The WebSocket handler logs the active provider/model combo so you can confirm the change in devtools.
+
+### Hallucination Post-Processing
+
+**Location**: `worker/src/services/stt/postprocess.ts`
+
+After STT transcription, the result passes through a hallucination filter that removes common Whisper artifacts from YouTube training data:
+
+```typescript
+const HALLUCINATION_PATTERNS = [
+  /[Tt]hank you for watching!$/,              // YouTube outro
+  /Subtitles by the Amara\.org community\.$/,  // Amara subtitles
+];
+```
+
+**Behavior**:
+- Patterns are matched at the end of the transcription text
+- If the entire transcription is only a hallucination phrase, it is NOT removed (allows user to retry)
+- The filter is applied automatically after every STT call in `worker/src/services/stt/index.ts`
 
 ### Edit Mode LLM Flow
 
@@ -398,26 +421,29 @@ The worker can optionally run the final STT text through an LLM “clean‑up”
 - Groq: chat completions (OpenAI‑compatible)
 - OpenAI: chat completions (SSE streaming)
 - Baseten (Base Ten): chat completions (OpenAI‑compatible, SSE streaming)
-- Kimi (via Groq routing): automatically selected for long-form cleanups
+- OpenRouter: chat completions (SSE streaming, multi-provider routing)
+- Kimi (via length routing): automatically selected for long-form cleanups (≥1200 chars or ≥180 words)
 
 #### Configuration
 ```bash
 # Enable / behavior
 ENABLE_LLM=1                       # Enable post-processing (default true)
 LLM_STREAM=1                       # Stream progressive updates when supported (default true)
-LLM_MODEL=gpt-4.1                  # Model to use (see provider notes)
-LLM_TEMPERATURE=0.1                # Optional; defaults to 0.1
+LLM_MODEL=deepseek-ai/DeepSeek-V3.1  # Model to use (see provider notes)
+LLM_TEMPERATURE=0.2                # Optional; defaults to 0.2
 LLM_TIMEOUT_MS=25000               # Optional; defaults to 25000
 LLM_CURRENT_DATE=YYYY-MM-DD        # Optional; defaults to today (UTC)
+LLM_ROUTER_ENABLED=1               # Enable routing rules (default true)
 
 # Provider selection
-LLM_PROVIDER=openai                # One of: openai | groq | baseten
-LLM_DEFAULT_PROVIDER=openai        # Fallback when LLM_PROVIDER is unset
+LLM_PROVIDER=baseten               # One of: openai | groq | baseten | openrouter
+LLM_DEFAULT_PROVIDER=baseten       # Fallback when LLM_PROVIDER is unset
 
 # API keys (set the one(s) for the provider you use)
 OPENAI_API_KEY=sk-...              # Required when provider=openai
 GROQ_API_KEY=gk-...                # Required when provider=groq
 BASETEN_API_KEY=bt-...             # Required when provider=baseten
+OPENROUTER_API_KEY=...             # Required when provider=openrouter
 ```
 
 Notes
@@ -431,7 +457,9 @@ When enabled, the worker streams LLM improvements in real-time:
 3. Final result contains complete enhanced text
 
 #### Routing Rules
-`worker/src/services/llm/routing.ts` first checks regex-driven heuristics (spelling requests, formatting directives, etc.) and now also applies a length guard. Any transcript that meets either threshold—≥1200 characters or ≥180 words—routes to `moonshotai/kimi-k2-instruct-0905` so longer dictations stay within high token limits. Matched rule IDs (including the new `length-threshold`) are appended when reporting the decision.
+`worker/src/services/llm/routing.ts` first checks regex-driven heuristics (spelling requests, formatting directives, etc.) and now also applies a length guard. Any transcript that meets either threshold—≥1200 characters or ≥180 words—routes to the edit model for the current provider (e.g., `moonshotai/Kimi-K2-Instruct-0905` for Baseten) so longer dictations stay within high token limits. Matched rule IDs (including `length-threshold`) are appended when reporting the decision.
+
+Routing can be disabled with `LLM_ROUTER_ENABLED=0`.
 
 ---
 
@@ -713,10 +741,10 @@ const cancel = useCallback(async () => {
 export const MICROPHONE_PREFERRED_RATE = 48000;   // Hardware capture rate
 export const TARGET_SAMPLE_RATE = 16000;          // ASR model rate
 
-// Frame configuration  
-export const CHUNK_MS = 400;                      // Frame duration (was 100ms)
-export const SAMPLES_PER_CHUNK = 6400;            // 400ms @ 16kHz
-export const POST_ROLL_MS = 160;                  // End-of-speech capture
+// Frame configuration
+export const CHUNK_MS = 100;                      // Frame duration
+export const SAMPLES_PER_CHUNK = 1600;            // 100ms @ 16kHz
+export const POST_ROLL_MS = 240;                  // End-of-speech capture
 
 // WebSocket configuration
 export const WS_MAX_BUFFERED_BYTES = 512 * 1024;  // Backpressure threshold
@@ -733,41 +761,48 @@ VITE_TRANSCRIBE_WS_URL=ws://localhost:8787/ws  # Local worker endpoint
 VITE_TRANSCRIBE_WS_URL=wss://api.sonicflow.app/ws  # Production endpoint
 VITE_SENTRY_DSN=...                     # Error reporting
 
-# Worker configuration
-STT_PROVIDER=groq                       # groq | fireworks | deepgram (optional; defaults to groq)
+# Worker configuration - STT
+STT_PROVIDER=groq                       # groq | fireworks | deepgram (default: groq)
+STT_MODEL=whisper-large-v3-turbo        # Override default model for provider
+STT_PROMPT=...                          # Custom STT prompt (optional)
+STT_LANGUAGE=en                         # Language code (default: en)
+STT_TIMEOUT_MS=25000                    # STT request timeout (default: 25000)
 GROQ_API_KEY=...                        # Required for Groq STT or Groq LLM
 FIREWORKS_API_KEY=...                   # Required when STT_PROVIDER=fireworks
 DEEPGRAM_API_KEY=...                    # Required when STT_PROVIDER=deepgram
-# LLM provider + options (choose provider and set its key)
-LLM_PROVIDER=openai                     # openai | groq | baseten
-LLM_DEFAULT_PROVIDER=openai             # Fallback when LLM_PROVIDER is unset
-OPENAI_API_KEY=...                      # When provider=openai
-BASETEN_API_KEY=...                     # When provider=baseten
+
+# Worker configuration - LLM
+LLM_PROVIDER=baseten                    # openai | groq | baseten | openrouter
+LLM_DEFAULT_PROVIDER=baseten            # Fallback when LLM_PROVIDER is unset
+LLM_MODEL=deepseek-ai/DeepSeek-V3.1     # Model to use per provider
+LLM_ROUTER_ENABLED=1                    # Enable routing rules (default true)
 ENABLE_LLM=1                            # Enable post-processing (default true)
 LLM_STREAM=1                            # Stream progressive updates (default true)
-LLM_MODEL=gpt-4.1                       # Model to use per provider
+OPENAI_API_KEY=...                      # When provider=openai
+BASETEN_API_KEY=...                     # When provider=baseten
+OPENROUTER_API_KEY=...                  # When provider=openrouter
 ```
 
 ### Edit Mode LLM Settings
 
 ```bash
 EDIT_LLM_ENABLED=1                      # Enable edit-mode rewriting (default true)
-EDIT_LLM_PROVIDER=openai                # Provider for edits (openai | groq | baseten)
-EDIT_LLM_MODEL=gpt-4.1                 # Editing model (defaults to GPT-4.1)
-EDIT_LLM_STREAM=0                       # Stream edit deltas when provider supports SSE (OpenAI/Groq/Baseten)
-EDIT_LLM_TEMPERATURE=0.2                # Creativity dial for edits (default 0.2)
+EDIT_LLM_PROVIDER=baseten               # Provider for edits (openai | groq | baseten | openrouter)
+EDIT_LLM_MODEL=moonshotai/Kimi-K2-Instruct-0905  # Editing model
+EDIT_LLM_STREAM=1                       # Stream edit deltas when provider supports SSE
+EDIT_LLM_TEMPERATURE=0.6                # Creativity dial for edits (default 0.6)
 EDIT_LLM_TIMEOUT_MS=25000               # Timeout for editing request (default 25s)
 ```
 
-> **API Keys**: When `EDIT_LLM_PROVIDER=openai`, the worker requires `OPENAI_API_KEY`. For Groq/Baseten supply `GROQ_API_KEY` or `BASETEN_API_KEY`. Missing credentials are logged (`edit.api_key_missing`) and the original selection is returned unchanged.
+> **API Keys**: When `EDIT_LLM_PROVIDER=openai`, the worker requires `OPENAI_API_KEY`. For Groq/Baseten/OpenRouter supply the corresponding API key. Missing credentials are logged (`edit.api_key_missing`) and the original selection is returned unchanged.
 
 ### Performance Tuning
 
 #### Client Optimizations
-- **Frame Size**: 400ms frames reduce protocol overhead vs 100ms
+- **Frame Size**: 100ms frames balance responsiveness with protocol overhead
 - **Connection Reuse**: WebSocket connections persist across sessions
 - **Buffering Strategy**: 20MB client buffer prevents data loss
-- **Post-roll Capture**: 160ms prevents end-of-speech clipping
+- **Post-roll Capture**: 240ms prevents end-of-speech clipping
 
 #### Server Optimizations  
 - **Connection Limits**: 5 connections per IP prevents resource exhaustion

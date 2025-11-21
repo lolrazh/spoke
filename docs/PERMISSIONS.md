@@ -1,8 +1,9 @@
 # PERMISSIONS ARCHITECTURE
 
-**References:**  
-- `agent-logs/2025-10-24_1704_permissions-panel-progress.md`  
-- `agent-logs/2025-10-24_1910_PERMISSIONS-PANEL-POLISH.md`
+**References:**
+- `agent-logs/2025-10-24_1704_permissions-panel-progress.md`
+- `agent-logs/2025-10-24_1910_permissions-panel-polish.md`
+- `agent-logs/2025-11-13_0947_permission-dependency-fix.md`
 
 ---
 
@@ -12,8 +13,24 @@
   - **Notification-first remediation** – Users should never dig through settings; actionable pill notifications are the single entry point.
   - **Single source of truth** – One polling loop, one panel, one set of request handlers.
   - **Focused UI** – Settings remains a lightweight defaults/account surface; the permissions panel is a guided checklist.
-  - **Glassmorphic consistency** – Layout, spacing, and motion match the settings panel so the pill feels like one coherent surface.
+  - **Design consistency** – Layout, spacing, and motion match the settings panel so the pill feels like one coherent surface.
 - **Rollout Philosophy:** Build incrementally (milestones at bottom), keep the floating pill responsive at all times, and leave a clear paper trail in logs for future agents.
+
+### Permission Dependencies
+**Input Monitoring requires Accessibility.** The Input Monitoring button is disabled until Accessibility is granted:
+
+```typescript
+// PermissionsPanel.tsx
+{
+  key: "inputMonitoring",
+  granted: permissions.inputMonitoring,
+  loading: ui.inputMonitoring.loading,
+  disabled: !permissions.accessibility,  // Dependency enforced
+  onRequest: requestInputMonitoring,
+}
+```
+
+Visual feedback in Onboarding uses `opacity-40` when Input Monitoring is unavailable due to missing Accessibility permission.
 
 ---
 
@@ -55,10 +72,19 @@
 - **Shared sizing tokens (`src/constants/window.ts`):**
   - `CONTENT_WIDTH = 520` (applies to both panels)
   - `PERMISSIONS_CONTENT_HEIGHT = 320`
-  - `CONTENT_HEIGHT = 440` (settings panel envelope)
+  - `CONTENT_HEIGHT = 600` (settings panel envelope)
+  - `SHADOW_PAD = 60` (padding for shadow clipping)
   - Derived `ISLAND_WIDTH/HEIGHT` keep shadow padding uniform.
-- **UI states:** Warning cards with “Enable” CTA, loading spinner when a request is pending, and green check icon on success. No celebratory state; success is implied by return to Settings.
-- **Design alignment:** Uses `SettingsCard`, shared section separators, `MOTION.springs.quick` animations, and tokenized colors/spacing so it feels native to the glassmorphic system.
+- **UI states:** Warning cards with "Enable" CTA, loading spinner when a request is pending, and green check icon on success. No celebratory state; success is implied by return to Settings.
+- **Design alignment:** Uses `SettingsCard`, shared section separators, `MOTION.springs.quick` animations, and tokenized colors/spacing for consistent design.
+
+### Permission Request Polling
+When a user clicks "Enable", the system:
+1. Opens the relevant System Preferences pane
+2. Polls every 1000ms for permission grant
+3. Shows loading spinner during polling
+4. Displays green checkmark (`justGranted` state) for 800ms on success
+5. Clears interval and updates state
 
 ---
 
@@ -71,8 +97,9 @@
 | 3 – Consumer migration | Settings panel reuses provider; onboarding keeps isolated instance. | Maintains single source of truth per renderer. |
 | 4 – Dedicated panel | Built permissions panel component, tests, and manual entry from Settings (later removed). | Panel replicates settings styling. |
 | 5 – Auto surfacing | Replaced mic-only polling with controller-driven alerts, auto-opened panel, auto-collapse on recovery. | Established notification-first workflow. |
-| 6 – Settings cleanup | Removed System cards, sized panels consistently, notification loop refined to keep pill in permissions view. | Current session finalized this stage. |
-| 7 – Telemetry (pending) | Add instrumentation, analytics, and documentation artifacts. | To be completed. |
+| 6 – Settings cleanup | Removed System cards, sized panels consistently, notification loop refined to keep pill in permissions view. | Panel auto-surfacing finalized. |
+| 7 – Permission dependencies | Input Monitoring disabled until Accessibility granted; visual feedback in Onboarding. | Prevents confusing UX. |
+| 8 – Telemetry (pending) | Add instrumentation, analytics, and documentation artifacts. | To be completed. |
 
 All steps were documented in the referenced logs, which capture rationale and troubleshooting details.
 

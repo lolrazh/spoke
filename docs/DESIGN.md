@@ -1,6 +1,6 @@
 # Sonic Flow App - Design System - docs/DESIGN.md
 
-A comprehensive glassmorphic design system for Electron applications, optimized for native macOS vibrancy and accessibility.
+A comprehensive adaptive design system for Electron applications, featuring flat solid surfaces, ambient shadows, and responsive interfaces optimized for performance and native macOS integration.
 
 ## Table of Contents
 1. [Introduction & Principles](#introduction--principles)
@@ -8,28 +8,31 @@ A comprehensive glassmorphic design system for Electron applications, optimized 
 3. [Foundation Elements](#foundation-elements)
 4. [Component Library](#component-library)
 5. [Patterns](#patterns)
-6. [Glassmorphic System](#glassmorphic-system)
-7. [Motion Design](#motion-design)
-8. [Accessibility Guidelines](#accessibility-guidelines)
-9. [Implementation Guide](#implementation-guide)
+6. [Surface System](#surface-system)
+7. [Adaptive Interface](#adaptive-interface)
+8. [Motion Design](#motion-design)
+9. [Accessibility Guidelines](#accessibility-guidelines)
+10. [Implementation Guide](#implementation-guide)
 
 ---
 
 ## Introduction & Principles
 
 ### Design Philosophy
-Sonic Flow employs a **glassmorphic design system** that creates depth, elegance, and native macOS integration through layered transparency, subtle blur effects, and sophisticated typography. The system prioritizes:
+Sonic Flow employs a **flat solid design system** optimized for performance, clarity, and native macOS integration. The system moved away from glassmorphic effects to deliver faster rendering and better readability through opaque surfaces, ambient shadows, and adaptive interfaces. The system prioritizes:
 
-- **Native Integration**: Leverages macOS vibrancy and native window behaviors
+- **Performance First**: Flat solid surfaces with single-layer shadows (83-85% faster than glassmorphic)
+- **Adaptive Interface**: Responsive panels that adjust to display scale and context
+- **Native Integration**: Leverages macOS window behaviors and notch-aware sizing
 - **Accessibility First**: WCAG 2.1 AA compliant with comprehensive keyboard navigation
-- **Performance**: GPU-accelerated effects with fallbacks for reduced motion
 - **Consistency**: Unified token system across all components and surfaces
 
 ### Core Principles
-1. **Transparency with Purpose**: Every glass surface serves a functional and aesthetic purpose
-2. **Subtle Elegance**: Effects enhance usability without overwhelming content
-3. **Adaptive Contrast**: Dynamic color adjustments ensure readability on any background
+1. **Solid over Glass**: Opaque surfaces for performance and readability
+2. **Ambient Shadows**: Single-layer, minimal y-offset shadows for floating aesthetic
+3. **Adaptive Context**: UI adapts to permissions state, display characteristics, and user actions
 4. **Motion with Meaning**: Animations guide user attention and provide feedback
+5. **Token Consistency**: All values from CSS custom properties, never hardcoded
 
 ---
 
@@ -52,24 +55,29 @@ All design tokens are defined as CSS custom properties in `:root` for easy maint
 --ring: 0 0% 83.1%;            /* Focus rings */
 ```
 
-#### Glass Surface System
+#### Surface System
 ```css
-/* Base surface RGB for glass effects */
---surface-base-rgb: 15, 15, 15;
+/* Primary solid surface */
+--surface-solid: rgb(10, 10, 10);          /* Main opaque background */
 
-/* Alpha transparency levels */
+/* Base surface RGB for alpha variations */
+--surface-base-rgb: 10, 10, 10;
+
+/* Alpha transparency levels (for legacy/special cases) */
 --surface-alpha-xxs: 0.2;      /* Very light */
 --surface-alpha-xs: 0.25;      /* Light */
 --surface-alpha-sm: 0.3;       /* Subtle */
 --surface-alpha-md: 0.35;      /* Medium */
 --surface-alpha-lg: 0.4;       /* Strong */
 
-/* Stroke weights for glass borders */
---stroke-fg: rgba(255, 255, 255, 0.08);      /* Weak */
+/* Border strokes (standardized to 8% opacity) */
+--stroke-fg: rgba(255, 255, 255, 0.08);      /* Default - use for all borders */
 --stroke-fg-mid: rgba(255, 255, 255, 0.1);   /* Medium */
 --stroke-fg-strong: rgba(255, 255, 255, 0.12); /* Strong */
 --stroke-fg-xstrong: rgba(255, 255, 255, 0.15); /* Extra strong */
 ```
+
+**Note**: The standard border is `rgba(255, 255, 255, 0.08)` or `border-white/[0.08]` in Tailwind.
 
 #### Opaque Surface Tokens
 For solid, non-glass surfaces that should visually unify with the pill, use the opaque surface token:
@@ -229,13 +237,18 @@ Access tokens through Tailwind utilities:
 - **Disabled**: 50% opacity with pointer-events disabled
 
 ### Shadow System
+
+The shadow system uses **single-layer ambient shadows** inspired by Dynamic Island - minimal y-offsets (1-3px) create a floating effect without grounding elements directionally. This provides 83-85% better performance than dual-layer glassmorphic shadows.
+
 ```css
-/* Elevation levels */
---shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.5);
---shadow-floating: 0 1px 3px rgba(0, 0, 0, 0.5);
---shadow-interactive: 0 8px 22px rgba(0, 0, 0, 0.35), 0 25px 60px rgba(0, 0, 0, 0.25);
---shadow-interactive-hover: 0 12px 28px rgba(0, 0, 0, 0.4), 0 30px 70px rgba(0, 0, 0, 0.3);
+/* Ambient elevation levels - single layer, minimal y-offset */
+--shadow-elevated: 0 1px 4px rgba(0, 0, 0, 0.3);
+--shadow-floating: 0 1px 6px rgba(0, 0, 0, 0.35);
+--shadow-interactive: 0 2px 12px rgba(0, 0, 0, 0.4);
+--shadow-interactive-hover: 0 3px 16px rgba(0, 0, 0, 0.45);
 ```
+
+**Design Rationale**: Small y-offsets (1-3px) and moderate blur (4-16px) create ambient glow rather than directional shadows. This matches the floating pill aesthetic.
 
 ### Iconography
 - **Icon Library**: Lucide React for consistency and accessibility
@@ -425,11 +438,11 @@ Glass elements use proper z-indexing:
 
 ---
 
-## Glassmorphic System
+## Surface System
 
 ### Surface Hierarchy
 
-The glassmorphic system defines four primary surface types, each with specific use cases:
+The design system defines four primary surface types, each with specific use cases. Note that dropdowns and floating elements now use **opaque backgrounds** for better readability:
 
 #### `.card-elevated`
 **Purpose**: Subtle elevation for content containers
@@ -464,13 +477,14 @@ The glassmorphic system defines four primary surface types, each with specific u
 **Purpose**: Floating elements like dropdowns and popovers
 ```css
 .card-floating {
-  background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-  background-image: url("data:image/svg+xml..."); /* Noise texture */
+  background-color: var(--surface-solid);  /* Opaque for readability */
   border: 1px solid var(--stroke-fg);
   box-shadow: var(--shadow-floating);
 }
 ```
 **Usage**: Select dropdowns, context menus, floating panels
+
+**Note**: Dropdowns use opaque backgrounds (not transparent) to fix z-index stacking issues and improve text readability over varying content.
 
 #### `.card-interactive`
 **Purpose**: Interactive surfaces with mouse tracking
@@ -504,34 +518,14 @@ The glassmorphic system defines four primary surface types, each with specific u
 ```
 **Usage**: Click-through cards, interactive panels, hover-sensitive areas
 
-### Noise Texture System
-
-All glass surfaces include a subtle noise texture for enhanced realism:
-
-```css
-background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-```
-
 ### Native macOS Integration
 
-#### Vibrancy Support
-The system leverages Electron's native vibrancy:
+#### Window Background
 ```css
 .onboarding-window {
-  background: transparent; /* Let macOS handle vibrancy */
+  background: var(--surface-solid);
   border: 1px solid var(--stroke-fg);
   border-radius: var(--radius-window);
-}
-
-/* Subtle content overlay for text contrast */
-.onboarding-window::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 10, 10, 0.35); /* Neutral tint */
-  border-radius: var(--radius-window);
-  pointer-events: none;
-  z-index: -1;
 }
 ```
 
@@ -547,6 +541,102 @@ The system leverages Electron's native vibrancy:
   height: 32px;
 }
 ```
+
+---
+
+## Adaptive Interface
+
+Sonic Flow implements an **adaptive interface** that responds to display characteristics, permission states, and user context.
+
+### Responsive Panel System
+
+#### Display-Aware Scaling
+The UI automatically adjusts to display characteristics:
+
+```typescript
+// Scale derived from active display, clamped for consistency
+const uiScale = Math.min(1.0, Math.max(0.9, displayScale || 1));
+
+// Notch-aware width on notched displays
+const baseWidth = notchWidth ?? TOKENS.PILL_BASE_W;
+```
+
+#### Window Constants
+```typescript
+// src/constants/window.ts
+CONTENT_WIDTH = 520           // Panel content width
+CONTENT_HEIGHT = 600          // Settings panel height
+PERMISSIONS_CONTENT_HEIGHT = 320  // Permissions panel height
+SHADOW_PAD = 60               // Padding for shadow clipping
+```
+
+#### Dynamic Panel Heights
+Panels use `usePanelAutoHeight` hook to report their content height, allowing smooth resizing:
+
+```typescript
+const { ref, reportedHeight } = usePanelAutoHeight();
+// Parent receives height and adjusts window accordingly
+```
+
+### Adaptive Permissions Panel
+
+The permissions panel appears automatically when permissions are missing and disappears when resolved.
+
+#### Behavior
+1. **Auto-Appear**: When `missingPermissions.length > 0`, panel switches to permissions view
+2. **Notification Loop**: Sends actionable notifications every 8 seconds while permissions missing
+3. **Double-Click Action**: Notification action expands pill directly to permissions panel
+4. **Auto-Collapse**: When permissions resolved, returns to settings view and collapses if auto-opened
+
+#### Implementation
+```typescript
+// App.tsx - Permission state change handling
+useEffect(() => {
+  if (currentCount > 0) {
+    setPanelView("permissions");
+    // Start notification loop
+  } else if (prevCount > 0) {
+    setPanelView("settings");
+    // Auto-collapse if opened automatically
+    if (autoPermissionsRef.current) {
+      setTimeout(() => pillDispatch({ type: "COLLAPSE" }), 240);
+    }
+  }
+}, [missingPermissions]);
+```
+
+#### Panel Dimensions
+- **Settings Panel**: 520 × 600px
+- **Permissions Panel**: 520 × 320px (compact for focused task)
+
+### Bezel Architecture
+
+Settings panel uses a "screen in bezel" architecture with fixed top/bottom bands:
+
+```
++---------------------+
+|  Navbar (top bezel) | <- Fixed, 6px bottom padding
++---------------------+
+|                     |
+|  Scrollable Content | <- pb-14, scrolls behind band
+|  (the "screen")     |
+|                     |
++---------------------+
+|   Fade gradient     | <- pointer-events-none
+|  Bottom band/bezel  | <- z-20, solid bg-background
+|  [chevron] [version]| <- Both z-30
++---------------------+
+```
+
+#### Z-Index Hierarchy
+- **Band**: z-20
+- **Fade gradient**: pointer-events-none (visual only)
+- **Interactive elements** (chevron, version): z-30
+
+#### Scroll Indicators
+Dynamic fade gradients appear only when content is scrollable in that direction:
+- Top fade when scrolled down
+- Bottom fade when more content below
 
 ---
 
@@ -787,12 +877,12 @@ export function Card({ className, size, children, ...props }: CardProps) {
 }
 ```
 
-#### Glass Surface Application
+#### Surface Application
 ```tsx
 // Choose the appropriate surface level
 <div className="card-elevated">      {/* Subtle containers */}
 <div className="card-primary">       {/* Main content */}
-<div className="card-floating">      {/* Dropdowns, popovers */}
+<div className="card-floating">      {/* Dropdowns, popovers - uses opaque bg */}
 <div className="card-interactive">   {/* Mouse-tracking surfaces */}
 ```
 
@@ -812,10 +902,11 @@ export function Card({ className, size, children, ...props }: CardProps) {
 ### Best Practices
 
 #### Performance
-1. **Minimize Backdrop Filters**: Use sparingly for critical surfaces only
-2. **Optimize Animations**: Prefer `transform` and `opacity` changes
-3. **Hardware Acceleration**: Apply `will-change` judiciously
-4. **Reduced Motion**: Always provide alternatives
+1. **Prefer Solid Surfaces**: Use opaque backgrounds for better rendering performance
+2. **Single-Layer Shadows**: Avoid dual-layer shadows (use ambient shadow tokens)
+3. **Optimize Animations**: Prefer `transform` and `opacity` changes
+4. **Hardware Acceleration**: Apply `will-change` judiciously
+5. **Reduced Motion**: Always provide alternatives
 
 #### Accessibility
 1. **Color Independence**: Don't rely solely on color for meaning
@@ -854,9 +945,10 @@ src/
 
 #### Common Issues
 1. **Blurry Text**: Check for fractional transforms or improper hardware acceleration
-2. **Performance**: Monitor for excessive backdrop-filter usage
-3. **Contrast**: Validate text readability on glass surfaces
+2. **Performance**: Ensure using solid surfaces and single-layer shadows
+3. **Contrast**: Validate text readability on all surfaces
 4. **Animation Jank**: Verify proper `will-change` usage
+5. **Z-Index Issues**: Follow bezel architecture hierarchy (band z-20, interactive z-30)
 
 #### Debugging Tools
 - **Browser DevTools**: Inspect glass effect rendering
@@ -901,6 +993,10 @@ This design system is a living document. When making changes:
 - Run `npm run lint && npm test`; visually verify focus states and contrast.
 - Add an `agent-logs/YYYY-MM-DD_HHMM_*.md` entry summarizing design changes and rationale.
 
-**Last Updated**: 2025-09-15  
-**Version**: 1.0.0  
+**Last Updated**: 2025-11-21
+**Version**: 2.0.0
 **Maintainers**: Sonic Flow Team
+
+### Version History
+- **2.0.0** (2025-11-21): Major rewrite - moved from glassmorphic to flat solid design, added adaptive interface documentation, responsive panel system, bezel architecture
+- **1.0.0** (2025-09-15): Initial design system documentation

@@ -35,8 +35,11 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 ### Component Interaction
 
 - **Electron Main Process** (`src/main.ts`) - Handles deep links, manages callback URLs, coordinates auth flow
-- **Renderer/Onboarding** (`src/components/Onboarding.tsx`) - Initiates auth, displays UI, handles responses
+- **IntroExperience** (`src/components/intro/IntroExperience.tsx`) - Initial OAuth entry point (Google sign-in from first screen)
+- **Renderer/Onboarding** (`src/components/Onboarding.tsx`) - Handles auth callbacks, name verification, permissions flow
 - **Supabase Client** (`src/lib/supabaseClient.ts`) - Manages OAuth requests and token processing
+- **Auth Signals** (`src/utils/authSignals.ts`) - Cross-window coordination for toast deduplication
+- **User Identity** (`src/state/userIdentity.ts`) - Client-side identity cache management
 - **Hosted Callback** (`api-sonic-flow-site`) - Production web interface for OAuth callbacks
 - **Deep Link Handler** - Protocol registration and URL parsing across platforms
 
@@ -51,7 +54,7 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 ### Complete OAuth Flow
 
 ```
-1. User clicks "Sign in with Google" in Onboarding
+1. User clicks "Continue with Google" in IntroExperience (or Onboarding)
 2. App requests redirect URL from main process
 3. Main process returns environment-appropriate callback URL
 4. Supabase client generates OAuth URL with callback
@@ -63,19 +66,39 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
    - Development: HTTP server receives callback
    - Production: Hosted page receives callback and deep-links to app
 10. App receives deep link with auth data
-11. App validates and processes auth tokens
-12. User is signed in and onboarding continues
+11. Onboarding handles callback (even if IntroExperience initiated it)
+12. App validates and processes auth tokens
+13. IntroExperience fades out, name-verification step appears
+14. User confirms/edits display name
+15. Onboarding continues with permissions flow
 ```
 
 ### Step-by-Step Process
 
-#### 1. **Auth Initiation** (`Onboarding.tsx`)
+#### 1. **Auth Initiation** (`IntroExperience.tsx` or `Onboarding.tsx`)
+
+OAuth can be initiated from IntroExperience (first screen) or Onboarding:
+
 ```typescript
+// IntroExperience.tsx - Primary entry point
+const handleGoogleLogin = async () => {
+  setAuthError(null);
+  const url = await getGoogleOAuthUrl();
+  if (!url) {
+    setAuthError("Authentication setup failed...");
+    return;
+  }
+  await window.electron?.openExternal(url);
+};
+
+// Onboarding.tsx - Also supports OAuth initiation
 const handleGoogle = async () => {
-  const url = await getGoogleOAuthUrl();  // Get OAuth URL
-  await window.electron?.openExternal(url);  // Open in browser
+  const url = await getGoogleOAuthUrl();
+  await window.electron?.openExternal(url);
 };
 ```
+
+**Note:** IntroExperience initializes Supabase client on mount via `getSupabase()` to ensure PKCE flow works correctly.
 
 #### 2. **Redirect URL Resolution** (`main.ts`)
 ```typescript
@@ -124,7 +147,20 @@ export async function handleAuthCallbackUrl(url: string) {
 }
 ```
 
-### 8. Returning-User Short-Circuit (Renderer)
+### 8. Name Verification Step (Onboarding)
+
+After successful auth, users see a name verification step:
+
+```typescript
+// Onboarding.tsx - Step "name-verification"
+const trimmedName = editableName.trim();
+updateIdentityLocal({ displayName: trimmedName }); // Update cache immediately
+updateDisplayName(trimmedName)                     // DB update in background
+  .then(() => forceRefreshIdentity())
+  .catch(console.error);
+```
+
+### 9. Returning-User Short-Circuit (Renderer)
 
 After a successful session is set, onboarding performs a short-circuit check:
 
@@ -138,6 +174,27 @@ if (profile?.onboarding_done) {
   return; // Skip onboarding UI entirely
 }
 ```
+
+### Session Polling
+
+The pill UI (App.tsx) polls for session validity every 60 seconds:
+
+```typescript
+// App.tsx - Light auth polling
+useEffect(() => {
+  const id = window.setInterval(async () => {
+    const { data, error } = await supabase.auth.getUser();
+    // Only sign out when no error AND no user
+    if (!error && !data?.user && prevUserIdRef.current) {
+      // User was signed out server-side
+      handleSignOut();
+    }
+  }, 60_000);
+  return () => clearInterval(id);
+}, []);
+```
+
+**Note:** Network errors are ignored to prevent false sign-outs during connectivity blips.
 
 ## Environment Configuration
 
@@ -208,16 +265,22 @@ The app accepts these URL patterns in `handleAuthCallbackUrl()`:
 
 ```
 src/
-├── main.ts                 # Main process - deep link handling, HTTP server
-├── preload.ts             # IPC bridge for auth communication
+├── main.ts                      # Main process - deep link handling, HTTP server
+├── preload.ts                   # IPC bridge for auth communication
 ├── lib/
-│   └── supabaseClient.ts  # OAuth URL generation, token processing
+│   └── supabaseClient.ts        # OAuth URL generation, token processing
 ├── components/
-│   └── Onboarding.tsx     # Auth UI, returning-user short-circuit, permissions
+│   ├── Onboarding.tsx           # Auth callbacks, name verification, permissions
+│   └── intro/
+│       └── IntroExperience.tsx  # Initial OAuth entry point (Google sign-in)
 ├── hooks/
-│   └── usePermissions.ts  # Shared permissions hook (mic, accessibility, input monitoring)
+│   └── usePermissions.ts        # Shared permissions hook
+├── utils/
+│   └── authSignals.ts           # Cross-window auth coordination
+├── state/
+│   └── userIdentity.ts          # Client-side identity cache
 └── types/
-    └── electron.d.ts      # TypeScript definitions for auth IPC
+    └── electron.d.ts            # TypeScript definitions for auth IPC
 ```
 
 ### Key Functions
@@ -251,6 +314,47 @@ export async function ensureProfileRow() {
 }
 ```
 
+#### `getProfileDetailed()` (`supabaseClient.ts`)
+Returns detailed profile fetch result with typed errors for better error handling.
+
+#### `updateDisplayName(name: string)` (`supabaseClient.ts`)
+Updates the user's display name with retry logic and refreshes identity cache:
+- Attempts upsert to `profiles` table
+- Retries once on failure
+- Calls `forceRefreshIdentity()` on success
+
+### Auth Signals System (`src/utils/authSignals.ts`)
+
+Coordinates authentication state across separate windows (pill and onboarding) to prevent duplicate toasts and track auth flow:
+
+```typescript
+type AuthSignalsSnapshot = {
+  authIntentTs: number | null;      // When user initiated OAuth
+  authIntentProvider: string | null; // "google" etc.
+  authCallbackTs: number | null;    // When callback was received
+  onboardingTs: number | null;      // When onboarding became visible
+  lastToastTs: number | null;       // Last sign-in toast shown
+};
+
+// Key functions
+markAuthIntent(provider)  // Mark when user clicks sign-in
+markAuthCallback()        // Mark when auth callback received
+markOnboardingEvent()     // Mark onboarding visibility
+setLastToastTs(ts)        // Record toast timestamp
+getSignals()              // Get current snapshot (reads localStorage)
+```
+
+**LocalStorage keys**: `sf.auth.intentTs`, `sf.auth.intentProvider`, `sf.auth.callbackTs`, `sf.auth.onboardingTs`, `sf.auth.lastToastTs`
+
+### User Identity Management (`src/state/userIdentity.ts`)
+
+Client-side cache for user identity with functions:
+- `updateIdentityLocal()` - Updates cache without server call
+- `forceRefreshIdentity()` - Forces cache refresh from server
+- `clearUserIdentityCache()` - Clears cache on sign-out
+
+This module subscribes to `onAuthStateChange` to keep identity in sync.
+
 ### Shared Permissions Hook (`src/hooks/usePermissions.ts`)
 
 Centralizes permission UX for both Onboarding and Settings:
@@ -275,12 +379,18 @@ useEffect(() => { init(); }, []);
 ```typescript
 // Main → Renderer
 "auth:callback"           // Delivers auth callback URLs
-"ptt-ready"              // Signals auth system ready
 
-// Renderer → Main  
+// Renderer → Main
 "auth:get-redirect-url"   // Requests callback URL for environment
 "open-external"          // Opens OAuth URL in browser
-"onboarding-complete"    // Completes auth flow
+"onboarding-complete"    // Completes onboarding flow
+"ptt:set-target"         // Routes PTT to "auto", "onboarding", or "main"
+"prepare-pill"           // Pre-creates pill window during onboarding
+"pill:reveal"            // Shows pill without expanding
+"pill:reveal-for-test"   // Shows pill during onboarding test steps
+"permissions:post-grant" // Called after permission grants for UI sync
+"floating-bar:hide-indefinitely" // Hides pill with fade
+"floating-bar:show"      // Shows pill with fade
 ```
 
 ### Protocol Registration
@@ -369,12 +479,13 @@ sonicflow://auth/callback?token_hash=xyz&type=email
 
 ### Debug Logging
 
-Enable detailed auth logging:
+Enable development tools for debugging:
 ```bash
-# Environment variables for debugging
-SF_DEBUG_AUTH=1 npm start          # Auth flow debugging
-SF_DEBUG_IPC=1 npm start           # IPC communication debugging
+# Environment variable for debugging
+SF_DEVTOOLS=1 npm start            # Enable development console
 ```
+
+**Tip:** Check browser console in the onboarding/pill windows for auth-related logs. Most auth functions log to console with prefixes like `[handleAuthCallbackUrl]`, `[updateDisplayName]`, etc.
 
 ### Error Messages
 
@@ -427,6 +538,9 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 ## 2025 Updates
 
 ### Behavior Changes
+- **IntroExperience OAuth entry point** - Users can now start Google OAuth from the first intro screen instead of navigating to a separate auth step.
+- **Name verification step** - After auth callback, users confirm/edit their display name before continuing to permissions.
+- **Auth signals system** - Cross-window coordination via localStorage (`sf.auth.*` keys) prevents duplicate sign-in toasts.
 - Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
 - Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
 - Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
@@ -435,6 +549,8 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - Returning users skip onboarding based on `profiles.onboarding_done`.
 - Onboarding email entry supports Enter-to-submit for OTP.
 - Permissions logic is shared via `usePermissions` hook to eliminate duplication across Onboarding and Settings.
+- **Smooth transitions** - `smoothShow()` and `smoothHide()` functions provide fade in/out for pill window.
+- **Pre-created pill** - `preparePill()` is called during onboarding to pre-create the pill window for instant reveal.
 
 ### Deferred Backend Enforcement
 - JWT verification on the Cloudflare Worker WebSocket is deferred; backend remains open while the client enforces UX. Plan: include `Authorization: Bearer <access_token>` and verify on the Worker when ready.
