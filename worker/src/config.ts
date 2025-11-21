@@ -20,7 +20,7 @@ export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
 export const LLM_DEFAULT_PROVIDER = 'baseten' as const;
-export const LLM_ROUTER_ENABLED = false;
+export const LLM_ROUTER_ENABLED = true;
 export type LLMProvider = 'groq' | 'openai' | 'baseten' | 'openrouter';
 
 export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
