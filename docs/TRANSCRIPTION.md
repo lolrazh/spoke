@@ -14,6 +14,7 @@ This document provides a comprehensive technical overview of Sonic Flow's real-t
 7. [Error Handling](#error-handling)
 8. [Configuration](#configuration)
    - [Edit Mode LLM Settings](#edit-mode-llm-settings)
+9. [Transcription History Storage](#transcription-history-storage)
 
 ---
 
@@ -837,3 +838,115 @@ SF_DEVTOOLS=1 npm run dev    # Enable detailed console logging
 - **Native helper failures**: Graceful degradation with user feedback
 
 This transcription pipeline provides production-ready real-time speech-to-text with comprehensive error handling, performance monitoring, and optimization features designed for low-latency user interaction.
+
+---
+
+## Transcription History Storage
+
+### Overview
+
+Transcription history is stored locally using a memory-first pattern that provides instant UI access without disk I/O when switching tabs.
+
+```
+App Start → initTranscriptionHistory() → Load from disk → Cache in memory
+Dictation Complete → addTranscription() → Save to disk + Update memory → Notify subscribers
+Tab Switch → getTranscriptionHistory() → Instant read from memory (no I/O)
+```
+
+### Storage Architecture
+
+**Location**: `src/lib/transcriptionStorage.ts`
+
+The main process uses `electron-store` for persistent JSON storage:
+
+```typescript
+interface TranscriptionItem {
+  id: string;           // Unique identifier
+  text: string;         // Transcription text
+  timestamp: number;    // Unix timestamp (ms)
+  mode: string;         // "dictation" or "edit"
+}
+```
+
+**Key Features**:
+- Maximum 1000 items with automatic pruning via `array.slice()`
+- Store name: `transcription-history`
+- Fire-and-forget saves after paste completes (no user wait)
+
+### State Management
+
+**Location**: `src/state/transcriptionHistory.ts`
+
+The renderer uses a pub/sub pattern (matching `userIdentity.ts` style) for reactive updates:
+
+```typescript
+// Subscribe to history changes
+subscribeTranscriptionHistory((items) => {
+  // Update UI with new items
+});
+
+// Get current history (instant, from memory)
+const history = getTranscriptionHistory();
+
+// Add new transcription
+addTranscription(text, mode);
+```
+
+### IPC Bridge
+
+**Preload API** (`src/preload.ts`):
+```typescript
+window.transcriptions = {
+  getAll: () => ipcRenderer.invoke('transcriptions:get-all'),
+  save: (item) => ipcRenderer.invoke('transcriptions:save', item),
+  delete: (id) => ipcRenderer.invoke('transcriptions:delete', id),
+  clear: () => ipcRenderer.invoke('transcriptions:clear'),
+};
+```
+
+**Main Process Handlers** (`src/main.ts`):
+- `transcriptions:get-all` - Load all items from store
+- `transcriptions:save` - Add item and prune if over limit
+- `transcriptions:delete` - Remove item by ID
+- `transcriptions:clear` - Remove all items
+
+### Auto-Save Integration
+
+**Location**: `src/hooks/useTranscription.ts`
+
+Transcriptions are automatically saved when the final result is received:
+
+```typescript
+// In the "final" message handler
+if (msg.type === "final") {
+  // ... existing handling ...
+
+  // Save to history after paste completes
+  addTranscription(msg.text, mode);
+}
+```
+
+### UI Components
+
+**History View** (`src/components/TranscriptionHistoryView.tsx`):
+- Displays items grouped by date (Today, Yesterday, This Week, etc.)
+- Subscribes to history state for real-time updates
+- Clean empty state with text-only message
+
+**History Item** (`src/components/HistoryItem.tsx`):
+- Copy button with spring-animated checkmark micro-interaction
+- Animation uses Emil Kowalski principles: fast exit (50ms), spring pop on enter
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/transcriptionStorage.ts` | Main process storage service |
+| `src/state/transcriptionHistory.ts` | Renderer state management |
+| `src/types/shared.ts` | `TranscriptionItem` type definition |
+| `src/components/TranscriptionHistoryView.tsx` | History list UI |
+| `src/components/HistoryItem.tsx` | Individual item with copy animation |
+
+### Privacy Note
+
+Transcription text is stored locally on the user's device only. The `dictation_logs` table in Supabase stores only metadata (timing, word count) without any transcription text.
