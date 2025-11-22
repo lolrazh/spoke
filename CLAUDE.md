@@ -58,7 +58,15 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 - `src/utils/` - Utility functions (logger, auth signals, VAD helpers)
 - `worker/src/` - Cloudflare Worker for WebSocket transcription
 - `native/` - C binary for macOS accessibility integration
-- `docs/` - Comprehensive documentation (DESIGN.md, AUTH.md, TRANSCRIPTION.md)
+- `docs/` - Comprehensive documentation:
+  - `AUTH.md` - Authentication flow and token handling
+  - `DATABASE.md` - Supabase schema, RLS policies, and queries
+  - `DESIGN.md` - UI/UX design specifications
+  - `INSTRUMENTATION.md` - Sentry setup for app and worker
+  - `PERMISSIONS.md` - macOS permissions architecture
+  - `TRANSCRIPTION.md` - Audio pipeline and transcription flow
+  - `USER_METRICS.md` - Analytics and telemetry system
+  - `UPDATE_PIPELINE.md` - Auto-update process
 
 ## Environment Variables
 
@@ -96,6 +104,59 @@ Binary protocol optimized for real-time audio streaming:
 - Uses 16-byte headers with sequence, payload size, and timestamp
 - PCM16 audio data payload (little-endian)
 - Handled in `src/hooks/useTranscription.ts` and `worker/src/handlers/ws.ts`
+
+## Database (Supabase)
+
+PostgreSQL database for user data and telemetry:
+
+### Tables
+- `profiles` - User profiles (1:1 with auth.users): display_name, avatar_url, onboarding_done, share_transcriptions
+- `dictation_logs` - Telemetry per session: timing metrics, provider info, word count (no text stored)
+- `waitlist` - Pre-launch email collection
+
+### Key Functions (`src/lib/supabaseClient.ts`)
+- `getProfile()` / `ensureProfileRow()` - Profile CRUD
+- `updateDisplayName(name)` - Update user's display name
+- `markOnboardingDone()` - Set onboarding complete flag
+
+### Security
+- Row Level Security (RLS) enabled on all tables except waitlist
+- Users can only access their own data via `auth.uid() = id`
+- Worker uses service role key for telemetry inserts
+
+## macOS Permissions
+
+Three permissions required: Microphone, Accessibility, Input Monitoring
+
+### Flow
+1. `PermissionsProvider` polls on app focus/visibility
+2. Missing permissions trigger notification loop with "Double click to review"
+3. Permissions panel auto-opens until all grants are obtained
+4. Input Monitoring button disabled until Accessibility is granted (dependency)
+
+### Key Files
+- `src/hooks/usePermissions.ts` - Permission polling and detection
+- `src/state/permissionsContext.tsx` - React context for permission state
+- `src/components/PermissionsPanel.tsx` - Permission grant UI
+
+## Instrumentation & Monitoring
+
+Sentry instrumentation across both app and worker:
+
+### App (Electron)
+- SDK: `@sentry/electron` in main and renderer
+- Init: `src/renderer.tsx`, `src/main.ts`
+- Captures errors, breadcrumbs with PII filtering
+
+### Worker (Cloudflare)
+- SDK: `@sentry/cloudflare` with Logs integration
+- Traces per dictation with HTTP spans for STT/LLM
+- Session summary logs with `session.trace_id` correlation
+
+### Analytics (dictation_logs)
+- Worker writes to Supabase after each transcription
+- Metrics: timing (dictation_ms, e2e_ms, stt_ms, llm_ms), word_count, provider info
+- Privacy: No transcription text stored, only metadata
 
 ## Publishing & Updates
 
