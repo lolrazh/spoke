@@ -1053,6 +1053,12 @@ const AppInner: React.FC = () => {
         clearTimeout(pressTimerRef.current);
         pressTimerRef.current = null;
       }
+      // Clear double-tap detection state to allow immediate re-activation
+      if (doubleTapTimerRef.current) {
+        clearTimeout(doubleTapTimerRef.current);
+        doubleTapTimerRef.current = null;
+      }
+      lastTapUpRef.current = null;
       // Force the key-up handler to take the long-press branch (which is a no-op when not recording)
       isLongPressRef.current = true;
       // If we're recording, perform a true cancel and snap UI back to IDLE
