@@ -10,7 +10,7 @@ export const GROQ_LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-inst
 export const GROQ_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const OPENAI_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
 export const OPENAI_EDIT_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
-export const BASETEN_LLM_DEFAULT_MODEL = 'Qwen/Qwen3-235B-A22B-Instruct-2507';
+export const BASETEN_LLM_DEFAULT_MODEL = 'deepseek-ai/DeepSeek-V3.1';
 export const BASETEN_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/Kimi-K2-Instruct-0905';
 export const OPENROUTER_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
 export const OPENROUTER_EDIT_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
@@ -36,7 +36,7 @@ export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.api.fireworks.a
 export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.api.fireworks.ai/v1/audio/transcriptions';
 export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
 
-export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
+export const GROQ_STT_MODEL = 'whisper-large-v3';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
