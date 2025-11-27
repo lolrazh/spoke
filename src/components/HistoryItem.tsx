@@ -13,6 +13,7 @@ export interface HistoryItemData {
 interface HistoryItemProps {
   item: HistoryItemData;
   onCopy: () => void;
+  skipAnimation?: boolean;
 }
 
 const formatTime = (timestamp: number): string => {
@@ -25,7 +26,7 @@ const formatTime = (timestamp: number): string => {
   return `${displayHours}:${displayMinutes} ${ampm}`;
 };
 
-const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
+const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy, skipAnimation = false }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -36,7 +37,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={skipAnimation ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
       transition={{ type: "spring", ...MOTION.springs.quick }}

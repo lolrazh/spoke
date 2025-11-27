@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import DateGroup from "./DateGroup";
@@ -8,6 +8,9 @@ import {
   getTranscriptionHistory,
 } from "../state/transcriptionHistory";
 import type { TranscriptionItem } from "../types/shared";
+
+/** Number of items to load per batch */
+const PAGE_SIZE = 50;
 
 // Helper function to format date as "MMM DD, YYYY" in caps
 const formatDateLabel = (timestamp: number): string => {
@@ -76,6 +79,19 @@ const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<HistoryItemData[]>(() =>
     getTranscriptionHistory().map(toHistoryItem)
   );
+  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Track which items were in the initial batch (for animation skipping)
+  const initialBatchIdsRef = useRef<Set<string>>(new Set());
+
+  // Initialize the initial batch IDs on first render
+  useEffect(() => {
+    if (initialBatchIdsRef.current.size === 0 && historyItems.length > 0) {
+      const initialIds = historyItems.slice(0, PAGE_SIZE).map(item => item.id);
+      initialBatchIdsRef.current = new Set(initialIds);
+    }
+  }, [historyItems]);
 
   // Subscribe to transcription history changes
   useEffect(() => {
@@ -85,12 +101,49 @@ const TranscriptionHistoryView: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  const groupedItems = groupItemsByDate(historyItems);
+  // Only process the visible slice of items
+  const visibleItems = historyItems.slice(0, displayedCount);
+  
+  // Memoize grouping since it does real work (Map creation, sorting)
+  const groupedItems = React.useMemo(() => {
+    return groupItemsByDate(visibleItems);
+  }, [visibleItems]);
+
+  // Load more items when scrolling to bottom
+  const loadMore = useCallback(() => {
+    setDisplayedCount((prev) => Math.min(prev + PAGE_SIZE, historyItems.length));
+  }, [historyItems.length]);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && displayedCount < historyItems.length) {
+          loadMore();
+        }
+      },
+      { rootMargin: "100px" } // Start loading 100px before reaching the bottom
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [displayedCount, historyItems.length, loadMore]);
+
+  const hasMore = displayedCount < historyItems.length;
 
   const handleCopy = (item: HistoryItemData) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(item.text);
     }
+  };
+
+  // Check if an item should skip its entrance animation
+  // If it's NOT in the initial batch, we skip animation so it feels like native scrolling
+  const shouldSkipAnimation = (itemId: string) => {
+    return !initialBatchIdsRef.current.has(itemId);
   };
 
   // Empty state
@@ -120,6 +173,7 @@ const TranscriptionHistoryView: React.FC = () => {
               <HistoryItem
                 item={item}
                 onCopy={() => handleCopy(item)}
+                skipAnimation={shouldSkipAnimation(item.id)}
               />
               {/* Don't show border after last item */}
               {index === group.items.length - 1 && (
@@ -129,6 +183,18 @@ const TranscriptionHistoryView: React.FC = () => {
           ))}
         </DateGroup>
       ))}
+
+      {/* Sentinel element for infinite scroll */}
+      <div ref={loadMoreRef} className="h-1" />
+
+      {/* Loading indicator when more items are available */}
+      {hasMore && (
+        <div className="flex justify-center py-4">
+          <span className="text-xs text-muted-foreground/50">
+            Loading more...
+          </span>
+        </div>
+      )}
     </motion.div>
   );
 };
