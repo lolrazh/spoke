@@ -8,7 +8,7 @@ This document provides a comprehensive technical overview of Sonic Flow's subscr
 3. [Phase 1: Database Foundation (✅ Completed)](#phase-1-database-foundation--completed)
 4. [Phase 2: Checkout Flow (✅ Completed)](#phase-2-checkout-flow--completed)
 5. [Phase 3: Webhook Processing (✅ Completed)](#phase-3-webhook-processing--completed)
-6. [Phase 4: Entitlement Token Minting (🔧 TODO)](#phase-4-entitlement-token-minting--todo)
+6. [Phase 4: Entitlement Token Minting (✅ Completed)](#phase-4-entitlement-token-minting--completed)
 7. [Phase 5: Worker Gating (🔧 TODO)](#phase-5-worker-gating--todo)
 8. [Phase 6: Desktop App Integration (🔧 TODO)](#phase-6-desktop-app-integration--todo)
 9. [Security Considerations](#security-considerations)
@@ -750,19 +750,189 @@ Optional (analytics):
 
 ---
 
-## Phase 4: Entitlement Token Minting (🔧 TODO)
+## Phase 4: Entitlement Token Minting (✅ Completed)
 
 ### Overview
 
 Phase 4 creates the "ticket" system that allows the desktop app to prove payment to the Cloudflare Worker. Tokens are short-lived JWTs with embedded entitlement information.
 
+### Understanding Two Different JWTs
+
+**IMPORTANT:** This system uses TWO different JWTs for different purposes:
+
+#### 1. Supabase JWT (Authentication - "Who are you?")
+
+**Created by:** Supabase Auth Service
+**Signed with:** Supabase's secret
+**Purpose:** Proves user identity
+**Lifetime:** 1 hour
+**Contains:**
+```json
+{
+  "sub": "user-uuid",
+  "email": "user@example.com",
+  "role": "authenticated",
+  "aud": "authenticated"
+}
+```
+
+**Used for:**
+- Calling Next.js API routes
+- Supabase database queries (RLS)
+- Proving "I'm logged in as this user"
+
+#### 2. Entitlement JWT (Authorization - "Did you pay?")
+
+**Created by:** Your Next.js API
+**Signed with:** YOUR secret (`ENTITLEMENT_SIGNING_SECRET`)
+**Purpose:** Proves payment status
+**Lifetime:** 30 minutes
+**Contains:**
+```json
+{
+  "sub": "user-uuid",
+  "is_active": true,
+  "plan": "monthly",
+  "trial": false,
+  "ver": 1
+}
+```
+
+**Used for:**
+- Proving to Worker "I have an active subscription"
+- Fast authorization check (no DB lookup)
+- Revocation via version number
+
+#### Why We Need Both
+
+```
+Desktop App Flow:
+─────────────────
+1. App calls Next.js API: "Give me entitlement token"
+   Authorization: Bearer <SUPABASE_JWT>  ← Proves identity
+
+2. Next.js verifies Supabase JWT
+   ✅ "This is user ABC, they're authenticated"
+
+3. Next.js checks subscription in database
+   ✅ "User ABC has active subscription"
+
+4. Next.js creates ENTITLEMENT JWT
+   Signs with YOUR secret
+
+5. Returns entitlement token to app
+
+6. App connects to Worker
+   ?token=<ENTITLEMENT_JWT>  ← Proves payment
+
+7. Worker verifies entitlement JWT
+   ✅ "This token says is_active=true, allow transcription"
+```
+
+**Why Not Just Use Supabase JWT for Everything?**
+
+❌ **Problem 1:** Supabase doesn't know about subscriptions
+- Supabase JWT has no `is_active` or `plan` claims
+- Would need database check on EVERY request (slow!)
+
+❌ **Problem 2:** Worker can't verify Supabase JWTs easily
+- Supabase JWTs are signed with Supabase's secret
+- Worker would need to call Supabase to verify
+
+❌ **Problem 3:** No revocation mechanism
+- Supabase JWTs live for 1 hour
+- If user cancels, they'd still have access for 1 hour
+- Our `ver` claim allows instant revocation
+
+✅ **Our Approach:** Custom JWT with payment-specific claims
+- Fast Worker checks (< 1ms, no DB query)
+- Revocation via version number
+- Security: Only your Worker can verify (has your secret)
+
+#### Why Client-Side Checks Aren't Enough
+
+**You might think:** "Why not just check subscription client-side, and if they don't have one, don't connect to Worker?"
+
+**The Problem:** Client code can be bypassed!
+
+```typescript
+// ❌ Client-only check (easily bypassed)
+if (!hasSubscription) {
+  showUpgradePrompt();
+  return; // User can edit this in DevTools!
+}
+ws.connect(workerUrl);
+```
+
+**A malicious user can:**
+- Open DevTools → Edit client code to skip the check
+- Call your Worker directly with `curl` or Postman
+- Get free transcription forever!
+
+**✅ The Right Approach: Defense in Depth**
+
+We do **BOTH**:
+
+1. **Client-Side Check (UX Layer)** - Fast feedback, good UX
+2. **Worker-Side Check (Security Layer)** - Cannot be bypassed
+
+**Worker MUST be the final enforcer because:**
+- ❌ Client code runs on user's machine (they control it)
+- ✅ Worker code runs on Cloudflare (you control it)
+
+### Why `jose` Library?
+
+**We use `jose` for JWT operations because:**
+
+1. **Complex crypto operations**
+   - base64url encoding (different from regular base64)
+   - HMAC-SHA256 signature generation
+   - Proper JWT structure (header.payload.signature)
+
+2. **Security-critical**
+   - Easy to mess up crypto yourself
+   - Battle-tested library prevents mistakes
+
+3. **Works everywhere**
+   - Next.js API routes (Node.js)
+   - Cloudflare Workers (Edge runtime)
+   - Modern, well-maintained
+
+**Could we do this without `jose`?**
+- Technically yes, but you'd have to implement HMAC-SHA256, base64url encoding, timing-safe comparison, etc.
+- High risk of security mistakes!
+
+### Performance: JWT vs Database Lookup
+
+**❌ Slow approach (50-100ms per request):**
+```typescript
+// Query Supabase on EVERY connection
+const { data: subscription } = await supabase
+  .from('subscriptions')
+  .select('status')
+  .eq('user_id', userId)
+  .single();
+```
+
+**✅ Fast approach (< 1ms):**
+```typescript
+// Verify JWT locally (no network call!)
+const { payload } = await jwtVerify(token, secret);
+```
+
+**Benefits:**
+- ⚡ 50-100x faster
+- 📉 Reduces Supabase API calls
+- 💰 Lower costs
+- 🎯 Still secure (signed by you)
+
 ### API Route: POST `/api/billing/entitlement-token`
 
 **Purpose:** Mint a short-lived JWT entitlement token for authenticated users
 
-**Location:** `sonic-flow-site/src/app/api/billing/entitlement-token/route.ts` *(to be created)*
+**Location:** `sonic-flow-site/src/app/api/billing/entitlement-token/route.ts`
 
-**Authentication:** Requires Supabase access token
+**Authentication:** Requires Supabase access token in `Authorization: Bearer <token>` header
 
 **Response:**
 ```typescript
@@ -804,87 +974,116 @@ Phase 4 creates the "ticket" system that allows the desktop app to prove payment
 - `iat` - Issued At: Unix timestamp
 - `exp` - Expiry: Unix timestamp (iat + 30 minutes)
 
-### Implementation Pseudocode
+### Implementation
 
 ```typescript
 // Location: sonic-flow-site/src/app/api/billing/entitlement-token/route.ts
 
-import jwt from 'jsonwebtoken';  // Install: npm install jsonwebtoken @types/jsonwebtoken
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { SignJWT } from "jose";  // Library: jose (installed via: bun add jose)
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
 const SIGNING_SECRET = process.env.ENTITLEMENT_SIGNING_SECRET!;
 const TOKEN_EXPIRY_SECONDS = 30 * 60; // 30 minutes
 
 export async function POST(req: Request) {
-  // 1. Verify authentication
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    // 1. Verify authentication - get user from Supabase JWT
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    // 2. Get user's subscription status
+    const { data: subscription } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // 3. Get user's entitlement_ver (for revocation)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("entitlement_ver")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json(
+        { error: "profile-not-found" },
+        { status: 404 },
+      );
+    }
+
+    // 4. Determine entitlement
+    const now = new Date();
+    const isActive =
+      subscription &&
+      subscription.status === "active" &&
+      (!subscription.current_period_end ||
+        new Date(subscription.current_period_end) > now);
+
+    const inTrial =
+      subscription?.trial_end && new Date(subscription.trial_end) > now;
+
+    const plan = isActive ? subscription.plan_id : "free";
+
+    // 5. Create JWT using jose
+    const iat = Math.floor(Date.now() / 1000);
+    const exp = iat + TOKEN_EXPIRY_SECONDS;
+
+    const secret = new TextEncoder().encode(SIGNING_SECRET);
+
+    const entitlementToken = await new SignJWT({
+      sub: user.id,
+      is_active: !!isActive,
+      plan: plan,
+      trial: !!inTrial,
+      ver: profile.entitlement_ver,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt(iat)
+      .setExpirationTime(exp)
+      .sign(secret);
+
+    // 6. Return token
+    return NextResponse.json({
+      token: entitlementToken,
+      expires_at: new Date(exp * 1000).toISOString(),
+    });
+  } catch (error) {
+    console.error("[Entitlement Token] Error:", error);
+    return NextResponse.json(
+      { error: "server-error", message: String(error) },
+      { status: 500 },
+    );
   }
-
-  const token = authHeader.substring(7);
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  // 2. Get user's subscription status
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  // 3. Get user's entitlement_ver
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("entitlement_ver")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile) {
-    return NextResponse.json({ error: "profile-not-found" }, { status: 404 });
-  }
-
-  // 4. Determine entitlement
-  const now = new Date();
-  const isActive = subscription
-    && subscription.status === "active"
-    && (!subscription.current_period_end
-      || new Date(subscription.current_period_end) > now);
-
-  const inTrial = subscription?.trial_end
-    && new Date(subscription.trial_end) > now;
-
-  const plan = isActive ? subscription.plan_id : "free";
-
-  // 5. Create JWT
-  const iat = Math.floor(Date.now() / 1000);
-  const exp = iat + TOKEN_EXPIRY_SECONDS;
-
-  const payload = {
-    sub: user.id,
-    is_active: !!isActive,
-    plan: plan,
-    trial: !!inTrial,
-    ver: profile.entitlement_ver,
-    iat: iat,
-    exp: exp,
-  };
-
-  const entitlementToken = jwt.sign(payload, SIGNING_SECRET, {
-    algorithm: 'HS256',
-  });
-
-  // 6. Return token
-  return NextResponse.json({
-    token: entitlementToken,
-    expires_at: new Date(exp * 1000).toISOString(),
-  });
 }
 ```
+
+**Key Implementation Details:**
+
+- **Library:** Uses `jose` instead of `jsonwebtoken` (more modern, works in Edge/Workers)
+- **Secret encoding:** `new TextEncoder().encode(SIGNING_SECRET)` required by jose
+- **JWT builder:** `SignJWT` class with method chaining for claims
+- **Error handling:** Try-catch with detailed error logging
 
 ### Security Considerations
 
@@ -911,10 +1110,42 @@ export async function POST(req: Request) {
 - Increases database load
 - Version check is embedded in token (zero-DB hot path)
 
-### Files to Create
+### Debug Endpoint: GET `/api/billing/verify-token`
 
-- `sonic-flow-site/src/app/api/billing/entitlement-token/route.ts`
-- Install dependency: `npm install jsonwebtoken @types/jsonwebtoken`
+**Purpose:** Decode and verify entitlement tokens for debugging
+
+**Location:** `sonic-flow-site/src/app/api/billing/verify-token/route.ts`
+
+**Usage:**
+```bash
+curl "https://sonicflow.app/api/billing/verify-token?token=<jwt>"
+```
+
+**Response:**
+```json
+{
+  "valid": true,
+  "expired": false,
+  "time_until_expiry_seconds": 1794,
+  "claims": {
+    "sub": "user-uuid",
+    "is_active": true,
+    "plan": "monthly",
+    "trial": false,
+    "ver": 1,
+    "iat": 1701234567,
+    "exp": 1701236367,
+    "issued_at": "2025-11-27T16:00:00.000Z",
+    "expires_at": "2025-11-27T16:30:00.000Z"
+  }
+}
+```
+
+### Files Created
+
+- ✅ `sonic-flow-site/src/app/api/billing/entitlement-token/route.ts` - Token minting endpoint
+- ✅ `sonic-flow-site/src/app/api/billing/verify-token/route.ts` - Token verification debug endpoint
+- ✅ Installed dependency: `jose@6.1.2` (via `bun add jose`)
 
 ### Testing
 

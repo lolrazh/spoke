@@ -2,7 +2,7 @@
 
 **Date:** 2025-11-27
 **Agent:** Claude Sonnet 4.5
-**Status:** ✅ Completed (Phases 1-3 of 6)
+**Status:** ✅ Completed (Phases 1-4 of 6)
 
 **NOTE:** This was done in a different repository which has the code for the website. But this log is important enough for the agents to understand the bigger picture, which is why it is also in the app's code directory.
 
@@ -30,6 +30,13 @@ User wanted to integrate a complete subscription payment system into their dicta
 - ✅ **Token revocation system** - Auto-bumps entitlement_ver on cancellation/failure events
 - ✅ **Added test endpoint** - `/api/dodo/webhook-test` for verifying webhook reachability
 
+### Phase 4: Entitlement Token Minting
+- ✅ **Built token minting route** - `/api/billing/entitlement-token` creates short-lived JWT tokens (30min expiry)
+- ✅ **Installed jose library** - Modern JWT library that works in both Next.js and Cloudflare Workers
+- ✅ **Two JWT system** - Explained distinction between Supabase JWT (authentication) and Entitlement JWT (authorization)
+- ✅ **Debug endpoint** - `/api/billing/verify-token` for decoding and verifying tokens during development
+- ✅ **Defense in depth** - Documented why both client-side checks (UX) and Worker checks (security) are needed
+
 ## Technical Implementation
 
 **Architecture Pattern:**
@@ -53,6 +60,8 @@ User wanted to integrate a complete subscription payment system into their dicta
 **Files Created:**
 - `src/app/api/billing/checkout/route.ts` - POST endpoint for creating Dodo checkout sessions
 - `src/app/api/billing/status/route.ts` - GET endpoint for subscription status
+- `src/app/api/billing/entitlement-token/route.ts` - POST endpoint for minting JWT tokens (Phase 4)
+- `src/app/api/billing/verify-token/route.ts` - GET endpoint for debugging JWT tokens (Phase 4)
 - `src/app/api/dodo/webhook/route.ts` - POST endpoint for webhook processing
 - `src/app/api/dodo/webhook-test/route.ts` - GET endpoint for health checks
 - `src/app/billing/return/page.tsx` - Client component with polling status checks
@@ -60,6 +69,9 @@ User wanted to integrate a complete subscription payment system into their dicta
 
 **Files Modified:**
 - `src/app/pricing/page-client.tsx` - Added checkout handler, auth check, loading states, error handling
+
+**Dependencies Installed:**
+- `jose@6.1.2` - Modern JWT library for token signing and verification (Phase 4)
 
 ## Bugs & Issues Encountered
 
@@ -85,6 +97,14 @@ User wanted to integrate a complete subscription payment system into their dicta
 - **Return page polling strategy** - Poll every 2 seconds for max 30 seconds (15 attempts) provides good UX balance between responsiveness and server load
 
 - **Supabase auth in Next.js API routes** - `supabase.auth.getUser(token)` validates JWT AND fetches user data in one call when using service role client
+
+- **Two JWT system clarification** - Supabase JWT (authentication: "who are you?") vs Entitlement JWT (authorization: "did you pay?"). Critical distinction because Supabase doesn't know about subscriptions, and worker needs fast verification without DB lookups.
+
+- **Client-side checks vs Worker checks** - Client-side checks are for UX (fast feedback), Worker checks are for security (cannot be bypassed). BOTH are needed for defense in depth.
+
+- **jose library advantage** - Works in both Next.js (Node) and Cloudflare Workers (Edge), modern API with method chaining, handles all crypto complexity safely
+
+- **JWT vs database lookup performance** - JWT verification is 50-100x faster (< 1ms) than querying Supabase on every request (50-100ms), critical for Worker hot path
 
 ## Architecture Decisions
 
@@ -118,14 +138,15 @@ ENTITLEMENT_SIGNING_SECRET=LXSJWyQxNb2hd1ylmUHURMpfS5CQN4ide415seMlLB0=
 - ✅ **Checkout flow functional** - Users can subscribe and see 7-day trial
 - ✅ **Webhook processing live** - Subscriptions activate automatically
 - ✅ **Product IDs mapped** - Test mode products configured and working
+- ✅ **Token minting complete** - JWT entitlement tokens can be generated with 30min expiry
+- ✅ **Debug tooling ready** - `/api/billing/verify-token` endpoint for testing tokens
 
-- 🔧 **Phase 4 needed: Entitlement token minting** - `/api/billing/entitlement-token` route to mint JWT/JWE tokens with claims (sub, is_active, plan, trial, ver, iat, exp)
-- 🔧 **Phase 5 needed: Worker gating** - Cloudflare Worker needs token verification logic to enforce paywall
-- 🔧 **Phase 6 needed: Desktop app integration** - Electron app needs token fetching, storage, refresh logic, and "Upgrade" UI
+- 🔧 **Phase 5 needed: Worker gating** - Cloudflare Worker needs token verification logic to enforce paywall (install `@tsndr/cloudflare-worker-jwt`, create `worker/src/auth/entitlement.ts`, modify `worker/src/handlers/ws.ts`)
+- 🔧 **Phase 6 needed: Desktop app integration** - Electron app needs token fetching, storage, refresh logic, and "Upgrade" UI (create hooks, update transcription logic, add upgrade modal)
 
 ## Testing Checklist for User
 
-Before proceeding to Phase 4:
+### Phase 1-3 Testing (Payment Flow):
 - [ ] Deploy code to Vercel (`git push`)
 - [ ] Verify `/api/dodo/webhook-test` returns `status: "ok"`
 - [ ] Test full checkout flow with test card `4242 4242 4242 4242`
@@ -134,8 +155,31 @@ Before proceeding to Phase 4:
 - [ ] Check webhook_events table logged the event
 - [ ] Verify Vercel function logs show "[Webhook] ✅ Subscription activated"
 
+### Phase 4 Testing (Token Minting):
+- [ ] Deploy Phase 4 code to Vercel
+- [ ] Get Supabase access token from authenticated user
+- [ ] Call `POST /api/billing/entitlement-token` with auth header
+- [ ] Verify response contains `token` and `expires_at` fields
+- [ ] Copy token and call `GET /api/billing/verify-token?token=<jwt>`
+- [ ] Verify decoded claims show correct user, plan, is_active, ver
+- [ ] Test with free user (should get `is_active: false`)
+- [ ] Test with paid user (should get `is_active: true`)
+
 ## Context for Future
 
-This session built the core payment infrastructure (database + checkout + webhooks) which closes the payment loop for web users. The next critical piece is minting entitlement tokens that the desktop app can use to prove payment to the Cloudflare Worker. Without Phase 4-5, users can pay but won't get access to transcription since the Worker doesn't enforce payment yet. The entitlement token design is already specified in the blueprint (JWT with 30min exp, HS256 signing, ver claim for revocation).
+This session built the complete payment backend infrastructure (Phases 1-4):
+- ✅ Database schema with subscriptions tracking and token revocation
+- ✅ Checkout flow with Dodo Payments integration and 7-day trials
+- ✅ Webhook processing for automatic subscription updates
+- ✅ Entitlement token minting with JWT (30min expiry, version-based revocation)
+
+**What's Next:** Phases 5-6 complete the integration by enforcing payment in the Worker and updating the desktop app UI. Currently, users can subscribe and receive tokens, but:
+- Worker doesn't verify tokens yet (Phase 5) - anyone can still transcribe
+- Desktop app doesn't fetch tokens yet (Phase 6) - no way to pass tokens to Worker
+
+**Phase 5** is critical because it's the actual security gate. Without it, malicious users can bypass payment by calling the Worker directly with `curl`. The Worker MUST verify entitlement tokens before allowing transcription.
+
+**Key Architecture Insight:** We use TWO different JWTs - Supabase JWT proves identity ("who you are"), Entitlement JWT proves payment ("did you pay"). This separation allows fast Worker verification (< 1ms) without database lookups. Comprehensive documentation added to PAYMENTS.md explaining this design.
 
 Blueprint location: `sonic-flow-app/plans/PAYMENTS_BLUEPRINT.md`
+Documentation: `sonic-flow-app/docs/PAYMENTS.md`
