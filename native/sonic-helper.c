@@ -563,10 +563,13 @@ static int inspect_text_core(int context_chars) {
     printf("read:ok\n");
     printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
     printf("selectionSource:%s\n", source);
-    print_cfstring_truncated("selectedText", selectedText, 512);
-    print_cfstring_truncated("context", contextSlice, 512);
-    print_cfstring_base64("selectedText", selectedText);
-    print_cfstring_base64("context", contextSlice);
+    // PRIVACY: Only log selected text and context when explicitly enabled for debugging
+    if (g_debug_text) {
+        print_cfstring_truncated("selectedText", selectedText, 512);
+        print_cfstring_truncated("context", contextSlice, 512);
+        print_cfstring_base64("selectedText", selectedText);
+        print_cfstring_base64("context", contextSlice);
+    }
     printf("valueLength:%ld\n", (long)len);
     fflush(stdout);
 
@@ -682,6 +685,7 @@ typedef struct {
 } KeyState;
 
 static bool g_debug_keys = false;
+static bool g_debug_text = false;
 
 // Some SDKs don't expose virtual keycodes; define the ones we need for Command
 #ifndef kVK_Command
@@ -816,6 +820,12 @@ int main(int argc, char *argv[]) {
     if (dbg && (strcmp(dbg, "1") == 0 || strcasecmp(dbg, "true") == 0 || strcasecmp(dbg, "yes") == 0)) {
         g_debug_keys = true;
         fprintf(stderr, "[KEY] Debug key logging enabled\n");
+    }
+    // Enable text debug logging with env var (PRIVACY: disabled by default)
+    const char *dbgText = getenv("SF_NATIVE_DEBUG_TEXT");
+    if (dbgText && (strcmp(dbgText, "1") == 0 || strcasecmp(dbgText, "true") == 0 || strcasecmp(dbgText, "yes") == 0)) {
+        g_debug_text = true;
+        fprintf(stderr, "[TEXT] Debug text logging enabled (PRIVACY WARNING: selected text will be logged)\n");
     }
     if (argc > 1 && strcmp(argv[1], "--mode=paste") == 0) {
         requireAX();
