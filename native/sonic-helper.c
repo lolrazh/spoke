@@ -9,6 +9,10 @@
 #include <Foundation/Foundation.h>
 #include <AppKit/AppKit.h>
 
+// Global debug flags (enabled via environment variables)
+static bool g_debug_keys = false;
+static bool g_debug_text = false;
+
 // Forward declarations for functions defined later in this file
 static void requireAX(void);
 static void cmdV(void);
@@ -683,9 +687,6 @@ typedef struct {
     bool cmdL;
     bool cmdR;
 } KeyState;
-
-static bool g_debug_keys = false;
-static bool g_debug_text = false;
 
 // Some SDKs don't expose virtual keycodes; define the ones we need for Command
 #ifndef kVK_Command
