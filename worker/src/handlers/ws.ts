@@ -394,7 +394,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       const editRes = await chatCompleteByProvider(provider, {
                         apiKey: apiKeyForProvider,
                         model,
-                        systemPrompt: buildEditSystemPrompt(),
+                        systemPrompt: buildEditSystemPrompt({ sttPrompt }),
                         userContent: editPlan.prompt,
                         stream: streamEdit,
                         temperature: runtime.edit.temperature,
