@@ -1,391 +1,441 @@
 # Database Architecture
 
-Sonic Flow uses Supabase (PostgreSQL) for user authentication, profiles, and telemetry. This document covers the schema, relationships, security policies, and integration points with the app.
+Sonic Flow uses Supabase (PostgreSQL) to manage user data, subscriptions, and telemetry. The database is designed with privacy in mind—transcription text is never stored, only performance metrics.
 
-**Related Documentation:**
-- `docs/AUTH.md` - Authentication flow and token handling
-- `docs/TRANSCRIPTION.md` - Transcription pipeline and metrics
+**Related:** `docs/AUTH.md`, `docs/TRANSCRIPTION.md`, `docs/PAYMENTS.md`
 
 ---
 
-## Overview
+## Philosophy
 
-### Database Stats
-| Table | Rows | Purpose |
-|-------|------|---------|
-| `profiles` | 8 | User profiles and preferences |
-| `dictation_logs` | 377 | Transcription telemetry |
-| `waitlist` | 11 | Pre-launch email collection |
+The database serves three core functions:
 
-### Schema Diagram
+1. **User Identity**: Profiles linked 1:1 with Supabase Auth users
+2. **Subscription Management**: Dodo Payments integration for billing
+3. **Performance Telemetry**: Timing metrics for monitoring (no transcription text)
 
-```
-┌─────────────────┐
-│   auth.users    │
-│  (Supabase)     │
-└────────┬────────┘
-         │
-         │ 1:1 (id → id)
-         ▼
-┌─────────────────┐
-│    profiles     │
-│                 │
-│ - display_name  │
-│ - avatar_url    │
-│ - onboarding    │
-│ - share_prefs   │
-└─────────────────┘
+Privacy is paramount—`dictation_logs` stores word count, latency, provider info, but never the actual transcription. History is stored locally on the user's device.
 
-┌─────────────────┐
-│   auth.users    │
-└────────┬────────┘
-         │
-         │ 1:N (id → user_id)
-         ▼
-┌─────────────────┐
-│ dictation_logs  │
-│                 │
-│ - session_id    │
-│ - timing metrics│
-│ - provider info │
-└─────────────────┘
+---
 
-┌─────────────────┐
-│    waitlist     │
-│  (standalone)   │
-│                 │
-│ - email         │
-│ - source        │
-└─────────────────┘
-```
+## Schema Overview
+
+<schema>
+  <table name="profiles">
+    <purpose>User profiles and preferences (1:1 with auth.users)</purpose>
+    <relationship>profiles.id → auth.users.id (FK)</relationship>
+    <rows>11</rows>
+    <rls>enabled</rls>
+  </table>
+
+  <table name="subscriptions">
+    <purpose>Dodo Payments subscription records</purpose>
+    <relationship>subscriptions.user_id → auth.users.id (FK, 1:N)</relationship>
+    <rows>5</rows>
+    <rls>enabled</rls>
+  </table>
+
+  <table name="dictation_logs">
+    <purpose>Transcription session telemetry (no text stored)</purpose>
+    <relationship>dictation_logs.user_id → auth.users.id (FK, 1:N)</relationship>
+    <rows>800</rows>
+    <rls>enabled</rls>
+  </table>
+
+  <table name="webhook_events">
+    <purpose>Dodo Payments webhook event audit log</purpose>
+    <relationship>None (standalone)</relationship>
+    <rows>16</rows>
+    <rls>enabled (service role only)</rls>
+  </table>
+
+  <table name="waitlist">
+    <purpose>Pre-launch email collection</purpose>
+    <relationship>None (standalone, public inserts)</relationship>
+    <rows>13</rows>
+    <rls>disabled</rls>
+  </table>
+</schema>
 
 ---
 
 ## Tables
 
-### `profiles`
+### profiles
 
-User profile data created after authentication. Links 1:1 with `auth.users`.
+User profile data tied to authentication. Each authenticated user gets one profile row.
 
-#### Schema
+<table name="profiles">
+  <columns>
+    id (uuid, PK, FK → auth.users.id)
+    email (text, nullable, unique) - For display
+    display_name (text, nullable) - Editable in onboarding
+    avatar_url (text, nullable) - From OAuth provider
+    share_transcriptions (boolean, default false) - Dataset consent
+    onboarding_done (boolean, default false) - Skip onboarding if true
+    dodo_customer_id (text, nullable, unique) - Dodo Payments customer ID
+    entitlement_ver (integer, default 1) - Incremented to invalidate client cache
+    created_at, updated_at (timestamptz)
+  </columns>
 
-| Column | Type | Default | Description |
-|--------|------|---------|-------------|
-| `id` | `uuid` | — | Primary key, matches `auth.users.id` |
-| `email` | `text` | `null` | User's email (for display) |
-| `display_name` | `text` | `null` | User's display name (editable in onboarding) |
-| `avatar_url` | `text` | `null` | Profile picture URL from OAuth provider |
-| `share_transcriptions` | `boolean` | `false` | Consent to share transcriptions for training |
-| `onboarding_done` | `boolean` | `false` | Whether user completed onboarding |
-| `created_at` | `timestamptz` | `now()` | Profile creation timestamp |
-| `updated_at` | `timestamptz` | `now()` | Last update timestamp |
+  <rls>
+    Users can only read/write their own profile (auth.uid() = id).
+    Three policies: self read, self insert, self update.
+  </rls>
 
-#### Relationships
+  <integration>
+    <file path="src/lib/supabaseClient.ts">
+      getProfile(), ensureProfileRow(), updateDisplayName(),
+      setShareTranscriptionsPreference(), markOnboardingDone()
+    </file>
+    <file path="src/state/userIdentity.ts">Client-side identity cache</file>
+    <file path="src/components/Onboarding.tsx">Name verification flow</file>
+  </integration>
 
-- **Foreign Key**: `profiles.id` → `auth.users.id`
-- **Constraint**: One profile per user (1:1)
+  <entitlement_ver>
+    When subscription changes, worker calls increment_entitlement_ver(user_id).
+    Client polls this version to detect subscription updates and refresh UI.
+    Simple cache invalidation strategy—increment bumps client to refetch entitlements.
+  </entitlement_ver>
+</table>
 
-#### RLS Policies
+### subscriptions
 
-| Policy | Command | Rule |
-|--------|---------|------|
-| `profiles: self read` | SELECT | `auth.uid() = id` |
-| `profiles: self insert` | INSERT | `auth.uid() = id` |
-| `profiles: self update` | UPDATE | `auth.uid() = id` |
+Dodo Payments subscription lifecycle managed entirely by webhook handler.
 
-#### App Integration
+<table name="subscriptions">
+  <columns>
+    id (uuid, PK)
+    user_id (uuid, FK → auth.users.id)
+    subscription_id (text, nullable, unique) - Dodo subscription ID
+    plan_id (text) - e.g., 'plan_monthly', 'plan_yearly'
+    product_id (text, nullable)
+    status (text) - 'active' | 'canceled' | 'past_due' | 'paused'
+    plan_interval (text, nullable) - 'month' | 'year'
+    current_period_start, current_period_end, trial_end (timestamptz, nullable)
+    cancel_at_period_end (boolean, default false)
+    canceled_at (timestamptz, nullable) - When user/admin canceled
+    created_at, updated_at (timestamptz)
+  </columns>
 
-**Files:**
-- `src/lib/supabaseClient.ts` - Profile CRUD operations
-- `src/state/userIdentity.ts` - Client-side identity cache
-- `src/components/Onboarding.tsx` - Name verification, onboarding_done flag
+  <rls>
+    Users can SELECT their own subscription (auth.uid() = user_id).
+    Service role manages all writes via webhook (no user write access).
+  </rls>
 
-**Key Functions:**
-```typescript
-// supabaseClient.ts
-getProfile()              // Fetch current user's profile
-getProfileDetailed()      // Fetch with detailed error typing
-ensureProfileRow()        // Create profile if missing
-updateDisplayName(name)   // Update display_name with retry
-setShareTranscriptionsPreference(enabled)  // Update share_transcriptions
-markOnboardingDone()      // Set onboarding_done = true
-```
+  <integration>
+    <file path="worker/src/routes/webhooks.ts">Dodo webhook handler (service role)</file>
+    <file path="src/lib/supabaseClient.ts">getUserSubscription()</file>
+    <usage>
+      Webhook creates/updates on subscription events.
+      App reads for entitlement checks.
+      After update, worker calls increment_entitlement_ver() to notify client.
+    </usage>
+  </integration>
 
-**Usage Patterns:**
-- **Returning user detection**: Check `onboarding_done` to skip onboarding
-- **Identity display**: `display_name` and `avatar_url` shown in settings
-- **Privacy control**: `share_transcriptions` gates dataset logging in worker
+  <philosophy>
+    Single source of truth for billing state.
+    App never writes—only reads. Worker handles all lifecycle events.
+  </philosophy>
+</table>
 
----
+### dictation_logs
 
-### `dictation_logs`
+Performance telemetry for each transcription session. Privacy-safe—no text stored.
 
-Telemetry for each transcription session. Used for performance monitoring and debugging.
+<table name="dictation_logs">
+  <columns>
+    id (uuid, PK)
+    user_id (uuid, FK → auth.users.id)
+    session_id (text, unique) - Client-generated session ID
+    created_at (timestamptz) - Session start
+    completed_at (timestamptz, nullable) - Session end
+    dictation_ms (integer, nullable) - User speaking duration
+    e2e_ms (integer, nullable) - End-to-end latency
+    total_ms (integer, nullable) - Total processing time
+    stt_ms (integer, nullable) - STT provider latency
+    llm_ms (integer, nullable) - LLM processing latency
+    audio_duration_ms (integer, nullable)
+    word_count (integer, nullable)
+    pipeline (text, nullable) - e.g., 'stt+llm', 'edit'
+    stt_provider (text, default 'groq')
+    stt_model (text, nullable)
+    llm_provider (text, nullable)
+    llm_model (text, nullable)
+    ws_close_code (integer, nullable)
+    ws_close_reason (text, nullable)
+  </columns>
 
-#### Schema
+  <rls>
+    Service role can INSERT (bypasses RLS).
+    Users can SELECT their own logs (auth.uid() = user_id).
+  </rls>
 
-| Column | Type | Default | Description |
-|--------|------|---------|-------------|
-| `id` | `uuid` | `gen_random_uuid()` | Primary key |
-| `user_id` | `uuid` | — | User who dictated |
-| `session_id` | `text` | — | Unique session identifier (from client) |
-| `created_at` | `timestamptz` | `now()` | Session start time |
-| `completed_at` | `timestamptz` | `null` | Session end time |
-| `dictation_ms` | `integer` | `null` | Time user spent speaking |
-| `e2e_ms` | `integer` | `null` | End-to-end latency |
-| `total_ms` | `integer` | `null` | Total processing time |
-| `stt_ms` | `integer` | `null` | STT provider latency |
-| `llm_ms` | `integer` | `null` | LLM processing latency |
-| `audio_duration_ms` | `integer` | `null` | Audio file duration |
-| `word_count` | `integer` | `null` | Words in final transcription |
-| `pipeline` | `text` | `null` | Pipeline type (e.g., "stt+llm") |
-| `stt_provider` | `text` | `'groq'` | STT provider used |
-| `stt_model` | `text` | `null` | STT model used |
-| `llm_provider` | `text` | `null` | LLM provider used |
-| `llm_model` | `text` | `null` | LLM model used |
-| `ws_close_code` | `integer` | `null` | WebSocket close code |
-| `ws_close_reason` | `text` | `null` | WebSocket close reason |
+  <integration>
+    <file path="worker/src/handlers/ws.ts">Inserts on session complete (service role)</file>
+    <file path="worker/src/utils/telemetry.ts">Telemetry helpers</file>
+    <privacy>
+      No transcription text stored, only timing metrics and metadata.
+      Enables performance monitoring without compromising user privacy.
+    </privacy>
+  </integration>
 
-#### Relationships
+  <philosophy>
+    Telemetry for debugging and optimization, not surveillance.
+    Text stays on the user's device (local history) or is ephemeral (server processing).
+  </philosophy>
+</table>
 
-- **Foreign Key**: `dictation_logs.user_id` → `auth.users.id`
-- **Unique**: `session_id` (one log per session)
+### webhook_events
 
-#### RLS Policies
+Audit log for all Dodo Payments webhook events. Useful for debugging payment flows.
 
-| Policy | Command | Rule |
-|--------|---------|------|
-| `Service role can insert dictation logs` | INSERT | `true` (service role only) |
-| `Users can view own dictation logs` | SELECT | `auth.uid() = user_id` |
+<table name="webhook_events">
+  <columns>
+    event_id (text, PK) - Dodo event ID (idempotency key)
+    type (text) - Event type (e.g., 'subscription.created')
+    raw (jsonb) - Full webhook payload
+    received_at (timestamptz, default now())
+  </columns>
 
-#### App Integration
+  <rls>
+    RLS enabled, but no user policies (service role only).
+  </rls>
 
-**Files:**
-- `worker/src/handlers/ws.ts` - Inserts logs on session complete
-- `worker/src/utils/telemetry.ts` - Telemetry helper functions
+  <integration>
+    <file path="worker/src/routes/webhooks.ts">Logs all Dodo webhook events for debugging</file>
+    <usage>
+      Append-only audit log, never modified.
+      Idempotent inserts using event_id as PK.
+    </usage>
+  </integration>
+</table>
 
-**Usage Patterns:**
-- **Worker writes**: Uses service role key to insert after transcription completes
-- **User reads**: Can view own logs (for potential future analytics dashboard)
-- **No updates**: Logs are append-only, never modified
+### waitlist
 
-**Metrics Flow:**
-```
-Client sends metrics → Worker receives on WebSocket close
-Worker extracts timing data → Inserts into dictation_logs
-```
+Pre-launch email collection. No relation to users—standalone.
 
----
+<table name="waitlist">
+  <columns>
+    id (uuid, PK)
+    email (text, unique)
+    source (text, nullable) - e.g., 'website', 'twitter'
+    created_at (timestamptz)
+  </columns>
 
-### `waitlist`
+  <rls>disabled (public inserts allowed)</rls>
 
-Email collection for pre-launch signups. Standalone table with no user relationship.
-
-#### Schema
-
-| Column | Type | Default | Description |
-|--------|------|---------|-------------|
-| `id` | `uuid` | `gen_random_uuid()` | Primary key |
-| `email` | `text` | — | Email address (unique) |
-| `source` | `text` | `null` | Signup source (e.g., "website", "twitter") |
-| `created_at` | `timestamptz` | `now()` | Signup timestamp |
-
-#### RLS Policies
-
-**RLS is disabled** on this table (public inserts allowed).
-
-#### App Integration
-
-**Files:**
-- Website signup form (external)
-
-**Usage Patterns:**
-- Simple email collection
-- No authentication required
-- Used for launch announcements
-
----
-
-## Security
-
-### Row Level Security (RLS)
-
-All public tables have RLS enabled except `waitlist`.
-
-**Key Principles:**
-1. **Self-access only**: Users can only read/write their own data
-2. **Service role bypass**: Worker uses service role key for inserts
-3. **No cross-user access**: No policies allow reading other users' data
-
-### Authentication Flow
-
-1. User authenticates via Google OAuth
-2. Supabase creates `auth.users` entry
-3. App calls `ensureProfileRow()` to create `profiles` entry
-4. All subsequent queries use `auth.uid()` for RLS filtering
-
-### Service Role Usage
-
-The Cloudflare Worker uses the service role key for:
-- Inserting `dictation_logs` (bypasses user RLS)
-- This is safe because the worker validates the user's JWT
-
----
-
-## Indexes
-
-### Primary Keys (automatic indexes)
-- `profiles.id`
-- `dictation_logs.id`
-- `waitlist.id`
-
-### Unique Constraints (automatic indexes)
-- `profiles.email`
-- `dictation_logs.session_id`
-- `waitlist.email`
-
-### Recommended Indexes (for scale)
-
-```sql
--- Query dictation_logs by user (already indexed via FK)
-CREATE INDEX idx_dictation_logs_user_id ON dictation_logs(user_id);
-
--- Query dictation_logs by date range
-CREATE INDEX idx_dictation_logs_created_at ON dictation_logs(created_at);
-
--- Query by provider for analytics
-CREATE INDEX idx_dictation_logs_stt_provider ON dictation_logs(stt_provider);
-```
+  <usage>Simple email collection for launch announcements</usage>
+</table>
 
 ---
 
-## Common Queries
+## Functions
 
-### Get User Profile
-```typescript
-const { data } = await supabase
-  .from('profiles')
-  .select('*')
-  .eq('id', userId)
-  .single();
-```
+Database functions provide reusable logic for common operations.
 
-### Check Onboarding Status
-```typescript
-const { data } = await supabase
-  .from('profiles')
-  .select('onboarding_done')
-  .eq('id', userId)
-  .single();
-```
+<functions>
+  <function name="handle_new_user">
+    <trigger>auth.users INSERT</trigger>
+    <action>Auto-creates profiles row on user signup</action>
+    <purpose>Ensures every authenticated user has a profile</purpose>
+  </function>
 
-### Insert Dictation Log (Worker)
-```typescript
-await supabase
-  .from('dictation_logs')
-  .insert({
-    user_id: userId,
-    session_id: sessionId,
-    stt_ms: metrics.stt.total,
-    llm_ms: metrics.llm?.total,
-    word_count: wordCount,
-    stt_provider: 'groq',
-    stt_model: 'whisper-large-v3-turbo',
-    // ... other metrics
-  });
-```
-
-### Get User's Dictation Stats
-```typescript
-const { data } = await supabase
-  .from('dictation_logs')
-  .select('word_count, stt_ms, created_at')
-  .eq('user_id', userId)
-  .order('created_at', { ascending: false });
-```
+  <function name="increment_entitlement_ver">
+    <signature>increment_entitlement_ver(user_uuid uuid) RETURNS void</signature>
+    <action>Increments profiles.entitlement_ver to invalidate client cache</action>
+    <usage>
+      Called by webhook handler after subscription changes.
+      Client polls this value to detect updates and refresh entitlements.
+    </usage>
+  </function>
+</functions>
 
 ---
 
-## Future Schema Considerations
+## Security Model
 
-### Subscriptions (Planned)
-For payment integration with Dodo Payments:
+Row Level Security (RLS) ensures users can only access their own data.
 
-```sql
-CREATE TABLE subscriptions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) NOT NULL,
-  plan_id text NOT NULL,  -- 'monthly' | 'yearly'
-  status text NOT NULL,   -- 'active' | 'canceled' | 'past_due'
-  current_period_start timestamptz,
-  current_period_end timestamptz,
-  cancel_at_period_end boolean DEFAULT false,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
+<security>
+  <principle name="self_access_only">
+    Users can only read/write data where auth.uid() = their user ID.
+    No cross-user access—policies enforce strict isolation.
+  </principle>
 
--- RLS: Users can read own subscription
-CREATE POLICY "Users can view own subscription"
-  ON subscriptions FOR SELECT
-  USING (auth.uid() = user_id);
+  <principle name="service_role_bypass">
+    Worker uses service role key for telemetry and webhook processing.
+    Bypasses RLS but validates user JWT before writes.
+  </principle>
 
--- Service role can manage (webhook updates)
-CREATE POLICY "Service role can manage subscriptions"
-  ON subscriptions FOR ALL
-  USING (true);
-```
+  <auth_flow>
+    1. User authenticates via Google OAuth (Supabase Auth)
+    2. handle_new_user() trigger creates profiles row
+    3. All queries use auth.uid() for RLS filtering
+    4. Client caches profile data (src/state/userIdentity.ts)
+  </auth_flow>
 
-### Usage Tracking (Planned)
-For metered billing or usage limits:
+  <service_role_usage>
+    Worker (Cloudflare) uses service role key for:
+    - Inserting dictation_logs (validated via JWT)
+    - Processing Dodo webhooks (validates signature)
+    - Updating subscriptions table
+    - Logging webhook_events
+  </service_role_usage>
+</security>
 
-```sql
-CREATE TABLE usage (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) NOT NULL,
-  period_start date NOT NULL,
-  word_count integer DEFAULT 0,
-  dictation_count integer DEFAULT 0,
-  UNIQUE(user_id, period_start)
-);
-```
+---
+
+## Key Client Functions
+
+Client-side database operations live in `src/lib/supabaseClient.ts`.
+
+<client_functions>
+  <function name="getProfile">
+    Returns current user's profile or null.
+  </function>
+
+  <function name="ensureProfileRow">
+    Creates profile if missing (upsert pattern).
+  </function>
+
+  <function name="updateDisplayName">
+    Updates display_name with retry logic.
+  </function>
+
+  <function name="setShareTranscriptionsPreference">
+    Updates share_transcriptions consent flag.
+  </function>
+
+  <function name="markOnboardingDone">
+    Sets onboarding_done = true.
+  </function>
+
+  <function name="getUserSubscription">
+    Fetches active subscription (status IN ('active', 'trialing')).
+    Returns most recent if multiple exist.
+  </function>
+</client_functions>
+
+---
+
+## Common Query Patterns
+
+<queries>
+  <query name="Check onboarding status">
+    SELECT onboarding_done FROM profiles WHERE id = auth.uid()
+  </query>
+
+  <query name="Get user subscription">
+    SELECT * FROM subscriptions
+    WHERE user_id = auth.uid()
+    AND status IN ('active', 'trialing')
+    ORDER BY created_at DESC
+    LIMIT 1
+  </query>
+
+  <query name="Insert telemetry (worker)">
+    INSERT INTO dictation_logs (user_id, session_id, stt_ms, word_count, ...)
+    VALUES ($1, $2, $3, $4, ...)
+  </query>
+
+  <query name="Log webhook event (worker)">
+    INSERT INTO webhook_events (event_id, type, raw)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (event_id) DO NOTHING
+  </query>
+
+  <query name="Update subscription (worker)">
+    UPDATE subscriptions
+    SET status = $1, updated_at = now()
+    WHERE subscription_id = $2;
+
+    -- Then invalidate client cache
+    SELECT increment_entitlement_ver(user_id)
+    FROM subscriptions
+    WHERE subscription_id = $2;
+  </query>
+</queries>
 
 ---
 
 ## Migrations
 
-Migrations are managed through Supabase Dashboard or CLI. Currently no local migration files are tracked (schema created via Dashboard).
+Database schema is managed via Supabase migrations. Recent migrations add payment support.
 
-**To add local migrations:**
-```bash
-# Initialize Supabase locally
-supabase init
+<migrations>
+  <migration version="20251127114911" name="add_payment_fields_to_profiles">
+    Added dodo_customer_id, entitlement_ver to profiles
+  </migration>
 
-# Pull remote schema
-supabase db pull
+  <migration version="20251127114937" name="create_subscriptions_table">
+    Created subscriptions table with RLS
+  </migration>
 
-# Create new migration
-supabase migration new add_subscriptions
-```
+  <migration version="20251127114952" name="create_webhook_events_table">
+    Created webhook_events audit log
+  </migration>
 
----
+  <migration version="20251127125526" name="add_increment_entitlement_ver_function">
+    Added increment_entitlement_ver() function for cache invalidation
+  </migration>
 
-## Troubleshooting
-
-### "permission denied for table profiles"
-- Check that RLS policies exist
-- Verify user is authenticated (`auth.uid()` returns value)
-- Ensure query uses correct user ID
-
-### "duplicate key value violates unique constraint"
-- `profiles`: User already has a profile (use upsert)
-- `dictation_logs`: Session ID already logged
-- `waitlist`: Email already registered
-
-### Slow queries on dictation_logs
-- Add indexes for commonly filtered columns
-- Consider partitioning by date for large datasets
+  <migration version="20251129143742" name="add_canceled_at_to_subscriptions">
+    Added canceled_at timestamp to subscriptions for lifecycle tracking
+  </migration>
+</migrations>
 
 ---
 
-**Last Updated**: 2025-11-21
-**Version**: 1.0.0
+## Indexes
+
+<indexes>
+  <automatic>
+    Primary keys: profiles.id, subscriptions.id, dictation_logs.id, webhook_events.event_id
+    Unique constraints: profiles.email, profiles.dodo_customer_id, subscriptions.subscription_id,
+                        dictation_logs.session_id, waitlist.email
+    Foreign keys: auto-indexed on user_id columns
+  </automatic>
+
+  <recommended_for_scale>
+    These indexes will help as data grows:
+
+    CREATE INDEX idx_dictation_logs_created_at ON dictation_logs(created_at);
+    CREATE INDEX idx_dictation_logs_stt_provider ON dictation_logs(stt_provider);
+    CREATE INDEX idx_subscriptions_status ON subscriptions(status);
+  </recommended_for_scale>
+</indexes>
+
+---
+
+## Privacy & Data Retention
+
+<privacy>
+  <transcription_text>
+    NEVER stored in database. Only stored locally on user's device (electron-store).
+    dictation_logs table stores word_count, timing metrics, provider info—no text.
+  </transcription_text>
+
+  <telemetry>
+    dictation_logs contains performance metrics only.
+    Used for debugging, monitoring, optimization—not user surveillance.
+  </telemetry>
+
+  <dataset_consent>
+    share_transcriptions flag in profiles table.
+    When true, worker logs stt/llm input/output to console for dataset collection.
+    When false (default), no text logging occurs.
+    Always user-controlled, opt-in only.
+  </dataset_consent>
+
+  <retention>
+    Transcription history: 1000 items max (local storage, auto-pruned).
+    dictation_logs: No automatic deletion (lightweight metrics only).
+    webhook_events: Append-only audit log (consider periodic archival for production).
+  </retention>
+</privacy>
+
+---
+
+**Last Updated**: 2025-11-30
+**Schema Version**: 5 migrations (includes payment integration)
