@@ -6,6 +6,71 @@ Sonic Flow's design is built on one core principle: **the pill becomes whatever 
 
 ---
 
+## Core Principles
+
+Sonic Flow is designed around a fundamental understanding: **dictation ≠ transcription**.
+
+Dictation is what you do with a stenographer, a human scribe who *understands* what you mean, not just what you say. They infer context, fix obvious mistakes, and produce clean output without you specifying every punctuation mark. That's the standard we're building toward.
+
+<core_principles>
+  <principle name="dictation_not_transcription">
+    Transcription is mechanical—it converts audio to text verbatim.
+    Dictation is intelligent—it understands intent, applies context, and produces what you *meant* to say.
+
+    Sonic Flow uses LLM post-processing to bridge this gap. The STT gives us raw transcription,
+    the LLM gives us intelligent dictation. This is why we don't just pipe Whisper output directly—
+    we want the experience of dictating to a smart assistant, not a dumb recorder.
+  </principle>
+
+  <principle name="voice_first_interface">
+    Voice is the most natural human interface. We're not building "speech-to-text with a UI"—
+    we're building THE voice interface for macOS. The goal is to move away from the keyboard
+    wherever voice makes more sense.
+
+    This means the UI must be fluid, invisible, and adaptive. Traditional UIs are designed for
+    mouse/keyboard interaction. Voice interfaces need to morph and adapt—showing only what's
+    needed, when it's needed.
+  </principle>
+
+  <principle name="no_settings_bloat">
+    A human stenographer doesn't come with a dashboard of 50 configuration options.
+    They just work. They adapt to your voice, your style, your context.
+
+    Sonic Flow should be the same. Most things should auto-configure, auto-adapt, and just work.
+    Settings exist for what truly requires user choice (which microphone, privacy preferences),
+    not for every possible knob we could expose.
+
+    When in doubt: default it, don't expose it.
+  </principle>
+
+  <principle name="well_designed_everything">
+    Every detail matters. From the subtle glow of the pill to the timing of animations to
+    the way errors are communicated—everything should feel intentional and polished.
+
+    Good design isn't just aesthetics. It's how the system *feels*. Sub-1s latency isn't
+    a technical metric—it's a design choice that makes dictation feel instant and magical.
+    Frequency bars during listening isn't decoration—it's feedback that tells you "I hear you."
+
+    We're not building features—we're crafting an experience.
+  </principle>
+
+  <principle name="fluid_interfaces">
+    Voice is inherently fluid—you speak, pause, continue, change your mind.
+    The interface should match this fluidity.
+
+    The pill doesn't have rigid states—it *flows* between them. Panels don't toggle—they morph.
+    Settings don't clutter the screen—they appear when needed, disappear when done.
+
+    This is possible because voice is different from mouse/keyboard. With voice, you're never
+    "in" the UI—you're always focused on your work. The UI should respect that by staying
+    out of the way until the moment you need it.
+  </principle>
+</core_principles>
+
+These principles guide every decision—from architecture to UX to which features we build. When something doesn't align with these principles, it's wrong for Sonic Flow, even if it's "normal" for other apps.
+
+---
+
 ## Philosophy: Fluid UI
 
 The pill isn't just a widget—it's THE voice interface. Everything flows through this single, adaptive element. This is the foundation we're building for Sonic Flow to scale into much larger, more complex interactions.
