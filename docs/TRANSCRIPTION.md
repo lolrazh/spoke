@@ -556,6 +556,35 @@ Comprehensive timing instrumentation across client and server.
 
 ---
 
+## Modularity & Customization
+
+The worker architecture is designed for extreme modularity, allowing developers to switch models and providers in seconds.
+
+<central_config file="worker/src/config.ts">
+  The entire transcription and LLM pipeline is controlled by a single configuration file.
+  To switch providers or models, simply update the default constants:
+
+  ```typescript
+  // Switch LLM provider (e.g., from 'groq' to 'openai')
+  export const LLM_DEFAULT_PROVIDER = 'openai' as const;
+
+  // Switch LLM model
+  export const LLM_DEFAULT_MODEL = OPENAI_LLM_DEFAULT_MODEL;
+
+  // Switch STT provider
+  export const STT_DEFAULT_PROVIDER = 'deepgram' as const;
+  ```
+
+  This design allows for:
+  - **Rapid Prototyping**: Test new models (e.g., Llama 3, GPT-4o) by changing one line.
+  - **Provider redundancy**: If one provider goes down, switch to another instantly.
+  - **A/B Testing**: Easily configure different environments with different models.
+
+  All provider-specific endpoints and model names are also defined here, making it the single source of truth for the worker's external dependencies.
+</central_config>
+
+---
+
 ## History Storage
 
 Transcription history is stored locally on the user's device—never in the database.
