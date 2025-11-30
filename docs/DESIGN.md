@@ -14,12 +14,45 @@ Dictation is what you do with a stenographer, a human scribe who *understands* w
 
 <core_principles>
   <principle name="dictation_not_transcription">
-    Transcription is mechanical—it converts audio to text verbatim.
-    Dictation is intelligent—it understands intent, applies context, and produces what you *meant* to say.
+    Dictation ≠ Transcription. Sonic Flow always writes what the user *meant* to write,
+    not what the user dictated verbatim.
+
+    Transcription is mechanical—it converts audio to text word-for-word.
+    Dictation is intelligent—it understands intent, applies context, fixes obvious errors,
+    and produces clean output without you specifying every punctuation mark.
 
     Sonic Flow uses LLM post-processing to bridge this gap. The STT gives us raw transcription,
     the LLM gives us intelligent dictation. This is why we don't just pipe Whisper output directly—
     we want the experience of dictating to a smart assistant, not a dumb recorder.
+  </principle>
+
+  <principle name="sub_400ms_responses">
+    Responses, no matter to what, shall always be <400ms.
+
+    This isn't just about technical performance—it's about making the interface feel instant
+    and direct. When you interact with the pill (double-click, hover, notification action),
+    the response must be immediate. No loading states, no perceived delay.
+
+    This drives architecture decisions: pre-spawned native helper daemon (saves ~25ms),
+    client-side caching (instant reads), spring animations (feel faster than linear),
+    optimistic UI updates (don't wait for server confirmation).
+
+    Anything that breaks this 400ms barrier needs aggressive optimization or rethinking.
+  </principle>
+
+  <principle name="fluid_interfaces">
+    We use fluid interfaces to always only show what is necessary.
+
+    Voice is inherently fluid—you speak, pause, continue, change your mind.
+    The interface must match this fluidity.
+
+    The pill doesn't have rigid states—it *flows* between them. Panels don't toggle—they morph.
+    Settings don't clutter the screen—they appear when needed, disappear when done.
+    Permissions panel only exists when permissions are missing.
+
+    This is possible because voice is different from mouse/keyboard. With voice, you're never
+    "in" the UI—you're always focused on your work. The UI should respect that by staying
+    out of the way until the moment you need it.
   </principle>
 
   <principle name="voice_first_interface">
@@ -47,23 +80,11 @@ Dictation is what you do with a stenographer, a human scribe who *understands* w
     Every detail matters. From the subtle glow of the pill to the timing of animations to
     the way errors are communicated—everything should feel intentional and polished.
 
-    Good design isn't just aesthetics. It's how the system *feels*. Sub-1s latency isn't
+    Good design isn't just aesthetics. It's how the system *feels*. Sub-2s latency isn't
     a technical metric—it's a design choice that makes dictation feel instant and magical.
     Frequency bars during listening isn't decoration—it's feedback that tells you "I hear you."
 
     We're not building features—we're crafting an experience.
-  </principle>
-
-  <principle name="fluid_interfaces">
-    Voice is inherently fluid—you speak, pause, continue, change your mind.
-    The interface should match this fluidity.
-
-    The pill doesn't have rigid states—it *flows* between them. Panels don't toggle—they morph.
-    Settings don't clutter the screen—they appear when needed, disappear when done.
-
-    This is possible because voice is different from mouse/keyboard. With voice, you're never
-    "in" the UI—you're always focused on your work. The UI should respect that by staying
-    out of the way until the moment you need it.
   </principle>
 </core_principles>
 
