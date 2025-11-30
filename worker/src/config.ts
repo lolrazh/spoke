@@ -52,7 +52,7 @@ export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.api.fireworks.a
 export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.api.fireworks.ai/v1/audio/transcriptions';
 export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
 
-export const GROQ_STT_MODEL = 'whisper-large-v3';
+export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
