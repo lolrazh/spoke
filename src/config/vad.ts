@@ -23,6 +23,25 @@ export const SPEECH_PROB_END = 0.5; // maintain speech through brief dips
 export const MIN_SPEECH_MS = 120; // reduce start delay while filtering clicks
 export const MIN_SILENCE_MS = 200; // avoid premature cut-offs
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Chunking Configuration (for incremental transcription)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Enable chunk detection simulation (logs only, no actual chunking yet) */
+export const CHUNK_DETECTION_ENABLED = true;
+
+/** Minimum audio duration before we consider chunking (ms).
+ *  Groq bills 10s minimum, so chunking at <8s wastes money. */
+export const MIN_CHUNK_AUDIO_MS = 8000;
+
+/** Silence duration that indicates a sentence boundary (ms).
+ *  600-800ms = "full stop" pause, not a brief thinking gap. */
+export const SENTENCE_PAUSE_MS = 700;
+
+/** Speech probability threshold for considering it "silence" for chunking.
+ *  Lower than SPEECH_PROB_END since we want definite pauses. */
+export const CHUNK_SILENCE_PROB = 0.3;
+
 // Asset locations (served from public/)
 // Match user's placement under public/vad
 export const MODEL_URL = "/vad/silero_vad.onnx";

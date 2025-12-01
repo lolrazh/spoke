@@ -1071,10 +1071,25 @@ export function useTranscription(
         }
         vadStreamGateRef.current = new VadStreamGate(
           vadEngineRef.current,
+          // VAD events (speech_start, speech_end)
           (ev) => {
             if (window.devFlags?.devConsoleLogs) {
               console.log("[VAD]", ev.type, { atMs: ev.atMs });
             }
+          },
+          // Chunk detection events (simulation mode - just logs)
+          (chunkEv) => {
+            // Always log chunk boundaries for Phase 1 testing
+            console.log(
+              "[SF] 🔪 CHUNK BOUNDARY",
+              {
+                chunkIndex: chunkEv.chunkIndex,
+                audioMs: chunkEv.audioMs,
+                silenceMs: chunkEv.silenceMs,
+                totalAudioMs: chunkEv.totalAudioMs,
+                atMs: chunkEv.atMs,
+              },
+            );
           },
         );
         vadReadyRef.current = true;
@@ -1624,6 +1639,19 @@ export function useTranscription(
                 if (VAD_ENABLED && vadStreamGateRef.current) {
                   const tail = vadStreamGateRef.current.flushPostRoll();
                   for (const chunk of tail) streamFrame(chunk.buffer);
+
+                  // Log final chunk state for Phase 1 testing
+                  const remainingChunk = vadStreamGateRef.current.getRemainingChunk();
+                  const chunkState = vadStreamGateRef.current.getChunkState();
+                  if (remainingChunk || chunkState) {
+                    console.log(
+                      "[SF] 📦 FINAL CHUNK STATE",
+                      {
+                        remainingChunk,
+                        chunkState,
+                      },
+                    );
+                  }
                 }
               } catch {}
 
