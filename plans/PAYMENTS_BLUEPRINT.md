@@ -1,8 +1,8 @@
 # Payments Blueprint — Dodo Payments + Supabase + Next.js + Cloudflare Worker
 
-Status: design-approved; ready to implement  
+Status: Website stack live (Phases 1-4); App + Worker gating pending  
 Owners: Payments/Infra  
-Last updated: 2025-11-21
+Last updated: 2025-11-29
 
 Contents
 - Scope
@@ -23,33 +23,44 @@ Contents
 
 ---
 
+Implementation snapshot (2025-11-29)
+- ✅ Website (Next.js 15) handles Supabase SSR auth, plan selection, Google OAuth redirect, and creates Dodo checkout sessions directly inside `src/app/api/auth/callback/route.ts` (see agent logs `2025-11-29_1501` and `2025-11-29_1638`).
+- ✅ Hosted checkout returns to `/checkout/success` with refined UI, Suspense boundaries, and confetti celebration; supports `?test=success|pending|error` for previews (logs `2025-11-29_2230`, `2025-11-29_2307`).
+- ✅ Webhook stack lives at `src/app/api/webhooks/dodo/route.ts` with Supabase service-role access, audit logging, and verified USD/INR payment methods (logs `2025-11-29_2030`, `2025-11-29_2230`).
+- ✅ Entitlement token minting + `/api/billing/status` already exist (Phase 4, log `2025-11-27_1630`); database schema matches `docs/DATABASE.md`.
+- 🔜 Cloudflare Worker gating (Phase 5) and Electron app integration (Phase 6) still need to consume those tokens, refresh them, and gate transcription sessions.
+
 Scope
-- Goal: Gate transcription behind paid subscriptions using Dodo Payments; two fixed plans (Monthly, Yearly) with a 7-day trial.
-- Auth model: Supabase auth (Google sign-in supported) required before checkout (app and website).
-- Flow: Hosted Checkout Sessions by Dodo; webhook-driven entitlements; zero-DB hot path for the Worker via short-lived entitlement tokens.
+- Goal: Gate transcription behind paid subscriptions using Dodo Payments; two fixed plans (Monthly, Yearly) with an optional 7-day trial configured in Dodo.
+- Auth model: Supabase Auth (Google OAuth via SSR helpers) handled by the website; desktop app launches the same pricing/auth surface via deep link and then consumes the resulting entitlements.
+- Current split: Website covers authentication, checkout, and webhook sync; desktop app + Cloudflare Worker must enforce entitlements using the minted tokens.
+- Flow: Pricing page (AuthModal) → Supabase OAuth (`redirectTo` preserves `plan` + `checkout_test`) → `/api/auth/callback` exchanges the code and immediately creates a Dodo hosted checkout session → Dodo redirects back to `/checkout/success` → webhook posts subscription status → Next.js updates `subscriptions` + bumps `profiles.entitlement_ver` → `/api/billing/entitlement-token` issues short-lived tokens → Worker validates the token on each microphone session (zero-DB hot path).
 
 High-level architecture
-- Client App (desktop) → opens website pricing → Next.js server creates Dodo Checkout Session → Dodo hosted checkout (trial=7 days) → return_url → webhook posts subscription status → server updates subscriptions and profiles.entitlement_ver (for revocation) → server issues short-lived entitlement token → Worker validates token per request/connection (no DB call).
+- Client App (desktop) → opens `https://sonicflow.app/pricing` → Next.js server handles Supabase auth via SSR helpers → OAuth callback instantly creates Dodo Checkout Session (no intermediate checkout page) → Dodo hosted checkout (trial optional) → `/checkout/success` → webhook posts subscription status → server updates Supabase + entitlement_ver (for revocation) → `/api/billing/entitlement-token` issues short-lived entitlement token → Worker validates token per request/connection (no DB call).
 - Primary components:
-  - Next.js API routes (server-only) to: create checkout, issue entitlement tokens, expose billing status, and process Dodo webhooks.
+  - Next.js API routes (server-only) to: handle auth callback + checkout creation, issue entitlement tokens, expose billing status, and process Dodo webhooks.
   - Supabase Postgres for billing state (subscriptions) and profiles fields; service role only writes.
-  - Cloudflare Worker enforces Authorization: Bearer entitlement token.
+  - Cloudflare Worker enforces Authorization: Bearer entitlement token once Phase 5 lands.
 
-Suggested file layout (clickable references per path conventions)
+Suggested file layout (site repo)
 - Next.js API routes
-  - [route.ts](apps/web/src/app/api/billing/checkout/route.ts:1) — Create Checkout Session
-  - [route.ts](apps/web/src/app/api/dodo/webhook/route.ts:1) — Webhook receiver
-  - [route.ts](apps/web/src/app/api/billing/status/route.ts:1) — Read entitlement status
-  - [route.ts](apps/web/src/app/api/billing/entitlement-token/route.ts:1) — Issue entitlement token
+  - [route.ts](src/app/api/auth/callback/route.ts) — Supabase OAuth exchange + Dodo Checkout Session creation
+  - [route.ts](src/app/api/webhooks/dodo/route.ts) — Webhook receiver (service-role Supabase client, audit logging)
+  - [route.ts](src/app/api/billing/status/route.ts) — Read entitlement status
+  - [route.ts](src/app/api/billing/entitlement-token/route.ts) — Issue entitlement token (jose)
+- Next.js UI
+  - [page.tsx](src/app/pricing/page.tsx) + [page-client.tsx](src/app/pricing/page-client.tsx) — Pricing grid + AuthModal trigger
+  - [AuthModal.tsx](src/components/ui/AuthModal.tsx) — Google OAuth modal (SSR-safe)
+  - [page.tsx](src/app/checkout/success/page.tsx) — Success/pending/error confirmation (confetti support)
 - Worker (Cloudflare)
-  - [ws.ts](worker/src/handlers/ws.ts:1) — WS entry; gate by Authorization: Bearer
-  - [entitlement.ts](worker/src/auth/entitlement.ts:1) — Token verification helpers
+  - [ws.ts](worker/src/handlers/ws.ts:1) — WS entry; gate by Authorization: Bearer (Phase 5)
+  - [entitlement.ts](worker/src/auth/entitlement.ts:1) — Token verification helpers (Phase 5)
   - [runtime.ts](worker/src/config/runtime.ts:1) — Secrets/JWK loading
 
 Data model (Supabase SQL + RLS)
-- Important: enable RLS and restrict writes to service-role only (Next.js server + webhook). Client never writes these tables directly.
+- Mirrors `docs/DATABASE.md` (2025-11-30). Enable RLS everywhere; only the service-role clients (Next.js + Worker) perform writes.
 
-[sql.supabase_schema()](plans/PAYMENTS_BLUEPRINT.md:1)
 ```sql
 -- Extend profiles for Dodo linkage + fast entitlement revocation
 alter table public.profiles
@@ -60,15 +71,16 @@ alter table public.profiles
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  dodo_subscription_id text unique,
+  subscription_id text unique,
   plan_id text not null,              -- 'monthly' | 'yearly' (app-facing)
-  product_id text,                    -- Dodo product_id for the chosen plan
+  product_id text,
   status text not null,               -- 'active' | 'canceled' | 'past_due' | 'on_hold' | 'expired'
-  plan_interval text,                 -- 'month' | 'year' (denormalized)
+  plan_interval text,
   current_period_start timestamptz,
   current_period_end timestamptz,
   trial_end timestamptz,
   cancel_at_period_end boolean default false,
+  canceled_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -81,36 +93,44 @@ create table if not exists public.webhook_events (
   raw jsonb not null
 );
 
+-- Fast revocation helper (Phase 3)
+create or replace function public.increment_entitlement_ver(user_uuid uuid)
+returns void
+language plpgsql
+security definer
+as $$
+  update public.profiles
+     set entitlement_ver = entitlement_ver + 1,
+         updated_at = now()
+   where id = user_uuid;
+$$;
+
 -- RLS: restrict public; service-role writes via server/webhook only
 alter table public.subscriptions enable row level security;
 alter table public.webhook_events enable row level security;
 
--- READ: allow users to read their own subscription records
 create policy if not exists "Users can view own subscription"
   on public.subscriptions for select
   using (auth.uid() = user_id);
-
 -- WRITE: no public writes; service role bypasses RLS.
 ```
 
 Server API surface (Next.js on Vercel)
-- POST /api/billing/checkout → create Dodo Checkout Session with trial=7 days
-  - Input: product_id (monthly|yearly)
-  - Behavior:
-    - Ensure profiles.dodo_customer_id is set (reuse by email or attach_existing)
-    - Dodo create_checkout_sessions:
-      - product_cart: [{ product_id, quantity: 1 }]
-      - subscription_data: { trial_period_days: 7 }
-      - customer: { email } OR attach_existing by dodo_customer_id
-      - return_url: https://sonicflow.app/billing/return
-      - show_saved_payment_methods: true
-      - allowed_payment_method_types: ['credit','debit', wallets as desired]
-      - feature_flags.always_create_new_customer = false
-    - Return: { checkout_url, session_id }
-- POST /api/dodo/webhook → process events (signature-verified; idempotent)
-  - Updates subscriptions; bumps profiles.entitlement_ver on cancel/on_hold/failed for fast token revocation
-- GET /api/billing/status → read entitlement for logged-in user (from subscriptions)
-- POST /api/billing/entitlement-token → mint short-lived entitlement token (JWT/JWE)
+- `GET /api/auth/callback` → Supabase OAuth redirect handler (Phase 2/3)
+  - Exchanges `code` for session via Supabase SSR helpers (no sessionStorage usage).
+  - Reads `plan` + `checkout_test` from query params (must be validated).
+  - Dynamically imports `dodopayments`, creates checkout session immediately, and redirects to `session.checkout_url` (no intermediate page).
+  - Logs product metadata + return URL (`${NEXT_PUBLIC_SITE_URL}/checkout/success`) for debugging.
+  - Supabase dashboard must allow wildcard redirect URLs (`/api/auth/callback*`) so params are preserved.
+- `POST /api/webhooks/dodo` → Dodo webhook receiver (Phase 4).
+  - Uses Supabase service-role client + lazy init to avoid build-time env issues.
+  - Verifies Dodo signature, upserts `subscriptions`, writes `webhook_events`, updates `profiles.entitlement_ver` on cancel/on_hold/failed, and handles plan changes.
+  - Maps Dodo fields (`previous_billing_date`, `next_billing_date`, `payment_frequency_interval`) to Supabase schema.
+- `GET /checkout/success` → User-facing confirmation page.
+  - Handles `status=pending|active|error`, `subscription_id`, `plan`, etc.
+  - Includes `?test=success|pending|error` for design QA and communicates webhook delay expectations.
+- `GET /api/billing/status` → Read entitlement for logged-in user (Supabase auth header required). Used by `/billing/return` (legacy) and planned desktop app polling.
+- `POST /api/billing/entitlement-token` → Mint short-lived entitlement token (JWT via `jose`). Response includes `token`, `expires_at`, `plan`, `ver`, `is_active`.
 
 Entitlement token design (JWT/JWE)
 - Claims:
@@ -126,8 +146,8 @@ Entitlement token design (JWT/JWE)
 - Revocation:
   - On critical events (cancel/on_hold/failed), bump profiles.entitlement_ver and mint new tokens; Worker rejects tokens with stale ver.
 
-Cloudflare Worker gating (zero-DB hot path)
-- Client sets Authorization: Bearer <entitlement-token> when connecting/using WS.
+Cloudflare Worker gating (zero-DB hot path — Phase 5)
+- Desktop app will set `Authorization: Bearer <entitlement-token>` when opening the transcription WS connection.
 - Worker validates:
   - Signature (JWK or secret)
   - exp & iat
@@ -137,25 +157,21 @@ Cloudflare Worker gating (zero-DB hot path)
 - Grace period: 120 seconds if exp lapses mid-stream; Worker allows request but notifies client to refresh token immediately.
 
 Webhook processing (Dodo)
-- Endpoint: [route.ts](apps/web/src/app/api/dodo/webhook/route.ts:1)
-- Verify signature with Dodo webhook secret (reject if invalid); log and return 2xx only when processed.
-- Idempotency: INSERT INTO webhook_events(event_id); if conflict → skip processing.
+- Endpoint: `src/app/api/webhooks/dodo/route.ts`
+- Verify signature with `DODO_PAYMENTS_WEBHOOK_KEY` (HMAC SHA256). Reject mismatched signatures, allow for `v1,<sig>` header format.
+- Idempotency: `INSERT INTO webhook_events(event_id)`; if conflict → skip handler logic.
+- Map payload fields carefully (per `2025-11-29_2030` log):
+  - `previous_billing_date` → `current_period_start`
+  - `next_billing_date` → `current_period_end`
+  - `payment_frequency_interval` → `plan_interval`
 - Event handling (minimum):
-  - subscription.active:
-    - subscriptions: upsert status=active; set trial_end/current_period_start/end/plan_interval/product_id (and plan_id mapping as needed)
-    - profiles: leave entitlement_ver unchanged
-  - subscription.renewed:
-    - subscriptions: update current_period_*; status remains active
-  - subscription.on_hold / subscription.failed:
-    - subscriptions: update status accordingly
-    - profiles: entitlement_ver = entitlement_ver + 1 (revoke existing tokens)
-  - subscription.cancelled / subscription.expired:
-    - subscriptions: update status and set cancelled_at if provided
-    - profiles: entitlement_ver = entitlement_ver + 1 (revoke existing tokens)
-  - subscription.plan_changed:
-    - subscriptions: update product_id/plan_interval/plan_id as appropriate
-  - payment.succeeded/failed (optional analytics)
-- Return 200 quickly; store raw payload for audit.
+  - `subscription.active`: upsert, set plan/product metadata, leave `entitlement_ver` unchanged.
+  - `subscription.renewed`: update billing dates.
+  - `subscription.on_hold` / `subscription.failed`: update status + bump `entitlement_ver`.
+  - `subscription.cancelled` / `subscription.expired`: update status, set `canceled_at`, bump `entitlement_ver`.
+  - `subscription.plan_changed`: update plan metadata.
+  - `subscription.failed` prior to payment: log + keep status for debugging.
+- Always log raw payload for audit + debugging (goes into `webhook_events`).
 
 End-to-end flows
 
@@ -174,16 +190,15 @@ Token refresh flow:
 3. If refresh fails (offline, expired session) → show "Re-authenticate" prompt
 4. On Supabase session refresh → also refresh entitlement token
 
-A) App → Pricing → Checkout (auth-first, recommended)
-- Desktop app Upgrade opens https://sonicflow.app/pricing?source=app
-- If not signed-in → Supabase sign-in → back to pricing
-- User selects plan → POST /api/billing/checkout → redirect to checkout_url
-- Dodo hosted checkout completes → return_url (/billing/return)
-- UI shows setup-in-progress, polls GET /api/billing/status until entitlement active
-- App then calls POST /api/billing/entitlement-token and caches the token; refresh proactively
+A) App → Pricing → Checkout (auth-first, direct redirect)
+- Desktop app Upgrade opens `https://sonicflow.app/pricing?source=app[&checkout_test=true]`.
+- Pricing page renders AuthModal; Google OAuth runs via Supabase SSR helpers. `redirectTo` carries `plan` + `checkout_test`.
+- `/api/auth/callback` exchanges the code, ensures profile row exists, creates Dodo checkout session (trial days optional), and redirects to `session.checkout_url`.
+- Dodo hosted checkout completes → `return_url` = `/checkout/success`. Page clarifies pending vs active statuses and links to Manage Subscription.
+- Webhook flips subscription to `active` a few seconds later; success page explains this delay. Desktop app should wait for `profiles.entitlement_ver` bump or poll `/api/billing/status`, then call `/api/billing/entitlement-token` and cache the token.
 
 B) Website direct → Pricing → Checkout
-- Identical to (A); enforce auth before creating checkout
+- Identical to (A); enforce auth via AuthModal before redirecting to checkout. `?checkout_test=true` flag switches CTA copy for internal testing.
 
 C) Checkout without auth (not recommended here; for completeness)
 - Create checkout session without Supabase session (Dodo collects email)
@@ -191,8 +206,11 @@ C) Checkout without auth (not recommended here; for completeness)
 - Risks: email mismatches, orphaned customers, delayed entitlement
 
 UI notes (Pricing & Upgrade)
-- Use BillingSDK + shadcn components for plan UI; keep server logic in API routes
-- “Manage subscription”: if using Dodo customer portal session, expose a server endpoint to create portal session and redirect (optional feature)
+- Pricing page uses WaitlistModal/AuthModal visual language (card width 448px, AuthModal component already live). Keep Suspense boundaries around hooks that call `useSearchParams`.
+- CTA copy flips between “Join Waitlist” / “Get Started” by inspecting `checkout_test=true`.
+- Ensure Supabase redirect wildcards include query params (`/api/auth/callback*`).
+- `/checkout/success` now handles `status` variations, includes confetti on success, and exposes `?test=success|pending|error` for QA. UI should focus on a single primary action per state (Manage Subscription, Back to Home, Try Again).
+- “Manage subscription” will eventually create a Dodo customer portal session; server endpoint TBD.
 
 Security & compliance
 - Secrets:
@@ -211,10 +229,13 @@ Sandbox testing plan
 - Configure staging Vercel + CF Worker to Dodo Test Mode (base URL: https://test.dodopayments.com)
 - Create test Monthly/Yearly products mirroring live
 - E2E tests:
-  - Successful checkout → subscription.active → entitlement is_active=true
-  - Renewal → subscription.renewed → extends entitlement.expires_at
-  - Cancel at period end → remains active until current_period_end
-  - Immediate cancel/on_hold/failed → entitlement false (respect grace if enabled)
+  - Pricing CTA + AuthModal route through Supabase OAuth, preserve plan + `checkout_test` params (verify Supabase redirect whitelist allows `?plan=` queries).
+  - `/api/auth/callback` creates checkout session and logs payload; verify redirect lands on Dodo.
+  - Use correct regional test cards (US vs India) + UPI handles to validate USD and INR flows (see log `2025-11-29_2230` for card numbers). Wrong region cards will surface `subscription.failed` with `payment_method_id: null`.
+  - Successful checkout → `/checkout/success?status=active` + webhook `subscription.active` → entitlement `is_active=true`.
+  - Pending/incomplete payment → `/checkout/success?status=pending`; confirm message explains webhook delay.
+  - Renewal → `subscription.renewed` extends entitlement, `increment_entitlement_ver` not bumped.
+  - Cancel/on_hold/failed → entitlement false (respect grace if enabled); verify ver bump invalidates old tokens.
 - Webhook idempotency: replay same event_id, verify no duplicate effects
 - Token path:
   - Entitlement token minted, exp = 30m; Worker accepts; app refreshes at 20m mark
@@ -226,6 +247,8 @@ Production rollout checklist
 - [ ] Switch to live base URL (https://live.dodopayments.com) and live API key
 - [ ] Set DODO_WEBHOOK_SECRET (live) and rotate test secrets
 - [ ] Verify pricing maps to correct live product_ids
+- [ ] Confirm Supabase redirect URLs allow `/api/auth/callback*` (with `plan` + `checkout_test` params) for both apex + www domains
+- [ ] Ensure Dodo webhook + return URLs both use `https://www.sonicflow.app` (match `NEXT_PUBLIC_SITE_URL`)
 - [ ] Enable feature flag for entitlement enforcement; ramp to 10% / 50% / 100%
 - [ ] Alerts:
   - Webhook failures (>=1 in 10 min)
@@ -252,17 +275,23 @@ Future extensions
 - Dunning grace: configurable grace for failed renewals (e.g., 12–48 hours) before revocation.
 
 Implementation steps (sequenced)
-1) Supabase: create tables and enable RLS (apply SQL above)
-2) Next.js:
-   - Implement [route.ts](apps/web/src/app/api/billing/checkout/route.ts:1) using Dodo SDK/REST (include trial_period_days=7; pass return_url)
-   - Implement [route.ts](apps/web/src/app/api/dodo/webhook/route.ts:1) with signature verification + idempotency + status mapping
-   - Implement [route.ts](apps/web/src/app/api/billing/status/route.ts:1) deriving entitlement from subscriptions
-   - Implement [route.ts](apps/web/src/app/api/billing/entitlement-token/route.ts:1) minting short-lived token
-3) Pricing page: call /api/billing/checkout; redirect to checkout_url
-4) Desktop app: open pricing; on success, fetch entitlement token and refresh periodically
-5) Worker: enforce Authorization: Bearer, validate token, and gate transcription
-6) Staging tests in Dodo Test Mode; verify end-to-end and idempotency
-7) Go live: configure live keys/URLs; gradual rollout with monitoring
+1) Supabase (✅): create/secure tables (`profiles`, `subscriptions`, `webhook_events`), add `increment_entitlement_ver()`, enable RLS.
+2) Next.js web stack (✅ Phases 1-4):
+   - AuthModal + Supabase SSR helpers.
+   - `/api/auth/callback` direct checkout session creation.
+   - `/api/webhooks/dodo`, `/api/billing/status`, `/api/billing/entitlement-token`.
+   - `/checkout/success` UX polish + logging.
+3) Cloudflare Worker (🔜 Phase 5):
+   - Add `worker/src/auth/entitlement.ts` and unit tests.
+   - Enforce Authorization header in `worker/src/handlers/ws.ts` (reject unauthenticated).
+   - Wire JWK/secret via `runtime.ts`.
+4) Desktop app (🔜 Phase 6):
+   - Provide Upgrade entry points that open pricing with Supabase auth.
+   - After purchase, poll `/api/billing/status` or watch `profiles.entitlement_ver`, then call `/api/billing/entitlement-token`.
+   - Cache tokens (electron-store), refresh proactively, include `Authorization: Bearer <entitlement>` header in WS requests to Worker.
+   - Surface entitlement errors (e.g., prompt to upgrade, retry token fetch).
+5) QA in Dodo Test Mode: cover USD/INR, pending/error, idempotency, stress token refresh.
+6) Go live: switch keys/URLs, verify webhook deliveries, monitor Worker metrics, ramp enforcement flag.
 
 References (verified via Context7 MCP)
 - Checkout Sessions with trials
