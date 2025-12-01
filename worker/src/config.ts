@@ -31,7 +31,7 @@ export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
 export const LLM_ROUTER_ENABLED = true;
 
-export const EDIT_LLM_DEFAULT_PROVIDER = 'groq' as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 export const EDIT_LLM_PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
     groq: GROQ_EDIT_LLM_DEFAULT_MODEL,
