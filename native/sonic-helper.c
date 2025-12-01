@@ -552,24 +552,7 @@ static int inspect_text_core(int context_chars) {
     }
 
     CFRange outputRange = rangeValid ? sel : (CFRange){ -1, -1 };
-
     CFIndex len = value ? CFStringGetLength(value) : -1;
-    CFStringRef contextSlice = NULL;
-    if (value && len > 0) {
-        if (rangeValid) {
-            CFIndex beforeStart = sel.location - (context_chars > 0 ? context_chars : 32);
-            if (beforeStart < 0) beforeStart = 0;
-            CFIndex afterEnd = sel.location + sel.length + (context_chars > 0 ? context_chars : 32);
-            if (afterEnd > len) afterEnd = len;
-            contextSlice = cfstring_substring_safe(value, CFRangeMake(beforeStart, afterEnd - beforeStart));
-        } else {
-            CFIndex window = (context_chars > 0 ? context_chars : 32);
-            if (window > len) window = len;
-            if (window > 0) {
-                contextSlice = cfstring_substring_safe(value, CFRangeMake(0, window));
-            }
-        }
-    }
 
     printf("read:ok\n");
     printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
@@ -578,19 +561,19 @@ static int inspect_text_core(int context_chars) {
     // Always output base64-encoded selectedText for edit mode to work
     // (base64 prevents issues with newlines/special chars in IPC parsing)
     print_cfstring_base64("selectedText", selectedText);
-    print_cfstring_base64("context", contextSlice);
+
+    // Context is not used by edit mode, so we output empty to maintain protocol compatibility
+    printf("contextB64:\n");
 
     // PRIVACY: Only log plaintext/truncated versions when debugging
     if (g_debug_text) {
         print_cfstring_truncated("selectedText", selectedText, 512);
-        print_cfstring_truncated("context", contextSlice, 512);
     }
 
     printf("valueLength:%ld\n", (long)len);
     fflush(stdout);
 
     if (selectedText) CFRelease(selectedText);
-    if (contextSlice) CFRelease(contextSlice);
     if (value) CFRelease(value);
     CFRelease(el);
     CFRelease(appEl);

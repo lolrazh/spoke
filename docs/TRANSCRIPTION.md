@@ -84,6 +84,7 @@ Sonic Flow has two distinct modes that change how the transcription is processed
        - Polls clipboard for 180ms (6×30ms intervals) to detect selection
        - Trims whitespace and validates non-empty result
        - Restores original clipboard (user never sees temporary value)
+       - NOTE: Context (surrounding text) is NOT captured - only selected text
     2. User speaks editing instruction
     3. Worker transcribes instruction via STT
     4. LLM rewrites original text using instruction
