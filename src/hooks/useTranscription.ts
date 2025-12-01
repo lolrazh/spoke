@@ -137,6 +137,11 @@ export function useTranscription(
     framesDropped?: number;
   } | null>(null);
 
+  // Chunked transcription state
+  const chunkResultsRef = useRef<Map<number, string>>(new Map());
+  const pendingChunksRef = useRef<Set<number>>(new Set());
+  const currentChunkIndexRef = useRef<number>(0);
+
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -1034,6 +1039,11 @@ export function useTranscription(
       framesSentApprox: 0,
     };
 
+    // Reset chunk state for new session
+    chunkResultsRef.current.clear();
+    pendingChunksRef.current.clear();
+    currentChunkIndexRef.current = 0;
+
     try {
       // Try to establish the WebSocket early so audio failures don't mask connectivity
       ensureStreamingSocket();
@@ -1077,9 +1087,8 @@ export function useTranscription(
               console.log("[VAD]", ev.type, { atMs: ev.atMs });
             }
           },
-          // Chunk detection events (simulation mode - just logs)
+          // Chunk detection events - send chunk message to worker
           (chunkEv) => {
-            // Always log chunk boundaries for Phase 1 testing
             console.log(
               "[SF] 🔪 CHUNK BOUNDARY",
               {
@@ -1090,6 +1099,24 @@ export function useTranscription(
                 atMs: chunkEv.atMs,
               },
             );
+
+            // Send chunk message to worker to trigger STT for this chunk
+            const ws = wsRef.current;
+            if (ws && wsReadyRef.current && ws.readyState === WebSocket.OPEN) {
+              try {
+                const chunkMsg = {
+                  type: "chunk",
+                  chunkIndex: chunkEv.chunkIndex,
+                  audioMs: chunkEv.audioMs,
+                };
+                ws.send(JSON.stringify(chunkMsg));
+                pendingChunksRef.current.add(chunkEv.chunkIndex);
+                currentChunkIndexRef.current = chunkEv.chunkIndex + 1;
+                console.log("[SF] 📤 Sent chunk message", chunkMsg);
+              } catch (err) {
+                console.warn("[SF] Failed to send chunk message", err);
+              }
+            }
           },
         );
         vadReadyRef.current = true;
@@ -1304,6 +1331,26 @@ export function useTranscription(
               } else if (msg.type === "llm_status" && msg.state === "llm_processing") {
                 if (window.devFlags?.devConsoleLogs)
                   console.info("[SF] LLM post-process started");
+              } else if (msg.type === "chunk_result") {
+                // Chunk transcription result - store it and show progressive update
+                const chunkIndex = msg.chunkIndex as number;
+                const chunkText = msg.text as string;
+                chunkResultsRef.current.set(chunkIndex, chunkText);
+                pendingChunksRef.current.delete(chunkIndex);
+
+                console.log("[SF] 📥 Chunk result received", {
+                  chunkIndex,
+                  textLength: chunkText.length,
+                  pendingCount: pendingChunksRef.current.size,
+                });
+
+                // Progressive UI update: show accumulated chunk text
+                const sortedIndices = Array.from(chunkResultsRef.current.keys()).sort((a, b) => a - b);
+                const accumulatedText = sortedIndices
+                  .map(idx => chunkResultsRef.current.get(idx) || "")
+                  .join(" ");
+                setText(accumulatedText);
+                try { window.transcript?.update(accumulatedText); } catch {}
               } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
                 // Progressive UI update only; paste remains on final
                 setText((prev) => {

@@ -10,6 +10,17 @@ export type SessionIdentity = {
   email: string | null;
 };
 
+/** Tracks a single chunk's audio and transcription state */
+export type ChunkState = {
+  index: number;
+  audioChunks: Uint8Array[];
+  totalBytes: number;
+  status: 'buffering' | 'transcribing' | 'done';
+  result?: string;
+  sttStartAt?: number;
+  sttDoneAt?: number;
+};
+
 export function createEmptySession() {
   return {
     version: 2,
@@ -31,6 +42,10 @@ export function createEmptySession() {
     selection: null as ClientSelectionPayload | null,
     shareTranscriptions: false,
     identity: { name: null, email: null } as SessionIdentity,
+    // Chunked transcription state
+    chunkStates: new Map<number, ChunkState>(),
+    currentChunkIndex: 0,
+    pendingChunkSTT: new Set<number>(),
   };
 }
 
