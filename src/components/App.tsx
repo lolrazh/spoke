@@ -139,6 +139,17 @@ const pillReducer = (
     case "EXPANDED":
       if (event.type === "COLLAPSE") return { ...state, state: "IDLE" };
       if (event.type === "PTT_START") return { ...state, state: "LISTENING" };
+      // Handle NOTIFY while expanded (e.g., sign-out from settings panel)
+      // Collapse first, then show notification
+      if (event.type === "NOTIFY")
+        return {
+          state: "NOTIFICATION",
+          context: {
+            ...state.context,
+            notifMsg: event.msg,
+            notifAction: event.actionId ?? null,
+          },
+        };
       return state;
     default:
       return state;
@@ -558,6 +569,8 @@ const AppInner: React.FC = () => {
                 if (!error && !data?.user) {
                   // Guard: only toast sign-out on a real transition from a prior user
                   if (prevUserIdRef.current == null) return;
+                  // Update prevUserIdRef immediately to prevent duplicate triggers
+                  prevUserIdRef.current = null;
                   setCurrentUserId(null);
                   loadSharePreference(null);
                   try { latestTransRef.current?.cancel?.(); } catch {}

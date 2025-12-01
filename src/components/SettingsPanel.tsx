@@ -119,7 +119,7 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
-  onRequestCollapse,
+  onRequestCollapse: _onRequestCollapse, // Preserved for API compatibility; sign-out flow now handled by auth state machine
   shareTranscriptionsEnabled,
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
@@ -138,6 +138,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Auth state from centralized user identity cache
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -299,19 +300,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
   }, []);
 
-  const handleSignOut = () => {
-    (async () => {
-      try {
-        // Collapse the pill first so UI returns to resting before we transition
-        try { onRequestCollapse?.(); } catch { }
-        // Sign out; cache will be cleared automatically by supaSignOut()
-        // and userIdentity subscription will update our local state
-        await supaSignOut();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error("Failed to sign out:", msg);
-      }
-    })();
+  const handleSignOut = async () => {
+    if (isSigningOut) return; // Prevent double-clicks
+    setIsSigningOut(true);
+    
+    try {
+      // Sign out and wait for completion
+      // The onAuthStateChange listener in App.tsx will:
+      // 1. Send "Signed out" notification (which transitions pill from EXPANDED → NOTIFICATION)
+      // 2. Set pendingHideAfterCollapse to show onboarding after notification
+      await supaSignOut();
+      
+      // Note: We don't call onRequestCollapse() here because the NOTIFY event
+      // from the auth state change handler will transition the pill out of EXPANDED state.
+      // The pendingHideAfterCollapse logic then handles hiding and showing onboarding.
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Failed to sign out:", msg);
+      setIsSigningOut(false); // Reset on error so user can retry
+    }
+    // Don't reset isSigningOut on success - component will unmount anyway
   };
 
   // Remove login handling from Settings Panel: onboarding is the sole login surface
@@ -526,8 +534,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           }
                           inGroup
                         >
-                          <Button variant="secondary" size="sm" onClick={handleSignOut}>
-                            Sign Out
+                          <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            onClick={handleSignOut}
+                            disabled={isSigningOut}
+                          >
+                            {isSigningOut ? "Signing out…" : "Sign Out"}
                           </Button>
                         </SettingsCard>
                       ) : (
