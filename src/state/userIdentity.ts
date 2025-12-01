@@ -115,7 +115,7 @@ function subscribeToAuthChanges() {
   if (!supabase) return;
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange(async (event) => {
+  } = supabase.auth.onAuthStateChange((event) => {
     // Clear identity on sign out
     if (event === "SIGNED_OUT") {
       emit({ name: null, email: null });
@@ -123,8 +123,14 @@ function subscribeToAuthChanges() {
     }
 
     // Fetch fresh data from Supabase profile on sign in
+    // IMPORTANT: Defer Supabase operations to avoid breaking the auth listener
+    // See: https://supabase.com/docs/client/auth-onauthstatechange
     if (event === "SIGNED_IN") {
-      await refreshIdentity();
+      setTimeout(() => {
+        refreshIdentity().catch((e) => {
+          console.warn("[UserIdentity] Failed to refresh on sign-in:", e);
+        });
+      }, 0);
       return;
     }
 

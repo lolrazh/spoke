@@ -493,6 +493,9 @@ const AppInner: React.FC = () => {
           const {
             data: { subscription },
           } = supabase.auth.onAuthStateChange((event, session) => {
+            // IMPORTANT: Avoid calling Supabase operations directly in this callback.
+            // Doing so can break the auth listener. Defer with setTimeout(fn, 0).
+            // See: https://supabase.com/docs/client/auth-onauthstatechange
             if (event === "SIGNED_IN" && session?.user) {
               const currentUserId = session.user.id ?? null;
               const now = Date.now();
@@ -526,7 +529,8 @@ const AppInner: React.FC = () => {
               // Update previous after handling
               prevUserIdRef.current = currentUserId;
               setCurrentUserId(currentUserId);
-              loadSharePreference(currentUserId);
+              // Defer Supabase call to avoid breaking the auth listener
+              setTimeout(() => loadSharePreference(currentUserId), 0);
               return;
             }
             if (!session?.user && !skipAuth) {
@@ -534,26 +538,31 @@ const AppInner: React.FC = () => {
               if (prevUserIdRef.current == null) {
                 prevUserIdRef.current = null;
                 setCurrentUserId(null);
-                loadSharePreference(null);
+                // Defer to avoid breaking auth listener
+                setTimeout(() => loadSharePreference(null), 0);
                 return;
               }
-              (async () => {
-                try {
-                  // Cancel any active or in-flight transcription when signing out
-                  latestTransRef.current?.cancel?.();
-                } catch {}
-                try { window.notifications?.send?.("Signed out"); } catch {}
-                setPendingHideAfterCollapse({
-                  active: true,
-                  message: "Signed out",
-                  onAfter: async () => {
-                    try { await window.electron?.showOnboarding?.(); } catch {}
-                  },
-                });
-              })();
+              // Defer the async work to avoid blocking/breaking the auth listener
+              setTimeout(() => {
+                (async () => {
+                  try {
+                    // Cancel any active or in-flight transcription when signing out
+                    latestTransRef.current?.cancel?.();
+                  } catch {}
+                  try { window.notifications?.send?.("Signed out"); } catch {}
+                  setPendingHideAfterCollapse({
+                    active: true,
+                    message: "Signed out",
+                    onAfter: async () => {
+                      try { await window.electron?.showOnboarding?.(); } catch {}
+                    },
+                  });
+                })();
+              }, 0);
               prevUserIdRef.current = null;
               setCurrentUserId(null);
-              loadSharePreference(null);
+              // Defer to avoid breaking auth listener
+              setTimeout(() => loadSharePreference(null), 0);
             }
           });
           unsubscribe = () => subscription.unsubscribe();
