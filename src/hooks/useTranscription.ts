@@ -1524,6 +1524,9 @@ export function useTranscription(
                             : null;
 
                         // Compact single-line breakdown
+                        const chunkCount = (worker?.chunkCount as number | null) ?? null;
+                        const chunkSttMs = (worker?.chunkSttMs as string | null) ?? null;
+
                         const breakdown = {
                           traceId:
                             (msg?.traceId as string | undefined) || m.sessionId,
@@ -1540,6 +1543,8 @@ export function useTranscription(
                           frames: m.framesProduced,
                           bytesKB: Number((m.bytesProduced / 1024).toFixed(1)),
                           seqGaps: (msg?.metrics?.worker?.seqGaps as number) ?? 0,
+                          // Chunk metrics (if chunked session)
+                          ...(chunkCount ? { chunkCount, chunkSttMs } : {}),
                         };
 
                         console.log("[SF] E2E", breakdown);

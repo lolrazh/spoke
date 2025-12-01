@@ -823,6 +823,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
           if (!socketClosed) {
             try {
+              // Build chunk metrics if this was a chunked session
+              const chunkMetrics = session.chunkStates.size > 0
+                ? Array.from(session.chunkStates.entries())
+                    .sort(([a], [b]) => a - b)
+                    .map(([idx, state]) => ({
+                      index: idx,
+                      bytes: state.totalBytes,
+                      durationMs: state.sttStartAt && state.sttDoneAt
+                        ? state.sttDoneAt - state.sttStartAt
+                        : null,
+                      textLength: state.result?.length ?? 0,
+                    }))
+                : null;
+
               const workerMetrics = {
                 traceId: session.traceId,
                 wsAcceptAt: session.wsAcceptAt ?? null,
@@ -839,6 +853,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
                 assembleMs,
                 mode: session.mode,
+                // Chunk-level STT metrics (for chunked sessions)
+                chunks: chunkMetrics,
+                chunkCount: session.chunkStates.size || null,
+                // Combined STT durations as comma-separated string for easy reading
+                chunkSttMs: chunkMetrics
+                  ? chunkMetrics.map(c => c.durationMs).filter(d => d != null).join(',')
+                  : null,
                 stt: timings
                   ? {
                       provider: sttProvider,
