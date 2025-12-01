@@ -167,7 +167,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             if (isMounted) setShowFloatingBar(vis.visible);
           }
         }
-      } catch {}
+      } catch { }
     })();
 
     return () => {
@@ -185,7 +185,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         if (result && typeof result.visible === "boolean") {
           if (isMounted) setShowInDock(result.visible);
         }
-      } catch {}
+      } catch { }
     })();
 
     return () => {
@@ -199,7 +199,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     initUserIdentity().then((identity) => {
       setUserEmail(identity.email);
       setUserName(identity.name);
-    }).catch(() => null);
+    }).catch((): null => null);
 
     // Subscribe to identity changes (handles sign-in/sign-out automatically)
     const unsubscribe = subscribeUserIdentity((identity) => {
@@ -303,7 +303,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     (async () => {
       try {
         // Collapse the pill first so UI returns to resting before we transition
-        try { onRequestCollapse?.(); } catch {}
+        try { onRequestCollapse?.(); } catch { }
         // Sign out; cache will be cleared automatically by supaSignOut()
         // and userIdentity subscription will update our local state
         await supaSignOut();
@@ -379,28 +379,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
           <div className="flex items-center justify-center px-6">
             <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden">
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${
-                activeTab === "settings"
-                  ? "bg-white/10 text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              }`}
-            >
-              <SfIcon name="gearshape.fill" size={18} />
-              <span className="text-[10px] text-muted-foreground">Settings</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${
-                activeTab === "history"
-                  ? "bg-white/10 text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              }`}
-            >
-              <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
-              <span className="text-[10px] text-muted-foreground">History</span>
-            </button>
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "settings"
+                    ? "bg-white/10 text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  }`}
+              >
+                <SfIcon name="gearshape.fill" size={18} />
+                <span className="text-[10px] text-muted-foreground">Settings</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("history")}
+                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "history"
+                    ? "bg-white/10 text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  }`}
+              >
+                <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
+                <span className="text-[10px] text-muted-foreground">History</span>
+              </button>
             </div>
           </div>
         </div>
@@ -421,145 +419,145 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ maxHeight: "530px" }}
             onScroll={updateScrollIndicators}
           >
-          <div
-            className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
-          >
-          {activeTab === "settings" ? (
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={containerVariants}
-              className="flex flex-col"
+            <div
+              className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
             >
-              {/* Section 1: Defaults */}
-            <motion.section
-              variants={sectionVariants}
-              className="space-y-4"
-              style={{ marginTop: "var(--panel-section-offset)" }}
-            >
-              <SectionSeparator title="Defaults" />
-
-              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                <SelectField
-                  label="Microphone"
-                  description="Select your preferred input device"
-                  value={selectedMicId}
-                  onChange={handleMicChange}
-                  options={micOptions}
-                  inGroup
-                />
-
-                <Toggle
-                  label="Show Floating Bar"
-                  description="Display the floating dictation bar"
-                  enabled={showFloatingBar}
-                  onChange={(enabled) => {
-                    setShowFloatingBar(enabled);
-                    if (onToggleFloatingBar) onToggleFloatingBar(enabled);
-                  }}
-                  icon={
-                    <SfIcon
-                      name="eye.fill"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                  inGroup
-                />
-
-                <Toggle
-                  label="Show in Dock"
-                  description="Display app icon in the macOS Dock"
-                  enabled={showInDock}
-                  onChange={async (enabled) => {
-                    setShowInDock(enabled);
-                    try {
-                      await window.electron?.setDockVisible?.(enabled);
-                    } catch (error) {
-                      console.error("[Settings] Failed to set dock visibility:", error);
-                    }
-                  }}
-                  icon={
-                    <SfIcon
-                      name="dock.rectangle"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                  inGroup
-                />
-
-                <Toggle
-                  label="Improve the Model for Everyone"
-                  description="Share anonymous usage to improve responses"
-                  enabled={shareTranscriptionsEnabled ?? false}
-                  onChange={(enabled) => onShareTranscriptionsChange?.(enabled)}
-                  icon={
-                    <SfIcon
-                      name="point.3.filled.connected.trianglepath.dotted"
-                      size={16}
-                      className="text-primary/70"
-                    />
-                  }
-                  disabled={
-                    !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
-                  }
-                  inGroup
-                />
-              </div>
-            </motion.section>
-
-            {/* Section 3: Account */}
-            <motion.section
-              variants={sectionVariants}
-              className="space-y-4"
-              style={{ marginTop: "var(--panel-section-offset)" }}
-            >
-              <SectionSeparator title="Account" />
-              <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
-                {userEmail ? (
-                  <SettingsCard
-                    title={userName || userEmail}
-                    description={userEmail}
-                    icon={
-                      <span className="text-[11px] font-semibold tracking-wide">
-                        {(userName || userEmail || "").slice(0, 1).toUpperCase()}
-                      </span>
-                    }
-                    inGroup
+              {activeTab === "settings" ? (
+                <motion.div
+                  initial="hidden"
+                  animate="visible"
+                  variants={containerVariants}
+                  className="flex flex-col"
+                >
+                  {/* Section 1: Defaults */}
+                  <motion.section
+                    variants={sectionVariants}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <Button variant="secondary" size="sm" onClick={handleSignOut}>
-                      Sign Out
-                    </Button>
-                  </SettingsCard>
-                ) : (
-                  // If not signed in, do not render login UI here — redirect to onboarding
-                  <div className="p-3">
-                    <div className="text-[12px] text-subtle mb-3">
-                      You are signed out.
-                    </div>
-                    <Button
-                      className="w-full onboarding-cta"
-                      onClick={async () => {
-                        try {
-                          await window.electron?.showOnboarding?.();
-                        } catch {}
-                      }}
-                    >
-                      Open Onboarding to Sign In
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </motion.section>
+                    <SectionSeparator title="Defaults" />
 
-          </motion.div>
-          ) : (
-            <TranscriptionHistoryView />
-          )}
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      <SelectField
+                        label="Microphone"
+                        description="Select your preferred input device"
+                        value={selectedMicId}
+                        onChange={handleMicChange}
+                        options={micOptions}
+                        inGroup
+                      />
+
+                      <Toggle
+                        label="Show Floating Bar"
+                        description="Display the floating dictation bar"
+                        enabled={showFloatingBar}
+                        onChange={(enabled) => {
+                          setShowFloatingBar(enabled);
+                          if (onToggleFloatingBar) onToggleFloatingBar(enabled);
+                        }}
+                        icon={
+                          <SfIcon
+                            name="eye.fill"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+
+                      <Toggle
+                        label="Show in Dock"
+                        description="Display app icon in the macOS Dock"
+                        enabled={showInDock}
+                        onChange={async (enabled) => {
+                          setShowInDock(enabled);
+                          try {
+                            await window.electron?.setDockVisible?.(enabled);
+                          } catch (error) {
+                            console.error("[Settings] Failed to set dock visibility:", error);
+                          }
+                        }}
+                        icon={
+                          <SfIcon
+                            name="dock.rectangle"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+
+                      <Toggle
+                        label="Improve the Model for Everyone"
+                        description="Share anonymous usage to improve responses"
+                        enabled={shareTranscriptionsEnabled ?? false}
+                        onChange={(enabled) => onShareTranscriptionsChange?.(enabled)}
+                        icon={
+                          <SfIcon
+                            name="point.3.filled.connected.trianglepath.dotted"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        disabled={
+                          !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
+                        }
+                        inGroup
+                      />
+                    </div>
+                  </motion.section>
+
+                  {/* Section 3: Account */}
+                  <motion.section
+                    variants={sectionVariants}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
+                  >
+                    <SectionSeparator title="Account" />
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
+                      {userEmail ? (
+                        <SettingsCard
+                          title={userName || userEmail}
+                          description={userEmail}
+                          icon={
+                            <span className="text-[11px] font-semibold tracking-wide">
+                              {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                            </span>
+                          }
+                          inGroup
+                        >
+                          <Button variant="secondary" size="sm" onClick={handleSignOut}>
+                            Sign Out
+                          </Button>
+                        </SettingsCard>
+                      ) : (
+                        // If not signed in, do not render login UI here — redirect to onboarding
+                        <div className="p-3">
+                          <div className="text-[12px] text-subtle mb-3">
+                            You are signed out.
+                          </div>
+                          <Button
+                            className="w-full onboarding-cta"
+                            onClick={async () => {
+                              try {
+                                await window.electron?.showOnboarding?.();
+                              } catch { }
+                            }}
+                          >
+                            Open Onboarding to Sign In
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.section>
+
+                </motion.div>
+              ) : (
+                <TranscriptionHistoryView />
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-      </div>
 
         {/* Fixed bottom band - bezel with footer and chevron space */}
         <div className="absolute bottom-0 left-0 right-0 z-20 bg-background">
