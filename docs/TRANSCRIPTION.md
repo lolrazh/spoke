@@ -576,21 +576,23 @@ The worker architecture is designed for extreme modularity, allowing developers 
 
 <central_config file="worker/src/config.ts">
   The entire transcription and LLM pipeline is controlled by a single configuration file.
-  To switch providers, simply update the default provider constant. The system will automatically select the appropriate default model:
+  To switch providers or models, simply update the default constants:
 
   ```typescript
   // Switch LLM provider (e.g., from 'groq' to 'openai')
-  // The default model is automatically selected based on the provider!
   export const LLM_DEFAULT_PROVIDER = 'openai' as const;
+
+  // Switch LLM model
+  export const LLM_DEFAULT_MODEL = OPENAI_LLM_DEFAULT_MODEL;
 
   // Switch STT provider
   export const STT_DEFAULT_PROVIDER = 'deepgram' as const;
   ```
 
   This design allows for:
-  - **Rapid Prototyping**: Test new providers by changing one line.
+  - **Rapid Prototyping**: Test new models (e.g., Llama 3, GPT-4o) by changing one line.
   - **Provider redundancy**: If one provider goes down, switch to another instantly.
-  - **A/B Testing**: Easily configure different environments with different providers.
+  - **A/B Testing**: Easily configure different environments with different models.
 
   All provider-specific endpoints and model names are also defined here, making it the single source of truth for the worker's external dependencies.
 </central_config>
