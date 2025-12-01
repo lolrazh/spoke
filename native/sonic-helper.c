@@ -533,16 +533,23 @@ static int inspect_text_core(int context_chars) {
     const char *source = "none";
     bool clipboardOk = false;
 
-    if (rangeValid) {
-        // Definite selection detected by AX - get text via Cmd+C
-        selectedText = clipboard_copy_selected_text(&clipboardOk);
-        source = clipboardOk ? "clipboard" : "ax";
-    } else if (!haveSel || sel.location < 0) {
-        // AX couldn't determine selection state (e.g., Google Docs/web apps) - try Cmd+C as fallback
-        selectedText = clipboard_copy_selected_text(&clipboardOk);
-        source = clipboardOk ? "clipboard" : "none";
+    // Always probe clipboard first - this handles Electron apps (Cursor, Raycast, VS Code, etc.)
+    // that return {location:0, length:0} from AX API even when text IS selected.
+    // The clipboard probe is non-invasive: it snapshots, attempts Cmd+C, polls for 180ms,
+    // and restores the original clipboard. Since this happens during dictation start,
+    // the latency is invisible to users.
+    selectedText = clipboard_copy_selected_text(&clipboardOk);
+
+    if (clipboardOk) {
+        // Successfully captured selection via clipboard
+        source = "clipboard";
+    } else if (rangeValid) {
+        // AX reported a selection but clipboard probe failed (rare edge case)
+        source = "ax";
+    } else {
+        // No selection detected by either method
+        source = "none";
     }
-    // else: haveSel=true but sel.length=0 → cursor position with no selection → skip Cmd+C entirely
 
     CFRange outputRange = rangeValid ? sel : (CFRange){ -1, -1 };
 
@@ -567,13 +574,18 @@ static int inspect_text_core(int context_chars) {
     printf("read:ok\n");
     printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
     printf("selectionSource:%s\n", source);
-    // PRIVACY: Only log selected text and context when explicitly enabled for debugging
+
+    // Always output base64-encoded selectedText for edit mode to work
+    // (base64 prevents issues with newlines/special chars in IPC parsing)
+    print_cfstring_base64("selectedText", selectedText);
+    print_cfstring_base64("context", contextSlice);
+
+    // PRIVACY: Only log plaintext/truncated versions when debugging
     if (g_debug_text) {
         print_cfstring_truncated("selectedText", selectedText, 512);
         print_cfstring_truncated("context", contextSlice, 512);
-        print_cfstring_base64("selectedText", selectedText);
-        print_cfstring_base64("context", contextSlice);
     }
+
     printf("valueLength:%ld\n", (long)len);
     fflush(stdout);
 

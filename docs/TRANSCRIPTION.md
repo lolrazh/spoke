@@ -75,12 +75,14 @@ Sonic Flow has two distinct modes that change how the transcription is processed
 ### Edit Mode
 
 <mode name="edit">
-  <trigger>Text selected when PTT pressed (detected via AX API)</trigger>
+  <trigger>Text selected when PTT pressed (detected via clipboard probe)</trigger>
 
   <flow>
-    1. Helper captures selected text via clipboard probe:
+    1. Helper captures selected text via universal clipboard probe:
+       - Snapshots current clipboard state
        - Synthesizes Cmd+C via Carbon Events API
-       - Reads plain text from clipboard
+       - Polls clipboard for 180ms (6×30ms intervals) to detect selection
+       - Trims whitespace and validates non-empty result
        - Restores original clipboard (user never sees temporary value)
     2. User speaks editing instruction
     3. Worker transcribes instruction via STT
@@ -89,12 +91,23 @@ Sonic Flow has two distinct modes that change how the transcription is processed
   </flow>
 
   <selection_capture>
-    <method>Clipboard probe with backup/restore</method>
+    <method>Clipboard probe (universal, AX-independent)</method>
+    <rationale>
+      Clipboard probe is used for all apps rather than AX API because:
+      - Electron apps (Cursor, VS Code, Raycast, Slack, Discord) return false {0,0} from AXSelectedTextRange even when text IS selected
+      - Web apps (Google Docs, Notion, Figma) don't expose selection via AX API at all
+      - Native apps work with both methods, but clipboard is more reliable
+      - Latency (~180ms) is invisible since probe happens during dictation start while user is speaking
+    </rationale>
     <sources>
-      'clipboard' - Successfully captured via Cmd+C
-      'ax' - Fallback (not currently implemented)
-      'none' - Failed (secure fields, etc.) → falls back to dictation
+      'clipboard' - Successfully captured via Cmd+C (most common)
+      'ax' - AX reported selection but clipboard probe failed (rare edge case)
+      'none' - No selection detected → falls back to dictation mode
     </sources>
+    <compatibility>
+      Works universally across native apps, Electron apps, and web-based editors.
+      Only fails in secure fields (password inputs) which correctly fall back to dictation.
+    </compatibility>
   </selection_capture>
 
   <use_case>
