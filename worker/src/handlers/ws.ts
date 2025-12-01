@@ -1018,6 +1018,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             const chunkAudio = session.chunks.slice();
             const chunkBytes = session.totalBytes;
 
+            // Capture session data before async - session object may be reset later
+            const sessionRate = session.rate;
+            const sessionIdentity = { ...session.identity };
+            const sessionTraceId = session.traceId;
+            const sessionLanguage = clientLanguage;
+
             // Store chunk state
             session.chunkStates.set(chunkIndex, {
               index: chunkIndex,
@@ -1027,6 +1033,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               sttStartAt: Date.now(),
             });
             session.pendingChunkSTT.add(chunkIndex);
+
+            // Keep reference to session's chunk tracking (these are stable Maps/Sets)
+            const chunkStatesRef = session.chunkStates;
+            const pendingChunkSTTRef = session.pendingChunkSTT;
 
             // Clear main buffer for next chunk
             session.chunks = [];
@@ -1043,22 +1053,22 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   : c.env.GROQ_API_KEY;
 
             if (sttApiKey) {
-              // Run STT async
+              // Run STT async - use captured values, not session directly
               (async () => {
                 try {
                   const pcm = concat(chunkAudio, chunkBytes);
-                  const wav = wrapWav(pcm, session.rate, 1, 16);
+                  const wav = wrapWav(pcm, sessionRate, 1, 16);
 
                   const sttPrompt = buildSTTPrompt({
                     basePrompt: runtime.stt.prompt,
-                    identity: session.identity,
+                    identity: sessionIdentity,
                   });
 
                   console.log(JSON.stringify({
                     event: 'chunk.stt.start',
                     chunkIndex,
                     audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                    traceId: session.traceId,
+                    traceId: sessionTraceId,
                   }));
 
                   const chunkAbort = new AbortController();
@@ -1067,18 +1077,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     apiKey: sttApiKey,
                     signal: chunkAbort.signal,
                     model: runtime.stt.model,
-                    language: clientLanguage || runtime.stt.language,
+                    language: sessionLanguage || runtime.stt.language,
                     prompt: sttPrompt,
                     timeoutMs: runtime.stt.timeoutMs,
                   });
 
-                  const chunkState = session.chunkStates.get(chunkIndex);
+                  const chunkState = chunkStatesRef.get(chunkIndex);
                   if (chunkState) {
                     chunkState.status = 'done';
                     chunkState.result = res.text;
                     chunkState.sttDoneAt = Date.now();
                   }
-                  session.pendingChunkSTT.delete(chunkIndex);
+                  pendingChunkSTTRef.delete(chunkIndex);
 
                   console.log(JSON.stringify({
                     event: 'chunk.stt.done',
@@ -1087,7 +1097,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     durationMs: chunkState?.sttDoneAt && chunkState?.sttStartAt
                       ? chunkState.sttDoneAt - chunkState.sttStartAt
                       : null,
-                    traceId: session.traceId,
+                    traceId: sessionTraceId,
                   }));
 
                   // Send chunk result to client
@@ -1098,7 +1108,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           type: 'chunk_result',
                           chunkIndex,
                           text: res.text,
-                          traceId: session.traceId,
+                          traceId: sessionTraceId,
                         }),
                       ),
                     );
@@ -1108,17 +1118,32 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     event: 'chunk.stt.error',
                     chunkIndex,
                     error: String(err),
-                    traceId: session.traceId,
+                    traceId: sessionTraceId,
                   }));
-                  session.pendingChunkSTT.delete(chunkIndex);
-                  const chunkState = session.chunkStates.get(chunkIndex);
+                  pendingChunkSTTRef.delete(chunkIndex);
+                  const chunkState = chunkStatesRef.get(chunkIndex);
                   if (chunkState) {
                     chunkState.status = 'done';
                     chunkState.result = '';
                   }
                 }
               })();
+            } else {
+              console.log(JSON.stringify({
+                event: 'chunk.stt.no_api_key',
+                chunkIndex,
+                provider: sttProvider,
+                traceId: sessionTraceId,
+              }));
             }
+          } else {
+            console.log(JSON.stringify({
+              event: 'chunk.no_audio',
+              chunkIndex,
+              chunksLength: session.chunks.length,
+              totalBytes: session.totalBytes,
+              traceId: session.traceId,
+            }));
           }
         } else if (parsed.type === 'cancel') {
           session = createEmptySession();

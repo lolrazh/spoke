@@ -1116,6 +1116,12 @@ export function useTranscription(
               } catch (err) {
                 console.warn("[SF] Failed to send chunk message", err);
               }
+            } else {
+              console.warn("[SF] ⚠️ Cannot send chunk - WebSocket not ready", {
+                wsExists: !!ws,
+                wsReady: wsReadyRef.current,
+                wsState: ws?.readyState,
+              });
             }
           },
         );
