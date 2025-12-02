@@ -535,7 +535,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                   </span>
                                 </div>
                                 {/* PRO badge - solid, like Perplexity */}
-                                <div className="absolute -top-0.5 -right-0.5 bg-[#2A2A2A] text-white text-[5.5px] font-bold px-1 py-0.5 rounded leading-none">
+                                <div className="absolute -top-0.5 -right-0.5 bg-[#2A2A2A] text-white text-[6px] font-bold px-1.5 py-0.5 rounded leading-none">
                                   PRO
                                 </div>
                               </div>
