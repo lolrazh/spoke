@@ -49,7 +49,7 @@ function getJWKS(supabaseUrl: string): ReturnType<typeof createRemoteJWKSet> {
  * Result type for JWT verification
  */
 export type JwtVerifyResult =
-  | { valid: true; userId: string; email: string; payload: JWTPayload }
+  | { valid: true; userId: string; email: string; subscriptionActive: boolean; payload: JWTPayload }
   | { valid: false; error: string; code: 'invalid' | 'expired' | 'malformed' };
 
 /**
@@ -97,6 +97,7 @@ export async function verifySupabaseJwt(
     // Extract required claims
     const userId = payload.sub;
     const email = payload.email as string | undefined;
+    const subscriptionActive = payload.subscription_active === true;
 
     if (!userId) {
       return {
@@ -110,6 +111,7 @@ export async function verifySupabaseJwt(
       valid: true,
       userId,
       email: email || '',
+      subscriptionActive,
       payload,
     };
   } catch (error: unknown) {

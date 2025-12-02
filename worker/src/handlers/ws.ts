@@ -15,10 +15,8 @@ import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editP
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
-import { getSupabaseClient } from '../db/supabase';
 import {
   verifySupabaseJwt,
-  checkSubscription,
   WS_CLOSE_CODES,
   AUTH_TIMEOUT_MS,
 } from '../auth';
@@ -295,48 +293,24 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             return;
           }
 
-          // JWT is valid — check subscription
-          const supabase = getSupabaseClient(c.env);
-          if (!supabase) {
-            console.error('[Auth] Supabase client not available');
-            safely(() =>
-              server.send(
-                JSON.stringify({
-                  type: 'auth_error',
-                  error: 'Server configuration error',
-                  code: WS_CLOSE_CODES.UNAUTHORIZED,
-                }),
-              ),
-            );
-            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'supabase not configured');
-            releaseConnection(clientIP);
-            return;
-          }
-
-          const subscriptionResult = await checkSubscription(supabase, jwtResult.userId);
-          if (subscriptionResult.hasAccess === false) {
+          // JWT is valid — check subscription claim
+          if (!jwtResult.subscriptionActive) {
             console.log(JSON.stringify({
               event: 'auth.no_subscription',
               clientIP,
               userId: jwtResult.userId,
-              reason: subscriptionResult.reason,
-              status: subscriptionResult.status,
+              subscriptionActive: false,
             }));
             safely(() =>
               server.send(
                 JSON.stringify({
                   type: 'auth_error',
-                  error:
-                    subscriptionResult.reason === 'no_subscription'
-                      ? 'Subscription required'
-                      : subscriptionResult.reason === 'inactive'
-                        ? 'Subscription inactive'
-                        : 'Unable to verify subscription',
+                  error: 'Active subscription required',
                   code: WS_CLOSE_CODES.PAYMENT_REQUIRED,
                 }),
               ),
             );
-            safeClose(server, WS_CLOSE_CODES.PAYMENT_REQUIRED, subscriptionResult.reason);
+            safeClose(server, WS_CLOSE_CODES.PAYMENT_REQUIRED, 'no active subscription');
             releaseConnection(clientIP);
             return;
           }
@@ -350,7 +324,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             event: 'auth.success',
             clientIP,
             userId: jwtResult.userId,
-            subscriptionStatus: subscriptionResult.status,
+            subscriptionActive: jwtResult.subscriptionActive,
           }));
 
           // Send auth success

@@ -1,15 +1,18 @@
 /**
  * Authentication Module
  *
- * Provides JWT verification and subscription checking for gating transcription access.
+ * Provides JWT verification for gating transcription access.
  *
  * Usage in WebSocket handler:
  * 1. Client sends { type: 'auth', token: '<supabase_access_token>' }
  * 2. Worker verifies JWT signature using JWKS
- * 3. Worker checks subscription status
+ * 3. Worker reads subscription_active claim from JWT payload
  * 4. Worker responds with { type: 'auth_ok' } or closes connection
  *
- * See: plans/PAYMENTS_BLUEPRINT.md for full architecture
+ * Subscription status is baked into the JWT via Supabase Custom Access Token Hook.
+ * No database query is needed per request — the claim is verified cryptographically.
+ *
+ * See: plans/PAYMENTS_AUTH_OPTIMIZATION.md for architecture details
  */
 
 export {
@@ -17,12 +20,6 @@ export {
   clearJwksCache,
   type JwtVerifyResult,
 } from './supabaseJwt';
-
-export {
-  checkSubscription,
-  hasActiveSubscription,
-  type SubscriptionCheckResult,
-} from './subscription';
 
 /**
  * WebSocket close codes for auth errors
