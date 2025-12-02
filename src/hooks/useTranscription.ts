@@ -179,6 +179,7 @@ export function useTranscription(
   // Auth state for WebSocket authentication
   const wsAuthenticatedRef = useRef<boolean>(false);
   const wsAuthPendingRef = useRef<boolean>(false);
+  const wsAuthFailedRef = useRef<boolean>(false); // Track auth failures to prevent reconnects
 
   const initialIdentity = getUserIdentity();
   const identityRef = useRef<SttPromptIdentity>({
@@ -461,22 +462,24 @@ export function useTranscription(
     }
   }, []);
 
-  const ensureStreamingSocket = useCallback(async () => {
-    // If there's an existing socket, only keep it if it's OPEN or CONNECTING.
-    // After idle timeouts, the socket may be CLOSED but non-null; recreate in that case.
+  const ensureStreamingSocket = useCallback(async (): Promise<void> => {
+    // If there's an existing socket that's authenticated, keep it
     if (wsRef.current) {
       const rs = wsRef.current.readyState;
-      if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
+      if ((rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) && wsAuthenticatedRef.current) {
+        return; // Already connected and authenticated
+      }
       try {
         wsRef.current.close();
       } catch {}
       wsRef.current = null;
     }
-    
+
     // Reset auth state for new connection
     wsAuthenticatedRef.current = false;
     wsAuthPendingRef.current = false;
-    
+    wsAuthFailedRef.current = false; // Clear previous auth failure state
+
     // Get access token for authentication
     let accessToken: string | null = null;
     try {
@@ -485,13 +488,14 @@ export function useTranscription(
     } catch (err) {
       console.warn("[useTranscription] Failed to get access token:", err);
     }
-    
+
     // If no token, user is not signed in
     if (!accessToken) {
       console.warn("[useTranscription] No access token - user not signed in");
-      setAuthError("not_signed_in");
-      setError("Please sign in to use transcription");
-      return;
+      // Use consistent error message for all auth failures
+      setAuthError("payment_required");
+      setError("Subscription required. Upgrade to continue.");
+      throw new Error("Not signed in");
     }
     
     const wsUrl = getTranscribeWsUrl();
@@ -507,7 +511,18 @@ export function useTranscription(
     wsReadyRef.current = false;
     wsErrorRef.current = null;
 
-    ws.addEventListener("open", () => {
+    // Create a Promise that resolves when auth succeeds or rejects when it fails
+    return new Promise<void>((resolve, reject) => {
+      // Timeout for the entire auth process (connection + auth)
+      const authTimeout = setTimeout(() => {
+        reject(new Error("Auth timeout"));
+      }, 15000); // 15 seconds total (includes connection time)
+
+      const cleanup = () => {
+        clearTimeout(authTimeout);
+      };
+
+      ws.addEventListener("open", () => {
       wsLastActivityRef.current = Date.now(); // Track activity
       if (metricsRef.current && !metricsRef.current.wsOpenMs)
         metricsRef.current.wsOpenMs =
@@ -537,7 +552,9 @@ export function useTranscription(
           wsAuthPendingRef.current = false;
           wsReadyRef.current = true;
           setAuthError(null); // Clear any previous auth error
-          
+          cleanup();
+          resolve(); // Auth succeeded - resolve the Promise
+
           // Now we can send start message and flush queue
           trySendStartMessage();
           flushQueue();
@@ -545,10 +562,12 @@ export function useTranscription(
           startWebSocketHealthCheck();
           return;
         }
-        
+
         if (msg.type === "auth_error") {
           console.error("[SF] Auth failed:", msg.error, "code:", msg.code);
           wsAuthPendingRef.current = false;
+          cleanup();
+          reject(new Error(`Auth failed: ${msg.error}`));
           // The server will close the connection, onclose will handle cleanup
           return;
         }
@@ -565,7 +584,10 @@ export function useTranscription(
       wsAuthPendingRef.current = false;
       if (ws.readyState !== WebSocket.OPEN) {
         if (wsRef.current === ws) wsRef.current = null;
-        scheduleReconnect();
+        // Don't reconnect if this is an auth failure (close handler will set the error)
+        if (!wsAuthFailedRef.current) {
+          scheduleReconnect();
+        }
       }
     });
     
@@ -580,8 +602,13 @@ export function useTranscription(
       // Handle auth-specific close codes
       if (event.code === WS_CLOSE_UNAUTHORIZED || event.code === WS_CLOSE_AUTH_TIMEOUT) {
         console.warn("[SF] Auth failed - unauthorized or timeout", { code: event.code, reason: event.reason });
-        setAuthError("auth_failed");
-        setError("Authentication failed. Please sign in again.");
+        wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+        // Treat all auth failures as subscription issues for consistency
+        // (JWT expiration, token invalid, etc. all mean "can't verify subscription")
+        setAuthError("payment_required");
+        setError("Subscription required. Upgrade to continue.");
+        cleanup();
+        reject(new Error("Authentication failed"));
         // Don't auto-reconnect for auth failures
         if (wsRef.current === ws) {
           wsRef.current = null;
@@ -589,11 +616,14 @@ export function useTranscription(
         stopWebSocketHealthCheck();
         return;
       }
-      
+
       if (event.code === WS_CLOSE_PAYMENT_REQUIRED) {
         console.warn("[SF] Payment required", { code: event.code, reason: event.reason });
+        wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
         setAuthError("payment_required");
         setError("Subscription required. Upgrade to continue.");
+        cleanup();
+        reject(new Error("Payment required"));
         // Don't auto-reconnect for payment required
         if (wsRef.current === ws) {
           wsRef.current = null;
@@ -610,6 +640,7 @@ export function useTranscription(
       // Stop health monitoring when connection closes
       stopWebSocketHealthCheck();
     });
+    }); // Close the Promise
   }, [flushQueue, trySendStartMessage]);
 
   const streamFrame = useCallback(
@@ -1121,8 +1152,10 @@ export function useTranscription(
         return;
       }
     }
-    setError(null);
-    setAuthError(null); // Clear any previous auth errors
+    // Only clear error if not an auth issue (auth errors should persist)
+    if (!authError) {
+      setError(null);
+    }
     setText("");
     setRecording(true);
 
@@ -1153,17 +1186,11 @@ export function useTranscription(
     currentChunkIndexRef.current = 0;
 
     try {
-      // Try to establish the WebSocket early so audio failures don't mask connectivity
-      // This will handle auth - if auth fails, it sets authError and returns early
+      // Try to establish the WebSocket and wait for auth to complete
+      // This Promise resolves when auth succeeds, rejects if auth fails
       await ensureStreamingSocket();
-      
-      // Check if auth failed (check the ref since state may not be updated yet)
-      if (!wsRef.current || wsErrorRef.current) {
-        console.warn("[useTranscription] WebSocket not available after ensureStreamingSocket, aborting");
-        setRecording(false);
-        return;
-      }
-      
+
+      // Auth succeeded! Now send the start message
       trySendStartMessage();
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
@@ -1348,9 +1375,18 @@ export function useTranscription(
         });
       }
     } catch (err) {
+      // If this is an auth error, the error and authError state are already set
+      // Don't overwrite them with a generic "audio processing failed" message
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes("Not signed in") || errorMessage.includes("Auth") || errorMessage.includes("Payment")) {
+        // Auth error already handled
+        setRecording(false);
+        return;
+      }
+
       const error = createAppError(
         ErrorCode.AUDIO_PROCESSING_FAILED,
-        err instanceof Error ? err.message : String(err)
+        errorMessage
       );
       logError(error, "[useTranscription]");
       setError(getUserMessage(error));
@@ -1576,6 +1612,8 @@ export function useTranscription(
                                 routeRules?: string[] | null;
                               } | null;
                               finalSentAt?: number | null;
+                              chunkCount?: number | null;
+                              chunkSttMs?: string | null;
                             }
                           | null;
 

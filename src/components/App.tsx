@@ -1041,6 +1041,18 @@ const AppInner: React.FC = () => {
     return () => window.removeEventListener("focus", handleWindowShow);
   }, [pillState]);
 
+  // Show notification for auth errors (subscription required, not signed in, etc.)
+  useEffect(() => {
+    if (trans.authError && trans.error) {
+      // Dispatch NOTIFY event to show the error message
+      pillDispatch({ type: "NOTIFY", msg: trans.error });
+      // Also ensure we're not stuck in LISTENING state
+      if (pillState === "LISTENING") {
+        pillDispatch({ type: "CANCEL" });
+      }
+    }
+  }, [trans.authError, trans.error, pillState, pillDispatch]);
+
   // Listen for expand pill requests from main process
   useEffect(() => {
     const handleExpandPill = () => {
