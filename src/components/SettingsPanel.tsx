@@ -524,24 +524,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
                       {userEmail ? (
-                        <div className="relative overflow-hidden shimmer [&>*]:!border-b-0">
-                          <SettingsCard
-                            title={userName || userEmail}
-                            description={userEmail}
-                            icon={
-                              <div className="relative">
-                                <span className="text-[11px] font-semibold tracking-wide">
-                                  {(userName || userEmail || "").slice(0, 1).toUpperCase()}
-                                </span>
-                                {/* PRO badge overlay */}
-                                <div className="absolute -top-1.5 -right-1.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white text-[7px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                        <div className="relative overflow-hidden shimmer">
+                          <div className="p-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {/* Avatar with PRO badge */}
+                              <div className="relative shrink-0">
+                                <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center">
+                                  <span className="text-[11px] font-semibold tracking-wide">
+                                    {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                                  </span>
+                                </div>
+                                {/* PRO badge - solid, like Perplexity */}
+                                <div className="absolute -bottom-0.5 -right-0.5 bg-[#2A2A2A] text-white text-[6px] font-bold px-1 py-0.5 rounded leading-none">
                                   PRO
                                 </div>
                               </div>
-                            }
-                            inGroup
-                          >
-                            <div className="flex items-center gap-2">
+                              {/* Name */}
+                              <div className="text-left min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-medium text-white truncate">
+                                    {userName || userEmail}
+                                  </span>
+                                </div>
+                                {userEmail && (
+                                  <div className="text-[10px] text-subtle mt-0.5 truncate">
+                                    {userEmail}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {/* Buttons */}
+                            <div className="flex items-center gap-2 shrink-0 no-drag">
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -559,7 +572,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <SfIcon name="rectangle.portrait.and.arrow.right" size={16} className="text-white/60" />
                               </Button>
                             </div>
-                          </SettingsCard>
+                          </div>
                         </div>
                       ) : (
                         // If not signed in, do not render login UI here — redirect to onboarding
