@@ -1,306 +1,662 @@
 # Payments Blueprint — Dodo Payments + Supabase + Next.js + Cloudflare Worker
 
-Status: Website stack live (Phases 1-4); App + Worker gating pending  
-Owners: Payments/Infra  
-Last updated: 2025-11-29
-
-Contents
-- Scope
-- High-level architecture
-- Data model (Supabase SQL + RLS)
-- Server API surface (Next.js on Vercel)
-- Entitlement token design (JWT/JWE)
-- Cloudflare Worker gating
-- Webhook processing (Dodo)
-- End-to-end flows
-- UI notes (Pricing & Upgrade)
-- Security & compliance
-- Sandbox testing plan
-- Production rollout checklist
-- Configuration matrix
-- Future extensions
-- References
+**Status**: Website stack live (Auth + Checkout + Webhooks); Entitlement token minter + Worker gating + App integration pending  
+**Owners**: Payments/Infra  
+**Last updated**: 2025-12-02
 
 ---
 
-Implementation snapshot (2025-11-29)
-- ✅ Website (Next.js 15) handles Supabase SSR auth, plan selection, Google OAuth redirect, and creates Dodo checkout sessions directly inside `src/app/api/auth/callback/route.ts` (see agent logs `2025-11-29_1501` and `2025-11-29_1638`).
-- ✅ Hosted checkout returns to `/checkout/success` with refined UI, Suspense boundaries, and confetti celebration; supports `?test=success|pending|error` for previews (logs `2025-11-29_2230`, `2025-11-29_2307`).
-- ✅ Webhook stack lives at `src/app/api/webhooks/dodo/route.ts` with Supabase service-role access, audit logging, and verified USD/INR payment methods (logs `2025-11-29_2030`, `2025-11-29_2230`).
-- ✅ Entitlement token minting + `/api/billing/status` already exist (Phase 4, log `2025-11-27_1630`); database schema matches `docs/DATABASE.md`.
-- 🔜 Cloudflare Worker gating (Phase 5) and Electron app integration (Phase 6) still need to consume those tokens, refresh them, and gate transcription sessions.
+## Contents
 
-Scope
-- Goal: Gate transcription behind paid subscriptions using Dodo Payments; two fixed plans (Monthly, Yearly) with an optional 7-day trial configured in Dodo.
-- Auth model: Supabase Auth (Google OAuth via SSR helpers) handled by the website; desktop app launches the same pricing/auth surface via deep link and then consumes the resulting entitlements.
-- Current split: Website covers authentication, checkout, and webhook sync; desktop app + Cloudflare Worker must enforce entitlements using the minted tokens.
-- Flow: Pricing page (AuthModal) → Supabase OAuth (`redirectTo` preserves `plan` + `checkout_test`) → `/api/auth/callback` exchanges the code and immediately creates a Dodo hosted checkout session → Dodo redirects back to `/checkout/success` → webhook posts subscription status → Next.js updates `subscriptions` + bumps `profiles.entitlement_ver` → `/api/billing/entitlement-token` issues short-lived tokens → Worker validates the token on each microphone session (zero-DB hot path).
+1. [Implementation Status](#implementation-status)
+2. [Scope](#scope)
+3. [Architecture Overview](#architecture-overview)
+4. [Data Model](#data-model)
+5. [Implementation Phases](#implementation-phases)
+   - Phase 1: Entitlement Token Minter (Website)
+   - Phase 2: Worker Gating (Cloudflare)
+   - Phase 3: App Integration (Electron)
+   - Phase 4: Upgrade Flow from App
+6. [JWT Entitlement Design](#jwt-entitlement-design)
+7. [Testing Strategy](#testing-strategy)
+8. [Configuration Matrix](#configuration-matrix)
+9. [Future: Free Tier with Usage Limits](#future-free-tier-with-usage-limits)
+10. [References](#references)
 
-High-level architecture
-- Client App (desktop) → opens `https://sonicflow.app/pricing` → Next.js server handles Supabase auth via SSR helpers → OAuth callback instantly creates Dodo Checkout Session (no intermediate checkout page) → Dodo hosted checkout (trial optional) → `/checkout/success` → webhook posts subscription status → server updates Supabase + entitlement_ver (for revocation) → `/api/billing/entitlement-token` issues short-lived entitlement token → Worker validates token per request/connection (no DB call).
-- Primary components:
-  - Next.js API routes (server-only) to: handle auth callback + checkout creation, issue entitlement tokens, expose billing status, and process Dodo webhooks.
-  - Supabase Postgres for billing state (subscriptions) and profiles fields; service role only writes.
-  - Cloudflare Worker enforces Authorization: Bearer entitlement token once Phase 5 lands.
+---
 
-Suggested file layout (site repo)
-- Next.js API routes
-  - [route.ts](src/app/api/auth/callback/route.ts) — Supabase OAuth exchange + Dodo Checkout Session creation
-  - [route.ts](src/app/api/webhooks/dodo/route.ts) — Webhook receiver (service-role Supabase client, audit logging)
-  - [route.ts](src/app/api/billing/status/route.ts) — Read entitlement status
-  - [route.ts](src/app/api/billing/entitlement-token/route.ts) — Issue entitlement token (jose)
-- Next.js UI
-  - [page.tsx](src/app/pricing/page.tsx) + [page-client.tsx](src/app/pricing/page-client.tsx) — Pricing grid + AuthModal trigger
-  - [AuthModal.tsx](src/components/ui/AuthModal.tsx) — Google OAuth modal (SSR-safe)
-  - [page.tsx](src/app/checkout/success/page.tsx) — Success/pending/error confirmation (confetti support)
-- Worker (Cloudflare)
-  - [ws.ts](worker/src/handlers/ws.ts:1) — WS entry; gate by Authorization: Bearer (Phase 5)
-  - [entitlement.ts](worker/src/auth/entitlement.ts:1) — Token verification helpers (Phase 5)
-  - [runtime.ts](worker/src/config/runtime.ts:1) — Secrets/JWK loading
+## Implementation Status
 
-Data model (Supabase SQL + RLS)
-- Mirrors `docs/DATABASE.md` (2025-11-30). Enable RLS everywhere; only the service-role clients (Next.js + Worker) perform writes.
+### ✅ Completed (Website - Next.js on Vercel)
 
-```sql
--- Extend profiles for Dodo linkage + fast entitlement revocation
-alter table public.profiles
-  add column if not exists dodo_customer_id text unique,
-  add column if not exists entitlement_ver integer not null default 1;
+| Component | Location | Status |
+|-----------|----------|--------|
+| Supabase SSR Auth | `src/lib/supabase/` | ✅ Live |
+| Google OAuth + AuthModal | `src/components/ui/AuthModal.tsx` | ✅ Live |
+| Direct checkout redirect | `src/app/api/auth/callback/route.ts` | ✅ Live |
+| Dodo webhook handler | `src/app/api/webhooks/dodo/route.ts` | ✅ Live |
+| Checkout success page | `src/app/checkout/success/page.tsx` | ✅ Live |
+| Database schema | Supabase (profiles, subscriptions, webhook_events) | ✅ Live |
 
--- Subscriptions (mirror Dodo; denormalize interval and periods)
-create table if not exists public.subscriptions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  subscription_id text unique,
-  plan_id text not null,              -- 'monthly' | 'yearly' (app-facing)
-  product_id text,
-  status text not null,               -- 'active' | 'canceled' | 'past_due' | 'on_hold' | 'expired'
-  plan_interval text,
-  current_period_start timestamptz,
-  current_period_end timestamptz,
-  trial_end timestamptz,
-  cancel_at_period_end boolean default false,
-  canceled_at timestamptz,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+### 🔜 Pending
 
--- Webhook events (idempotency + audit)
-create table if not exists public.webhook_events (
-  event_id text primary key,
-  type text not null,
-  received_at timestamptz not null default now(),
-  raw jsonb not null
-);
+| Component | Location | Priority |
+|-----------|----------|----------|
+| **Entitlement token minter** | `site: src/app/api/billing/entitlement-token/route.ts` | P0 - Next |
+| **Worker JWT gating** | `app: worker/src/auth/entitlement.ts` | P0 |
+| **App token management** | `app: src/services/entitlement.ts` | P0 |
+| **App upgrade flow** | `app: src/components/UpgradePrompt.tsx` | P1 |
+| Billing status endpoint | `site: src/app/api/billing/status/route.ts` | P1 |
+| Webhook → increment_entitlement_ver | `site: webhook handler` | P1 (missing) |
+| Free tier usage limits | Worker + App | P2 (deferred) |
 
--- Fast revocation helper (Phase 3)
-create or replace function public.increment_entitlement_ver(user_uuid uuid)
-returns void
-language plpgsql
-security definer
-as $$
-  update public.profiles
-     set entitlement_ver = entitlement_ver + 1,
-         updated_at = now()
-   where id = user_uuid;
-$$;
+---
 
--- RLS: restrict public; service-role writes via server/webhook only
-alter table public.subscriptions enable row level security;
-alter table public.webhook_events enable row level security;
+## Scope
 
-create policy if not exists "Users can view own subscription"
-  on public.subscriptions for select
-  using (auth.uid() = user_id);
--- WRITE: no public writes; service role bypasses RLS.
+### Current Focus: Paid Tier Only
+
+- **Goal**: Gate transcription behind paid subscriptions. Users must have an active Dodo subscription to use the app.
+- **Plans**: Monthly and Yearly (configured in Dodo dashboard)
+- **Auth model**: Supabase Auth (Google OAuth) shared between website and desktop app
+- **Enforcement**: Worker validates JWT entitlement token on every WebSocket connection
+
+### Deferred: Free Tier
+
+- Free tier with usage limits (e.g., 2000 words/month) is planned but **not in initial scope**
+- Will require Worker-side usage tracking via `dictation_logs.word_count`
+- Calendar month reset (simpler than rolling window)
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              PAID USER FLOW                                  │
+│                                                                              │
+│  1. User signs in to app (Supabase Google OAuth)                            │
+│                                                                              │
+│  2. App calls website API to get entitlement token:                         │
+│     POST https://sonicflow.app/api/billing/entitlement-token                │
+│     Authorization: Bearer <supabase_access_token>                           │
+│     Response: { token: "jwt...", expires_at, plan, is_active }              │
+│                                                                              │
+│  3. App stores token in electron-store, refreshes every 20 min              │
+│                                                                              │
+│  4. On each dictation, app opens WebSocket with:                            │
+│     Authorization: Bearer <entitlement_token>                               │
+│                                                                              │
+│  5. Worker validates JWT (signature + expiry + is_active)                   │
+│     - ✅ Valid → Process transcription                                       │
+│     - ❌ Invalid/expired → Close with 4010 (unauthorized)                   │
+│     - ❌ Inactive subscription → Close with 4020 (payment required)         │
+│                                                                              │
+│  6. App handles errors, prompts upgrade if needed                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            UPGRADE FLOW FROM APP                             │
+│                                                                              │
+│  1. User clicks "Upgrade" in app settings                                   │
+│                                                                              │
+│  2. App opens: https://sonicflow.app/pricing?source=app                     │
+│                                                                              │
+│  3. User signs in (or already signed in) → Dodo checkout                    │
+│                                                                              │
+│  4. Payment completes → Dodo webhook fires → DB updated                     │
+│                                                                              │
+│  5. App polls /api/billing/status OR detects via deep link callback         │
+│                                                                              │
+│  6. App fetches new entitlement token → User can transcribe!                │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Server API surface (Next.js on Vercel)
-- `GET /api/auth/callback` → Supabase OAuth redirect handler (Phase 2/3)
-  - Exchanges `code` for session via Supabase SSR helpers (no sessionStorage usage).
-  - Reads `plan` + `checkout_test` from query params (must be validated).
-  - Dynamically imports `dodopayments`, creates checkout session immediately, and redirects to `session.checkout_url` (no intermediate page).
-  - Logs product metadata + return URL (`${NEXT_PUBLIC_SITE_URL}/checkout/success`) for debugging.
-  - Supabase dashboard must allow wildcard redirect URLs (`/api/auth/callback*`) so params are preserved.
-- `POST /api/webhooks/dodo` → Dodo webhook receiver (Phase 4).
-  - Uses Supabase service-role client + lazy init to avoid build-time env issues.
-  - Verifies Dodo signature, upserts `subscriptions`, writes `webhook_events`, updates `profiles.entitlement_ver` on cancel/on_hold/failed, and handles plan changes.
-  - Maps Dodo fields (`previous_billing_date`, `next_billing_date`, `payment_frequency_interval`) to Supabase schema.
-- `GET /checkout/success` → User-facing confirmation page.
-  - Handles `status=pending|active|error`, `subscription_id`, `plan`, etc.
-  - Includes `?test=success|pending|error` for design QA and communicates webhook delay expectations.
-- `GET /api/billing/status` → Read entitlement for logged-in user (Supabase auth header required). Used by `/billing/return` (legacy) and planned desktop app polling.
-- `POST /api/billing/entitlement-token` → Mint short-lived entitlement token (JWT via `jose`). Response includes `token`, `expires_at`, `plan`, `ver`, `is_active`.
+---
 
-Entitlement token design (JWT/JWE)
-- Claims:
-  - sub: user_id (uuid)
-  - is_active: boolean
-  - plan: 'free' | 'pro_monthly' | 'pro_yearly'
-  - trial: boolean
-  - ver: integer (copied from profiles.entitlement_ver)
-  - iat, exp: timestamp; exp = 30 minutes
-- Signing:
-  - Server signs with HS256 (shared secret) or ES256/EdDSA (preferred with JWK)
-  - Store secrets in Vercel project env; Worker loads verification key via CF secrets
-- Revocation:
-  - On critical events (cancel/on_hold/failed), bump profiles.entitlement_ver and mint new tokens; Worker rejects tokens with stale ver.
+## Data Model
 
-Cloudflare Worker gating (zero-DB hot path — Phase 5)
-- Desktop app will set `Authorization: Bearer <entitlement-token>` when opening the transcription WS connection.
-- Worker validates:
-  - Signature (JWK or secret)
-  - exp & iat
-  - ver (optional: compare against embedded policy value if you push ver to Worker via config; practical approach: rely on short exp, and bump ver for rapid rotation)
-  - is_active === true
-- If invalid/inactive → close with 401/402 and message prompting refresh or upgrade.
-- Grace period: 120 seconds if exp lapses mid-stream; Worker allows request but notifies client to refresh token immediately.
+### Database Schema (Supabase - Already Deployed)
 
-Webhook processing (Dodo)
-- Endpoint: `src/app/api/webhooks/dodo/route.ts`
-- Verify signature with `DODO_PAYMENTS_WEBHOOK_KEY` (HMAC SHA256). Reject mismatched signatures, allow for `v1,<sig>` header format.
-- Idempotency: `INSERT INTO webhook_events(event_id)`; if conflict → skip handler logic.
-- Map payload fields carefully (per `2025-11-29_2030` log):
-  - `previous_billing_date` → `current_period_start`
-  - `next_billing_date` → `current_period_end`
-  - `payment_frequency_interval` → `plan_interval`
-- Event handling (minimum):
-  - `subscription.active`: upsert, set plan/product metadata, leave `entitlement_ver` unchanged.
-  - `subscription.renewed`: update billing dates.
-  - `subscription.on_hold` / `subscription.failed`: update status + bump `entitlement_ver`.
-  - `subscription.cancelled` / `subscription.expired`: update status, set `canceled_at`, bump `entitlement_ver`.
-  - `subscription.plan_changed`: update plan metadata.
-  - `subscription.failed` prior to payment: log + keep status for debugging.
-- Always log raw payload for audit + debugging (goes into `webhook_events`).
+See `docs/DATABASE.md` for full schema. Key tables:
 
-End-to-end flows
+**profiles** (extended for payments):
+```sql
+dodo_customer_id text UNIQUE     -- Links to Dodo customer
+entitlement_ver integer DEFAULT 1 -- Bumped on subscription changes for fast revocation
+```
 
-Desktop App → API Authentication
-- Desktop app holds Supabase session (access_token JWT from Google OAuth)
-- To call Next.js API routes, app includes: Authorization: Bearer <supabase_access_token>
-- Next.js API route verifies Supabase JWT using supabase.auth.getUser() with service role
-- If valid, route proceeds; user_id extracted from JWT claims
-- Entitlement token is then minted and returned to app
-- App stores entitlement token in electron-store (short-lived, refreshable, not highly sensitive)
-- App refreshes token proactively at 20-minute mark (before 30-min expiry)
+**subscriptions**:
+```sql
+id uuid PRIMARY KEY
+user_id uuid REFERENCES auth.users(id)
+subscription_id text UNIQUE      -- Dodo subscription ID
+plan_id text                     -- 'prd_xxx' (Dodo product ID)
+product_id text
+status text                      -- 'active' | 'cancelled' | 'on_hold' | 'expired'
+plan_interval text               -- 'month' | 'year'
+current_period_start timestamptz
+current_period_end timestamptz
+cancel_at_period_end boolean
+canceled_at timestamptz
+created_at, updated_at timestamptz
+```
 
-Token refresh flow:
-1. App checks token exp on startup and before each dictation
-2. If exp < 10 minutes remaining → call POST /api/billing/entitlement-token
-3. If refresh fails (offline, expired session) → show "Re-authenticate" prompt
-4. On Supabase session refresh → also refresh entitlement token
+**webhook_events** (audit log):
+```sql
+event_id text PRIMARY KEY        -- Dodo event ID (idempotency)
+type text                        -- Event type
+raw jsonb                        -- Full payload
+received_at timestamptz
+```
 
-A) App → Pricing → Checkout (auth-first, direct redirect)
-- Desktop app Upgrade opens `https://sonicflow.app/pricing?source=app[&checkout_test=true]`.
-- Pricing page renders AuthModal; Google OAuth runs via Supabase SSR helpers. `redirectTo` carries `plan` + `checkout_test`.
-- `/api/auth/callback` exchanges the code, ensures profile row exists, creates Dodo checkout session (trial days optional), and redirects to `session.checkout_url`.
-- Dodo hosted checkout completes → `return_url` = `/checkout/success`. Page clarifies pending vs active statuses and links to Manage Subscription.
-- Webhook flips subscription to `active` a few seconds later; success page explains this delay. Desktop app should wait for `profiles.entitlement_ver` bump or poll `/api/billing/status`, then call `/api/billing/entitlement-token` and cache the token.
+### Database Functions
 
-B) Website direct → Pricing → Checkout
-- Identical to (A); enforce auth via AuthModal before redirecting to checkout. `?checkout_test=true` flag switches CTA copy for internal testing.
+```sql
+-- Fast revocation: bump version to invalidate cached tokens
+CREATE FUNCTION increment_entitlement_ver(user_uuid uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+  UPDATE profiles
+  SET entitlement_ver = entitlement_ver + 1, updated_at = now()
+  WHERE id = user_uuid;
+$$;
+```
 
-C) Checkout without auth (not recommended here; for completeness)
-- Create checkout session without Supabase session (Dodo collects email)
-- On return_url, prompt sign-in; map dodo_customer_id to user_id via email
-- Risks: email mismatches, orphaned customers, delayed entitlement
+**Note**: Webhook handler should call this on `subscription.cancelled`, `subscription.on_hold`, `subscription.expired` events.
 
-UI notes (Pricing & Upgrade)
-- Pricing page uses WaitlistModal/AuthModal visual language (card width 448px, AuthModal component already live). Keep Suspense boundaries around hooks that call `useSearchParams`.
-- CTA copy flips between “Join Waitlist” / “Get Started” by inspecting `checkout_test=true`.
-- Ensure Supabase redirect wildcards include query params (`/api/auth/callback*`).
-- `/checkout/success` now handles `status` variations, includes confetti on success, and exposes `?test=success|pending|error` for QA. UI should focus on a single primary action per state (Manage Subscription, Back to Home, Try Again).
-- “Manage subscription” will eventually create a Dodo customer portal session; server endpoint TBD.
+---
 
-Security & compliance
-- Secrets:
-  - DODO_API_KEY (server-only, Vercel)
-  - DODO_BASE_URL (test: https://test.dodopayments.com, live: https://live.dodopayments.com)
-  - DODO_WEBHOOK_SECRET (server-only, used only by webhook route)
-  - ENTITLEMENT_SIGNING_KEY / JWK (server; verification key in Worker secrets)
-  - SUPABASE_SERVICE_ROLE_KEY (server-only; never in client/Worker)
-- Webhook signature verification mandatory; implement retry-safe idempotency
-- No PANs handled; PCI DSS scope limited to hosted checkout (MoR)
-- Amounts in smallest currency units (e.g., USD cents)
-- 3DS: let Dodo defaults apply; override via session if needed
-- Logs: structured logs of session_id, subscription_id, user_id mappings (avoid secrets)
+## Implementation Phases
 
-Sandbox testing plan
-- Configure staging Vercel + CF Worker to Dodo Test Mode (base URL: https://test.dodopayments.com)
-- Create test Monthly/Yearly products mirroring live
-- E2E tests:
-  - Pricing CTA + AuthModal route through Supabase OAuth, preserve plan + `checkout_test` params (verify Supabase redirect whitelist allows `?plan=` queries).
-  - `/api/auth/callback` creates checkout session and logs payload; verify redirect lands on Dodo.
-  - Use correct regional test cards (US vs India) + UPI handles to validate USD and INR flows (see log `2025-11-29_2230` for card numbers). Wrong region cards will surface `subscription.failed` with `payment_method_id: null`.
-  - Successful checkout → `/checkout/success?status=active` + webhook `subscription.active` → entitlement `is_active=true`.
-  - Pending/incomplete payment → `/checkout/success?status=pending`; confirm message explains webhook delay.
-  - Renewal → `subscription.renewed` extends entitlement, `increment_entitlement_ver` not bumped.
-  - Cancel/on_hold/failed → entitlement false (respect grace if enabled); verify ver bump invalidates old tokens.
-- Webhook idempotency: replay same event_id, verify no duplicate effects
-- Token path:
-  - Entitlement token minted, exp = 30m; Worker accepts; app refreshes at 20m mark
-  - Ver bump revokes old tokens on next check
-  - Grace period (120s) allows completion of in-progress dictations
-- Sentry/observability: alert on webhook non-2xx, Worker 401/402 spikes
+### Phase 1: Entitlement Token Minter (Website)
 
-Production rollout checklist
-- [ ] Switch to live base URL (https://live.dodopayments.com) and live API key
-- [ ] Set DODO_WEBHOOK_SECRET (live) and rotate test secrets
-- [ ] Verify pricing maps to correct live product_ids
-- [ ] Confirm Supabase redirect URLs allow `/api/auth/callback*` (with `plan` + `checkout_test` params) for both apex + www domains
-- [ ] Ensure Dodo webhook + return URLs both use `https://www.sonicflow.app` (match `NEXT_PUBLIC_SITE_URL`)
-- [ ] Enable feature flag for entitlement enforcement; ramp to 10% / 50% / 100%
-- [ ] Alerts:
-  - Webhook failures (>=1 in 10 min)
-  - Worker 401/402 rate increase
-  - Token minting errors
-- [ ] Post-deploy verification: new checkout, renewal, cancel, dunning
+**File**: `site/src/app/api/billing/entitlement-token/route.ts`
 
-Configuration matrix (env vars)
-- Next.js (Vercel)
-  - DODO_API_KEY
-  - DODO_BASE_URL (= https://test.dodopayments.com in staging; https://live.dodopayments.com in prod)
-  - DODO_WEBHOOK_SECRET
-  - ENTITLEMENT_SIGNING_KEY or ENTITLEMENT_JWK (private)
-  - SUPABASE_SERVICE_ROLE_KEY
-  - SUPABASE_URL
-  - RETURN_URL=https://sonicflow.app/billing/return
-- Cloudflare Worker
-  - ENTITLEMENT_VERIFY_KEY or ENTITLEMENT_JWK_PUBLIC
-  - SENTRY_DSN (optional)
+**Endpoint**: `POST /api/billing/entitlement-token`
 
-Future extensions
-- Usage-based billing: add Dodo Meters + Usage Events and blend with fixed fee (see Ingestion Blueprints); entitlement may carry remaining units or fallback to server check per session.
-- Customer portal: expose server endpoint to create Dodo customer portal session for plan changes and payment method updates.
-- Dunning grace: configurable grace for failed renewals (e.g., 12–48 hours) before revocation.
+**Request**:
+```
+Headers:
+  Authorization: Bearer <supabase_access_token>
+```
 
-Implementation steps (sequenced)
-1) Supabase (✅): create/secure tables (`profiles`, `subscriptions`, `webhook_events`), add `increment_entitlement_ver()`, enable RLS.
-2) Next.js web stack (✅ Phases 1-4):
-   - AuthModal + Supabase SSR helpers.
-   - `/api/auth/callback` direct checkout session creation.
-   - `/api/webhooks/dodo`, `/api/billing/status`, `/api/billing/entitlement-token`.
-   - `/checkout/success` UX polish + logging.
-3) Cloudflare Worker (🔜 Phase 5):
-   - Add `worker/src/auth/entitlement.ts` and unit tests.
-   - Enforce Authorization header in `worker/src/handlers/ws.ts` (reject unauthenticated).
-   - Wire JWK/secret via `runtime.ts`.
-4) Desktop app (🔜 Phase 6):
-   - Provide Upgrade entry points that open pricing with Supabase auth.
-   - After purchase, poll `/api/billing/status` or watch `profiles.entitlement_ver`, then call `/api/billing/entitlement-token`.
-   - Cache tokens (electron-store), refresh proactively, include `Authorization: Bearer <entitlement>` header in WS requests to Worker.
-   - Surface entitlement errors (e.g., prompt to upgrade, retry token fetch).
-5) QA in Dodo Test Mode: cover USD/INR, pending/error, idempotency, stress token refresh.
-6) Go live: switch keys/URLs, verify webhook deliveries, monitor Worker metrics, ramp enforcement flag.
+**Response** (success):
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_at": 1701532800,
+  "plan": "pro_monthly",
+  "is_active": true,
+  "ver": 3
+}
+```
 
-References (verified via Context7 MCP)
-- Checkout Sessions with trials
-  - https://docs.dodopayments.com/developer-resources/checkout-session
-  - Example shows subscription_data.trial_period_days and return_url behavior
-- Webhooks
-  - https://docs.dodopayments.com/webhooks
-  - Event taxonomy: subscription.* (active, renewed, on_hold, cancelled, failed, expired), payment.*
-- Base URLs and currency units
-  - Test: https://test.dodopayments.com
-  - Live: https://live.dodopayments.com
-  - Amounts in smallest currency unit (e.g., USD cents)
+**Response** (no active subscription):
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_at": 1701532800,
+  "plan": "free",
+  "is_active": false,
+  "ver": 1
+}
+```
+
+**Implementation**:
+```typescript
+// Pseudocode
+1. Extract Bearer token from Authorization header
+2. Verify Supabase access token: supabase.auth.getUser(token)
+3. Query active subscription:
+   SELECT * FROM subscriptions 
+   WHERE user_id = $1 AND status = 'active'
+   ORDER BY created_at DESC LIMIT 1
+4. Query entitlement version:
+   SELECT entitlement_ver FROM profiles WHERE id = $1
+5. Determine plan:
+   - If active subscription: map product_id → 'pro_monthly' | 'pro_yearly'
+   - If no subscription: 'free'
+6. Mint JWT with jose:
+   {
+     sub: user_id,
+     is_active: boolean,
+     plan: string,
+     ver: number,
+     iat: now,
+     exp: now + 30 minutes
+   }
+7. Sign with ENTITLEMENT_SIGNING_KEY (HS256)
+8. Return { token, expires_at, plan, is_active, ver }
+```
+
+**Environment Variables** (Vercel):
+- `ENTITLEMENT_SIGNING_KEY` - Shared secret for JWT signing (min 32 chars)
+
+**Testing**:
+```bash
+# Get a Supabase access token (from browser devtools or supabase.auth.getSession())
+ACCESS_TOKEN="eyJ..."
+
+# Call the endpoint
+curl -X POST https://sonicflow.app/api/billing/entitlement-token \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json"
+
+# Decode the JWT to verify claims
+echo "TOKEN" | cut -d'.' -f2 | base64 -d | jq
+```
+
+---
+
+### Phase 2: Worker JWT Gating (Cloudflare)
+
+**Files**:
+- `worker/src/auth/entitlement.ts` - JWT verification logic
+- `worker/src/handlers/ws.ts` - Add auth check at connection start
+
+**entitlement.ts**:
+```typescript
+// Pseudocode
+export interface EntitlementClaims {
+  sub: string;      // user_id
+  is_active: boolean;
+  plan: 'free' | 'pro_monthly' | 'pro_yearly';
+  ver: number;
+  iat: number;
+  exp: number;
+}
+
+export async function verifyEntitlementToken(
+  token: string,
+  secret: string
+): Promise<{ valid: true; claims: EntitlementClaims } | { valid: false; error: string }> {
+  // 1. Decode and verify JWT signature (use jose or manual HMAC)
+  // 2. Check exp > now
+  // 3. Check is_active === true
+  // 4. Return claims or error
+}
+```
+
+**ws.ts modifications**:
+```typescript
+// At the start of wsRoute():
+1. Extract Authorization header from upgrade request
+2. If missing → close with 4010 "Authorization required"
+3. Extract Bearer token
+4. Call verifyEntitlementToken(token, env.ENTITLEMENT_VERIFY_KEY)
+5. If invalid → close with 4010 "Invalid token" 
+6. If !is_active → close with 4020 "Subscription required"
+7. If valid → proceed with transcription
+8. Attach user_id (from claims.sub) to session for telemetry
+```
+
+**WebSocket Close Codes**:
+- `4010` - Unauthorized (invalid/expired token)
+- `4020` - Payment Required (no active subscription)
+- `1000` - Normal closure
+
+**Environment Variables** (Cloudflare):
+- `ENTITLEMENT_VERIFY_KEY` - Same as ENTITLEMENT_SIGNING_KEY (for HS256)
+
+**Testing**:
+```bash
+# Test without token (should fail)
+wscat -c "wss://api.sonicflow.app/ws"
+# Expected: Connection closed with 4010
+
+# Test with invalid token
+wscat -c "wss://api.sonicflow.app/ws" -H "Authorization: Bearer invalid"
+# Expected: Connection closed with 4010
+
+# Test with valid token (get from /api/billing/entitlement-token)
+wscat -c "wss://api.sonicflow.app/ws" -H "Authorization: Bearer eyJ..."
+# Expected: Connection established
+```
+
+---
+
+### Phase 3: App Token Management (Electron)
+
+**Files**:
+- `src/services/entitlement.ts` - Token fetch, cache, refresh
+- `src/hooks/useEntitlement.ts` - React hook for entitlement state
+- `src/hooks/useTranscription.ts` - Add Authorization header
+- `src/lib/supabaseClient.ts` - Add getAccessToken helper
+
+**entitlement.ts**:
+```typescript
+// Key functions:
+
+// Fetch token from website API
+export async function fetchEntitlementToken(): Promise<EntitlementToken | null>
+
+// Get cached token, refresh if needed
+export async function getValidEntitlementToken(): Promise<string | null>
+
+// Store token in electron-store
+function cacheToken(token: EntitlementToken): void
+
+// Check if token needs refresh (< 5 min remaining)
+function shouldRefresh(expiresAt: number): boolean
+
+// Clear cached token (on sign out)
+export function clearEntitlementToken(): void
+```
+
+**useTranscription.ts modifications**:
+```typescript
+// Before opening WebSocket:
+const token = await getValidEntitlementToken();
+if (!token) {
+  // Show sign-in prompt
+  return;
+}
+
+// Open WebSocket with Authorization header
+const ws = new WebSocket(url);
+// Note: WebSocket API doesn't support headers directly
+// Options:
+// A) Pass token in URL: wss://api.sonicflow.app/ws?token=xxx (less secure)
+// B) Pass token in first message after connection (custom protocol)
+// C) Use subprotocol: new WebSocket(url, [`bearer.${token}`])
+
+// Recommended: Option B - send token in "auth" message before "start"
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: 'auth', token }));
+};
+```
+
+**Worker protocol update** (Phase 2 adjustment):
+```typescript
+// Instead of checking header (WebSocket limitation), check first message:
+server.addEventListener('message', async (evt) => {
+  const msg = parseMessage(evt.data);
+  
+  if (!authenticated) {
+    if (msg.type === 'auth') {
+      const result = verifyEntitlementToken(msg.token, secret);
+      if (!result.valid) {
+        safeClose(server, 4010, result.error);
+        return;
+      }
+      if (!result.claims.is_active) {
+        safeClose(server, 4020, 'Subscription required');
+        return;
+      }
+      authenticated = true;
+      session.userId = result.claims.sub;
+      return;
+    } else {
+      safeClose(server, 4010, 'Auth required');
+      return;
+    }
+  }
+  
+  // ... rest of message handling
+});
+```
+
+**Testing**:
+1. Sign in to app with Google OAuth
+2. Check electron-store for cached token
+3. Dictate something → verify it works
+4. Wait for token to approach expiry → verify refresh happens
+5. Sign out → verify token cleared
+
+---
+
+### Phase 4: Upgrade Flow from App
+
+**Files**:
+- `src/components/UpgradePrompt.tsx` - Modal shown when 4020 received
+- `src/components/SettingsPanel.tsx` - Add "Upgrade" button
+- `src/main.ts` - Handle deep link callback (optional)
+
+**Flow**:
+1. User clicks "Upgrade" in settings OR app receives 4020 error
+2. Open external URL: `https://sonicflow.app/pricing?source=app`
+3. User completes checkout on website
+4. User returns to app (either manually or via deep link)
+5. App fetches new entitlement token
+6. Success! User can now transcribe
+
+**Deep Link (optional, nice-to-have)**:
+```
+sonicflow://checkout/success?status=active
+```
+- Website checkout success page could include "Return to App" button
+- App registers custom protocol handler
+- On receiving deep link, app refreshes entitlement token
+
+**Simple Version (MVP)**:
+- Just poll `/api/billing/status` on a timer while upgrade modal is open
+- When status becomes active, refresh token and dismiss modal
+
+**Testing**:
+1. Open app without subscription → should see upgrade prompt
+2. Click upgrade → website opens
+3. Complete test payment
+4. Return to app → should be able to transcribe
+
+---
+
+## JWT Entitlement Design
+
+### Claims
+
+```json
+{
+  "sub": "uuid-user-id",
+  "is_active": true,
+  "plan": "pro_monthly",
+  "ver": 3,
+  "iat": 1701532800,
+  "exp": 1701534600
+}
+```
+
+| Claim | Type | Description |
+|-------|------|-------------|
+| `sub` | string | User ID (UUID) |
+| `is_active` | boolean | Has active subscription |
+| `plan` | string | 'free' \| 'pro_monthly' \| 'pro_yearly' |
+| `ver` | number | Entitlement version (for fast revocation) |
+| `iat` | number | Issued at timestamp |
+| `exp` | number | Expiry timestamp (iat + 30 min) |
+
+### Signing
+
+- **Algorithm**: HS256 (HMAC-SHA256 with shared secret)
+- **Secret**: 32+ character random string, stored in:
+  - Vercel: `ENTITLEMENT_SIGNING_KEY`
+  - Cloudflare: `ENTITLEMENT_VERIFY_KEY` (same value)
+
+### Token Lifecycle
+
+```
+1. App signs in → calls /api/billing/entitlement-token
+2. Token valid for 30 minutes
+3. App refreshes at 20-minute mark (proactive)
+4. On subscription cancel:
+   - Webhook bumps entitlement_ver
+   - Old tokens still work until expiry (max 30 min grace)
+   - New tokens minted with updated ver
+5. On sign out: app clears cached token
+```
+
+### Fast Revocation (Future Enhancement)
+
+For instant revocation (e.g., chargeback), Worker could:
+1. Periodically fetch latest `ver` values for active users
+2. Compare token `ver` with fetched value
+3. Reject if stale
+
+Not needed for MVP since 30-min expiry is acceptable grace period.
+
+---
+
+## Testing Strategy
+
+### Phase 1: Token Minter
+
+| Test | Expected |
+|------|----------|
+| Call with valid Supabase token + active sub | Return JWT with is_active=true, plan=pro_* |
+| Call with valid token + no sub | Return JWT with is_active=false, plan=free |
+| Call with invalid token | Return 401 |
+| Call without Authorization header | Return 401 |
+| Decode returned JWT | Claims match expected values |
+
+### Phase 2: Worker Gating
+
+| Test | Expected |
+|------|----------|
+| Connect without auth message | Close 4010 |
+| Send auth with invalid token | Close 4010 |
+| Send auth with expired token | Close 4010 |
+| Send auth with is_active=false | Close 4020 |
+| Send auth with valid token | Connection proceeds |
+| Send start before auth | Close 4010 |
+
+### Phase 3: App Token Management
+
+| Test | Expected |
+|------|----------|
+| Sign in → token fetched | Token in electron-store |
+| Token near expiry → auto-refresh | New token fetched |
+| Sign out → token cleared | electron-store empty |
+| Offline → use cached token | Works until expiry |
+| Token expired + offline | Prompt re-auth |
+
+### Phase 4: Upgrade Flow
+
+| Test | Expected |
+|------|----------|
+| Click upgrade → website opens | Browser opens pricing page |
+| Complete payment → return | App detects active sub |
+| Cancel mid-checkout | App handles gracefully |
+
+### E2E: Full Paid Flow
+
+1. Fresh user signs up on website
+2. Completes payment
+3. Opens app, signs in with same Google account
+4. App fetches entitlement token (is_active=true)
+5. User dictates successfully
+6. User cancels subscription on website
+7. Webhook fires, entitlement_ver bumps
+8. Within 30 min: old token still works
+9. After 30 min: new token has is_active=false
+10. App prompts to re-subscribe
+
+---
+
+## Configuration Matrix
+
+### Website (Vercel)
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | https://xxx.supabase.co |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key | eyJ... |
+| `SUPABASE_SERVICE_ROLE_KEY` | Admin access for webhooks | eyJ... |
+| `DODO_PAYMENTS_API_KEY` | Dodo API key | sk_test_xxx |
+| `DODO_PAYMENTS_ENVIRONMENT` | test_mode \| live_mode | test_mode |
+| `DODO_PAYMENTS_WEBHOOK_KEY` | Webhook signature key | whk_xxx |
+| `NEXT_PUBLIC_PRODUCT_ID_MONTHLY` | Dodo product ID | prd_xxx |
+| `NEXT_PUBLIC_PRODUCT_ID_ANNUAL` | Dodo product ID | prd_xxx |
+| `ENTITLEMENT_SIGNING_KEY` | JWT signing secret | random-32-char-string |
+| `NEXT_PUBLIC_SITE_URL` | Canonical site URL | https://www.sonicflow.app |
+
+### Cloudflare Worker
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `SUPABASE_URL` | For telemetry logging | https://xxx.supabase.co |
+| `SUPABASE_SERVICE_ROLE_KEY` | For telemetry logging | eyJ... |
+| `ENTITLEMENT_VERIFY_KEY` | JWT verification secret | (same as SIGNING_KEY) |
+| `GROQ_API_KEY` | STT/LLM provider | gsk_xxx |
+| ... (existing) | ... | ... |
+
+### Electron App
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `VITE_SUPABASE_URL` | Supabase project URL | https://xxx.supabase.co |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key | eyJ... |
+| `VITE_TRANSCRIBE_WS_URL` | Worker WebSocket URL | wss://api.sonicflow.app/ws |
+| `VITE_SITE_URL` | Website URL for upgrade | https://www.sonicflow.app |
+
+---
+
+## Future: Free Tier with Usage Limits
+
+**Deferred** from initial implementation. Design notes for later:
+
+### Quota Model
+
+- **Free tier**: 2000 words per calendar month
+- **Paid tier**: Unlimited
+
+### Implementation
+
+1. **Worker queries usage** before processing (free users only):
+   ```sql
+   SELECT COALESCE(SUM(word_count), 0) as monthly_words
+   FROM dictation_logs
+   WHERE user_id = $1
+   AND created_at >= DATE_TRUNC('month', NOW())
+   ```
+
+2. **JWT includes usage info**:
+   ```json
+   {
+     "sub": "...",
+     "is_active": true,
+     "plan": "free",
+     "usage": { "words": 847, "limit": 2000, "period": "2025-12" }
+   }
+   ```
+
+3. **Worker enforces**:
+   - If free + usage >= limit → Close 4021 (quota exceeded)
+   - If paid → Skip usage check
+
+4. **App shows usage**:
+   - Settings panel shows "847 / 2000 words this month"
+   - Warning when approaching limit
+
+### Why Calendar Month?
+
+- Simpler query (DATE_TRUNC vs rolling window)
+- More predictable for users ("resets on the 1st")
+- Easier to explain in UI
+
+---
+
+## References
+
+### Agent Logs (Chronological)
+
+- `agent-logs/2025-11-29_1501_payments-auth-integration.md` - Supabase SSR + AuthModal
+- `agent-logs/2025-11-29_1638_payments-checkout-direct.md` - Direct checkout redirect
+- `agent-logs/2025-11-29_2030_payments-webhook-debugging.md` - Webhook handler
+- `agent-logs/2025-11-29_2230_payments-webhook-success.md` - INR/USD payment testing
+- `agent-logs/2025-11-29_2307_checkout-success-redesign.md` - Success page polish
+
+### Documentation
+
+- `docs/DATABASE.md` - Schema, RLS, functions
+- `docs/TRANSCRIPTION.md` - Audio pipeline architecture
+- `docs/AUTH.md` - Supabase OAuth setup (if exists)
+
+### External
+
+- [Dodo Payments Docs](https://docs.dodopayments.com/)
+- [Supabase SSR Guide](https://supabase.com/docs/guides/auth/server-side-rendering)
+- [jose JWT Library](https://github.com/panva/jose)
+
+---
+
+**Last Updated**: 2025-12-02  
+**Next Action**: Phase 1 - Build entitlement token minter on website
