@@ -1,6 +1,6 @@
 # Payments Blueprint — Dodo Payments + Supabase + Cloudflare Worker
 
-**Status**: Website stack live (Auth + Checkout + Webhooks); Worker gating + App integration pending  
+**Status**: Website stack live; Worker gating + App auth **IMPLEMENTED** (PR #172); Upgrade UI pending  
 **Owners**: Payments/Infra  
 **Last updated**: 2025-12-02
 
@@ -87,15 +87,20 @@ Supabase already gives users a JWT when they sign in
 | Checkout success page | `src/app/checkout/success/page.tsx` | ✅ Live |
 | Database schema | Supabase (profiles, subscriptions, webhook_events) | ✅ Live |
 
-### 🔜 Pending (This Document)
+### ✅ Completed (Worker + App - PR #172)
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| **Worker: JWT verification** | `worker/src/auth/supabaseJwt.ts` | ✅ Done |
+| **Worker: Subscription check** | `worker/src/auth/subscription.ts` | ✅ Done |
+| **Worker: Auth flow in WS** | `worker/src/handlers/ws.ts` | ✅ Done |
+| **App: Send token in WS** | `src/hooks/useTranscription.ts` | ✅ Done |
+| **App: Handle auth errors** | `src/hooks/useTranscription.ts` | ✅ Done |
+
+### 🔜 Pending
 
 | Component | Location | Priority |
 |-----------|----------|----------|
-| **Worker: JWT verification** | `worker/src/auth/supabaseJwt.ts` | P0 - Next |
-| **Worker: Subscription check** | `worker/src/auth/subscription.ts` | P0 |
-| **Worker: Auth flow in WS** | `worker/src/handlers/ws.ts` | P0 |
-| **App: Send token in WS** | `src/hooks/useTranscription.ts` | P0 |
-| **App: Handle auth errors** | `src/hooks/useTranscription.ts` | P0 |
 | App: Upgrade flow UI | `src/components/` | P1 |
 | Webhook: Call increment_entitlement_ver | `site: webhook handler` | P1 (nice-to-have) |
 
