@@ -83,7 +83,31 @@ const pillReducer = (
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
-      if (event.type === "NOTIFY")
+      if (event.type === "NOTIFY") {
+        // If it's an error notification (starts with common error phrases),
+        // show it immediately instead of queuing it
+        const isErrorNotif = event.msg && (
+          event.msg.includes("required") ||
+          event.msg.includes("failed") ||
+          event.msg.includes("error") ||
+          event.msg.toLowerCase().includes("subscription")
+        );
+
+        if (isErrorNotif) {
+          // Cancel listening and show error notification immediately
+          return {
+            state: "NOTIFICATION",
+            context: {
+              ...state.context,
+              notifMsg: event.msg,
+              notifAction: event.actionId ?? null,
+              pendingNotif: undefined,
+              pendingNotifAction: undefined,
+            },
+          };
+        }
+
+        // For non-error notifications, queue them for after processing
         return {
           ...state,
           context: {
@@ -92,6 +116,7 @@ const pillReducer = (
             pendingNotifAction: event.actionId ?? null,
           },
         };
+      }
       return state;
     case "PROCESSING":
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
@@ -1044,14 +1069,11 @@ const AppInner: React.FC = () => {
   // Show notification for auth errors (subscription required, not signed in, etc.)
   useEffect(() => {
     if (trans.authError && trans.error) {
-      // Dispatch NOTIFY event to show the error message
+      // Always dispatch NOTIFY when auth error occurs
+      // This will work from any state (IDLE, LISTENING, etc.)
       pillDispatch({ type: "NOTIFY", msg: trans.error });
-      // Also ensure we're not stuck in LISTENING state
-      if (pillState === "LISTENING") {
-        pillDispatch({ type: "CANCEL" });
-      }
     }
-  }, [trans.authError, trans.error, pillState, pillDispatch]);
+  }, [trans.authError, trans.error, pillDispatch]);
 
   // Listen for expand pill requests from main process
   useEffect(() => {

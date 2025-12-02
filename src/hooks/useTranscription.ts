@@ -1157,12 +1157,8 @@ export function useTranscription(
       setError(null);
     }
     setText("");
-    setRecording(true);
 
-    // Resume audio worklet if it was paused
-    resumeAudioWorklet();
-
-    // Reset streaming state
+    // Reset streaming state BEFORE auth check
     seqRef.current = 0;
     sendQueueRef.current = [];
     sendQueueBytesRef.current = 0;
@@ -1190,7 +1186,11 @@ export function useTranscription(
       // This Promise resolves when auth succeeds, rejects if auth fails
       await ensureStreamingSocket();
 
-      // Auth succeeded! Now send the start message
+      // Auth succeeded! Now we can start recording
+      setRecording(true);
+      resumeAudioWorklet();
+
+      // Send the start message
       trySendStartMessage();
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
