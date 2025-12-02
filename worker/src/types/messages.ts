@@ -19,6 +19,16 @@ export type ClientIdentityPayload = {
   email?: string;
 };
 
+/**
+ * Auth message sent by client immediately after WebSocket connection
+ * Must be the first message before any transcription can begin
+ */
+export type ClientAuthMessage = {
+  type: 'auth';
+  /** Supabase access token (JWT) */
+  token: string;
+};
+
 export type ClientStartMessage = {
   type: 'start';
   version?: number;
@@ -44,10 +54,31 @@ export type ClientChunkMessage = {
 };
 
 export type ClientMessage =
+  | ClientAuthMessage
   | ClientStartMessage
   | ClientEndMessage
   | ClientCancelMessage
   | ClientChunkMessage;
+
+/**
+ * Auth success response - client can now send start message
+ */
+export type ServerAuthOkMessage = {
+  type: 'auth_ok';
+  /** User ID from JWT (for client-side logging) */
+  userId?: string;
+};
+
+/**
+ * Auth failure response - connection will be closed after this
+ */
+export type ServerAuthErrorMessage = {
+  type: 'auth_error';
+  /** Human-readable error message */
+  error: string;
+  /** Error code matching close code (4010 = unauthorized, 4020 = payment required) */
+  code: number;
+};
 
 export type ServerStatusMessage = {
   type: 'status';
@@ -129,6 +160,8 @@ export type ServerChunkResultMessage = {
 };
 
 export type ServerMessage =
+  | ServerAuthOkMessage
+  | ServerAuthErrorMessage
   | ServerStatusMessage
   | ServerFinalMessage
   | ServerErrorMessage
@@ -139,6 +172,11 @@ export type ServerMessage =
 export function parseClientMessage(msg: unknown): ClientMessage | null {
   if (!msg || typeof msg !== 'object') return null;
   const t = (msg as any).type;
+  if (t === 'auth') {
+    const m = msg as any;
+    const token = typeof m.token === 'string' ? m.token : '';
+    return { type: 'auth', token };
+  }
   if (t === 'start') {
     const m = msg as any;
     const version = typeof m.version === 'number' ? m.version : undefined;

@@ -15,6 +15,13 @@ import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editP
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
+import { getSupabaseClient } from '../db/supabase';
+import {
+  verifySupabaseJwt,
+  checkSubscription,
+  WS_CLOSE_CODES,
+  AUTH_TIMEOUT_MS,
+} from '../auth';
 import {
   GROQ_STT_ENDPOINT,
   FIREWORKS_STT_TURBO_ENDPOINT,
@@ -26,15 +33,22 @@ import {
 } from '../config';
 
 type Bindings = {
+  // Supabase (required for auth)
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  // STT providers
   GROQ_API_KEY?: string;
   FIREWORKS_API_KEY?: string;
   DEEPGRAM_API_KEY?: string;
+  // LLM providers
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  // LLM config
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
   LLM_MODEL?: string; // default from src/config.ts
+  // OpenRouter config
   OPENROUTER_HTTP_REFERER?: string;
   OPENROUTER_APP_TITLE?: string;
   OPENROUTER_PROVIDER_SORT?: string;
@@ -50,6 +64,8 @@ type Bindings = {
   OPENROUTER_PROVIDER_MAX_PRICE_COMPLETION?: string;
   OPENROUTER_PROVIDER_MAX_PRICE_REQUEST?: string;
   OPENROUTER_PROVIDER_MAX_PRICE_IMAGE?: string;
+  // Auth bypass (for dev/testing)
+  SKIP_AUTH?: string; // '1' | 'true' to skip auth check
 };
 
 function parseBoolish(value?: string): boolean | undefined {
@@ -156,6 +172,42 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.accept();
   // Accept silently; avoid emitting ws.accepted logs to Sentry to reduce noise
 
+  // --------------------------------------------------------------------------
+  // AUTH STATE
+  // --------------------------------------------------------------------------
+  // Whether SKIP_AUTH is enabled (for local dev)
+  const skipAuth = parseBoolish(c.env.SKIP_AUTH) === true;
+
+  // Auth state — must be authenticated before processing starts
+  let authenticated = skipAuth; // Start authenticated if SKIP_AUTH is set
+  let authenticatedUserId: string | null = null;
+  let authenticatedEmail: string | null = null;
+  let authTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  // Set up auth timeout — close connection if no auth within timeout
+  if (!skipAuth) {
+    authTimeoutHandle = setTimeout(() => {
+      if (!authenticated && !socketClosed) {
+        console.log(JSON.stringify({
+          event: 'auth.timeout',
+          clientIP,
+          timeoutMs: AUTH_TIMEOUT_MS,
+        }));
+        safely(() =>
+          server.send(
+            JSON.stringify({
+              type: 'auth_error',
+              error: 'Authentication timeout - please send auth message',
+              code: WS_CLOSE_CODES.AUTH_TIMEOUT,
+            }),
+          ),
+        );
+        safeClose(server, WS_CLOSE_CODES.AUTH_TIMEOUT, 'auth timeout');
+        releaseConnection(clientIP);
+      }
+    }, AUTH_TIMEOUT_MS);
+  }
+
   // Track optional language from client
   let clientLanguage: string | undefined = undefined;
 
@@ -166,6 +218,179 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         const msg = safeJson(data);
         const parsed = parseClientMessage(msg);
         if (!parsed) return;
+
+        // --------------------------------------------------------------------------
+        // AUTH MESSAGE HANDLER
+        // --------------------------------------------------------------------------
+        if (parsed.type === 'auth') {
+          // Clear auth timeout since we received an auth attempt
+          if (authTimeoutHandle) {
+            clearTimeout(authTimeoutHandle);
+            authTimeoutHandle = null;
+          }
+
+          // Don't process if already authenticated
+          if (authenticated) {
+            connLog.warn('[WS] duplicate auth ignored');
+            return;
+          }
+
+          const { token } = parsed;
+          if (!token) {
+            console.log(JSON.stringify({
+              event: 'auth.missing_token',
+              clientIP,
+            }));
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: 'Token is required',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'missing token');
+            releaseConnection(clientIP);
+            return;
+          }
+
+          // Verify JWT
+          const supabaseUrl = c.env.SUPABASE_URL;
+          if (!supabaseUrl) {
+            console.error('[Auth] SUPABASE_URL not configured');
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: 'Server configuration error',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'server config error');
+            releaseConnection(clientIP);
+            return;
+          }
+
+          const jwtResult = await verifySupabaseJwt(token, supabaseUrl);
+          if (jwtResult.valid === false) {
+            console.log(JSON.stringify({
+              event: 'auth.jwt_invalid',
+              clientIP,
+              error: jwtResult.error,
+              code: jwtResult.code,
+            }));
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: jwtResult.code === 'expired' ? 'Token has expired' : 'Invalid token',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, jwtResult.error);
+            releaseConnection(clientIP);
+            return;
+          }
+
+          // JWT is valid — check subscription
+          const supabase = getSupabaseClient(c.env);
+          if (!supabase) {
+            console.error('[Auth] Supabase client not available');
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: 'Server configuration error',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'supabase not configured');
+            releaseConnection(clientIP);
+            return;
+          }
+
+          const subscriptionResult = await checkSubscription(supabase, jwtResult.userId);
+          if (subscriptionResult.hasAccess === false) {
+            console.log(JSON.stringify({
+              event: 'auth.no_subscription',
+              clientIP,
+              userId: jwtResult.userId,
+              reason: subscriptionResult.reason,
+              status: subscriptionResult.status,
+            }));
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error:
+                    subscriptionResult.reason === 'no_subscription'
+                      ? 'Subscription required'
+                      : subscriptionResult.reason === 'inactive'
+                        ? 'Subscription inactive'
+                        : 'Unable to verify subscription',
+                  code: WS_CLOSE_CODES.PAYMENT_REQUIRED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.PAYMENT_REQUIRED, subscriptionResult.reason);
+            releaseConnection(clientIP);
+            return;
+          }
+
+          // Success! Mark as authenticated
+          authenticated = true;
+          authenticatedUserId = jwtResult.userId;
+          authenticatedEmail = jwtResult.email;
+
+          console.log(JSON.stringify({
+            event: 'auth.success',
+            clientIP,
+            userId: jwtResult.userId,
+            subscriptionStatus: subscriptionResult.status,
+          }));
+
+          // Send auth success
+          safely(() =>
+            server.send(
+              JSON.stringify({
+                type: 'auth_ok',
+                userId: jwtResult.userId,
+              }),
+            ),
+          );
+          return;
+        }
+
+        // --------------------------------------------------------------------------
+        // REQUIRE AUTH FOR ALL OTHER MESSAGES
+        // --------------------------------------------------------------------------
+        if (!authenticated) {
+          console.log(JSON.stringify({
+            event: 'auth.required',
+            clientIP,
+            messageType: parsed.type,
+          }));
+          safely(() =>
+            server.send(
+              JSON.stringify({
+                type: 'auth_error',
+                error: 'Authentication required - send auth message first',
+                code: WS_CLOSE_CODES.UNAUTHORIZED,
+              }),
+            ),
+          );
+          safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'not authenticated');
+          releaseConnection(clientIP);
+          return;
+        }
+
+        // --------------------------------------------------------------------------
+        // AUTHENTICATED MESSAGE HANDLERS
+        // --------------------------------------------------------------------------
         if (parsed.type === 'start') {
           if (sessionActive) {
             connLog.warn('[WS] duplicate start ignored');
@@ -1217,6 +1442,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     // Only log ws_close when abnormal or no final was sent (to reduce noise)
     // Reduce noise: no Sentry logs for closes; rely on session_summary for observability
     socketClosed = true;
+    // Clean up auth timeout
+    if (authTimeoutHandle) {
+      clearTimeout(authTimeoutHandle);
+      authTimeoutHandle = null;
+    }
     safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();
@@ -1228,6 +1458,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('error', (evt) => {
     connLog.error('[WS] socket error', { error: String(evt) });
     socketClosed = true;
+    // Clean up auth timeout
+    if (authTimeoutHandle) {
+      clearTimeout(authTimeoutHandle);
+      authTimeoutHandle = null;
+    }
     safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();
