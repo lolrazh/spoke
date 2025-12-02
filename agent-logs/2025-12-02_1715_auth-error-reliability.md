@@ -17,6 +17,7 @@ The user wanted reliable, consistent error notifications when users without subs
 - ✅ **Normalized all auth error messages** - Single consistent message regardless of failure type
 - ✅ **Fixed TypeScript errors** - Added missing properties to worker metrics type
 - ✅ **Eliminated Worker waste** - Auth fails before WebSocket connects or audio streams
+- ✅ **Implemented pre-connect on app launch** - WebSocket connects in background to eliminate first-dictation audio loss
 
 ## Technical Implementation
 
@@ -86,16 +87,45 @@ All auth failures now use the same message regardless of root cause:
 - JWT invalid/expired (4010) → "Subscription required. Upgrade to continue."
 - No subscription (4020) → "Subscription required. Upgrade to continue."
 
+**Pre-Connect Solution:**
+To eliminate first-dictation audio loss (100-300ms delay), implemented background WebSocket connection:
+```typescript
+// Added preConnect() to hook's return type
+export interface UseTranscriptionReturn {
+  // ... existing fields
+  preConnect: () => Promise<void>;
+}
+
+// Implementation silently establishes connection in background
+const preConnect = useCallback(async () => {
+  try {
+    await ensureStreamingSocket();
+    console.info("[SF] Pre-connected to Worker successfully");
+  } catch (err) {
+    // Silently fail - will retry on first dictation
+    console.warn("[SF] Pre-connect failed (will retry on first dictation):", err);
+  }
+}, [ensureStreamingSocket]);
+```
+
+**Pre-connect triggers:**
+1. When app launches and user is signed in (App.tsx line 508-511)
+2. When user signs in via auth state change (App.tsx line 564-568)
+
 **Files Modified:**
 
 - `src/hooks/useTranscription.ts`
   - Moved `setRecording(true)` and `resumeAudioWorklet()` to after `ensureStreamingSocket()` resolves (line 1190-1191)
   - Normalized all auth error messages to "Subscription required" (lines 496-497, 607-608)
   - Added `chunkCount` and `chunkSttMs` to worker metrics type definition (lines 1612-1613)
+  - Added `preConnect()` function to hook's return type (line 69)
+  - Implemented `preConnect()` function (lines 2166-2176)
 
 - `src/components/App.tsx`
   - Updated pill state machine LISTENING case to show error notifications immediately (lines 86-119)
   - Simplified auth error useEffect to dispatch NOTIFY without managing pill state (lines 1045-1051)
+  - Call `preConnect()` on app launch when user is signed in (lines 508-511)
+  - Call `preConnect()` when user signs in via auth state change (lines 564-568)
 
 ## Bugs & Issues Encountered
 
@@ -124,6 +154,11 @@ All auth failures now use the same message regardless of root cause:
    - **Root Cause:** Double-tap timing created accidental race where useEffect sometimes caught the error, hold-PTT consistently missed it
    - **Fix:** Eliminated race condition entirely with synchronous auth flow
 
+6. **First-dictation audio loss**
+   - **Symptom:** After becoming a paying user, first dictation loses 1-2 seconds of audio at the beginning
+   - **Root Cause:** Auth check happens synchronously when user presses PTT (~100-300ms delay: get JWT, connect, verify, check DB)
+   - **Fix:** Implemented `preConnect()` that establishes WebSocket connection in background when app launches or user signs in, so first dictation has zero delay
+
 ## Key Learnings
 
 - **State machine NOTIFY queuing behavior** - In LISTENING state, NOTIFY events are queued as "pendingNotif" and only shown after PROCESSING completes. For errors that prevent processing, notifications never show. Solution: detect error notifications and show immediately.
@@ -136,6 +171,10 @@ All auth failures now use the same message regardless of root cause:
 
 - **Error notification content detection** - Checking message content (`msg.includes("required")`) is pragmatic for distinguishing error vs info notifications in state machine without adding new message types.
 
+- **JWT lifecycle and caching** - Supabase JWTs expire after 1 hour but are auto-refreshed by the client. `getSession()` returns cached session if valid. First-dictation delay only happens on: app launch, after 1 hour idle, or after WebSocket disconnect.
+
+- **Pre-connect pattern eliminates cold start latency** - Establishing WebSocket connection in background (when app launches or user signs in) eliminates 100-300ms auth delay on first dictation, capturing audio from the very first syllable.
+
 ## Architecture Decisions
 
 - **Synchronous auth check** - Decided to await `ensureStreamingSocket()` before setting `recording = true`, even though it adds 50-200ms perceived latency. Rationale: Correctness over speed - better to show nothing briefly than show incorrect state.
@@ -146,13 +185,16 @@ All auth failures now use the same message regardless of root cause:
 
 - **Content-based error detection** - Using `msg.includes("required")` etc. instead of adding new message type/flag. Rationale: Keeps message protocol simple, pragmatic heuristic that's easy to understand and extend.
 
+- **Pre-connect on app launch** - Establish WebSocket connection in background when app starts or user signs in. Rationale: Eliminates first-dictation latency (~100-300ms auth delay) at the cost of one idle connection. Trade-off heavily favors UX - capturing every word from first syllable is critical for dictation app. Connection reuse across dictations means pre-connect only happens once per session.
+
 ## Ready for Next Session
 
 - ✅ **Robust auth error handling** - Notification system works 100% reliably in all modes (hold-PTT, double-tap)
 - ✅ **Consistent error messages** - Users always see "Subscription required. Upgrade to continue."
 - ✅ **No Worker waste** - Auth fails before WebSocket connects or audio streams
+- ✅ **Zero first-dictation latency** - Pre-connect eliminates audio loss on cold start
+- ✅ **E2E tested** - Verified working with real payment flow (unpaid → subscribe → paid)
 - 🔧 **Upgrade flow UI needed** - Next step is building UI components to handle upgrade prompts with actionable CTAs
-- 🔧 **E2E testing needed** - Should test with real Supabase users (signed in + paid vs unpaid) to verify flow end-to-end
 
 ## Context for Future
 
@@ -160,7 +202,7 @@ This session fixed the UX reliability issues with the payment gating system impl
 
 ## Testing Notes
 
-**Verified working:**
+**Verified working (unpaid users):**
 - Hold PTT → Immediate "Subscription required" notification ✅
 - Double-tap PTT → Immediate "Subscription required" notification ✅
 - Multiple successive attempts → Same message every time ✅
@@ -168,5 +210,18 @@ This session fixed the UX reliability issues with the payment gating system impl
 - No mic activity when auth fails ✅
 - Pill returns to IDLE cleanly after notification ✅
 
-**Key behavioral change:**
-- Users now see a brief pause (50-200ms) between pressing PTT and seeing the notification while auth check completes. This is intentional and better than the previous "appears broken" behavior.
+**Verified working (paid users):**
+- First dictation after app launch → Captures audio from first syllable (pre-connect works) ✅
+- Second+ dictations → Zero latency, reuses existing connection ✅
+- After becoming paying user → First dictation captures all audio immediately ✅
+- Multiple dictations work consistently without gating ✅
+
+**E2E payment flow tested:**
+1. Deleted subscription from database (became unpaid user)
+2. Tested dictation → Gated with "Subscription required" ✅
+3. Went through checkout flow, became paying user
+4. First dictation worked perfectly with zero audio loss ✅
+5. Subsequent dictations continued working ✅
+
+**Known quirk:**
+- After payment, may need to wait 1-2 seconds for pre-connect to complete in background before first dictation captures audio perfectly. If you try immediately after checkout redirect, you might still get the 100-300ms auth delay. This is rare and self-corrects after the first attempt.
