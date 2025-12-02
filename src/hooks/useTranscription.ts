@@ -274,6 +274,19 @@ export function useTranscription(
     const ws = wsRef.current;
     if (!ws || startSentRef.current) return;
     if (ws.readyState !== WebSocket.OPEN) return;
+    // CRITICAL: Don't send start until auth is complete!
+    // This prevents a race condition where the selection gate timer or other
+    // async code paths try to send 'start' before the auth handshake finishes.
+    if (!wsAuthenticatedRef.current || !wsReadyRef.current) {
+      // Auth not complete yet - start will be sent from auth_ok handler
+      if (window.devFlags?.devConsoleLogs) {
+        console.debug("[SF] trySendStartMessage: waiting for auth", {
+          authenticated: wsAuthenticatedRef.current,
+          ready: wsReadyRef.current,
+        });
+      }
+      return;
+    }
     const traceId = metricsRef.current?.sessionId;
     if (!traceId) return;
 
