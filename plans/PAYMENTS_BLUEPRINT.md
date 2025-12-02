@@ -1,8 +1,10 @@
 # Payments Blueprint — Dodo Payments + Supabase + Cloudflare Worker
 
-**Status**: Website stack live; Worker gating + App auth **IMPLEMENTED** (PR #172); Upgrade UI pending  
-**Owners**: Payments/Infra  
-**Last updated**: 2025-12-02
+**Status**: Website stack live; Worker gating + App auth **IMPLEMENTED** (PR #172); Optimization planned
+**Owners**: Payments/Infra
+**Last updated**: 2025-12-03
+
+> **⚡️ Performance Optimization Available**: Current implementation works but queries DB on every dictation (~50ms overhead). See [`PAYMENTS_AUTH_OPTIMIZATION.md`](./PAYMENTS_AUTH_OPTIMIZATION.md) for a 15-minute change that gives 50x speedup by using Supabase Custom Access Token Hooks to bake subscription status into JWT. This is the production-standard approach used by Auth0, Clerk, and all major SaaS.
 
 ---
 
@@ -36,18 +38,21 @@ Imagine you're running a concert venue (Sonic Flow). Here's how payments and acc
 - When someone signs in (Google OAuth), Supabase gives them a wristband (JWT token)
 - This wristband has their name (user ID) written on it
 - It expires after 1 hour, but Supabase automatically gives them a new one
-- The wristband DOESN'T say if they paid — just who they are
+- **Current implementation**: Wristband only has name, bouncer looks up payment status
+- **Optimized approach**: Wristband has "PAID" stamp on it (no ledger lookup needed)
 
 **The Bouncer (Cloudflare Worker)**
 - Person shows their wristband at the door
 - Bouncer checks: "Is this wristband real?" (verify JWT signature)
 - Bouncer checks: "Is this wristband expired?" (check `exp` claim)
-- Bouncer looks up in the ledger: "Did this person pay?" (query `subscriptions` table)
+- **Current**: Bouncer looks up in the ledger: "Did this person pay?" (~50ms)
+- **Optimized**: Bouncer reads "PAID" stamp on wristband (~1ms)
 - If all good → let them in to transcribe
 - If not → "Sorry, you need to buy a ticket"
 
 **Why This Works**
 - Wristband verification is FAST (cryptography, no network call needed)
+- Reading stamps on wristband is instant (no need to check ledger every time)
 - We only check the ledger ONCE per session (not per audio frame)
 - Supabase manages wristband issuance — we don't have to build anything
 
@@ -101,8 +106,9 @@ Supabase already gives users a JWT when they sign in
 
 | Component | Location | Priority |
 |-----------|----------|----------|
+| **Performance: Custom JWT claims** | See `PAYMENTS_AUTH_OPTIMIZATION.md` | **P0** (15 min, 50x speedup) |
 | App: Upgrade flow UI | `src/components/` | P1 |
-| Webhook: Call increment_entitlement_ver | `site: webhook handler` | P1 (nice-to-have) |
+| Webhook: Call increment_entitlement_ver | `site: webhook handler` | P2 (optional with custom claims) |
 
 ---
 
@@ -634,6 +640,8 @@ Calendar month is:
 - [JSON Web Token Overview](https://supabase.com/docs/guides/auth/jwts) — How JWTs work in Supabase
 - [JWT Signing Keys](https://supabase.com/docs/guides/auth/signing-keys) — HS256 vs RS256, key rotation
 - [JWT Claims Reference](https://supabase.com/docs/guides/auth/jwt-claims) — What's in a Supabase JWT
+- [Custom Access Token Hook](https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook) — Add custom claims to JWTs (recommended approach)
+- [Custom Claims & RBAC](https://supabase.com/docs/guides/database/postgres/custom-claims-and-role-based-access-control-rbac) — Production patterns for custom claims
 
 ### Libraries
 
@@ -647,9 +655,11 @@ Calendar month is:
 - `agent-logs/2025-11-29_2030_payments-webhook-debugging.md` — Webhook handler
 - `agent-logs/2025-11-29_2230_payments-webhook-success.md` — Payment testing
 - `agent-logs/2025-11-29_2307_checkout-success-redesign.md` — Success page
+- `agent-logs/2025-12-02_1430_payments-worker-app-auth.md` — Worker + App auth implementation (PR #172)
 
 ### Internal Docs
 
+- `plans/PAYMENTS_AUTH_OPTIMIZATION.md` — **Recommended optimization: Custom JWT claims (15 min, 50x speedup)**
 - `docs/DATABASE.md` — Schema, RLS, functions
 - `docs/TRANSCRIPTION.md` — Audio pipeline
 
