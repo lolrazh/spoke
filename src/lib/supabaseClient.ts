@@ -250,6 +250,29 @@ export async function getCurrentUser() {
   }
 }
 
+/**
+ * Get the current Supabase access token (JWT)
+ * This token can be sent to the Worker for authentication
+ * Supabase automatically refreshes the token when needed
+ * 
+ * @returns The access token string, or null if not authenticated
+ */
+export async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn("[Supabase] getSession failed:", error.message);
+      return null;
+    }
+    return session?.access_token ?? null;
+  } catch (error) {
+    console.warn("[Supabase] Failed to get access token:", error);
+    return null;
+  }
+}
+
 export async function signOut(): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) return;

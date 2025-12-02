@@ -9,7 +9,7 @@ import { FakeAudioContext, FakeAudioWorkletNode } from "../test/fakes/fakeAudio"
 vi.mock("../config/api", async (importOriginal) => {
   const actual = await importOriginal();
   return {
-    ...actual,
+    ...(actual as object),
     getTranscribeWsUrl: () => "ws://test/ws",
   };
 });
@@ -17,6 +17,15 @@ vi.mock("../utils/audioFeedback", () => ({
   playToggleOn: vi.fn(),
   playToggleOff: vi.fn(),
 }));
+// Mock Supabase auth to return a fake token
+vi.mock("../lib/supabaseClient", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    getAccessToken: vi.fn(() => Promise.resolve("fake-test-token")),
+    getCurrentUser: vi.fn(() => Promise.resolve({ id: "test-user-id" })),
+  };
+});
 
 function renderUseTranscription(opts?: Record<string, unknown>) {
   const container = document.createElement("div");
@@ -25,8 +34,8 @@ function renderUseTranscription(opts?: Record<string, unknown>) {
   const out: { current: ReturnType<typeof useTranscription> | null } = {
     current: null,
   };
-  function Test() {
-    const hook = useTranscription(opts as any);
+  function Test(): null {
+    const hook = useTranscription(opts as Parameters<typeof useTranscription>[0]);
     out.current = hook;
     return null;
   }
@@ -123,7 +132,17 @@ describe("hooks/useTranscription (production-like)", () => {
     await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
     const ws = await waitForWebSocket();
 
-    // Should have sent a start message
+    // Simulate auth success (worker sends auth_ok after receiving auth message)
+    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
+
+    // Should have sent auth and then start messages
+    const authMsgs = ws.sent
+      .filter((m) => typeof m === "string")
+      .map((s) => JSON.parse(String(s)))
+      .filter((j) => j.type === "auth");
+    expect(authMsgs.length).toBeGreaterThan(0);
+
     const startMsgs = ws.sent
       .filter((m) => typeof m === "string")
       .map((s) => JSON.parse(String(s)))
@@ -175,6 +194,9 @@ describe("hooks/useTranscription (production-like)", () => {
     await act(async () => { await r.hook.start(); });
     await act(async () => { await Promise.resolve(); });
     const ws = await waitForWebSocket();
+    // Simulate auth success
+    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
     const stopP = r.hook.stop();
     await act(async () => { await Promise.resolve(); });
     ws.emitMessage(
@@ -210,6 +232,9 @@ describe("hooks/useTranscription (production-like)", () => {
     await act(async () => { await r.hook.start(); });
     await act(async () => { await Promise.resolve(); });
     const ws = await waitForWebSocket();
+    // Simulate auth success
+    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
     await act(async () => { await r.hook.cancel(); });
     expect(await waitForSent(ws, "cancel")).toBe(true);
 
