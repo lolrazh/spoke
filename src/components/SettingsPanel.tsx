@@ -524,24 +524,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
                       {userEmail ? (
-                        <div className="relative group">
-                          {/* Shimmer effect overlay */}
-                          <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
-                            <div className="shimmer absolute inset-0" />
-                          </div>
-
+                        <div className="relative overflow-hidden shimmer">
                           <SettingsCard
                             title={userName || userEmail}
                             description={userEmail}
                             icon={
                               <div className="relative">
-                                <div className="w-8 h-8 rounded-md bg-background border-2 border-[#FFD700] flex items-center justify-center">
+                                <div className="w-8 h-8 rounded-md bg-background border border-[#FFD700] flex items-center justify-center">
                                   <span className="text-[11px] font-semibold tracking-wide">
                                     {(userName || userEmail || "").slice(0, 1).toUpperCase()}
                                   </span>
                                 </div>
                                 {/* PRO badge overlay */}
-                                <div className="absolute -bottom-1 -right-1 bg-gradient-to-br from-[#FFD700] to-[#FFA500] text-black text-[7px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                                <div className="absolute -top-1 -right-1 bg-gradient-to-br from-[#FFD700] to-[#FFA500] text-black text-[7px] font-bold px-1.5 py-0.5 rounded-full leading-none">
                                   PRO
                                 </div>
                               </div>
@@ -554,16 +549,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 size="sm"
                                 onClick={() => window.electron?.openExternal?.("https://sonicflow.app")}
                               >
-                                Manage Billing
+                                Manage
                               </Button>
                               <Button
                                 variant="secondary"
                                 size="sm"
                                 onClick={handleSignOut}
                                 disabled={isSigningOut}
-                                className="!px-2"
+                                className="!px-2.5"
                               >
-                                <SfIcon name="rectangle.portrait.and.arrow.right" size={16} className="text-red-400" />
+                                <SfIcon name="rectangle.portrait.and.arrow.right" size={18} className="text-white/60" />
                               </Button>
                             </div>
                           </SettingsCard>
