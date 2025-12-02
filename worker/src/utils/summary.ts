@@ -27,6 +27,13 @@ export type LlmMetrics = {
   routeRules?: string[] | null;
 };
 
+export type ChunkMetric = {
+  index: number;
+  bytes: number;
+  durationMs: number | null;
+  textLength: number;
+};
+
 export type WorkerMetrics = {
   llm?: LlmMetrics | null;
   stt?: SttMetrics | null;
@@ -39,6 +46,10 @@ export type WorkerMetrics = {
   finalSentAt?: number | null;
   assembleMs?: number | null;
   mode?: string | null;
+  // Chunk metrics for chunked sessions
+  chunks?: ChunkMetric[] | null;
+  chunkCount?: number | null;
+  chunkSttMs?: string | null;
 };
 
 export type SessionBody = {
@@ -150,6 +161,17 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
       }
     : null;
 
+  // Chunk metrics for chunked sessions
+  const chunkCount = worker?.chunkCount ?? null;
+  const chunkSttMs = worker?.chunkSttMs ?? null;
+  const chunking = chunkCount
+    ? {
+        count: chunkCount,
+        sttMs: chunkSttMs, // comma-separated STT durations per chunk
+        chunks: worker?.chunks ?? null,
+      }
+    : null;
+
   return {
     event: 'transcription.session_summary',
     id: traceId,
@@ -159,6 +181,7 @@ export function buildSessionSummary(body: SessionBody, env: Bindings) {
     result,
     stt: sttInfo,
     llm: llmInfo,
+    chunking,
     dataset: shareTranscriptions ? body?.dataset ?? null : null,
     ws,
     env: envOut,

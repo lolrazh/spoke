@@ -38,17 +38,34 @@ export type ClientStartV2 = {
 export type ClientEnd = { type: "end" };
 export type ClientCancel = { type: "cancel" };
 
+/** Signals that the preceding audio frames form a complete chunk ready for STT */
+export type ClientChunk = {
+  type: "chunk";
+  chunkIndex: number;
+  /** Total audio duration in this chunk (ms) */
+  audioMs: number;
+};
+
 export type ClientMsg =
   | ClientStartV1
   | ClientStartV2
   | ClientEnd
-  | ClientCancel;
+  | ClientCancel
+  | ClientChunk;
 
 export type ServerStatus = { type: "status"; state: "processing" | "queued" };
 export type ServerFinal = { type: "final"; text: string; segments?: unknown[] };
 export type ServerError = { type: "error"; body?: string };
 
-export type ServerMsg = ServerStatus | ServerFinal | ServerError;
+/** Server response when a chunk has been transcribed */
+export type ServerChunkResult = {
+  type: "chunk_result";
+  chunkIndex: number;
+  text: string;
+  traceId?: string;
+};
+
+export type ServerMsg = ServerStatus | ServerFinal | ServerError | ServerChunkResult;
 
 // Per-frame binary header (little-endian)
 // u32 seq | u32 nbytes | u64 client_ts_ns

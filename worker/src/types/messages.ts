@@ -35,10 +35,19 @@ export type ClientStartMessage = {
 export type ClientEndMessage = { type: 'end' };
 export type ClientCancelMessage = { type: 'cancel' };
 
+/** Signals that the preceding audio frames form a complete chunk ready for STT */
+export type ClientChunkMessage = {
+  type: 'chunk';
+  chunkIndex: number;
+  /** Total audio duration in this chunk (ms) */
+  audioMs: number;
+};
+
 export type ClientMessage =
   | ClientStartMessage
   | ClientEndMessage
-  | ClientCancelMessage;
+  | ClientCancelMessage
+  | ClientChunkMessage;
 
 export type ServerStatusMessage = {
   type: 'status';
@@ -111,12 +120,21 @@ export type ServerLlmDeltaMessage = {
   traceId?: string;
 };
 
+/** Server response when a chunk has been transcribed */
+export type ServerChunkResultMessage = {
+  type: 'chunk_result';
+  chunkIndex: number;
+  text: string;
+  traceId?: string;
+};
+
 export type ServerMessage =
   | ServerStatusMessage
   | ServerFinalMessage
   | ServerErrorMessage
   | ServerLlmStatusMessage
-  | ServerLlmDeltaMessage;
+  | ServerLlmDeltaMessage
+  | ServerChunkResultMessage;
 
 export function parseClientMessage(msg: unknown): ClientMessage | null {
   if (!msg || typeof msg !== 'object') return null;
@@ -196,5 +214,11 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
   }
   if (t === 'end') return { type: 'end' };
   if (t === 'cancel') return { type: 'cancel' };
+  if (t === 'chunk') {
+    const m = msg as any;
+    const chunkIndex = typeof m.chunkIndex === 'number' ? m.chunkIndex : 0;
+    const audioMs = typeof m.audioMs === 'number' ? m.audioMs : 0;
+    return { type: 'chunk', chunkIndex, audioMs };
+  }
   return null;
 }
