@@ -65,6 +65,8 @@ export interface UseTranscriptionReturn {
   cancel: () => void;
   /** Clear auth error (e.g., after user dismisses upgrade prompt) */
   clearAuthError: () => void;
+  /** Pre-connect to Worker to avoid first-dictation latency */
+  preConnect: () => Promise<void>;
 }
 
 export interface UseTranscriptionOptions {
@@ -2161,6 +2163,18 @@ export function useTranscription(
     setAuthError(null);
   }, []);
 
+  const preConnect = useCallback(async () => {
+    try {
+      // Silently establish WebSocket connection and authenticate
+      // This happens in background, errors are swallowed (will retry on first dictation)
+      await ensureStreamingSocket();
+      console.info("[SF] Pre-connected to Worker successfully");
+    } catch (err) {
+      // Don't show errors during pre-connect - user hasn't tried to dictate yet
+      console.warn("[SF] Pre-connect failed (will retry on first dictation):", err);
+    }
+  }, [ensureStreamingSocket]);
+
   return {
     recording,
     processing,
@@ -2175,5 +2189,6 @@ export function useTranscription(
     stop,
     cancel,
     clearAuthError,
+    preConnect,
   };
 }

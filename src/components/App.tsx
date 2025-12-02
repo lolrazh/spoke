@@ -505,6 +505,10 @@ const AppInner: React.FC = () => {
           } catch {}
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
+          // Pre-connect to Worker to avoid first-dictation latency
+          trans.preConnect().catch(() => {
+            // Silently fail - will retry on first dictation
+          });
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
@@ -556,6 +560,12 @@ const AppInner: React.FC = () => {
               setCurrentUserId(currentUserId);
               // Defer Supabase call to avoid breaking the auth listener
               setTimeout(() => loadSharePreference(currentUserId), 0);
+              // Pre-connect to Worker after sign in
+              setTimeout(() => {
+                trans.preConnect().catch(() => {
+                  // Silently fail - will retry on first dictation
+                });
+              }, 0);
               return;
             }
             if (!session?.user && !skipAuth) {
