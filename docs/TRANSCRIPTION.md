@@ -8,13 +8,17 @@ Sonic Flow's transcription pipeline transforms voice into text through real-time
 
 ## Philosophy
 
-The transcription pipeline is built on three principles:
+The transcription pipeline is built on five principles:
 
-1. **Speed**: Sub-2s end-to-end latency from release to paste
+1. **Speed**: Sub-1s end-to-end latency from release to paste
 2. **Flexibility**: Multiple STT/LLM providers, runtime-switchable
 3. **Privacy**: No text stored in database, only local + ephemeral server processing
+4. **Security**: JWT-based authentication with subscription/quota claims embedded
+5. **Efficiency**: Chunked transcription for long dictations (8-10s chunks on natural pauses)
 
 The system supports two modes: **dictation** (voice → text) and **edit** (voice instruction → rewrite selected text).
+
+Authentication happens once at WebSocket connection time—JWT claims provide instant entitlement gating (Pro subscription or free tier quota) with zero database queries during transcription.
 
 ---
 
@@ -47,6 +51,67 @@ The system supports two modes: **dictation** (voice → text) and **edit** (voic
 </pipeline>
 
 Each stage is optimized for low latency—audio worklet runs in dedicated thread, WebSocket uses binary protocol, STT/LLM calls happen in parallel where possible.
+
+---
+
+## Authentication & Authorization
+
+Sonic Flow uses JWT-based authentication with embedded subscription and quota claims for instant entitlement gating.
+
+<auth_flow>
+  <connection_auth>
+    1. App starts → Supabase refreshes JWT (runs custom_access_token_hook in Postgres)
+    2. Hook checks subscriptions table, reads quota from profiles table
+    3. Hook adds claims to JWT:
+       - subscription_active (boolean) - Pro tier status
+       - words_used_this_month (number) - Free tier usage
+       - quota_limit (number) - Free tier limit (2000)
+       - quota_reset_date (timestamp) - Next reset date
+    4. App sends JWT in WebSocket 'auth' message
+    5. Worker verifies JWT signature using JWKS (Supabase public key)
+    6. Worker extracts claims from verified JWT
+    7. Worker checks entitlement:
+       - Pro users (subscription_active=true): Instant pass
+       - Free users: Check quota (words_used >= quota_limit → BLOCK)
+    8. If auth passes: Connection authenticated, ready for audio
+    9. If auth fails: Connection closed with error code (4020 or 4021)
+  </connection_auth>
+
+  <close_codes file="worker/src/auth/index.ts">
+    1000: NORMAL_CLOSE - Successful completion
+    4011: AUTH_TIMEOUT - No auth message received within 15s
+    4012: UNAUTHORIZED - Invalid or expired JWT
+    4020: PAYMENT_REQUIRED - Valid user but no active subscription (free tier not implemented for this feature)
+    4021: QUOTA_EXCEEDED - Free tier user exceeded monthly word limit (2000 words/month)
+  </close_codes>
+
+  <architecture_benefits>
+    - **Zero DB queries during transcription**: All entitlement data in JWT (50x faster auth)
+    - **Instant blocking**: Quota check happens at connection time, before audio streams
+    - **Cryptographically secure**: JWT signature verified via JWKS (Supabase public key)
+    - **Scales infinitely**: Pure CPU work (JWT verification), no database bottleneck
+    - **1-hour propagation**: Subscription/quota changes take up to 1 hour to propagate (when JWT refreshes)
+    - **Automatic refresh**: App calls refreshSession() on startup to get fresh claims
+  </architecture_benefits>
+
+  <quota_tracking file="worker/src/handlers/ws.ts">
+    After successful transcription:
+    1. Worker counts words from STT output (finalText, NOT LLM output)
+    2. Word count formula: finalText.split(/\s+/).filter(w => w.length > 0).length
+    3. Worker fires increment_quota_simple(user_id, word_count) in background
+    4. Uses executionCtx.waitUntil() for fire-and-forget (zero latency)
+    5. Worker includes wordCount in final message for app UI display
+    6. App updates localStorage cache for progress bar (display-only)
+    7. Next JWT refresh syncs reality from database
+  </quota_tracking>
+
+  <related_docs>
+    - docs/DATABASE.md (Custom Access Token Hook, quota tracking)
+    - agent-logs/2025-12-02_1900_payments-auth-optimization.md (JWT claims implementation)
+    - agent-logs/2025-12-04_1330_free-tier-quota-implementation.md (Server-authoritative quota system)
+    - agent-logs/2025-12-03_2225_post-payment-jwt-refresh.md (Startup refresh flow)
+  </related_docs>
+</auth_flow>
 
 ---
 
@@ -155,6 +220,123 @@ The mode is determined automatically based on whether text is selected. No manua
 
 ---
 
+## Chunked Transcription
+
+For long dictations (10+ seconds), Sonic Flow uses chunked transcription to improve speed, accuracy, and cost-efficiency.
+
+<chunking>
+  <rationale>
+    - **Faster responses**: Shorter audio = faster STT processing
+    - **Better accuracy**: Long dictations (30s+) produce degraded STT quality
+    - **Cost optimization**: Groq bills 10s minimum per request, so 8-10s chunks are optimal
+    - **Progressive UI**: User sees partial transcription while still speaking
+  </rationale>
+
+  <detection file="src/utils/chunkDetector.ts">
+    Client uses existing VAD (Silero) to detect natural sentence pauses:
+    - Detects 700ms of continuous silence (SENTENCE_PAUSE_MS)
+    - Requires minimum 8s of audio before chunking (MIN_CHUNK_AUDIO_MS)
+    - VAD threshold 0.3 for "silence" detection (CHUNK_SILENCE_PROB)
+    - Never force-chunks mid-sentence—only on natural pauses
+
+    Configuration (src/config/vad.ts):
+    CHUNK_DETECTION_ENABLED = true
+    MIN_CHUNK_AUDIO_MS = 8000
+    SENTENCE_PAUSE_MS = 700
+    CHUNK_SILENCE_PROB = 0.3
+  </detection>
+
+  <flow>
+    1. User speaks for 10s, pauses naturally between sentences (700ms silence)
+    2. VAD detects sentence pause → chunk boundary event
+    3. Client sends { type: "chunk", chunkIndex: 0, audioMs: 10230 } to worker
+    4. Worker snapshots accumulated PCM audio, starts STT immediately (async)
+    5. Worker clears audio buffer for next chunk
+    6. User continues speaking (chunk 1 starts accumulating)
+    7. Worker completes STT for chunk 0, sends { type: "chunk_result", chunkIndex: 0, text: "..." }
+    8. Client displays chunk 0 text in UI (progressive update)
+    9. User pauses again → chunk 1 sent to worker
+    10. User releases PTT → { type: "end" } sent to worker
+    11. Worker waits for all pending chunk STTs (15s timeout)
+    12. Worker processes remaining audio (final chunk)
+    13. Worker concatenates all chunks in order → final text
+    14. Optional LLM post-processing on complete concatenated text
+    15. Worker sends { type: "final", text: "...", wordCount: ... }
+  </flow>
+
+  <worker_implementation file="worker/src/handlers/ws.ts">
+    Session tracks chunk state:
+    - chunkStates: Map<number, ChunkState> - Stores audio snapshot per chunk
+    - pendingChunkSTT: Set<number> - Tracks ongoing STT operations
+    - currentChunkIndex: number - Next chunk index
+
+    On "chunk" message:
+    1. Take snapshot of session.chunks (accumulated PCM)
+    2. Create ChunkState { audioSnapshot, audioMs, chunkIndex }
+    3. Start async STT (fire-and-forget, non-blocking)
+    4. Clear session.chunks for next chunk
+    5. On STT complete: send chunk_result to client
+
+    On "end" message:
+    1. Wait for all pendingChunkSTT (15s timeout)
+    2. Collect chunk results in order (by chunkIndex)
+    3. Process remaining audio (if any)
+    4. Concatenate: [chunk0, chunk1, ..., remaining].join(' ').trim()
+    5. Continue with optional LLM pass
+    6. Send final result
+  </worker_implementation>
+
+  <progressive_ui file="src/hooks/useTranscription.ts">
+    Client tracks:
+    - chunkResultsRef: Map<number, string> - Stores received chunk texts
+    - pendingChunksRef: Set<number> - Tracks sent but not received chunks
+    - currentChunkIndexRef: number - Next chunk to send
+
+    On chunk_result message:
+    - Store text in chunkResultsRef
+    - Remove from pendingChunksRef
+    - Update UI with progressive text (optional, implementation-specific)
+
+    On final message:
+    - Clear all chunk state
+    - Display complete final text
+  </progressive_ui>
+
+  <benefits>
+    - User sees text appear while still dictating (real-time feedback)
+    - Long dictations process faster (parallel STT per chunk)
+    - Reduced end-to-end latency for 20s+ dictations
+    - Better STT accuracy (shorter audio per request)
+    - Groq billing optimization (8-10s chunks vs 30s+ full audio)
+  </benefits>
+
+  <trade_offs>
+    - Slightly more complex state management (chunk tracking)
+    - Multiple STT API calls per session (but each is faster)
+    - Occasional mid-thought chunking (rare, 700ms pause is conservative)
+    - Requires VAD (Silero) for silence detection
+  </trade_offs>
+
+  <testing>
+    Console logs:
+    [SF] 🔪 CHUNK BOUNDARY { chunkIndex: 0, audioMs: 10230, silenceMs: 720 }
+    [SF] 📤 Sent chunk message { type: "chunk", chunkIndex: 0, audioMs: 10230 }
+    [SF] 📥 Chunk result received { chunkIndex: 0, textLength: 42, pendingCount: 0 }
+    [SF] 📦 FINAL CHUNK STATE { remainingChunk: { audioMs: 5420, chunkIndex: 1 } }
+
+    To test:
+    1. Enable chunking (CHUNK_DETECTION_ENABLED = true)
+    2. Dictate 20-30 seconds with natural pauses
+    3. Watch for chunk boundary detection and progressive results
+  </testing>
+
+  <related_docs>
+    - agent-logs/2025-12-01_2102_chunked-transcription.md (Full implementation)
+  </related_docs>
+</chunking>
+
+---
+
 ## WebSocket Protocol
 
 <websocket>
@@ -182,6 +364,20 @@ The mode is determined automatically based on whether text is selected. No manua
   </binary_frame>
 
   <messages>
+    <auth>
+      Client sends first (within 15s of connection):
+      {
+        "type": "auth",
+        "token": "eyJhbG..." // Supabase JWT access token
+      }
+
+      Server responses:
+      Success: { "type": "auth_ok" }
+      Failure: { "type": "auth_error", "error": "...", "code": 4011|4012|4020|4021 }
+
+      Auth must complete before any other messages. Connection closed if auth fails.
+    </auth>
+
     <start>
       Client sends on PTT down:
       {
@@ -198,15 +394,41 @@ The mode is determined automatically based on whether text is selected. No manua
       }
     </start>
 
+    <chunk>
+      Client sends during dictation (on natural sentence pause):
+      {
+        "type": "chunk",
+        "chunkIndex": 0,  // Incremental chunk number
+        "audioMs": 10230  // Duration of audio in this chunk (milliseconds)
+      }
+
+      Worker snapshots accumulated audio, starts STT immediately (async).
+      Enables progressive transcription for long dictations.
+    </chunk>
+
     <end>
       Client sends on PTT up: { "type": "end" }
-      Triggers transcription processing.
+      Triggers final transcription processing.
+      If chunked session: waits for pending chunk STTs, processes remaining audio.
     </end>
 
     <status>
       Server → Client when processing starts:
       { "type": "status", "state": "processing", "traceId": "...", "serverTs": ... }
     </status>
+
+    <chunk_result>
+      Server → Client when chunk STT completes:
+      {
+        "type": "chunk_result",
+        "chunkIndex": 0,
+        "text": "...",  // Transcribed text for this chunk
+        "traceId": "..."
+      }
+
+      Allows progressive UI updates during long dictations.
+      Client receives chunk results while still speaking.
+    </chunk_result>
 
     <llm_status>
       Server → Client when LLM starts:
@@ -224,10 +446,14 @@ The mode is determined automatically based on whether text is selected. No manua
       {
         "type": "final",
         "text": "...",
+        "wordCount": 42,  // Word count for quota tracking (STT output only)
         "traceId": "...",
         "dataset": { "sttText": "...", "llmText": "..." }, // if shareTranscriptions
         "metrics": { "worker": { ... } }
       }
+
+      wordCount is calculated from finalText (STT output), NOT responseText (LLM output).
+      In edit mode, counts spoken instruction words, not LLM-generated rewrite.
     </final>
 
     <error>
@@ -249,25 +475,69 @@ The mode is determined automatically based on whether text is selected. No manua
 
 <worker file="worker/src/handlers/ws.ts">
   <security>
+    - JWT authentication: Verifies Supabase JWT signature using JWKS
+    - Entitlement gating: Checks subscription_active or quota claims at auth time
     - Rate limit: 5 concurrent connections per IP
     - Payload limit: 20MB max session size
     - Connection tracking with automatic cleanup
+    - Auth timeout: 15s to send auth message after connection
   </security>
 
   <session>
-    Accumulates binary frames into session object:
+    Accumulates binary frames and tracks state:
     - traceId, chunks[], totalBytes, frames, seqGaps
     - firstArrivalMs, lastArrivalMs
     - mode ('dictation' | 'edit'), selection
     - shareTranscriptions, identity { name, email }
+    - Chunked transcription state:
+      - chunkStates: Map<number, ChunkState> - Audio snapshots per chunk
+      - pendingChunkSTT: Set<number> - Ongoing STT operations
+      - currentChunkIndex: number - Next chunk index
   </session>
 
   <assembly file="worker/src/audio/codec.ts">
     On "end" message:
+
+    For chunked sessions:
+    1. Wait for all pending chunk STTs (15s timeout)
+    2. Collect chunk results in order (by chunkIndex)
+    3. Process remaining audio (final chunk) if present
+    4. Concatenate: [chunk0, chunk1, ..., remaining].join(' ').trim()
+
+    For non-chunked sessions:
     1. concat() - Combine PCM chunks into single Uint8Array
     2. wrapWav() - Add 44-byte WAV header (RIFF/WAVE/fmt/data chunks)
     3. Pass to STT provider
   </assembly>
+
+  <quota_tracking>
+    After successful transcription (both chunked and non-chunked):
+    1. Calculate word count from finalText (STT output):
+       wordCount = finalText.split(/\s+/).filter(w => w.length > 0).length
+    2. Fire increment_quota_simple(user_id, word_count) in background:
+       executionCtx.waitUntil(
+         fetch(supabaseUrl + '/rest/v1/rpc/increment_quota_simple', {
+           method: 'POST',
+           headers: { apikey, authorization, content-type },
+           body: JSON.stringify({ p_user_id: userId, p_word_count: wordCount })
+         })
+       )
+    3. Include wordCount in final message for app UI
+    4. Zero latency: Response sent before DB write completes
+
+    Why count finalText (STT) not responseText (LLM):
+    - Fairness: User pays for what they spoke, not what LLM generated
+    - Edit mode: "make it shorter" (3 words) → LLM outputs 70 words → count 3 ✅
+    - Normal dictation: STT and LLM output similar length → same result
+  </quota_tracking>
+
+  <telemetry file="worker/src/utils/telemetry.ts">
+    After session completes:
+    - Insert to dictation_logs table (service role, bypasses RLS)
+    - Stores: word_count, timing metrics, provider info, session metadata
+    - Does NOT store transcription text (privacy)
+    - Fire-and-forget using waitUntil (zero latency)
+  </telemetry>
 </worker>
 
 ---
@@ -637,5 +907,5 @@ Transcription history is stored locally on the user's device—never in the data
 
 ---
 
-**Last Updated**: 2025-11-30
-**Pipeline Version**: Includes edit mode, multi-provider support, vocabulary enhancement
+**Last Updated**: 2025-12-04
+**Pipeline Version**: Includes JWT authentication, chunked transcription, quota tracking, edit mode, multi-provider support
