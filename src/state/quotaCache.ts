@@ -25,6 +25,7 @@ export type QuotaState = {
     wordsUsed: number;        // How many words used this month
     resetDate: string | null; // When quota resets (ISO timestamp)
     limit: number;            // Monthly limit (hardcoded to 2000)
+    isPro: boolean;           // Is user a Pro subscriber? (unlimited dictation)
 };
 
 // ============================================================================
@@ -45,6 +46,7 @@ let quota: QuotaState = {
     wordsUsed: 0,
     resetDate: null,
     limit: QUOTA_LIMIT,
+    isPro: false, // Default to free tier until we know from JWT
 };
 
 let initialized = false;
@@ -59,16 +61,21 @@ try {
         const cachedWordsUsed = window.localStorage.getItem(CACHE_KEY_WORDS_USED);
         const cachedResetDate = window.localStorage.getItem(CACHE_KEY_RESET_DATE);
 
-        if (cachedWordsUsed !== null) {
+        // Also check for cached subscription status
+        const cachedIsPro = window.localStorage.getItem('sf.isPro');
+
+        if (cachedWordsUsed !== null || cachedIsPro !== null) {
             quota = {
-                wordsUsed: parseInt(cachedWordsUsed, 10) || 0,
+                wordsUsed: cachedWordsUsed ? parseInt(cachedWordsUsed, 10) || 0 : 0,
                 resetDate: cachedResetDate,
                 limit: QUOTA_LIMIT,
+                isPro: cachedIsPro === 'true',
             };
             console.log('[QuotaCache] Hydrated from cache:', {
                 wordsUsed: quota.wordsUsed,
                 resetDate: quota.resetDate,
                 limit: quota.limit,
+                isPro: quota.isPro,
             });
         }
     }
@@ -89,12 +96,14 @@ function emit(next: QuotaState) {
         wordsUsed: Math.max(0, Math.floor(next.wordsUsed)), // Ensure non-negative integer
         resetDate: next.resetDate,
         limit: QUOTA_LIMIT,
+        isPro: !!next.isPro,
     };
 
     // Skip if nothing changed
     if (
         quota.wordsUsed === sanitized.wordsUsed &&
-        quota.resetDate === sanitized.resetDate
+        quota.resetDate === sanitized.resetDate &&
+        quota.isPro === sanitized.isPro
     ) {
         return;
     }
@@ -112,9 +121,13 @@ function emit(next: QuotaState) {
                 window.localStorage.removeItem(CACHE_KEY_RESET_DATE);
             }
 
+            // Also cache subscription status
+            window.localStorage.setItem('sf.isPro', sanitized.isPro ? 'true' : 'false');
+
             console.log('[QuotaCache] Cache updated:', {
                 wordsUsed: sanitized.wordsUsed,
                 resetDate: sanitized.resetDate,
+                isPro: sanitized.isPro,
             });
         }
     } catch {
@@ -173,6 +186,7 @@ export function incrementQuotaLocal(wordCount: number): void {
         wordsUsed: nextWordsUsed,
         resetDate: quota.resetDate,
         limit: QUOTA_LIMIT,
+        isPro: quota.isPro,
     });
 
     console.log('[QuotaCache] Incremented locally (UI only):', {
@@ -234,6 +248,7 @@ export function clearQuotaCache(): void {
         wordsUsed: 0,
         resetDate: null,
         limit: QUOTA_LIMIT,
+        isPro: false,
     };
 
     try {
@@ -241,6 +256,7 @@ export function clearQuotaCache(): void {
             window.localStorage.removeItem(CACHE_KEY_WORDS_USED);
             window.localStorage.removeItem(CACHE_KEY_RESET_DATE);
             window.localStorage.removeItem(CACHE_KEY_LAST_SYNCED);
+            window.localStorage.removeItem('sf.isPro');
             console.log('[QuotaCache] Cache cleared');
         }
     } catch {
@@ -268,6 +284,7 @@ export function clearQuotaCache(): void {
 export function updateQuotaFromServer(serverQuota: {
     wordsUsed: number;
     resetDate: string | null;
+    isPro?: boolean;
 }): void {
     console.log('[QuotaCache] Updating from server:', serverQuota);
 
@@ -275,7 +292,15 @@ export function updateQuotaFromServer(serverQuota: {
         wordsUsed: serverQuota.wordsUsed,
         resetDate: serverQuota.resetDate,
         limit: QUOTA_LIMIT,
+        isPro: serverQuota.isPro ?? quota.isPro, // Keep existing value if not provided
     });
+}
+
+/**
+ * Check if user is a Pro subscriber
+ */
+export function isPro(): boolean {
+    return quota.isPro;
 }
 
 // ============================================================================
@@ -290,6 +315,7 @@ export function resetQuotaCacheForTests(): void {
         wordsUsed: 0,
         resetDate: null,
         limit: QUOTA_LIMIT,
+        isPro: false,
     };
 
     initialized = false;
@@ -301,6 +327,7 @@ export function resetQuotaCacheForTests(): void {
             window.localStorage.removeItem(CACHE_KEY_WORDS_USED);
             window.localStorage.removeItem(CACHE_KEY_RESET_DATE);
             window.localStorage.removeItem(CACHE_KEY_LAST_SYNCED);
+            window.localStorage.removeItem('sf.isPro');
         }
     } catch { }
 }
