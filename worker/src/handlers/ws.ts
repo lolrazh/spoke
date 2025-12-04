@@ -313,7 +313,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 server.send(
                   JSON.stringify({
                     type: 'auth_error',
-                    error: 'Monthly word limit exceeded',
+                    error: 'Free words used up this month',
                     code: WS_CLOSE_CODES.QUOTA_EXCEEDED,
                   }),
                 ),

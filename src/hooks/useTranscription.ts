@@ -508,9 +508,8 @@ export function useTranscription(
     // If no token, user is not signed in
     if (!accessToken) {
       console.warn("[useTranscription] No access token - user not signed in");
-      // Use consistent error message for all auth failures
-      setAuthError("payment_required");
-      setError("Subscription required. Upgrade to continue.");
+      setAuthError("not_signed_in");
+      setError("Sign in to start dictating.");
       throw new Error("Not signed in");
     }
 
@@ -619,12 +618,10 @@ export function useTranscription(
         if (event.code === WS_CLOSE_UNAUTHORIZED || event.code === WS_CLOSE_AUTH_TIMEOUT) {
           console.warn("[SF] Auth failed - unauthorized or timeout", { code: event.code, reason: event.reason });
           wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
-          // Treat all auth failures as subscription issues for consistency
-          // (JWT expiration, token invalid, etc. all mean "can't verify subscription")
-          setAuthError("payment_required");
-          setError("Subscription required. Upgrade to continue.");
+          setAuthError("auth_failed");
+          setError("Session expired. Please sign in again.");
           cleanup();
-          reject(new Error("Authentication failed"));
+          reject(new Error("Auth failed"));
           // Don't auto-reconnect for auth failures
           if (wsRef.current === ws) {
             wsRef.current = null;
@@ -637,7 +634,7 @@ export function useTranscription(
           console.warn("[SF] Payment required", { code: event.code, reason: event.reason });
           wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
           setAuthError("payment_required");
-          setError("Subscription required. Upgrade to continue.");
+          setError("Upgrade to Pro for unlimited dictation.");
           cleanup();
           reject(new Error("Payment required"));
           // Don't auto-reconnect for payment required
@@ -652,7 +649,7 @@ export function useTranscription(
           console.warn("[SF] Quota exceeded", { code: event.code, reason: event.reason });
           wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
           setAuthError("payment_required"); // Reuse payment_required UI (shows upgrade prompt)
-          setError("Monthly word limit reached. Upgrade for unlimited dictation.");
+          setError("You've used your free words this month. Upgrade for unlimited.");
           cleanup();
           reject(new Error("Quota exceeded"));
           // Don't auto-reconnect for quota exceeded
@@ -1105,6 +1102,21 @@ export function useTranscription(
     if (processing) return; // Prevent starting while processing
     // Start cue moved to PTT/button handlers for immediacy
 
+    // LOCAL QUOTA GATING: Check if the local cache shows quota exceeded
+    // This provides instant feedback without waiting for server round-trip
+    // The server will still enforce this via JWT claims, but local check is faster
+    try {
+      const { isQuotaExceeded } = await import('../state/quotaCache');
+      if (isQuotaExceeded()) {
+        console.log('[useTranscription] Local quota check: exceeded');
+        setAuthError("payment_required");
+        setError("You've used your free words this month. Upgrade for unlimited.");
+        return;
+      }
+    } catch {
+      // Quota check failed - continue anyway, server will enforce
+    }
+
     startSentRef.current = false;
     clearSelectionGateTimer();
     pendingSelectionPromiseRef.current = null;
@@ -1409,8 +1421,13 @@ export function useTranscription(
       // If this is an auth error, the error and authError state are already set
       // Don't overwrite them with a generic "audio processing failed" message
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (errorMessage.includes("Not signed in") || errorMessage.includes("Auth") || errorMessage.includes("Payment")) {
-        // Auth error already handled
+      if (
+        errorMessage.includes("Not signed in") ||
+        errorMessage.includes("Auth") ||
+        errorMessage.includes("Payment") ||
+        errorMessage.includes("Quota")
+      ) {
+        // Auth/quota error already handled - don't overwrite the error message
         setRecording(false);
         return;
       }
