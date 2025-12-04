@@ -303,14 +303,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleSignOut = async () => {
     if (isSigningOut) return; // Prevent double-clicks
     setIsSigningOut(true);
-    
+
     try {
       // Sign out and wait for completion
       // The onAuthStateChange listener in App.tsx will:
       // 1. Send "Signed out" notification (which transitions pill from EXPANDED → NOTIFICATION)
       // 2. Set pendingHideAfterCollapse to show onboarding after notification
       await supaSignOut();
-      
+
       // Note: We don't call onRequestCollapse() here because the NOTIFY event
       // from the auth state change handler will transition the pill out of EXPANDED state.
       // The pendingHideAfterCollapse logic then handles hiding and showing onboarding.
@@ -390,8 +390,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("settings")}
                 className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "settings"
-                    ? "bg-white/10 text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
                 <SfIcon name="gearshape.fill" size={18} />
@@ -400,8 +400,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("history")}
                 className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "history"
-                    ? "bg-white/10 text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
                 <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
@@ -523,7 +523,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   >
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
-                      {userEmail ? (
+                      {userEmail && (
                         <SettingsCard
                           title={userName || userEmail}
                           description={userEmail}
@@ -534,32 +534,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           }
                           inGroup
                         >
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={handleSignOut}
                             disabled={isSigningOut}
                           >
                             {isSigningOut ? "Signing out…" : "Sign Out"}
                           </Button>
                         </SettingsCard>
-                      ) : (
-                        // If not signed in, do not render login UI here — redirect to onboarding
-                        <div className="p-3">
-                          <div className="text-[12px] text-subtle mb-3">
-                            You are signed out.
-                          </div>
-                          <Button
-                            className="w-full onboarding-cta"
-                            onClick={async () => {
-                              try {
-                                await window.electron?.showOnboarding?.();
-                              } catch { }
-                            }}
-                          >
-                            Open Onboarding to Sign In
-                          </Button>
-                        </div>
                       )}
                     </div>
                   </motion.section>

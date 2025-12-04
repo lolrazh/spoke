@@ -38,7 +38,7 @@ function emit(next: UserIdentity) {
   };
   if (identity.name === sanitized.name && identity.email === sanitized.email) return;
   identity = sanitized;
-  
+
   // Update cache with both name and email
   try {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -47,19 +47,19 @@ function emit(next: UserIdentity) {
       } else {
         window.localStorage.removeItem(CACHE_KEY_NAME);
       }
-      
+
       if (sanitized.email) {
         window.localStorage.setItem(CACHE_KEY_EMAIL, sanitized.email);
       } else {
         window.localStorage.removeItem(CACHE_KEY_EMAIL);
       }
-      
+
       console.log("[UserIdentity] Cache updated:", { name: sanitized.name, email: sanitized.email });
     }
   } catch {
     // ignore storage failures
   }
-  
+
   for (const listener of listeners) {
     try {
       listener(identity);
@@ -115,17 +115,28 @@ function subscribeToAuthChanges() {
   if (!supabase) return;
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((event) => {
+  } = supabase.auth.onAuthStateChange((event, session) => {
     // Clear identity on sign out
     if (event === "SIGNED_OUT") {
       emit({ name: null, email: null });
       return;
     }
 
-    // Fetch fresh data from Supabase profile on sign in
+    // Eagerly update cache with session data on sign in, then fetch profile in background
     // IMPORTANT: Defer Supabase operations to avoid breaking the auth listener
     // See: https://supabase.com/docs/client/auth-onauthstatechange
-    if (event === "SIGNED_IN") {
+    if (event === "SIGNED_IN" && session?.user) {
+      // ✅ IMMEDIATE cache update with session data (prevents race condition)
+      const metadata = (session.user.user_metadata as UserMetadata | undefined) ?? null;
+      const quickName = metadata?.name ?? null;
+      const quickEmail = session.user.email ?? null;
+
+      emit({
+        name: quickName,
+        email: quickEmail,
+      });
+
+      // Then fetch full profile from database in background (will update if display_name differs)
       setTimeout(() => {
         refreshIdentity().catch((e) => {
           console.warn("[UserIdentity] Failed to refresh on sign-in:", e);
@@ -142,7 +153,11 @@ function subscribeToAuthChanges() {
 
 export function subscribeUserIdentity(listener: (value: UserIdentity) => void) {
   listeners.add(listener);
-  listener(identity);
+  // Only fire immediately if we've already initialized
+  // This prevents stale cache from flashing before refresh completes
+  if (initialized) {
+    listener(identity);
+  }
   return () => {
     listeners.delete(listener);
   };
@@ -207,7 +222,7 @@ export function clearUserIdentityCache() {
   for (const listener of listeners) {
     try {
       listener(identity);
-    } catch {}
+    } catch { }
   }
 }
 
@@ -217,7 +232,7 @@ export function resetUserIdentityForTests() {
   if (authUnsubscribe) {
     try {
       authUnsubscribe();
-    } catch {}
+    } catch { }
   }
   authUnsubscribe = null;
   initPromise = null;
@@ -228,5 +243,5 @@ export function resetUserIdentityForTests() {
       window.localStorage.removeItem(CACHE_KEY_EMAIL);
       window.localStorage.removeItem("sf.lastUserEmail");
     }
-  } catch {}
+  } catch { }
 }
