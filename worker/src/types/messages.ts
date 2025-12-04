@@ -135,6 +135,7 @@ export type WorkerMetrics = {
 export type ServerFinalMessage = {
   type: 'final';
   text: string;
+  wordCount?: number;  // Number of words in transcription (for quota tracking)
   traceId?: string;
   metrics?: { worker: WorkerMetrics };
   dataset?: { sttText?: string | null; llmText?: string | null } | null;
@@ -195,12 +196,12 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
       const rawRange = sel.range as Record<string, unknown> | undefined;
       const range =
         rawRange &&
-        typeof rawRange.location === 'number' &&
-        typeof rawRange.length === 'number'
+          typeof rawRange.location === 'number' &&
+          typeof rawRange.length === 'number'
           ? {
-              location: rawRange.location,
-              length: rawRange.length,
-            }
+            location: rawRange.location,
+            length: rawRange.length,
+          }
           : null;
 
       selection = {

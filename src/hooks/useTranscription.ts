@@ -1575,30 +1575,15 @@ export function useTranscription(
                         await addTranscription(msg.text, sessionModeRef.current);
                       } catch { }
 
-                      // Track quota for free tier users
-                      try {
-                        const wordCount = msg.text.split(/\s+/).filter(Boolean).length;
-                        if (wordCount > 0) {
-                          const {
-                            incrementQuotaLocal,
-                            shouldSyncQuota,
-                            syncQuotaToServer
-                          } = await import('../state/quotaCache');
-
-                          // Increment local cache immediately (instant UI update)
-                          incrementQuotaLocal(wordCount);
-
-                          // Sync to server if needed (every 5 dictations or 5 minutes)
-                          if (shouldSyncQuota()) {
-                            syncQuotaToServer().catch((err) => {
-                              console.warn('[useTranscription] Quota sync failed:', err);
-                              // Silent fail - will retry on next sync trigger
-                            });
-                          }
+                      // Update local quota cache for UI (worker handles DB writes)
+                      // Worker sends wordCount in the response - we use it for instant UI feedback
+                      if (msg.wordCount && msg.wordCount > 0) {
+                        try {
+                          const { incrementQuotaLocal } = await import('../state/quotaCache');
+                          incrementQuotaLocal(msg.wordCount); // UI update only
+                        } catch (err) {
+                          console.warn('[useTranscription] Quota UI update failed:', err);
                         }
-                      } catch (err) {
-                        // Quota tracking is non-critical - don't break transcription flow
-                        console.warn('[useTranscription] Quota tracking failed:', err);
                       }
                     }
                     if (metricsRef.current) {

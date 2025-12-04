@@ -48,8 +48,6 @@ let quota: QuotaState = {
 };
 
 let initialized = false;
-let dictationsSinceLastSync = 0; // Counter for "every 5 dictations" sync trigger
-let syncTimer: NodeJS.Timeout | null = null; // Timer for "every 5 minutes" sync trigger
 
 // ============================================================================
 // CACHE HYDRATION (runs on module load)
@@ -159,12 +157,12 @@ export function subscribeQuota(listener: (quota: QuotaState) => void) {
 
 /**
  * Increment quota counter locally (instant UI update)
- * This does NOT sync to server - call syncQuotaToServer() separately
+ * This is for DISPLAY ONLY - server writes are handled by worker
  * 
- * @param wordCount - Number of words to add to quota
+ * @param wordCount - Number of words to add to quota (from worker response)
  * 
  * @example
- * incrementQuotaLocal(50); // Add 50 words to local counter
+ * incrementQuotaLocal(50); // Add 50 words to local counter (UI only)
  */
 export function incrementQuotaLocal(wordCount: number): void {
     if (wordCount <= 0) return;
@@ -177,116 +175,10 @@ export function incrementQuotaLocal(wordCount: number): void {
         limit: QUOTA_LIMIT,
     });
 
-    // Track dictations for sync trigger
-    dictationsSinceLastSync++;
-
-    console.log('[QuotaCache] Incremented locally:', {
+    console.log('[QuotaCache] Incremented locally (UI only):', {
         added: wordCount,
         total: nextWordsUsed,
-        dictationsSinceLastSync,
     });
-}
-
-// ============================================================================
-// PUBLIC: SYNC TO SERVER
-// ============================================================================
-
-/**
- * Sync local quota to Supabase database
- * This is called periodically (every 5 dictations or 5 minutes)
- * 
- * @returns Promise that resolves to true if sync succeeded
- */
-export async function syncQuotaToServer(): Promise<boolean> {
-    // Check if online
-    if (typeof navigator !== 'undefined' && navigator && !navigator.onLine) {
-        console.info('[QuotaCache] Offline; skipping sync');
-        return false;
-    }
-
-    const supabase = getSupabase();
-    if (!supabase) {
-        console.warn('[QuotaCache] No Supabase client; skipping sync');
-        return false;
-    }
-
-    // Get current user ID
-    let userId: string | null = null;
-    try {
-        const { getCurrentUser } = await import('../lib/supabaseClient');
-        const user = await getCurrentUser();
-        userId = user?.id ?? null;
-    } catch (err) {
-        console.warn('[QuotaCache] Failed to get user ID:', err);
-        return false;
-    }
-
-    if (!userId) {
-        console.warn('[QuotaCache] No user ID; skipping sync');
-        return false;
-    }
-
-    try {
-        console.log('[QuotaCache] Syncing to server:', {
-            userId,
-            wordsUsed: quota.wordsUsed
-        });
-
-        // Call the simple sync function - just updates the DB with our local value
-        const { error } = await supabase.rpc('sync_quota_simple', {
-            p_user_id: userId,
-            p_words_used: quota.wordsUsed,
-        });
-
-        if (error) {
-            console.error('[QuotaCache] Sync RPC error:', error);
-            return false;
-        }
-
-        // Update last synced timestamp
-        try {
-            if (typeof window !== 'undefined' && window.localStorage) {
-                window.localStorage.setItem(CACHE_KEY_LAST_SYNCED, new Date().toISOString());
-            }
-        } catch {
-            // Ignore storage failures
-        }
-
-        // Reset sync counter
-        dictationsSinceLastSync = 0;
-
-        console.log('[QuotaCache] Sync successful');
-        return true;
-    } catch (error) {
-        console.error('[QuotaCache] Sync failed:', error);
-        return false;
-    }
-}
-
-// ============================================================================
-// PUBLIC: CHECK IF SHOULD SYNC
-// ============================================================================
-
-/**
- * Check if we should sync to server based on triggers:
- * - Every 5 dictations
- * - Every 5 minutes (handled by timer)
- * - When quota limit reached
- * 
- * @returns true if should sync now
- */
-export function shouldSyncQuota(): boolean {
-    // Always sync if we've hit the limit
-    if (quota.wordsUsed >= quota.limit) {
-        return true;
-    }
-
-    // Sync every 5 dictations
-    if (dictationsSinceLastSync >= 5) {
-        return true;
-    }
-
-    return false;
 }
 
 // ============================================================================
@@ -295,26 +187,14 @@ export function shouldSyncQuota(): boolean {
 
 /**
  * Initialize quota cache module
- * - Starts 5-minute sync timer
+ * - Loads quota from localStorage for instant UI
  * - Can be called multiple times safely (idempotent)
  */
 export function initQuotaCache(): void {
     if (initialized) return;
 
-    // Start 5-minute sync timer
-    if (syncTimer) {
-        clearInterval(syncTimer);
-    }
-
-    syncTimer = setInterval(() => {
-        console.log('[QuotaCache] 5-minute timer triggered');
-        syncQuotaToServer().catch((error) => {
-            console.warn('[QuotaCache] Timer-based sync failed:', error);
-        });
-    }, 5 * 60 * 1000); // 5 minutes
-
     initialized = true;
-    console.log('[QuotaCache] Initialized with 5-minute sync timer');
+    console.log('[QuotaCache] Initialized (read-only UI cache)');
 }
 
 // ============================================================================
@@ -356,13 +236,6 @@ export function clearQuotaCache(): void {
         limit: QUOTA_LIMIT,
     };
 
-    dictationsSinceLastSync = 0;
-
-    if (syncTimer) {
-        clearInterval(syncTimer);
-        syncTimer = null;
-    }
-
     try {
         if (typeof window !== 'undefined' && window.localStorage) {
             window.localStorage.removeItem(CACHE_KEY_WORDS_USED);
@@ -403,9 +276,6 @@ export function updateQuotaFromServer(serverQuota: {
         resetDate: serverQuota.resetDate,
         limit: QUOTA_LIMIT,
     });
-
-    // Reset sync counter since we just got fresh data
-    dictationsSinceLastSync = 0;
 }
 
 // ============================================================================
@@ -423,12 +293,6 @@ export function resetQuotaCacheForTests(): void {
     };
 
     initialized = false;
-    dictationsSinceLastSync = 0;
-
-    if (syncTimer) {
-        clearInterval(syncTimer);
-        syncTimer = null;
-    }
 
     listeners.clear();
 

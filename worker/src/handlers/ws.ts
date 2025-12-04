@@ -180,6 +180,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   let authenticated = skipAuth; // Start authenticated if SKIP_AUTH is set
   let authenticatedUserId: string | null = null;
   let authenticatedEmail: string | null = null;
+  let authenticatedSubscriptionActive = false; // Track if user has active subscription (for quota enforcement)
   let authTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   // Set up auth timeout — close connection if no auth within timeout
@@ -337,6 +338,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           authenticated = true;
           authenticatedUserId = jwtResult.userId;
           authenticatedEmail = jwtResult.email;
+          authenticatedSubscriptionActive = jwtResult.subscriptionActive;
 
           console.log(JSON.stringify({
             event: 'auth.success',
@@ -1106,10 +1108,52 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   : null,
                 finalSentAt: Date.now(),
               };
+
+              // Count words for quota tracking
+              const responseText = llmText || finalText;
+              const wordCount = responseText.split(/\s+/).filter(Boolean).length;
+
+              // Fire-and-forget: increment quota in DB for free tier users
+              // This runs AFTER transcription completes (zero latency impact)
+              if (!authenticatedSubscriptionActive && authenticatedUserId && wordCount > 0) {
+                const supabaseUrl = c.env.SUPABASE_URL;
+                const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+                if (supabaseUrl && supabaseKey) {
+                  // Fire-and-forget quota update (doesn't block response)
+                  c.executionCtx.waitUntil(
+                    (async () => {
+                      try {
+                        const response = await fetch(`${supabaseUrl}/rest/v1/rpc/increment_quota_simple`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${supabaseKey}`,
+                          },
+                          body: JSON.stringify({
+                            p_user_id: authenticatedUserId,
+                            p_word_count: wordCount, // INCREMENT by this amount
+                          }),
+                        });
+
+                        if (!response.ok) {
+                          console.warn('[WS] Quota increment failed:', await response.text());
+                        }
+                      } catch (error) {
+                        // Silent fail - quota tracking is non-critical
+                        console.warn('[WS] Quota increment error:', error);
+                      }
+                    })()
+                  );
+                }
+              }
+
               server.send(
                 JSON.stringify({
                   type: 'final',
-                  text: llmText || finalText,
+                  text: responseText,
+                  wordCount, // Send word count to app for local UI update
                   traceId: session.traceId,
                   // Pass dataset texts so the client can forward to /metrics/session
                   dataset: session.shareTranscriptions
