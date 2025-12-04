@@ -1452,6 +1452,7 @@ body {
     );
     transform: skewX(-25deg);
     transition: left 0.8s ease-in-out;
+    pointer-events: none;
   }
 
   .shimmer:hover::before {

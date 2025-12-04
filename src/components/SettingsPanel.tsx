@@ -587,7 +587,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 </div>
                                 {/* PRO badge - only shown for Pro users */}
                                 {quotaState?.isPro && (
-                                  <div className="absolute -top-0.5 -right-0.5 bg-[#2A2A2A] text-white text-[6px] font-bold px-1.5 py-0.5 rounded leading-none">
+                                  <div
+                                    className="absolute -top-1 -right-1.5 text-white/90 text-[6px] font-bold px-1.5 py-0.5 rounded leading-none border border-white/10"
+                                    style={{
+                                      background: 'linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)',
+                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+                                    }}
+                                  >
                                     PRO
                                   </div>
                                 )}
