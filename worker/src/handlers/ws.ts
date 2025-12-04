@@ -1109,9 +1109,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 finalSentAt: Date.now(),
               };
 
-              // Count words for quota tracking
+              // Count words from STT output (what user actually spoke)
+              // NOT from LLM output - in edit mode LLM can generate more/fewer words
+              // Example: User says "make it shorter" (3 words) → LLM outputs 70 words
+              // We should charge for 3 words (what they spoke), not 70
+              const wordCount = finalText.split(/\s+/).filter(Boolean).length;
               const responseText = llmText || finalText;
-              const wordCount = responseText.split(/\s+/).filter(Boolean).length;
 
               // Fire-and-forget: increment quota in DB for free tier users
               // This runs AFTER transcription completes (zero latency impact)
