@@ -227,8 +227,11 @@ const AppInner: React.FC = () => {
   const [shareTranscriptionsUpdating, setShareTranscriptionsUpdating] =
     useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
     useState(CONTENT_HEIGHT);
+  const [permissionsPanelMeasured, setPermissionsPanelMeasured] =
+    useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
     useState(PERMISSIONS_CONTENT_HEIGHT);
   const currentUserIdRef = useRef<string | null>(null);
@@ -254,18 +257,20 @@ const AppInner: React.FC = () => {
   const handleSettingsPanelHeight = useCallback((height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const normalized = Math.round(height);
+    if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
     setSettingsPanelContentHeight((prev) =>
       prev === normalized ? prev : normalized,
     );
-  }, []);
+  }, [settingsPanelMeasured]);
 
   const handlePermissionsPanelHeight = useCallback((height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const normalized = Math.round(height);
+    if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
     setPermissionsPanelContentHeight((prev) =>
       prev === normalized ? prev : normalized,
     );
-  }, []);
+  }, [permissionsPanelMeasured]);
 
   const sendPermissionNotification = useCallback(
     (reason: "detected" | "repeat" | "changed" | "ptt" | "manual") => {
@@ -1293,10 +1298,14 @@ const AppInner: React.FC = () => {
     panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
   const expandedHeightTarget =
     panelView === "permissions"
-      ? permissionsPanelContentHeight
-      : settingsPanelContentHeight;
+      ? permissionsPanelMeasured
+        ? permissionsPanelContentHeight
+        : Math.round(PERMISSIONS_CONTENT_HEIGHT * S)
+      : settingsPanelMeasured
+        ? settingsPanelContentHeight
+        : Math.round(CONTENT_HEIGHT * S);
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
-  const EXPANDED_H = Math.round(expandedHeightTarget * S);
+  const EXPANDED_H = Math.round(expandedHeightTarget);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   useEffect(() => {
