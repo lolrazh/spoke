@@ -62,20 +62,45 @@ Sonic Flow uses JWT-based authentication with embedded subscription and quota cl
   <connection_auth>
     1. App starts → Supabase refreshes JWT (runs custom_access_token_hook in Postgres)
     2. Hook checks subscriptions table, reads quota from profiles table
-    3. Hook adds claims to JWT:
+    3. Hook implements lazy monthly reset (if quota_reset_date < NOW(), resets to 0)
+    4. Hook adds claims to JWT:
        - subscription_active (boolean) - Pro tier status
-       - words_used_this_month (number) - Free tier usage
+       - words_used_this_month (number) - Free tier usage (after reset if needed)
        - quota_limit (number) - Free tier limit (2000)
        - quota_reset_date (timestamp) - Next reset date
-    4. App sends JWT in WebSocket 'auth' message
-    5. Worker verifies JWT signature using JWKS (Supabase public key)
-    6. Worker extracts claims from verified JWT
-    7. Worker checks entitlement:
-       - Pro users (subscription_active=true): Instant pass
-       - Free users: Check quota (words_used >= quota_limit → BLOCK)
-    8. If auth passes: Connection authenticated, ready for audio
-    9. If auth fails: Connection closed with error code (4020 or 4021)
+    5. App syncs quota from JWT to localStorage on startup (display-only cache)
+    6. User presses PTT → App checks local quota first (instant feedback)
+    7. If local quota exceeded → Show notification immediately, skip WebSocket connection
+    8. If local quota OK → App sends JWT in WebSocket 'auth' message
+    9. Worker verifies JWT signature using JWKS (Supabase public key)
+    10. Worker extracts claims from verified JWT
+    11. Worker checks entitlement (server-authoritative):
+        - Pro users (subscription_active=true): Instant pass
+        - Free users: Check quota (words_used >= quota_limit → BLOCK)
+    12. If auth passes: Connection authenticated, ready for audio
+    13. If auth fails: Connection closed with error code (4020 or 4021)
   </connection_auth>
+
+  <two_level_gating>
+    Free tier quota is enforced at two levels:
+
+    1. **Local (App-side)**: Instant feedback
+       - Checks localStorage quota before opening WebSocket
+       - Shows notification immediately if quota exceeded
+       - Purpose: Better UX (no frozen frequency bars, instant error)
+       - Security: Display-only, NOT authoritative (can be tampered)
+
+    2. **Server (Worker-side)**: Authoritative enforcement
+       - Checks JWT claims quota at WebSocket auth time
+       - Closes connection if quota exceeded (code 4021)
+       - Purpose: Security boundary (untamperable, source of truth)
+       - Cannot be bypassed: JWT signed by Supabase, verified by worker
+
+    **Why both?** Local check provides instant UX feedback. Server check ensures
+    security—even if user tampers with localStorage, worker still enforces limit.
+
+    Reference: agent-logs/2025-12-04_1640_fix-quota-system.md
+  </two_level_gating>
 
   <close_codes file="worker/src/auth/index.ts">
     1000: NORMAL_CLOSE - Successful completion
@@ -95,20 +120,41 @@ Sonic Flow uses JWT-based authentication with embedded subscription and quota cl
   </architecture_benefits>
 
   <quota_tracking file="worker/src/handlers/ws.ts">
+    **Server-Authoritative Architecture:**
+    Worker is the single source of truth for quota tracking. App cannot write to database.
+
     After successful transcription:
     1. Worker counts words from STT output (finalText, NOT LLM output)
+       - Why finalText? User pays for what they spoke, not what LLM generated
+       - Edit mode example: "make it shorter" (3 words) → LLM outputs 70 words → count 3 ✅
     2. Word count formula: finalText.split(/\s+/).filter(w => w.length > 0).length
-    3. Worker fires increment_quota_simple(user_id, word_count) in background
-    4. Uses executionCtx.waitUntil() for fire-and-forget (zero latency)
+    3. Worker fires increment_quota_simple(user_id, word_count) to database (service role)
+    4. Uses executionCtx.waitUntil() for fire-and-forget (zero latency impact on response)
     5. Worker includes wordCount in final message for app UI display
-    6. App updates localStorage cache for progress bar (display-only)
-    7. Next JWT refresh syncs reality from database
+    6. App updates localStorage cache for progress bar (instant UI feedback, display-only)
+    7. Next JWT refresh syncs localStorage from database truth
+
+    **Security Model:**
+    - Worker writes to DB (untamperable, server-authoritative)
+    - custom_access_token_hook reads DB → adds claims to JWT (cryptographically signed)
+    - Worker validates JWT at auth time → enforces quota
+    - App reads JWT/localStorage (display-only, zero security impact if tampered)
+
+    **Latency Optimization:**
+    Fire-and-forget DB writes (waitUntil) ensure zero perceived latency:
+    - Response sent to client FIRST
+    - DB write happens AFTER (non-blocking background task)
+    - Cloudflare Workers guarantees completion even after response sent
+    - Result: User sees text instantly, quota tracked reliably
+
+    Reference: agent-logs/2025-12-04_1330_free-tier-quota-implementation.md
   </quota_tracking>
 
   <related_docs>
     - docs/DATABASE.md (Custom Access Token Hook, quota tracking)
     - agent-logs/2025-12-02_1900_payments-auth-optimization.md (JWT claims implementation)
     - agent-logs/2025-12-04_1330_free-tier-quota-implementation.md (Server-authoritative quota system)
+    - agent-logs/2025-12-04_1640_fix-quota-system.md (VOLATILE fix, notification improvements)
     - agent-logs/2025-12-03_2225_post-payment-jwt-refresh.md (Startup refresh flow)
   </related_docs>
 </auth_flow>
@@ -904,6 +950,61 @@ Transcription history is stored locally on the user's device—never in the data
     User has full control over their transcription history.
   </privacy>
 </history>
+
+---
+
+## Troubleshooting
+
+### Quota Not Syncing to App
+
+**Symptom**: User has used words but progress bar shows 0, or quota exceeded error doesn't appear when expected.
+
+**Common Causes:**
+
+1. **JWT Not Refreshed**: Quota claims are only updated when JWT refreshes (on app startup or explicit refresh)
+   - **Solution**: Restart app or wait for automatic JWT refresh (1 hour)
+   - **Verification**: Check localStorage: `localStorage.getItem('sf.quotaWordsUsed')`
+
+2. **Database Hook Not Working**: custom_access_token_hook may be failing silently
+   - **Solution**: See DATABASE.md troubleshooting section (VOLATILE/STABLE issue)
+   - **Verification**: Check database directly vs JWT claims vs localStorage
+
+3. **Stale localStorage Cache**: App cache out of sync with database between sessions
+   - **Expected**: This is normal and acceptable (refreshes on next startup)
+   - **User Impact**: None (server-side quota is authoritative, local is display-only)
+
+**Debugging Steps:**
+```bash
+# 1. Check database truth
+SELECT words_used_this_month, quota_reset_date FROM profiles WHERE id = auth.uid();
+
+# 2. Force JWT refresh in app (DevTools Console)
+await window.supabase.auth.refreshSession();
+
+# 3. Check localStorage cache
+localStorage.getItem('sf.quotaWordsUsed');
+localStorage.getItem('sf.quotaLimit');
+
+# 4. Test dictation
+# - Local check happens first (instant notification if exceeded)
+# - Server check happens at WebSocket auth (close code 4021 if exceeded)
+# - Worker logs show JWT claims quota in auth verification
+```
+
+### Notification Not Appearing on Quota Exceeded
+
+**Symptom**: User presses PTT when quota exceeded, but no notification appears. Frequency bars freeze.
+
+**Fixed**: 2025-12-04 (agent-logs/2025-12-04_1640_fix-quota-system.md)
+
+**Solution Applied:**
+- Added local quota check before WebSocket connection (instant feedback)
+- Clear authError state before each attempt (ensures useEffect re-triggers)
+- Send notification directly + set error state (redundant notification paths)
+- Added "Quota" to error pattern recognition in catch block
+- Enhanced pill reducer to handle quota error messages
+
+**Verification**: Set `localStorage.setItem('sf.quotaWordsUsed', '2000')` and try to dictate. Notification should appear immediately.
 
 ---
 

@@ -34,21 +34,21 @@ The quota system is **server-authoritative**: the Cloudflare Worker counts words
   <table name="subscriptions">
     <purpose>Dodo Payments subscription records</purpose>
     <relationship>subscriptions.user_id → auth.users.id (FK, 1:N)</relationship>
-    <rows>0</rows>
+    <rows>1</rows>
     <rls>enabled</rls>
   </table>
 
   <table name="dictation_logs">
     <purpose>Transcription session telemetry (no text stored)</purpose>
     <relationship>dictation_logs.user_id → auth.users.id (FK, 1:N)</relationship>
-    <rows>1270</rows>
+    <rows>1337</rows>
     <rls>enabled</rls>
   </table>
 
   <table name="webhook_events">
     <purpose>Dodo Payments webhook event audit log</purpose>
     <relationship>None (standalone)</relationship>
-    <rows>0</rows>
+    <rows>2</rows>
     <rls>enabled (service role only)</rls>
   </table>
 
@@ -257,7 +257,7 @@ Database functions provide reusable logic for common operations.
 <functions>
   <function name="handle_new_user">
     <signature>handle_new_user() RETURNS trigger</signature>
-    <type>Trigger function (SECURITY DEFINER)</type>
+    <type>Trigger function (VOLATILE, SECURITY DEFINER)</type>
     <trigger>
       Trigger: on_auth_user_created
       Event: AFTER INSERT ON auth.users
@@ -278,11 +278,14 @@ Database functions provide reusable logic for common operations.
       Automatically invoked by Supabase Auth on user registration.
       No manual calls needed.
     </usage>
+    <security>
+      SET search_path TO 'public' for security isolation.
+    </security>
   </function>
 
   <function name="increment_quota_simple">
     <signature>increment_quota_simple(p_user_id uuid, p_word_count integer) RETURNS void</signature>
-    <type>Database function (SECURITY DEFINER)</type>
+    <type>Database function (VOLATILE, SECURITY DEFINER)</type>
     <action>
       Increments words_used_this_month by p_word_count for the given user:
       UPDATE profiles
@@ -291,6 +294,7 @@ Database functions provide reusable logic for common operations.
 
       Uses COALESCE to handle NULL initial values.
       Atomic operation - no race conditions.
+      Logs warning if user not found in profiles table.
     </action>
     <purpose>
       Server-side quota tracking for free tier users.
@@ -320,7 +324,7 @@ Database functions provide reusable logic for common operations.
 
   <function name="custom_access_token_hook">
     <signature>custom_access_token_hook(event jsonb) RETURNS jsonb</signature>
-    <type>Auth hook (STABLE)</type>
+    <type>Auth hook (VOLATILE, SECURITY DEFINER)</type>
     <hook_type>Custom Access Token Hook (registered in Supabase Auth settings)</hook_type>
     <action>
       Modifies JWT claims during token generation/refresh:
@@ -341,6 +345,13 @@ Database functions provide reusable logic for common operations.
 
       Error handling: Returns event with just subscription_active on failure.
     </action>
+    <critical_fix>
+      MUST be VOLATILE (not STABLE) because it performs UPDATE operations.
+      Original bug: Function was STABLE, which prohibits writes in Postgres.
+      Symptom: Quota would not sync from database to JWT (silently failed).
+      Fixed 2025-12-04 by changing to VOLATILE + SECURITY DEFINER.
+      Reference: agent-logs/2025-12-04_1640_fix-quota-system.md
+    </critical_fix>
     <purpose>
       Embeds subscription and quota data into JWTs for instant worker-side gating.
       No database queries needed during transcription - all info in signed token.
@@ -378,6 +389,7 @@ Database functions provide reusable logic for common operations.
     </lazy_reset_logic>
     <security>
       Runs in database with full access (auth.users, public.profiles, public.subscriptions).
+      SET search_path TO 'public', 'auth' for security isolation.
       JWT signature prevents tampering - worker validates all tokens.
       Free tier users cannot forge pro subscription claims.
     </security>
@@ -700,8 +712,9 @@ The `custom_access_token_hook()` function must be registered in Supabase Auth se
   </testing>
 
   <related_docs>
-    - agent-logs/2025-12-04_1330_free-tier-quota-implementation.md
-    - agent-logs/2025-12-02_1900_payments-auth-optimization.md
+    - agent-logs/2025-12-04_1330_free-tier-quota-implementation.md (Initial implementation)
+    - agent-logs/2025-12-04_1640_fix-quota-system.md (VOLATILE fix for hook)
+    - agent-logs/2025-12-02_1900_payments-auth-optimization.md (Custom Access Token Hook setup)
   </related_docs>
 </auth_hook_setup>
 
@@ -819,6 +832,42 @@ Comprehensive overview of the server-authoritative quota system.
     File: src/state/quotaCache.ts
   </ui_display_caching>
 </quota_architecture>
+
+---
+
+## Troubleshooting
+
+### Quota Not Syncing from Database to JWT
+
+**Symptom**: Database shows correct `words_used_this_month`, but Worker logs show `wordsUsed: 0` from JWT claims.
+
+**Root Cause**: The `custom_access_token_hook()` function was defined as `STABLE`, which prohibits UPDATE operations in PostgreSQL. The lazy monthly reset logic (which writes to `profiles` table) was silently failing.
+
+**Error Message** (when manually executing hook):
+```
+ERROR: 0A000: UPDATE is not allowed in a non-volatile function
+```
+
+**Solution**: Change function volatility to `VOLATILE` and add `SECURITY DEFINER`:
+```sql
+CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE  -- Changed from STABLE
+SECURITY DEFINER  -- Added for RLS bypass
+SET search_path TO 'public', 'auth'
+AS $function$
+-- ... function body ...
+$function$;
+```
+
+**Verification**:
+1. Check database: `SELECT words_used_this_month FROM profiles WHERE id = auth.uid();`
+2. Force JWT refresh: `supabase.auth.refreshSession()` in app
+3. Check Worker logs for `wordsUsed` in JWT claims
+4. Check app localStorage: `localStorage.getItem('sf.quotaWordsUsed')`
+
+**Reference**: `agent-logs/2025-12-04_1640_fix-quota-system.md`
 
 ---
 
