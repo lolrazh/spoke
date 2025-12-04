@@ -265,7 +265,7 @@ export function useTranscription(
         } catch { }
       }
     });
-    initUserIdentity().catch(() => null);
+    initUserIdentity().catch((): null => null);
     return () => {
       unsubscribe();
     };
@@ -1152,7 +1152,7 @@ export function useTranscription(
               applySelectionSnapshot(normalized);
               return normalized;
             })
-            .catch((err) => {
+            .catch((err): null => {
               if (window.devFlags?.devConsoleLogs) {
                 console.warn("[useTranscription] Selection inspect failed", err);
               }
@@ -1382,7 +1382,7 @@ export function useTranscription(
             // process remainder through gate if enabled
             if (VAD_ENABLED && vadReadyRef.current && vadStreamGateRef.current) {
               const chunks = vadStreamGateRef.current.pushFrame(rest);
-              for (const c of chunks) streamFrame(c.buffer);
+              for (const c of chunks) streamFrame(c.buffer as ArrayBuffer);
             } else {
               streamFrame(rest.buffer);
             }
@@ -1401,7 +1401,7 @@ export function useTranscription(
             }
           }
           for (const chunk of chunks) {
-            streamFrame(chunk.buffer);
+            streamFrame(chunk.buffer as ArrayBuffer);
             if (metricsRef.current) {
               metricsRef.current.framesForwarded = (metricsRef.current.framesForwarded ?? 0) + 1;
             }
@@ -1826,7 +1826,7 @@ export function useTranscription(
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(payload),
-                          }).catch(() => undefined);
+                          }).catch((): void => undefined);
                         } catch { }
                       } catch { }
                     }
@@ -1920,7 +1920,7 @@ export function useTranscription(
               try {
                 if (VAD_ENABLED && vadStreamGateRef.current) {
                   const tail = vadStreamGateRef.current.flushPostRoll();
-                  for (const chunk of tail) streamFrame(chunk.buffer);
+                  for (const chunk of tail) streamFrame(chunk.buffer as ArrayBuffer);
 
                   // Log final chunk state for Phase 1 testing
                   const remainingChunk = vadStreamGateRef.current.getRemainingChunk();
