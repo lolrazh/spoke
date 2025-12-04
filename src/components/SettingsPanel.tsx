@@ -473,7 +473,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         {/* Progress bar */}
                         <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-white/50 rounded-full transition-all duration-300"
+                            className="h-full bg-white/70 rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.min(100, (quotaState.wordsUsed / quotaState.limit) * 100)}%`,
                             }}
