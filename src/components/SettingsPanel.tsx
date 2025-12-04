@@ -448,7 +448,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   variants={containerVariants}
                   className="flex flex-col"
                 >
-                  {/* Section 0: Free Tier Usage (only shown for free users) */}
+                  {/* Section 0: Usage (only shown for free users) */}
                   {quotaState && !quotaState.isPro && userEmail && (
                     <motion.section
                       variants={sectionVariants}
@@ -456,25 +456,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       style={{ marginTop: "var(--panel-section-offset)" }}
                     >
                       <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-white/80">
-                            Free Tier Usage
-                          </span>
-                          <span className="text-[10px] text-subtle">
-                            {quotaState.wordsUsed.toLocaleString()} / {quotaState.limit.toLocaleString()} words
+                        {/* Header row with title and word count */}
+                        <div className="flex items-baseline justify-between mb-3">
+                          <div className="flex items-end gap-1">
+                            <span className="text-xs font-medium text-white/90 leading-none">
+                              Usage
+                            </span>
+                            <span className="text-[9px] text-white/30 font-normal leading-none">
+                              resets monthly
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-white/50 tabular-nums">
+                            {quotaState.wordsUsed.toLocaleString()} / {quotaState.limit.toLocaleString()}
                           </span>
                         </div>
                         {/* Progress bar */}
-                        <div className="h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+                        <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-white/60 rounded-full transition-all duration-300"
+                            className="h-full bg-white/50 rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.min(100, (quotaState.wordsUsed / quotaState.limit) * 100)}%`,
                             }}
                           />
                         </div>
                         {quotaState.wordsUsed >= quotaState.limit && (
-                          <div className="text-[10px] text-white/50 mt-2">
+                          <div className="text-[10px] text-white/40 mt-2.5">
                             Quota reached. Upgrade for unlimited dictation.
                           </div>
                         )}
@@ -611,15 +617,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                   Manage
                                 </Button>
                               ) : (
-                                <div className="relative overflow-hidden shimmer rounded-md">
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => window.electron?.openExternal?.("https://sonicflow.app/pricing")}
-                                  >
-                                    Upgrade
-                                  </Button>
-                                </div>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app/pricing")}
+                                  className="relative overflow-hidden shimmer-fast"
+                                >
+                                  Upgrade
+                                </Button>
                               )}
                               <Button
                                 variant="secondary"
