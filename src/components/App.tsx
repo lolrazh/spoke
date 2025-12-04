@@ -348,9 +348,13 @@ const AppInner: React.FC = () => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  // Initialize transcription history on app start
+  // Initialize transcription history and quota cache on app start
   useEffect(() => {
     initTranscriptionHistory().catch(() => { });
+    // Initialize quota cache (starts 5-min sync timer, hydrates from localStorage)
+    import('../state/quotaCache').then(({ initQuotaCache }) => {
+      initQuotaCache();
+    }).catch(() => { });
   }, []);
 
   const canProceedWithStart = useCallback(async (): Promise<boolean> => {

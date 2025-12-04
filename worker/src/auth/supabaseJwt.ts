@@ -49,7 +49,15 @@ function getJWKS(supabaseUrl: string): ReturnType<typeof createRemoteJWKSet> {
  * Result type for JWT verification
  */
 export type JwtVerifyResult =
-  | { valid: true; userId: string; email: string; subscriptionActive: boolean; payload: JWTPayload }
+  | {
+    valid: true;
+    userId: string;
+    email: string;
+    subscriptionActive: boolean;
+    wordsUsedThisMonth?: number;  // Free tier: current quota usage
+    quotaLimit?: number;           // Free tier: monthly limit (2000)
+    payload: JWTPayload;
+  }
   | { valid: false; error: string; code: 'invalid' | 'expired' | 'malformed' };
 
 /**
@@ -99,6 +107,14 @@ export async function verifySupabaseJwt(
     const email = payload.email as string | undefined;
     const subscriptionActive = payload.subscription_active === true;
 
+    // Extract quota claims (only present for free tier users)
+    const wordsUsedThisMonth = typeof payload.words_used_this_month === 'number'
+      ? payload.words_used_this_month
+      : undefined;
+    const quotaLimit = typeof payload.quota_limit === 'number'
+      ? payload.quota_limit
+      : undefined;
+
     if (!userId) {
       return {
         valid: false,
@@ -112,6 +128,8 @@ export async function verifySupabaseJwt(
       userId,
       email: email || '',
       subscriptionActive,
+      wordsUsedThisMonth,
+      quotaLimit,
       payload,
     };
   } catch (error: unknown) {
