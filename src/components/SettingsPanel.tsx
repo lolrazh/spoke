@@ -14,6 +14,7 @@ import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
+import { subscribeQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 
@@ -139,6 +140,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+  // Subscription/quota state for tier-based UI
+  const [quotaState, setQuotaState] = useState<QuotaState | null>(null);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -208,6 +211,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setUserName(identity.name);
     });
 
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to quota/subscription state for tier-based UI
+  useEffect(() => {
+    const unsubscribe = subscribeQuota((quota) => {
+      setQuotaState(quota);
+    });
     return unsubscribe;
   }, []);
 
@@ -303,14 +314,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const handleSignOut = async () => {
     if (isSigningOut) return; // Prevent double-clicks
     setIsSigningOut(true);
-    
+
     try {
       // Sign out and wait for completion
       // The onAuthStateChange listener in App.tsx will:
       // 1. Send "Signed out" notification (which transitions pill from EXPANDED → NOTIFICATION)
       // 2. Set pendingHideAfterCollapse to show onboarding after notification
       await supaSignOut();
-      
+
       // Note: We don't call onRequestCollapse() here because the NOTIFY event
       // from the auth state change handler will transition the pill out of EXPANDED state.
       // The pendingHideAfterCollapse logic then handles hiding and showing onboarding.
@@ -390,8 +401,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("settings")}
                 className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "settings"
-                    ? "bg-white/10 text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
                 <SfIcon name="gearshape.fill" size={18} />
@@ -400,8 +411,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("history")}
                 className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "history"
-                    ? "bg-white/10 text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  ? "bg-white/10 text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
                 <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
@@ -437,6 +448,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   variants={containerVariants}
                   className="flex flex-col"
                 >
+                  {/* Section 0: Usage (only shown for free users) */}
+                  {quotaState && !quotaState.isPro && userEmail && (
+                    <motion.section
+                      variants={sectionVariants}
+                      className="space-y-2"
+                      style={{ marginTop: "var(--panel-section-offset)" }}
+                    >
+                      <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background p-4">
+                        {/* Header row with title and word count */}
+                        <div className="flex items-baseline justify-between mb-3">
+                          <div className="flex items-end gap-1">
+                            <span className="text-xs font-medium text-white/90 leading-none">
+                              Usage
+                            </span>
+                            <span className="text-[9px] text-white/30 font-normal leading-none">
+                              resets monthly
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-white/50 tabular-nums">
+                            {quotaState.wordsUsed.toLocaleString()} / {quotaState.limit.toLocaleString()}
+                          </span>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-white/70 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, (quotaState.wordsUsed / quotaState.limit) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        {quotaState.wordsUsed >= quotaState.limit && (
+                          <div className="text-[10px] text-white/40 mt-2.5">
+                            Quota reached. Upgrade for unlimited dictation.
+                          </div>
+                        )}
+                      </div>
+                    </motion.section>
+                  )}
+
                   {/* Section 1: Defaults */}
                   <motion.section
                     variants={sectionVariants}
@@ -524,20 +575,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
                       {userEmail ? (
-                        <div className="relative overflow-hidden shimmer">
+                        <div className={`relative overflow-hidden ${quotaState?.isPro ? 'shimmer' : ''}`}>
                           <div className="p-3 flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0">
-                              {/* Avatar with PRO badge */}
+                              {/* Avatar with optional PRO badge */}
                               <div className="relative shrink-0">
                                 <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center">
                                   <span className="text-[11px] font-semibold tracking-wide">
                                     {(userName || userEmail || "").slice(0, 1).toUpperCase()}
                                   </span>
                                 </div>
-                                {/* PRO badge - solid, like Perplexity */}
-                                <div className="absolute -top-0.5 -right-0.5 bg-[#2A2A2A] text-white text-[6px] font-bold px-1.5 py-0.5 rounded leading-none">
-                                  PRO
-                                </div>
+                                {/* PRO badge - only shown for Pro users */}
+                                {quotaState?.isPro && (
+                                  <div
+                                    className="absolute -top-1 -right-1.5 text-white/90 text-[6px] font-bold px-1.5 py-0.5 rounded leading-none border border-white/10"
+                                    style={{
+                                      background: 'linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)',
+                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+                                    }}
+                                  >
+                                    PRO
+                                  </div>
+                                )}
                               </div>
                               {/* Name */}
                               <div className="text-left min-w-0">
@@ -553,15 +612,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 )}
                               </div>
                             </div>
-                            {/* Buttons */}
+                            {/* Buttons - Manage for Pro, Upgrade for Free */}
                             <div className="flex items-center gap-2 shrink-0 no-drag">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => window.electron?.openExternal?.("https://sonicflow.app")}
-                              >
-                                Manage
-                              </Button>
+                              {quotaState?.isPro ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app")}
+                                >
+                                  Manage
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app/pricing")}
+                                  className="relative overflow-hidden shimmer-fast"
+                                >
+                                  Upgrade
+                                </Button>
+                              )}
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -628,7 +698,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

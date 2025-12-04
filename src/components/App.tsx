@@ -507,7 +507,7 @@ const AppInner: React.FC = () => {
               const { data } = await supabase.auth.refreshSession();
               console.log('[App] Session refreshed on startup - JWT claims updated');
 
-              // Sync local quota cache with fresh server data (for free tier)
+              // Sync local quota/subscription cache with fresh server data
               if (data?.session?.access_token) {
                 try {
                   // Decode JWT payload to get custom claims
@@ -515,18 +515,23 @@ const AppInner: React.FC = () => {
                   const payloadJson = atob(payloadBase64);
                   const payload = JSON.parse(payloadJson);
 
-                  // If quota claims exist, update the local cache
-                  if (typeof payload.words_used_this_month === 'number') {
-                    const { updateQuotaFromServer } = await import('../state/quotaCache');
-                    updateQuotaFromServer({
-                      wordsUsed: payload.words_used_this_month,
-                      resetDate: payload.quota_reset_date || null,
-                    });
-                    console.log('[App] Quota synced from JWT:', {
-                      wordsUsed: payload.words_used_this_month,
-                      resetDate: payload.quota_reset_date
-                    });
-                  }
+                  // Extract subscription status (Pro vs Free)
+                  const isPro = payload.subscription_active === true;
+
+                  // Update local cache with quota and subscription status
+                  const { updateQuotaFromServer } = await import('../state/quotaCache');
+                  updateQuotaFromServer({
+                    wordsUsed: typeof payload.words_used_this_month === 'number'
+                      ? payload.words_used_this_month
+                      : 0,
+                    resetDate: payload.quota_reset_date || null,
+                    isPro,
+                  });
+                  console.log('[App] Subscription & quota synced from JWT:', {
+                    isPro,
+                    wordsUsed: payload.words_used_this_month,
+                    resetDate: payload.quota_reset_date
+                  });
                 } catch (e) {
                   console.warn('[App] Failed to sync quota from JWT:', e);
                 }
