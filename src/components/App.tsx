@@ -500,8 +500,33 @@ const AppInner: React.FC = () => {
           const supabase = getSupabase();
           if (supabase) {
             try {
-              await supabase.auth.refreshSession();
+              const { data } = await supabase.auth.refreshSession();
               console.log('[App] Session refreshed on startup - JWT claims updated');
+
+              // Sync local quota cache with fresh server data (for free tier)
+              if (data?.session?.access_token) {
+                try {
+                  // Decode JWT payload to get custom claims
+                  const payloadBase64 = data.session.access_token.split('.')[1];
+                  const payloadJson = atob(payloadBase64);
+                  const payload = JSON.parse(payloadJson);
+
+                  // If quota claims exist, update the local cache
+                  if (typeof payload.words_used_this_month === 'number') {
+                    const { updateQuotaFromServer } = await import('../state/quotaCache');
+                    updateQuotaFromServer({
+                      wordsUsed: payload.words_used_this_month,
+                      resetDate: payload.quota_reset_date || null,
+                    });
+                    console.log('[App] Quota synced from JWT:', {
+                      wordsUsed: payload.words_used_this_month,
+                      resetDate: payload.quota_reset_date
+                    });
+                  }
+                } catch (e) {
+                  console.warn('[App] Failed to sync quota from JWT:', e);
+                }
+              }
             } catch (error) {
               console.warn('[App] Failed to refresh session on startup:', error);
               // Continue anyway - getCurrentUser will return cached session
