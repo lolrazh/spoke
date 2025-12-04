@@ -1102,6 +1102,10 @@ export function useTranscription(
     if (processing) return; // Prevent starting while processing
     // Start cue moved to PTT/button handlers for immediacy
 
+    // Clear previous auth error so re-setting it triggers the useEffect in App.tsx
+    // This ensures the notification shows EVERY time the user tries to dictate
+    setAuthError(null);
+
     // LOCAL QUOTA GATING: Check if the local cache shows quota exceeded
     // This provides instant feedback without waiting for server round-trip
     // The server will still enforce this via JWT claims, but local check is faster
@@ -1109,8 +1113,14 @@ export function useTranscription(
       const { isQuotaExceeded } = await import('../state/quotaCache');
       if (isQuotaExceeded()) {
         console.log('[useTranscription] Local quota check: exceeded');
+        const errorMsg = "You've used your free words this month. Upgrade for unlimited.";
         setAuthError("payment_required");
-        setError("You've used your free words this month. Upgrade for unlimited.");
+        setError(errorMsg);
+        // Send notification directly for immediate feedback
+        // The useEffect in App.tsx will also fire since authError changed from null
+        try {
+          window.notifications?.send?.(errorMsg);
+        } catch { }
         return;
       }
     } catch {
