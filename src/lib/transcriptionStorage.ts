@@ -1,7 +1,7 @@
 import Store from "electron-store";
 import type { TranscriptionItem } from "../types/shared";
 
-const MAX_ITEMS = 10000;
+const MAX_ITEMS = 100000;
 
 interface TranscriptionStoreSchema {
   transcriptions: TranscriptionItem[];
