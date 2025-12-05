@@ -140,7 +140,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
-  const [isLoadingPortal, setIsLoadingPortal] = useState<boolean>(false);
   // Subscription/quota state for tier-based UI
   const [quotaState, setQuotaState] = useState<QuotaState | null>(null);
 
@@ -335,9 +334,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   const handleManageSubscription = async () => {
-    if (isLoadingPortal) return; // Prevent double-clicks
-    setIsLoadingPortal(true);
-
+    // Open browser immediately - website handles the redirect
+    // This provides instant feedback rather than waiting for API response in the app
     try {
       const supabase = getSupabase();
       if (!supabase) {
@@ -351,27 +349,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         return;
       }
 
-      const response = await fetch("https://www.sonicflow.app/api/billing/portal", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error("[Settings] Failed to get portal URL:", error);
-        // Could show a notification here, but for now just log
-        return;
-      }
-
-      const { url } = await response.json();
-      window.electron?.openExternal(url);
+      // Open the redirect page with token in hash fragment (not sent to server logs)
+      // The website page will read the token, call the API, and redirect to Dodo
+      const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+      window.electron?.openExternal(portalUrl);
     } catch (error) {
       console.error("[Settings] Error opening billing portal:", error);
-    } finally {
-      setIsLoadingPortal(false);
     }
   };
 
@@ -661,9 +644,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                   variant="secondary"
                                   size="sm"
                                   onClick={handleManageSubscription}
-                                  disabled={isLoadingPortal}
                                 >
-                                  {isLoadingPortal ? "..." : "Manage"}
+                                  Manage
                                 </Button>
                               ) : (
                                 <Button
