@@ -9,6 +9,7 @@ import {
   OPENAI_LLM_DEFAULT_MODEL,
   BASETEN_LLM_DEFAULT_MODEL,
   OPENROUTER_LLM_DEFAULT_MODEL,
+  CEREBRAS_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_PROVIDER,
   EDIT_LLM_DEFAULT_TEMPERATURE,
@@ -38,6 +39,7 @@ const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
   openai: OPENAI_LLM_DEFAULT_MODEL,
   baseten: BASETEN_LLM_DEFAULT_MODEL,
   openrouter: OPENROUTER_LLM_DEFAULT_MODEL,
+  cerebras: CEREBRAS_LLM_DEFAULT_MODEL,
 };
 
 function defaultModelFor(provider: LLMProvider, fallback: string): string {
@@ -119,7 +121,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter') return s as LLMProvider;
+  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter' || s === 'cerebras') return s as LLMProvider;
   return fallback;
 }
 

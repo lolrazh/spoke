@@ -5,6 +5,7 @@ import {
   OPENAI_EDIT_LLM_DEFAULT_MODEL,
   BASETEN_EDIT_LLM_DEFAULT_MODEL,
   OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
+  CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
 } from '../../config';
 
 export type LLMRoutingRule = {
@@ -34,6 +35,8 @@ function getEditModelForProvider(provider: LLMProvider): string {
       return BASETEN_EDIT_LLM_DEFAULT_MODEL;
     case 'openrouter':
       return OPENROUTER_EDIT_LLM_DEFAULT_MODEL;
+    case 'cerebras':
+      return CEREBRAS_EDIT_LLM_DEFAULT_MODEL;
     default:
       return BASETEN_EDIT_LLM_DEFAULT_MODEL;
   }
