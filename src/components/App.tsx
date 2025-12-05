@@ -363,11 +363,15 @@ const AppInner: React.FC = () => {
 
   // Initialize transcription history and quota cache on app start
   useEffect(() => {
-    initTranscriptionHistory().catch(() => { });
+    initTranscriptionHistory().catch(() => {
+      // Ignore initialization errors; app can function without history
+    });
     // Initialize quota cache (starts 5-min sync timer, hydrates from localStorage)
     import('../state/quotaCache').then(({ initQuotaCache }) => {
       initQuotaCache();
-    }).catch(() => { });
+    }).catch(() => {
+      // Ignore initialization errors; quota will fall back to server checks
+    });
   }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
