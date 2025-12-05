@@ -175,6 +175,57 @@ if (profile?.onboarding_done) {
 }
 ```
 
+### JWT Refresh on App Startup
+
+The app refreshes the JWT on startup to get fresh subscription and quota claims:
+
+```typescript
+// App.tsx - Refresh session on app startup
+if (!skipAuth) {
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.auth.refreshSession();
+      console.log('[App] Session refreshed on startup - JWT claims updated');
+    } catch (error) {
+      console.warn('[App] Failed to refresh session on startup:', error);
+      // Continue anyway - getCurrentUser will return cached session
+    }
+  }
+}
+```
+
+**Why This Matters:**
+- After payment, users need fresh JWT with `subscription_active: true` claim
+- Ensures quota claims are up-to-date (words_used_this_month, quota_limit)
+- Runs Custom Access Token Hook in Postgres to check subscriptions table
+- Allows instant access after subscription changes (just restart app)
+
+### JWT Claims (Custom Access Token Hook)
+
+JWTs include custom claims added by Supabase Custom Access Token Hook:
+
+```typescript
+// JWT payload includes:
+{
+  sub: "user-uuid",
+  email: "user@example.com",
+  subscription_active: true,           // Pro tier status
+  words_used_this_month: 342,          // Free tier usage (if no subscription)
+  quota_limit: 2000,                   // Free tier limit (if no subscription)
+  quota_reset_date: "2025-01-01T00:00:00Z"  // Next reset (if no subscription)
+}
+```
+
+**Hook Behavior:**
+- Runs on token generation/refresh (login, startup refresh, hourly refresh)
+- Checks `subscriptions` table for active subscription
+- For free tier users: reads quota from `profiles` table, implements lazy monthly reset
+- For Pro users: only adds `subscription_active: true`, skips quota fields
+- Embeds data in JWT for instant worker-side gating (zero DB queries during transcription)
+
+See `docs/DATABASE.md` for full Custom Access Token Hook documentation.
+
 ### Session Polling
 
 The pill UI (App.tsx) polls for session validity every 60 seconds:
@@ -194,7 +245,7 @@ useEffect(() => {
 }, []);
 ```
 
-**Note:** Network errors are ignored to prevent false sign-outs during connectivity blips.
+**Note:** Network errors are ignored to prevent false sign-outs during connectivity blips. This polling detects server-side deletions or manual sign-outs.
 
 ## Environment Configuration
 
@@ -505,6 +556,33 @@ User-friendly error messages are provided for common failures:
 - Tokens processed immediately and not stored in logs
 - Secure token exchange using Supabase client
 - Automatic session management with refresh tokens
+- JWT claims embedded via Custom Access Token Hook for entitlement gating
+- JWT signature verified on Worker using JWKS (Supabase public key)
+
+### Supabase Auth Listener Best Practices
+**CRITICAL:** Never call Supabase operations directly inside `onAuthStateChange` callback:
+
+```typescript
+// ❌ DANGEROUS - Breaks the auth listener
+supabase.auth.onAuthStateChange(async (event) => {
+  await supabase.from('profiles').select();  // This breaks subsequent events!
+});
+
+// ✅ SAFE - Defer with setTimeout
+supabase.auth.onAuthStateChange((event) => {
+  setTimeout(() => {
+    supabase.from('profiles').select().then(...);
+  }, 0);
+});
+```
+
+**Why:** Executing Supabase operations within the callback can corrupt the listener state, causing it to stop firing for subsequent events. This is documented Supabase behavior but easy to miss.
+
+**Impact:** Auth listener breaks after first use, causing sign-out failures and random behavior.
+
+**Files that follow this pattern:**
+- `src/state/userIdentity.ts` - Defers `refreshIdentity()`
+- `src/components/App.tsx` - Defers `loadSharePreference()`
 
 ### Development Security
 - Local HTTP server only binds to 127.0.0.1 (not 0.0.0.0)
@@ -544,7 +622,7 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
 - Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
 - Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
-- Added light auth polling (60s) to detect server-side deletions until server-side JWT gating is added.
+- Added light auth polling (60s) to detect server-side deletions.
 - Poll ignores network errors; only treats "no error + no user" as sign-out.
 - Returning users skip onboarding based on `profiles.onboarding_done`.
 - Onboarding email entry supports Enter-to-submit for OTP.
@@ -552,8 +630,119 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - **Smooth transitions** - `smoothShow()` and `smoothHide()` functions provide fade in/out for pill window.
 - **Pre-created pill** - `preparePill()` is called during onboarding to pre-create the pill window for instant reveal.
 
-### Deferred Backend Enforcement
-- JWT verification on the Cloudflare Worker WebSocket is deferred; backend remains open while the client enforces UX. Plan: include `Authorization: Bearer <access_token>` and verify on the Worker when ready.
+### Sign-Out Flow (Fixed December 2025)
+
+The sign-out flow underwent critical reliability fixes:
+
+**Previous Issues:**
+- Sign-out button appeared to do nothing (stuck on "Signing out...")
+- First sign-out worked, but subsequent sign-outs failed
+- Random sign-outs 1-2 minutes after clicking button
+- Supabase auth listener silently broke after first use
+
+**Root Cause:**
+Calling Supabase operations inside `onAuthStateChange` callback breaks the listener:
+```typescript
+// ❌ BROKEN - Supabase query inside auth callback
+supabase.auth.onAuthStateChange(async (event) => {
+  if (event === "SIGNED_IN") {
+    await refreshIdentity();  // This breaks the listener!
+  }
+});
+```
+
+**Solution:**
+Defer all Supabase operations outside the callback with `setTimeout()`:
+```typescript
+// ✅ FIXED - Deferred Supabase operations
+supabase.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_IN") {
+    setTimeout(() => {
+      refreshIdentity().catch(console.warn);
+    }, 0);
+  }
+});
+```
+
+**Current Flow:**
+1. User clicks "Sign Out" button in SettingsPanel
+2. Button disables, shows "Signing out..." loading state
+3. `await supaSignOut()` completes
+4. `onAuthStateChange` fires with SIGNED_OUT event
+5. Handler dispatches "Signed out" notification
+6. Pill state machine transitions: EXPANDED → NOTIFICATION
+7. Notification displays for 2 seconds
+8. App shows onboarding window, routes PTT to onboarding
+
+**Files Affected:**
+- `src/components/SettingsPanel.tsx` - Async sign-out with loading state
+- `src/components/App.tsx` - State machine handles NOTIFY in EXPANDED state, deferred Supabase calls
+- `src/state/userIdentity.ts` - Deferred refreshIdentity() in auth listener
+
+### Pre-Connect Pattern (Auth Error Reliability)
+
+To eliminate first-dictation audio loss and ensure reliable error notifications:
+
+**Problem:**
+- First dictation after app launch lost 100-300ms of audio during auth check
+- Auth errors sometimes didn't show (race conditions in async flow)
+- UI showed "listening" before auth completed (incorrect state)
+
+**Solution:**
+```typescript
+// Pre-connect WebSocket in background when app launches or user signs in
+const preConnect = async () => {
+  try {
+    await ensureStreamingSocket();  // Establishes connection, verifies JWT
+    console.info("[SF] Pre-connected to Worker successfully");
+  } catch (err) {
+    console.warn("[SF] Pre-connect failed (will retry on first dictation):", err);
+  }
+};
+```
+
+**Benefits:**
+- First dictation captures audio from first syllable (zero latency)
+- Auth errors show immediately and reliably (synchronous flow)
+- UI stays in IDLE during auth, only shows LISTENING after success
+- Pill state machine interrupts LISTENING for error notifications
+
+**Triggers:**
+- App launch when user is signed in (App.tsx)
+- User signs in via auth state change (App.tsx)
+
+**Error Handling:**
+All auth failures normalized to single message: "Subscription required. Upgrade to continue."
+- Covers: No JWT, invalid JWT (4012), no subscription (4020), quota exceeded (4021)
+- State machine detects errors by content and shows immediately (doesn't queue)
+
+### Backend JWT Verification (Implemented)
+
+The Cloudflare Worker now fully enforces JWT-based authentication and entitlement gating:
+
+**Authentication Flow:**
+1. Client sends `{ type: "auth", token: "eyJhbG..." }` as first WebSocket message
+2. Worker verifies JWT signature using JWKS (Supabase public key)
+3. Worker extracts claims: `subscription_active`, `words_used_this_month`, `quota_limit`
+4. Worker checks entitlement:
+   - Pro users (`subscription_active: true`): Instant pass
+   - Free users: Checks `words_used >= quota_limit` → blocks if exceeded
+5. If auth passes: sends `{ type: "auth_ok" }`, connection ready
+6. If auth fails: sends `{ type: "auth_error", code: 4011|4012|4020|4021 }`, closes connection
+
+**Close Codes:**
+- `4011` AUTH_TIMEOUT - No auth message within 15s
+- `4012` UNAUTHORIZED - Invalid or expired JWT
+- `4020` PAYMENT_REQUIRED - No active subscription (feature requires Pro)
+- `4021` QUOTA_EXCEEDED - Free tier monthly limit reached (2000 words)
+
+**Security:**
+- Zero database queries during auth check (all data in JWT claims)
+- Cryptographically secure (JWT signature verification)
+- Instant blocking (checked before audio streams)
+- Scales infinitely (pure CPU work, no DB bottleneck)
+
+See `docs/TRANSCRIPTION.md` and `docs/DATABASE.md` for complete authentication and quota tracking architecture.
 
 ## Testing and Validation
 

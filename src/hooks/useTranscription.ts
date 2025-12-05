@@ -40,6 +40,15 @@ import {
 } from "../utils/errorHandler";
 import type { ServerErrorResponse } from "../types/errors";
 
+// Auth-related WebSocket close codes from the Worker
+const WS_CLOSE_UNAUTHORIZED = 4010;
+const WS_CLOSE_PAYMENT_REQUIRED = 4020;
+const WS_CLOSE_QUOTA_EXCEEDED = 4021;
+const WS_CLOSE_AUTH_TIMEOUT = 4011;
+
+// Auth error types for UI handling
+export type AuthErrorType = "not_signed_in" | "payment_required" | "auth_failed" | null;
+
 // Define the hook's return type
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -47,12 +56,18 @@ export interface UseTranscriptionReturn {
   ready: boolean;
   text: string;
   error: string | null;
+  /** Auth-specific error type for UI to show appropriate prompts */
+  authError: AuthErrorType;
   mode: ClientSessionMode;
   selection: SelectionInspectSnapshot | null;
   audioLevel: number; // 0-1 range representing current audio input level
   start: () => void;
   stop: () => void;
   cancel: () => void;
+  /** Clear auth error (e.g., after user dismisses upgrade prompt) */
+  clearAuthError: () => void;
+  /** Pre-connect to Worker to avoid first-dictation latency */
+  preConnect: () => Promise<void>;
 }
 
 export interface UseTranscriptionOptions {
@@ -162,6 +177,12 @@ export function useTranscription(
   const selectionGateTimerRef = useRef<number | null>(null);
   const shareTranscriptionsRef = useRef<boolean>(shareTranscriptionsEnabled);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+  const [authError, setAuthError] = useState<AuthErrorType>(null);
+
+  // Auth state for WebSocket authentication
+  const wsAuthenticatedRef = useRef<boolean>(false);
+  const wsAuthPendingRef = useRef<boolean>(false);
+  const wsAuthFailedRef = useRef<boolean>(false); // Track auth failures to prevent reconnects
 
   const initialIdentity = getUserIdentity();
   const identityRef = useRef<SttPromptIdentity>({
@@ -241,10 +262,10 @@ export function useTranscription(
         lastLoggedPromptRef.current = prompt;
         try {
           console.info("[SF] STT prompt", prompt);
-        } catch {}
+        } catch { }
       }
     });
-    initUserIdentity().catch(() => null);
+    initUserIdentity().catch((): null => null);
     return () => {
       unsubscribe();
     };
@@ -254,6 +275,19 @@ export function useTranscription(
     const ws = wsRef.current;
     if (!ws || startSentRef.current) return;
     if (ws.readyState !== WebSocket.OPEN) return;
+    // CRITICAL: Don't send start until auth is complete!
+    // This prevents a race condition where the selection gate timer or other
+    // async code paths try to send 'start' before the auth handshake finishes.
+    if (!wsAuthenticatedRef.current || !wsReadyRef.current) {
+      // Auth not complete yet - start will be sent from auth_ok handler
+      if (window.devFlags?.devConsoleLogs) {
+        console.debug("[SF] trySendStartMessage: waiting for auth", {
+          authenticated: wsAuthenticatedRef.current,
+          ready: wsReadyRef.current,
+        });
+      }
+      return;
+    }
     const traceId = metricsRef.current?.sessionId;
     if (!traceId) return;
 
@@ -309,7 +343,7 @@ export function useTranscription(
       if (sttPromptRef.current) {
         console.info("[SF] Using STT prompt", sttPromptRef.current);
       }
-    } catch {}
+    } catch { }
 
     try {
       ws.send(JSON.stringify(startPayload));
@@ -386,7 +420,7 @@ export function useTranscription(
     if (wsRef.current) return; // socket exists (OPEN/CONNECTING)
     if (!recording && sendQueueRef.current.length === 0) return; // nothing to send
     if (reconnectTimerRef.current != null) return;
-    
+
     // Circuit breaker: stop trying after max attempts
     if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
       console.warn("[useTranscription] Max reconnect attempts exceeded, entering circuit breaker mode");
@@ -398,7 +432,7 @@ export function useTranscription(
       );
       logError(error, "[useTranscription]");
       setError(getUserMessage(error));
-      
+
       // Set a longer timeout before allowing reconnect attempts again
       reconnectTimerRef.current = window.setTimeout(() => {
         console.info("[useTranscription] Circuit breaker reset, allowing reconnect attempts");
@@ -407,12 +441,12 @@ export function useTranscription(
       }, CIRCUIT_BREAKER_TIMEOUT);
       return;
     }
-    
+
     const base = 150;
     const attempt = reconnectAttemptRef.current++;
     const delay = Math.min(base * Math.pow(2, attempt), 2000);
     console.debug(`[useTranscription] Scheduling reconnect attempt ${attempt} in ${delay}ms`);
-    
+
     reconnectTimerRef.current = window.setTimeout(() => {
       reconnectTimerRef.current = null;
       ensureStreamingSocket();
@@ -429,7 +463,7 @@ export function useTranscription(
       try {
         ws.send(next);
         sendQueueBytesRef.current -= next.byteLength;
-      } catch {}
+      } catch { }
     }
     if (
       sendQueueRef.current.length &&
@@ -444,22 +478,46 @@ export function useTranscription(
     }
   }, []);
 
-  const ensureStreamingSocket = useCallback(() => {
-    // If there's an existing socket, only keep it if it's OPEN or CONNECTING.
-    // After idle timeouts, the socket may be CLOSED but non-null; recreate in that case.
+  const ensureStreamingSocket = useCallback(async (): Promise<void> => {
+    // If there's an existing socket that's authenticated, keep it
     if (wsRef.current) {
       const rs = wsRef.current.readyState;
-      if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
+      if ((rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) && wsAuthenticatedRef.current) {
+        return; // Already connected and authenticated
+      }
       try {
         wsRef.current.close();
-      } catch {}
+      } catch { }
       wsRef.current = null;
     }
+
+    // Reset auth state for new connection
+    wsAuthenticatedRef.current = false;
+    wsAuthPendingRef.current = false;
+    wsAuthFailedRef.current = false; // Clear previous auth failure state
+
+    // Get access token for authentication
+    let accessToken: string | null = null;
+    try {
+      const { getAccessToken } = await import("../lib/supabaseClient");
+      accessToken = await getAccessToken();
+    } catch (err) {
+      console.warn("[useTranscription] Failed to get access token:", err);
+    }
+
+    // If no token, user is not signed in
+    if (!accessToken) {
+      console.warn("[useTranscription] No access token - user not signed in");
+      setAuthError("not_signed_in");
+      setError("Sign in to start dictating.");
+      throw new Error("Not signed in");
+    }
+
     const wsUrl = getTranscribeWsUrl();
     if (!wsEndpointLoggedRef.current) {
       try {
         console.info("[SF] WS endpoint", { url: wsUrl });
-      } catch {}
+      } catch { }
       wsEndpointLoggedRef.current = true;
     }
     const ws = new WebSocket(wsUrl);
@@ -468,41 +526,149 @@ export function useTranscription(
     wsReadyRef.current = false;
     wsErrorRef.current = null;
 
-    ws.onopen = () => {
-      wsReadyRef.current = true;
-      wsLastActivityRef.current = Date.now(); // Track activity
-      if (metricsRef.current && !metricsRef.current.wsOpenMs)
-        metricsRef.current.wsOpenMs =
-          typeof performance !== "undefined" ? performance.now() : Date.now();
-      trySendStartMessage();
-      resetReconnectBackoff();
-      flushQueue();
-      // Start health monitoring when WebSocket is ready
-      startWebSocketHealthCheck();
-    };
-    ws.onerror = (event) => {
-      const error = parseWebSocketError(event, { readyState: ws.readyState });
-      wsErrorRef.current = getUserMessage(error);
-      logError(error, "[useTranscription] WebSocket");
-      wsLastActivityRef.current = Date.now(); // Track error as activity
-      if (ws.readyState !== WebSocket.OPEN) {
-        if (wsRef.current === ws) wsRef.current = null;
+    // Create a Promise that resolves when auth succeeds or rejects when it fails
+    return new Promise<void>((resolve, reject) => {
+      // Timeout for the entire auth process (connection + auth)
+      const authTimeout = setTimeout(() => {
+        reject(new Error("Auth timeout"));
+      }, 15000); // 15 seconds total (includes connection time)
+
+      const cleanup = () => {
+        clearTimeout(authTimeout);
+      };
+
+      ws.addEventListener("open", () => {
+        wsLastActivityRef.current = Date.now(); // Track activity
+        if (metricsRef.current && !metricsRef.current.wsOpenMs)
+          metricsRef.current.wsOpenMs =
+            typeof performance !== "undefined" ? performance.now() : Date.now();
+
+        // Send auth message immediately on open
+        wsAuthPendingRef.current = true;
+        try {
+          ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+          console.info("[SF] Auth message sent");
+        } catch (err) {
+          console.error("[useTranscription] Failed to send auth message:", err);
+          wsAuthPendingRef.current = false;
+        }
+
+        resetReconnectBackoff();
+      });
+
+      ws.addEventListener("message", (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(String(event.data));
+
+          // Handle auth response
+          if (msg.type === "auth_ok") {
+            console.info("[SF] Auth successful", { userId: msg.userId });
+            wsAuthenticatedRef.current = true;
+            wsAuthPendingRef.current = false;
+            wsReadyRef.current = true;
+            setAuthError(null); // Clear any previous auth error
+            cleanup();
+            resolve(); // Auth succeeded - resolve the Promise
+
+            // Now we can send start message and flush queue
+            trySendStartMessage();
+            flushQueue();
+            // Start health monitoring when WebSocket is authenticated
+            startWebSocketHealthCheck();
+            return;
+          }
+
+          if (msg.type === "auth_error") {
+            console.error("[SF] Auth failed:", msg.error, "code:", msg.code);
+            wsAuthPendingRef.current = false;
+            cleanup();
+            reject(new Error(`Auth failed: ${msg.error}`));
+            // The server will close the connection, onclose will handle cleanup
+            return;
+          }
+        } catch {
+          // Not a JSON message or parse error - ignore for auth handling
+        }
+      });
+
+      ws.addEventListener("error", (event: Event) => {
+        const error = parseWebSocketError(event, { readyState: ws.readyState });
+        wsErrorRef.current = getUserMessage(error);
+        logError(error, "[useTranscription] WebSocket");
+        wsLastActivityRef.current = Date.now(); // Track error as activity
+        wsAuthPendingRef.current = false;
+        if (ws.readyState !== WebSocket.OPEN) {
+          if (wsRef.current === ws) wsRef.current = null;
+          // Don't reconnect if this is an auth failure (close handler will set the error)
+          if (!wsAuthFailedRef.current) {
+            scheduleReconnect();
+          }
+        }
+      });
+
+      ws.addEventListener("close", (event: CloseEvent) => {
+        wsReadyRef.current = false;
+        wsAuthenticatedRef.current = false;
+        wsAuthPendingRef.current = false;
+        wsLastActivityRef.current = Date.now(); // Track close as activity
+        // Reset start flag on close to allow re-sending start message on reconnect
+        startSentRef.current = false;
+
+        // Handle auth-specific close codes
+        if (event.code === WS_CLOSE_UNAUTHORIZED || event.code === WS_CLOSE_AUTH_TIMEOUT) {
+          console.warn("[SF] Auth failed - unauthorized or timeout", { code: event.code, reason: event.reason });
+          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+          setAuthError("auth_failed");
+          setError("Session expired. Please sign in again.");
+          cleanup();
+          reject(new Error("Auth failed"));
+          // Don't auto-reconnect for auth failures
+          if (wsRef.current === ws) {
+            wsRef.current = null;
+          }
+          stopWebSocketHealthCheck();
+          return;
+        }
+
+        if (event.code === WS_CLOSE_PAYMENT_REQUIRED) {
+          console.warn("[SF] Payment required", { code: event.code, reason: event.reason });
+          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+          setAuthError("payment_required");
+          setError("Upgrade to Pro for unlimited dictation.");
+          cleanup();
+          reject(new Error("Payment required"));
+          // Don't auto-reconnect for payment required
+          if (wsRef.current === ws) {
+            wsRef.current = null;
+          }
+          stopWebSocketHealthCheck();
+          return;
+        }
+
+        if (event.code === WS_CLOSE_QUOTA_EXCEEDED) {
+          console.warn("[SF] Quota exceeded", { code: event.code, reason: event.reason });
+          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+          setAuthError("payment_required"); // Reuse payment_required UI (shows upgrade prompt)
+          setError("You've used your free words this month. Upgrade for unlimited.");
+          cleanup();
+          reject(new Error("Quota exceeded"));
+          // Don't auto-reconnect for quota exceeded
+          if (wsRef.current === ws) {
+            wsRef.current = null;
+          }
+          stopWebSocketHealthCheck();
+          return;
+        }
+
+        // Ensure future sessions can recreate the socket after idle closes
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
         scheduleReconnect();
-      }
-    };
-    ws.onclose = () => {
-      wsReadyRef.current = false;
-      wsLastActivityRef.current = Date.now(); // Track close as activity
-      // Reset start flag on close to allow re-sending start message on reconnect
-      startSentRef.current = false;
-      // Ensure future sessions can recreate the socket after idle closes
-      if (wsRef.current === ws) {
-        wsRef.current = null;
-      }
-      scheduleReconnect();
-      // Stop health monitoring when connection closes
-      stopWebSocketHealthCheck();
-    };
+        // Stop health monitoring when connection closes
+        stopWebSocketHealthCheck();
+      });
+    }); // Close the Promise
   }, [flushQueue, trySendStartMessage]);
 
   const streamFrame = useCallback(
@@ -866,10 +1032,10 @@ export function useTranscription(
             await track.applyConstraints({
               ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
             } as MediaTrackConstraints);
-          } catch {}
+          } catch { }
           const settings = track.getSettings();
           const capabilities = track.getCapabilities?.() || {};
-          
+
           console.log("[useTranscription] Actual audio track settings:", {
             sampleRate: settings.sampleRate,
             channelCount: settings.channelCount,
@@ -879,7 +1045,7 @@ export function useTranscription(
             deviceId: settings.deviceId,
             groupId: settings.groupId,
           });
-          
+
           console.log("[useTranscription] Audio track capabilities:", {
             sampleRate: capabilities.sampleRate,
             channelCount: capabilities.channelCount,
@@ -888,7 +1054,7 @@ export function useTranscription(
             autoGainControl: capabilities.autoGainControl,
           });
         }
-        
+
         setReady(true);
         setError(null);
         console.log("[useTranscription] Microphone stream opened successfully");
@@ -936,6 +1102,31 @@ export function useTranscription(
     if (processing) return; // Prevent starting while processing
     // Start cue moved to PTT/button handlers for immediacy
 
+    // Clear previous auth error so re-setting it triggers the useEffect in App.tsx
+    // This ensures the notification shows EVERY time the user tries to dictate
+    setAuthError(null);
+
+    // LOCAL QUOTA GATING: Check if the local cache shows quota exceeded
+    // This provides instant feedback without waiting for server round-trip
+    // The server will still enforce this via JWT claims, but local check is faster
+    try {
+      const { isQuotaExceeded } = await import('../state/quotaCache');
+      if (isQuotaExceeded()) {
+        console.log('[useTranscription] Local quota check: exceeded');
+        const errorMsg = "You've used your free words this month. Upgrade for unlimited.";
+        setAuthError("payment_required");
+        setError(errorMsg);
+        // Send notification directly for immediate feedback
+        // The useEffect in App.tsx will also fire since authError changed from null
+        try {
+          window.notifications?.send?.(errorMsg);
+        } catch { }
+        return;
+      }
+    } catch {
+      // Quota check failed - continue anyway, server will enforce
+    }
+
     startSentRef.current = false;
     clearSelectionGateTimer();
     pendingSelectionPromiseRef.current = null;
@@ -961,7 +1152,7 @@ export function useTranscription(
               applySelectionSnapshot(normalized);
               return normalized;
             })
-            .catch((err) => {
+            .catch((err): null => {
               if (window.devFlags?.devConsoleLogs) {
                 console.warn("[useTranscription] Selection inspect failed", err);
               }
@@ -1014,14 +1205,13 @@ export function useTranscription(
         return;
       }
     }
-    setError(null);
+    // Only clear error if not an auth issue (auth errors should persist)
+    if (!authError) {
+      setError(null);
+    }
     setText("");
-    setRecording(true);
 
-    // Resume audio worklet if it was paused
-    resumeAudioWorklet();
-
-    // Reset streaming state
+    // Reset streaming state BEFORE auth check
     seqRef.current = 0;
     sendQueueRef.current = [];
     sendQueueBytesRef.current = 0;
@@ -1045,8 +1235,15 @@ export function useTranscription(
     currentChunkIndexRef.current = 0;
 
     try {
-      // Try to establish the WebSocket early so audio failures don't mask connectivity
-      ensureStreamingSocket();
+      // Try to establish the WebSocket and wait for auth to complete
+      // This Promise resolves when auth succeeds, rejects if auth fails
+      await ensureStreamingSocket();
+
+      // Auth succeeded! Now we can start recording
+      setRecording(true);
+      resumeAudioWorklet();
+
+      // Send the start message
       trySendStartMessage();
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
@@ -1133,7 +1330,7 @@ export function useTranscription(
           for (let i = 0; i < warmupFrames; i++) {
             vadStreamGateRef.current.pushFrame(silence);
           }
-        } catch {}
+        } catch { }
       } else {
         vadEngineRef.current = null;
         vadStreamGateRef.current = null;
@@ -1185,7 +1382,7 @@ export function useTranscription(
             // process remainder through gate if enabled
             if (VAD_ENABLED && vadReadyRef.current && vadStreamGateRef.current) {
               const chunks = vadStreamGateRef.current.pushFrame(rest);
-              for (const c of chunks) streamFrame(c.buffer);
+              for (const c of chunks) streamFrame(c.buffer as ArrayBuffer);
             } else {
               streamFrame(rest.buffer);
             }
@@ -1204,7 +1401,7 @@ export function useTranscription(
             }
           }
           for (const chunk of chunks) {
-            streamFrame(chunk.buffer);
+            streamFrame(chunk.buffer as ArrayBuffer);
             if (metricsRef.current) {
               metricsRef.current.framesForwarded = (metricsRef.current.framesForwarded ?? 0) + 1;
             }
@@ -1231,9 +1428,23 @@ export function useTranscription(
         });
       }
     } catch (err) {
+      // If this is an auth error, the error and authError state are already set
+      // Don't overwrite them with a generic "audio processing failed" message
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (
+        errorMessage.includes("Not signed in") ||
+        errorMessage.includes("Auth") ||
+        errorMessage.includes("Payment") ||
+        errorMessage.includes("Quota")
+      ) {
+        // Auth/quota error already handled - don't overwrite the error message
+        setRecording(false);
+        return;
+      }
+
       const error = createAppError(
         ErrorCode.AUDIO_PROCESSING_FAILED,
-        err instanceof Error ? err.message : String(err)
+        errorMessage
       );
       logError(error, "[useTranscription]");
       setError(getUserMessage(error));
@@ -1291,18 +1502,18 @@ export function useTranscription(
           }
 
           const cleanup = (abortOnly = false) => {
-            try { ws.removeEventListener("message", onMessage as EventListener); } catch {}
-            try { ws.removeEventListener("error", onError as EventListener); } catch {}
-            try { ws.removeEventListener("close", onClose as EventListener); } catch {}
+            try { ws.removeEventListener("message", onMessage as EventListener); } catch { }
+            try { ws.removeEventListener("error", onError as EventListener); } catch { }
+            try { ws.removeEventListener("close", onClose as EventListener); } catch { }
             try {
               abortControllerRef.current?.signal.removeEventListener(
                 "abort",
                 onAbort,
               );
-            } catch {}
+            } catch { }
             try {
               if (!abortOnly && timeoutId) clearTimeout(timeoutId);
-            } catch {}
+            } catch { }
           };
 
           const onAbort = () => {
@@ -1314,7 +1525,7 @@ export function useTranscription(
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(JSON.stringify({ type: "cancel" }));
                 }
-              } catch {}
+              } catch { }
               reject(new DOMException("Aborted", "AbortError"));
             }
           };
@@ -1356,12 +1567,12 @@ export function useTranscription(
                   .map(idx => chunkResultsRef.current.get(idx) || "")
                   .join(" ");
                 setText(accumulatedText);
-                try { window.transcript?.update(accumulatedText); } catch {}
+                try { window.transcript?.update(accumulatedText); } catch { }
               } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
                 // Progressive UI update only; paste remains on final
                 setText((prev) => {
                   const next = (prev || "") + msg.delta;
-                  try { window.transcript?.update(next); } catch {}
+                  try { window.transcript?.update(next); } catch { }
                   return next;
                 });
               } else if (msg.type === "final") {
@@ -1384,12 +1595,23 @@ export function useTranscription(
                               typeof performance !== "undefined"
                                 ? performance.now()
                                 : Date.now();
-                        } catch {}
+                        } catch { }
                       }
                       // Save transcription to history
                       try {
                         await addTranscription(msg.text, sessionModeRef.current);
-                      } catch {}
+                      } catch { }
+
+                      // Update local quota cache for UI (worker handles DB writes)
+                      // Worker sends wordCount in the response - we use it for instant UI feedback
+                      if (msg.wordCount && msg.wordCount > 0) {
+                        try {
+                          const { incrementQuotaLocal } = await import('../state/quotaCache');
+                          incrementQuotaLocal(msg.wordCount); // UI update only
+                        } catch (err) {
+                          console.warn('[useTranscription] Quota UI update failed:', err);
+                        }
+                      }
                     }
                     if (metricsRef.current) {
                       metricsRef.current.sttEndMs =
@@ -1417,49 +1639,51 @@ export function useTranscription(
 
                         const worker = (msg?.metrics?.worker ?? null) as
                           | {
-                              traceId?: string;
-                              wsAcceptAt?: number | null;
-                              startedAt?: number | null;
-                              processingStartAt?: number | null;
-                              frames?: number;
-                              bytes?: number;
-                              seqGaps?: number;
-                              firstArrivalMs?: number | null;
-                              lastArrivalMs?: number | null;
-                              firstToLastArrivalMs?: number | null;
-                              assembleMs?: number | null;
-                              stt?: {
-                                provider?: string | null;
-                                startAt?: number | null;
-                                headersAt?: number | null;
-                                bodyDoneAt?: number | null;
-                                ttfbMs?: number | null;
-                                bodyMs?: number | null;
-                                totalMs?: number | null;
-                              } | null;
-                              groq?: {
-                                provider?: string | null;
-                                startAt?: number | null;
-                                headersAt?: number | null;
-                                bodyDoneAt?: number | null;
-                                ttfbMs?: number | null;
-                                bodyMs?: number | null;
-                                totalMs?: number | null;
-                              } | null;
-                              llm?: {
-                                provider?: string | null;
-                                model?: string | null;
-                                startAt?: number | null;
-                                headersAt?: number | null;
-                                firstDeltaAt?: number | null;
-                                bodyDoneAt?: number | null;
-                                ttfbMs?: number | null;
-                                bodyMs?: number | null;
-                                totalMs?: number | null;
-                                routeRules?: string[] | null;
-                              } | null;
-                              finalSentAt?: number | null;
-                            }
+                            traceId?: string;
+                            wsAcceptAt?: number | null;
+                            startedAt?: number | null;
+                            processingStartAt?: number | null;
+                            frames?: number;
+                            bytes?: number;
+                            seqGaps?: number;
+                            firstArrivalMs?: number | null;
+                            lastArrivalMs?: number | null;
+                            firstToLastArrivalMs?: number | null;
+                            assembleMs?: number | null;
+                            stt?: {
+                              provider?: string | null;
+                              startAt?: number | null;
+                              headersAt?: number | null;
+                              bodyDoneAt?: number | null;
+                              ttfbMs?: number | null;
+                              bodyMs?: number | null;
+                              totalMs?: number | null;
+                            } | null;
+                            groq?: {
+                              provider?: string | null;
+                              startAt?: number | null;
+                              headersAt?: number | null;
+                              bodyDoneAt?: number | null;
+                              ttfbMs?: number | null;
+                              bodyMs?: number | null;
+                              totalMs?: number | null;
+                            } | null;
+                            llm?: {
+                              provider?: string | null;
+                              model?: string | null;
+                              startAt?: number | null;
+                              headersAt?: number | null;
+                              firstDeltaAt?: number | null;
+                              bodyDoneAt?: number | null;
+                              ttfbMs?: number | null;
+                              bodyMs?: number | null;
+                              totalMs?: number | null;
+                              routeRules?: string[] | null;
+                            } | null;
+                            finalSentAt?: number | null;
+                            chunkCount?: number | null;
+                            chunkSttMs?: string | null;
+                          }
                           | null;
 
                         const endSent = client.endSentMs ?? null;
@@ -1553,9 +1777,9 @@ export function useTranscription(
                           const shareAllowed = shareTranscriptionsRef.current === true;
                           const datasetPayload = shareAllowed
                             ? ((msg?.dataset as {
-                                sttText?: string | null;
-                                llmText?: string | null;
-                              } | undefined) ?? null)
+                              sttText?: string | null;
+                              llmText?: string | null;
+                            } | undefined) ?? null)
                             : null;
                           const payload = {
                             traceId: breakdown.traceId,
@@ -1602,15 +1826,15 @@ export function useTranscription(
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify(payload),
-                          }).catch(() => undefined);
-                        } catch {}
-                      } catch {}
+                          }).catch((): void => undefined);
+                        } catch { }
+                      } catch { }
                     }
-                  } catch {}
+                  } catch { }
                   // Close per-session to avoid stale sockets
                   try {
                     ws.close(1000, "session_complete");
-                  } catch {}
+                  } catch { }
                   cleanup();
                   resolve();
                 }
@@ -1624,14 +1848,14 @@ export function useTranscription(
                   // Close after receiving error response
                   try {
                     ws.close(1011, "server error");
-                  } catch {}
+                  } catch { }
                   cleanup();
                   reject(
                     new Error(getUserMessage(appError)),
                   );
                 }
               }
-            } catch {}
+            } catch { }
           };
 
           const onError = () => {
@@ -1684,7 +1908,7 @@ export function useTranscription(
               // Ask the worklet to flush any partial frame before tearing down
               try {
                 workletNodeRef.current?.port.postMessage({ type: "flush" });
-              } catch {}
+              } catch { }
               // Record last-frame-out time right after requesting flush
               if (metricsRef.current && !metricsRef.current.lastFrameOutMs)
                 metricsRef.current.lastFrameOutMs =
@@ -1696,7 +1920,7 @@ export function useTranscription(
               try {
                 if (VAD_ENABLED && vadStreamGateRef.current) {
                   const tail = vadStreamGateRef.current.flushPostRoll();
-                  for (const chunk of tail) streamFrame(chunk.buffer);
+                  for (const chunk of tail) streamFrame(chunk.buffer as ArrayBuffer);
 
                   // Log final chunk state for Phase 1 testing
                   const remainingChunk = vadStreamGateRef.current.getRemainingChunk();
@@ -1711,7 +1935,7 @@ export function useTranscription(
                     );
                   }
                 }
-              } catch {}
+              } catch { }
 
               await waitForAllFramesSent();
               if (metricsRef.current && !metricsRef.current.drainDoneMs)
@@ -1726,28 +1950,28 @@ export function useTranscription(
                 try {
                   // Inform server to drop the logical session; keep socket for reuse
                   if (ws.readyState === WebSocket.OPEN) {
-                    try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
+                    try { ws.send(JSON.stringify({ type: "cancel" })); } catch { }
                   } else if (ws.readyState === WebSocket.CONNECTING) {
                     const sendOnOpen = () => {
-                      try { ws.send(JSON.stringify({ type: "cancel" })); } catch {}
+                      try { ws.send(JSON.stringify({ type: "cancel" })); } catch { }
                       ws.removeEventListener("open", sendOnOpen as EventListener);
                     };
                     ws.addEventListener("open", sendOnOpen as EventListener, { once: true } as AddEventListenerOptions);
                   }
                   // Remove the per-call listeners/timers now that cancel was sent
                   cleanup();
-                } catch {}
+                } catch { }
 
                 // Teardown audio nodes locally; leave WS lifecycle to existing client logic
-                try { sourceNodeRef.current?.disconnect(); } catch {}
-                try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch {}
-                try { workletNodeRef.current?.disconnect(); } catch {}
+                try { sourceNodeRef.current?.disconnect(); } catch { }
+                try { workletNodeRef.current?.port.postMessage({ type: "reset" }); } catch { }
+                try { workletNodeRef.current?.disconnect(); } catch { }
                 if (audioContextRef.current) {
-                  try { await audioContextRef.current.close(); } catch {}
+                  try { await audioContextRef.current.close(); } catch { }
                   audioContextRef.current = null;
                 }
                 if (streamRef.current) {
-                  try { streamRef.current.getTracks().forEach((track) => track.stop()); } catch {}
+                  try { streamRef.current.getTracks().forEach((track) => track.stop()); } catch { }
                   streamRef.current = null;
                   setReady(false);
                 }
@@ -1774,7 +1998,7 @@ export function useTranscription(
                   const sendOnOpen = () => {
                     try {
                       ws.send(JSON.stringify({ type: "end" }));
-                    } catch {}
+                    } catch { }
                     ws.removeEventListener("open", sendOnOpen as EventListener);
                   };
                   ws.addEventListener("open", sendOnOpen as EventListener, {
@@ -1784,34 +2008,34 @@ export function useTranscription(
                   // Socket closed: request a fresh one for next session and fail fast
                   try {
                     ws.close();
-                  } catch {}
+                  } catch { }
                 }
-              } catch {}
+              } catch { }
 
               // Disconnect nodes after signaling end (do not block end send on audio teardown)
               try {
                 sourceNodeRef.current?.disconnect();
-              } catch {}
+              } catch { }
               try {
                 workletNodeRef.current?.port.postMessage({ type: "reset" });
-              } catch {}
+              } catch { }
               try {
                 workletNodeRef.current?.disconnect();
-              } catch {}
+              } catch { }
               if (audioContextRef.current) {
                 try {
                   await audioContextRef.current.close();
-                } catch {}
+                } catch { }
                 audioContextRef.current = null;
               }
               if (streamRef.current) {
                 try {
                   streamRef.current.getTracks().forEach((track) => track.stop());
-                } catch {}
+                } catch { }
                 streamRef.current = null;
                 setReady(false);
               }
-            } catch {}
+            } catch { }
           })();
         });
       } else {
@@ -1845,15 +2069,15 @@ export function useTranscription(
       sourceNodeRef.current = null;
       abortControllerRef.current = null;
       // Dispose VAD
-      try { vadStreamGateRef.current?.dispose(); } catch {}
+      try { vadStreamGateRef.current?.dispose(); } catch { }
       vadStreamGateRef.current = null;
-      try { vadEngineRef.current?.dispose(); } catch {}
+      try { vadEngineRef.current?.dispose(); } catch { }
       vadEngineRef.current = null;
       vadReadyRef.current = false;
       if (audioContextRef.current) {
         try {
           await audioContextRef.current.close();
-        } catch {}
+        } catch { }
         audioContextRef.current = null;
       }
       // Reset metrics
@@ -1871,7 +2095,7 @@ export function useTranscription(
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
-      } catch {}
+      } catch { }
       abortControllerRef.current = null;
     }
 
@@ -1887,20 +2111,20 @@ export function useTranscription(
       // Disconnect nodes and clean up (discard captured audio)
       try {
         sourceNodeRef.current?.disconnect();
-      } catch {}
+      } catch { }
       try {
         workletNodeRef.current?.disconnect();
-      } catch {}
+      } catch { }
       if (audioContextRef.current) {
         try {
           await audioContextRef.current.close();
-        } catch {}
+        } catch { }
         audioContextRef.current = null;
       }
       if (streamRef.current) {
         try {
           streamRef.current.getTracks().forEach((track) => track.stop());
-        } catch {}
+        } catch { }
         streamRef.current = null;
         setReady(false);
       }
@@ -1909,19 +2133,19 @@ export function useTranscription(
       sendQueueBytesRef.current = 0;
       seqRef.current = 0;
       // Dispose VAD
-      try { vadStreamGateRef.current?.dispose(); } catch {}
+      try { vadStreamGateRef.current?.dispose(); } catch { }
       vadStreamGateRef.current = null;
-      try { vadEngineRef.current?.dispose(); } catch {}
+      try { vadEngineRef.current?.dispose(); } catch { }
       vadEngineRef.current = null;
       vadReadyRef.current = false;
       if (wsRef.current) {
         try {
           if (wsReadyRef.current && wsRef.current.readyState === WebSocket.OPEN)
             wsRef.current.send(JSON.stringify({ type: "cancel" }));
-        } catch {}
+        } catch { }
         try {
           wsRef.current.close(1000, "cancel");
-        } catch {}
+        } catch { }
         wsRef.current = null;
         wsReadyRef.current = false;
       }
@@ -1933,7 +2157,7 @@ export function useTranscription(
       if (audioContextRef.current) {
         try {
           audioContextRef.current.close();
-        } catch {}
+        } catch { }
         audioContextRef.current = null;
       }
       // Clear metrics for a fresh next session
@@ -1955,7 +2179,7 @@ export function useTranscription(
             wsRef.current.send(JSON.stringify({ type: "cancel" }));
           }
           wsRef.current.close(1000, "component_unmount");
-        } catch {}
+        } catch { }
         wsRef.current = null;
         wsReadyRef.current = false;
       }
@@ -1964,21 +2188,21 @@ export function useTranscription(
       if (audioContextRef.current) {
         try {
           audioContextRef.current.close();
-        } catch {}
+        } catch { }
         audioContextRef.current = null;
       }
 
       // Dispose VAD
-      try { vadStreamGateRef.current?.dispose(); } catch {}
+      try { vadStreamGateRef.current?.dispose(); } catch { }
       vadStreamGateRef.current = null;
-      try { vadEngineRef.current?.dispose(); } catch {}
+      try { vadEngineRef.current?.dispose(); } catch { }
       vadEngineRef.current = null;
       vadReadyRef.current = false;
 
       if (streamRef.current) {
         try {
           streamRef.current.getTracks().forEach((track) => track.stop());
-        } catch {}
+        } catch { }
         streamRef.current = null;
       }
 
@@ -1996,11 +2220,27 @@ export function useTranscription(
       if (abortControllerRef.current) {
         try {
           abortControllerRef.current.abort();
-        } catch {}
+        } catch { }
         abortControllerRef.current = null;
       }
     };
   }, [stopWebSocketHealthCheck]);
+
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+  }, []);
+
+  const preConnect = useCallback(async () => {
+    try {
+      // Silently establish WebSocket connection and authenticate
+      // This happens in background, errors are swallowed (will retry on first dictation)
+      await ensureStreamingSocket();
+      console.info("[SF] Pre-connected to Worker successfully");
+    } catch (err) {
+      // Don't show errors during pre-connect - user hasn't tried to dictate yet
+      console.warn("[SF] Pre-connect failed (will retry on first dictation):", err);
+    }
+  }, [ensureStreamingSocket]);
 
   return {
     recording,
@@ -2008,11 +2248,14 @@ export function useTranscription(
     ready,
     text,
     error,
+    authError,
     mode,
     selection,
     audioLevel,
     start,
     stop,
     cancel,
+    clearAuthError,
+    preConnect,
   };
 }

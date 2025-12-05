@@ -16,6 +16,11 @@ import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
 import {
+  verifySupabaseJwt,
+  WS_CLOSE_CODES,
+  AUTH_TIMEOUT_MS,
+} from '../auth';
+import {
   GROQ_STT_ENDPOINT,
   FIREWORKS_STT_TURBO_ENDPOINT,
   DEEPGRAM_STT_ENDPOINT,
@@ -26,15 +31,22 @@ import {
 } from '../config';
 
 type Bindings = {
+  // Supabase (required for auth)
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  // STT providers
   GROQ_API_KEY?: string;
   FIREWORKS_API_KEY?: string;
   DEEPGRAM_API_KEY?: string;
+  // LLM providers
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  // LLM config
   ENABLE_LLM?: string; // '1' | 'true' to enable
   LLM_STREAM?: string; // '1' | 'true' to stream deltas
   LLM_MODEL?: string; // default from src/config.ts
+  // OpenRouter config
   OPENROUTER_HTTP_REFERER?: string;
   OPENROUTER_APP_TITLE?: string;
   OPENROUTER_PROVIDER_SORT?: string;
@@ -50,6 +62,8 @@ type Bindings = {
   OPENROUTER_PROVIDER_MAX_PRICE_COMPLETION?: string;
   OPENROUTER_PROVIDER_MAX_PRICE_REQUEST?: string;
   OPENROUTER_PROVIDER_MAX_PRICE_IMAGE?: string;
+  // Auth bypass (for dev/testing)
+  SKIP_AUTH?: string; // '1' | 'true' to skip auth check
 };
 
 function parseBoolish(value?: string): boolean | undefined {
@@ -156,6 +170,43 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.accept();
   // Accept silently; avoid emitting ws.accepted logs to Sentry to reduce noise
 
+  // --------------------------------------------------------------------------
+  // AUTH STATE
+  // --------------------------------------------------------------------------
+  // Whether SKIP_AUTH is enabled (for local dev)
+  const skipAuth = parseBoolish(c.env.SKIP_AUTH) === true;
+
+  // Auth state — must be authenticated before processing starts
+  let authenticated = skipAuth; // Start authenticated if SKIP_AUTH is set
+  let authenticatedUserId: string | null = null;
+  let authenticatedEmail: string | null = null;
+  let authenticatedSubscriptionActive = false; // Track if user has active subscription (for quota enforcement)
+  let authTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  // Set up auth timeout — close connection if no auth within timeout
+  if (!skipAuth) {
+    authTimeoutHandle = setTimeout(() => {
+      if (!authenticated && !socketClosed) {
+        console.log(JSON.stringify({
+          event: 'auth.timeout',
+          clientIP,
+          timeoutMs: AUTH_TIMEOUT_MS,
+        }));
+        safely(() =>
+          server.send(
+            JSON.stringify({
+              type: 'auth_error',
+              error: 'Authentication timeout - please send auth message',
+              code: WS_CLOSE_CODES.AUTH_TIMEOUT,
+            }),
+          ),
+        );
+        safeClose(server, WS_CLOSE_CODES.AUTH_TIMEOUT, 'auth timeout');
+        releaseConnection(clientIP);
+      }
+    }, AUTH_TIMEOUT_MS);
+  }
+
   // Track optional language from client
   let clientLanguage: string | undefined = undefined;
 
@@ -166,6 +217,175 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         const msg = safeJson(data);
         const parsed = parseClientMessage(msg);
         if (!parsed) return;
+
+        // --------------------------------------------------------------------------
+        // AUTH MESSAGE HANDLER
+        // --------------------------------------------------------------------------
+        if (parsed.type === 'auth') {
+          // Clear auth timeout since we received an auth attempt
+          if (authTimeoutHandle) {
+            clearTimeout(authTimeoutHandle);
+            authTimeoutHandle = null;
+          }
+
+          // Don't process if already authenticated
+          if (authenticated) {
+            connLog.warn('[WS] duplicate auth ignored');
+            return;
+          }
+
+          const { token } = parsed;
+          if (!token) {
+            console.log(JSON.stringify({
+              event: 'auth.missing_token',
+              clientIP,
+            }));
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: 'Token is required',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'missing token');
+            releaseConnection(clientIP);
+            return;
+          }
+
+          // Verify JWT
+          const supabaseUrl = c.env.SUPABASE_URL;
+          if (!supabaseUrl) {
+            console.error('[Auth] SUPABASE_URL not configured');
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: 'Server configuration error',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'server config error');
+            releaseConnection(clientIP);
+            return;
+          }
+
+          const jwtResult = await verifySupabaseJwt(token, supabaseUrl);
+          if (jwtResult.valid === false) {
+            console.log(JSON.stringify({
+              event: 'auth.jwt_invalid',
+              clientIP,
+              error: jwtResult.error,
+              code: jwtResult.code,
+            }));
+            safely(() =>
+              server.send(
+                JSON.stringify({
+                  type: 'auth_error',
+                  error: jwtResult.code === 'expired' ? 'Token has expired' : 'Invalid token',
+                  code: WS_CLOSE_CODES.UNAUTHORIZED,
+                }),
+              ),
+            );
+            safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, jwtResult.error);
+            releaseConnection(clientIP);
+            return;
+          }
+
+          // JWT is valid — check subscription or quota
+          if (!jwtResult.subscriptionActive) {
+            // Free tier user - check quota
+            const wordsUsed = jwtResult.wordsUsedThisMonth ?? 0;
+            const quotaLimit = jwtResult.quotaLimit ?? 2000;
+
+            if (wordsUsed >= quotaLimit) {
+              // Quota exceeded - block
+              console.log(JSON.stringify({
+                event: 'auth.quota_exceeded',
+                clientIP,
+                userId: jwtResult.userId,
+                wordsUsed,
+                quotaLimit,
+              }));
+              safely(() =>
+                server.send(
+                  JSON.stringify({
+                    type: 'auth_error',
+                    error: 'Free words used up this month',
+                    code: WS_CLOSE_CODES.QUOTA_EXCEEDED,
+                  }),
+                ),
+              );
+              safeClose(server, WS_CLOSE_CODES.QUOTA_EXCEEDED, 'quota exceeded');
+              releaseConnection(clientIP);
+              return;
+            }
+
+            // Under quota - allow (log for debugging)
+            console.log(JSON.stringify({
+              event: 'auth.free_tier_allowed',
+              clientIP,
+              userId: jwtResult.userId,
+              wordsUsed,
+              quotaLimit,
+              remaining: quotaLimit - wordsUsed,
+            }));
+          }
+
+          // Success! Mark as authenticated (works for both Pro and Free users)
+          authenticated = true;
+          authenticatedUserId = jwtResult.userId;
+          authenticatedEmail = jwtResult.email;
+          authenticatedSubscriptionActive = jwtResult.subscriptionActive;
+
+          console.log(JSON.stringify({
+            event: 'auth.success',
+            clientIP,
+            userId: jwtResult.userId,
+            subscriptionActive: jwtResult.subscriptionActive,
+            tier: jwtResult.subscriptionActive ? 'pro' : 'free',
+          }));
+
+          // Send auth success
+          safely(() =>
+            server.send(
+              JSON.stringify({
+                type: 'auth_ok',
+                userId: jwtResult.userId,
+              }),
+            ),
+          );
+          return;
+        }
+
+        // --------------------------------------------------------------------------
+        // REQUIRE AUTH FOR ALL OTHER MESSAGES
+        // --------------------------------------------------------------------------
+        if (!authenticated) {
+          console.log(JSON.stringify({
+            event: 'auth.required',
+            clientIP,
+            messageType: parsed.type,
+          }));
+          safely(() =>
+            server.send(
+              JSON.stringify({
+                type: 'auth_error',
+                error: 'Authentication required - send auth message first',
+                code: WS_CLOSE_CODES.UNAUTHORIZED,
+              }),
+            ),
+          );
+          safeClose(server, WS_CLOSE_CODES.UNAUTHORIZED, 'not authenticated');
+          releaseConnection(clientIP);
+          return;
+        }
+
+        // --------------------------------------------------------------------------
+        // AUTHENTICATED MESSAGE HANDLERS
+        // --------------------------------------------------------------------------
         if (parsed.type === 'start') {
           if (sessionActive) {
             connLog.warn('[WS] duplicate start ignored');
@@ -300,7 +520,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 'audio.sample_rate': session.rate,
                 'audio.format': session.format,
                 'audio.seq_gaps': session.seqGaps,
-                'audio.first_to_last_arrival_ms': 
+                'audio.first_to_last_arrival_ms':
                   session.firstArrivalMs && session.lastArrivalMs
                     ? session.lastArrivalMs - session.firstArrivalMs
                     : null,
@@ -310,7 +530,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               // Add session context directly to the span using setAttribute
               sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
               sessionSpan.setAttribute('dataset.allowed', session.shareTranscriptions ? 1 : 0);
-              
+
               const sttApiKey =
                 sttProvider === 'fireworks'
                   ? FIREWORKS_API_KEY
@@ -348,7 +568,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         audioSizeKB: Number((remainingWav.length / 1024).toFixed(2)),
                         traceId: session.traceId,
                       }));
-                    } catch {}
+                    } catch { }
 
                     const sttStartTime = Date.now();
                     const res = await transcribeWav(remainingWav, {
@@ -403,7 +623,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       traceId: session.traceId,
                     } as const;
                     console.log(JSON.stringify(sttLog));
-                  } catch {}
+                  } catch { }
                   const sttStartTime = Date.now();
                   const res = await transcribeWav(wav, {
                     provider: sttProvider,
@@ -428,15 +648,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                       traceId: session.traceId,
                     } as const;
                     console.log(JSON.stringify(sttCompleteLog));
-                  } catch {}
+                  } catch { }
                 }
 
                 const editPlan =
                   session.mode === 'edit' && runtime.edit.enabled
                     ? prepareEditRequest({
-                        instructions: finalText,
-                        selection: session.selection,
-                      })
+                      instructions: finalText,
+                      selection: session.selection,
+                    })
                     : null;
                 if (sessionSpan) {
                   sessionSpan.setAttribute('session.mode', session.mode ?? 'dictation');
@@ -446,14 +666,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
                     sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
                     sessionSpan.setAttribute('edit.prompt_length', editPlan.prompt.length);
-                  if (typeof editPlan.hadSelection === 'boolean') {
-                    sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
-                  }
-                  if (session.selection?.source) {
-                    sessionSpan.setAttribute('edit.selection_source', session.selection.source);
+                    if (typeof editPlan.hadSelection === 'boolean') {
+                      sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
+                    }
+                    if (session.selection?.source) {
+                      sessionSpan.setAttribute('edit.selection_source', session.selection.source);
+                    }
                   }
                 }
-              }
 
                 // Optional LLM post-process
                 const enableLLM = runtime.llm.enabled && !editPlan;
@@ -480,9 +700,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         ? c.env.BASETEN_API_KEY
                         : provider === 'openrouter'
                           ? OPENROUTER_API_KEY
-                        : provider === 'groq'
-                          ? GROQ_API_KEY
-                          : undefined;
+                          : provider === 'groq'
+                            ? GROQ_API_KEY
+                            : undefined;
 
                   if (apiKeyForProvider) {
                     try {
@@ -493,7 +713,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                             ? BASETEN_LLM_ENDPOINT
                             : provider === 'openrouter'
                               ? OPENROUTER_LLM_ENDPOINT
-                            : GROQ_LLM_ENDPOINT;
+                              : GROQ_LLM_ENDPOINT;
                       const editLog = {
                         event: 'edit.request',
                         provider,
@@ -504,7 +724,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(editLog));
-                    } catch {}
+                    } catch { }
                     const editStartTime = Date.now();
                     try {
                       const streamEdit = runtime.edit.stream;
@@ -527,17 +747,17 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                             : undefined,
                         onDelta: streamEdit
                           ? (delta) => {
-                              if (!socketClosed && delta) {
-                                safely(() =>
-                                  server.send(
-                                    JSON.stringify({
-                                      type: 'llm_delta',
-                                      delta,
-                                      traceId: session.traceId,
-                                    }),
-                                  ),
-                                );
-                              }
+                            if (!socketClosed && delta) {
+                              safely(() =>
+                                server.send(
+                                  JSON.stringify({
+                                    type: 'llm_delta',
+                                    delta,
+                                    traceId: session.traceId,
+                                  }),
+                                ),
+                              );
+                            }
                           }
                           : undefined,
                       });
@@ -556,7 +776,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           traceId: session.traceId,
                         } as const;
                         console.log(JSON.stringify(editCompleteLog));
-                      } catch {}
+                      } catch { }
                     } catch (error) {
                       const editDuration = Date.now() - editStartTime;
                       // Log edit error
@@ -570,7 +790,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           traceId: session.traceId,
                         } as const;
                         console.log(JSON.stringify(editErrorLog));
-                      } catch {}
+                      } catch { }
                       sessionSpan.setAttribute('edit.error', String(error));
                       llmText = editPlan.originalText;
                     }
@@ -579,7 +799,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     llmText = editPlan.originalText;
                   }
                 } else if (enableLLM && finalText) {
-              // Notify client that LLM processing starts
+                  // Notify client that LLM processing starts
                   safely(() =>
                     server.send(
                       JSON.stringify({
@@ -605,7 +825,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         ? c.env.BASETEN_API_KEY
                         : provider === 'openrouter'
                           ? OPENROUTER_API_KEY
-                        : GROQ_API_KEY;
+                          : GROQ_API_KEY;
 
                   if (apiKeyForProvider) {
                     // Log LLM request details (console only)
@@ -617,7 +837,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                             ? BASETEN_LLM_ENDPOINT
                             : provider === 'openrouter'
                               ? OPENROUTER_LLM_ENDPOINT
-                            : GROQ_LLM_ENDPOINT;
+                              : GROQ_LLM_ENDPOINT;
                       const llmLog = {
                         event: 'llm.request',
                         provider,
@@ -629,7 +849,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(llmLog));
-                    } catch {}
+                    } catch { }
                     const llmStartTime = Date.now();
                     const llmRes = await chatCompleteByProvider(provider, {
                       apiKey: apiKeyForProvider,
@@ -672,12 +892,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         traceId: session.traceId,
                       } as const;
                       console.log(JSON.stringify(llmCompleteLog));
-                    } catch {}
+                    } catch { }
                   } else {
                     sessionSpan.setAttribute('llm.api_key_missing', true);
                   }
                 }
-                
+
                 // Set final session attributes with all timing data
                 sessionSpan.setAttribute('stt.text_length', finalText.length);
                 sessionSpan.setAttribute('stt.success', true);
@@ -738,7 +958,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           ts: Date.now(),
                         } as const;
                         console.log(JSON.stringify(datasetEntry));
-                      } catch {}
+                      } catch { }
                     } else {
                       try {
                         const datasetEntryForStt = {
@@ -753,9 +973,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           ts: Date.now(),
                         } as const;
                         console.log(JSON.stringify(datasetEntryForStt));
-                      } catch {}
+                      } catch { }
                     }
-                  } catch {}
+                  } catch { }
                 }
                 if (session.shareTranscriptions) {
                   sessionSpan.setAttribute('session.final_text', llmText || finalText);
@@ -791,7 +1011,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   traceId: session.traceId,
                 } as const;
                 console.log(JSON.stringify(errorLog));
-              } catch {}
+              } catch { }
             }
 
             if (!socketClosed) {
@@ -826,15 +1046,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               // Build chunk metrics if this was a chunked session
               const chunkMetrics = session.chunkStates.size > 0
                 ? Array.from(session.chunkStates.entries())
-                    .sort(([a], [b]) => a - b)
-                    .map(([idx, state]) => ({
-                      index: idx,
-                      bytes: state.totalBytes,
-                      durationMs: state.sttStartAt && state.sttDoneAt
-                        ? state.sttDoneAt - state.sttStartAt
-                        : null,
-                      textLength: state.result?.length ?? 0,
-                    }))
+                  .sort(([a], [b]) => a - b)
+                  .map(([idx, state]) => ({
+                    index: idx,
+                    bytes: state.totalBytes,
+                    durationMs: state.sttStartAt && state.sttDoneAt
+                      ? state.sttDoneAt - state.sttStartAt
+                      : null,
+                    textLength: state.result?.length ?? 0,
+                  }))
                 : null;
 
               const workerMetrics = {
@@ -862,36 +1082,81 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   : null,
                 stt: timings
                   ? {
-                      provider: sttProvider,
-                      model: runtime.stt.model,
-                      startAt: timings.startAt,
-                      headersAt: timings.headersAt,
-                      bodyDoneAt: timings.bodyDoneAt,
-                      ttfbMs: timings.headersAt - timings.startAt,
-                      bodyMs: timings.bodyDoneAt - timings.headersAt,
-                      totalMs: timings.bodyDoneAt - timings.startAt,
-                    }
+                    provider: sttProvider,
+                    model: runtime.stt.model,
+                    startAt: timings.startAt,
+                    headersAt: timings.headersAt,
+                    bodyDoneAt: timings.bodyDoneAt,
+                    ttfbMs: timings.headersAt - timings.startAt,
+                    bodyMs: timings.bodyDoneAt - timings.headersAt,
+                    totalMs: timings.bodyDoneAt - timings.startAt,
+                  }
                   : null,
                 llm: llmTimings
                   ? {
-                      provider: llmProvider,
-                      model: llmModel,
-                      startAt: llmTimings.startAt,
-                      headersAt: llmTimings.headersAt,
-                      firstDeltaAt: llmTimings.firstDeltaAt ?? null,
-                      bodyDoneAt: llmTimings.bodyDoneAt,
-                      ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
-                      bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
-                      totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
-                      routeRules: llmRouteRules.length ? llmRouteRules : null,
-                    }
+                    provider: llmProvider,
+                    model: llmModel,
+                    startAt: llmTimings.startAt,
+                    headersAt: llmTimings.headersAt,
+                    firstDeltaAt: llmTimings.firstDeltaAt ?? null,
+                    bodyDoneAt: llmTimings.bodyDoneAt,
+                    ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
+                    bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
+                    totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
+                    routeRules: llmRouteRules.length ? llmRouteRules : null,
+                  }
                   : null,
                 finalSentAt: Date.now(),
               };
+
+              // Count words from STT output (what user actually spoke)
+              // NOT from LLM output - in edit mode LLM can generate more/fewer words
+              // Example: User says "make it shorter" (3 words) → LLM outputs 70 words
+              // We should charge for 3 words (what they spoke), not 70
+              const wordCount = finalText.split(/\s+/).filter(Boolean).length;
+              const responseText = llmText || finalText;
+
+              // Fire-and-forget: increment quota in DB for free tier users
+              // This runs AFTER transcription completes (zero latency impact)
+              if (!authenticatedSubscriptionActive && authenticatedUserId && wordCount > 0) {
+                const supabaseUrl = c.env.SUPABASE_URL;
+                const supabaseKey = c.env.SUPABASE_SERVICE_ROLE_KEY;
+
+                if (supabaseUrl && supabaseKey) {
+                  // Fire-and-forget quota update (doesn't block response)
+                  c.executionCtx.waitUntil(
+                    (async () => {
+                      try {
+                        const response = await fetch(`${supabaseUrl}/rest/v1/rpc/increment_quota_simple`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${supabaseKey}`,
+                          },
+                          body: JSON.stringify({
+                            p_user_id: authenticatedUserId,
+                            p_word_count: wordCount, // INCREMENT by this amount
+                          }),
+                        });
+
+                        if (!response.ok) {
+                          console.warn('[WS] Quota increment failed:', await response.text());
+                        }
+                      } catch (error) {
+                        // Silent fail - quota tracking is non-critical
+                        console.warn('[WS] Quota increment error:', error);
+                      }
+                    })()
+                  );
+                }
+              }
+
               server.send(
                 JSON.stringify({
                   type: 'final',
-                  text: llmText || finalText,
+                  text: responseText,
+                  wordCount, // Send word count to app for local UI update
                   traceId: session.traceId,
                   // Pass dataset texts so the client can forward to /metrics/session
                   dataset: session.shareTranscriptions
@@ -964,22 +1229,22 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               result: { textLen: (llmText || finalText).length },
               llm: llmProvider
                 ? {
-                    provider: llmProvider,
-                    model: llmModel,
-                    routeRules: llmRouteRules.length ? llmRouteRules : null,
-                  }
+                  provider: llmProvider,
+                  model: llmModel,
+                  routeRules: llmRouteRules.length ? llmRouteRules : null,
+                }
                 : null,
               edit:
                 session.mode === 'edit'
                   ? {
-                      instructions: finalText,
-                      inputText:
-                        prepareEditRequest({
-                          instructions: finalText,
-                          selection: session.selection,
-                        })?.originalText ?? session.selection?.text ?? null,
-                      outputText: llmText || null,
-                    }
+                    instructions: finalText,
+                    inputText:
+                      prepareEditRequest({
+                        instructions: finalText,
+                        selection: session.selection,
+                      })?.originalText ?? session.selection?.text ?? null,
+                    outputText: llmText || null,
+                  }
                   : null,
               ws: { closeCode: 1000, closeReason: 'done' },
               env: {},
@@ -1217,6 +1482,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     // Only log ws_close when abnormal or no final was sent (to reduce noise)
     // Reduce noise: no Sentry logs for closes; rely on session_summary for observability
     socketClosed = true;
+    // Clean up auth timeout
+    if (authTimeoutHandle) {
+      clearTimeout(authTimeoutHandle);
+      authTimeoutHandle = null;
+    }
     safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();
@@ -1228,6 +1498,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('error', (evt) => {
     connLog.error('[WS] socket error', { error: String(evt) });
     socketClosed = true;
+    // Clean up auth timeout
+    if (authTimeoutHandle) {
+      clearTimeout(authTimeoutHandle);
+      authTimeoutHandle = null;
+    }
     safely(() => sttAbort?.abort());
     sttAbort = null;
     session = createEmptySession();

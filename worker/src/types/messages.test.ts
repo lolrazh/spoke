@@ -65,7 +65,10 @@ describe('types/messages.parseClientMessage', () => {
       },
     });
 
-    expect(msg?.selection?.source).toBeUndefined();
+    expect(msg?.type).toBe('start');
+    if (msg?.type === 'start') {
+      expect(msg.selection?.source).toBeUndefined();
+    }
   });
 
   it('parses identity payload when provided', () => {
@@ -78,6 +81,19 @@ describe('types/messages.parseClientMessage', () => {
       },
     } as Record<string, unknown>);
 
-    expect(msg?.identity).toEqual({ name: 'Alex', email: 'alex@example.com' });
+    expect(msg?.type).toBe('start');
+    if (msg?.type === 'start') {
+      expect(msg.identity).toEqual({ name: 'Alex', email: 'alex@example.com' });
+    }
+  });
+
+  it('parses auth message with token', () => {
+    const msg = parseClientMessage({ type: 'auth', token: 'test-jwt-token' });
+    expect(msg).toEqual({ type: 'auth', token: 'test-jwt-token' });
+  });
+
+  it('parses auth message with empty token', () => {
+    const msg = parseClientMessage({ type: 'auth' });
+    expect(msg).toEqual({ type: 'auth', token: '' });
   });
 });

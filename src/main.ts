@@ -2685,6 +2685,8 @@ app.whenReady().then(async () => {
       "connect-src 'self'",
       "https://api.sonicflow.app",
       "wss://api.sonicflow.app",
+      // Website API for billing portal
+      "https://www.sonicflow.app",
       // Local development HTTP/WS (dev or staging with flag)
       ...(allowLocal
         ? [

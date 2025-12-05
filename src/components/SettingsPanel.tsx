@@ -12,8 +12,9 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { signOut as supaSignOut } from "../lib/supabaseClient";
+import { signOut as supaSignOut, getSupabase } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
+import { subscribeQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 
@@ -151,6 +152,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+  // Subscription/quota state for tier-based UI
+  const [quotaState, setQuotaState] = useState<QuotaState | null>(null);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -220,6 +223,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setUserName(identity.name);
     });
 
+    return unsubscribe;
+  }, []);
+
+  // Subscribe to quota/subscription state for tier-based UI
+  useEffect(() => {
+    const unsubscribe = subscribeQuota((quota) => {
+      setQuotaState(quota);
+    });
     return unsubscribe;
   }, []);
 
@@ -332,6 +343,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setIsSigningOut(false); // Reset on error so user can retry
     }
     // Don't reset isSigningOut on success - component will unmount anyway
+  };
+
+  const handleManageSubscription = async () => {
+    // Open browser immediately - website handles the redirect
+    // This provides instant feedback rather than waiting for API response in the app
+    try {
+      const supabase = getSupabase();
+      if (!supabase) {
+        console.error("[Settings] Supabase client not available");
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error("[Settings] No session found for billing portal");
+        return;
+      }
+
+      // Open the redirect page with token in hash fragment (not sent to server logs)
+      // The website page will read the token, call the API, and redirect to Dodo
+      const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+      window.electron?.openExternal(portalUrl);
+    } catch (error) {
+      console.error("[Settings] Error opening billing portal:", error);
+    }
   };
 
   // Remove login handling from Settings Panel: onboarding is the sole login surface
@@ -449,6 +485,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   variants={containerVariants}
                   className="flex flex-col"
                 >
+                  {/* Section 0: Usage (only shown for free users) */}
+                  {quotaState && !quotaState.isPro && userEmail && (
+                    <motion.section
+                      variants={sectionVariants}
+                      className="space-y-2"
+                      style={{ marginTop: "var(--panel-section-offset)" }}
+                    >
+                      <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background p-4">
+                        {/* Header row with title and word count */}
+                        <div className="flex items-baseline justify-between mb-3">
+                          <div className="flex items-end gap-1">
+                            <span className="text-xs font-medium text-white/90 leading-none">
+                              Usage
+                            </span>
+                            <span className="text-[9px] text-white/30 font-normal leading-none">
+                              resets monthly
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-white/50 tabular-nums">
+                            {quotaState.wordsUsed.toLocaleString()} / {quotaState.limit.toLocaleString()}
+                          </span>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-white/70 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, (quotaState.wordsUsed / quotaState.limit) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        {quotaState.wordsUsed >= quotaState.limit && (
+                          <div className="text-[10px] text-white/40 mt-2.5">
+                            Quota reached. Upgrade for unlimited dictation.
+                          </div>
+                        )}
+                      </div>
+                    </motion.section>
+                  )}
+
                   {/* Section 1: Defaults */}
                   <motion.section
                     variants={sectionVariants}
@@ -535,26 +611,93 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   >
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
-                      {userEmail && (
-                        <SettingsCard
-                          title={userName || userEmail}
-                          description={userEmail}
-                          icon={
-                            <span className="text-[11px] font-semibold tracking-wide">
-                              {(userName || userEmail || "").slice(0, 1).toUpperCase()}
-                            </span>
-                          }
-                          inGroup
-                        >
+                      {userEmail ? (
+                        <div className={`relative overflow-hidden ${quotaState?.isPro ? 'shimmer' : ''}`}>
+                          <div className="p-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              {/* Avatar with optional PRO badge */}
+                              <div className="relative shrink-0">
+                                <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center">
+                                  <span className="text-[11px] font-semibold tracking-wide">
+                                    {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                                  </span>
+                                </div>
+                                {/* PRO badge - only shown for Pro users */}
+                                {quotaState?.isPro && (
+                                  <div
+                                    className="absolute -top-1 -right-1.5 text-white/90 text-[6px] font-bold px-1.5 py-0.5 rounded leading-none border border-white/10"
+                                    style={{
+                                      background: 'linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)',
+                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+                                    }}
+                                  >
+                                    PRO
+                                  </div>
+                                )}
+                              </div>
+                              {/* Name */}
+                              <div className="text-left min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-medium text-white truncate">
+                                    {userName || userEmail}
+                                  </span>
+                                </div>
+                                {userEmail && (
+                                  <div className="text-[10px] text-subtle mt-0.5 truncate">
+                                    {userEmail}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {/* Buttons - Manage for Pro, Upgrade for Free */}
+                            <div className="flex items-center gap-2 shrink-0 no-drag">
+                              {quotaState?.isPro ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={handleManageSubscription}
+                                >
+                                  Manage
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app/pricing")}
+                                  className="relative overflow-hidden shimmer-fast"
+                                >
+                                  Upgrade
+                                </Button>
+                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handleSignOut}
+                                disabled={isSigningOut}
+                                className="!w-9 !px-0 flex items-center justify-center"
+                              >
+                                <SfIcon name="rectangle.portrait.and.arrow.right" size={16} className="text-white/60" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        // If not signed in, do not render login UI here — redirect to onboarding
+                        <div className="p-3">
+                          <div className="text-[12px] text-subtle mb-3">
+                            You are signed out.
+                          </div>
                           <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={handleSignOut}
-                            disabled={isSigningOut}
+                            className="w-full onboarding-cta"
+                            onClick={async () => {
+                              try {
+                                await window.electron?.showOnboarding?.();
+                              } catch { }
+                            }}
                           >
-                            {isSigningOut ? "Signing out…" : "Sign Out"}
+                            Open Onboarding to Sign In
                           </Button>
-                        </SettingsCard>
+                        </div>
                       )}
                     </div>
                   </motion.section>
@@ -592,7 +735,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

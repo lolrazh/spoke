@@ -83,7 +83,35 @@ const pillReducer = (
     case "LISTENING":
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
-      if (event.type === "NOTIFY")
+      if (event.type === "NOTIFY") {
+        // If it's an error notification (starts with common error phrases),
+        // show it immediately instead of queuing it
+        const isErrorNotif = event.msg && (
+          event.msg.includes("required") ||
+          event.msg.includes("failed") ||
+          event.msg.includes("error") ||
+          event.msg.includes("expired") ||
+          event.msg.includes("Upgrade") ||
+          event.msg.includes("Sign in") ||
+          event.msg.includes("free words") ||
+          event.msg.toLowerCase().includes("subscription")
+        );
+
+        if (isErrorNotif) {
+          // Cancel listening and show error notification immediately
+          return {
+            state: "NOTIFICATION",
+            context: {
+              ...state.context,
+              notifMsg: event.msg,
+              notifAction: event.actionId ?? null,
+              pendingNotif: undefined,
+              pendingNotifAction: undefined,
+            },
+          };
+        }
+
+        // For non-error notifications, queue them for after processing
         return {
           ...state,
           context: {
@@ -92,6 +120,7 @@ const pillReducer = (
             pendingNotifAction: event.actionId ?? null,
           },
         };
+      }
       return state;
     case "PROCESSING":
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
@@ -332,9 +361,17 @@ const AppInner: React.FC = () => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  // Initialize transcription history on app start
+  // Initialize transcription history and quota cache on app start
   useEffect(() => {
-    initTranscriptionHistory().catch(() => { });
+    initTranscriptionHistory().catch(() => {
+      // Ignore initialization errors; app can function without history
+    });
+    // Initialize quota cache (starts 5-min sync timer, hydrates from localStorage)
+    import('../state/quotaCache').then(({ initQuotaCache }) => {
+      initQuotaCache();
+    }).catch(() => {
+      // Ignore initialization errors; quota will fall back to server checks
+    });
   }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
@@ -483,6 +520,52 @@ const AppInner: React.FC = () => {
           "../lib/supabaseClient"
         );
         const skipAuth = !!window.devFlags?.skipAuth;
+
+        // Refresh session on app startup to get fresh JWT with latest subscription claims
+        // This ensures users who just paid can dictate immediately after restarting the app
+        if (!skipAuth) {
+          const supabase = getSupabase();
+          if (supabase) {
+            try {
+              const { data } = await supabase.auth.refreshSession();
+              console.log('[App] Session refreshed on startup - JWT claims updated');
+
+              // Sync local quota/subscription cache with fresh server data
+              if (data?.session?.access_token) {
+                try {
+                  // Decode JWT payload to get custom claims
+                  const payloadBase64 = data.session.access_token.split('.')[1];
+                  const payloadJson = atob(payloadBase64);
+                  const payload = JSON.parse(payloadJson);
+
+                  // Extract subscription status (Pro vs Free)
+                  const isPro = payload.subscription_active === true;
+
+                  // Update local cache with quota and subscription status
+                  const { updateQuotaFromServer } = await import('../state/quotaCache');
+                  updateQuotaFromServer({
+                    wordsUsed: typeof payload.words_used_this_month === 'number'
+                      ? payload.words_used_this_month
+                      : 0,
+                    resetDate: payload.quota_reset_date || null,
+                    isPro,
+                  });
+                  console.log('[App] Subscription & quota synced from JWT:', {
+                    isPro,
+                    wordsUsed: payload.words_used_this_month,
+                    resetDate: payload.quota_reset_date
+                  });
+                } catch (e) {
+                  console.warn('[App] Failed to sync quota from JWT:', e);
+                }
+              }
+            } catch (error) {
+              console.warn('[App] Failed to refresh session on startup:', error);
+              // Continue anyway - getCurrentUser will return cached session
+            }
+          }
+        }
+
         const user = skipAuth ? { id: "dev" } : await getCurrentUser();
         if (!user && !skipAuth) {
           try {
@@ -499,6 +582,10 @@ const AppInner: React.FC = () => {
           } catch { }
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
+          // Pre-connect to Worker to avoid first-dictation latency
+          trans.preConnect().catch(() => {
+            // Silently fail - will retry on first dictation
+          });
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
@@ -550,6 +637,12 @@ const AppInner: React.FC = () => {
               setCurrentUserId(currentUserId);
               // Defer Supabase call to avoid breaking the auth listener
               setTimeout(() => loadSharePreference(currentUserId), 0);
+              // Pre-connect to Worker after sign in
+              setTimeout(() => {
+                trans.preConnect().catch(() => {
+                  // Silently fail - will retry on first dictation
+                });
+              }, 0);
               return;
             }
             if (!session?.user && !skipAuth) {
@@ -1057,6 +1150,15 @@ const AppInner: React.FC = () => {
     window.addEventListener("focus", handleWindowShow);
     return () => window.removeEventListener("focus", handleWindowShow);
   }, [pillState]);
+
+  // Show notification for auth errors (subscription required, not signed in, etc.)
+  useEffect(() => {
+    if (trans.authError && trans.error) {
+      // Always dispatch NOTIFY when auth error occurs
+      // This will work from any state (IDLE, LISTENING, etc.)
+      pillDispatch({ type: "NOTIFY", msg: trans.error });
+    }
+  }, [trans.authError, trans.error, pillDispatch]);
 
   // Listen for expand pill requests from main process
   useEffect(() => {
