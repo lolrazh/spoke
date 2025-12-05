@@ -114,6 +114,7 @@ interface SettingsPanelProps {
   shareTranscriptionsUpdating?: boolean;
   onShareTranscriptionsChange?: (enabled: boolean) => void;
   onHeightChange?: (height: number) => void;
+  initialTab?: "settings" | "history"; // Initial tab to show (for paste-shortcut → history UX)
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -125,9 +126,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   shareTranscriptionsUpdating,
   onShareTranscriptionsChange,
   onHeightChange,
+  initialTab = "settings",
 }) => {
   // State
-  const [activeTab, setActiveTab] = useState<"settings" | "history">("settings");
+  const [activeTab, setActiveTab] = useState<"settings" | "history">(initialTab);
+
+  // Sync activeTab when initialTab prop changes (e.g., on re-expand with paste timing)
+  const prevInitialTabRef = useRef(initialTab);
+  useEffect(() => {
+    if (prevInitialTabRef.current !== initialTab) {
+      setActiveTab(initialTab);
+      prevInitialTabRef.current = initialTab;
+    }
+  }, [initialTab]);
+
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
     [],
   );

@@ -153,6 +153,10 @@ contextBridge.exposeInMainWorld("electron", {
   expandPill: (callback: () => void) => {
     ipcRenderer.on("expand-pill", callback);
   },
+  onPasteShortcutPressed: (callback: () => void) => {
+    ipcRenderer.on("paste-shortcut-pressed", callback);
+    return () => ipcRenderer.removeListener("paste-shortcut-pressed", callback);
+  },
   requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
   revealPill: () => ipcRenderer.invoke("pill:reveal"),
   revealPillForTest: () => ipcRenderer.invoke("pill:reveal-for-test"),
