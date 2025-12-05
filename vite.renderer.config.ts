@@ -1,3 +1,4 @@
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { join } from "node:path";
@@ -39,6 +40,10 @@ export default defineConfig({
         },
       ],
     }),
+    sentryVitePlugin({
+      org: "sonic-flow",
+      project: "sonic-flow-app",
+    }),
   ],
   resolve: {
     alias: {
@@ -52,8 +57,10 @@ export default defineConfig({
   // Simplified build options - let Forge handle the main entry
   build: {
     // Target environments that support ES modules and top-level await
-    target: "esnext",
     // Don't override outDir - let Forge control it
     // Don't override rollupOptions.input - let Forge control it
+    target: "esnext",
+
+    sourcemap: true,
   },
 });

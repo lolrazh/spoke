@@ -256,8 +256,11 @@ const AppInner: React.FC = () => {
   const [shareTranscriptionsUpdating, setShareTranscriptionsUpdating] =
     useState<boolean>(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
     useState(CONTENT_HEIGHT);
+  const [permissionsPanelMeasured, setPermissionsPanelMeasured] =
+    useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
     useState(PERMISSIONS_CONTENT_HEIGHT);
   const currentUserIdRef = useRef<string | null>(null);
@@ -272,6 +275,10 @@ const AppInner: React.FC = () => {
   );
   const missingCountRef = useRef<number>(missingPermissions.length);
   const permissionNotificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Track when paste shortcut (Cmd+Ctrl+V) was last pressed for history-on-expand UX
+  const lastPasteShortcutTsRef = useRef<number | null>(null);
+  // Initial tab for settings panel (computed on expand based on paste timing)
+  const [initialSettingsTab, setInitialSettingsTab] = useState<"settings" | "history">("settings");
 
   const clearPermissionNotificationLoop = useCallback(() => {
     if (permissionNotificationTimerRef.current) {
@@ -283,18 +290,20 @@ const AppInner: React.FC = () => {
   const handleSettingsPanelHeight = useCallback((height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const normalized = Math.round(height);
+    if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
     setSettingsPanelContentHeight((prev) =>
       prev === normalized ? prev : normalized,
     );
-  }, []);
+  }, [settingsPanelMeasured]);
 
   const handlePermissionsPanelHeight = useCallback((height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const normalized = Math.round(height);
+    if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
     setPermissionsPanelContentHeight((prev) =>
       prev === normalized ? prev : normalized,
     );
-  }, []);
+  }, [permissionsPanelMeasured]);
 
   const sendPermissionNotification = useCallback(
     (reason: "detected" | "repeat" | "changed" | "ptt" | "manual") => {
@@ -359,6 +368,16 @@ const AppInner: React.FC = () => {
     import('../state/quotaCache').then(({ initQuotaCache }) => {
       initQuotaCache();
     }).catch(() => { });
+  }, []);
+
+  // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
+  useEffect(() => {
+    const unsubscribe = window.electron?.onPasteShortcutPressed?.(() => {
+      lastPasteShortcutTsRef.current = Date.now();
+    });
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const canProceedWithStart = useCallback(async (): Promise<boolean> => {
@@ -1389,10 +1408,14 @@ const AppInner: React.FC = () => {
     panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
   const expandedHeightTarget =
     panelView === "permissions"
-      ? permissionsPanelContentHeight
-      : settingsPanelContentHeight;
+      ? permissionsPanelMeasured
+        ? permissionsPanelContentHeight
+        : Math.round(PERMISSIONS_CONTENT_HEIGHT * S)
+      : settingsPanelMeasured
+        ? settingsPanelContentHeight
+        : Math.round(CONTENT_HEIGHT * S);
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
-  const EXPANDED_H = Math.round(expandedHeightTarget * S);
+  const EXPANDED_H = Math.round(expandedHeightTarget);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   useEffect(() => {
@@ -1731,7 +1754,15 @@ const AppInner: React.FC = () => {
         onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onExpand={() => pillDispatch({ type: "EXPAND" })}
+        onExpand={() => {
+          // Check if paste shortcut was pressed within last 5 seconds
+          const pasteTs = lastPasteShortcutTsRef.current;
+          const withinWindow = pasteTs && (Date.now() - pasteTs) < 5000;
+          setInitialSettingsTab(withinWindow ? "history" : "settings");
+          // Clear the timestamp so subsequent expands don't trigger history
+          lastPasteShortcutTsRef.current = null;
+          pillDispatch({ type: "EXPAND" });
+        }}
         onCollapse={handleCollapse}
         onToggleFloatingBar={async (enabled: boolean) => {
           // Cancel any pending hide if user turns it back on
@@ -1779,6 +1810,7 @@ const AppInner: React.FC = () => {
         onShareTranscriptionsChange={handleSharePreferenceToggle}
         onNotificationAction={handleNotificationAction}
         panelView={panelView}
+        initialSettingsTab={initialSettingsTab}
         onSettingsPanelHeightChange={handleSettingsPanelHeight}
         onPermissionsPanelHeightChange={handlePermissionsPanelHeight}
       />

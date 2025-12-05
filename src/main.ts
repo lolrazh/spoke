@@ -3725,6 +3725,10 @@ app.whenReady().then(async () => {
   // Register global shortcut for pasting last transcript
   const shortcutRegistered = globalShortcut.register('CommandOrControl+Control+V', () => {
     console.log('[GlobalShortcut] Command+Control+V pressed');
+    // Notify renderer that paste shortcut was pressed (for history-on-expand UX)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('paste-shortcut-pressed');
+    }
     pasteLastTranscript().catch(err => {
       console.error('[GlobalShortcut] Error in pasteLastTranscript:', err);
     });
@@ -3805,6 +3809,12 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   console.log("[App Event] activate: Dock icon clicked or app activated");
+
+  // Guard: Don't create windows before app is ready (can happen on fresh install)
+  if (!app.isReady()) {
+    console.log("[App Event] activate: App not ready yet, skipping window creation");
+    return;
+  }
 
   // Check if we have any visible windows first
   const allWindows = BrowserWindow.getAllWindows();

@@ -53,6 +53,7 @@ declare global {
       setFocusable: (focusable: boolean) => void;
       focusWindow: () => void;
       expandPill: (callback: () => void) => void;
+      onPasteShortcutPressed: (callback: () => void) => () => void;
       requestExpandPill: () => Promise<{ ok: boolean }>;
       revealPill: () => Promise<{ ok: boolean }>;
       revealPillForTest?: () => Promise<{ ok: boolean }>;
@@ -144,4 +145,4 @@ declare global {
   }
 }
 
-export {};
+export { };
