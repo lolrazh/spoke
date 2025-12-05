@@ -233,7 +233,7 @@ Sentry.init({
           const u = new URL(event.request.url);
           u.search = ""; // strip query params
           event.request.url = u.toString();
-        } catch {}
+        } catch { }
       }
       if (event.request?.headers) {
         const headers = event.request.headers as Record<string, string>;
@@ -253,7 +253,7 @@ Sentry.init({
           return b;
         });
       }
-    } catch {}
+    } catch { }
     return event;
   },
 });
@@ -400,18 +400,18 @@ function sendNotify(message: string) {
     // Prefer whichever window is available; send to both if present
     if (mainWindow && !mainWindow.isDestroyed())
       mainWindow.webContents.send("notify", message);
-  } catch {}
+  } catch { }
   try {
     if (onboardingWindow && !onboardingWindow.isDestroyed())
       onboardingWindow.webContents.send("notify", message);
-  } catch {}
+  } catch { }
 }
 
 function setUpdateState(next: UpdateStatus, opts?: { version?: string; error?: string }) {
   updateStatus = next;
   updateAvailableVersion = opts?.version ?? updateAvailableVersion;
   updateError = opts?.error ?? (next === "error" ? (opts?.error || "Unknown error") : null);
-  try { rebuildTrayMenu(); } catch {}
+  try { rebuildTrayMenu(); } catch { }
 }
 
 function getReleasesUrl(): string {
@@ -579,7 +579,7 @@ async function manualCheckForUpdates(silent = false): Promise<void> {
 }
 
 function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
-  try { if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer); } catch {}
+  try { if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer); } catch { }
   pendingUpdateCheckTimer = setTimeout(async () => {
     pendingUpdateCheckTimer = null;
     console.log(`[auto-update] Triggered background check: ${reason}`);
@@ -588,7 +588,7 @@ function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
     if (updateStatus === "error") {
       // Exponential backoff up to 24h
       updateBackoffMs = Math.min(prevBackoff ? prevBackoff * 2 : 15 * 60 * 1000, 24 * 60 * 60 * 1000);
-      console.log(`[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0)/60000)}m`);
+      console.log(`[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0) / 60000)}m`);
       scheduleUpdateCheck(updateBackoffMs!, "backoff-retry", true);
     } else {
       updateBackoffMs = null;
@@ -718,10 +718,10 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
         `[Notch] no match for display id=${display.id}. Known notch ids: ${knownIds} (scale=${scaleStr})`,
       );
     }
-    
+
     // Include stored notch width if available
     const storedNotchWidth = pillPreferences.notchWidth ?? null;
-    
+
     const payload = {
       id: display.id,
       bounds: display.bounds,
@@ -780,14 +780,14 @@ async function refreshNotchInfo(reason: string): Promise<void> {
     notchReporterMissingWarned = false;
     const summary = parsed
       ? parsed.screens
-          .map((screen) => {
-            const width =
-              screen.hasNotch && screen.notchWidth > 0 && Number.isFinite(screen.notchWidth)
-                ? `${screen.notchWidth.toFixed(2)}px`
-                : "no-notch";
-            return `id=${screen.id}:${width}`;
-          })
-          .join(", ")
+        .map((screen) => {
+          const width =
+            screen.hasNotch && screen.notchWidth > 0 && Number.isFinite(screen.notchWidth)
+              ? `${screen.notchWidth.toFixed(2)}px`
+              : "no-notch";
+          return `id=${screen.id}:${width}`;
+        })
+        .join(", ")
       : null;
     logger.main.info(
       `[Notch] refresh ${reason}: ${summary && summary.length > 0 ? summary : "no valid screens"}`,
@@ -810,29 +810,29 @@ async function refreshNotchInfo(reason: string): Promise<void> {
 
 async function detectAndStoreNotchWidth(): Promise<number | null> {
   logger.main.info("[PillPrefs] Detecting notch width for the first time...");
-  
+
   // Refresh notch info to get all displays
   await refreshNotchInfo("initial-detection");
-  
+
   if (!notchReport || !notchReport.screens || notchReport.screens.length === 0) {
     logger.main.info("[PillPrefs] No notch report available");
     return null;
   }
-  
+
   // Find the built-in display with a notch
   const builtInWithNotch = notchReport.screens.find(
     (screen) => screen.isBuiltIn && screen.hasNotch && screen.notchWidth > 0
   );
-  
+
   if (!builtInWithNotch) {
     logger.main.info("[PillPrefs] No built-in display with notch found");
     return null;
   }
-  
+
   const detectedWidth = builtInWithNotch.notchWidth;
   // Optical adjustment: subtract constant for better visual alignment
   const adjustedWidth = detectedWidth - NOTCH_WIDTH_OPTICAL_ADJUSTMENT;
-  
+
   // Validate width bounds (14" MBP = ~196px, 16" MBP = ~207px)
   // Clamp to reasonable range to handle unexpected hardware or API quirks
   let finalWidth = adjustedWidth;
@@ -843,13 +843,13 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
     logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 250px`);
     finalWidth = 250;
   }
-  
+
   logger.main.info(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
-  
+
   // Store the validated width
   pillPreferences.notchWidth = finalWidth;
   savePillPreferences(pillPreferences);
-  
+
   return finalWidth;
 }
 
@@ -1087,7 +1087,7 @@ async function inspectFocusedSelection(
     const timer = setTimeout(() => {
       try {
         helper.kill("SIGKILL");
-      } catch {}
+      } catch { }
       done({
         ok: false,
         status: "timeout",
@@ -1161,7 +1161,7 @@ async function startHelperIfIMGranted(): Promise<void> {
         if (hasIM) {
           try {
             startFnListener();
-          } catch {}
+          } catch { }
         } else {
           console.log("[FnListener] IM not granted; helper start deferred");
         }
@@ -1176,21 +1176,21 @@ async function startHelperIfIMGranted(): Promise<void> {
 function getHelperPath(): string {
   return app.isPackaged
     ? path.join(
-        process.resourcesPath,
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      )
+      process.resourcesPath,
+      "Sonic Flow Helper.app",
+      "Contents",
+      "MacOS",
+      "Sonic Flow Helper",
+    )
     : path.join(
-        app.getAppPath(),
-        "native",
-        "bin",
-        "Sonic Flow Helper.app",
-        "Contents",
-        "MacOS",
-        "Sonic Flow Helper",
-      );
+      app.getAppPath(),
+      "native",
+      "bin",
+      "Sonic Flow Helper.app",
+      "Contents",
+      "MacOS",
+      "Sonic Flow Helper",
+    );
 }
 
 function preSpawnPasteHelper() {
@@ -1242,9 +1242,9 @@ function preSpawnPasteHelper() {
     preSpawnedPasteHelper.once("exit", () => {
       try {
         preSpawnedPasteHelper?.stdout?.off("data", onData as any);
-      } catch {}
+      } catch { }
     });
-  } catch {}
+  } catch { }
 
   pasteHelpers.add(preSpawnedPasteHelper);
   preSpawnedPasteHelper.once("exit", () => {
@@ -1621,7 +1621,7 @@ const smoothShow = (win: BrowserWindow | null, fadeMs = 140) => {
       win.setOpacity(1);
     }, Math.max(50, Math.min(fadeMs, 300)));
   } catch (e) {
-    try { win?.show(); } catch {}
+    try { win?.show(); } catch { }
   }
 };
 
@@ -1631,13 +1631,13 @@ const smoothHide = (win: BrowserWindow | null, fadeMs = 140) => {
     // Start fade-out by dropping opacity to 0, then hide.
     win.setOpacity(1);
     setTimeout(() => {
-      try { win.setOpacity(0); } catch {}
+      try { win.setOpacity(0); } catch { }
       setTimeout(() => {
-        try { win.hide(); } catch {}
+        try { win.hide(); } catch { }
       }, Math.max(50, Math.min(fadeMs, 300)));
     }, 0);
   } catch (e) {
-    try { win?.hide(); } catch {}
+    try { win?.hide(); } catch { }
   }
 };
 
@@ -1740,7 +1740,7 @@ const createWindow = () => {
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         mainWindow.webContents.openDevTools({ mode: "detach" });
-      } catch {}
+      } catch { }
       console.log("DevTools opened (staging)");
     } else if (
       MAIN_WINDOW_VITE_DEV_SERVER_URL &&
@@ -1750,7 +1750,7 @@ const createWindow = () => {
       if (pttTarget === "main") {
         try {
           mainWindow.webContents.openDevTools({ mode: "detach" });
-        } catch {}
+        } catch { }
         console.log(
           "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
         );
@@ -1871,8 +1871,8 @@ const createWindow = () => {
   );
 };
 
-  // Show windows only after their own renderers signal they are visually ready
-  ipcMain.on("renderer-ready", (event) => {
+// Show windows only after their own renderers signal they are visually ready
+ipcMain.on("renderer-ready", (event) => {
   const senderWin = BrowserWindow.fromWebContents(event.sender);
   if (!senderWin || senderWin.isDestroyed()) return;
 
@@ -1897,7 +1897,7 @@ const createWindow = () => {
     } catch (e) {
       console.warn("[renderer-ready] Top-align failed:", e);
     }
-    
+
     // Re-emit active display info now that renderer is ready to receive it
     try {
       const current = mainWindow.getBounds();
@@ -1907,7 +1907,7 @@ const createWindow = () => {
     } catch (e) {
       console.warn("[renderer-ready] Failed to emit display info:", e);
     }
-    
+
     try {
       smoothShow(mainWindow);
       logBounds("renderer-ready -> show");
@@ -1970,38 +1970,38 @@ function createOnboardingWindow() {
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
     ? (() => {
-        try {
-          const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-          const wsOverride =
-            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-            process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim())
-            u.searchParams.set("ws", String(wsOverride).trim());
-          return `${u.toString()}#/onboarding`;
-        } catch {
-          return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
-        }
-      })()
+      try {
+        const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+        const wsOverride =
+          VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+          process.env.VITE_TRANSCRIBE_WS_URL;
+        if (wsOverride && String(wsOverride).trim())
+          u.searchParams.set("ws", String(wsOverride).trim());
+        return `${u.toString()}#/onboarding`;
+      } catch {
+        return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
+      }
+    })()
     : (() => {
-        try {
-          const filePath = path.join(
-            __dirname,
-            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-          );
-          const u = pathToFileURL(filePath);
-          const wsOverride =
-            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-            process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim())
-            u.searchParams.set("ws", String(wsOverride).trim());
-          return `${u.toString()}#/onboarding`;
-        } catch {
-          return `file://${path.join(
-            __dirname,
-            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-          )}#/onboarding`;
-        }
-      })();
+      try {
+        const filePath = path.join(
+          __dirname,
+          `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+        );
+        const u = pathToFileURL(filePath);
+        const wsOverride =
+          VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+          process.env.VITE_TRANSCRIBE_WS_URL;
+        if (wsOverride && String(wsOverride).trim())
+          u.searchParams.set("ws", String(wsOverride).trim());
+        return `${u.toString()}#/onboarding`;
+      } catch {
+        return `file://${path.join(
+          __dirname,
+          `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+        )}#/onboarding`;
+      }
+    })();
 
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
@@ -2054,7 +2054,7 @@ function createOnboardingWindow() {
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         onboardingWindow.webContents.openDevTools({ mode: "detach" });
-      } catch {}
+      } catch { }
       console.log("[Onboarding] DevTools opened (staging)");
     }
   });
@@ -2132,7 +2132,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         autoUpdater.quitAndInstall();
         return;
       }
-    } catch {}
+    } catch { }
     console.log("[Updater] quitAndInstall unavailable; relaunching app as fallback");
     try {
       app.relaunch();
@@ -2392,10 +2392,10 @@ ipcMain.handle(
               new Promise<void>((resolve) => setTimeout(resolve, 300)),
             ]);
           }
-        } catch {}
+        } catch { }
         // Send paste command to daemon
         preSpawnedPasteHelper.stdin?.write("paste\n");
-        
+
         // Wait for paste completion
         await new Promise<void>((resolve) => {
           const onData = (data: Buffer) => {
@@ -2407,7 +2407,7 @@ ipcMain.handle(
             }
           };
           preSpawnedPasteHelper?.stdout?.on("data", onData);
-          
+
           // Fallback timeout
           setTimeout(() => {
             preSpawnedPasteHelper?.stdout?.off("data", onData);
@@ -2419,7 +2419,7 @@ ipcMain.handle(
         // Fallback: spawn new helper if pre-spawn failed
         console.log(`[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`);
         const proc = spawnHelper(helperPath, ["--mode=paste"], false);
-        
+
         await new Promise<void>((resolve) => {
           let stderrBuffer = "";
           proc.stderr.on("data", (data) => {
@@ -2442,7 +2442,7 @@ ipcMain.handle(
       setTimeout(() => {
         try {
           clipboard.writeText(originalClipboardText);
-        } catch {}
+        } catch { }
       }, 300);
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
@@ -2537,7 +2537,7 @@ async function pasteLastTranscript() {
     setTimeout(() => {
       try {
         clipboard.writeText(originalClipboardText);
-      } catch {}
+      } catch { }
     }, 300);
 
   } catch (error) {
@@ -2635,7 +2635,7 @@ app.whenReady().then(async () => {
   } catch {
     onboardingPrefs = {};
   }
-  
+
   // Load pill preferences
   pillPreferences = loadPillPreferences();
 
@@ -2672,7 +2672,7 @@ app.whenReady().then(async () => {
       VITE_ALLOW_DEV_WS: VITE_ENV?.VITE_ALLOW_DEV_WS,
       VITE_SENTRY_ENVIRONMENT: VITE_ENV?.VITE_SENTRY_ENVIRONMENT,
     });
-  } catch {}
+  } catch { }
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
@@ -2685,17 +2685,19 @@ app.whenReady().then(async () => {
       "connect-src 'self'",
       "https://api.sonicflow.app",
       "wss://api.sonicflow.app",
+      // Website API for billing portal
+      "https://www.sonicflow.app",
       // Local development HTTP/WS (dev or staging with flag)
       ...(allowLocal
         ? [
-            "http://127.0.0.1:8787",
-            "http://localhost:8787",
-            "ws://127.0.0.1:8787",
-            "ws://localhost:8787",
-            // Vite dev server (HMR)
-            "http://localhost:*",
-            "ws://localhost:*",
-          ]
+          "http://127.0.0.1:8787",
+          "http://localhost:8787",
+          "ws://127.0.0.1:8787",
+          "ws://localhost:8787",
+          // Vite dev server (HMR)
+          "http://localhost:*",
+          "ws://localhost:*",
+        ]
         : []),
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
@@ -2758,7 +2760,7 @@ app.whenReady().then(async () => {
       pttTarget = "main";
       startHelperIfIMGranted();
       console.log("[Debug] Main window launched (onboarding skipped)");
-      
+
       // Detect and store notch width if not already stored
       if (!pillPreferences.notchWidth) {
         detectAndStoreNotchWidth().then((width) => {
@@ -2772,7 +2774,7 @@ app.whenReady().then(async () => {
           logger.main.error("[PillPrefs] Failed to detect notch width:", err);
         });
       }
-      
+
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
     } catch (error) {
@@ -2905,13 +2907,13 @@ app.whenReady().then(async () => {
         JSON.stringify(onboardingPrefs, null, 2),
         "utf8",
       );
-    } catch {}
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        createWindow();
-      } else {
-        // Ensure the pill window is visible and interactive
-        smoothShow(mainWindow);
-      }
+    } catch { }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow();
+    } else {
+      // Ensure the pill window is visible and interactive
+      smoothShow(mainWindow);
+    }
     createTray();
     // Start helper only if IM is already granted; otherwise defer
     pttTarget = "main";
@@ -2948,12 +2950,12 @@ app.whenReady().then(async () => {
         JSON.stringify(onboardingPrefs, null, 2),
         "utf8",
       );
-    } catch {}
+    } catch { }
     // Hide pill/main, show onboarding
     try {
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
         smoothHide(mainWindow);
-    } catch {}
+    } catch { }
     if (onboardingWindow && !onboardingWindow.isDestroyed()) {
       smoothShow(onboardingWindow);
     } else {
@@ -3119,21 +3121,20 @@ app.whenReady().then(async () => {
       payload:
         | string
         | {
-            message: string;
-            actionId?: string | null;
-          },
+          message: string;
+          actionId?: string | null;
+        },
     ) => {
       const next =
         typeof payload === "string"
           ? { message: payload, actionId: null }
           : {
-              message: payload?.message ?? "",
-              actionId:
-                typeof payload?.actionId === "string" ? payload.actionId : null,
-            };
+            message: payload?.message ?? "",
+            actionId:
+              typeof payload?.actionId === "string" ? payload.actionId : null,
+          };
       console.log(
-        `[IPC Main] Received show-notification request, forwarding to renderer: ${next.message}${
-          next.actionId ? ` (action=${next.actionId})` : ""
+        `[IPC Main] Received show-notification request, forwarding to renderer: ${next.message}${next.actionId ? ` (action=${next.actionId})` : ""
         }`,
       );
       mainWindow?.webContents.send("notify", next);
@@ -3146,7 +3147,7 @@ app.whenReady().then(async () => {
       // Check ~60s after wake with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "resume", true);
     });
-  } catch {}
+  } catch { }
   // Note: network regain detection is renderer-friendly via navigator.onLine.
   // Main process lacks a stable 'online' event; we rely on periodic checks + resume.
 
@@ -3342,7 +3343,7 @@ app.whenReady().then(async () => {
     BrowserWindow.getAllWindows().forEach((window) => {
       try {
         window.webContents.send("transcript:updated", text);
-      } catch {}
+      } catch { }
     });
   });
 
@@ -3598,7 +3599,7 @@ app.whenReady().then(async () => {
             console.log("[Ask-IM] Input Monitoring permission granted");
             try {
               await startHelperIfIMGranted();
-            } catch {}
+            } catch { }
             resolve({ success: true, status: "authorized", isDev });
           } else if (stdout.includes("im-denied")) {
             console.log("[Ask-IM] Input Monitoring permission denied");
@@ -3676,7 +3677,7 @@ app.whenReady().then(async () => {
             if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
               preSpawnedPasteHelper.stdin?.write("exit\n");
             }
-          } catch {}
+          } catch { }
           preSpawnedPasteHelper = null;
           preSpawnReady = null;
           resolvePreSpawnReady = null;
@@ -3688,7 +3689,7 @@ app.whenReady().then(async () => {
           // Ask pill to refresh devices list to ensure clean state
           try {
             mainWindow?.webContents.send("mic:refresh-devices");
-          } catch {}
+          } catch { }
           return { ok: true };
         }
         return { ok: false, error: "Unknown type" };
@@ -3740,7 +3741,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   try {
     devAuthServer?.close();
-  } catch {}
+  } catch { }
 
   // Unregister all global shortcuts
   globalShortcut.unregisterAll();
@@ -3849,7 +3850,7 @@ app.on("before-quit", () => {
   // Attempt to flush pending Sentry events before quitting (best-effort)
   try {
     void Sentry.close(2000);
-  } catch {}
+  } catch { }
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
@@ -3890,7 +3891,7 @@ app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
   try {
     void Sentry.close(2000);
-  } catch {}
+  } catch { }
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 
@@ -3899,7 +3900,7 @@ app.on("will-quit", () => {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
   }
-  
+
   // Clean up pre-spawned paste helper
   if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
     try {
@@ -3910,7 +3911,7 @@ app.on("will-quit", () => {
     }
     preSpawnedPasteHelper = null;
   }
-  
+
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
       p.kill("SIGKILL");
@@ -4005,7 +4006,7 @@ function startFnListener() {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
           mainWindow?.webContents.send("ptt-ready");
-        // Ignore legacy generic and Fn events; only handle Right Option/Command
+          // Ignore legacy generic and Fn events; only handle Right Option/Command
         } else if (trimmedLine === "optR-down") {
           // Right Option: primary PTT hotkey (press-and-hold)
           preSpawnPasteHelper();
@@ -4022,7 +4023,7 @@ function startFnListener() {
             if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
               preSpawnedPasteHelper.stdin?.write("exit\n");
             }
-          } catch {}
+          } catch { }
           preSpawnedPasteHelper = null;
           preSpawnReady = null;
           resolvePreSpawnReady = null;
