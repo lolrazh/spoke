@@ -12,7 +12,7 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { signOut as supaSignOut } from "../lib/supabaseClient";
+import { signOut as supaSignOut, getSupabase } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 import { subscribeQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
@@ -140,6 +140,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+  const [isLoadingPortal, setIsLoadingPortal] = useState<boolean>(false);
   // Subscription/quota state for tier-based UI
   const [quotaState, setQuotaState] = useState<QuotaState | null>(null);
 
@@ -331,6 +332,47 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setIsSigningOut(false); // Reset on error so user can retry
     }
     // Don't reset isSigningOut on success - component will unmount anyway
+  };
+
+  const handleManageSubscription = async () => {
+    if (isLoadingPortal) return; // Prevent double-clicks
+    setIsLoadingPortal(true);
+
+    try {
+      const supabase = getSupabase();
+      if (!supabase) {
+        console.error("[Settings] Supabase client not available");
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error("[Settings] No session found for billing portal");
+        return;
+      }
+
+      const response = await fetch("https://www.sonicflow.app/api/billing/portal", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("[Settings] Failed to get portal URL:", error);
+        // Could show a notification here, but for now just log
+        return;
+      }
+
+      const { url } = await response.json();
+      window.electron?.openExternal(url);
+    } catch (error) {
+      console.error("[Settings] Error opening billing portal:", error);
+    } finally {
+      setIsLoadingPortal(false);
+    }
   };
 
   // Remove login handling from Settings Panel: onboarding is the sole login surface
@@ -618,9 +660,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app")}
+                                  onClick={handleManageSubscription}
+                                  disabled={isLoadingPortal}
                                 >
-                                  Manage
+                                  {isLoadingPortal ? "..." : "Manage"}
                                 </Button>
                               ) : (
                                 <Button
