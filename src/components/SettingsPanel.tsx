@@ -12,7 +12,7 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { signOut as supaSignOut } from "../lib/supabaseClient";
+import { signOut as supaSignOut, getSupabase } from "../lib/supabaseClient";
 import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
 import { subscribeQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
@@ -333,6 +333,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     // Don't reset isSigningOut on success - component will unmount anyway
   };
 
+  const handleManageSubscription = async () => {
+    // Open browser immediately - website handles the redirect
+    // This provides instant feedback rather than waiting for API response in the app
+    try {
+      const supabase = getSupabase();
+      if (!supabase) {
+        console.error("[Settings] Supabase client not available");
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.error("[Settings] No session found for billing portal");
+        return;
+      }
+
+      // Open the redirect page with token in hash fragment (not sent to server logs)
+      // The website page will read the token, call the API, and redirect to Dodo
+      const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+      window.electron?.openExternal(portalUrl);
+    } catch (error) {
+      console.error("[Settings] Error opening billing portal:", error);
+    }
+  };
+
   // Remove login handling from Settings Panel: onboarding is the sole login surface
 
   // Ensure interactive cursor and events work in embedded (expanded) mode
@@ -618,7 +643,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app")}
+                                  onClick={handleManageSubscription}
                                 >
                                   Manage
                                 </Button>

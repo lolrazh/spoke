@@ -551,12 +551,70 @@ SKIP_AUTH=1  # Development only - bypasses auth
 
 ---
 
+## Customer Portal
+
+Pro users can manage their subscription (update payment method, cancel, view invoices) via the Dodo customer portal.
+
+### Architecture
+
+```
+┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
+│ Electron    │     │ Website API     │     │ Dodo Portal  │
+│ App         │     │                 │     │              │
+└─────────────┘     └─────────────────┘     └──────────────┘
+      │                     │                      │
+      │ POST /api/billing/portal                   │
+      │ Authorization: Bearer <jwt>                │
+      │────────────────────►│                      │
+      │                     │ 1. Verify JWT        │
+      │                     │ 2. Get customer_id   │
+      │                     │ 3. Call Dodo API     │
+      │   { url: "..." }    │                      │
+      │◄────────────────────│                      │
+      │                     │                      │
+      │ openExternal(url)   │                      │
+      │─────────────────────┼─────────────────────►│
+```
+
+### App Implementation
+
+```typescript
+// src/components/SettingsPanel.tsx
+const handleManageSubscription = async () => {
+  const supabase = getSupabase();
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  const response = await fetch('https://www.sonicflow.app/api/billing/portal', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  const { url } = await response.json();
+  window.electron?.openExternal(url);
+};
+```
+
+### Endpoint Responses
+
+| Status | Response | Meaning |
+|--------|----------|---------|
+| 200 | `{ url: "..." }` | Success - open this URL |
+| 401 | `{ error: "..." }` | Missing/invalid JWT |
+| 400 | `{ error: "...", code: "NO_CUSTOMER_ID" }` | User has no Dodo customer ID |
+| 500 | `{ error: "..." }` | Dodo API or server error |
+
+---
+
 ## File Organization
 
 ```
 Website (api-sonic-flow-site):
 ├── src/app/api/
 │   ├── auth/callback/route.ts    # OAuth + direct Dodo checkout
+│   ├── billing/portal/route.ts   # Customer portal session creation
 │   └── webhooks/dodo/route.ts    # Subscription webhook handler
 ├── src/app/checkout/
 │   └── success/page.tsx          # Post-payment success page
@@ -577,7 +635,7 @@ App:
 │   └── useTranscription.ts       # Auth flow, error handling
 └── src/components/
     ├── App.tsx                   # JWT refresh on startup
-    └── SettingsPanel.tsx         # Pro/free tier UI
+    └── SettingsPanel.tsx         # Pro/free tier UI, billing portal
 ```
 
 ---
@@ -619,6 +677,7 @@ npm run dev:local
 | Webhook not firing | Verify events selected in Dodo webhook config |
 | JWT claims not updating | Ensure auth hook is VOLATILE, call refreshSession() |
 | Quota showing 0 | Check database has words_used_this_month value |
+| Billing portal fails | Check user has dodo_customer_id in profiles table |
 
 ---
 
@@ -645,3 +704,8 @@ npm run dev:local
 - Lazy monthly reset in auth hook
 - Local quota display with progress bar
 - Fixed VOLATILE bug in auth hook
+
+### 2025-12-05: Customer Portal
+- Website endpoint for billing portal session creation
+- App-side "Manage" button calls endpoint with JWT auth
+- Opens Dodo customer portal in system browser
