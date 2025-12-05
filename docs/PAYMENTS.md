@@ -558,23 +558,21 @@ Pro users can manage their subscription (update payment method, cancel, view inv
 ### Architecture
 
 ```
-┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
-│ Electron    │     │ Website API     │     │ Dodo Portal  │
-│ App         │     │                 │     │              │
-└─────────────┘     └─────────────────┘     └──────────────┘
-      │                     │                      │
-      │ POST /api/billing/portal                   │
-      │ Authorization: Bearer <jwt>                │
-      │────────────────────►│                      │
-      │                     │ 1. Verify JWT        │
-      │                     │ 2. Get customer_id   │
-      │                     │ 3. Call Dodo API     │
-      │   { url: "..." }    │                      │
-      │◄────────────────────│                      │
-      │                     │                      │
-      │ openExternal(url)   │                      │
-      │─────────────────────┼─────────────────────►│
+┌─────────────┐     ┌─────────────────────────────────┐     ┌──────────────┐
+│ Electron    │     │ Website                         │     │ Dodo Portal  │
+│ App         │     │                                 │     │              │
+└─────────────┘     └─────────────────────────────────┘     └──────────────┘
+      │                           │                                │
+      │ openExternal(url#token)   │                                │
+      │──────────────────────────►│                                │
+      │                           │ /billing/portal page:          │
+      │                           │ 1. Read token from hash        │
+      │                           │ 2. Call /api/billing/portal    │
+      │                           │ 3. Redirect to Dodo            │
+      │                           │───────────────────────────────►│
 ```
+
+**Why this pattern?** Opening the browser immediately makes the app feel instant. The 1-2 second API latency happens in the browser where users expect pages to load.
 
 ### App Implementation
 
@@ -584,29 +582,32 @@ const handleManageSubscription = async () => {
   const supabase = getSupabase();
   const { data: { session } } = await supabase.auth.getSession();
   
-  const response = await fetch('https://www.sonicflow.app/api/billing/portal', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  const { url } = await response.json();
-  window.electron?.openExternal(url);
+  // Open browser immediately - website handles the redirect
+  // Token in hash fragment (not sent to server logs)
+  const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+  window.electron?.openExternal(portalUrl);
 };
 ```
+
+### Website Redirect Page
+
+The `/billing/portal` page:
+1. Shows loading state ("Opening billing portal...")
+2. Reads token from `window.location.hash`
+3. Calls `POST /api/billing/portal` with Bearer auth
+4. Redirects to returned Dodo portal URL
 
 ### Endpoint Responses
 
 | Status | Response | Meaning |
 |--------|----------|---------|
-| 200 | `{ url: "..." }` | Success - open this URL |
+| 200 | `{ url: "..." }` | Success - redirect to this URL |
 | 401 | `{ error: "..." }` | Missing/invalid JWT |
 | 400 | `{ error: "...", code: "NO_CUSTOMER_ID" }` | User has no Dodo customer ID |
 | 500 | `{ error: "..." }` | Dodo API or server error |
 
 ---
+
 
 ## File Organization
 
