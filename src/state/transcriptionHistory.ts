@@ -83,9 +83,9 @@ export async function addTranscription(
   // Add to beginning of in-memory list
   items = [newItem, ...items];
 
-  // Keep in sync with storage cap (1000 items)
-  if (items.length > 1000) {
-    items = items.slice(0, 1000);
+  // Keep in sync with storage cap (10000 items)
+  if (items.length > 10000) {
+    items = items.slice(0, 10000);
   }
 
   emit();
