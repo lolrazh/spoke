@@ -660,13 +660,23 @@ export function useTranscription(
           return;
         }
 
-        // Ensure future sessions can recreate the socket after idle closes
+        // Handle unexpected close codes (like 1003 from Cloudflare edge rejection)
+        // These are retryable - reject the Promise so ensureStreamingSocket can retry
+        console.warn("[SF] WebSocket closed unexpectedly during auth", {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
+
+        // Clean up this connection attempt
         if (wsRef.current === ws) {
           wsRef.current = null;
         }
-        scheduleReconnect();
-        // Stop health monitoring when connection closes
         stopWebSocketHealthCheck();
+
+        // Reject the Promise so the caller knows auth failed and can retry
+        cleanup();
+        reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
       });
     }); // Close the Promise
   }, [flushQueue, trySendStartMessage]);
@@ -1236,8 +1246,46 @@ export function useTranscription(
 
     try {
       // Try to establish the WebSocket and wait for auth to complete
-      // This Promise resolves when auth succeeds, rejects if auth fails
-      await ensureStreamingSocket();
+      // Retry up to 3 times for transient failures (like Cloudflare edge rejections)
+      const MAX_CONNECTION_RETRIES = 3;
+      let lastError: Error | null = null;
+
+      for (let attempt = 1; attempt <= MAX_CONNECTION_RETRIES; attempt++) {
+        try {
+          await ensureStreamingSocket();
+          // Success! Break out of retry loop
+          lastError = null;
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          const errorMsg = lastError.message;
+
+          // Don't retry for auth-related errors (payment, quota, etc)
+          if (
+            errorMsg.includes("Not signed in") ||
+            errorMsg.includes("Payment") ||
+            errorMsg.includes("Quota") ||
+            errorMsg.includes("Auth failed")
+          ) {
+            console.warn(`[SF] Auth error on attempt ${attempt}, not retrying:`, errorMsg);
+            throw lastError; // Re-throw auth errors immediately
+          }
+
+          // For transient errors (like code 1003), retry with backoff
+          if (attempt < MAX_CONNECTION_RETRIES) {
+            const backoffMs = 150 * Math.pow(2, attempt - 1); // 150ms, 300ms
+            console.warn(`[SF] Connection attempt ${attempt} failed, retrying in ${backoffMs}ms:`, errorMsg);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          } else {
+            console.error(`[SF] All ${MAX_CONNECTION_RETRIES} connection attempts failed:`, errorMsg);
+          }
+        }
+      }
+
+      // If we exhausted all retries, throw the last error
+      if (lastError) {
+        throw lastError;
+      }
 
       // Auth succeeded! Now we can start recording
       setRecording(true);
