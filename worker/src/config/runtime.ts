@@ -10,6 +10,11 @@ import {
   BASETEN_LLM_DEFAULT_MODEL,
   OPENROUTER_LLM_DEFAULT_MODEL,
   CEREBRAS_LLM_DEFAULT_MODEL,
+  GROQ_EDIT_LLM_DEFAULT_MODEL,
+  OPENAI_EDIT_LLM_DEFAULT_MODEL,
+  BASETEN_EDIT_LLM_DEFAULT_MODEL,
+  OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
+  CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_PROVIDER,
   EDIT_LLM_DEFAULT_TEMPERATURE,
@@ -42,8 +47,20 @@ const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
   cerebras: CEREBRAS_LLM_DEFAULT_MODEL,
 };
 
+const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
+  groq: GROQ_EDIT_LLM_DEFAULT_MODEL,
+  openai: OPENAI_EDIT_LLM_DEFAULT_MODEL,
+  baseten: BASETEN_EDIT_LLM_DEFAULT_MODEL,
+  openrouter: OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
+  cerebras: CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
+};
+
 function defaultModelFor(provider: LLMProvider, fallback: string): string {
   return PROVIDER_DEFAULT_MODELS[provider] ?? fallback;
+}
+
+function defaultEditModelFor(provider: LLMProvider, fallback: string): string {
+  return PROVIDER_EDIT_MODELS[provider] ?? fallback;
 }
 
 
@@ -104,7 +121,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
   const editStream = toBool(env.EDIT_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
   const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
-  const editModel = env.EDIT_LLM_MODEL || defaultModelFor(editProvider, EDIT_LLM_DEFAULT_MODEL);
+  const editModel = env.EDIT_LLM_MODEL || defaultEditModelFor(editProvider, EDIT_LLM_DEFAULT_MODEL);
   const editTemperature = Number.isFinite(Number(env.EDIT_LLM_TEMPERATURE))
     ? Number(env.EDIT_LLM_TEMPERATURE)
     : EDIT_LLM_DEFAULT_TEMPERATURE;
