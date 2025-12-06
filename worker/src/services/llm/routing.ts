@@ -55,6 +55,10 @@ export const DEFAULT_LLM_ROUTING_RULES: readonly LLMRoutingRule[] = [
     id: 'formatting-instruction',
     pattern: /\b(?:uppercase|lowercase|caps|capitals|capitalise|capitalised|capitalize|capitalized|emphasize|emphasise|emphasis)\b/i,
   },
+  {
+    id: 'symbol',
+    pattern: /\b(?:symbol|symbols|tag)\b/i,
+  },
 ] as const;
 
 export function selectLLMRoute(
