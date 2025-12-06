@@ -26,11 +26,11 @@ export const LLM_DEFAULT_PROVIDER = 'cerebras' as const;
 export const LLM_ROUTER_ENABLED = true;
 export type LLMProvider = 'groq' | 'openai' | 'baseten' | 'openrouter' | 'cerebras';
 
-export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
+export const EDIT_LLM_DEFAULT_MODEL = CEREBRAS_EDIT_LLM_DEFAULT_MODEL;
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = true;
-export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'cerebras' as const;
 
 
 // STT (Audio Transcriptions)
