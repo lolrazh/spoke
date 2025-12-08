@@ -583,7 +583,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         inGroup
                       />
 
-                      <Toggle
+                      {/* Temporarily hidden - can be restored later */}
+                      {/* <Toggle
                         label="Improve the Model for Everyone"
                         description="Share anonymous usage to improve responses"
                         enabled={shareTranscriptionsEnabled ?? false}
@@ -599,7 +600,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
                         }
                         inGroup
-                      />
+                      /> */}
                     </div>
                   </motion.section>
 
