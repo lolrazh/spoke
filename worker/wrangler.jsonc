@@ -4,14 +4,26 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sonic-flow",
+  "name": "spoke-api",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-16",
-  "compatibility_flags": ["nodejs_compat", "nodejs_als"],
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_als"
+  ],
   "observability": {
     "enabled": true,
   },
-  "routes": [{ "pattern": "api.sonicflow.app", "custom_domain": true }],
+  "routes": [
+    {
+      "pattern": "api.sonicflow.app",
+      "custom_domain": true
+    },
+    {
+      "pattern": "api.spoke.so",
+      "custom_domain": true
+    }
+  ],
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
@@ -30,7 +42,10 @@
    * Environment Variables
    * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
    */
-  "vars": { "SENTRY_DSN": "https://f71ef10f01a756f1829d16a32d38ce12@o4509875043565568.ingest.us.sentry.io/4509922651144192", "SENTRY_ENVIRONMENT": "production" }
+  "vars": {
+    "SENTRY_DSN": "https://f71ef10f01a756f1829d16a32d38ce12@o4509875043565568.ingest.us.sentry.io/4509922651144192",
+    "SENTRY_ENVIRONMENT": "production"
+  }
   /**
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
