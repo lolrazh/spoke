@@ -41,8 +41,8 @@ export default defineConfig({
       ],
     }),
     sentryVitePlugin({
-      org: "sonic-flow",
-      project: "sonic-flow-app",
+      org: "spoke",
+      project: "spoke-app",
     }),
   ],
   resolve: {

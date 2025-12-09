@@ -18,7 +18,7 @@ describe("config/api", () => {
 
   beforeEach(() => {
     // Reset URL and localStorage between tests
-    setLocation("https://app.sonicflow.app/");
+    setLocation("https://app.spoke.so/");
     window.localStorage.clear();
     // Stub out Vite dev flag so heuristics don't force local
     // @ts-ignore
@@ -33,7 +33,7 @@ describe("config/api", () => {
   });
 
   it("returns local endpoints in dev mode (Vitest env)", () => {
-    setLocation("https://app.sonicflow.app/");
+    setLocation("https://app.spoke.so/");
     setLocation("https://app.spoke.so/");
     // Vitest sets import.meta.env.DEV, so functions should prefer local
     expect(getTranscribeUrl()).toBe("http://127.0.0.1:8787/transcribe");

@@ -290,7 +290,7 @@ let preSpawnedPasteHelper: import("child_process").ChildProcessWithoutNullStream
 let preSpawnReady: Promise<void> | null = null;
 let resolvePreSpawnReady: (() => void) | null = null;
 let fnPermissionDenied = false;
-let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
+let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
@@ -2556,22 +2556,22 @@ app.whenReady().then(async () => {
       // Always register with explicit exe and app path in dev
       const exe = process.execPath;
       const appPath = path.resolve(process.argv[1] || "");
-      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [
+      const ok = app.setAsDefaultProtocolClient("spoke-dev", exe, [
         appPath,
       ]);
       console.log(
-        `[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`,
+        `[Auth] Registered dev protocol handler (spoke-dev): ${ok}`,
       );
       console.log(
         `[Auth] isDefaultProtocolClient(dev):`,
-        app.isDefaultProtocolClient("sonicflow-dev"),
+        app.isDefaultProtocolClient("spoke-dev"),
       );
     } else {
-      const ok = app.setAsDefaultProtocolClient("sonicflow");
-      console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
+      const ok = app.setAsDefaultProtocolClient("spoke");
+      console.log(`[Auth] Registered prod protocol handler (spoke): ${ok}`);
       console.log(
         `[Auth] isDefaultProtocolClient(prod):`,
-        app.isDefaultProtocolClient("sonicflow"),
+        app.isDefaultProtocolClient("spoke"),
       );
     }
   } catch (e) {
@@ -2612,7 +2612,7 @@ app.whenReady().then(async () => {
     const firstUrl = process.argv.find(
       (a) =>
         typeof a === "string" &&
-        (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+        (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
     );
     if (firstUrl) {
       sendAuthCallback(firstUrl);
@@ -3752,7 +3752,7 @@ app.on("before-quit", () => {
   console.log('[GlobalShortcut] All shortcuts unregistered');
 });
 
-// Handle deep links like sonicflow://auth/callback?code=...
+// Handle deep links like spoke://auth/callback?code=...
 app.on("open-url", (event, url) => {
   event.preventDefault();
   console.log(`[Auth] Deep link received: ${url}`);
@@ -3891,7 +3891,7 @@ app.on("before-quit", () => {
     // ignore
   }
   try {
-    execSync("pkill -9 -f sonic-helper    || true");
+    execSync("pkill -9 -f spoke-helper    || true");
   } catch (e) {
     // ignore
   }
@@ -3905,7 +3905,7 @@ app.on("will-quit", () => {
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 
-  // Clear restart timeout and kill sonic-helper process
+  // Clear restart timeout and kill spoke-helper process
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
@@ -3948,13 +3948,13 @@ function startFnListener() {
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
     console.log(
-      "[FnListener] Cleaning up existing sonic-helper process before starting new one",
+      "[FnListener] Cleaning up existing spoke-helper process before starting new one",
     );
     try {
       fnProc.kill("SIGTERM");
     } catch (error) {
       console.warn(
-        "[FnListener] Error killing existing sonic-helper process:",
+        "[FnListener] Error killing existing spoke-helper process:",
         error,
       );
     }
