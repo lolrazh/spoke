@@ -2188,10 +2188,10 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     ...buildFeedbackAndAboutItems(),
     { type: "separator" },
     {
-      label: "Quit Sonic Flow",
+      label: "Quit Spoke",
       accelerator: 'CommandOrControl+Q',
       click: () => {
-        console.log("[Tray Menu] Quit Sonic Flow clicked");
+        console.log("[Tray Menu] Quit Spoke clicked");
         isQuitting = true;
         app.quit();
       },
@@ -2295,7 +2295,7 @@ const createTray = () => {
     // Additional debugging for tray visibility
     console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
 
-    tray.setToolTip("Sonic Flow");
+    tray.setToolTip("Spoke");
 
     // Force tray to be visible (macOS sometimes hides it)
     if (process.platform === "darwin") {
@@ -2304,7 +2304,7 @@ const createTray = () => {
       setTimeout(() => {
         if (tray && !tray.isDestroyed()) {
           console.log("[Tray] Forcing tray visibility on macOS");
-          tray.setToolTip("Sonic Flow - AI Dictation");
+          tray.setToolTip("Spoke - AI Dictation");
         }
       }, 100);
     }

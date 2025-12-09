@@ -1,8 +1,8 @@
 {
-  "name": "sonic-flow",
-  "productName": "Sonic Flow",
+  "name": "spoke",
+  "productName": "Spoke",
   "version": "0.3.2",
-  "description": "A Lightweight AI Dictation App for macOS",
+  "description": "Intelligent AI Dictation that works everywhere you do.",
   "main": ".vite/build/main.js",
   "scripts": {
     "dev": "SF_DEVTOOLS=1 electron-forge start",

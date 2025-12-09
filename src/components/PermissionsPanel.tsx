@@ -42,7 +42,7 @@ const PERMISSION_COPY: Record<
   },
   inputMonitoring: {
     title: "Input Monitoring",
-    description: "Detect the Sonic Flow hotkey",
+    description: "Detect the Spoke hotkey",
     icon: (
       <SfIcon
         name="keyboard.badge.eye.fill"
@@ -93,28 +93,28 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
       disabled: boolean;
       onRequest: () => Promise<void> | void;
     }> = [
-      {
-        key: "microphone",
-        granted: permissions.microphone,
-        loading: ui.microphone.loading,
-        disabled: false,
-        onRequest: requestMicrophone,
-      },
-      {
-        key: "accessibility",
-        granted: permissions.accessibility,
-        loading: ui.accessibility.loading,
-        disabled: false,
-        onRequest: requestAccessibility,
-      },
-      {
-        key: "inputMonitoring",
-        granted: permissions.inputMonitoring,
-        loading: ui.inputMonitoring.loading,
-        disabled: !permissions.accessibility,
-        onRequest: requestInputMonitoring,
-      },
-    ];
+        {
+          key: "microphone",
+          granted: permissions.microphone,
+          loading: ui.microphone.loading,
+          disabled: false,
+          onRequest: requestMicrophone,
+        },
+        {
+          key: "accessibility",
+          granted: permissions.accessibility,
+          loading: ui.accessibility.loading,
+          disabled: false,
+          onRequest: requestAccessibility,
+        },
+        {
+          key: "inputMonitoring",
+          granted: permissions.inputMonitoring,
+          loading: ui.inputMonitoring.loading,
+          disabled: !permissions.accessibility,
+          onRequest: requestInputMonitoring,
+        },
+      ];
 
     return entries;
   }, [

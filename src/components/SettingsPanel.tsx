@@ -36,7 +36,7 @@ const sectionVariants: Variants = {
   },
 };
 
-// --- Clean Sonic Flow Components --- //
+// --- Clean Spoke Components --- //
 const Toggle: React.FC<{
   enabled: boolean;
   onChange: (enabled: boolean) => void;
@@ -418,7 +418,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           }}
           className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200 z-30"
         >
-          Sonic Flow Beta {appVersion}
+          Spoke Beta {appVersion}
         </a>
       )}
 
@@ -727,10 +727,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <div className="flex items-center justify-center gap-2">
                 <img
                   src="/assets/TrayTemplate.png"
-                  alt="Sonic Flow Icon"
+                  alt="Spoke Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Sonic Flow Beta ${appVersion}` : ""}</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Spoke Beta ${appVersion}` : ""}</p>
               </div>
             )}
           </div>

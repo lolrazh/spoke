@@ -45,10 +45,10 @@ export function buildFeedbackAndAboutItems(): MenuItemConstructorOptions[] {
       },
     },
     {
-      label: "About Sonic Flow",
+      label: "About Spoke",
       click: () => {
         app.setAboutPanelOptions({
-          applicationName: "Sonic Flow",
+          applicationName: "Spoke",
           applicationVersion: app.getVersion(),
           credits: "A lightweight AI dictation tool for macOS.",
           authors: ["Sandheep Rajkumar"],

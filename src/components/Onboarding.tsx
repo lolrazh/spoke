@@ -113,7 +113,7 @@ const deriveAccountSummary = (
     profile?.display_name ??
     metadata.name ??
     (email ? email.split("@")[0] : null) ??
-    "Sonic Flow user";
+    "Spoke user";
 
   return {
     id: profile?.id ?? user.id,
@@ -175,13 +175,13 @@ const Onboarding: React.FC = () => {
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
     ? {
-        checkPermissions: mockPermissions.checkPermissions,
-        checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
-        requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
-        askIM: mockPermissions.askIM,
-        requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
-        openSystemPreferences: mockPermissions.openSystemPreferences,
-      }
+      checkPermissions: mockPermissions.checkPermissions,
+      checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
+      requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
+      askIM: mockPermissions.askIM,
+      requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
+      openSystemPreferences: mockPermissions.openSystemPreferences,
+    }
     : undefined;
   const {
     permissions,
@@ -224,9 +224,9 @@ const Onboarding: React.FC = () => {
 
   // Record onboarding visibility for auth intent correlation
   useEffect(() => {
-    try { markOnboardingEvent(); } catch {}
+    try { markOnboardingEvent(); } catch { }
     return () => {
-      try { markOnboardingEvent(); } catch {}
+      try { markOnboardingEvent(); } catch { }
     };
   }, []);
 
@@ -289,7 +289,7 @@ const Onboarding: React.FC = () => {
   };
   // Sample prompts for tests
   const sampleEditText =
-    "I wanna show you how Sonic Flow actually helps, how Sonic Flow actually behaves and why Sonic Flow is better than the other apps.";
+    "I wanna show you how Spoke actually helps, how Spoke actually behaves and why Spoke is better than the other apps.";
 
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
@@ -332,7 +332,7 @@ const Onboarding: React.FC = () => {
       try {
         audio.pause();
         audio.src = "";
-      } catch {}
+      } catch { }
       onboardingAudioRef.current = null;
     };
   }, []);
@@ -351,7 +351,7 @@ const Onboarding: React.FC = () => {
           onboardingAudioRef.current.pause();
           setMusicEnabled(false);
         }
-      } catch {}
+      } catch { }
     })();
   }, [currentStep]);
 
@@ -378,8 +378,8 @@ const Onboarding: React.FC = () => {
       (async () => {
         try {
           await fadeVolumeTo(0, 600);
-        } catch {}
-        try { audio.pause(); } catch {}
+        } catch { }
+        try { audio.pause(); } catch { }
       })();
     }
   };
@@ -619,7 +619,7 @@ const Onboarding: React.FC = () => {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
           await ensureProfileRow();
-        } catch {}
+        } catch { }
         const profile = await getProfile();
         const account = deriveAccountSummary(profile, user);
         if (isMountedRef.current) setSignedInAccount(account);
@@ -631,7 +631,7 @@ const Onboarding: React.FC = () => {
           }
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
-          try { window.notifications?.send?.("You've been signed in."); } catch {}
+          try { window.notifications?.send?.("You've been signed in."); } catch { }
           return;
         }
       } catch (error) {
@@ -664,7 +664,7 @@ const Onboarding: React.FC = () => {
         // Ensure a profile row exists as soon as login completes
         try {
           await ensureProfileRow();
-        } catch {}
+        } catch { }
         const profile = await getProfile();
         const currentUser = await getCurrentUser();
         if (isMountedRef.current)
@@ -678,11 +678,11 @@ const Onboarding: React.FC = () => {
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
           // Show a consistent post sign-in toast once the pill/main window is up
-          try { window.notifications?.send?.("You've been signed in."); } catch {}
+          try { window.notifications?.send?.("You've been signed in."); } catch { }
           switchAccountIntentRef.current = false;
           return;
         }
-      } catch {}
+      } catch { }
       if (switchAccountIntentRef.current && !forceOnboarding) {
         switchAccountIntentRef.current = false;
         return;
@@ -712,7 +712,7 @@ const Onboarding: React.FC = () => {
       const url = await getGoogleOAuthUrl();
       if (!url) {
         setAuthError(
-          "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
+          "Authentication setup failed. Please ensure Spoke is properly configured and try again.",
         );
         setAuthLoading(false);
         return false;
@@ -900,7 +900,7 @@ const Onboarding: React.FC = () => {
     if (currentStep === "hotkey-test" || currentStep === "hands-free-test" || currentStep === "edit-test") {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
-      try { (window.electron as any)?.revealPillForTest?.(); } catch {}
+      try { (window.electron as any)?.revealPillForTest?.(); } catch { }
     }
   }, [currentStep]);
 
@@ -908,19 +908,19 @@ const Onboarding: React.FC = () => {
   const stopMic = () => {
     try {
       if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
-    } catch {}
+    } catch { }
     rafIdRef.current = null;
     try {
       analyserRef.current?.disconnect();
-    } catch {}
+    } catch { }
     analyserRef.current = null;
     try {
       audioCtxRef.current?.close();
-    } catch {}
+    } catch { }
     audioCtxRef.current = null;
     try {
       micStreamRef.current?.getTracks()?.forEach((t) => t.stop());
-    } catch {}
+    } catch { }
     micStreamRef.current = null;
   };
 
@@ -933,9 +933,9 @@ const Onboarding: React.FC = () => {
         audio:
           selectedMicId && selectedMicId !== "default"
             ? {
-                deviceId: { exact: selectedMicId },
-                ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
-              }
+              deviceId: { exact: selectedMicId },
+              ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
+            }
             : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -982,7 +982,7 @@ const Onboarding: React.FC = () => {
       setSpeakingDetected(false);
       try {
         if (isDevelopment) console.error("[Onboarding] startMic failed:", e);
-      } catch {}
+      } catch { }
     }
   };
 
@@ -1002,7 +1002,7 @@ const Onboarding: React.FC = () => {
     try {
       // Persist selection to main so app-wide mic matches user choice
       if (selectedMicId) window.mic?.select?.(selectedMicId);
-    } catch {}
+    } catch { }
   }, [selectedMicId]);
 
   // Enumerate mics when entering mic-check
@@ -1016,7 +1016,7 @@ const Onboarding: React.FC = () => {
         try {
           const res = await window.mic?.getSelected?.();
           seedId = res?.id ?? null;
-        } catch {}
+        } catch { }
         const devices = await navigator.mediaDevices.enumerateDevices();
         const inputs = devices
           .filter((d) => d.kind === "audioinput")
@@ -1033,7 +1033,7 @@ const Onboarding: React.FC = () => {
               deduped.map((d) => ({ id: d.id, label: d.label })),
               next || undefined,
             );
-          } catch {}
+          } catch { }
         }
       } catch {
         if (!cancelled) setMicDevices([{ id: "default", label: "System Default" }]);
@@ -1042,11 +1042,11 @@ const Onboarding: React.FC = () => {
     const off = window.mic?.onSelectedChanged?.(({ id }) => {
       try {
         if (id && id !== selectedMicId) setSelectedMicId(id);
-      } catch {}
+      } catch { }
     });
     return () => {
       cancelled = true;
-      try { off && off(); } catch {}
+      try { off && off(); } catch { }
     };
   }, [currentStep]);
 
@@ -1071,8 +1071,8 @@ const Onboarding: React.FC = () => {
         textAreaRef.current?.dataset?.onboardingStep === currentStep
           ? textAreaRef.current
           : document.querySelector<HTMLTextAreaElement>(
-              `textarea[data-onboarding-step="${currentStep}"]`,
-            );
+            `textarea[data-onboarding-step="${currentStep}"]`,
+          );
 
       if (!active) {
         timeoutId = setTimeout(focusActiveTextArea, 80);
@@ -1125,7 +1125,7 @@ const Onboarding: React.FC = () => {
       window.electron?.setPttTarget?.("main");
       try {
         await markOnboardingDone();
-      } catch {}
+      } catch { }
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
@@ -1360,835 +1360,834 @@ const Onboarding: React.FC = () => {
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
         <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           {!showIntro && (
-          <AnimatePresence mode="wait">
-            {/* Auth Step */}
-            {currentStep === "auth" && (
-              <motion.div
-                key="auth"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center space-y-4"
-              >
-                <div className="heading-stack">
-                  <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                    {signedInAccount ? "You're Signed In" : "Let's Get You Signed In"}
-                  </h1>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    {signedInAccount
-                      ? "You can switch to a different account anytime."
-                      : "Choose your sign-in method"}
-                  </p>
-                </div>
-                <AnimatePresence mode="wait">
-                  {signedInAccount ? (
-                    <motion.div
-                      key="auth-summary"
-                      variants={authViewVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
-                    >
-                      <div
-                        className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
-                          sessionValid ? "opacity-100" : "opacity-60"
-                        }`}
-                        aria-live="polite"
+            <AnimatePresence mode="wait">
+              {/* Auth Step */}
+              {currentStep === "auth" && (
+                <motion.div
+                  key="auth"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center space-y-4"
+                >
+                  <div className="heading-stack">
+                    <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
+                      {signedInAccount ? "You're Signed In" : "Let's Get You Signed In"}
+                    </h1>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      {signedInAccount
+                        ? "You can switch to a different account anytime."
+                        : "Choose your sign-in method"}
+                    </p>
+                  </div>
+                  <AnimatePresence mode="wait">
+                    {signedInAccount ? (
+                      <motion.div
+                        key="auth-summary"
+                        variants={authViewVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Avatar
-                            src={signedInAccount.avatarUrl ?? undefined}
-                            fallbackLabel={signedInAccount.displayName}
-                            alt={`Profile image for ${signedInAccount.displayName}`}
-                            size="sm"
-                            shape="rounded"
-                            className="card-floating border border-white/10 rounded-[var(--radius-md)]"
-                          />
-                          <div className="min-w-0 space-y-[2px]">
-                            <p className="text-sm font-semibold text-white truncate">
-                              {signedInAccount.displayName}
-                            </p>
-                            {signedInAccount.email && (
-                              <p className="text-xs text-subtle truncate">
-                                {signedInAccount.email}
+                        <div
+                          className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${sessionValid ? "opacity-100" : "opacity-60"
+                            }`}
+                          aria-live="polite"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Avatar
+                              src={signedInAccount.avatarUrl ?? undefined}
+                              fallbackLabel={signedInAccount.displayName}
+                              alt={`Profile image for ${signedInAccount.displayName}`}
+                              size="sm"
+                              shape="rounded"
+                              className="card-floating border border-white/10 rounded-[var(--radius-md)]"
+                            />
+                            <div className="min-w-0 space-y-[2px]">
+                              <p className="text-sm font-semibold text-white truncate">
+                                {signedInAccount.displayName}
                               </p>
-                            )}
+                              {signedInAccount.email && (
+                                <p className="text-xs text-subtle truncate">
+                                  {signedInAccount.email}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-white/70">
+                            <SfIcon name="checkmark.seal.fill" size={22} />
                           </div>
                         </div>
-                        <div className="text-white/70">
-                          <SfIcon name="checkmark.seal.fill" size={22} />
+                        <div className="w-full">
+                          <Button
+                            variant="secondary"
+                            type="button"
+                            onClick={handleSwitchAccount}
+                            disabled={authLoading}
+                            className="w-full justify-center"
+                          >
+                            {authLoading ? "Opening Google…" : "Switch Account"}
+                          </Button>
                         </div>
-                      </div>
-                      <div className="w-full">
-                        <Button
-                          variant="secondary"
-                          type="button"
-                          onClick={handleSwitchAccount}
-                          disabled={authLoading}
-                          className="w-full justify-center"
-                        >
-                          {authLoading ? "Opening Google…" : "Switch Account"}
-                        </Button>
-                      </div>
-                      {authError && (
-                        <div className="text-[12px] text-red-300">{authError}</div>
-                      )}
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="auth-form"
-                      variants={authViewVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                      className="onboarding-section mx-auto w-full max-w-[19rem] space-y-4 text-left"
-                    >
-                      <Button
-                        className="w-full onboarding-cta"
-                        disabled={authLoading}
-                        onClick={handleGoogle}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="text-primary font-medium text-lg">G</span>
-                          <span>Continue with Google</span>
-                        </div>
-                      </Button>
-                      {authError && (
-                        <div className="text-[12px] text-red-300">{authError}</div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            )}
-
-            {/* Hotkey Info Step */}
-            {currentStep === "hotkey-info" && (
-              <motion.div
-                key="hotkey-info"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Hotkey Is the Right Option Key
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Press your Right Option key now to test it.
-                  </p>
-                </div>
-                <div className="onboarding-section">
-                  <div className="flex flex-col items-center justify-center">
-                    <div
-                      className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
-                      aria-label={
-                        optKeyPressed
-                          ? "Option key active - recording in progress"
-                          : "Option key - press and hold to start dictation"
-                      }
-                      aria-live="polite"
-                    >
-                      <span className="keycap-legend-top font-system">⌥</span>
-                      <span className="keycap-legend-bottom font-system">option</span>
-                    </div>
-                    <p className="onboarding-note">Hold for push-to-talk, double tap for hands-free mode.</p>
-                  </div>
-                </div>
-                {/* Removed central Continue button; Next lives in bottom-right consistently */}
-              </motion.div>
-            )}
-            {/* Legacy welcome step removed (block fully deleted) */}
-
-            {/* Name Verification Step */}
-            {currentStep === "name-verification" && (
-              <motion.div
-                key="name-verification"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Is This Your Full Name?
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    This is for Sonic Flow to spell your name right.
-                  </p>
-                </div>
-
-                <div className="onboarding-section mx-auto w-full max-w-[28rem]">
-                  <input
-                    type="text"
-                    value={editableName}
-                    onChange={(e) => setEditableName(e.target.value)}
-                    placeholder="Your full name"
-                    className="w-full onboarding-textarea px-4 py-3 text-base outline-none text-center"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && editableName.trim()) {
-                        handleNameVerificationContinue();
-                      }
-                    }}
-                  />
-                </div>
-              </motion.div>
-            )}
-
-            {/* Combined Permissions Step */}
-            {currentStep === "permissions" && (
-              <motion.div
-                key="permissions"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Enable Required Permissions
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Sonic Flow needs these permissions to work.
-                  </p>
-                </div>
-
-                <div className="onboarding-section space-y-3">
-                  {/* Microphone Permission */}
-                  <div
-                    className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <SfIcon
-                            name="microphone.fill"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[13px] font-medium text-foreground">
-                            Microphone
-                          </p>
-                          <p className="onboarding-permission-desc text-subtle">
-                            Capture your voice for dictation.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="relative w-[84px] flex items-center justify-center">
-                          <AnimatePresence mode="wait" initial={false}>
-                            {!permissions.microphone ? (
-                              <motion.div
-                                key={
-                                  ui.microphone.loading
-                                    ? "mic-loading"
-                                    : "mic-idle"
-                                }
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full flex items-center justify-center"
-                              >
-                                <Button
-                                  size="sm"
-                                  onClick={handleRequestMicrophone}
-                                  disabled={ui.microphone.loading}
-                                  className=" text-xs onboarding-cta w-full"
-                                >
-                                  <div className="relative flex items-center justify-center h-4">
-                                    {ui.microphone.loading ? (
-                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                                    ) : (
-                                      <span>Enable</span>
-                                    )}
-                                  </div>
-                                </Button>
-                              </motion.div>
-                            ) : (
-                              <div className="flex items-center justify-center">
-                                <motion.svg
-                                  width="22"
-                                  height="22"
-                                  viewBox="0 0 24 24"
-                                  className="text-white/80"
-                                >
-                                  <motion.path
-                                    // Draw when just granted; otherwise show complete path instantly
-                                    initial={{
-                                      pathLength: ui.microphone.justGranted
-                                        ? 0
-                                        : 1,
-                                    }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={
-                                      ui.microphone.justGranted
-                                        ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
-                                        : { duration: 0 }
-                                    }
-                                    d="M5 13l4 4L19 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              </div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
-                    {/* No separate denied section; user can press Enable again. */}
-                  </div>
-
-                  {/* Accessibility Permission */}
-                  <div
-                    className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <SfIcon
-                            name="accessibility"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[13px] font-medium text-foreground">
-                            Accessibility
-                          </p>
-                          <p className="onboarding-permission-desc text-subtle">
-                            Insert recognized text into your apps.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="relative w-[84px] flex items-center justify-center">
-                          <AnimatePresence mode="wait" initial={false}>
-                            {!permissions.accessibility ? (
-                              <motion.div
-                                key={
-                                  ui.accessibility.loading
-                                    ? "ax-loading"
-                                    : "ax-idle"
-                                }
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full flex items-center justify-center"
-                              >
-                                <Button
-                                  size="sm"
-                                  onClick={handleRequestAccessibility}
-                                  disabled={ui.accessibility.loading}
-                                  className="text-xs onboarding-cta w-full"
-                                >
-                                  <div className="relative flex items-center justify-center h-4">
-                                    {ui.accessibility.loading ? (
-                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                                    ) : (
-                                      <span>Enable</span>
-                                    )}
-                                  </div>
-                                </Button>
-                              </motion.div>
-                            ) : (
-                              <div className="flex items-center justify-center">
-                                <motion.svg
-                                  width="22"
-                                  height="22"
-                                  viewBox="0 0 24 24"
-                                  className="text-white/80"
-                                >
-                                  <motion.path
-                                    initial={{
-                                      pathLength: ui.accessibility.justGranted
-                                        ? 0
-                                        : 1,
-                                    }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={
-                                      ui.accessibility.justGranted
-                                        ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
-                                        : { duration: 0 }
-                                    }
-                                    d="M5 13l4 4L19 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              </div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
-                    {/* No separate denied section; user can press Enable again. */}
-                  </div>
-
-                  {/* Input Monitoring Permission (restart required) */}
-                  <div
-                    className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : !permissions.accessibility ? "opacity-40" : "opacity-100"}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                          <SfIcon
-                            name="keyboard.badge.eye.fill"
-                            size={20}
-                            className="text-primary/70"
-                          />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[13px] font-medium text-foreground">
-                            Input Monitoring
-                          </p>
-                          <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="relative w-[84px] flex items-center justify-center">
-                          <AnimatePresence mode="wait" initial={false}>
-                            {!permissions.inputMonitoring ? (
-                              <motion.div
-                                key={
-                                  ui.inputMonitoring.loading
-                                    ? "im-loading"
-                                    : "im-idle"
-                                }
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="w-full flex items-center justify-center"
-                              >
-                                <Button
-                                  size="sm"
-                                  onClick={handleRequestInputMonitoring}
-                                  disabled={ui.inputMonitoring.loading || !permissions.accessibility}
-                                  className="text-xs onboarding-cta w-full"
-                                >
-                                  <div className="relative flex items-center justify-center h-4">
-                                    {ui.inputMonitoring.loading ? (
-                                      <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                                    ) : (
-                                      <span>Enable</span>
-                                    )}
-                                  </div>
-                                </Button>
-                              </motion.div>
-                            ) : (
-                              <div className="flex items-center justify-center">
-                                <motion.svg
-                                  width="22"
-                                  height="22"
-                                  viewBox="0 0 24 24"
-                                  className="text-white/80"
-                                >
-                                  <motion.path
-                                    initial={{
-                                      pathLength: ui.inputMonitoring.justGranted
-                                        ? 0
-                                        : 1,
-                                    }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={
-                                      ui.inputMonitoring.justGranted
-                                        ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
-                                        : { duration: 0 }
-                                    }
-                                    d="M5 13l4 4L19 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              </div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* No separate denied section; user can press Enable again. */}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Mic Check Step */
-            }
-            {currentStep === "mic-check" && (
-              <motion.div
-                key="mic-check"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Let’s Check Your Microphone
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Pick the right input and say a few words. The bars should bounce.
-                  </p>
-                </div>
-
-                <div className="onboarding-section space-y-5">
-                  {/* Mic selector */}
-                  <div className="mx-auto w-full max-w-xl">
-                    <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select microphone" />
-                      </SelectTrigger>
-                      <SelectContent inPlace>
-                        {micDevices.map((d) => (
-                          <SelectItem key={d.id} value={d.id} className="text-sm">
-                            {d.label || "Microphone"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="flex items-center justify-center py-3">
-                    <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-                      {barValues.map((v, i) => {
-                        const h = Math.max(6, Math.round(6 + v * 80));
-                        const opacity = 0.45 + v * 0.55;
-                        return (
-                          <div
-                            key={i}
-                            className="flex-1 rounded-[3px] bg-white/70"
-                            style={{ height: `${h}px`, opacity }}
-                            aria-hidden
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Hotkey Test Step */}
-            {currentStep === "hotkey-test" && (
-              <motion.div
-                key="hotkey-test"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center overflow-hidden"
-              >
-                <div className="max-w-xl mx-auto text-left">
-                  <div className="text-center heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's Try Push-to-Talk Mode
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      Hold the hotkey to start dictation. Release to stop.
-                    </p>
-                  </div>
-                  <div className="onboarding-section">
-                    {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                      Try saying: "Let's go! I'm so excited to use Sonic Flow! Write all of that in caps."
-                    </div>
-
-                    {/* Dictation Textarea */}
-                    <div className="onboarding-content-gap">
-                      {/* removed the small label above the textarea */}
-                      <textarea
-                        className={
-                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                        }
-                        placeholder="Say something…"
-                        value={testText}
-                        onChange={(e) => setTestText(e.target.value)}
-                        ref={textAreaRef}
-                        data-onboarding-step="hotkey-test"
-                      />
-                    </div>
-
-                    {/* No CTA here; proceed with Next to the completion screen */}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Hands-Free Test Step */}
-            {currentStep === "hands-free-test" && (
-              <motion.div
-                key="hands-free-test"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center overflow-hidden"
-              >
-                <div className="max-w-xl mx-auto text-left">
-                  <div className="text-center heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's Try Hands-Free Mode
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      Double tap the hotkey to start dictation. Tap again to stop.
-                    </p>
-                  </div>
-                  <div className="onboarding-section">
-                    {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                      Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
-                    </div>
-
-                    {/* Dictation Textarea */}
-                    <div className="onboarding-content-gap">
-                      {/* removed the small label above the textarea */}
-                      <textarea
-                        className={
-                          "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                        }
-                        placeholder="Say something…"
-                        value={testText}
-                        onChange={(e) => setTestText(e.target.value)}
-                        ref={textAreaRef}
-                        data-onboarding-step="hands-free-test"
-                      />
-                    </div>
-
-                    {/* No CTA here; proceed with Next to the completion screen */}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Edit Test Step */}
-            {currentStep === "edit-test" && (
-              <motion.div
-                key="edit-test"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center overflow-hidden"
-              >
-                <div className="max-w-xl mx-auto text-left">
-                  <div className="text-center heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Let's Try Edit Mode
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      Select the text, hold the hotkey and give it instructions.
-                    </p>
-                  </div>
-                  <div className="onboarding-section">
-                    {/* Sample hint as tertiary text for improved hierarchy */}
-                    <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                      Try saying: "Can you write how and why in caps."
-                    </div>
-
-                    {/* Dictation Textarea with pre-filled content */}
-                    <div className="onboarding-content-gap">
-                      <textarea
-                        className={
-                          "w-full h-32 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                        }
-                        placeholder="Select some text and try editing it..."
-                        value={testTextTap}
-                        onChange={(e) => setTestTextTap(e.target.value)}
-                        ref={textAreaRef}
-                        data-onboarding-step="edit-test"
-                      />
-                    </div>
-
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Meta-Directives Step */}
-            {currentStep === "meta-directives" && (
-              <motion.div
-                key="meta-directives"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <TricksComponent />
-              </motion.div>
-            )}
-
-            {/* Cancel Info Step */}
-            {currentStep === "cancel-info" && (
-              <motion.div
-                key="cancel-info"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Your Cancel Key Is the Right Command Key
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Press your Right Command key now to test it.
-                  </p>
-                </div>
-                <div className="onboarding-section">
-                  <div className="flex flex-col items-center justify-center">
-                    <div
-                      className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
-                      aria-label={"Command key - press to cancel dictation"}
-                      aria-live="polite"
-                    >
-                      <span className="keycap-legend-top font-system">⌘</span>
-                      <span className="keycap-legend-bottom font-system">command</span>
-                    </div>
-                    <p className="onboarding-note">You can tap this key any time to cancel dictation.</p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Settings Info Step */}
-            {currentStep === "settings-info" && (
-              <motion.div
-                key="settings-info"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center"
-              >
-                <div className="heading-stack">
-                  <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                    Quick Access to Settings
-                  </h2>
-                  <p className="text-sm text-subtle leading-relaxed subheading">
-                    Double-click the island anytime to open settings.
-                  </p>
-                </div>
-                <div className="onboarding-section flex flex-col items-center justify-center">
-                  {/* Screen outline container */}
-                  <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
-                    {/* Pill container - positioned at top like real macOS island */}
-                    <div className="relative">
-                      {/* First ripple */}
-                      <TapRipple delay={0} top="calc(50% - 11px)" left="calc(50% - 11px)" />
-                      {/* Second ripple */}
-                      <TapRipple delay={0.2} top="calc(50% - 11px)" left="calc(50% - 11px)" />
-                      {/* Close tap ripple */}
-                      <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 11px)" />
-                      {/* Pill shape - single stroke line that expands to settings */}
+                        {authError && (
+                          <div className="text-[12px] text-red-300">{authError}</div>
+                        )}
+                      </motion.div>
+                    ) : (
                       <motion.div
-                        className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
-                        style={{
-                          borderRadius: "1.5px",
-                        }}
-                        initial={{ width: "35px", height: "3px" }}
-                        animate={{
-                          width: ["35px", "35px", "100px", "100px", "35px"],
-                          height: ["3px", "3px", "117px", "117px", "3px"],
-                          borderRadius: ["1.5px", "1.5px", "4px", "4px", "1.5px"],
-                        }}
-                        transition={{
-                          duration: 3.0,
-                          ease: [0.25, 0.8, 0.25, 1],
-                          times: [0, 0.17, 0.33, 0.5, 0.67], // Hold at rest, expand, hold expanded, contract, hold resting
-                          repeat: Infinity,
-                        }}
-                      />
+                        key="auth-form"
+                        variants={authViewVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="onboarding-section mx-auto w-full max-w-[19rem] space-y-4 text-left"
+                      >
+                        <Button
+                          className="w-full onboarding-cta"
+                          disabled={authLoading}
+                          onClick={handleGoogle}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-primary font-medium text-lg">G</span>
+                            <span>Continue with Google</span>
+                          </div>
+                        </Button>
+                        {authError && (
+                          <div className="text-[12px] text-red-300">{authError}</div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+
+              {/* Hotkey Info Step */}
+              {currentStep === "hotkey-info" && (
+                <motion.div
+                  key="hotkey-info"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Your Hotkey Is the Right Option Key
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Press your Right Option key now to test it.
+                    </p>
+                  </div>
+                  <div className="onboarding-section">
+                    <div className="flex flex-col items-center justify-center">
+                      <div
+                        className={`keycap keycap-lg ${optKeyPressed ? "keycap-active" : ""}`}
+                        aria-label={
+                          optKeyPressed
+                            ? "Option key active - recording in progress"
+                            : "Option key - press and hold to start dictation"
+                        }
+                        aria-live="polite"
+                      >
+                        <span className="keycap-legend-top font-system">⌥</span>
+                        <span className="keycap-legend-bottom font-system">option</span>
+                      </div>
+                      <p className="onboarding-note">Hold for push-to-talk, double tap for hands-free mode.</p>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Complete Step */}
-            {currentStep === "complete" && (
-              <motion.div
-                key="complete"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                className="text-center space-y-4"
-              >
-                {/* Checkmark badge - matches waitlist modal */}
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 700, damping: 25 }}
-                  className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/10 border border-white/20"
-                >
-                  <svg
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="text-white/80"
-                  >
-                    <motion.path
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{
-                        delay: 0.2,
-                        duration: 0.6,
-                        ease: [0.25, 0.8, 0.25, 1],
-                      }}
-                      d="M5 13l4 4L19 7"
-                      stroke="currentColor"
-                      strokeWidth="2.25"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  {/* Removed central Continue button; Next lives in bottom-right consistently */}
                 </motion.div>
-                <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                  You're all set
-                </h2>
-                <p className="text-sm text-subtle leading-relaxed">It's been a pleasure onboarding you. You can now start dictating.</p>
-                <div className="pt-2 flex justify-center">
-                  <Button
-                    onClick={handleComplete}
-                    className="onboarding-cta shimmer"
+              )}
+              {/* Legacy welcome step removed (block fully deleted) */}
+
+              {/* Name Verification Step */}
+              {currentStep === "name-verification" && (
+                <motion.div
+                  key="name-verification"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Is This Your Full Name?
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      This is for Spoke to spell your name right.
+                    </p>
+                  </div>
+
+                  <div className="onboarding-section mx-auto w-full max-w-[28rem]">
+                    <input
+                      type="text"
+                      value={editableName}
+                      onChange={(e) => setEditableName(e.target.value)}
+                      placeholder="Your full name"
+                      className="w-full onboarding-textarea px-4 py-3 text-base outline-none text-center"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && editableName.trim()) {
+                          handleNameVerificationContinue();
+                        }
+                      }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Combined Permissions Step */}
+              {currentStep === "permissions" && (
+                <motion.div
+                  key="permissions"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Enable Required Permissions
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Spoke needs these permissions to work.
+                    </p>
+                  </div>
+
+                  <div className="onboarding-section space-y-3">
+                    {/* Microphone Permission */}
+                    <div
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                            <SfIcon
+                              name="microphone.fill"
+                              size={16}
+                              className="text-primary/70"
+                            />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-medium text-foreground">
+                              Microphone
+                            </p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              Capture your voice for dictation.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="relative w-[84px] flex items-center justify-center">
+                            <AnimatePresence mode="wait" initial={false}>
+                              {!permissions.microphone ? (
+                                <motion.div
+                                  key={
+                                    ui.microphone.loading
+                                      ? "mic-loading"
+                                      : "mic-idle"
+                                  }
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="w-full flex items-center justify-center"
+                                >
+                                  <Button
+                                    size="sm"
+                                    onClick={handleRequestMicrophone}
+                                    disabled={ui.microphone.loading}
+                                    className=" text-xs onboarding-cta w-full"
+                                  >
+                                    <div className="relative flex items-center justify-center h-4">
+                                      {ui.microphone.loading ? (
+                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                      ) : (
+                                        <span>Enable</span>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </motion.div>
+                              ) : (
+                                <div className="flex items-center justify-center">
+                                  <motion.svg
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    className="text-white/80"
+                                  >
+                                    <motion.path
+                                      // Draw when just granted; otherwise show complete path instantly
+                                      initial={{
+                                        pathLength: ui.microphone.justGranted
+                                          ? 0
+                                          : 1,
+                                      }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={
+                                        ui.microphone.justGranted
+                                          ? {
+                                            duration: 0.45,
+                                            ease: [0.25, 0.8, 0.25, 1],
+                                          }
+                                          : { duration: 0 }
+                                      }
+                                      d="M5 13l4 4L19 7"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                </div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+                      {/* No separate denied section; user can press Enable again. */}
+                    </div>
+
+                    {/* Accessibility Permission */}
+                    <div
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                            <SfIcon
+                              name="accessibility"
+                              size={16}
+                              className="text-primary/70"
+                            />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-medium text-foreground">
+                              Accessibility
+                            </p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              Insert recognized text into your apps.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="relative w-[84px] flex items-center justify-center">
+                            <AnimatePresence mode="wait" initial={false}>
+                              {!permissions.accessibility ? (
+                                <motion.div
+                                  key={
+                                    ui.accessibility.loading
+                                      ? "ax-loading"
+                                      : "ax-idle"
+                                  }
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="w-full flex items-center justify-center"
+                                >
+                                  <Button
+                                    size="sm"
+                                    onClick={handleRequestAccessibility}
+                                    disabled={ui.accessibility.loading}
+                                    className="text-xs onboarding-cta w-full"
+                                  >
+                                    <div className="relative flex items-center justify-center h-4">
+                                      {ui.accessibility.loading ? (
+                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                      ) : (
+                                        <span>Enable</span>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </motion.div>
+                              ) : (
+                                <div className="flex items-center justify-center">
+                                  <motion.svg
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    className="text-white/80"
+                                  >
+                                    <motion.path
+                                      initial={{
+                                        pathLength: ui.accessibility.justGranted
+                                          ? 0
+                                          : 1,
+                                      }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={
+                                        ui.accessibility.justGranted
+                                          ? {
+                                            duration: 0.45,
+                                            ease: [0.25, 0.8, 0.25, 1],
+                                          }
+                                          : { duration: 0 }
+                                      }
+                                      d="M5 13l4 4L19 7"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                </div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+                      {/* No separate denied section; user can press Enable again. */}
+                    </div>
+
+                    {/* Input Monitoring Permission (restart required) */}
+                    <div
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : !permissions.accessibility ? "opacity-40" : "opacity-100"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                            <SfIcon
+                              name="keyboard.badge.eye.fill"
+                              size={20}
+                              className="text-primary/70"
+                            />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-medium text-foreground">
+                              Input Monitoring
+                            </p>
+                            <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="relative w-[84px] flex items-center justify-center">
+                            <AnimatePresence mode="wait" initial={false}>
+                              {!permissions.inputMonitoring ? (
+                                <motion.div
+                                  key={
+                                    ui.inputMonitoring.loading
+                                      ? "im-loading"
+                                      : "im-idle"
+                                  }
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="w-full flex items-center justify-center"
+                                >
+                                  <Button
+                                    size="sm"
+                                    onClick={handleRequestInputMonitoring}
+                                    disabled={ui.inputMonitoring.loading || !permissions.accessibility}
+                                    className="text-xs onboarding-cta w-full"
+                                  >
+                                    <div className="relative flex items-center justify-center h-4">
+                                      {ui.inputMonitoring.loading ? (
+                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                      ) : (
+                                        <span>Enable</span>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </motion.div>
+                              ) : (
+                                <div className="flex items-center justify-center">
+                                  <motion.svg
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    className="text-white/80"
+                                  >
+                                    <motion.path
+                                      initial={{
+                                        pathLength: ui.inputMonitoring.justGranted
+                                          ? 0
+                                          : 1,
+                                      }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={
+                                        ui.inputMonitoring.justGranted
+                                          ? {
+                                            duration: 0.45,
+                                            ease: [0.25, 0.8, 0.25, 1],
+                                          }
+                                          : { duration: 0 }
+                                      }
+                                      d="M5 13l4 4L19 7"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                </div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* No separate denied section; user can press Enable again. */}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Mic Check Step */
+              }
+              {currentStep === "mic-check" && (
+                <motion.div
+                  key="mic-check"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Let’s Check Your Microphone
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Pick the right input and say a few words. The bars should bounce.
+                    </p>
+                  </div>
+
+                  <div className="onboarding-section space-y-5">
+                    {/* Mic selector */}
+                    <div className="mx-auto w-full max-w-xl">
+                      <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select microphone" />
+                        </SelectTrigger>
+                        <SelectContent inPlace>
+                          {micDevices.map((d) => (
+                            <SelectItem key={d.id} value={d.id} className="text-sm">
+                              {d.label || "Microphone"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center justify-center py-3">
+                      <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
+                        {barValues.map((v, i) => {
+                          const h = Math.max(6, Math.round(6 + v * 80));
+                          const opacity = 0.45 + v * 0.55;
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 rounded-[3px] bg-white/70"
+                              style={{ height: `${h}px`, opacity }}
+                              aria-hidden
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Hotkey Test Step */}
+              {currentStep === "hotkey-test" && (
+                <motion.div
+                  key="hotkey-test"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center overflow-hidden"
+                >
+                  <div className="max-w-xl mx-auto text-left">
+                    <div className="text-center heading-stack">
+                      <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                        Let's Try Push-to-Talk Mode
+                      </h2>
+                      <p className="text-sm text-subtle leading-relaxed subheading">
+                        Hold the hotkey to start dictation. Release to stop.
+                      </p>
+                    </div>
+                    <div className="onboarding-section">
+                      {/* Sample hint as tertiary text for improved hierarchy */}
+                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
+                        Try saying: "Let's go! I'm so excited to use Spoke! Write all of that in caps."
+                      </div>
+
+                      {/* Dictation Textarea */}
+                      <div className="onboarding-content-gap">
+                        {/* removed the small label above the textarea */}
+                        <textarea
+                          className={
+                            "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                          }
+                          placeholder="Say something…"
+                          value={testText}
+                          onChange={(e) => setTestText(e.target.value)}
+                          ref={textAreaRef}
+                          data-onboarding-step="hotkey-test"
+                        />
+                      </div>
+
+                      {/* No CTA here; proceed with Next to the completion screen */}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Hands-Free Test Step */}
+              {currentStep === "hands-free-test" && (
+                <motion.div
+                  key="hands-free-test"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center overflow-hidden"
+                >
+                  <div className="max-w-xl mx-auto text-left">
+                    <div className="text-center heading-stack">
+                      <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                        Let's Try Hands-Free Mode
+                      </h2>
+                      <p className="text-sm text-subtle leading-relaxed subheading">
+                        Double tap the hotkey to start dictation. Tap again to stop.
+                      </p>
+                    </div>
+                    <div className="onboarding-section">
+                      {/* Sample hint as tertiary text for improved hierarchy */}
+                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
+                        Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
+                      </div>
+
+                      {/* Dictation Textarea */}
+                      <div className="onboarding-content-gap">
+                        {/* removed the small label above the textarea */}
+                        <textarea
+                          className={
+                            "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                          }
+                          placeholder="Say something…"
+                          value={testText}
+                          onChange={(e) => setTestText(e.target.value)}
+                          ref={textAreaRef}
+                          data-onboarding-step="hands-free-test"
+                        />
+                      </div>
+
+                      {/* No CTA here; proceed with Next to the completion screen */}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Edit Test Step */}
+              {currentStep === "edit-test" && (
+                <motion.div
+                  key="edit-test"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center overflow-hidden"
+                >
+                  <div className="max-w-xl mx-auto text-left">
+                    <div className="text-center heading-stack">
+                      <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                        Let's Try Edit Mode
+                      </h2>
+                      <p className="text-sm text-subtle leading-relaxed subheading">
+                        Select the text, hold the hotkey and give it instructions.
+                      </p>
+                    </div>
+                    <div className="onboarding-section">
+                      {/* Sample hint as tertiary text for improved hierarchy */}
+                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
+                        Try saying: "Can you write how and why in caps."
+                      </div>
+
+                      {/* Dictation Textarea with pre-filled content */}
+                      <div className="onboarding-content-gap">
+                        <textarea
+                          className={
+                            "w-full h-32 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                          }
+                          placeholder="Select some text and try editing it..."
+                          value={testTextTap}
+                          onChange={(e) => setTestTextTap(e.target.value)}
+                          ref={textAreaRef}
+                          data-onboarding-step="edit-test"
+                        />
+                      </div>
+
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Meta-Directives Step */}
+              {currentStep === "meta-directives" && (
+                <motion.div
+                  key="meta-directives"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <TricksComponent />
+                </motion.div>
+              )}
+
+              {/* Cancel Info Step */}
+              {currentStep === "cancel-info" && (
+                <motion.div
+                  key="cancel-info"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Your Cancel Key Is the Right Command Key
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Press your Right Command key now to test it.
+                    </p>
+                  </div>
+                  <div className="onboarding-section">
+                    <div className="flex flex-col items-center justify-center">
+                      <div
+                        className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
+                        aria-label={"Command key - press to cancel dictation"}
+                        aria-live="polite"
+                      >
+                        <span className="keycap-legend-top font-system">⌘</span>
+                        <span className="keycap-legend-bottom font-system">command</span>
+                      </div>
+                      <p className="onboarding-note">You can tap this key any time to cancel dictation.</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Settings Info Step */}
+              {currentStep === "settings-info" && (
+                <motion.div
+                  key="settings-info"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Quick Access to Settings
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Double-click the island anytime to open settings.
+                    </p>
+                  </div>
+                  <div className="onboarding-section flex flex-col items-center justify-center">
+                    {/* Screen outline container */}
+                    <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
+                      {/* Pill container - positioned at top like real macOS island */}
+                      <div className="relative">
+                        {/* First ripple */}
+                        <TapRipple delay={0} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                        {/* Second ripple */}
+                        <TapRipple delay={0.2} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                        {/* Close tap ripple */}
+                        <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 11px)" />
+                        {/* Pill shape - single stroke line that expands to settings */}
+                        <motion.div
+                          className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
+                          style={{
+                            borderRadius: "1.5px",
+                          }}
+                          initial={{ width: "35px", height: "3px" }}
+                          animate={{
+                            width: ["35px", "35px", "100px", "100px", "35px"],
+                            height: ["3px", "3px", "117px", "117px", "3px"],
+                            borderRadius: ["1.5px", "1.5px", "4px", "4px", "1.5px"],
+                          }}
+                          transition={{
+                            duration: 3.0,
+                            ease: [0.25, 0.8, 0.25, 1],
+                            times: [0, 0.17, 0.33, 0.5, 0.67], // Hold at rest, expand, hold expanded, contract, hold resting
+                            repeat: Infinity,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Complete Step */}
+              {currentStep === "complete" && (
+                <motion.div
+                  key="complete"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center space-y-4"
+                >
+                  {/* Checkmark badge - matches waitlist modal */}
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 700, damping: 25 }}
+                    className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/10 border border-white/20"
                   >
-                    Start Dictating
-                  </Button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                    <svg
+                      width="32"
+                      height="32"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      className="text-white/80"
+                    >
+                      <motion.path
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{
+                          delay: 0.2,
+                          duration: 0.6,
+                          ease: [0.25, 0.8, 0.25, 1],
+                        }}
+                        d="M5 13l4 4L19 7"
+                        stroke="currentColor"
+                        strokeWidth="2.25"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </motion.div>
+                  <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
+                    You're all set
+                  </h2>
+                  <p className="text-sm text-subtle leading-relaxed">It's been a pleasure onboarding you. You can now start dictating.</p>
+                  <div className="pt-2 flex justify-center">
+                    <Button
+                      onClick={handleComplete}
+                      className="onboarding-cta shimmer"
+                    >
+                      Start Dictating
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           )}
         </div>
 

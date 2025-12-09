@@ -3,7 +3,7 @@ export type SttPromptIdentity = {
   email?: string | null;
 };
 
-export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Sonic Flow";
+export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Spoke";
 
 const MAX_TOKEN_LENGTH = 80;
 
