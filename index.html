@@ -1,24 +1,34 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <!-- Basic CSP: no 'unsafe-eval'; allow inline scripts in dev for Vite HMR -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http: https: ws: wss: blob: data:;"
-    />
-    <!-- Removed COOP/COEP to avoid cross-origin fetch issues with OAuth during auth flows -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sonic Flow</title>
-    <!-- Self-hosted fonts are loaded via @font-face in src/index.css -->
-    <style>
-      /* Early guard to prevent any white flash before Tailwind/CSS loads */
-      html, body, #root { background: transparent !important; }
-      html, body { margin: 0; padding: 0; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/renderer.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- Basic CSP: no 'unsafe-eval'; allow inline scripts in dev for Vite HMR -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http: https: ws: wss: blob: data:;" />
+  <!-- Removed COOP/COEP to avoid cross-origin fetch issues with OAuth during auth flows -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spoke</title>
+  <!-- Self-hosted fonts are loaded via @font-face in src/index.css -->
+  <style>
+    /* Early guard to prevent any white flash before Tailwind/CSS loads */
+    html,
+    body,
+    #root {
+      background: transparent !important;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/renderer.tsx"></script>
+</body>
+
 </html>

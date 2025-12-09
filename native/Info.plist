@@ -2,11 +2,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.sonicflow.app.helper</string>
+    <string>com.spoke.app.helper</string>
     <key>CFBundleName</key>
-    <string>Sonic Flow Helper</string>
+    <string>Spoke Helper</string>
     <key>CFBundleDisplayName</key>
-    <string>Sonic Flow Helper</string>
+    <string>Spoke Helper</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
@@ -16,6 +16,6 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleExecutable</key>
-    <string>Sonic Flow Helper</string>
+    <string>Spoke Helper</string>
 </dict>
 </plist>

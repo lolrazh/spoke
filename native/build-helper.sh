@@ -13,7 +13,7 @@ EXECUTABLE_NAME="Spoke Helper"
 # Clean up previous build
 echo "Cleaning up old build artifacts..."
 rm -rf "$APP_BUNDLE_PATH"
-rm -f "$DEST_DIR/sonic-helper" # Remove old naked binary
+rm -f "$DEST_DIR/spoke-helper" # Remove old naked binary
 
 # Create the directory structure for the .app bundle
 echo "Creating .app bundle structure at $APP_BUNDLE_PATH..."
@@ -26,7 +26,7 @@ clang -x objective-c -fobjc-arc \
       -framework Foundation -framework AppKit \
       -framework ApplicationServices -framework IOKit -framework CoreGraphics \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
-      "$SOURCE_DIR/sonic-helper.c"
+      "$SOURCE_DIR/spoke-helper.c"
 
 # Ensure the binary is executable
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME"
