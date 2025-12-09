@@ -2,7 +2,7 @@
   "name": "spoke",
   "productName": "Spoke",
   "version": "0.3.2",
-  "description": "Intelligent AI Dictation that works everywhere you do.",
+  "description": "Intelligent AI Dictation that works everywhere you do",
   "main": ".vite/build/main.js",
   "scripts": {
     "dev": "SF_DEVTOOLS=1 electron-forge start",
