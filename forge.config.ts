@@ -28,15 +28,15 @@ const timings: Record<string, number> = {};
 
 const config: ForgeConfig = {
   packagerConfig: {
-    appBundleId: "com.sonicflow.app",
+    appBundleId: "com.spoke.app",
     appCategoryType: "public.app-category.productivity",
 
     asar: true,
     // Register custom URL scheme for OAuth deep-link callbacks in packaged builds
     protocols: [
       {
-        name: "Sonic Flow",
-        schemes: ["sonicflow"],
+        name: "Spoke",
+        schemes: ["spoke"],
       },
     ],
     // macOS app icon
@@ -51,7 +51,7 @@ const config: ForgeConfig = {
       "./native/bin/notch-reporter",
     ],
     extendInfo: {
-      CFBundleIconName: 'SonicFlow'
+      CFBundleIconName: 'Spoke'
     },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: ({
@@ -93,12 +93,12 @@ const config: ForgeConfig = {
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
     ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
-          osxNotarize: {
-            appleId,
-            appleIdPassword: applePassword,
-            teamId: appleTeamId,
-          },
-        }
+        osxNotarize: {
+          appleId,
+          appleIdPassword: applePassword,
+          teamId: appleTeamId,
+        },
+      }
       : {}),
   },
   rebuildConfig: {},
@@ -110,7 +110,7 @@ const config: ForgeConfig = {
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
         background: "./public/assets/dmg-background@2x.png",
-        title: "Sonic Flow",
+        title: "Spoke",
         iconSize: 96,
         additionalDMGOptions: {
           window: {
@@ -143,7 +143,7 @@ const config: ForgeConfig = {
     // Include absolute URLs in RELEASES.json for stable CDN behavior
     new MakerZIP(
       (arch) => ({
-        macUpdateManifestBaseUrl: `https://releases.sonicflow.app/darwin/${arch}`,
+        macUpdateManifestBaseUrl: `https://releases.spoke.so/darwin/${arch}`,
       }),
       ["darwin"],
     ),
@@ -201,7 +201,7 @@ const config: ForgeConfig = {
             console.log(
               `[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`,
             );
-          } catch {}
+          } catch { }
         }
 
         // Notarize + staple DMG(s) after make (before publish uploads)

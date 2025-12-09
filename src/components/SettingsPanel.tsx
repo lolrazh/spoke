@@ -363,7 +363,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
       // Open the redirect page with token in hash fragment (not sent to server logs)
       // The website page will read the token, call the API, and redirect to Dodo
-      const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+      const portalUrl = `https://www.spoke.so/billing/portal#token=${session.access_token}`;
       window.electron?.openExternal(portalUrl);
     } catch (error) {
       console.error("[Settings] Error opening billing portal:", error);
@@ -411,10 +411,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Version text on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <a
-          href="https://sonicflow.app/changelog"
+          href="https://spoke.so/changelog"
           onClick={(e) => {
             e.preventDefault();
-            window.electron?.openExternal?.("https://sonicflow.app/changelog");
+            window.electron?.openExternal?.("https://spoke.so/changelog");
           }}
           className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200 z-30"
         >
@@ -664,7 +664,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  onClick={() => window.electron?.openExternal?.("https://sonicflow.app/pricing")}
+                                  onClick={() => window.electron?.openExternal?.("https://spoke.so/pricing")}
                                   className="relative overflow-hidden shimmer-fast"
                                 >
                                   Upgrade

@@ -266,7 +266,7 @@ try {
       updateSource: {
         type: UpdateSourceType.StaticStorage,
         // Fetch RELEASES.json from darwin/<arch>/
-        baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
+        baseUrl: `https://releases.spoke.so/darwin/${process.arch}`,
       },
       // Production cadence; see policy: startup/resume triggers augment this
       updateInterval: "1 hour",
@@ -337,7 +337,7 @@ if (!gotTheLock) {
       const maybeUrl = argv.find(
         (a) =>
           typeof a === "string" &&
-          (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+          (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
       );
       if (maybeUrl) {
         sendAuthCallback(maybeUrl);
@@ -415,7 +415,7 @@ function setUpdateState(next: UpdateStatus, opts?: { version?: string; error?: s
 }
 
 function getReleasesUrl(): string {
-  return `https://releases.sonicflow.app/darwin/${process.arch}/RELEASES.json`;
+  return `https://releases.spoke.so/darwin/${process.arch}/RELEASES.json`;
 }
 
 function compareSemver(a: string, b: string): number {
@@ -2665,7 +2665,7 @@ app.whenReady().then(async () => {
       process.env.VITE_TRANSCRIBE_WS_URL;
     const wsUrlToLog =
       envWs ||
-      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
+      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.spoke.so/ws");
     console.log("[Main] WS endpoint", wsUrlToLog);
     console.log("[Main] Flags", {
       VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
@@ -2683,10 +2683,10 @@ app.whenReady().then(async () => {
     const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === "1";
     const connect = [
       "connect-src 'self'",
-      "https://api.sonicflow.app",
-      "wss://api.sonicflow.app",
-      // Website API for billing portal
-      "https://www.sonicflow.app",
+      "https://api.spoke.so",
+      "wss://api.spoke.so",
+      // Allow website for billing portal
+      "https://www.spoke.so",
       // Local development HTTP/WS (dev or staging with flag)
       ...(allowLocal
         ? [
@@ -2885,7 +2885,7 @@ app.whenReady().then(async () => {
     }
     // In production, use the API site to complete OAuth, then deep-link to the app
     // This improves UX when the provider opens an external browser
-    return { url: "https://auth.sonicflow.app/auth/callback" };
+    return { url: "https://auth.spoke.so/auth/callback" };
   });
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
