@@ -33,7 +33,7 @@ import { updateIdentityLocal } from "../state/userIdentity";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
-import transparentLogoUrl from "/assets/transparent-logo-w-text.png?url";
+import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 // Make permission mocking opt-in via URL (?mockPerms)
