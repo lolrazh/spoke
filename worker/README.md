@@ -24,7 +24,7 @@ This is an example project made to be used as a quick start into building OpenAP
 2. Open `http://localhost:8787/` in your browser to see the Swagger interface where you can try the endpoints.
 3. Changes made in the `src/` folder will automatically trigger the server to reload, you only need to refresh the Swagger interface.
 
-## Sonic Flow Worker Configuration
+## Spoke Worker Configuration
 
 Set these environment variables in `.dev.vars` or your Worker settings:
 
@@ -63,6 +63,6 @@ Example `.dev.vars` (add as needed):
 # STT
 # STT_MODEL=whisper-large-v3
 # STT_LANGUAGE=en
-# STT_PROMPT=Your vocabulary includes: Sonic Flow, Sandheep...
+# STT_PROMPT=Your vocabulary includes: Spoke, Sandheep...
 # STT_TIMEOUT_MS=25000
 ```

@@ -57,7 +57,7 @@ export function buildEditSystemPrompt(opts?: { sttPrompt?: string }): string {
   const sttPrompt = (opts?.sttPrompt || '').trim();
   const vocabLine = sttPrompt ? `${sttPrompt}\n` : '';
   return `
-You are an expert writing editor for Sonic Flow, an AI dictation app.
+You are an expert writing editor for Spoke, an AI dictation app.
 You will receive plain text sections labelled "Instructions:" and "Original Text:".
 
 

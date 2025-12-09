@@ -7,23 +7,23 @@ describe('services/stt/prompt', () => {
   });
 
   it('appends extra vocab when provided', () => {
-    const p = buildSTTPrompt({ extraVocab: ['Sonic Flow', 'Groq'] });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow, Groq');
+    const p = buildSTTPrompt({ extraVocab: ['Spoke', 'Groq'] });
+    expect(p).toBe('Your vocabulary includes: Spoke, Groq');
   });
 
   it('appends identity tokens when available (splits name into separate tokens)', () => {
     const p = buildSTTPrompt({ identity: { name: 'Taylor Swift', email: 'taylor@example.com' } });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow, Taylor, Swift, taylor@example.com');
+    expect(p).toBe('Your vocabulary includes: Spoke, Taylor, Swift, taylor@example.com');
   });
 
   it('splits names with three or more parts into separate tokens', () => {
     const p = buildSTTPrompt({ identity: { name: 'John Doe Smith', email: 'john@example.com' } });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow, John, Doe, Smith, john@example.com');
+    expect(p).toBe('Your vocabulary includes: Spoke, John, Doe, Smith, john@example.com');
   });
 
   it('dedupes tokens already present in base prompt', () => {
-    const p = buildSTTPrompt({ basePrompt: 'Your vocabulary includes: Sonic Flow', identity: { name: 'Sonic Flow' } });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow');
+    const p = buildSTTPrompt({ basePrompt: 'Your vocabulary includes: Spoke', identity: { name: 'Spoke' } });
+    expect(p).toBe('Your vocabulary includes: Spoke');
   });
 
   it('sanitizes identity tokens to prevent prompt injection', () => {
@@ -33,7 +33,6 @@ describe('services/stt/prompt', () => {
         email: 'evil@example.com\u0007',
       },
     });
-    expect(p).toBe('Your vocabulary includes: Sonic Flow, alert("x"), evil@example.com');
+    expect(p).toBe('Your vocabulary includes: Spoke, alert("x"), evil@example.com');
   });
 });
-
