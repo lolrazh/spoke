@@ -1177,19 +1177,19 @@ function getHelperPath(): string {
   return app.isPackaged
     ? path.join(
       process.resourcesPath,
-      "Sonic Flow Helper.app",
+      "Spoke Helper.app",
       "Contents",
       "MacOS",
-      "Sonic Flow Helper",
+      "Spoke Helper",
     )
     : path.join(
       app.getAppPath(),
       "native",
       "bin",
-      "Sonic Flow Helper.app",
+      "Spoke Helper.app",
       "Contents",
       "MacOS",
-      "Sonic Flow Helper",
+      "Spoke Helper",
     );
 }
 
@@ -2372,7 +2372,7 @@ ipcMain.handle(
       const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
         console.error(
-          `[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`,
+          `[PasteHelper] Spoke Helper binary not found at path: ${helperPath}`,
         );
         mainWindow?.webContents.send(
           "notify",
@@ -3359,7 +3359,7 @@ app.whenReady().then(async () => {
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error(
-          "Sonic Flow Helper binary not found at path:",
+          "Spoke Helper binary not found at path:",
           helperPath,
         );
         return { needAX, needIM: true, isDev };
@@ -3402,7 +3402,7 @@ app.whenReady().then(async () => {
     try {
       const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
-        console.error("Sonic Flow Helper binary not found at path:", helperPath);
+        console.error("Spoke Helper binary not found at path:", helperPath);
         // Fallback to Electron prompt (main app)
         systemPreferences.isTrustedAccessibilityClient(true);
         return { success: true, via: "fallback-main" } as const;
@@ -3886,7 +3886,7 @@ app.on("before-quit", () => {
 
   // **belts-and-suspenders**: kill anything matching the name
   try {
-    execSync("pkill -9 -f 'Sonic Flow Helper' || true");
+    execSync("pkill -9 -f 'Spoke Helper' || true");
   } catch (e) {
     // ignore
   }
@@ -3966,7 +3966,7 @@ function startFnListener() {
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] Sonic Flow Helper binary not found at path: ${helperPath}`,
+      `[FnListener] Spoke Helper binary not found at path: ${helperPath}`,
     );
 
     const targetWindow = mainWindow || onboardingWindow;
@@ -3979,7 +3979,7 @@ function startFnListener() {
 
   try {
     console.log(
-      `[FnListener] Starting Sonic Flow Helper helper from: ${helperPath}`,
+      `[FnListener] Starting Spoke Helper helper from: ${helperPath}`,
     );
     fnProc = spawnHelper(
       helperPath,
@@ -4086,13 +4086,13 @@ function startFnListener() {
 
     fnProc.stderr?.on("data", (chunk: string) => {
       console.error(
-        `[FnListener] Sonic Flow Helper stderr: ${chunk.toString()}`,
+        `[FnListener] Spoke Helper stderr: ${chunk.toString()}`,
       );
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start Sonic Flow Helper helper process:",
+        "[FnListener] Failed to start Spoke Helper helper process:",
         error,
       );
       fnProc = null;
@@ -4103,7 +4103,7 @@ function startFnListener() {
           : onboardingWindow || mainWindow;
       if (error.message.includes("ENOENT")) {
         console.error(
-          "[FnListener] Sonic Flow Helper binary not found or not executable",
+          "[FnListener] Spoke Helper binary not found or not executable",
         );
         targetWindow?.webContents.send(
           "notify",
@@ -4111,7 +4111,7 @@ function startFnListener() {
         );
       } else if (error.message.includes("EACCES")) {
         console.error(
-          "[FnListener] Sonic Flow Helper binary lacks execution permissions",
+          "[FnListener] Spoke Helper binary lacks execution permissions",
         );
         targetWindow?.webContents.send(
           "notify",
@@ -4119,7 +4119,7 @@ function startFnListener() {
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting Sonic Flow Helper:",
+          "[FnListener] Unknown error starting Spoke Helper:",
           error.message,
         );
         (pttTarget === "main"
@@ -4137,7 +4137,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] Sonic Flow Helper helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] Spoke Helper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -4147,12 +4147,12 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] Sonic Flow Helper helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] Spoke Helper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
     console.error(
-      "[FnListener] Exception when spawning Sonic Flow Helper helper:",
+      "[FnListener] Exception when spawning Spoke Helper helper:",
       error,
     );
     fnProc = null;

@@ -47,7 +47,7 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
       "./public/assets/Assets.car",
-      "./native/bin/Sonic Flow Helper.app",
+      "./native/bin/Spoke Helper.app",
       "./native/bin/notch-reporter",
     ],
     extendInfo: {
@@ -59,8 +59,8 @@ const config: ForgeConfig = {
       preAutoEntitlements: false,
       // Ensure the nested helper app and its binary are signed with the same identity
       binaries: [
-        "Contents/Resources/Sonic Flow Helper.app",
-        "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
+        "Contents/Resources/Spoke Helper.app",
+        "Contents/Resources/Spoke Helper.app/Contents/MacOS/Spoke Helper",
         "Contents/Resources/notch-reporter",
       ],
       optionsForFile: (filePath) => {
@@ -79,8 +79,8 @@ const config: ForgeConfig = {
         }
         // Apply tighter inherit entitlements on the helper
         if (
-          filePath.endsWith("/Sonic Flow Helper.app") ||
-          filePath.endsWith("/Sonic Flow Helper")
+          filePath.endsWith("/Spoke Helper.app") ||
+          filePath.endsWith("/Spoke Helper")
         ) {
           return {
             ...base,
