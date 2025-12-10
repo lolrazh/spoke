@@ -143,7 +143,7 @@ const config: ForgeConfig = {
     // Include absolute URLs in RELEASES.json for stable CDN behavior
     new MakerZIP(
       (arch) => ({
-        macUpdateManifestBaseUrl: `https://releases.spoke.so/darwin/${arch}`,
+        macUpdateManifestBaseUrl: `https://download.spoke.so/darwin/${arch}`,
       }),
       ["darwin"],
     ),

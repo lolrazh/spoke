@@ -161,6 +161,6 @@ Sentry instrumentation across both app and worker:
 ## Publishing & Updates
 
 App uses Electron's auto-updater with Cloudflare R2 hosting:
-- Base URL: https://releases.sonicflow.app
+- Base URL: https://download.spoke.so
 - Publish with `npm run publish` (requires .env with R2 credentials)
 - Update flow managed via `RELEASES.json` manifest

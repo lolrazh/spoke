@@ -65,8 +65,8 @@ Spoke follows a multi-process architecture optimized for real-time audio process
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/sonic-flow.git
-cd sonic-flow
+git clone https://github.com/yourusername/spoke.git
+cd spoke
 
 # Install dependencies
 npm install
@@ -209,7 +209,7 @@ type PillState = "IDLE" | "LISTENING" | "PROCESSING" | "NOTIFICATION" | "HOVER_P
 ## Project Structure
 
 ```
-sonic-flow-app/
+spoke-app/
 ├── src/                          # Main application source
 │   ├── components/               # React components
 │   │   ├── ui/                  # Base design system components
@@ -322,7 +322,7 @@ The project includes several native testing utilities:
 
 ## Publishing (Cloudflare R2)
 
-- Base URL: `https://releases.spoke.so`
+- Base URL: `https://download.spoke.so`
 - Layout produced by Forge ZIP maker:
   - `darwin/<arch>/RELEASES.json`
   - `darwin/<arch>/Spoke-<version>-mac.zip`
@@ -362,8 +362,8 @@ npm run publish
 This uploads ZIP + RELEASES.json to `darwin/<arch>/...` in your bucket.
 
 Verification:
-- `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
-- `curl -I "https://releases.spoke.so/darwin/arm64/Spoke%20-<version>-mac.zip"`
+- `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
+- `curl -I "https://download.spoke.so/darwin/arm64/Spoke%20-<version>-mac.zip"`
 
 ### 4) Update flow (local test)
 

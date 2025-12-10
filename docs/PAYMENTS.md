@@ -32,7 +32,7 @@ Sonic Flow uses a **server-authoritative payment system** that combines Dodo Pay
 
 ### Component Interaction
 
-- **Website** (`api-sonic-flow-site`) - Dodo checkout flow, OAuth integration, webhook handling
+- **Website** (`api-spoke-site`) - Dodo checkout flow, OAuth integration, webhook handling
 - **Supabase Database** - Stores subscriptions, profiles, quota tracking
 - **Custom Access Token Hook** - Embeds subscription/quota claims in JWT
 - **Cloudflare Worker** - Validates JWT claims, gates transcription access
@@ -495,7 +495,7 @@ if (quotaExceeded) {
 
 ### Environment Variables
 
-**Website (`api-sonic-flow-site/.env`):**
+**Website (`api-spoke-site/.env`):**
 ```bash
 # Dodo Payments
 DODO_PAYMENTS_API_KEY=sk_...
@@ -612,7 +612,7 @@ The `/billing/portal` page:
 ## File Organization
 
 ```
-Website (api-sonic-flow-site):
+Website (api-spoke-site):
 ├── src/app/api/
 │   ├── auth/callback/route.ts    # OAuth + direct Dodo checkout
 │   ├── billing/portal/route.ts   # Customer portal session creation

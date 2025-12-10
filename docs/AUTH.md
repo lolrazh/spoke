@@ -40,7 +40,7 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 - **Supabase Client** (`src/lib/supabaseClient.ts`) - Manages OAuth requests and token processing
 - **Auth Signals** (`src/utils/authSignals.ts`) - Cross-window coordination for toast deduplication
 - **User Identity** (`src/state/userIdentity.ts`) - Client-side identity cache management
-- **Hosted Callback** (`api-sonic-flow-site`) - Production web interface for OAuth callbacks
+- **Hosted Callback** (`api-spoke-site`) - Production web interface for OAuth callbacks
 - **Deep Link Handler** - Protocol registration and URL parsing across platforms
 
 ### Returning User Skip Logic (2025 Update)
@@ -267,7 +267,7 @@ useEffect(() => {
 **Callback Strategy**: Hosted Web Page
 - **URL**: `https://auth.sonicflow.app/auth/callback`
 - **Protocol**: Custom `sonicflow://` protocol registered
-- **Hosting**: Vercel deployment from `api-sonic-flow-site`
+- **Hosting**: Vercel deployment from `api-spoke-site`
 
 **Hosted Page Requirements**:
 - Must parse OAuth callback parameters (`?code=...` or `#access_token=...`)

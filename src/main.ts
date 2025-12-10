@@ -266,7 +266,7 @@ try {
       updateSource: {
         type: UpdateSourceType.StaticStorage,
         // Fetch RELEASES.json from darwin/<arch>/
-        baseUrl: `https://releases.spoke.so/darwin/${process.arch}`,
+        baseUrl: `https://download.spoke.so/darwin/${process.arch}`,
       },
       // Production cadence; see policy: startup/resume triggers augment this
       updateInterval: "1 hour",
@@ -415,7 +415,7 @@ function setUpdateState(next: UpdateStatus, opts?: { version?: string; error?: s
 }
 
 function getReleasesUrl(): string {
-  return `https://releases.spoke.so/darwin/${process.arch}/RELEASES.json`;
+  return `https://download.spoke.so/darwin/${process.arch}/RELEASES.json`;
 }
 
 function compareSemver(a: string, b: string): number {

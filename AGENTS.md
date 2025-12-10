@@ -34,8 +34,8 @@
 - Bump version with npm: `npm version patch` (ask if prerelease needed: e.g., `npm version prerelease --preid beta`).
 - Publish in one step: `npm run publish:env` (do not pre-run `make` to avoid double notarization).
 - Verify:
-  - Manifest: `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
-  - ZIP URL: `curl -I https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip`
+  - Manifest: `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
+  - ZIP URL: `curl -I https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip`
   - DMG stapled (optional but recommended for first installs): `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
 
 ## Transcription & Worker (Overview)

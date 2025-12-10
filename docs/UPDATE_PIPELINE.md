@@ -1,17 +1,17 @@
 # Sonic Flow macOS Auto‑Update Pipeline
 
-This guide documents the complete macOS auto‑update pipeline for Sonic Flow using Electron Forge, update‑electron‑app, and Cloudflare R2 (S3‑compatible) behind the custom domain `https://releases.sonicflow.app`.
+This guide documents the complete macOS auto‑update pipeline for Sonic Flow using Electron Forge, update‑electron‑app, and Cloudflare R2 (S3‑compatible) behind the custom domain `https://download.spoke.so`.
 
 It covers architecture, file layout, configuration, environment, build/publish steps, verification, troubleshooting, and advanced topics like multi‑arch and channels.
 
 ## TL;DR
-- App checks `https://releases.sonicflow.app/darwin/<arch>/RELEASES.json`.
+- App checks `https://download.spoke.so/darwin/<arch>/RELEASES.json`.
 - Forge ZIP maker creates `.zip` + `RELEASES.json` for macOS.
 - Publish both to R2 at `darwin/<arch>/`.
 - App downloads the ZIP, swaps the `.app`, and relaunches.
 
 ## Prerequisites
-- Cloudflare R2 bucket mapped to `https://releases.sonicflow.app` and publicly readable (via R2 settings/route).
+- Cloudflare R2 bucket mapped to `https://download.spoke.so` and publicly readable (via R2 settings/route).
 - AWS‑style credentials for R2 (access key + secret).
 - Apple certificates:
   - Local/self testing: Apple Development is sufficient (no notarization required for your own machine once installed).
@@ -25,7 +25,7 @@ It covers architecture, file layout, configuration, environment, build/publish s
 
 ## Required File Layout (Static Storage)
 ```
-https://releases.sonicflow.app/
+https://download.spoke.so/
   darwin/
     arm64/
       RELEASES.json
@@ -41,11 +41,11 @@ The updater fetches `RELEASES.json` from `darwin/<arch>/` and follows absolute U
 ## Repository Wiring (already configured)
 - `forge.config.ts`
   - ZIP maker added for macOS with manifest URLs:
-    - `macUpdateManifestBaseUrl: https://releases.sonicflow.app/darwin/${arch}`
+    - `macUpdateManifestBaseUrl: https://download.spoke.so/darwin/${arch}`
   - S3 publisher configured for R2 with path‑style endpoint and `keyResolver` → `darwin/<arch>/<filename>`.
 - `src/main.ts`
   - `updateElectronApp` initialized with StaticStorage:
-    - `baseUrl: https://releases.sonicflow.app/darwin/${process.arch}`
+    - `baseUrl: https://download.spoke.so/darwin/${process.arch}`
     - Hourly checks (can temporarily use 1 minute for testing).
 - `package.json`
   - Makers and publisher wired.
@@ -81,8 +81,8 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
   - `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
 
 5) Verify hosting
-- `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
-- `curl -I "https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+- `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
+- `curl -I "https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
 - Headers to check:
   - `Content-Type: application/json` for `RELEASES.json`
   - `Content-Type: application/zip` for `.zip`
@@ -130,7 +130,7 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
         "version": "0.0.2",
         "pub_date": "2025-08-31T12:00:00.000Z",
         "name": "Sonic Flow v0.0.2",
-        "url": "https://releases.sonicflow.app/darwin/arm64/Sonic Flow-0.0.2-mac.zip"
+        "url": "https://download.spoke.so/darwin/arm64/Sonic Flow-0.0.2-mac.zip"
       }
     }
   ]
@@ -144,7 +144,7 @@ Notes
 ## Cloudflare R2 Specifics
 - Endpoint: use `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` with path‑style S3 access.
 - ACLs: R2 does not honor S3 ACLs; set public access via R2 bucket/route settings or policy.
-- Domain: map your bucket/route to `https://releases.sonicflow.app`.
+- Domain: map your bucket/route to `https://download.spoke.so`.
 - CORS: if you want the renderer to read files directly (not required for updater), add permissive CORS for `GET` on R2/Cloudflare.
 - Caching: set `Cache‑Control` headers—short for `RELEASES.json`, longer for ZIPs.
 
@@ -157,8 +157,8 @@ Notes
 
 ## Channels (Stable / Beta)
 - Easiest approach: separate base URLs per channel, e.g.:
-  - Stable: `https://releases.sonicflow.app`
-  - Beta: `https://beta-releases.sonicflow.app` (or `.../beta` with a Worker/route)
+  - Stable: `https://download.spoke.so`
+  - Beta: `https://beta-download.spoke.so` (or `.../beta` with a Worker/route)
 - Configure at build time by swapping the updater base in `src/main.ts` via env/build flag (or maintain a small wrapper that reads an env var and sets `baseUrl`).
 - Keep distinct `RELEASES.json` and ZIPs per channel.
 
@@ -202,8 +202,8 @@ Notes
 ## Quick Reference
 - Build: `npm run make`
 - Publish: `npm run publish`
-- Verify manifest: `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
-- Verify ZIP: `curl -I "https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+- Verify manifest: `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
+- Verify ZIP: `curl -I "https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
 - Toggle interval (testing): set `updateInterval: "1 minute"` in `src/main.ts` (revert after).
 
 ## Appendix: Why ZIP, Not DMG?
@@ -221,4 +221,4 @@ R2_REGION=auto
 
 ## Appendix: Paths
 - ZIP + manifest (local): `out/make/zip/darwin/<arch>/`
-- ZIP + manifest (R2): `https://releases.sonicflow.app/darwin/<arch>/`
+- ZIP + manifest (R2): `https://download.spoke.so/darwin/<arch>/`
