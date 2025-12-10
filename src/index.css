@@ -108,7 +108,7 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -52%);
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -117,7 +117,12 @@
   }
 
   .sf-intro-logo {
-    width: 196px;
+    position: absolute;
+    top: 30%;
+    left: 0%;
+    right: 0;
+    margin: 0 auto;
+    width: 160px;
     height: auto;
     image-rendering: -webkit-optimize-contrast;
     filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));

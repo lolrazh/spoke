@@ -121,17 +121,18 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
           <GridBackground holeActive={stage >= 2} />
           {!reduced && <ParticlesCanvas />}
 
-          {/* Center group */}
+          {/* Logo - positioned independently */}
+          <motion.img
+            src={logoSrc}
+            alt="Spoke logo"
+            className="sf-intro-logo"
+            initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(8px)" }}
+            animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}
+            transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
+          />
+
+          {/* Center group - text and CTA */}
           <div className="sf-intro-center space-y-3 md:space-y-4">
-            {/* Logo */}
-            <motion.img
-              src={logoSrc}
-              alt="Spoke logo"
-              className="sf-intro-logo"
-              initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(8px)" }}
-              animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}
-              transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
-            />
             {/* Headline + Subcopy */}
             <motion.div
               className="text-center space-y-1"
@@ -143,7 +144,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
                 So Good You'll Want to Lick It
               </h1>
               <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
-                Let's get you set up for blazing fast dictation.
+                Let's get you set up for the most intelligent dictation in the world.
               </p>
             </motion.div>
             {/* CTA */}
