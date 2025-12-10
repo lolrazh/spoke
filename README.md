@@ -363,7 +363,7 @@ This uploads ZIP + RELEASES.json to `darwin/<arch>/...` in your bucket.
 
 Verification:
 - `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
-- `curl -I "https://download.spoke.so/darwin/arm64/Spoke%20-<version>-mac.zip"`
+- `curl -I "https://download.spoke.so/darwin/arm64/Spoke-<version>-mac.zip"`
 
 ### 4) Update flow (local test)
 
