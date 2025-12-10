@@ -18,6 +18,7 @@ import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
 import { getSignals, setLastToastTs } from "../utils/authSignals";
 import { shouldToastSignIn } from "../utils/shouldToastSignIn";
+import { retryWithBackoff } from "../utils/retryWithBackoff";
 import {
   PermissionsProvider,
   usePermissionsController,
@@ -582,10 +583,14 @@ const AppInner: React.FC = () => {
           } catch { }
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
+
           // Pre-connect to Worker to avoid first-dictation latency
-          trans.preConnect().catch(() => {
-            // Silently fail - will retry on first dictation
-          });
+          // CRITICAL: This must happen AFTER JWT refresh completes (above)
+          // Retry with exponential backoff to handle transient network issues
+          void retryWithBackoff(
+            () => trans.preConnect(),
+            { context: 'Pre-connect on startup' }
+          );
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
@@ -637,11 +642,12 @@ const AppInner: React.FC = () => {
               setCurrentUserId(currentUserId);
               // Defer Supabase call to avoid breaking the auth listener
               setTimeout(() => loadSharePreference(currentUserId), 0);
-              // Pre-connect to Worker after sign in
+              // Pre-connect to Worker after sign in with retry logic
               setTimeout(() => {
-                trans.preConnect().catch(() => {
-                  // Silently fail - will retry on first dictation
-                });
+                void retryWithBackoff(
+                  () => trans.preConnect(),
+                  { context: 'Pre-connect after sign-in' }
+                );
               }, 0);
               return;
             }

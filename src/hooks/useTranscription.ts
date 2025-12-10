@@ -662,11 +662,14 @@ export function useTranscription(
 
         // Handle unexpected close codes (like 1003 from Cloudflare edge rejection)
         // These are retryable - reject the Promise so ensureStreamingSocket can retry
-        console.warn("[SF] WebSocket closed unexpectedly during auth", {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
+        // Code 1000 (Normal Closure) is not an error, so only log true errors
+        if (event.code !== 1000) {
+          console.warn("[SF] WebSocket closed unexpectedly during auth", {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
+        }
 
         // Clean up this connection attempt
         if (wsRef.current === ws) {
@@ -675,6 +678,7 @@ export function useTranscription(
         stopWebSocketHealthCheck();
 
         // Reject the Promise so the caller knows auth failed and can retry
+        // For code 1000, this is a graceful close (likely session completed on another connection)
         cleanup();
         reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
       });
@@ -1245,6 +1249,14 @@ export function useTranscription(
     currentChunkIndexRef.current = 0;
 
     try {
+      // Check if we already have an authenticated WebSocket from pre-connect
+      const alreadyConnected = wsRef.current && wsAuthenticatedRef.current && wsReadyRef.current;
+      if (alreadyConnected) {
+        console.log('[SF] ✅ Using pre-connected WebSocket (zero auth latency)');
+      } else {
+        console.log('[SF] ⏳ WebSocket not pre-connected, establishing connection now...');
+      }
+
       // Try to establish the WebSocket and wait for auth to complete
       // Retry up to 3 times for transient failures (like Cloudflare edge rejections)
       const MAX_CONNECTION_RETRIES = 3;
@@ -2279,15 +2291,10 @@ export function useTranscription(
   }, []);
 
   const preConnect = useCallback(async () => {
-    try {
-      // Silently establish WebSocket connection and authenticate
-      // This happens in background, errors are swallowed (will retry on first dictation)
-      await ensureStreamingSocket();
-      console.info("[SF] Pre-connected to Worker successfully");
-    } catch (err) {
-      // Don't show errors during pre-connect - user hasn't tried to dictate yet
-      console.warn("[SF] Pre-connect failed (will retry on first dictation):", err);
-    }
+    // Establish WebSocket connection and authenticate in background
+    // Throws error for retry logic in App.tsx
+    await ensureStreamingSocket();
+    console.info("[SF] Pre-connected to Worker successfully");
   }, [ensureStreamingSocket]);
 
   return {
