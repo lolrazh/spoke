@@ -266,7 +266,7 @@ try {
       updateSource: {
         type: UpdateSourceType.StaticStorage,
         // Fetch RELEASES.json from darwin/<arch>/
-        baseUrl: `https://releases.sonicflow.app/darwin/${process.arch}`,
+        baseUrl: `https://download.spoke.so/darwin/${process.arch}`,
       },
       // Production cadence; see policy: startup/resume triggers augment this
       updateInterval: "1 hour",
@@ -290,7 +290,7 @@ let preSpawnedPasteHelper: import("child_process").ChildProcessWithoutNullStream
 let preSpawnReady: Promise<void> | null = null;
 let resolvePreSpawnReady: (() => void) | null = null;
 let fnPermissionDenied = false;
-let fnStdoutBuffer = ""; // Buffer for incomplete lines from sonic-helper stdout
+let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
 // Buffer deep links received before windows are ready
 let pendingAuthUrls: string[] = [];
@@ -337,7 +337,7 @@ if (!gotTheLock) {
       const maybeUrl = argv.find(
         (a) =>
           typeof a === "string" &&
-          (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+          (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
       );
       if (maybeUrl) {
         sendAuthCallback(maybeUrl);
@@ -415,7 +415,7 @@ function setUpdateState(next: UpdateStatus, opts?: { version?: string; error?: s
 }
 
 function getReleasesUrl(): string {
-  return `https://releases.sonicflow.app/darwin/${process.arch}/RELEASES.json`;
+  return `https://download.spoke.so/darwin/${process.arch}/RELEASES.json`;
 }
 
 function compareSemver(a: string, b: string): number {
@@ -1177,19 +1177,19 @@ function getHelperPath(): string {
   return app.isPackaged
     ? path.join(
       process.resourcesPath,
-      "Sonic Flow Helper.app",
+      "Spoke Helper.app",
       "Contents",
       "MacOS",
-      "Sonic Flow Helper",
+      "Spoke Helper",
     )
     : path.join(
       app.getAppPath(),
       "native",
       "bin",
-      "Sonic Flow Helper.app",
+      "Spoke Helper.app",
       "Contents",
       "MacOS",
-      "Sonic Flow Helper",
+      "Spoke Helper",
     );
 }
 
@@ -2188,10 +2188,10 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     ...buildFeedbackAndAboutItems(),
     { type: "separator" },
     {
-      label: "Quit Sonic Flow",
+      label: "Quit Spoke",
       accelerator: 'CommandOrControl+Q',
       click: () => {
-        console.log("[Tray Menu] Quit Sonic Flow clicked");
+        console.log("[Tray Menu] Quit Spoke clicked");
         isQuitting = true;
         app.quit();
       },
@@ -2295,7 +2295,7 @@ const createTray = () => {
     // Additional debugging for tray visibility
     console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
 
-    tray.setToolTip("Sonic Flow");
+    tray.setToolTip("Spoke");
 
     // Force tray to be visible (macOS sometimes hides it)
     if (process.platform === "darwin") {
@@ -2304,7 +2304,7 @@ const createTray = () => {
       setTimeout(() => {
         if (tray && !tray.isDestroyed()) {
           console.log("[Tray] Forcing tray visibility on macOS");
-          tray.setToolTip("Sonic Flow - AI Dictation");
+          tray.setToolTip("Spoke - AI Dictation");
         }
       }, 100);
     }
@@ -2372,7 +2372,7 @@ ipcMain.handle(
       const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
         console.error(
-          `[PasteHelper] Sonic Flow Helper binary not found at path: ${helperPath}`,
+          `[PasteHelper] Spoke Helper binary not found at path: ${helperPath}`,
         );
         mainWindow?.webContents.send(
           "notify",
@@ -2556,22 +2556,22 @@ app.whenReady().then(async () => {
       // Always register with explicit exe and app path in dev
       const exe = process.execPath;
       const appPath = path.resolve(process.argv[1] || "");
-      const ok = app.setAsDefaultProtocolClient("sonicflow-dev", exe, [
+      const ok = app.setAsDefaultProtocolClient("spoke-dev", exe, [
         appPath,
       ]);
       console.log(
-        `[Auth] Registered dev protocol handler (sonicflow-dev): ${ok}`,
+        `[Auth] Registered dev protocol handler (spoke-dev): ${ok}`,
       );
       console.log(
         `[Auth] isDefaultProtocolClient(dev):`,
-        app.isDefaultProtocolClient("sonicflow-dev"),
+        app.isDefaultProtocolClient("spoke-dev"),
       );
     } else {
-      const ok = app.setAsDefaultProtocolClient("sonicflow");
-      console.log(`[Auth] Registered prod protocol handler (sonicflow): ${ok}`);
+      const ok = app.setAsDefaultProtocolClient("spoke");
+      console.log(`[Auth] Registered prod protocol handler (spoke): ${ok}`);
       console.log(
         `[Auth] isDefaultProtocolClient(prod):`,
-        app.isDefaultProtocolClient("sonicflow"),
+        app.isDefaultProtocolClient("spoke"),
       );
     }
   } catch (e) {
@@ -2612,7 +2612,7 @@ app.whenReady().then(async () => {
     const firstUrl = process.argv.find(
       (a) =>
         typeof a === "string" &&
-        (a.startsWith("sonicflow://") || a.startsWith("sonicflow-dev://")),
+        (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
     );
     if (firstUrl) {
       sendAuthCallback(firstUrl);
@@ -2665,7 +2665,7 @@ app.whenReady().then(async () => {
       process.env.VITE_TRANSCRIBE_WS_URL;
     const wsUrlToLog =
       envWs ||
-      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.sonicflow.app/ws");
+      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.spoke.so/ws");
     console.log("[Main] WS endpoint", wsUrlToLog);
     console.log("[Main] Flags", {
       VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
@@ -2683,10 +2683,10 @@ app.whenReady().then(async () => {
     const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === "1";
     const connect = [
       "connect-src 'self'",
-      "https://api.sonicflow.app",
-      "wss://api.sonicflow.app",
-      // Website API for billing portal
-      "https://www.sonicflow.app",
+      "https://api.spoke.so",
+      "wss://api.spoke.so",
+      // Allow website for billing portal
+      "https://www.spoke.so",
       // Local development HTTP/WS (dev or staging with flag)
       ...(allowLocal
         ? [
@@ -2885,7 +2885,7 @@ app.whenReady().then(async () => {
     }
     // In production, use the API site to complete OAuth, then deep-link to the app
     // This improves UX when the provider opens an external browser
-    return { url: "https://auth.sonicflow.app/auth/callback" };
+    return { url: "https://auth.spoke.so/auth/callback" };
   });
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
@@ -3359,7 +3359,7 @@ app.whenReady().then(async () => {
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
         console.error(
-          "Sonic Flow Helper binary not found at path:",
+          "Spoke Helper binary not found at path:",
           helperPath,
         );
         return { needAX, needIM: true, isDev };
@@ -3402,7 +3402,7 @@ app.whenReady().then(async () => {
     try {
       const helperPath = getHelperPath();
       if (!fs.existsSync(helperPath)) {
-        console.error("Sonic Flow Helper binary not found at path:", helperPath);
+        console.error("Spoke Helper binary not found at path:", helperPath);
         // Fallback to Electron prompt (main app)
         systemPreferences.isTrustedAccessibilityClient(true);
         return { success: true, via: "fallback-main" } as const;
@@ -3752,7 +3752,7 @@ app.on("before-quit", () => {
   console.log('[GlobalShortcut] All shortcuts unregistered');
 });
 
-// Handle deep links like sonicflow://auth/callback?code=...
+// Handle deep links like spoke://auth/callback?code=...
 app.on("open-url", (event, url) => {
   event.preventDefault();
   console.log(`[Auth] Deep link received: ${url}`);
@@ -3886,12 +3886,12 @@ app.on("before-quit", () => {
 
   // **belts-and-suspenders**: kill anything matching the name
   try {
-    execSync("pkill -9 -f 'Sonic Flow Helper' || true");
+    execSync("pkill -9 -f 'Spoke Helper' || true");
   } catch (e) {
     // ignore
   }
   try {
-    execSync("pkill -9 -f sonic-helper    || true");
+    execSync("pkill -9 -f spoke-helper    || true");
   } catch (e) {
     // ignore
   }
@@ -3905,7 +3905,7 @@ app.on("will-quit", () => {
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 
-  // Clear restart timeout and kill sonic-helper process
+  // Clear restart timeout and kill spoke-helper process
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);
     fnRestartTimeout = null;
@@ -3948,13 +3948,13 @@ function startFnListener() {
   // Clean up existing process to prevent orphaned processes
   if (fnProc && !fnProc.killed) {
     console.log(
-      "[FnListener] Cleaning up existing sonic-helper process before starting new one",
+      "[FnListener] Cleaning up existing spoke-helper process before starting new one",
     );
     try {
       fnProc.kill("SIGTERM");
     } catch (error) {
       console.warn(
-        "[FnListener] Error killing existing sonic-helper process:",
+        "[FnListener] Error killing existing spoke-helper process:",
         error,
       );
     }
@@ -3966,7 +3966,7 @@ function startFnListener() {
   // Check if the helper binary exists before attempting to spawn
   if (!fs.existsSync(helperPath)) {
     console.error(
-      `[FnListener] Sonic Flow Helper binary not found at path: ${helperPath}`,
+      `[FnListener] Spoke Helper binary not found at path: ${helperPath}`,
     );
 
     const targetWindow = mainWindow || onboardingWindow;
@@ -3979,7 +3979,7 @@ function startFnListener() {
 
   try {
     console.log(
-      `[FnListener] Starting Sonic Flow Helper helper from: ${helperPath}`,
+      `[FnListener] Starting Spoke Helper helper from: ${helperPath}`,
     );
     fnProc = spawnHelper(
       helperPath,
@@ -4086,13 +4086,13 @@ function startFnListener() {
 
     fnProc.stderr?.on("data", (chunk: string) => {
       console.error(
-        `[FnListener] Sonic Flow Helper stderr: ${chunk.toString()}`,
+        `[FnListener] Spoke Helper stderr: ${chunk.toString()}`,
       );
     });
 
     fnProc.on("error", (error: Error) => {
       console.error(
-        "[FnListener] Failed to start Sonic Flow Helper helper process:",
+        "[FnListener] Failed to start Spoke Helper helper process:",
         error,
       );
       fnProc = null;
@@ -4103,7 +4103,7 @@ function startFnListener() {
           : onboardingWindow || mainWindow;
       if (error.message.includes("ENOENT")) {
         console.error(
-          "[FnListener] Sonic Flow Helper binary not found or not executable",
+          "[FnListener] Spoke Helper binary not found or not executable",
         );
         targetWindow?.webContents.send(
           "notify",
@@ -4111,7 +4111,7 @@ function startFnListener() {
         );
       } else if (error.message.includes("EACCES")) {
         console.error(
-          "[FnListener] Sonic Flow Helper binary lacks execution permissions",
+          "[FnListener] Spoke Helper binary lacks execution permissions",
         );
         targetWindow?.webContents.send(
           "notify",
@@ -4119,7 +4119,7 @@ function startFnListener() {
         );
       } else {
         console.error(
-          "[FnListener] Unknown error starting Sonic Flow Helper:",
+          "[FnListener] Unknown error starting Spoke Helper:",
           error.message,
         );
         (pttTarget === "main"
@@ -4137,7 +4137,7 @@ function startFnListener() {
 
     fnProc.on("close", (code, signal) => {
       console.log(
-        `[FnListener] Sonic Flow Helper helper process closed with code ${code}, signal ${signal}`,
+        `[FnListener] Spoke Helper helper process closed with code ${code}, signal ${signal}`,
       );
       fnProc = null;
 
@@ -4147,12 +4147,12 @@ function startFnListener() {
 
     fnProc.on("exit", (code, signal) => {
       console.log(
-        `[FnListener] Sonic Flow Helper helper process exited with code ${code}, signal ${signal}`,
+        `[FnListener] Spoke Helper helper process exited with code ${code}, signal ${signal}`,
       );
     });
   } catch (error) {
     console.error(
-      "[FnListener] Exception when spawning Sonic Flow Helper helper:",
+      "[FnListener] Exception when spawning Spoke Helper helper:",
       error,
     );
     fnProc = null;

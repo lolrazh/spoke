@@ -1,6 +1,6 @@
-# Sonic Flow README
+# Spoke README
 
-A lightweight AI dictation application for macOS built with Electron and TypeScript. Sonic Flow provides fast speech-to-text transcription using WebSocket-based audio streaming (no text streaming) and a native helper for seamless system integration.
+A lightweight AI dictation application for macOS built with Electron and TypeScript. Spoke provides fast speech-to-text transcription using WebSocket-based audio streaming (no text streaming) and a native helper for seamless system integration.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ A lightweight AI dictation application for macOS built with Electron and TypeScr
 
 ## Overview
 
-Sonic Flow is designed as a better alternative to existing dictation tools like Wispr Flow, with a focus on elegant design, performance, and native macOS integration. The app features a minimal glassmorphic UI that stays out of your way while providing powerful real-time transcription capabilities.
+Spoke is designed as a better alternative to existing dictation tools like Wispr Flow, with a focus on elegant design, performance, and native macOS integration. The app features a minimal glassmorphic UI that stays out of your way while providing powerful real-time transcription capabilities.
 
 ### Key Advantages
 
@@ -31,7 +31,7 @@ Sonic Flow is designed as a better alternative to existing dictation tools like 
 
 ## Architecture
 
-Sonic Flow follows a multi-process architecture optimized for real-time audio processing:
+Spoke follows a multi-process architecture optimized for real-time audio processing:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -50,7 +50,7 @@ Sonic Flow follows a multi-process architecture optimized for real-time audio pr
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication
 2. **React Renderer** (`src/components/App.tsx`) - Pill UI with state machine pattern
 3. **Cloudflare Worker** (`worker/src/index.ts`) - Real-time transcription service
-4. **Native Helper** (`native/sonic-helper.c`) - macOS accessibility and text insertion
+4. **Native Helper** (`native/spoke-helper.c`) - macOS accessibility and text insertion
 5. **Audio Pipeline** (`src/hooks/useTranscription.ts`) - Real-time audio processing
 
 ## Quick Start
@@ -65,8 +65,8 @@ Sonic Flow follows a multi-process architecture optimized for real-time audio pr
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/sonic-flow.git
-cd sonic-flow
+git clone https://github.com/yourusername/spoke.git
+cd spoke
 
 # Install dependencies
 npm install
@@ -203,13 +203,13 @@ type PillState = "IDLE" | "LISTENING" | "PROCESSING" | "NOTIFICATION" | "HOVER_P
 - **Text Insertion**: Uses Accessibility APIs to insert at cursor
 - **System Permissions**: Microphone and accessibility permission handling
 - **Tray Integration**: Native menu bar presence
-- **Protocol Handler**: `sonicflow://` deep link support
+- **Protocol Handler**: `spoke://` deep link support
 - **Window Management**: Native vibrancy and transparency effects
 
 ## Project Structure
 
 ```
-sonic-flow-app/
+spoke-app/
 ├── src/                          # Main application source
 │   ├── components/               # React components
 │   │   ├── ui/                  # Base design system components
@@ -233,7 +233,7 @@ sonic-flow-app/
 │   │   └── index.ts             # Worker entry point
 │   └── wrangler.jsonc           # Worker configuration
 ├── native/                       # Native helper binary
-│   ├── sonic-helper.c           # C source for text insertion
+│   ├── spoke-helper.c           # C source for text insertion
 │   └── build-helper.sh          # Build script
 ├── docs/                         # Comprehensive documentation
 │   ├── DESIGN.md               # Design system and UI patterns
@@ -258,11 +258,11 @@ The app uses Electron Forge with Vite for building:
 - **Packaging**: DMG creation with custom background and icon
 - **Code Signing**: Configured for internal testing
 - **Fuses**: Security-hardened Electron configuration
-- **Bundle ID**: `com.sonicflow.app`
+- **Bundle ID**: `com.spoke.app`
 
 ### Design System
 
-Sonic Flow uses a comprehensive glassmorphic design system:
+Spoke uses a comprehensive glassmorphic design system:
 
 - **CSS Variables**: Centralized design tokens
 - **Tailwind Integration**: Extended theme with custom utilities
@@ -322,10 +322,10 @@ The project includes several native testing utilities:
 
 ## Publishing (Cloudflare R2)
 
-- Base URL: `https://releases.sonicflow.app`
+- Base URL: `https://download.spoke.so`
 - Layout produced by Forge ZIP maker:
   - `darwin/<arch>/RELEASES.json`
-  - `darwin/<arch>/Sonic Flow-<version>-mac.zip`
+  - `darwin/<arch>/Spoke-<version>-mac.zip`
 
 ### 1) Configure environment
 
@@ -351,7 +351,7 @@ npm run make    # arm64 by default
 
 Artifacts:
 - `out/make/zip/darwin/arm64/RELEASES.json`
-- `out/make/zip/darwin/arm64/Sonic Flow-<version>-mac.zip`
+- `out/make/zip/darwin/arm64/Spoke-<version>-mac.zip`
 
 ### 3) Publish to R2 (automated)
 
@@ -362,8 +362,8 @@ npm run publish
 This uploads ZIP + RELEASES.json to `darwin/<arch>/...` in your bucket.
 
 Verification:
-- `curl -I https://releases.sonicflow.app/darwin/arm64/RELEASES.json`
-- `curl -I "https://releases.sonicflow.app/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+- `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
+- `curl -I "https://download.spoke.so/darwin/arm64/Spoke-<version>-mac.zip"`
 
 ### 4) Update flow (local test)
 
@@ -375,7 +375,7 @@ Troubleshooting:
 - If updates don’t trigger, check app logs and ensure the manifest and ZIP are public, reachable, and not overly cached. You can temporarily use a shorter interval in `src/main.ts`.
 
 See also:
-- docs/UPDATE_PIPELINE.md — full “Sonic Flow macOS Auto‑Update Pipeline” guide
+- docs/UPDATE_PIPELINE.md — full “Spoke macOS Auto‑Update Pipeline” guide
 
 ## Deployment
 
@@ -461,7 +461,7 @@ Proprietary - All rights reserved by Sandheep Rajkumar
 ## Contact
 
 **Author**: Sandheep Rajkumar  
-**Email**: rajkumar.sandheep@gmail.com
+**Email**: sandy@spoke.so
 
 ---
 

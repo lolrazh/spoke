@@ -1,6 +1,6 @@
 # Transcription Pipeline
 
-Sonic Flow's transcription pipeline transforms voice into text through real-time audio streaming, speech recognition, and optional LLM enhancement. The entire flow—from microphone to text insertion—happens in under 2 seconds.
+Spoke's transcription pipeline transforms voice into text through real-time audio streaming, speech recognition, and optional LLM enhancement. The entire flow—from microphone to text insertion—happens in under 2 seconds.
 
 **Related:** `docs/DATABASE.md`, `docs/INSTRUMENTATION.md`, `docs/DESIGN.md`
 
@@ -56,7 +56,7 @@ Each stage is optimized for low latency—audio worklet runs in dedicated thread
 
 ## Authentication & Authorization
 
-Sonic Flow uses JWT-based authentication with embedded subscription and quota claims for instant entitlement gating.
+Spoke uses JWT-based authentication with embedded subscription and quota claims for instant entitlement gating.
 
 <auth_flow>
   <connection_auth>
@@ -163,7 +163,7 @@ Sonic Flow uses JWT-based authentication with embedded subscription and quota cl
 
 ## Modes
 
-Sonic Flow has two distinct modes that change how the transcription is processed.
+Spoke has two distinct modes that change how the transcription is processed.
 
 ### Dictation Mode (Default)
 
@@ -268,7 +268,7 @@ The mode is determined automatically based on whether text is selected. No manua
 
 ## Chunked Transcription
 
-For long dictations (10+ seconds), Sonic Flow uses chunked transcription to improve speed, accuracy, and cost-efficiency.
+For long dictations (10+ seconds), Spoke uses chunked transcription to improve speed, accuracy, and cost-efficiency.
 
 <chunking>
   <rationale>
@@ -387,7 +387,7 @@ For long dictations (10+ seconds), Sonic Flow uses chunked transcription to impr
 
 <websocket>
   <connection>
-    <url>getTranscribeWsUrl() - env-specific (ws://127.0.0.1:8787/ws or wss://api.sonicflow.app/ws)</url>
+    <url>getTranscribeWsUrl() - env-specific (ws://127.0.0.1:8787/ws or wss://api.spoke.so/ws)</url>
     <binary_type>arraybuffer</binary_type>
     <reconnection>
       Exponential backoff: 150ms base, doubles each attempt (max 2s).
@@ -621,7 +621,7 @@ Multiple STT providers are supported, runtime-switchable via env vars.
   </providers>
 
   <vocabulary file="worker/src/services/stt/prompt.ts">
-    <base>Your vocabulary includes: Sonic Flow</base>
+    <base>Your vocabulary includes: Spoke</base>
 
     <enhancement>
       buildSTTPrompt() enhances base prompt with user identity:
@@ -632,7 +632,7 @@ Multiple STT providers are supported, runtime-switchable via env vars.
       5. Appends to base prompt
 
       Example: identity.name="Ada Lovelace" →
-      "Your vocabulary includes: Sonic Flow, Ada, Lovelace"
+      "Your vocabulary includes: Spoke, Ada, Lovelace"
     </enhancement>
 
     <purpose>
@@ -759,7 +759,7 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
 
 ## Text Insertion
 
-<native file="native/sonic-helper.c">
+<native file="native/spoke-helper.c">
   <flow>
     1. Detect focused app + UI element (AX API)
     2. Verify accessibility permissions + element capabilities

@@ -45,7 +45,7 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
 
   // Ask Electron main which redirect to use
   const redirect = await (window.electron?.getAuthRedirectUrl?.() ??
-    Promise.resolve({ url: "sonicflow://auth/callback" }));
+    Promise.resolve({ url: "spoke://auth/callback" }));
 
   // Check if redirect URL request failed (dev server not ready)
   if ("error" in redirect) {
@@ -59,7 +59,7 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
   // Mark user intent before kicking off OAuth
   try {
     markAuthIntent("google");
-  } catch {}
+  } catch { }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -88,7 +88,7 @@ export async function startEmailOtp(
   if (!supabase) return { ok: false, error: "Supabase not configured" };
 
   const redirect = await (window.electron?.getAuthRedirectUrl?.() ??
-    Promise.resolve({ url: "sonicflow://auth/callback" }));
+    Promise.resolve({ url: "spoke://auth/callback" }));
 
   // Check if redirect URL request failed (dev server not ready)
   if ("error" in redirect) {
@@ -108,7 +108,7 @@ export async function startEmailOtp(
   // Mark user intent before kicking off OTP
   try {
     markAuthIntent("email");
-  } catch {}
+  } catch { }
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -141,13 +141,13 @@ export async function handleAuthCallbackUrl(
 
     // Validate scheme and path to reduce accidental/hostile inputs
     const isCustomScheme =
-      parsed.protocol === "sonicflow:" || parsed.protocol === "sonicflow-dev:";
+      parsed.protocol === "spoke:" || parsed.protocol === "spoke-dev:";
     const isDevHttp =
       (parsed.protocol === "http:" || parsed.protocol === "https:") &&
       (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
     // Accept both custom-scheme forms and the dev HTTP path
-    // - path form: sonicflow:///auth/callback -> pathname "/auth/callback"
-    // - host form: sonicflow://auth/callback   -> hostname "auth" and pathname "/callback"
+    // - path form: spoke:///auth/callback -> pathname "/auth/callback"
+    // - host form: spoke://auth/callback   -> hostname "auth" and pathname "/callback"
     const isPathForm = parsed.pathname === "/auth/callback";
     const isHostForm =
       isCustomScheme &&
@@ -174,7 +174,7 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] OAuth PKCE code exchange successful`);
-      try { markAuthCallback(); } catch {}
+      try { markAuthCallback(); } catch { }
       return { ok: true };
     }
 
@@ -194,7 +194,7 @@ export async function handleAuthCallbackUrl(
           return { ok: false, error: error.message };
         }
         console.log(`[Auth] Magic link session set successfully`);
-        try { markAuthCallback(); } catch {}
+        try { markAuthCallback(); } catch { }
         return { ok: true };
       }
     }
@@ -213,7 +213,7 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] PKCE email OTP verification successful`);
-      try { markAuthCallback(); } catch {}
+      try { markAuthCallback(); } catch { }
       return { ok: true };
     }
 
@@ -277,7 +277,7 @@ export async function signOut(): Promise<void> {
   const supabase = getSupabase();
   if (!supabase) return;
   await supabase.auth.signOut();
-  
+
   // Clear cached user identity on sign-out
   try {
     const { clearUserIdentityCache } = await import("../state/userIdentity");
@@ -312,16 +312,16 @@ export async function getProfile(): Promise<{
 
 export async function getProfileDetailed(): Promise<
   | {
-      ok: true;
-      data: {
-        id: string;
-        email: string | null;
-        display_name: string | null;
-        avatar_url: string | null;
-        onboarding_done: boolean | null;
-        share_transcriptions: boolean | null;
-      };
-    }
+    ok: true;
+    data: {
+      id: string;
+      email: string | null;
+      display_name: string | null;
+      avatar_url: string | null;
+      onboarding_done: boolean | null;
+      share_transcriptions: boolean | null;
+    };
+  }
   | { ok: false; error: string }
   | { ok: false; error: "NO_USER" }
   | { ok: false; error: "NOT_FOUND" }

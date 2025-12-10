@@ -18,7 +18,7 @@ describe("config/api", () => {
 
   beforeEach(() => {
     // Reset URL and localStorage between tests
-    setLocation("https://app.sonicflow.app/");
+    setLocation("https://app.spoke.so/");
     window.localStorage.clear();
     // Stub out Vite dev flag so heuristics don't force local
     // @ts-ignore
@@ -33,7 +33,8 @@ describe("config/api", () => {
   });
 
   it("returns local endpoints in dev mode (Vitest env)", () => {
-    setLocation("https://app.sonicflow.app/");
+    setLocation("https://app.spoke.so/");
+    setLocation("https://app.spoke.so/");
     // Vitest sets import.meta.env.DEV, so functions should prefer local
     expect(getTranscribeUrl()).toBe("http://127.0.0.1:8787/transcribe");
     expect(getTranscribeWsUrl()).toBe("ws://127.0.0.1:8787/ws");
@@ -46,21 +47,21 @@ describe("config/api", () => {
   });
 
   it("forces local WS via query param or localStorage flag", () => {
-    setLocation("https://app.sonicflow.app/?localWs=1");
+    setLocation("https://app.spoke.so/?localWs=1");
     expect(getTranscribeWsUrl()).toBe("ws://127.0.0.1:8787/ws");
 
-    setLocation("https://app.sonicflow.app/");
+    setLocation("https://app.spoke.so/");
     window.localStorage.setItem("sf.localWs", "1");
     expect(getTranscribeWsUrl()).toBe("ws://127.0.0.1:8787/ws");
   });
 
   it("accepts explicit ws override via query param and normalizes scheme/path", () => {
-    setLocation("https://app.sonicflow.app/?ws=example.com");
+    setLocation("https://app.spoke.so/?ws=example.com");
     expect(window.location.search).toBe("?ws=example.com");
     // No path provided, so it normalizes to wss://example.com/ws
     expect(getTranscribeWsUrl()).toBe("wss://example.com/ws");
 
-    setLocation("https://app.sonicflow.app/?ws=http://foo.bar/custom");
+    setLocation("https://app.spoke.so/?ws=http://foo.bar/custom");
     expect(window.location.search).toBe("?ws=http://foo.bar/custom");
     // http -> ws, preserves custom path
     expect(getTranscribeWsUrl()).toBe("ws://foo.bar/custom");

@@ -1,6 +1,6 @@
 # Database Architecture
 
-Sonic Flow uses Supabase (PostgreSQL) to manage user data, subscriptions, quota tracking, and telemetry. The database is designed with privacy in mind—transcription text is never stored, only performance metrics.
+Spoke uses Supabase (PostgreSQL) to manage user data, subscriptions, quota tracking, and telemetry. The database is designed with privacy in mind—transcription text is never stored, only performance metrics.
 
 **Related:** `docs/AUTH.md`, `docs/TRANSCRIPTION.md`, `docs/PAYMENTS.md`
 

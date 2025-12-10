@@ -71,7 +71,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       const url = await getGoogleOAuthUrl();
       if (!url) {
         setAuthError(
-          "Authentication setup failed. Please ensure Sonic Flow is properly configured and try again.",
+          "Authentication setup failed. Please ensure Spoke is properly configured and try again.",
         );
         return;
       }
@@ -87,7 +87,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     try {
       const root = document.querySelector('.onboarding-window');
       if (root) root.classList.remove('resizing');
-    } catch {}
+    } catch { }
     setVisible(false);
   };
 
@@ -99,7 +99,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       // Delay slightly so headline and CTA finish easing before showing controls
       const delay = reduced ? 120 : 650; // CTA anim ~550ms + small buffer
       const id = setTimeout(() => {
-        try { onReadyForControls && onReadyForControls(); } catch {}
+        try { onReadyForControls && onReadyForControls(); } catch { }
       }, delay);
       return () => clearTimeout(id);
     }
@@ -116,7 +116,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
           exit={{ opacity: 0, y: -16 }}
           transition={spring}
           role="dialog"
-          aria-label="Sonic Flow intro"
+          aria-label="Spoke intro"
         >
           <GridBackground holeActive={stage >= 2} />
           {!reduced && <ParticlesCanvas />}
@@ -126,7 +126,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             {/* Logo */}
             <motion.img
               src={logoSrc}
-              alt="Sonic Flow logo"
+              alt="Spoke logo"
               className="sf-intro-logo"
               initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(8px)" }}
               animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}

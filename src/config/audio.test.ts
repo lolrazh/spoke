@@ -13,7 +13,7 @@ describe("config/audio", () => {
     window.localStorage.clear();
     // Reset search params: stub location deterministically
     Object.defineProperty(window, "location", {
-      value: { hostname: "app.sonicflow.app", search: "" },
+      value: { hostname: "app.spoke.so", search: "" },
       configurable: true,
     });
     // Best-effort remove env flag if any (function guards with try/catch)
@@ -39,7 +39,7 @@ describe("config/audio", () => {
 
   it("streamingV2Enabled toggles via query param", () => {
     Object.defineProperty(window, "location", {
-      value: { hostname: "app.sonicflow.app", search: "?wsV2=1" },
+      value: { hostname: "app.spoke.so", search: "?wsV2=1" },
       configurable: true,
     });
     expect(streamingV2Enabled()).toBe(true);

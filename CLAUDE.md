@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Development Workflow
 - `npm run dev` - Start development with devtools enabled
 - `npm run dev:local` - Development with local WebSocket server (ws://127.0.0.1:8787/ws)
-- `npm run dev:prod` - Development with production WebSocket server (wss://api.sonicflow.app/ws)
+- `npm run dev:prod` - Development with production WebSocket server (wss://api.spoke.so/ws)
 - `npm run dev:ws` - Start Cloudflare Worker locally (required for transcription)
 
 ### Testing & Code Quality
@@ -28,13 +28,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-Sonic Flow is a macOS dictation app built with Electron, React, and TypeScript. The architecture consists of:
+Spoke is a macOS dictation app built with Electron, React, and TypeScript. The architecture consists of:
 
 ### Core Components
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication
 2. **React Renderer** (`src/components/App.tsx`) - Glassmorphic pill UI with state machine pattern
 3. **Cloudflare Worker** (`worker/src/`) - Real-time transcription service via WebSocket
-4. **Native Helper** (`native/sonic-helper.c`) - macOS accessibility API integration for text insertion
+4. **Native Helper** (`native/spoke-helper.c`) - macOS accessibility API integration for text insertion
 
 ### Pill State Machine
 The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PROCESSING" | "NOTIFICATION" | "HOVER_PREVIEW" | "EXPANDED"`
@@ -47,7 +47,7 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 
 ### Authentication
 - Supabase authentication with Google OAuth
-- Custom protocol handler `sonicflow://` for deep linking
+- Custom protocol handler `spoke://` for deep linking
 - Environment adaptive: HTTP callback (dev) vs hosted page (prod)
 
 ## Key Directories
@@ -72,7 +72,7 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 
 ### Development
 - `SF_DEVTOOLS=1` - Enable development console
-- `VITE_TRANSCRIBE_WS_URL` - WebSocket endpoint (local: ws://127.0.0.1:8787/ws, prod: wss://api.sonicflow.app/ws)
+- `VITE_TRANSCRIBE_WS_URL` - WebSocket endpoint (local: ws://127.0.0.1:8787/ws, prod: wss://api.spoke.so/ws)
 - `FORCE_ONBOARDING=1` - Force onboarding flow
 - `SKIP_AUTH=1` - Skip authentication for testing
 
@@ -161,6 +161,6 @@ Sentry instrumentation across both app and worker:
 ## Publishing & Updates
 
 App uses Electron's auto-updater with Cloudflare R2 hosting:
-- Base URL: https://releases.sonicflow.app
+- Base URL: https://download.spoke.so
 - Publish with `npm run publish` (requires .env with R2 credentials)
 - Update flow managed via `RELEASES.json` manifest

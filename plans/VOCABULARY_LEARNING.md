@@ -101,7 +101,7 @@ CREATE INDEX idx_frequency ON vocabulary(frequency DESC);
 - `("Baseten", 2, ...)`
 - `("Anthropic", 3, ...)`
 
-**Storage:** `~/Library/Application Support/Sonic Flow/vocabulary.db`
+**Storage:** `~/Library/Application Support/Spoke/vocabulary.db`
 
 ---
 
@@ -515,7 +515,7 @@ setTimeout(async () => {
 
 **Traditional dictation:** "Here's what I heard. If it's wrong, add it to your dictionary."
 
-**Sonic Flow:** "Here's what I heard. If you fix it, I'll remember. Next time I'll get it right."
+**Spoke:** "Here's what I heard. If you fix it, I'll remember. Next time I'll get it right."
 
 It's the difference between asking the user to manage complexity and making the software adapt intelligently.
 

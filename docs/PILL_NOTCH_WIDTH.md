@@ -90,7 +90,7 @@ Detect the built-in display's notch width **once** on first launch and store it 
 - `native/bin/notch-reporter` - Compiled binary
 
 **Storage:**
-- `~/Library/Application Support/sonic-flow-app/pill-preferences.json`
+- `~/Library/Application Support/spoke-app/pill-preferences.json`
 
 ---
 
@@ -221,7 +221,7 @@ function sanitizeScreen(raw: NotchRawScreen, timestamp: number): DisplayNotchInf
 
 ### Preferences Structure
 
-**File:** `~/Library/Application Support/sonic-flow-app/pill-preferences.json`
+**File:** `~/Library/Application Support/spoke-app/pill-preferences.json`
 
 **Format:**
 ```json
@@ -506,7 +506,7 @@ If Apple releases new MacBook models with different notch dimensions, the -2px a
 **Diagnosis:**
 1. Check if preferences file exists:
    ```bash
-   cat ~/Library/Application\ Support/sonic-flow-app/pill-preferences.json
+   cat ~/Library/Application\ Support/spoke-app/pill-preferences.json
    ```
 
 2. Check console logs for:
@@ -548,7 +548,7 @@ If Apple releases new MacBook models with different notch dimensions, the -2px a
 
 **Fix:**
 ```bash
-rm ~/Library/Application\ Support/sonic-flow-app/pill-preferences.json
+rm ~/Library/Application\ Support/spoke-app/pill-preferences.json
 ```
 Restart app to re-detect.
 

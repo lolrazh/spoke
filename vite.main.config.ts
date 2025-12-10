@@ -21,8 +21,8 @@ export default defineConfig({
 
   plugins: [
     sentryVitePlugin({
-      org: "sonic-flow",
-      project: "sonic-flow-app",
+      org: "spoke",
+      project: "spoke-app",
     }),
   ],
 });

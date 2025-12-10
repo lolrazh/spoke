@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines caching optimization opportunities for Sonic Flow's LLM pipeline using Cloudflare AI Gateway's built-in caching capabilities.
+This document outlines caching optimization opportunities for Spoke's LLM pipeline using Cloudflare AI Gateway's built-in caching capabilities.
 
 ## Current State
 

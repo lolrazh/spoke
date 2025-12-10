@@ -13,7 +13,7 @@ This document outlines the architecture and implementation plan for two new feat
 
 ## Overview
 
-The goal is to enhance Sonic Flow's utility by allowing users to map specific voice commands to actions:
+The goal is to enhance Spoke's utility by allowing users to map specific voice commands to actions:
 - **Snippets**: Dictate a trigger word (e.g., "email") to insert a pre-defined text block.
 - **Quick Links**: Dictate a trigger word (e.g., "Cloudflare") to open a specific URL in the default browser.
 
@@ -28,9 +28,9 @@ Users can define short trigger words that expand into longer text strings. When 
 
 **Example:**
 - **Trigger**: "email"
-- **Value**: "jane.doe@sonicflow.app"
+- **Value**: "jane.doe@spoke.so"
 - **User Action**: Dictates "email" (and nothing else).
-- **System Output**: Inserts "jane.doe@sonicflow.app" at the cursor.
+- **System Output**: Inserts "jane.doe@spoke.so" at the cursor.
 
 ### Behavior
 - **Exact Match**: The feature only activates if the transcribed text matches the trigger word exactly (case-insensitive, ignoring trailing punctuation/silence).
@@ -142,7 +142,7 @@ This configuration should be passed to the Worker during the **Session Start** h
     },
     "quickLinks": {
       "dashboard": "https://dash.cloudflare.com",
-      "docs": "https://sonicflow.app/docs"
+      "docs": "https://spoke.so/docs"
     }
   }
   // ... existing fields

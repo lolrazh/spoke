@@ -6,14 +6,14 @@ set -e
 # Define source and destination directories
 SOURCE_DIR="native"
 DEST_DIR="native/bin"
-APP_BUNDLE_NAME="Sonic Flow Helper.app"
+APP_BUNDLE_NAME="Spoke Helper.app"
 APP_BUNDLE_PATH="$DEST_DIR/$APP_BUNDLE_NAME"
-EXECUTABLE_NAME="Sonic Flow Helper"
+EXECUTABLE_NAME="Spoke Helper"
 
 # Clean up previous build
 echo "Cleaning up old build artifacts..."
 rm -rf "$APP_BUNDLE_PATH"
-rm -f "$DEST_DIR/sonic-helper" # Remove old naked binary
+rm -f "$DEST_DIR/spoke-helper" # Remove old naked binary
 
 # Create the directory structure for the .app bundle
 echo "Creating .app bundle structure at $APP_BUNDLE_PATH..."
@@ -26,7 +26,7 @@ clang -x objective-c -fobjc-arc \
       -framework Foundation -framework AppKit \
       -framework ApplicationServices -framework IOKit -framework CoreGraphics \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
-      "$SOURCE_DIR/sonic-helper.c"
+      "$SOURCE_DIR/spoke-helper.c"
 
 # Ensure the binary is executable
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME"
@@ -40,7 +40,7 @@ cp "$SOURCE_DIR/Info.plist" "$APP_BUNDLE_PATH/Contents/Info.plist"
 echo "Updating CFBundleExecutable in Info.plist..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE_NAME" "$APP_BUNDLE_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $EXECUTABLE_NAME" "$APP_BUNDLE_PATH/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.sonicflow.app.helper" "$APP_BUNDLE_PATH/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.spoke.app.helper" "$APP_BUNDLE_PATH/Contents/Info.plist"
 
 echo "$APP_BUNDLE_NAME built (unsigned). Will be signed by Forge."
 echo "Native helper built successfully at $APP_BUNDLE_PATH"

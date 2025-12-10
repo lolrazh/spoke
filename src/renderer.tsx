@@ -26,7 +26,7 @@ Sentry.init({
           const u = new URL(event.request.url);
           u.search = "";
           event.request.url = u.toString();
-        } catch {}
+        } catch { }
       }
       if (event.request?.headers) {
         const headers = event.request.headers as Record<string, string>;
@@ -46,7 +46,7 @@ Sentry.init({
           return b;
         });
       }
-    } catch {}
+    } catch { }
     return event;
   },
 });
@@ -66,7 +66,7 @@ function mountReact(root: HTMLElement) {
 }
 
 // Add a temporary class to body to avoid any first-paint flash
-try { document.body.classList.add("initial-fade"); } catch {}
+try { document.body.classList.add("initial-fade"); } catch { }
 
 const existing = document.getElementById("root");
 if (existing) {
@@ -87,15 +87,15 @@ void (async () => {
     if (fonts?.ready) {
       await fonts.ready;
     }
-  } catch {}
+  } catch { }
   // Next frame to ensure first paint with styles is committed
   requestAnimationFrame(() => {
     try {
       window.electron?.rendererReady?.();
-    } catch {}
+    } catch { }
     // Remove initial fade after we've signaled readiness
-    try { document.body.classList.remove("initial-fade"); } catch {}
+    try { document.body.classList.remove("initial-fade"); } catch { }
   });
 })();
 
-console.log("🎤 Sonic Flow is running");
+console.log("🎤 Spoke is running");

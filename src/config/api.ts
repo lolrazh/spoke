@@ -23,9 +23,9 @@ export function getTranscribeUrl(): string {
       return "http://127.0.0.1:8787/transcribe";
     }
 
-    return "https://api.sonicflow.app/transcribe";
+    return "https://api.spoke.so/transcribe";
   } catch {
-    return "https://api.sonicflow.app/transcribe";
+    return "https://api.spoke.so/transcribe";
   }
 }
 
@@ -41,7 +41,7 @@ export function getTranscribeWsUrl(): string {
         const qp = qs.get("ws");
         if (qp && qp.trim()) return normalize(qp.trim());
       }
-    } catch {}
+    } catch { }
     const override = env?.VITE_TRANSCRIBE_WS_URL as string | undefined;
     if (override && override.trim()) return normalize(override.trim());
 
@@ -60,9 +60,9 @@ export function getTranscribeWsUrl(): string {
       return "ws://127.0.0.1:8787/ws";
     }
 
-    return "wss://api.sonicflow.app/ws";
+    return "wss://api.spoke.so/ws";
   } catch {
-    return "wss://api.sonicflow.app/ws";
+    return "wss://api.spoke.so/ws";
   }
 }
 
@@ -78,7 +78,7 @@ export function getMetricsUrl(): string {
     return u.toString();
   } catch {
     // Fallback to production API domain
-    return 'https://api.sonicflow.app/metrics/session';
+    return 'https://api.spoke.so/metrics/session';
   }
 }
 

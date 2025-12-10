@@ -28,15 +28,15 @@ const timings: Record<string, number> = {};
 
 const config: ForgeConfig = {
   packagerConfig: {
-    appBundleId: "com.sonicflow.app",
+    appBundleId: "com.spoke.app",
     appCategoryType: "public.app-category.productivity",
 
     asar: true,
     // Register custom URL scheme for OAuth deep-link callbacks in packaged builds
     protocols: [
       {
-        name: "Sonic Flow",
-        schemes: ["sonicflow"],
+        name: "Spoke",
+        schemes: ["spoke"],
       },
     ],
     // macOS app icon
@@ -47,11 +47,11 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
       "./public/assets/Assets.car",
-      "./native/bin/Sonic Flow Helper.app",
+      "./native/bin/Spoke Helper.app",
       "./native/bin/notch-reporter",
     ],
     extendInfo: {
-      CFBundleIconName: 'SonicFlow'
+      CFBundleIconName: 'Spoke'
     },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: ({
@@ -59,8 +59,8 @@ const config: ForgeConfig = {
       preAutoEntitlements: false,
       // Ensure the nested helper app and its binary are signed with the same identity
       binaries: [
-        "Contents/Resources/Sonic Flow Helper.app",
-        "Contents/Resources/Sonic Flow Helper.app/Contents/MacOS/Sonic Flow Helper",
+        "Contents/Resources/Spoke Helper.app",
+        "Contents/Resources/Spoke Helper.app/Contents/MacOS/Spoke Helper",
         "Contents/Resources/notch-reporter",
       ],
       optionsForFile: (filePath) => {
@@ -79,8 +79,8 @@ const config: ForgeConfig = {
         }
         // Apply tighter inherit entitlements on the helper
         if (
-          filePath.endsWith("/Sonic Flow Helper.app") ||
-          filePath.endsWith("/Sonic Flow Helper")
+          filePath.endsWith("/Spoke Helper.app") ||
+          filePath.endsWith("/Spoke Helper")
         ) {
           return {
             ...base,
@@ -93,12 +93,12 @@ const config: ForgeConfig = {
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
     ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
-          osxNotarize: {
-            appleId,
-            appleIdPassword: applePassword,
-            teamId: appleTeamId,
-          },
-        }
+        osxNotarize: {
+          appleId,
+          appleIdPassword: applePassword,
+          teamId: appleTeamId,
+        },
+      }
       : {}),
   },
   rebuildConfig: {},
@@ -110,7 +110,7 @@ const config: ForgeConfig = {
         // Use the existing icon for DMG
         icon: "./public/assets/icon.icns",
         background: "./public/assets/dmg-background@2x.png",
-        title: "Sonic Flow",
+        title: "Spoke",
         iconSize: 96,
         additionalDMGOptions: {
           window: {
@@ -143,7 +143,7 @@ const config: ForgeConfig = {
     // Include absolute URLs in RELEASES.json for stable CDN behavior
     new MakerZIP(
       (arch) => ({
-        macUpdateManifestBaseUrl: `https://releases.sonicflow.app/darwin/${arch}`,
+        macUpdateManifestBaseUrl: `https://download.spoke.so/darwin/${arch}`,
       }),
       ["darwin"],
     ),
@@ -201,7 +201,7 @@ const config: ForgeConfig = {
             console.log(
               `[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`,
             );
-          } catch {}
+          } catch { }
         }
 
         // Notarize + staple DMG(s) after make (before publish uploads)

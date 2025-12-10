@@ -157,10 +157,10 @@ const SegmentTypewriter: React.FC<{
         setDisplayedSegments(prev => {
           const updated = [...prev];
           if (updated.length <= currentSegmentIndex) {
-            updated.push({ 
-              segment: currentSegment, 
-              text: newChar, 
-              shouldStrike: false, 
+            updated.push({
+              segment: currentSegment,
+              text: newChar,
+              shouldStrike: false,
               isDisappearing: false,
               isReplacing: false,
               isInserting: false
@@ -342,22 +342,19 @@ const SegmentTypewriter: React.FC<{
           <span
             key={index}
             ref={el => segmentRefs.current[index] = el}
-            className={`inline-block overflow-hidden ${
-              displayed.isDisappearing ? 'segment-collapsing' : ''
-            } ${
-              displayed.isReplacing ? 'segment-replacing' : ''
-            } ${
-              displayed.isInserting ? 'segment-inserting' : ''
-            }`}
+            className={`inline-block overflow-hidden ${displayed.isDisappearing ? 'segment-collapsing' : ''
+              } ${displayed.isReplacing ? 'segment-replacing' : ''
+              } ${displayed.isInserting ? 'segment-inserting' : ''
+              }`}
             style={{
-              width: displayed.measuredWidth !== undefined 
-                ? (displayed.isDisappearing 
-                    ? '0px' 
-                    : displayed.isReplacing && displayed.replacementWidth !== undefined
-                      ? `${displayed.replacementWidth}px`
-                      : displayed.isInserting
-                        ? `${displayed.measuredWidth}px`
-                        : `${displayed.measuredWidth}px`)
+              width: displayed.measuredWidth !== undefined
+                ? (displayed.isDisappearing
+                  ? '0px'
+                  : displayed.isReplacing && displayed.replacementWidth !== undefined
+                    ? `${displayed.replacementWidth}px`
+                    : displayed.isInserting
+                      ? `${displayed.measuredWidth}px`
+                      : `${displayed.measuredWidth}px`)
                 : displayed.segment.type === 'insertion' && !displayed.isInserting
                   ? '0px'
                   : 'auto',
@@ -542,7 +539,7 @@ const TricksComponent: React.FC = () => {
           More Tricks to Try
         </h2>
         <p className="text-sm text-subtle leading-relaxed subheading">
-          These commands make Sonic Flow feel like magic.
+          These commands make Spoke feel like magic.
         </p>
       </div>
 
@@ -554,9 +551,8 @@ const TricksComponent: React.FC = () => {
             <motion.button
               key={trick.id}
               variants={tagVariants}
-              className={`meta-directive-tag px-3 py-1.5 ${
-                highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
-              }`}
+              className={`meta-directive-tag px-3 py-1.5 ${highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
+                }`}
               type="button"
               onMouseEnter={() => handlePointerEnter(index)}
               onMouseLeave={() => handlePointerLeave(index)}

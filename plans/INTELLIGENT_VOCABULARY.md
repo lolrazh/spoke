@@ -1,4 +1,4 @@
-# Sonic Flow's Intelligent Vocabulary: A Journey to Human-Like Memory
+# Spoke's Intelligent Vocabulary: A Journey to Human-Like Memory
 
 ## The Problem Nobody's Solving
 
@@ -7,7 +7,7 @@ Every dictation app on the market is stupid. They either:
 - Force you to manually add words like it's 1995 (Dragon Dictate)
 - Try to guess from global datasets (which never work for personal terms)
 
-But here's the thing: **you already correct these mistakes every single day**. When Sonic Flow says "grow queue" and you think "Groq," that's a correction event. When you say "my name is Sandheep" and it writes "Sandeep," that's a learning opportunity.
+But here's the thing: **you already correct these mistakes every single day**. When Spoke says "grow queue" and you think "Groq," that's a correction event. When you say "my name is Sandheep" and it writes "Sandeep," that's a learning opportunity.
 
 The question isn't "should we learn vocabulary?" It's "how do we learn vocabulary without making it feel like work?"
 
@@ -24,7 +24,7 @@ Think about how humans handle vocabulary in conversation:
 
 You don't re-explain "Groq" every time. You establish context once, then reference it naturally.
 
-**Sonic Flow should work the same way.** If you've been talking about "Groq" for the last few minutes, the app should remember that. If your cursor is in a document that mentions "Sandheep," it should know that's your name.
+**Spoke should work the same way.** If you've been talking about "Groq" for the last few minutes, the app should remember that. If your cursor is in a document that mentions "Sandheep," it should know that's your name.
 
 The key insight: **dictation isn't isolated utterances. It's a conversation with context.**
 
@@ -137,7 +137,7 @@ Today: Dictating in code file with "GROQ_API_KEY"
 ```typescript
 // Before dictation
 const prompt = `
-You are a verbatim ASR cleaner for Sonic Flow.
+You are a verbatim ASR cleaner for Spoke.
 
 <conversation_history>
 Recent dictations:
@@ -259,7 +259,7 @@ This isn't just privacy-first. It's **privacy-only**. Your vocabulary is yours.
 
 **Before:** Dictation apps are dumb. They don't learn, don't remember, don't adapt.
 
-**After:** Sonic Flow remembers what you say, learns from your corrections, and gets smarter over time. It feels like talking to someone who actually listens.
+**After:** Spoke remembers what you say, learns from your corrections, and gets smarter over time. It feels like talking to someone who actually listens.
 
 ### For the Product
 
@@ -342,7 +342,7 @@ Fix the ASR input while respecting established vocabulary and context.
 
 Traditional dictation: "Here's what I heard. Fix it if you can."
 
-Sonic Flow: "Here's what I heard. Here's what you just said. Here's what's around your cursor. Here's what you've taught me before. Now, what did you actually mean?"
+Spoke: "Here's what I heard. Here's what you just said. Here's what's around your cursor. Here's what you've taught me before. Now, what did you actually mean?"
 
 It's the difference between a dumb transcription service and a dictation assistant that actually understands you.
 
@@ -364,4 +364,4 @@ This is dictation that respects your intelligence rather than treating you like 
 
 ---
 
-*This document represents the evolution of our thinking about vocabulary in Sonic Flow. It's not just about being smart—it's about being human.*
+*This document represents the evolution of our thinking about vocabulary in Spoke. It's not just about being smart—it's about being human.*
