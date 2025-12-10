@@ -16,10 +16,6 @@
   },
   "routes": [
     {
-      "pattern": "api.sonicflow.app",
-      "custom_domain": true
-    },
-    {
       "pattern": "api.spoke.so",
       "custom_domain": true
     }
