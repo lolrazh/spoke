@@ -118,10 +118,11 @@
 
   .sf-intro-logo {
     position: absolute;
-    top: 28%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 157px;
+    top: 30%;
+    left: 0%;
+    right: 0;
+    margin: 0 auto;
+    width: 160px;
     height: auto;
     image-rendering: -webkit-optimize-contrast;
     filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
