@@ -587,7 +587,7 @@ const AppInner: React.FC = () => {
           // Pre-connect to Worker to avoid first-dictation latency
           // CRITICAL: This must happen AFTER JWT refresh completes (above)
           // Retry with exponential backoff to handle transient network issues
-          retryWithBackoff(
+          void retryWithBackoff(
             () => trans.preConnect(),
             { context: 'Pre-connect on startup' }
           );
@@ -644,7 +644,7 @@ const AppInner: React.FC = () => {
               setTimeout(() => loadSharePreference(currentUserId), 0);
               // Pre-connect to Worker after sign in with retry logic
               setTimeout(() => {
-                retryWithBackoff(
+                void retryWithBackoff(
                   () => trans.preConnect(),
                   { context: 'Pre-connect after sign-in' }
                 );
