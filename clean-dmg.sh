@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Safely detach the DMG volume if mounted
-hdiutil detach "/Volumes/Sonic Flow" 2>/dev/null || true
+hdiutil detach "/Volumes/Spoke" 2>/dev/null || true
 
 # Clean build artifacts only
 npm run clean
@@ -19,7 +19,7 @@ DEBUG="electron-forge:*,electron-osx-sign:*,@electron/osx-sign:*,electron-notari
   npm run --silent make:env -- --verbose 2>&1 | tee "$LOG_FILE"
 
 # Open the newly created DMG (best-effort)
-DMG_PATH="out/make/Sonic Flow-0.0.1-arm64.dmg"
+DMG_PATH="out/make/Spoke-0.0.1-arm64.dmg"
 if [[ -f "$DMG_PATH" ]]; then
   open "$DMG_PATH"
 else

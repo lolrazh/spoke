@@ -35,12 +35,12 @@
 - Publish in one step: `npm run publish:env` (do not pre-run `make` to avoid double notarization).
 - Verify:
   - Manifest: `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
-  - ZIP URL: `curl -I https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip`
-  - DMG stapled (optional but recommended for first installs): `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
+  - ZIP URL: `curl -I https://download.spoke.so/darwin/arm64/Spoke-<version>-mac.zip`
+  - DMG stapled (optional but recommended for first installs): `xcrun stapler validate out/make/**/Spoke-<version>.dmg`
 
 ## Transcription & Worker (Overview)
 - End-to-end: mic capture → 16kHz PCM worklet → binary WS frames → Cloudflare Worker (PCM concat + WAV wrap) → Groq STT → optional LLM → final text → native insertion.
-- Dev endpoints: `VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws` (local), prod `wss://api.sonicflow.app/ws`.
+- Dev endpoints: `VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws` (local), prod `wss://api.spoke.so/ws`.
 - Commands: run worker locally with `npm run dev:ws` (from `worker/`); start app pointing to local WS via `npm run dev:local`.
 - Key files (client): `src/hooks/useTranscription.ts` (pipeline + WS), `public/worklets/pcm16-downsampler.worklet.js` (resample), `src/utils/pcm.ts` (frame header), `src/config/audio.ts` (CHUNK_MS, POST_ROLL_MS, WS buffers), `src/config/vad.ts` + `src/utils/vad*` (gate-only VAD, optional).
 - Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/index.ts` + `worker/src/services/stt/providers/*` (STT), `worker/src/services/llm/{openai,groq,baseten}.ts` (optional LLM), `worker/src/config/runtime.ts` (env-driven provider/model/stream settings).
