@@ -582,10 +582,31 @@ const AppInner: React.FC = () => {
           } catch { }
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
+
           // Pre-connect to Worker to avoid first-dictation latency
-          trans.preConnect().catch(() => {
-            // Silently fail - will retry on first dictation
-          });
+          // CRITICAL: This must happen AFTER JWT refresh completes (above)
+          // Retry with exponential backoff to handle transient network issues
+          (async () => {
+            let retries = 0;
+            const maxRetries = 3;
+            while (retries < maxRetries) {
+              try {
+                await trans.preConnect();
+                console.log('[App] Pre-connect succeeded on startup');
+                break; // Success!
+              } catch (err) {
+                retries++;
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                if (retries < maxRetries) {
+                  const backoffMs = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s
+                  console.warn(`[App] Pre-connect attempt ${retries} failed, retrying in ${backoffMs}ms:`, errorMsg);
+                  await new Promise(resolve => setTimeout(resolve, backoffMs));
+                } else {
+                  console.warn('[App] Pre-connect failed after 3 attempts, will retry on first dictation:', errorMsg);
+                }
+              }
+            }
+          })();
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
@@ -637,11 +658,29 @@ const AppInner: React.FC = () => {
               setCurrentUserId(currentUserId);
               // Defer Supabase call to avoid breaking the auth listener
               setTimeout(() => loadSharePreference(currentUserId), 0);
-              // Pre-connect to Worker after sign in
+              // Pre-connect to Worker after sign in with retry logic
               setTimeout(() => {
-                trans.preConnect().catch(() => {
-                  // Silently fail - will retry on first dictation
-                });
+                (async () => {
+                  let retries = 0;
+                  const maxRetries = 3;
+                  while (retries < maxRetries) {
+                    try {
+                      await trans.preConnect();
+                      console.log('[App] Pre-connect succeeded after sign-in');
+                      break; // Success!
+                    } catch (err) {
+                      retries++;
+                      const errorMsg = err instanceof Error ? err.message : String(err);
+                      if (retries < maxRetries) {
+                        const backoffMs = 500 * Math.pow(2, retries - 1); // 500ms, 1s, 2s
+                        console.warn(`[App] Pre-connect attempt ${retries} failed, retrying in ${backoffMs}ms:`, errorMsg);
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                      } else {
+                        console.warn('[App] Pre-connect failed after 3 attempts, will retry on first dictation:', errorMsg);
+                      }
+                    }
+                  }
+                })();
               }, 0);
               return;
             }
