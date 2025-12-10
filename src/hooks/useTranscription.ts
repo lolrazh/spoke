@@ -662,11 +662,14 @@ export function useTranscription(
 
         // Handle unexpected close codes (like 1003 from Cloudflare edge rejection)
         // These are retryable - reject the Promise so ensureStreamingSocket can retry
-        console.warn("[SF] WebSocket closed unexpectedly during auth", {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
+        // Code 1000 (Normal Closure) is not an error, so only log true errors
+        if (event.code !== 1000) {
+          console.warn("[SF] WebSocket closed unexpectedly during auth", {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
+        }
 
         // Clean up this connection attempt
         if (wsRef.current === ws) {
@@ -675,6 +678,7 @@ export function useTranscription(
         stopWebSocketHealthCheck();
 
         // Reject the Promise so the caller knows auth failed and can retry
+        // For code 1000, this is a graceful close (likely session completed on another connection)
         cleanup();
         reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
       });
