@@ -1,8 +1,8 @@
 # Design Philosophy
 
-Sonic Flow's design is built on **Fluid UI** — a philosophy inspired by Apple's Dynamic Island where the interface becomes what you need, when you need it. The pill is not a widget, it's THE voice interface. It morphs between states: listening visualization, processing indicator, notification, settings panel, history view. Everything flows through this single, adaptive element that only appears when necessary and vanishes when done.
+Spoke's design is built on **Fluid UI** — a philosophy inspired by Apple's Dynamic Island where the interface becomes what you need, when you need it. The pill is not a widget, it's THE voice interface. It morphs between states: listening visualization, processing indicator, notification, settings panel, history view. Everything flows through this single, adaptive element that only appears when necessary and vanishes when done.
 
-This is the foundation for Sonic Flow to scale into much larger, more complex voice-driven interactions. As voice becomes the primary interface, the UI must stay invisible until the moment you need it.
+This is the foundation for Spoke to scale into much larger, more complex voice-driven interactions. As voice becomes the primary interface, the UI must stay invisible until the moment you need it.
 
 **Related:** `docs/TRANSCRIPTION.md`, `docs/PERMISSIONS.md`
 
@@ -10,20 +10,20 @@ This is the foundation for Sonic Flow to scale into much larger, more complex vo
 
 ## Core Principles
 
-Sonic Flow is designed around a fundamental understanding: **dictation ≠ transcription**.
+Spoke is designed around a fundamental understanding: **dictation ≠ transcription**.
 
 Dictation is what you do with a stenographer, a human scribe who *understands* what you mean, not just what you say. They infer context, fix obvious mistakes, and produce clean output without you specifying every punctuation mark. That's the standard we're building toward.
 
 <core_principles>
   <principle name="dictation_not_transcription">
-    Dictation ≠ Transcription. Sonic Flow always writes what the user *meant* to write,
+    Dictation ≠ Transcription. Spoke always writes what the user *meant* to write,
     not what the user dictated verbatim.
 
     Transcription is mechanical—it converts audio to text word-for-word.
     Dictation is intelligent—it understands intent, applies context, fixes obvious errors,
     and produces clean output without you specifying every punctuation mark.
 
-    Sonic Flow uses LLM post-processing to bridge this gap. The STT gives us raw transcription,
+    Spoke uses LLM post-processing to bridge this gap. The STT gives us raw transcription,
     the LLM gives us intelligent dictation. This is why we don't just pipe Whisper output directly—
     we want the experience of dictating to a smart assistant, not a dumb recorder.
   </principle>
@@ -71,7 +71,7 @@ Dictation is what you do with a stenographer, a human scribe who *understands* w
     A human stenographer doesn't come with a dashboard of 50 configuration options.
     They just work. They adapt to your voice, your style, your context.
 
-    Sonic Flow should be the same. Most things should auto-configure, auto-adapt, and just work.
+    Spoke should be the same. Most things should auto-configure, auto-adapt, and just work.
     Settings exist for what truly requires user choice (which microphone, privacy preferences),
     not for every possible knob we could expose.
 
@@ -90,13 +90,13 @@ Dictation is what you do with a stenographer, a human scribe who *understands* w
   </principle>
 </core_principles>
 
-These principles guide every decision—from architecture to UX to which features we build. When something doesn't align with these principles, it's wrong for Sonic Flow, even if it's "normal" for other apps.
+These principles guide every decision—from architecture to UX to which features we build. When something doesn't align with these principles, it's wrong for Spoke, even if it's "normal" for other apps.
 
 ---
 
 ## Philosophy: Fluid UI
 
-The pill isn't just a widget—it's THE voice interface. Everything flows through this single, adaptive element. This is the foundation we're building for Sonic Flow to scale into much larger, more complex interactions.
+The pill isn't just a widget—it's THE voice interface. Everything flows through this single, adaptive element. This is the foundation we're building for Spoke to scale into much larger, more complex interactions.
 
 <philosophy>
   <principle name="contextual_presence">
@@ -370,7 +370,7 @@ The pill adapts to your display, content, and context automatically. Responsive 
 
 ### Surface Language
 
-Sonic Flow uses **flat design** with solid, opaque surfaces. This is a deliberate move away from glassmorphic effects (semi-transparent, backdrop-filter, layered pseudo-elements) toward simplicity, performance, and visual clarity.
+Spoke uses **flat design** with solid, opaque surfaces. This is a deliberate move away from glassmorphic effects (semi-transparent, backdrop-filter, layered pseudo-elements) toward simplicity, performance, and visual clarity.
 
 <surfaces>
   <primary>
@@ -770,7 +770,7 @@ All visual values come from CSS custom properties—never hardcoded. This ensure
 
 ## Design Evolution: From Glassmorphic to Flat
 
-In November 2025, Sonic Flow transitioned from glassmorphic design to flat design. This was a deliberate architectural decision driven by performance, maintainability, and visual clarity.
+In November 2025, Spoke transitioned from glassmorphic design to flat design. This was a deliberate architectural decision driven by performance, maintainability, and visual clarity.
 
 <design_transition>
   <glassmorphic_era before="2025-11-13">
@@ -812,7 +812,7 @@ In November 2025, Sonic Flow transitioned from glassmorphic design to flat desig
 
   <philosophy>
     The move to flat design isn't just aesthetic—it's architectural. Glassmorphic effects
-    create complexity that doesn't scale. As Sonic Flow grows into THE voice interface with
+    create complexity that doesn't scale. As Spoke grows into THE voice interface with
     richer interactions, the design system needs to be performant, maintainable, and
     predictable. Flat design provides that foundation.
 
@@ -830,7 +830,7 @@ The fluid UI philosophy is designed to scale far beyond current features.
 
 <future_vision>
   <principle>
-    The pill becomes anything you need. As Sonic Flow grows into THE voice interface,
+    The pill becomes anything you need. As Spoke grows into THE voice interface,
     the pill will morph to show:
     - Voice command results
     - Contextual actions

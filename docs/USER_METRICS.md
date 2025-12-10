@@ -5,7 +5,7 @@
 
 ## Purpose
 
-This document describes the user-specific metrics collection system for Sonic Flow. The goal is to track **who is using the app and how much**, enabling:
+This document describes the user-specific metrics collection system for Spoke. The goal is to track **who is using the app and how much**, enabling:
 
 - **Usage analytics:** Understand which users are power users vs casual users
 - **Performance monitoring:** Track average latency metrics across all users with ability to filter by user

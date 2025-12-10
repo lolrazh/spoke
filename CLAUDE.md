@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-Sonic Flow is a macOS dictation app built with Electron, React, and TypeScript. The architecture consists of:
+Spoke is a macOS dictation app built with Electron, React, and TypeScript. The architecture consists of:
 
 ### Core Components
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication

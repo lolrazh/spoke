@@ -1,16 +1,16 @@
-# Sonic Flow App - Auth Flow - docs/AUTH.md
+# Spoke App - Auth Flow - docs/AUTH.md
 
-This file provides comprehensive documentation for Sonic Flow's authentication system, including OAuth flows, deep link handling, and environment-specific configurations.
+This file provides comprehensive documentation for Spoke's authentication system, including OAuth flows, deep link handling, and environment-specific configurations.
 
 ## Overview
 
-Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth with custom deep link handling to provide seamless sign-in across development and production environments. The system supports Google OAuth and email magic links, with automatic app launching after authentication.
+Spoke uses a **hybrid authentication system** that combines Supabase OAuth with custom deep link handling to provide seamless sign-in across development and production environments. The system supports Google OAuth and email magic links, with automatic app launching after authentication.
 
 ### Key Features
 - **Supabase OAuth Integration** - Google sign-in and email magic links
-- **Cross-Platform Deep Links** - `sonicflow://` protocol handling
+- **Cross-Platform Deep Links** - `spoke://` protocol handling
 - **Development HTTP Server** - Local callback server for dev environments
-- **Hosted Callback Page** - Production web interface at `auth.sonicflow.app`
+- **Hosted Callback Page** - Production web interface at `auth.spoke.so`
 - **Duplicate Prevention** - Prevents multiple processing of same auth tokens
 - **Graceful Error Handling** - User-friendly error messages and fallbacks
 
@@ -27,7 +27,7 @@ Sonic Flow uses a **hybrid authentication system** that combines Supabase OAuth 
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   App processes │◀───│   Deep link      │◀───│   Deep link     │
 │   auth tokens   │    │   opens app      │    │   generation    │
-│   and completes │    │   with tokens    │    │   (sonicflow://)│
+│   and completes │    │   with tokens    │    │   (spoke://)│
 │   sign-in       │    │                  │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
@@ -109,7 +109,7 @@ ipcMain.handle("auth:get-redirect-url", async () => {
     await waitForDevServer();
     return { url: "http://127.0.0.1:43112/auth/callback" };
   }
-  return { url: "https://auth.sonicflow.app/auth/callback" };
+  return { url: "https://auth.spoke.so/auth/callback" };
 });
 ```
 
@@ -126,10 +126,10 @@ const { data, error } = await supabase.auth.signInWithOAuth({
 
 #### 4. **Callback Processing**
 - **Development**: HTTP server on `127.0.0.1:43112` receives callback
-- **Production**: Hosted page at `auth.sonicflow.app` receives callback
+- **Production**: Hosted page at `auth.spoke.so` receives callback
 
 #### 5. **Deep Link Generation**
-Both callback methods convert to deep link: `sonicflow://auth/callback?code=...`
+Both callback methods convert to deep link: `spoke://auth/callback?code=...`
 
 #### 6. **App Receives Deep Link** (`main.ts`)
 ```typescript
@@ -254,7 +254,7 @@ useEffect(() => {
 **Callback Strategy**: Local HTTP Server
 - **URL**: `http://127.0.0.1:43112/auth/callback`
 - **Port**: 43112 (fixed)
-- **Protocol**: Custom `sonicflow-dev://` protocol registered
+- **Protocol**: Custom `spoke-dev://` protocol registered
 - **Server**: Started automatically in `main.ts` when `!app.isPackaged`
 
 **Key Features**:
@@ -265,13 +265,13 @@ useEffect(() => {
 ### Production Environment
 
 **Callback Strategy**: Hosted Web Page
-- **URL**: `https://auth.sonicflow.app/auth/callback`
-- **Protocol**: Custom `sonicflow://` protocol registered
+- **URL**: `https://auth.spoke.so/auth/callback`
+- **Protocol**: Custom `spoke://` protocol registered
 - **Hosting**: Vercel deployment from `api-spoke-site`
 
 **Hosted Page Requirements**:
 - Must parse OAuth callback parameters (`?code=...` or `#access_token=...`)
-- Must immediately deep-link to app with: `sonicflow://auth/callback?...`
+- Must immediately deep-link to app with: `spoke://auth/callback?...`
 - Must provide fallback UI if deep link fails
 
 ## URL Structure and Configuration
@@ -280,8 +280,8 @@ useEffect(() => {
 
 **Production URLs**:
 ```
-https://auth.sonicflow.app/auth/callback
-sonicflow://auth/callback
+https://auth.spoke.so/auth/callback
+spoke://auth/callback
 ```
 
 **Development URLs**:
@@ -294,19 +294,19 @@ http://localhost:43112/auth/callback
 
 **Standard Form** (recommended):
 ```
-sonicflow://auth/callback?code=abc123
-sonicflow://auth/callback#access_token=xyz&refresh_token=abc
+spoke://auth/callback?code=abc123
+spoke://auth/callback#access_token=xyz&refresh_token=abc
 ```
 
 **Path Form** (also supported):
 ```
-sonicflow:///auth/callback?code=abc123
+spoke:///auth/callback?code=abc123
 ```
 
 ### Callback URL Validation
 
 The app accepts these URL patterns in `handleAuthCallbackUrl()`:
-- Custom schemes: `sonicflow://` and `sonicflow-dev://`
+- Custom schemes: `spoke://` and `spoke-dev://`
 - Dev HTTP: `http://127.0.0.1:43112` and `http://localhost:43112`
 - Path validation: `/auth/callback` or hostname `auth` with pathname `/callback`
 
@@ -448,12 +448,12 @@ useEffect(() => { init(); }, []);
 
 **Development**:
 ```typescript
-app.setAsDefaultProtocolClient("sonicflow-dev", exe, [appPath]);
+app.setAsDefaultProtocolClient("spoke-dev", exe, [appPath]);
 ```
 
 **Production**:
 ```typescript
-app.setAsDefaultProtocolClient("sonicflow");
+app.setAsDefaultProtocolClient("spoke");
 ```
 
 ## Deep Link Handling
@@ -464,7 +464,7 @@ Deep links are registered during app startup and validated on receipt:
 
 ```typescript
 // Validation logic
-const isCustomScheme = parsed.protocol === "sonicflow:" || parsed.protocol === "sonicflow-dev:";
+const isCustomScheme = parsed.protocol === "spoke:" || parsed.protocol === "spoke-dev:";
 const isDevHttp = (parsed.protocol === "http:" || parsed.protocol === "https:") && 
                   (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
 const isPathForm = parsed.pathname === "/auth/callback";
@@ -483,17 +483,17 @@ The app handles multiple OAuth flow types:
 
 **PKCE Flow** (recommended):
 ```
-sonicflow://auth/callback?code=abc123
+spoke://auth/callback?code=abc123
 ```
 
 **Magic Link Flow**:
 ```
-sonicflow://auth/callback#access_token=xyz&refresh_token=abc
+spoke://auth/callback#access_token=xyz&refresh_token=abc
 ```
 
 **Email OTP Flow**:
 ```
-sonicflow://auth/callback?token_hash=xyz&type=email
+spoke://auth/callback?token_hash=xyz&type=email
 ```
 
 ## Error Handling and Troubleshooting

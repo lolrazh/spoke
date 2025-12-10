@@ -50,7 +50,7 @@ Spoke follows a multi-process architecture optimized for real-time audio process
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication
 2. **React Renderer** (`src/components/App.tsx`) - Pill UI with state machine pattern
 3. **Cloudflare Worker** (`worker/src/index.ts`) - Real-time transcription service
-4. **Native Helper** (`native/sonic-helper.c`) - macOS accessibility and text insertion
+4. **Native Helper** (`native/spoke-helper.c`) - macOS accessibility and text insertion
 5. **Audio Pipeline** (`src/hooks/useTranscription.ts`) - Real-time audio processing
 
 ## Quick Start
@@ -375,7 +375,7 @@ Troubleshooting:
 - If updates don’t trigger, check app logs and ensure the manifest and ZIP are public, reachable, and not overly cached. You can temporarily use a shorter interval in `src/main.ts`.
 
 See also:
-- docs/UPDATE_PIPELINE.md — full “Sonic Flow macOS Auto‑Update Pipeline” guide
+- docs/UPDATE_PIPELINE.md — full “Spoke macOS Auto‑Update Pipeline” guide
 
 ## Deployment
 

@@ -1,6 +1,6 @@
-# Sonic Flow macOS Auto‑Update Pipeline
+# Spoke macOS Auto‑Update Pipeline
 
-This guide documents the complete macOS auto‑update pipeline for Sonic Flow using Electron Forge, update‑electron‑app, and Cloudflare R2 (S3‑compatible) behind the custom domain `https://download.spoke.so`.
+This guide documents the complete macOS auto‑update pipeline for Spoke using Electron Forge, update‑electron‑app, and Cloudflare R2 (S3‑compatible) behind the custom domain `https://download.spoke.so`.
 
 It covers architecture, file layout, configuration, environment, build/publish steps, verification, troubleshooting, and advanced topics like multi‑arch and channels.
 
@@ -19,7 +19,7 @@ It covers architecture, file layout, configuration, environment, build/publish s
 - Node 18+, npm.
 
 ## Roles and Responsibilities
-- Forge ZIP maker: builds `Sonic Flow-<version>-mac.zip` and generates `RELEASES.json`.
+- Forge ZIP maker: builds `Spoke-<version>-mac.zip` and generates `RELEASES.json`.
 - Forge S3 publisher: uploads artifacts to R2 at `darwin/<arch>/...`.
 - update‑electron‑app: reads `RELEASES.json`, downloads ZIP, applies update, restarts app.
 
@@ -29,11 +29,11 @@ https://download.spoke.so/
   darwin/
     arm64/
       RELEASES.json
-      Sonic Flow-0.0.1-mac.zip
-      Sonic Flow-0.0.2-mac.zip
+      Spoke-0.0.1-mac.zip
+      Spoke-0.0.2-mac.zip
     x64/
       RELEASES.json
-      Sonic Flow-0.0.1-mac.zip
+      Spoke-0.0.1-mac.zip
 ```
 
 The updater fetches `RELEASES.json` from `darwin/<arch>/` and follows absolute URLs in the manifest to download the ZIP.
@@ -78,11 +78,11 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
 
 4) Post‑make DMG stapling (if enabled)
 - The config can notarize + staple the DMG in a `postMake` hook. You can validate with:
-  - `xcrun stapler validate out/make/**/Sonic\ Flow-<version>.dmg`
+  - `xcrun stapler validate out/make/**/Spoke-<version>.dmg`
 
 5) Verify hosting
 - `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
-- `curl -I "https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+- `curl -I "https://download.spoke.so/darwin/arm64/Spoke-<version>-mac.zip"`
 - Headers to check:
   - `Content-Type: application/json` for `RELEASES.json`
   - `Content-Type: application/zip` for `.zip`
@@ -129,8 +129,8 @@ Security: Do not commit `.env`. Use local shell exports or CI secrets.
       "updateTo": {
         "version": "0.0.2",
         "pub_date": "2025-08-31T12:00:00.000Z",
-        "name": "Sonic Flow v0.0.2",
-        "url": "https://download.spoke.so/darwin/arm64/Sonic Flow-0.0.2-mac.zip"
+        "name": "Spoke v0.0.2",
+        "url": "https://download.spoke.so/darwin/arm64/Spoke-0.0.2-mac.zip"
       }
     }
   ]
@@ -203,7 +203,7 @@ Notes
 - Build: `npm run make`
 - Publish: `npm run publish`
 - Verify manifest: `curl -I https://download.spoke.so/darwin/arm64/RELEASES.json`
-- Verify ZIP: `curl -I "https://download.spoke.so/darwin/arm64/Sonic%20Flow-<version>-mac.zip"`
+- Verify ZIP: `curl -I "https://download.spoke.so/darwin/arm64/Spoke-<version>-mac.zip"`
 - Toggle interval (testing): set `updateInterval: "1 minute"` in `src/main.ts` (revert after).
 
 ## Appendix: Why ZIP, Not DMG?

@@ -1,10 +1,10 @@
-# Sonic Flow App - Payments Architecture - docs/PAYMENTS.md
+# Spoke App - Payments Architecture - docs/PAYMENTS.md
 
-This file provides comprehensive documentation for Sonic Flow's payments and subscription system, including Dodo Payments integration, JWT-based entitlement gating, and free tier quota tracking.
+This file provides comprehensive documentation for Spoke's payments and subscription system, including Dodo Payments integration, JWT-based entitlement gating, and free tier quota tracking.
 
 ## Overview
 
-Sonic Flow uses a **server-authoritative payment system** that combines Dodo Payments for billing, Supabase Custom Access Token Hooks for entitlement distribution, and Cloudflare Worker-side gating for secure transcription access.
+Spoke uses a **server-authoritative payment system** that combines Dodo Payments for billing, Supabase Custom Access Token Hooks for entitlement distribution, and Cloudflare Worker-side gating for secure transcription access.
 
 ### Key Features
 - **Dodo Payments Integration** - Subscription billing with INR/USD support
@@ -512,7 +512,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
 # URLs
-NEXT_PUBLIC_SITE_URL=https://www.sonicflow.app
+NEXT_PUBLIC_SITE_URL=https://www.spoke.so
 ```
 
 **Worker (`worker/.dev.vars` / Cloudflare Secrets):**
@@ -542,7 +542,7 @@ SKIP_AUTH=1  # Development only - bypasses auth
    - Annual subscription (e.g., $99/year)
 
 2. **Webhooks:**
-   - Endpoint: `https://www.sonicflow.app/api/webhooks/dodo`
+   - Endpoint: `https://www.spoke.so/api/webhooks/dodo`
    - Events: All subscription.* events
 
 3. **Test Cards:**
@@ -584,7 +584,7 @@ const handleManageSubscription = async () => {
   
   // Open browser immediately - website handles the redirect
   // Token in hash fragment (not sent to server logs)
-  const portalUrl = `https://www.sonicflow.app/billing/portal#token=${session.access_token}`;
+  const portalUrl = `https://www.spoke.so/billing/portal#token=${session.access_token}`;
   window.electron?.openExternal(portalUrl);
 };
 ```
