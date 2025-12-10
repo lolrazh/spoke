@@ -39,7 +39,7 @@ export function buildFeedbackAndAboutItems(): MenuItemConstructorOptions[] {
       label: "Send Feedback…",
       click: () => {
         const feedbackEmail = encodeURI(
-          `mailto:rajkumar.sandheep@gmail.com?subject=Sonic%20Flow%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASonic%20Flow%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
+          `mailto:sandy@spoke.so?subject=Spoke%20Feedback&body=Hi%20there!%0A%0ADescribe%20your%20feedback%20or%20issue%20here...%0A%0A---%0ASpoke%20${app.getVersion()}%0AmacOS%20${process.getSystemVersion()}`,
         );
         shell.openExternal(feedbackEmail);
       },
@@ -50,7 +50,7 @@ export function buildFeedbackAndAboutItems(): MenuItemConstructorOptions[] {
         app.setAboutPanelOptions({
           applicationName: "Spoke",
           applicationVersion: app.getVersion(),
-          credits: "A lightweight AI dictation tool for macOS.",
+          credits: "Voice-to-text AI that works everywhere you do.",
           authors: ["Sandheep Rajkumar"],
         });
         app.showAboutPanel();

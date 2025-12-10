@@ -461,7 +461,7 @@ Proprietary - All rights reserved by Sandheep Rajkumar
 ## Contact
 
 **Author**: Sandheep Rajkumar  
-**Email**: rajkumar.sandheep@gmail.com
+**Email**: sandy@spoke.so
 
 ---
 
