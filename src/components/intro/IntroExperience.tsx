@@ -143,7 +143,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
                 So Good You'll Want to Lick It
               </h1>
               <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
-                Let's get you set up for blazing fast dictation.
+                Dictation, the way it was meant to be.
               </p>
             </motion.div>
             {/* CTA */}
