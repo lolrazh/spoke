@@ -15,7 +15,7 @@ import {
   WS_MAX_BUFFERED_BYTES,
   POST_ROLL_MS,
 } from "../config/audio";
-import { getTranscribeWsUrl, getMetricsUrl } from "../config/api";
+import { getTranscribeWsUrl /*, getMetricsUrl*/ } from "../config/api";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
 import { encodeFrameHeader } from "../utils/pcm";
 import { VAD_ENABLED } from "../config/vad";
@@ -1881,12 +1881,13 @@ export function useTranscription(
                               userId: userIdRef.current ?? undefined,
                             },
                           };
-                          const url = getMetricsUrl();
-                          fetch(url, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(payload),
-                          }).catch((): void => undefined);
+                          // Metrics endpoint removed from worker
+                          // const url = getMetricsUrl();
+                          // fetch(url, {
+                          //   method: "POST",
+                          //   headers: { "Content-Type": "application/json" },
+                          //   body: JSON.stringify(payload),
+                          // }).catch((): void => undefined);
                         } catch { }
                       } catch { }
                     }
