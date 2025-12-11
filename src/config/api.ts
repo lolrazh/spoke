@@ -66,18 +66,7 @@ export function getTranscribeWsUrl(): string {
   }
 }
 
-// Metrics endpoint removed - worker no longer has /metrics/session
-// export function getMetricsUrl(): string {
-//   try {
-//     const base = getTranscribeUrl();
-//     const u = new URL(base);
-//     u.pathname = '/metrics/session';
-//     u.search = '';
-//     return u.toString();
-//   } catch {
-//     return 'https://api.spoke.so/metrics/session';
-//   }
-// }
+
 
 function normalize(input: string): string {
   try {
