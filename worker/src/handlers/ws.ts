@@ -67,8 +67,8 @@ type Bindings = {
   OPENROUTER_PROVIDER_MAX_PRICE_IMAGE?: string;
   // Auth bypass (for dev/testing)
   SKIP_AUTH?: string; // '1' | 'true' to skip auth check
-  // Analytics Engine
-  ANALYTICS_ENGINE: AnalyticsEngineDataset;
+  // Analytics Engine (optional - graceful degradation if not configured)
+  ANALYTICS_ENGINE?: AnalyticsEngineDataset;
 };
 
 function parseBoolish(value?: string): boolean | undefined {
@@ -282,15 +282,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const jwtDurationMs = Date.now() - jwtStartAt;
 
           // Track JWT verification performance
-          const jwtError = jwtResult.valid ? undefined : jwtResult.error;
+          // Note: Use === false to help TypeScript narrow the discriminated union
           trackEvent(c.env.ANALYTICS_ENGINE, {
             event: 'auth.jwt_verify',
             durationMs: jwtDurationMs,
             success: jwtResult.valid,
-            error: jwtError,
-            userId: jwtResult.valid ? jwtResult.userId : undefined,
+            error: jwtResult.valid === false ? jwtResult.error : undefined,
+            userId: jwtResult.valid === true ? jwtResult.userId : undefined,
             traceId: session.traceId,
-            // Cold start detection: if JWT verify takes > 500ms, likely JWKS fetch
+            // Cold start heuristic: JWKS fetch typically adds 300-800ms
+            // If JWT verify > 500ms, likely fetching keys from Supabase
             coldStart: jwtDurationMs > 500,
           });
 

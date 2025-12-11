@@ -38,9 +38,14 @@ export type AnalyticsEvent = {
  * Write event to Analytics Engine
  */
 export function trackEvent(
-    analytics: AnalyticsEngineDataset,
+    analytics: AnalyticsEngineDataset | undefined,
     event: AnalyticsEvent
 ): void {
+    // Skip if Analytics Engine is not configured (e.g., in dev environments)
+    if (!analytics) {
+        return;
+    }
+
     try {
         // Write to Analytics Engine
         // Indexes: https://developers.cloudflare.com/analytics/analytics-engine/
@@ -76,7 +81,7 @@ export function trackEvent(
  * Track timing for an async operation
  */
 export async function trackTiming<T>(
-    analytics: AnalyticsEngineDataset,
+    analytics: AnalyticsEngineDataset | undefined,
     eventName: string,
     operation: () => Promise<T>,
     metadata?: Partial<AnalyticsEvent>
