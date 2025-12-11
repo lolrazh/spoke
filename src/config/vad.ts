@@ -35,8 +35,8 @@ export const CHUNK_DETECTION_ENABLED = true;
 export const MIN_CHUNK_AUDIO_MS = 8000;
 
 /** Silence duration that indicates a sentence boundary (ms).
- *  600-800ms = "full stop" pause, not a brief thinking gap. */
-export const SENTENCE_PAUSE_MS = 700;
+ *  1500ms = true "full stop" pause, not a brief thinking gap. */
+export const SENTENCE_PAUSE_MS = 1500;
 
 /** Speech probability threshold for considering it "silence" for chunking.
  *  Lower than SPEECH_PROB_END since we want definite pauses. */
