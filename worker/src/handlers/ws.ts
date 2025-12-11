@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import * as Sentry from '@sentry/cloudflare';
+
 import { parseClientMessage } from '../types/messages';
 import { getClientIP } from '../utils/ip';
 import { trackConnection, releaseConnection } from '../utils/connLimit';
@@ -170,7 +170,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
 
   server.accept();
-  // Accept silently; avoid emitting ws.accepted logs to Sentry to reduce noise
 
   // --------------------------------------------------------------------------
   // AUTH STATE
@@ -510,124 +509,46 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const sttProvider = runtime.stt.provider;
 
           try {
-            await Sentry.startSpan({
-              op: 'transcription.session',
-              name: `Audio Transcription Session ${session.traceId}`,
-              attributes: {
-                'session.trace_id': session.traceId,
-                'client.ip': clientIP,
-                'audio.frames': session.frames,
-                'audio.total_bytes': session.totalBytes,
-                'audio.bytes_kb': Number((session.totalBytes / 1024).toFixed(2)),
-                'audio.sample_rate': session.rate,
-                'audio.format': session.format,
-                'audio.seq_gaps': session.seqGaps,
-                'audio.first_to_last_arrival_ms':
-                  session.firstArrivalMs && session.lastArrivalMs
-                    ? session.lastArrivalMs - session.firstArrivalMs
-                    : null,
-                'processing.assemble_ms': assembleMs,
-              },
-            }, async (sessionSpan) => {
-              // Add session context directly to the span using setAttribute
-              sessionSpan.setAttribute('session.worker_trace_id', session.traceId);
-              sessionSpan.setAttribute('dataset.allowed', session.shareTranscriptions ? 1 : 0);
+            const sttApiKey =
+              sttProvider === 'fireworks'
+                ? FIREWORKS_API_KEY
+                : sttProvider === 'deepgram'
+                  ? DEEPGRAM_API_KEY
+                  : GROQ_API_KEY;
+            const sttEndpoint =
+              sttProvider === 'fireworks'
+                ? FIREWORKS_STT_TURBO_ENDPOINT
+                : sttProvider === 'deepgram'
+                  ? DEEPGRAM_STT_ENDPOINT
+                  : GROQ_STT_ENDPOINT;
 
-              const sttApiKey =
-                sttProvider === 'fireworks'
-                  ? FIREWORKS_API_KEY
-                  : sttProvider === 'deepgram'
-                    ? DEEPGRAM_API_KEY
-                    : GROQ_API_KEY;
-              const sttEndpoint =
-                sttProvider === 'fireworks'
-                  ? FIREWORKS_STT_TURBO_ENDPOINT
-                  : sttProvider === 'deepgram'
-                    ? DEEPGRAM_STT_ENDPOINT
-                    : GROQ_STT_ENDPOINT;
 
-              sessionSpan.setAttribute('stt.provider', sttProvider);
+            if (sttApiKey) {
+              sttAbort?.abort();
+              sttAbort = new AbortController();
+              const sttPrompt = buildSTTPrompt({
+                basePrompt: runtime.stt.prompt,
+                identity: session.identity,
+              });
 
-              if (sttApiKey) {
-                sttAbort?.abort();
-                sttAbort = new AbortController();
-                const sttPrompt = buildSTTPrompt({
-                  basePrompt: runtime.stt.prompt,
-                  identity: session.identity,
-                });
+              // Handle chunked vs non-chunked sessions
+              if (hasChunks) {
+                // Chunked session: concatenate chunk results + transcribe remaining audio
+                let remainingText = '';
 
-                // Handle chunked vs non-chunked sessions
-                if (hasChunks) {
-                  // Chunked session: concatenate chunk results + transcribe remaining audio
-                  let remainingText = '';
-
-                  if (remainingWav && remainingWav.length > 44) { // More than just WAV header
-                    // Log remaining audio STT
-                    try {
-                      console.log(JSON.stringify({
-                        event: 'stt.request.remaining',
-                        provider: sttProvider,
-                        audioSizeKB: Number((remainingWav.length / 1024).toFixed(2)),
-                        traceId: session.traceId,
-                      }));
-                    } catch { }
-
-                    const sttStartTime = Date.now();
-                    const res = await transcribeWav(remainingWav, {
-                      provider: sttProvider,
-                      apiKey: sttApiKey,
-                      signal: sttAbort.signal,
-                      model: runtime.stt.model,
-                      language: clientLanguage || runtime.stt.language,
-                      prompt: sttPrompt,
-                      timeoutMs: runtime.stt.timeoutMs,
-                    });
-                    const sttDuration = Date.now() - sttStartTime;
-                    remainingText = res.text;
-                    timings = res.timings;
-
+                if (remainingWav && remainingWav.length > 44) { // More than just WAV header
+                  // Log remaining audio STT
+                  try {
                     console.log(JSON.stringify({
-                      event: 'stt.complete.remaining',
-                      textLength: remainingText.length,
-                      durationMs: sttDuration,
+                      event: 'stt.request.remaining',
+                      provider: sttProvider,
+                      audioSizeKB: Number((remainingWav.length / 1024).toFixed(2)),
                       traceId: session.traceId,
                     }));
-                  }
-
-                  // Combine all texts: chunk results + remaining audio
-                  const allTexts = [...chunkTexts];
-                  if (remainingText) {
-                    allTexts.push(remainingText);
-                  }
-                  finalText = allTexts.join(' ').trim();
-
-                  console.log(JSON.stringify({
-                    event: 'chunked.final_assembly',
-                    chunkCount: chunkTexts.length,
-                    hasRemaining: !!remainingText,
-                    totalTextLength: finalText.length,
-                    traceId: session.traceId,
-                  }));
-                } else {
-                  // Non-chunked session: process all audio at once (original behavior)
-                  const wav = remainingWav!;
-
-                  // Log STT request details (console only)
-                  try {
-                    const sttLog = {
-                      event: 'stt.request',
-                      provider: sttProvider,
-                      model: runtime.stt.model,
-                      endpoint: sttEndpoint,
-                      language: clientLanguage || runtime.stt.language,
-                      timeoutMs: runtime.stt.timeoutMs,
-                      audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                      traceId: session.traceId,
-                    } as const;
-                    console.log(JSON.stringify(sttLog));
                   } catch { }
+
                   const sttStartTime = Date.now();
-                  const res = await transcribeWav(wav, {
+                  const res = await transcribeWav(remainingWav, {
                     provider: sttProvider,
                     apiKey: sttApiKey,
                     signal: sttAbort.signal,
@@ -637,237 +558,150 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     timeoutMs: runtime.stt.timeoutMs,
                   });
                   const sttDuration = Date.now() - sttStartTime;
-                  finalText = res.text;
+                  remainingText = res.text;
                   timings = res.timings;
 
-                  // Log STT completion
+                  console.log(JSON.stringify({
+                    event: 'stt.complete.remaining',
+                    textLength: remainingText.length,
+                    durationMs: sttDuration,
+                    traceId: session.traceId,
+                  }));
+                }
+
+                // Combine all texts: chunk results + remaining audio
+                const allTexts = [...chunkTexts];
+                if (remainingText) {
+                  allTexts.push(remainingText);
+                }
+                finalText = allTexts.join(' ').trim();
+
+                console.log(JSON.stringify({
+                  event: 'chunked.final_assembly',
+                  chunkCount: chunkTexts.length,
+                  hasRemaining: !!remainingText,
+                  totalTextLength: finalText.length,
+                  traceId: session.traceId,
+                }));
+              } else {
+                // Non-chunked session: process all audio at once (original behavior)
+                const wav = remainingWav!;
+
+                // Log STT request details (console only)
+                try {
+                  const sttLog = {
+                    event: 'stt.request',
+                    provider: sttProvider,
+                    model: runtime.stt.model,
+                    endpoint: sttEndpoint,
+                    language: clientLanguage || runtime.stt.language,
+                    timeoutMs: runtime.stt.timeoutMs,
+                    audioSizeKB: Number((wav.length / 1024).toFixed(2)),
+                    traceId: session.traceId,
+                  } as const;
+                  console.log(JSON.stringify(sttLog));
+                } catch { }
+                const sttStartTime = Date.now();
+                const res = await transcribeWav(wav, {
+                  provider: sttProvider,
+                  apiKey: sttApiKey,
+                  signal: sttAbort.signal,
+                  model: runtime.stt.model,
+                  language: clientLanguage || runtime.stt.language,
+                  prompt: sttPrompt,
+                  timeoutMs: runtime.stt.timeoutMs,
+                });
+                const sttDuration = Date.now() - sttStartTime;
+                finalText = res.text;
+                timings = res.timings;
+
+                // Log STT completion
+                try {
+                  const sttCompleteLog = {
+                    event: 'stt.complete',
+                    provider: sttProvider,
+                    durationMs: sttDuration,
+                    textLength: finalText.length,
+                    traceId: session.traceId,
+                  } as const;
+                  console.log(JSON.stringify(sttCompleteLog));
+                } catch { }
+              }
+
+              const editPlan =
+                session.mode === 'edit' && runtime.edit.enabled
+                  ? prepareEditRequest({
+                    instructions: finalText,
+                    selection: session.selection,
+                  })
+                  : null;
+
+
+              // Optional LLM post-process
+              const enableLLM = runtime.llm.enabled && !editPlan;
+              if (editPlan) {
+                safely(() =>
+                  server.send(
+                    JSON.stringify({
+                      type: 'llm_status',
+                      state: 'llm_processing',
+                      traceId: session.traceId,
+                      serverTs: Date.now(),
+                    }),
+                  ),
+                );
+
+                const provider = runtime.edit.provider;
+                llmProvider = provider;
+                const model = runtime.edit.model;
+                llmModel = model;
+                const apiKeyForProvider =
+                  provider === 'openai'
+                    ? c.env.OPENAI_API_KEY
+                    : provider === 'baseten'
+                      ? c.env.BASETEN_API_KEY
+                      : provider === 'openrouter'
+                        ? OPENROUTER_API_KEY
+                        : provider === 'cerebras'
+                          ? CEREBRAS_API_KEY
+                          : provider === 'groq'
+                            ? GROQ_API_KEY
+                            : undefined;
+
+                if (apiKeyForProvider) {
                   try {
-                    const sttCompleteLog = {
-                      event: 'stt.complete',
-                      provider: sttProvider,
-                      durationMs: sttDuration,
-                      textLength: finalText.length,
+                    const llmEndpoint =
+                      provider === 'openai'
+                        ? OPENAI_LLM_ENDPOINT
+                        : provider === 'baseten'
+                          ? BASETEN_LLM_ENDPOINT
+                          : provider === 'openrouter'
+                            ? OPENROUTER_LLM_ENDPOINT
+                            : provider === 'cerebras'
+                              ? CEREBRAS_LLM_ENDPOINT
+                              : GROQ_LLM_ENDPOINT;
+                    const editLog = {
+                      event: 'edit.request',
+                      provider,
+                      model,
+                      endpoint: llmEndpoint,
+                      timeoutMs: runtime.edit.timeoutMs,
+                      stream: runtime.edit.stream,
                       traceId: session.traceId,
                     } as const;
-                    console.log(JSON.stringify(sttCompleteLog));
+                    console.log(JSON.stringify(editLog));
                   } catch { }
-                }
-
-                const editPlan =
-                  session.mode === 'edit' && runtime.edit.enabled
-                    ? prepareEditRequest({
-                      instructions: finalText,
-                      selection: session.selection,
-                    })
-                    : null;
-                if (sessionSpan) {
-                  sessionSpan.setAttribute('session.mode', session.mode ?? 'dictation');
-                  sessionSpan.setAttribute('edit.enabled', runtime.edit.enabled);
-                  sessionSpan.setAttribute('edit.provider', runtime.edit.provider);
-                  if (editPlan) {
-                    sessionSpan.setAttribute('edit.instructions_length', editPlan.instructions.length);
-                    sessionSpan.setAttribute('edit.selection_length', editPlan.originalText.length);
-                    sessionSpan.setAttribute('edit.prompt_length', editPlan.prompt.length);
-                    if (typeof editPlan.hadSelection === 'boolean') {
-                      sessionSpan.setAttribute('edit.had_selection', editPlan.hadSelection);
-                    }
-                    if (session.selection?.source) {
-                      sessionSpan.setAttribute('edit.selection_source', session.selection.source);
-                    }
-                  }
-                }
-
-                // Optional LLM post-process
-                const enableLLM = runtime.llm.enabled && !editPlan;
-                if (editPlan) {
-                  safely(() =>
-                    server.send(
-                      JSON.stringify({
-                        type: 'llm_status',
-                        state: 'llm_processing',
-                        traceId: session.traceId,
-                        serverTs: Date.now(),
-                      }),
-                    ),
-                  );
-
-                  const provider = runtime.edit.provider;
-                  llmProvider = provider;
-                  const model = runtime.edit.model;
-                  llmModel = model;
-                  const apiKeyForProvider =
-                    provider === 'openai'
-                      ? c.env.OPENAI_API_KEY
-                      : provider === 'baseten'
-                        ? c.env.BASETEN_API_KEY
-                        : provider === 'openrouter'
-                          ? OPENROUTER_API_KEY
-                          : provider === 'cerebras'
-                            ? CEREBRAS_API_KEY
-                            : provider === 'groq'
-                              ? GROQ_API_KEY
-                              : undefined;
-
-                  if (apiKeyForProvider) {
-                    try {
-                      const llmEndpoint =
-                        provider === 'openai'
-                          ? OPENAI_LLM_ENDPOINT
-                          : provider === 'baseten'
-                            ? BASETEN_LLM_ENDPOINT
-                            : provider === 'openrouter'
-                              ? OPENROUTER_LLM_ENDPOINT
-                              : provider === 'cerebras'
-                                ? CEREBRAS_LLM_ENDPOINT
-                                : GROQ_LLM_ENDPOINT;
-                      const editLog = {
-                        event: 'edit.request',
-                        provider,
-                        model,
-                        endpoint: llmEndpoint,
-                        timeoutMs: runtime.edit.timeoutMs,
-                        stream: runtime.edit.stream,
-                        traceId: session.traceId,
-                      } as const;
-                      console.log(JSON.stringify(editLog));
-                    } catch { }
-                    const editStartTime = Date.now();
-                    try {
-                      const streamEdit = runtime.edit.stream;
-                      const editRes = await chatCompleteByProvider(provider, {
-                        apiKey: apiKeyForProvider,
-                        model,
-                        systemPrompt: buildEditSystemPrompt({ sttPrompt }),
-                        userContent: editPlan.prompt,
-                        stream: streamEdit,
-                        temperature: runtime.edit.temperature,
-                        timeoutMs: runtime.edit.timeoutMs,
-                        signal: sttAbort.signal,
-                        providerConfig:
-                          provider === 'openrouter'
-                            ? buildOpenRouterProviderConfig(c.env)
-                            : undefined,
-                        extraHeaders:
-                          provider === 'openrouter'
-                            ? buildOpenRouterHeaders(c.env)
-                            : undefined,
-                        onDelta: streamEdit
-                          ? (delta) => {
-                            if (!socketClosed && delta) {
-                              safely(() =>
-                                server.send(
-                                  JSON.stringify({
-                                    type: 'llm_delta',
-                                    delta,
-                                    traceId: session.traceId,
-                                  }),
-                                ),
-                              );
-                            }
-                          }
-                          : undefined,
-                      });
-                      llmSuccess = Boolean(editRes.text && editRes.text.length > 0);
-                      llmText = editRes.text || editPlan.originalText;
-                      llmTimings = editRes.timings;
-                      const editDuration = Date.now() - editStartTime;
-                      // Log edit completion
-                      try {
-                        const editCompleteLog = {
-                          event: 'edit.complete',
-                          provider,
-                          durationMs: editDuration,
-                          textLength: llmText.length,
-                          success: llmSuccess,
-                          traceId: session.traceId,
-                        } as const;
-                        console.log(JSON.stringify(editCompleteLog));
-                      } catch { }
-                    } catch (error) {
-                      const editDuration = Date.now() - editStartTime;
-                      // Log edit error
-                      try {
-                        const editErrorLog = {
-                          event: 'edit.error',
-                          provider,
-                          durationMs: editDuration,
-                          error: String(error),
-                          errorName: (error as any)?.name,
-                          traceId: session.traceId,
-                        } as const;
-                        console.log(JSON.stringify(editErrorLog));
-                      } catch { }
-                      sessionSpan.setAttribute('edit.error', String(error));
-                      llmText = editPlan.originalText;
-                    }
-                  } else {
-                    sessionSpan.setAttribute('edit.api_key_missing', true);
-                    llmText = editPlan.originalText;
-                  }
-                } else if (enableLLM && finalText) {
-                  // Notify client that LLM processing starts
-                  safely(() =>
-                    server.send(
-                      JSON.stringify({
-                        type: 'llm_status',
-                        state: 'llm_processing',
-                        traceId: session.traceId,
-                        serverTs: Date.now(),
-                      }),
-                    ),
-                  );
-
-                  const streamLLM = runtime.llm.stream;
-                  const routeDecision = selectLLMRoute(finalText, runtime.llm);
-                  const provider = routeDecision.provider;
-                  const model = routeDecision.model;
-                  llmProvider = provider;
-                  llmModel = model;
-                  llmRouteRules = routeDecision.matchedRuleIds;
-                  const apiKeyForProvider =
-                    provider === 'openai'
-                      ? c.env.OPENAI_API_KEY
-                      : provider === 'baseten'
-                        ? c.env.BASETEN_API_KEY
-                        : provider === 'openrouter'
-                          ? OPENROUTER_API_KEY
-                          : provider === 'cerebras'
-                            ? CEREBRAS_API_KEY
-                            : GROQ_API_KEY;
-
-                  if (apiKeyForProvider) {
-                    // Log LLM request details (console only)
-                    try {
-                      const llmEndpoint =
-                        provider === 'openai'
-                          ? OPENAI_LLM_ENDPOINT
-                          : provider === 'baseten'
-                            ? BASETEN_LLM_ENDPOINT
-                            : provider === 'openrouter'
-                              ? OPENROUTER_LLM_ENDPOINT
-                              : provider === 'cerebras'
-                                ? CEREBRAS_LLM_ENDPOINT
-                                : GROQ_LLM_ENDPOINT;
-                      const llmLog = {
-                        event: 'llm.request',
-                        provider,
-                        model,
-                        endpoint: llmEndpoint,
-                        stream: streamLLM,
-                        timeoutMs: runtime.llm.timeoutMs,
-                        routeRules: llmRouteRules.length ? llmRouteRules : undefined,
-                        traceId: session.traceId,
-                      } as const;
-                      console.log(JSON.stringify(llmLog));
-                    } catch { }
-                    const llmStartTime = Date.now();
-                    const llmRes = await chatCompleteByProvider(provider, {
+                  const editStartTime = Date.now();
+                  try {
+                    const streamEdit = runtime.edit.stream;
+                    const editRes = await chatCompleteByProvider(provider, {
                       apiKey: apiKeyForProvider,
                       model,
-                      systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
-                      userContent: finalText,
-                      stream: streamLLM,
-                      temperature: runtime.llm.temperature,
+                      systemPrompt: buildEditSystemPrompt({ sttPrompt }),
+                      userContent: editPlan.prompt,
+                      stream: streamEdit,
+                      temperature: runtime.edit.temperature,
+                      timeoutMs: runtime.edit.timeoutMs,
                       signal: sttAbort.signal,
                       providerConfig:
                         provider === 'openrouter'
@@ -877,127 +711,226 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         provider === 'openrouter'
                           ? buildOpenRouterHeaders(c.env)
                           : undefined,
-                      onDelta: (delta) => {
-                        if (!socketClosed && streamLLM && delta) {
-                          safely(() =>
-                            server.send(
-                              JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                            ),
-                          );
+                      onDelta: streamEdit
+                        ? (delta) => {
+                          if (!socketClosed && delta) {
+                            safely(() =>
+                              server.send(
+                                JSON.stringify({
+                                  type: 'llm_delta',
+                                  delta,
+                                  traceId: session.traceId,
+                                }),
+                              ),
+                            );
+                          }
                         }
-                      },
+                        : undefined,
                     });
-                    const llmDuration = Date.now() - llmStartTime;
-                    llmText = llmRes.text || '';
-                    llmTimings = llmRes.timings;
-                    llmSuccess = llmText.length > 0;
-                    // Log LLM completion
+                    llmSuccess = Boolean(editRes.text && editRes.text.length > 0);
+                    llmText = editRes.text || editPlan.originalText;
+                    llmTimings = editRes.timings;
+                    const editDuration = Date.now() - editStartTime;
+                    // Log edit completion
                     try {
-                      const llmCompleteLog = {
-                        event: 'llm.complete',
+                      const editCompleteLog = {
+                        event: 'edit.complete',
                         provider,
-                        durationMs: llmDuration,
+                        durationMs: editDuration,
                         textLength: llmText.length,
                         success: llmSuccess,
                         traceId: session.traceId,
                       } as const;
-                      console.log(JSON.stringify(llmCompleteLog));
+                      console.log(JSON.stringify(editCompleteLog));
                     } catch { }
-                  } else {
-                    sessionSpan.setAttribute('llm.api_key_missing', true);
-                  }
-                }
-
-                // Set final session attributes with all timing data
-                sessionSpan.setAttribute('stt.text_length', finalText.length);
-                sessionSpan.setAttribute('stt.success', true);
-                if (timings) {
-                  sessionSpan.setAttribute('stt.ttfb_ms', timings.headersAt - timings.startAt);
-                  sessionSpan.setAttribute('stt.body_ms', timings.bodyDoneAt - timings.headersAt);
-                  sessionSpan.setAttribute('stt.total_ms', timings.bodyDoneAt - timings.startAt);
-                }
-
-                sessionSpan.setAttribute('llm.provider', llmProvider ?? runtime.llm.provider);
-                sessionSpan.setAttribute('llm.model', llmModel ?? runtime.llm.model);
-                if (llmRouteRules.length > 0) {
-                  sessionSpan.setAttribute('llm.route_rules', llmRouteRules.join(','));
-                }
-
-                if (llmText) {
-                  sessionSpan.setAttribute('llm.text_length', llmText.length);
-                  sessionSpan.setAttribute('llm.enabled', true);
-                  sessionSpan.setAttribute('llm.success', llmSuccess);
-                  if (llmTimings) {
-                    const llmTtfb = (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt;
-                    sessionSpan.setAttribute('llm.ttfb_ms', llmTtfb);
-                    sessionSpan.setAttribute('llm.body_ms', llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt));
-                    sessionSpan.setAttribute('llm.total_ms', llmTimings.bodyDoneAt - llmTimings.startAt);
-                    if (llmTimings.firstDeltaAt)
-                      sessionSpan.setAttribute('llm.first_token_ms', llmTimings.firstDeltaAt - llmTimings.startAt);
+                  } catch (error) {
+                    const editDuration = Date.now() - editStartTime;
+                    // Log edit error
+                    try {
+                      const editErrorLog = {
+                        event: 'edit.error',
+                        provider,
+                        durationMs: editDuration,
+                        error: String(error),
+                        errorName: (error as any)?.name,
+                        traceId: session.traceId,
+                      } as const;
+                      console.log(JSON.stringify(editErrorLog));
+                    } catch { }
+                    llmText = editPlan.originalText;
                   }
                 } else {
-                  sessionSpan.setAttribute('llm.enabled', enableLLM);
-                  sessionSpan.setAttribute('llm.success', false);
+                  llmText = editPlan.originalText;
                 }
-                // Dataset logging: ASR→LLM input and LLM output
-                // Dataset logging: ASR→LLM input and LLM output
-                // Comment out this block to disable dataset logging.
-                if (session.shareTranscriptions) {
+              } else if (enableLLM && finalText) {
+                // Notify client that LLM processing starts
+                safely(() =>
+                  server.send(
+                    JSON.stringify({
+                      type: 'llm_status',
+                      state: 'llm_processing',
+                      traceId: session.traceId,
+                      serverTs: Date.now(),
+                    }),
+                  ),
+                );
+
+                const streamLLM = runtime.llm.stream;
+                const routeDecision = selectLLMRoute(finalText, runtime.llm);
+                const provider = routeDecision.provider;
+                const model = routeDecision.model;
+                llmProvider = provider;
+                llmModel = model;
+                llmRouteRules = routeDecision.matchedRuleIds;
+                const apiKeyForProvider =
+                  provider === 'openai'
+                    ? c.env.OPENAI_API_KEY
+                    : provider === 'baseten'
+                      ? c.env.BASETEN_API_KEY
+                      : provider === 'openrouter'
+                        ? OPENROUTER_API_KEY
+                        : provider === 'cerebras'
+                          ? CEREBRAS_API_KEY
+                          : GROQ_API_KEY;
+
+                if (apiKeyForProvider) {
+                  // Log LLM request details (console only)
                   try {
-                    const datasetLlmConfig = session.mode === 'edit'
-                      ? { provider: runtime.edit.provider, model: runtime.edit.model }
-                      : { provider: llmProvider ?? runtime.llm.provider, model: llmModel ?? runtime.llm.model };
-
-                    if (session.mode === 'edit') {
-                      const editPlanForDataset = prepareEditRequest({
-                        instructions: finalText,
-                        selection: session.selection,
-                      });
-
-                      try {
-                        const datasetEntry = {
-                          event: 'dataset.edit_io',
-                          traceId: session.traceId,
-                          'session.trace_id': session.traceId,
-                          language: clientLanguage || runtime.stt.language,
-                          instructions: finalText,
-                          inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
-                          outputText: llmText || null,
-                          llm: datasetLlmConfig,
-                          selectionSource: session.selection?.source ?? null,
-                          ts: Date.now(),
-                        } as const;
-                        console.log(JSON.stringify(datasetEntry));
-                      } catch { }
-                    } else {
-                      try {
-                        const datasetEntryForStt = {
-                          event: 'dataset.llm_io',
-                          traceId: session.traceId,
-                          'session.trace_id': session.traceId,
-                          language: clientLanguage || runtime.stt.language,
-                          sttText: finalText,
-                          llmText: llmText || null,
-                          llm: datasetLlmConfig,
-                          mode: session.mode,
-                          ts: Date.now(),
-                        } as const;
-                        console.log(JSON.stringify(datasetEntryForStt));
-                      } catch { }
-                    }
+                    const llmEndpoint =
+                      provider === 'openai'
+                        ? OPENAI_LLM_ENDPOINT
+                        : provider === 'baseten'
+                          ? BASETEN_LLM_ENDPOINT
+                          : provider === 'openrouter'
+                            ? OPENROUTER_LLM_ENDPOINT
+                            : provider === 'cerebras'
+                              ? CEREBRAS_LLM_ENDPOINT
+                              : GROQ_LLM_ENDPOINT;
+                    const llmLog = {
+                      event: 'llm.request',
+                      provider,
+                      model,
+                      endpoint: llmEndpoint,
+                      stream: streamLLM,
+                      timeoutMs: runtime.llm.timeoutMs,
+                      routeRules: llmRouteRules.length ? llmRouteRules : undefined,
+                      traceId: session.traceId,
+                    } as const;
+                    console.log(JSON.stringify(llmLog));
                   } catch { }
+                  const llmStartTime = Date.now();
+                  const llmRes = await chatCompleteByProvider(provider, {
+                    apiKey: apiKeyForProvider,
+                    model,
+                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
+                    userContent: finalText,
+                    stream: streamLLM,
+                    temperature: runtime.llm.temperature,
+                    signal: sttAbort.signal,
+                    providerConfig:
+                      provider === 'openrouter'
+                        ? buildOpenRouterProviderConfig(c.env)
+                        : undefined,
+                    extraHeaders:
+                      provider === 'openrouter'
+                        ? buildOpenRouterHeaders(c.env)
+                        : undefined,
+                    onDelta: (delta) => {
+                      if (!socketClosed && streamLLM && delta) {
+                        safely(() =>
+                          server.send(
+                            JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                          ),
+                        );
+                      }
+                    },
+                  });
+                  const llmDuration = Date.now() - llmStartTime;
+                  llmText = llmRes.text || '';
+                  llmTimings = llmRes.timings;
+                  llmSuccess = llmText.length > 0;
+                  // Log LLM completion
+                  try {
+                    const llmCompleteLog = {
+                      event: 'llm.complete',
+                      provider,
+                      durationMs: llmDuration,
+                      textLength: llmText.length,
+                      success: llmSuccess,
+                      traceId: session.traceId,
+                    } as const;
+                    console.log(JSON.stringify(llmCompleteLog));
+                  } catch { }
+                } else {
                 }
-                if (session.shareTranscriptions) {
-                  sessionSpan.setAttribute('session.final_text', llmText || finalText);
-                }
-                sessionSpan.setAttribute('session.final_text_length', (llmText || finalText).length);
-              } else {
-                finalText = '';
-                sessionSpan.setAttribute('stt.api_key_missing', true);
-                sessionSpan.setAttribute('stt.provider', sttProvider);
-                connLog.error('[WS] missing STT API key', { provider: sttProvider });
               }
-            });
+
+              // Set final session attributes with all timing data
+              if (timings) {
+              }
+
+              if (llmRouteRules.length > 0) {
+              }
+
+              if (llmText) {
+                // LLM succeeded - metrics removed
+              } else {
+                // LLM disabled or failed - metrics removed
+              }
+              // Dataset logging: ASR→LLM input and LLM output
+              // Dataset logging: ASR→LLM input and LLM output
+              // Comment out this block to disable dataset logging.
+              if (session.shareTranscriptions) {
+                try {
+                  const datasetLlmConfig = session.mode === 'edit'
+                    ? { provider: runtime.edit.provider, model: runtime.edit.model }
+                    : { provider: llmProvider ?? runtime.llm.provider, model: llmModel ?? runtime.llm.model };
+
+                  if (session.mode === 'edit') {
+                    const editPlanForDataset = prepareEditRequest({
+                      instructions: finalText,
+                      selection: session.selection,
+                    });
+
+                    try {
+                      const datasetEntry = {
+                        event: 'dataset.edit_io',
+                        traceId: session.traceId,
+                        'session.trace_id': session.traceId,
+                        language: clientLanguage || runtime.stt.language,
+                        instructions: finalText,
+                        inputText: editPlanForDataset?.originalText ?? session.selection?.text ?? null,
+                        outputText: llmText || null,
+                        llm: datasetLlmConfig,
+                        selectionSource: session.selection?.source ?? null,
+                        ts: Date.now(),
+                      } as const;
+                      console.log(JSON.stringify(datasetEntry));
+                    } catch { }
+                  } else {
+                    try {
+                      const datasetEntryForStt = {
+                        event: 'dataset.llm_io',
+                        traceId: session.traceId,
+                        'session.trace_id': session.traceId,
+                        language: clientLanguage || runtime.stt.language,
+                        sttText: finalText,
+                        llmText: llmText || null,
+                        llm: datasetLlmConfig,
+                        mode: session.mode,
+                        ts: Date.now(),
+                      } as const;
+                      console.log(JSON.stringify(datasetEntryForStt));
+                    } catch { }
+                  }
+                } catch { }
+              }
+              if (session.shareTranscriptions) {
+              }
+            } else {
+              finalText = '';
+              connLog.error('[WS] missing STT API key', { provider: sttProvider });
+            }
           } catch (e: any) {
             safely(() => sttAbort?.abort());
             const errorMsg = String(e?.message || e || '');
@@ -1197,7 +1130,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
-          // Compose a single session_summary (server-only) and attach to Sentry logs/span
+
           try {
             const wsAccept = session.wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
@@ -1260,35 +1193,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               env: {},
               containsClientMetrics: false,
             } as const;
-            // Log as single-line JSON (captured by Sentry console integration)
             safely(() => console.log(JSON.stringify(summary)));
-            // Enrich the Sentry span (we are still inside the span callback)
-            await Sentry.startSpan({
-              op: 'transcription.session_summary',
-              name: `Session Summary ${session.traceId ?? ''}`,
-              attributes: { 'session.trace_id': session.traceId ?? '' },
-            }, async (span) => {
-              span.setAttribute('pipeline', pipeline);
-              span.setAttribute('dur.wsAcceptToFinalMs', wsAcceptToFinalMs ?? 0);
-              span.setAttribute('dur.assembleMs', assembleMs);
-              if (sttTotalMs != null) span.setAttribute('dur.sttMs', sttTotalMs);
-              if (sttTtfbMs != null) span.setAttribute('dur.sttTtfbMs', sttTtfbMs);
-              if (sttBodyMs != null) span.setAttribute('dur.sttBodyMs', sttBodyMs);
-              if (llmTotalMs != null) span.setAttribute('dur.llmMs', llmTotalMs);
-              if (llmTtfbMs != null) span.setAttribute('dur.llmTtfbMs', llmTtfbMs);
-              if (llmBodyMs != null) span.setAttribute('dur.llmBodyMs', llmBodyMs);
-              if (llmFirstTokenMs != null) span.setAttribute('dur.llmFirstTokenMs', llmFirstTokenMs);
-              span.setAttribute('dur.serverProcessingMs', (sttTotalMs ?? 0) + (llmTotalMs ?? 0));
-              span.setAttribute('dur.overheadMs', overheadMs);
-              span.setAttribute('traffic.frames', session.frames);
-              span.setAttribute('traffic.bytesKB', Number((session.totalBytes / 1024).toFixed(2)));
-              span.setAttribute('traffic.seqGaps', session.seqGaps);
-              span.setAttribute('result.text_len', (llmText || finalText).length);
-              if (session.mode === 'edit') {
-                span.setAttribute('edit.instructions_len', finalText.length);
-                span.setAttribute('edit.output_len', (llmText || '').length);
-              }
-            });
           } catch (err) {
             connLog.error('[WS] session summary failed', { error: String(err) });
           }
@@ -1489,10 +1394,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('close', (evt) => {
     const code = (evt as any)?.code || 1000;
     const reason = (evt as any)?.reason || 'unknown';
-    // Only log ws_close when abnormal or no final was sent (to reduce noise)
-    // Reduce noise: no Sentry logs for closes; rely on session_summary for observability
     socketClosed = true;
-    // Clean up auth timeout
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);
       authTimeoutHandle = null;
@@ -1508,7 +1410,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('error', (evt) => {
     connLog.error('[WS] socket error', { error: String(evt) });
     socketClosed = true;
-    // Clean up auth timeout
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);
       authTimeoutHandle = null;
