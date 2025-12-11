@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import * as Sentry from '@sentry/cloudflare';
+
 import { parseClientMessage } from '../types/messages';
 import { getClientIP } from '../utils/ip';
 import { trackConnection, releaseConnection } from '../utils/connLimit';
