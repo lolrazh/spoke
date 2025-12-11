@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/cloudflare';
 import {
   FIREWORKS_STT_TURBO_ENDPOINT,
   FIREWORKS_STT_DEFAULT_ALIGNMENT_MODEL,
@@ -73,58 +72,26 @@ export async function transcribeWav(
   }
 
   try {
-    return await Sentry.startSpan({
-      op: 'http.client',
-      name: `POST ${endpoint}`,
-      attributes: {
-        'http.request.method': 'POST',
-        'server.address': FIREWORKS_HOSTNAME,
-        'server.port': 443,
-        'stt.provider': 'fireworks',
-        'fireworks.model': model,
-        'fireworks.language': language,
-        'fireworks.preprocessing': preprocessing,
-        'fireworks.vad_model': vadModel,
-        'fireworks.alignment_model': alignmentModel,
-        'fireworks.temperature_schedule': temperatureSchedule,
-        'audio.size_bytes': wav.length,
-        'fireworks.timeout_ms': timeoutMs,
-      },
-    }, async (span) => {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { Authorization: apiKey },
-        body: form,
-        signal: controller.signal,
-      });
-      const headersAt = Date.now();
-
-      span.setAttribute('http.response.status_code', res.status);
-      span.setAttribute(
-        'http.response_content_length',
-        Number(res.headers.get('content-length')) || 0,
-      );
-      span.setAttribute('fireworks.ttfb_ms', headersAt - startAt);
-
-      if (!res.ok) {
-        const body = await res.text();
-        span.setAttribute('fireworks.error_body', body);
-        throw new Error(`FIREWORKS STT error: ${res.status} ${body}`);
-      }
-
-      const json = (await res.json()) as { text?: string };
-      const bodyDoneAt = Date.now();
-
-      const transcriptionText = json?.text ?? '';
-      span.setAttribute('fireworks.transcription_text', transcriptionText);
-      span.setAttribute('fireworks.total_duration_ms', bodyDoneAt - startAt);
-      span.setAttribute('fireworks.body_processing_ms', bodyDoneAt - headersAt);
-
-      return {
-        text: transcriptionText,
-        timings: { startAt, headersAt, bodyDoneAt },
-      };
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { Authorization: apiKey },
+      body: form,
+      signal: controller.signal,
     });
+    const headersAt = Date.now();
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`FIREWORKS STT error: ${res.status} ${body}`);
+    }
+
+    const json = (await res.json()) as { text?: string };
+    const bodyDoneAt = Date.now();
+
+    return {
+      text: json?.text ?? '',
+      timings: { startAt, headersAt, bodyDoneAt },
+    };
   } finally {
     clearTimeout(timeoutId);
     if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);

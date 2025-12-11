@@ -1,4 +1,3 @@
-import * as Sentry from '@sentry/cloudflare';
 import { DEEPGRAM_STT_ENDPOINT, DEEPGRAM_STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../../config';
 
 type BasicTimings = {
@@ -47,62 +46,33 @@ export async function transcribeWav(
   const audioBuffer = wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength);
 
   try {
-    return await Sentry.startSpan(
-      {
-        op: 'http.client',
-        name: `POST ${DEEPGRAM_STT_ENDPOINT}`,
-        attributes: {
-          'http.request.method': 'POST',
-          'server.address': DEEPGRAM_HOSTNAME,
-          'server.port': 443,
-          'stt.provider': 'deepgram',
-          'deepgram.model': model,
-          'deepgram.language': language,
-          'audio.size_bytes': wav.length,
-          'deepgram.timeout_ms': timeoutMs,
-        },
+    const requestUrl = endpointUrl.toString();
+    const res = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${apiKey}`,
+        'Content-Type': 'audio/wav',
+        Accept: 'application/json',
       },
-      async (span) => {
-        const requestUrl = endpointUrl.toString();
-        const res = await fetch(requestUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Token ${apiKey}`,
-            'Content-Type': 'audio/wav',
-            Accept: 'application/json',
-          },
-          body: audioBuffer,
-          signal: controller.signal,
-        });
-        const headersAt = Date.now();
+      body: audioBuffer,
+      signal: controller.signal,
+    });
+    const headersAt = Date.now();
 
-        span.setAttribute('http.response.status_code', res.status);
-        span.setAttribute(
-          'http.response_content_length',
-          Number(res.headers.get('content-length')) || 0,
-        );
-        span.setAttribute('deepgram.ttfb_ms', headersAt - startAt);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`DEEPGRAM STT error: ${res.status} ${body}`);
+    }
 
-        if (!res.ok) {
-          const body = await res.text();
-          span.setAttribute('deepgram.error_body', body);
-          throw new Error(`DEEPGRAM STT error: ${res.status} ${body}`);
-        }
+    const json = (await res.json()) as Record<string, any>;
+    const bodyDoneAt = Date.now();
 
-        const json = (await res.json()) as Record<string, any>;
-        const bodyDoneAt = Date.now();
+    const transcriptionText = extractTranscript(json);
 
-        const transcriptionText = extractTranscript(json);
-        span.setAttribute('deepgram.transcription_text', transcriptionText);
-        span.setAttribute('deepgram.total_duration_ms', bodyDoneAt - startAt);
-        span.setAttribute('deepgram.body_processing_ms', bodyDoneAt - headersAt);
-
-        return {
-          text: transcriptionText,
-          timings: { startAt, headersAt, bodyDoneAt },
-        };
-      },
-    );
+    return {
+      text: transcriptionText,
+      timings: { startAt, headersAt, bodyDoneAt },
+    };
   } finally {
     clearTimeout(timeoutId);
     if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);
