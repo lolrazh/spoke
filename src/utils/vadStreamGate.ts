@@ -4,6 +4,7 @@ import {
   PRE_ROLL_MS,
   POST_ROLL_MS_VAD,
   CHUNK_DETECTION_ENABLED,
+  SPEECH_PROB_END,
 } from "../config/vad";
 import type { VadEngine, VadEvent } from "../types/vad";
 import { VadGate } from "./vadGate";
@@ -27,6 +28,7 @@ export class VadStreamGate {
   private tailRemainingSamples = 0; // forward a small tail after speech_end
   private carryFloat: Float32Array | null = null; // leftover window slice
   private timeMs = 0; // approximate timeline in ms, step by WINDOW_MS
+  private currentFrameHasSpeech = false; // track if current frame contains speech
 
   constructor(
     engine: VadEngine,
@@ -59,6 +61,7 @@ export class VadStreamGate {
     this.tailRemainingSamples = 0;
     this.carryFloat = null;
     this.timeMs = 0;
+    this.currentFrameHasSpeech = false;
   }
 
   dispose(): void {
@@ -117,9 +120,19 @@ export class VadStreamGate {
     // Process decisions and produce output chunks
     const out: Int16Array[] = [];
 
+    // Track if THIS frame contains speech (any window with speech)
+    this.currentFrameHasSpeech = false;
+
     for (let w = 0; w < windows.length; w++) {
       const d = this.engine.process(windows[w]);
       this.gate.push(d, this.timeMs);
+
+      // Check if this window contains speech
+      const prob = d.probability ?? (d.isSpeech ? 1.0 : 0.0);
+      const windowHasSpeech = prob > SPEECH_PROB_END; // Use same threshold as gate
+      if (windowHasSpeech) {
+        this.currentFrameHasSpeech = true;
+      }
 
       // Feed chunk detector with same VAD decision
       if (this.chunkDetector) {
@@ -160,14 +173,16 @@ export class VadStreamGate {
       }
     }
 
-    // Gate forwarding: if speaking or tail-forward active, forward entire input frame; else buffer into pre-roll
-    if (this.gate.isSpeaking() || this.tailRemainingSamples > 0) {
+    // Gate forwarding: forward frame ONLY if it contains speech OR we're in post-roll tail
+    // This cuts silence DURING recording, sending only dense speech audio to the server
+    if (this.currentFrameHasSpeech || this.tailRemainingSamples > 0) {
       out.push(int16);
       if (this.tailRemainingSamples > 0) {
         this.tailRemainingSamples = Math.max(0, this.tailRemainingSamples - int16.length);
       }
     } else {
-      // Append to pre-roll ring buffer
+      // This frame is silence - buffer it to pre-roll
+      // If speech resumes while we're in a recording session, this provides context
       const src = int16;
       for (let i = 0; i < src.length; i++) {
         if (this.preRollSamples === 0) break;
