@@ -13,7 +13,7 @@ export interface Logger {
 function log(level: LogLevel, msg: string, ctx?: LogContext) {
   try {
     const entry = { level, msg, ts: Date.now(), ...ctx } as const;
-    // Prefer native console methods so Sentry logs integration classifies levels correctly
+    // Use native console methods to preserve log levels
     const line = JSON.stringify(entry);
     switch (level) {
       case 'debug':
