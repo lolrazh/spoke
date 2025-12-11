@@ -170,7 +170,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
 
   server.accept();
-  // Accept silently; avoid emitting ws.accepted logs to Sentry to reduce noise
 
   // --------------------------------------------------------------------------
   // AUTH STATE
@@ -510,8 +509,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const sttProvider = runtime.stt.provider;
 
           try {
-            // Sentry instrumentation removed
-
             const sttApiKey =
               sttProvider === 'fireworks'
                 ? FIREWORKS_API_KEY
@@ -1133,7 +1130,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
-          // Compose a single session_summary (server-only) and attach to Sentry logs/span
+
           try {
             const wsAccept = session.wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
@@ -1196,9 +1193,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               env: {},
               containsClientMetrics: false,
             } as const;
-            // Log as single-line JSON (captured by Sentry console integration)
             safely(() => console.log(JSON.stringify(summary)));
-            // Session summary metrics removed - Sentry span deleted
           } catch (err) {
             connLog.error('[WS] session summary failed', { error: String(err) });
           }
@@ -1399,10 +1394,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('close', (evt) => {
     const code = (evt as any)?.code || 1000;
     const reason = (evt as any)?.reason || 'unknown';
-    // Only log ws_close when abnormal or no final was sent (to reduce noise)
-    // Reduce noise: no Sentry logs for closes; rely on session_summary for observability
     socketClosed = true;
-    // Clean up auth timeout
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);
       authTimeoutHandle = null;
@@ -1418,7 +1410,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   server.addEventListener('error', (evt) => {
     connLog.error('[WS] socket error', { error: String(evt) });
     socketClosed = true;
-    // Clean up auth timeout
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);
       authTimeoutHandle = null;
