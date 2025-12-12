@@ -15,6 +15,7 @@ import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editP
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
+import { trackEvent } from '../utils/analytics';
 import {
   verifySupabaseJwt,
   WS_CLOSE_CODES,
@@ -66,6 +67,8 @@ type Bindings = {
   OPENROUTER_PROVIDER_MAX_PRICE_IMAGE?: string;
   // Auth bypass (for dev/testing)
   SKIP_AUTH?: string; // '1' | 'true' to skip auth check
+  // Analytics Engine (optional - graceful degradation if not configured)
+  ANALYTICS_ENGINE?: AnalyticsEngineDataset;
 };
 
 function parseBoolish(value?: string): boolean | undefined {
@@ -273,7 +276,25 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             return;
           }
 
+          // Track JWT verification timing (including JWKS fetch on cold start)
+          const jwtStartAt = Date.now();
           const jwtResult = await verifySupabaseJwt(token, supabaseUrl);
+          const jwtDurationMs = Date.now() - jwtStartAt;
+
+          // Track JWT verification performance
+          // Note: Use === false to help TypeScript narrow the discriminated union
+          trackEvent(c.env.ANALYTICS_ENGINE, {
+            event: 'auth.jwt_verify',
+            durationMs: jwtDurationMs,
+            success: jwtResult.valid,
+            error: jwtResult.valid === false ? jwtResult.error : undefined,
+            userId: jwtResult.valid === true ? jwtResult.userId : undefined,
+            traceId: session.traceId,
+            // Cold start heuristic: JWKS fetch typically adds 300-800ms
+            // If JWT verify > 500ms, likely fetching keys from Supabase
+            coldStart: jwtDurationMs > 500,
+          });
+
           if (jwtResult.valid === false) {
             console.log(JSON.stringify({
               event: 'auth.jwt_invalid',
@@ -1069,6 +1090,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   // Fire-and-forget quota update (doesn't block response)
                   c.executionCtx.waitUntil(
                     (async () => {
+                      const quotaStartAt = Date.now();
+                      let quotaSuccess = false;
+                      let quotaError: string | undefined;
+
                       try {
                         const response = await fetch(`${supabaseUrl}/rest/v1/rpc/increment_quota_simple`, {
                           method: 'POST',
@@ -1083,12 +1108,28 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                           }),
                         });
 
+                        quotaSuccess = response.ok;
                         if (!response.ok) {
+                          quotaError = `HTTP ${response.status}`;
                           console.warn('[WS] Quota increment failed:', await response.text());
                         }
                       } catch (error) {
+                        quotaSuccess = false;
+                        quotaError = error instanceof Error ? error.message : String(error);
                         // Silent fail - quota tracking is non-critical
                         console.warn('[WS] Quota increment error:', error);
+                      } finally {
+                        // Track quota increment timing
+                        const quotaDurationMs = Date.now() - quotaStartAt;
+                        trackEvent(c.env.ANALYTICS_ENGINE, {
+                          event: 'db.quota_increment',
+                          durationMs: quotaDurationMs,
+                          success: quotaSuccess,
+                          error: quotaError,
+                          userId: authenticatedUserId,
+                          traceId: session.traceId,
+                          wordCount,
+                        });
                       }
                     })()
                   );
