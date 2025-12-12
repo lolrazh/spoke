@@ -499,6 +499,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               const sttPrompt = buildSTTPrompt({
                 basePrompt: runtime.stt.prompt,
                 identity: session.identity,
+                ocrWords: session.ocrWords.length > 0 ? session.ocrWords : undefined,
               });
 
               // Single-shot processing (chunking disabled)
@@ -1128,6 +1129,74 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             chunkIndex: parsed.chunkIndex,
             traceId: session.traceId,
           }));
+        } else if (parsed.type === 'context_ocr') {
+          // Handle OCR context (fire-and-forget)
+          // Capture session reference before async work to prevent cross-session contamination
+          const sessionForOcr = session;
+          sessionForOcr.ocrPending = true;
+          const imageBase64 = parsed.imageBase64;
+
+          // Payload size guardrail
+          const MAX_OCR_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+          if (imageBase64.length > MAX_OCR_IMAGE_SIZE) {
+            console.log(JSON.stringify({
+              event: 'ocr.rejected',
+              reason: 'payload_too_large',
+              imageSizeKB: Math.round(imageBase64.length / 1024),
+              traceId: sessionForOcr.traceId,
+            }));
+            sessionForOcr.ocrPending = false;
+          } else {
+            console.log(JSON.stringify({
+              event: 'ocr.received',
+              imageSizeKB: Math.round(imageBase64.length / 1024),
+              traceId: sessionForOcr.traceId,
+            }));
+
+            // Fire-and-forget OCR extraction
+            c.executionCtx.waitUntil((async () => {
+              try {
+                const { extractOcrWords } = await import('../services/ocr/index.js');
+                const GROQ_API_KEY = c.env.GROQ_API_KEY;
+                if (!GROQ_API_KEY) {
+                  console.log(JSON.stringify({
+                    event: 'ocr.skipped',
+                    reason: 'no_api_key',
+                    traceId: sessionForOcr.traceId,
+                  }));
+                  sessionForOcr.ocrPending = false;
+                  return;
+                }
+
+                const startMs = Date.now();
+                const result = await extractOcrWords({
+                  apiKey: GROQ_API_KEY,
+                  imageBase64,
+                });
+                const durationMs = Date.now() - startMs;
+
+                // Write to captured session only
+                sessionForOcr.ocrWords = result.words;
+                sessionForOcr.ocrReceivedMs = Date.now();
+                sessionForOcr.ocrPending = false;
+
+                console.log(JSON.stringify({
+                  event: 'ocr.complete',
+                  wordCount: result.words.length,
+                  durationMs,
+                  traceId: sessionForOcr.traceId,
+                }));
+              } catch (error) {
+                sessionForOcr.ocrWords = [];
+                sessionForOcr.ocrPending = false;
+                console.log(JSON.stringify({
+                  event: 'ocr.error',
+                  error: String(error),
+                  traceId: sessionForOcr.traceId,
+                }));
+              }
+            })());
+          }
         } else if (parsed.type === 'cancel') {
           session = createEmptySession();
           session.canceled = true;

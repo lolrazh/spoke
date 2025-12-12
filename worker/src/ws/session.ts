@@ -46,6 +46,10 @@ export function createEmptySession() {
     chunkStates: new Map<number, ChunkState>(),
     currentChunkIndex: 0,
     pendingChunkSTT: new Set<number>(),
+    // OCR context state
+    ocrWords: [] as string[],
+    ocrPending: false,
+    ocrReceivedMs: undefined as number | undefined,
   };
 }
 

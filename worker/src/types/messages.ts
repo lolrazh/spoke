@@ -53,12 +53,19 @@ export type ClientChunkMessage = {
   audioMs: number;
 };
 
+/** OCR context from screenshot (fire-and-forget) */
+export type ClientContextOcrMessage = {
+  type: 'context_ocr';
+  imageBase64: string;
+};
+
 export type ClientMessage =
   | ClientAuthMessage
   | ClientStartMessage
   | ClientEndMessage
   | ClientCancelMessage
-  | ClientChunkMessage;
+  | ClientChunkMessage
+  | ClientContextOcrMessage;
 
 /**
  * Auth success response - client can now send start message
@@ -258,6 +265,11 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
     const chunkIndex = typeof m.chunkIndex === 'number' ? m.chunkIndex : 0;
     const audioMs = typeof m.audioMs === 'number' ? m.audioMs : 0;
     return { type: 'chunk', chunkIndex, audioMs };
+  }
+  if (t === 'context_ocr') {
+    const m = msg as any;
+    const imageBase64 = typeof m.imageBase64 === 'string' ? m.imageBase64 : '';
+    return { type: 'context_ocr', imageBase64 };
   }
   return null;
 }
