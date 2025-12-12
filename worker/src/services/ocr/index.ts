@@ -1,7 +1,7 @@
-import { GROQ_OCR_ENDPOINT, GROQ_OCR_MODEL, OCR_DEFAULT_TIMEOUT_MS, OCR_MAX_WORDS } from '../../config';
-import { OCR_SYSTEM_PROMPT } from './prompt';
-import type { OcrResult } from './types';
-import { safeJson } from '../../utils/ws';
+import { GROQ_OCR_ENDPOINT, GROQ_OCR_MODEL, OCR_DEFAULT_TIMEOUT_MS, OCR_MAX_WORDS } from '../../config.js';
+import { OCR_SYSTEM_PROMPT } from './prompt.js';
+import type { OcrResult } from './types.js';
+import { safeJson } from '../../utils/ws.js';
 
 export interface ExtractOcrWordsOptions {
     apiKey: string;
