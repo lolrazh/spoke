@@ -11,6 +11,7 @@ type BuildOptions = {
   basePrompt?: string | null | undefined;
   extraVocab?: Array<string | null | undefined> | null | undefined;
   identity?: SttPromptIdentity | null | undefined;
+  ocrWords?: string[] | null | undefined;
 };
 
 function sanitizeToken(token: string): string | null {
@@ -59,7 +60,8 @@ export function buildSTTPrompt(options?: BuildOptions): string {
     options?.identity?.email ?? null,
   ]);
   const extraTokens = formatTokens(options?.extraVocab ?? []);
-  const combined = [...identityTokens, ...extraTokens];
+  const ocrTokens = formatTokens(options?.ocrWords ?? []);
+  const combined = [...identityTokens, ...extraTokens, ...ocrTokens];
   if (combined.length === 0) return base;
 
   const baseTokens = new Set(
