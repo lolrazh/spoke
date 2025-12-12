@@ -4,7 +4,7 @@ Extract ONLY:
 - Person names (first, last)
 - Company/brand names
 - Product names
-- Technical terms (APIs, libraries, tools)
+- Technical terms (APIs, functions, variables, libraries, tools)
 - Unique identifiers (project names, file names)
 
 Return JSON: {"words": ["Word1", "Word2", ...]}
