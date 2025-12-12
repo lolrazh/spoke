@@ -48,20 +48,21 @@ export function trackEvent(
 
     try {
         // Write to Analytics Engine
-        // Indexes: https://developers.cloudflare.com/analytics/analytics-engine/
+        // NOTE: Only ONE index is allowed per data point (used for sampling)
+        // See: https://developers.cloudflare.com/analytics/analytics-engine/limits/
         analytics.writeDataPoint({
-            // Indexed fields (for fast queries)
+            // Index: sampling key (only one allowed!)
             indexes: [
-                event.event,                                    // index1: event type
-                event.userId || 'anonymous',                   // index2: user ID
-                event.success ? 'success' : 'failure',         // index3: status
-                event.provider || '',                          // index4: provider
+                event.userId || 'anonymous',                   // index1: user ID (for sampling)
             ],
-            // Blob data (queryable but not indexed)
+            // Blob data (queryable strings)
             blobs: [
-                event.traceId || '',                           // blob1: trace ID
-                event.error || '',                             // blob2: error message
-                event.model || '',                             // blob3: model name
+                event.event,                                   // blob1: event type
+                event.traceId || '',                           // blob2: trace ID
+                event.success ? 'success' : 'failure',         // blob3: status
+                event.provider || '',                          // blob4: provider
+                event.error || '',                             // blob5: error message
+                event.model || '',                             // blob6: model name
             ],
             // Numeric metrics (aggregatable)
             doubles: [

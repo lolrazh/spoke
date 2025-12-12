@@ -1,7 +1,19 @@
 # 📊 CloudFlare Analytics Engine Setup & Usage
 
-**Date:** 2025-12-12  
+**Date:** 2025-12-12
 **Purpose:** Track performance metrics to identify bottlenecks (JWKS cold starts, slow DB calls, auth latency)
+
+> **⚠️ IMPORTANT UPDATE (2025-12-12):**
+> The original implementation had a critical bug: it provided 4 indexes in the `writeDataPoint()` call, but Cloudflare Analytics Engine **only accepts 1 index per data point**.
+> This has been fixed. The schema now uses:
+> - **index1**: user ID (for sampling)
+> - **blob1**: event type
+> - **blob2**: trace ID
+> - **blob3**: status
+> - **blob4**: provider
+> - **blob5**: error
+> - **blob6**: model
+> All SQL queries below have been updated to reflect this corrected schema.
 
 ---
 
@@ -43,15 +55,15 @@ Cloudflare Dashboard → Analytics & Logs → Workers Analytics Engine
 ### **Query 1: JWT Verification Performance**
 ```sql
 SELECT
-  blob1 AS user_id,
+  index1 AS user_id,
   AVG(double1) AS avg_duration_ms,
   QUANTILE(double1, 0.95) AS p95_duration_ms,
   SUM(double4) AS cold_starts,
   COUNT(*) AS total_verifications
 FROM dictation_events
-WHERE index1 = 'auth.jwt_verify'
+WHERE blob1 = 'auth.jwt_verify'
   AND timestamp > NOW() - INTERVAL '24' HOUR
-GROUP BY blob1
+GROUP BY index1
 ORDER BY avg_duration_ms DESC
 LIMIT 100;
 ```
@@ -76,9 +88,9 @@ SELECT
   QUANTILE(double1, 0.99) AS p99_duration_ms,
   MAX(double1) AS max_duration_ms,
   COUNT(*) AS total_calls,
-  SUM(CASE WHEN index3 = 'failure' THEN 1 ELSE 0 END) AS failures
+  SUM(CASE WHEN blob3 = 'failure' THEN 1 ELSE 0 END) AS failures
 FROM dictation_events
-WHERE index1 = 'db.quota_increment'
+WHERE blob1 = 'db.quota_increment'
   AND timestamp > NOW() - INTERVAL '24' HOUR;
 ```
 
@@ -98,11 +110,11 @@ WHERE index1 = 'db.quota_increment'
 ### **Query 3: Identify Slow Operations (Top 10)**
 ```sql
 SELECT
-  index1 AS event_type,
-  blob1 AS trace_id,
+  blob1 AS event_type,
+  blob2 AS trace_id,
   double1 AS duration_ms,
-  index3 AS status,
-  blob2 AS error,
+  blob3 AS status,
+  blob5 AS error,
   timestamp
 FROM dictation_events
 WHERE timestamp > NOW() - INTERVAL '1' HOUR
@@ -129,7 +141,7 @@ SELECT
   AVG(CASE WHEN double4 = 1 THEN double1 END) AS avg_cold_start_ms,
   AVG(CASE WHEN double4 = 0 THEN double1 END) AS avg_warm_start_ms
 FROM dictation_events
-WHERE index1 = 'auth.jwt_verify'
+WHERE blob1 = 'auth.jwt_verify'
   AND timestamp > NOW() - INTERVAL '24' HOUR
 GROUP BY hour
 ORDER BY hour DESC;
@@ -193,13 +205,13 @@ npx wrangler tail --format json | jq 'select(.outcome == "ok")'
 1. Query Analytics Engine for their user ID:
 ```sql
 SELECT
-  blob1 AS trace_id,
+  blob2 AS trace_id,
   double1 AS jwt_duration_ms,
   double4 AS was_cold_start,
   timestamp
 FROM dictation_events
-WHERE index1 = 'auth.jwt_verify'
-  AND index2 = 'USER_ID_HERE'
+WHERE blob1 = 'auth.jwt_verify'
+  AND index1 = 'USER_ID_HERE'
   AND timestamp > NOW() - INTERVAL '7' DAY
 ORDER BY timestamp DESC
 LIMIT 20;
@@ -213,16 +225,16 @@ LIMIT 20;
 3. Correlate with quota increment timing (same trace_id):
 ```sql
 SELECT
-  blob1 AS trace_id,
+  blob2 AS trace_id,
   double1 AS quota_duration_ms,
-  index3 AS status,
-  blob2 AS error
+  blob3 AS status,
+  blob5 AS error
 FROM dictation_events
-WHERE index1 = 'db.quota_increment'
-  AND blob1 IN (
-    SELECT blob1 FROM dictation_events
-    WHERE index2 = 'USER_ID_HERE'
-      AND index1 = 'auth.jwt_verify'
+WHERE blob1 = 'db.quota_increment'
+  AND blob2 IN (
+    SELECT blob2 FROM dictation_events
+    WHERE index1 = 'USER_ID_HERE'
+      AND blob1 = 'auth.jwt_verify'
     LIMIT 5
   );
 ```
@@ -238,7 +250,7 @@ SELECT
   QUANTILE(double1, 0.95) AS p95_ms,
   QUANTILE(double1, 0.99) AS p99_ms
 FROM dictation_events
-WHERE index1 = 'db.quota_increment'
+WHERE blob1 = 'db.quota_increment'
   AND timestamp > NOW() - INTERVAL '1' HOUR;
 ```
 
