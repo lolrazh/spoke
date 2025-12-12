@@ -8,7 +8,7 @@ import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 
-type PermissionKey = "microphone" | "accessibility" | "inputMonitoring";
+type PermissionKey = "microphone" | "screenRecording" | "accessibility" | "inputMonitoring";
 
 const PERMISSION_COPY: Record<
   PermissionKey,
@@ -24,6 +24,17 @@ const PERMISSION_COPY: Record<
     icon: (
       <SfIcon
         name="microphone.fill"
+        size={18}
+        className="text-primary/70"
+      />
+    ),
+  },
+  screenRecording: {
+    title: "Screen Recording",
+    description: "Capture screen context for better accuracy",
+    icon: (
+      <SfIcon
+        name="rectangle.on.rectangle"
         size={18}
         className="text-primary/70"
       />
@@ -81,6 +92,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
     permissions,
     ui,
     requestMicrophone,
+    requestScreenRecording,
     requestAccessibility,
     requestInputMonitoring,
   } = usePermissionsController();
@@ -99,6 +111,13 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
           loading: ui.microphone.loading,
           disabled: false,
           onRequest: requestMicrophone,
+        },
+        {
+          key: "screenRecording",
+          granted: permissions.screenRecording,
+          loading: ui.screenRecording.loading,
+          disabled: false,
+          onRequest: requestScreenRecording,
         },
         {
           key: "accessibility",
@@ -121,6 +140,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
     permissions,
     ui,
     requestMicrophone,
+    requestScreenRecording,
     requestAccessibility,
     requestInputMonitoring,
   ]);

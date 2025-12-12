@@ -14,24 +14,34 @@ export type PermissionProvider = {
     success: boolean;
     granted: boolean;
   }>;
+  checkScreenRecordingPermission: () => Promise<{
+    granted: boolean;
+    status?: string;
+  }>;
+  requestScreenRecordingPermission: () => Promise<{
+    success: boolean;
+    granted: boolean;
+  }>;
   askIM: () => Promise<{
     success: boolean;
     status: "authorized" | "denied" | string;
   }>;
   requestAccessibilityPermission: () => Promise<{ success: boolean }>;
   openSystemPreferences: (
-    pane: "microphone" | "input-monitoring" | "accessibility",
+    pane: "microphone" | "input-monitoring" | "accessibility" | "screen-recording",
   ) => void | Promise<void>;
 };
 
 export type PermissionsState = {
   microphone: boolean;
+  screenRecording: boolean;
   inputMonitoring: boolean;
   accessibility: boolean;
 };
 
 export type PermissionUiState = {
   microphone: { loading: boolean; justGranted: boolean };
+  screenRecording: { loading: boolean; justGranted: boolean };
   inputMonitoring: { loading: boolean; justGranted: boolean };
   accessibility: { loading: boolean; justGranted: boolean };
 };
@@ -80,6 +90,20 @@ const defaultProvider: PermissionProvider | null =
             granted: res?.granted ?? false,
           };
         },
+        checkScreenRecordingPermission: async () => {
+          const res = await window.electron?.checkScreenRecordingPermission?.();
+          return {
+            granted: res?.granted ?? false,
+            status: res?.status ?? "unknown",
+          };
+        },
+        requestScreenRecordingPermission: async () => {
+          const res = await window.electron?.requestScreenRecordingPermission?.();
+          return {
+            success: !!res?.success,
+            granted: res?.granted ?? false,
+          };
+        },
         askIM: async () => {
           const res = await window.electron?.askIM?.();
           return {
@@ -112,6 +136,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       checkPermissions: async () => ({ needAX: true, needIM: true, isDev: false }),
       checkMicrophonePermission: async () => ({ granted: false, status: "unknown" }),
       requestMicrophonePermission: async () => ({ success: false, granted: false }),
+      checkScreenRecordingPermission: async () => ({ granted: false, status: "unknown" }),
+      requestScreenRecordingPermission: async () => ({ success: false, granted: false }),
       askIM: async () => ({ success: false, status: "denied" }),
       requestAccessibilityPermission: async () => ({ success: false }),
       openSystemPreferences: () => undefined,
@@ -120,11 +146,13 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
 
   const [permissions, setPermissions] = useState<PermissionsState>({
     microphone: false,
+    screenRecording: false,
     inputMonitoring: false,
     accessibility: false,
   });
   const [ui, setUi] = useState<PermissionUiState>({
     microphone: { loading: false, justGranted: false },
+    screenRecording: { loading: false, justGranted: false },
     inputMonitoring: { loading: false, justGranted: false },
     accessibility: { loading: false, justGranted: false },
   });
@@ -132,31 +160,35 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   const prevPermissionsRef = useRef<PermissionsState | null>(null);
   const timersRef = useRef<{
     mic: ReturnType<typeof setInterval> | null;
+    sr: ReturnType<typeof setInterval> | null;
     im: ReturnType<typeof setInterval> | null;
     ax: ReturnType<typeof setInterval> | null;
-  }>({ mic: null, im: null, ax: null });
+  }>({ mic: null, sr: null, im: null, ax: null });
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (timersRef.current.mic) clearInterval(timersRef.current.mic);
+      if (timersRef.current.sr) clearInterval(timersRef.current.sr);
       if (timersRef.current.im) clearInterval(timersRef.current.im);
       if (timersRef.current.ax) clearInterval(timersRef.current.ax);
-      timersRef.current = { mic: null, im: null, ax: null };
+      timersRef.current = { mic: null, sr: null, im: null, ax: null };
       debugPermLog("cleanup:cleared-pollers");
     };
   }, []);
 
   const init = async () => {
     try {
-      const [sys, mic] = await Promise.all([
+      const [sys, mic, sr] = await Promise.all([
         p.checkPermissions(),
         p.checkMicrophonePermission(),
+        p.checkScreenRecordingPermission(),
       ]);
       if (!mountedRef.current) return;
       const nextPermissions: PermissionsState = {
         microphone: !!mic?.granted,
+        screenRecording: !!sr?.granted,
         inputMonitoring: !(sys?.needIM ?? true),
         accessibility: !(sys?.needAX ?? true),
       };
@@ -165,6 +197,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         needAX: sys?.needAX ?? true,
         needIM: sys?.needIM ?? true,
         micStatus: mic?.status ?? "unknown",
+        screenRecordingStatus: sr?.status ?? "unknown",
         permissions: nextPermissions,
       });
     } catch {}
@@ -208,6 +241,45 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
     } catch {
       setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+    }
+  };
+
+  const requestScreenRecording = async () => {
+    try {
+      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: true } }));
+      debugPermLog("request:screen-recording:start");
+      const res = await p.requestScreenRecordingPermission();
+      if (res?.success && res?.granted) {
+        setPermissions((prev) => ({ ...prev, screenRecording: true }));
+        setUi((prev) => ({ ...prev, screenRecording: { loading: false, justGranted: true } }));
+        debugPermLog("request:screen-recording:granted");
+        setTimeout(() => {
+          if (!mountedRef.current) return;
+          setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, justGranted: false } }));
+        }, 800);
+        return;
+      }
+      // Open System Settings and poll
+      try { p.openSystemPreferences("screen-recording"); } catch {}
+      debugPermLog("request:screen-recording:polling");
+      if (timersRef.current.sr) clearInterval(timersRef.current.sr);
+      timersRef.current.sr = setInterval(async () => {
+        const status = await p.checkScreenRecordingPermission();
+        if (status?.granted) {
+          clearInterval(timersRef.current.sr);
+          timersRef.current.sr = null;
+          setPermissions((prev) => ({ ...prev, screenRecording: true }));
+          setUi((prev) => ({ ...prev, screenRecording: { loading: false, justGranted: true } }));
+          debugPermLog("request:screen-recording:granted-via-poll");
+          setTimeout(() => {
+            if (!mountedRef.current) return;
+            setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, justGranted: false } }));
+          }, 800);
+        }
+      }, pollMs);
+      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: false } }));
+    } catch {
+      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: false } }));
     }
   };
 
@@ -306,6 +378,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       ui,
       init,
       requestMicrophone,
+      requestScreenRecording,
       requestInputMonitoring,
       requestAccessibility,
       setPermissions, // exposed for dev overlays/tests

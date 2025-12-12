@@ -3449,6 +3449,36 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("check-screen-recording-permission", () => {
+    try {
+      const status = systemPreferences.getMediaAccessStatus("screen");
+      console.log("[IPC] Screen recording permission status:", status);
+      return { status, granted: status === "granted" };
+    } catch (error) {
+      console.error("Error checking screen recording permission:", error);
+      return { status: "unknown", granted: false };
+    }
+  });
+
+  ipcMain.handle("request-screen-recording-permission", async () => {
+    try {
+      console.log("[IPC] Requesting screen recording permission...");
+      // Screen recording permission can't be requested via askForMediaAccess
+      // Instead, we trigger a screenshot which prompts the user if needed
+      const { desktopCapturer } = await import("electron");
+      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+
+      // Check the status after attempting capture
+      const status = systemPreferences.getMediaAccessStatus("screen");
+      const granted = status === "granted";
+      console.log("[IPC] Screen recording permission result:", granted);
+      return { success: true, granted };
+    } catch (error) {
+      console.error("Error requesting screen recording permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle("open-system-preferences", async (event, pane: string) => {
     try {
       const { shell } = await import("electron");
@@ -3458,6 +3488,10 @@ app.whenReady().then(async () => {
         case "microphone":
           url =
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+          break;
+        case "screen-recording":
+          url =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
           break;
         case "accessibility":
           url =

@@ -70,6 +70,8 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = 
   checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
   checkMicrophonePermission: async () => ({ status: "denied", granted: false }),
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
+  checkScreenRecordingPermission: async () => ({ status: "denied", granted: false }),
+  requestScreenRecordingPermission: async () => ({ success: true, granted: true }),
   askIM: async () => ({ success: true, status: "authorized" }),
   requestAccessibilityPermission: async () => ({ success: true }),
   openSystemPreferences: () => undefined,
@@ -178,6 +180,8 @@ const Onboarding: React.FC = () => {
       checkPermissions: mockPermissions.checkPermissions,
       checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
       requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
+      checkScreenRecordingPermission: mockPermissions.checkScreenRecordingPermission,
+      requestScreenRecordingPermission: mockPermissions.requestScreenRecordingPermission,
       askIM: mockPermissions.askIM,
       requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
       openSystemPreferences: mockPermissions.openSystemPreferences,
@@ -188,6 +192,7 @@ const Onboarding: React.FC = () => {
     ui,
     init: initPermissions,
     requestMicrophone,
+    requestScreenRecording,
     requestAccessibility,
     requestInputMonitoring,
     setPermissions,
@@ -592,6 +597,7 @@ const Onboarding: React.FC = () => {
   // Permission aggregates
   const allPermissionsGranted =
     permissions.microphone &&
+    permissions.screenRecording &&
     permissions.accessibility &&
     permissions.inputMonitoring;
 
@@ -1112,6 +1118,10 @@ const Onboarding: React.FC = () => {
     await requestMicrophone();
   };
 
+  const handleRequestScreenRecording = async () => {
+    await requestScreenRecording();
+  };
+
   const handleComplete = async () => {
     // Finish onboarding from the Complete screen
     // Helper should already be running from permissions step, but ensure it's started
@@ -1319,6 +1329,7 @@ const Onboarding: React.FC = () => {
                     // Quick reset for development
                     setPermissions({
                       microphone: false,
+                      screenRecording: false,
                       accessibility: false,
                       inputMonitoring: false,
                     });
@@ -1629,6 +1640,98 @@ const Onboarding: React.FC = () => {
                                       animate={{ pathLength: 1 }}
                                       transition={
                                         ui.microphone.justGranted
+                                          ? {
+                                            duration: 0.45,
+                                            ease: [0.25, 0.8, 0.25, 1],
+                                          }
+                                          : { duration: 0 }
+                                      }
+                                      d="M5 13l4 4L19 7"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                </div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                      </div>
+                      {/* No separate denied section; user can press Enable again. */}
+                    </div>
+
+                    {/* Screen Recording Permission */}
+                    <div
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.screenRecording ? "opacity-60" : "opacity-100"}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                            <SfIcon
+                              name="rectangle.on.rectangle"
+                              size={16}
+                              className="text-primary/70"
+                            />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-medium text-foreground">
+                              Screen Recording
+                            </p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              Capture screen context for better accuracy.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="relative w-[84px] flex items-center justify-center">
+                            <AnimatePresence mode="wait" initial={false}>
+                              {!permissions.screenRecording ? (
+                                <motion.div
+                                  key={
+                                    ui.screenRecording.loading
+                                      ? "sr-loading"
+                                      : "sr-idle"
+                                  }
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="w-full flex items-center justify-center"
+                                >
+                                  <Button
+                                    size="sm"
+                                    onClick={handleRequestScreenRecording}
+                                    disabled={ui.screenRecording.loading}
+                                    className="text-xs onboarding-cta w-full"
+                                  >
+                                    <div className="relative flex items-center justify-center h-4">
+                                      {ui.screenRecording.loading ? (
+                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                      ) : (
+                                        <span>Enable</span>
+                                      )}
+                                    </div>
+                                  </Button>
+                                </motion.div>
+                              ) : (
+                                <div className="flex items-center justify-center">
+                                  <motion.svg
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    className="text-white/80"
+                                  >
+                                    <motion.path
+                                      initial={{
+                                        pathLength: ui.screenRecording.justGranted
+                                          ? 0
+                                          : 1,
+                                      }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={
+                                        ui.screenRecording.justGranted
                                           ? {
                                             duration: 0.45,
                                             ease: [0.25, 0.8, 0.25, 1],
