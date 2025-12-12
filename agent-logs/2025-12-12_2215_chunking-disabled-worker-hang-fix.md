@@ -69,14 +69,72 @@ This created orphaned promises that:
 
 ## Architecture Decisions
 - **Disabled rather than fixed chunking** - The fix (proper `waitUntil` wrapping, abort handling, replacing polling with `Promise.all`) would be significant work. Single-shot audio processing works fine for most dictations.
-- **Left dead code in place** - Client-side chunk refs, detector, and handlers are now dead code but harmless. Left for potential future reimplementation.
+- **Left dead code in place initially** - Client-side chunk refs, detector, and handlers were left as dead code for potential future reimplementation.
 - **No-op handler in worker** - If a stale client somehow sends chunk messages, worker logs and ignores rather than crashing.
+
+---
+
+## Follow-up: Dead Code Cleanup (2025-12-12)
+
+**Agent:** Sonnet 4.5
+**Status:** ✅ Completed
+
+### What Was Cleaned Up
+
+After the initial fix that disabled chunking, a comprehensive cleanup was performed to remove all dead code:
+
+#### 1. Client-side Cleanup (`src/hooks/useTranscription.ts`)
+- **Removed chunk state refs** (lines 156-158):
+  - `chunkResultsRef: Map<number, string>`
+  - `pendingChunksRef: Set<number>`
+  - `currentChunkIndexRef: number`
+- **Removed chunk state reset logic** (lines 1246-1249)
+- **Simplified chunk detection callback** to no-op (lines 1337-1340)
+- **Removed `chunk_result` message handler** (lines 1568-1587): Deleted 20 lines of chunk result accumulation and progressive UI updates
+- **Removed chunk state logging** (lines 1918-1928): Deleted final chunk state debug logs
+
+#### 2. Worker Cleanup (`worker/src/handlers/ws.ts`)
+- **Removed polling logic** (lines 478-509): Deleted 8-second polling loop that waited for `pendingChunkSTT`
+- **Simplified empty session check** (lines 448-456): Replaced `hasChunks` conditional with simple audio presence check
+- **Removed chunked vs non-chunked branching** (lines 504-599): Deleted 95 lines of conditional logic, now single-shot only
+- **Removed chunk metrics** (lines 905-941): Deleted `chunkMetrics`, `chunkCount`, and `chunkSttMs` from worker response
+
+**Before cleanup:** 48 lines of chunk polling + collection logic
+**After cleanup:** 14 lines of simple empty session check
+
+#### 3. Documentation Improvement (`docs/TRANSCRIPTION.md`)
+- **Replaced 120 lines** of detailed chunking implementation (lines 269-387)
+- **With 20 lines** of concise deprecation notice (lines 269-289)
+- Removed confusing strikethrough formatting and XML-like `<chunking>` tags
+- Added clear sections: Status, Reason, Configuration, History, Future Considerations
+
+#### 4. File Deletion & Import Cleanup
+- **Deleted `src/utils/chunkDetector.ts`** (140 lines) - Entire chunk detection class removed
+- **Updated `src/utils/vadStreamGate.ts`**:
+  - Removed `ChunkDetector` and `ChunkEvent` imports
+  - Removed `chunkDetector` field and `onChunkEvent` callback parameter
+  - Removed `getChunkState()` and `getRemainingChunk()` methods
+  - Removed chunk detection push/drain logic (lines 138-147)
+- **Updated `useTranscription.ts`**: Removed second callback when instantiating `VadStreamGate`
+
+### Impact Summary
+- **Total lines removed:** ~350 lines of dead code
+- **Files modified:** 4 files
+- **Files deleted:** 1 file
+- **TypeScript compilation:** ✅ No new errors introduced
+- **Backwards compatibility:** ✅ Old app versions still work with new worker (degraded, no interim chunk results)
+
+### Code Quality Improvements
+- Simpler control flow in worker `end` handler
+- Removed unused state tracking in client
+- Cleaner documentation without misleading implementation details
+- Eliminated potential confusion from dead code
 
 ## Ready for Next Session
 - ✅ **Worker is stable** - Wall time ~2s, no hangs, no loadShed
 - ✅ **Branch created** - `chunking-removed` ready to merge
+- ✅ **Dead code cleanup** - All chunking references removed from codebase
 - 🔧 **Deploy to production** - Need to `npm run deploy` in worker directory
-- 🔧 **Dead code cleanup** - Optional: Remove chunking refs from useTranscription.ts, delete chunkDetector.ts
 
 ## Context for Future
 This fix eliminates the major worker stability issue that was plaguing production. If chunking is needed again for long dictations, the implementation must wrap chunk STT in `waitUntil()` and use `Promise.all` instead of polling. For now, single-shot processing is reliable and performant.
