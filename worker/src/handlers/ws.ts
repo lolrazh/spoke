@@ -1242,151 +1242,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session = createEmptySession();
           sessionActive = false;
         } else if (parsed.type === 'chunk') {
-          // Handle chunk boundary - start STT for accumulated audio immediately
-          const chunkIndex = parsed.chunkIndex;
-          const audioMs = parsed.audioMs;
-
+          // CHUNKING DISABLED: This code path should not be reached since
+          // client has CHUNK_DETECTION_ENABLED = false. If somehow a chunk
+          // message arrives, just log and ignore it.
+          // The previous implementation had untracked async IIFEs that caused
+          // worker hangs (wall time 100+ seconds with only 10ms CPU time).
+          // See: agent-logs/2025-12-12 investigation
           console.log(JSON.stringify({
-            event: 'chunk.received',
-            chunkIndex,
-            audioMs,
-            accumulatedBytes: session.totalBytes,
-            accumulatedFrames: session.frames,
+            event: 'chunk.ignored',
+            reason: 'chunking_disabled',
+            chunkIndex: parsed.chunkIndex,
             traceId: session.traceId,
           }));
-
-          // Take snapshot of current audio and start STT
-          if (session.chunks.length > 0 && session.totalBytes > 0) {
-            const chunkAudio = session.chunks.slice();
-            const chunkBytes = session.totalBytes;
-
-            // Capture session data before async - session object may be reset later
-            const sessionRate = session.rate;
-            const sessionIdentity = { ...session.identity };
-            const sessionTraceId = session.traceId;
-            const sessionLanguage = clientLanguage;
-
-            // Store chunk state
-            session.chunkStates.set(chunkIndex, {
-              index: chunkIndex,
-              audioChunks: chunkAudio,
-              totalBytes: chunkBytes,
-              status: 'transcribing',
-              sttStartAt: Date.now(),
-            });
-            session.pendingChunkSTT.add(chunkIndex);
-
-            // Keep reference to session's chunk tracking (these are stable Maps/Sets)
-            const chunkStatesRef = session.chunkStates;
-            const pendingChunkSTTRef = session.pendingChunkSTT;
-
-            // Clear main buffer for next chunk
-            session.chunks = [];
-            session.totalBytes = 0;
-
-            // Start STT in background (don't await - fire and forget)
-            const runtime = getRuntimeConfig(c.env);
-            const sttProvider = runtime.stt.provider;
-            const sttApiKey =
-              sttProvider === 'fireworks'
-                ? c.env.FIREWORKS_API_KEY
-                : sttProvider === 'deepgram'
-                  ? c.env.DEEPGRAM_API_KEY
-                  : c.env.GROQ_API_KEY;
-
-            if (sttApiKey) {
-              // Run STT async - use captured values, not session directly
-              (async () => {
-                try {
-                  const pcm = concat(chunkAudio, chunkBytes);
-                  const wav = wrapWav(pcm, sessionRate, 1, 16);
-
-                  const sttPrompt = buildSTTPrompt({
-                    basePrompt: runtime.stt.prompt,
-                    identity: sessionIdentity,
-                  });
-
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.start',
-                    chunkIndex,
-                    audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                    traceId: sessionTraceId,
-                  }));
-
-                  const chunkAbort = new AbortController();
-                  const res = await transcribeWav(wav, {
-                    provider: sttProvider,
-                    apiKey: sttApiKey,
-                    signal: chunkAbort.signal,
-                    model: runtime.stt.model,
-                    language: sessionLanguage || runtime.stt.language,
-                    prompt: sttPrompt,
-                    timeoutMs: runtime.stt.timeoutMs,
-                  });
-
-                  const chunkState = chunkStatesRef.get(chunkIndex);
-                  if (chunkState) {
-                    chunkState.status = 'done';
-                    chunkState.result = res.text;
-                    chunkState.sttDoneAt = Date.now();
-                  }
-                  pendingChunkSTTRef.delete(chunkIndex);
-
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.done',
-                    chunkIndex,
-                    textLength: res.text.length,
-                    durationMs: chunkState?.sttDoneAt && chunkState?.sttStartAt
-                      ? chunkState.sttDoneAt - chunkState.sttStartAt
-                      : null,
-                    traceId: sessionTraceId,
-                  }));
-
-                  // Send chunk result to client
-                  if (!socketClosed) {
-                    safely(() =>
-                      server.send(
-                        JSON.stringify({
-                          type: 'chunk_result',
-                          chunkIndex,
-                          text: res.text,
-                          traceId: sessionTraceId,
-                        }),
-                      ),
-                    );
-                  }
-                } catch (err) {
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.error',
-                    chunkIndex,
-                    error: String(err),
-                    traceId: sessionTraceId,
-                  }));
-                  pendingChunkSTTRef.delete(chunkIndex);
-                  const chunkState = chunkStatesRef.get(chunkIndex);
-                  if (chunkState) {
-                    chunkState.status = 'done';
-                    chunkState.result = '';
-                  }
-                }
-              })();
-            } else {
-              console.log(JSON.stringify({
-                event: 'chunk.stt.no_api_key',
-                chunkIndex,
-                provider: sttProvider,
-                traceId: sessionTraceId,
-              }));
-            }
-          } else {
-            console.log(JSON.stringify({
-              event: 'chunk.no_audio',
-              chunkIndex,
-              chunksLength: session.chunks.length,
-              totalBytes: session.totalBytes,
-              traceId: session.traceId,
-            }));
-          }
         } else if (parsed.type === 'cancel') {
           session = createEmptySession();
           session.canceled = true;

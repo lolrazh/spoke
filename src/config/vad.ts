@@ -27,8 +27,10 @@ export const MIN_SILENCE_MS = 200; // avoid premature cut-offs
 // Chunking Configuration (for incremental transcription)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Enable chunk detection simulation (logs only, no actual chunking yet) */
-export const CHUNK_DETECTION_ENABLED = true;
+/** Enable chunk detection for incremental transcription.
+ *  DISABLED: Chunking causes worker hangs due to orphaned async operations.
+ *  See: agent-logs/2025-12-12 investigation */
+export const CHUNK_DETECTION_ENABLED = false;
 
 /** Minimum audio duration before we consider chunking (ms).
  *  Groq bills 10s minimum, so chunking at <8s wastes money. */
