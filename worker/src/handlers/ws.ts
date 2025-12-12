@@ -445,12 +445,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             if (!ok) connLog.error('[WS] status send failed');
           }
 
-          // Check if this is a chunked session
-          const hasChunks = session.chunkStates.size > 0;
-          const hasRemainingAudio = session.chunks.length > 0 && session.totalBytes > 0;
-
-          // For empty sessions (no chunks and no remaining audio), return empty
-          if (session.canceled || (!hasChunks && !hasRemainingAudio)) {
+          // For empty sessions (no audio), return empty
+          if (session.canceled || (session.chunks.length === 0 || session.totalBytes === 0)) {
             const text = '';
             server.send(JSON.stringify({ type: 'final', text }));
             safeClose(server, 1000, 'done');
@@ -459,58 +455,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             return;
           }
 
-          // Log chunked session info
-          if (hasChunks) {
-            console.log(JSON.stringify({
-              event: 'end.chunked_session',
-              chunkCount: session.chunkStates.size,
-              pendingChunks: session.pendingChunkSTT.size,
-              hasRemainingAudio,
-              remainingBytes: session.totalBytes,
-              traceId: session.traceId,
-            }));
-          }
-
           const assembleStart = Date.now();
 
-          // If chunked, wait for pending STT and process remaining audio
-          const chunkTexts: string[] = [];
-          if (hasChunks) {
-            // Wait for all pending chunk STTs (with timeout)
-            const maxWaitMs = 15000;
-            const waitStart = Date.now();
-            while (session.pendingChunkSTT.size > 0 && Date.now() - waitStart < maxWaitMs) {
-              await new Promise(r => setTimeout(r, 50));
-            }
-
-            if (session.pendingChunkSTT.size > 0) {
-              console.log(JSON.stringify({
-                event: 'end.chunk_timeout',
-                stillPending: Array.from(session.pendingChunkSTT),
-                traceId: session.traceId,
-              }));
-            }
-
-            // Collect chunk results in order
-            const sortedIndices = Array.from(session.chunkStates.keys()).sort((a, b) => a - b);
-            for (const idx of sortedIndices) {
-              const state = session.chunkStates.get(idx);
-              if (state?.result) {
-                chunkTexts.push(state.result);
-              }
-            }
-
-            console.log(JSON.stringify({
-              event: 'end.chunks_collected',
-              chunkCount: chunkTexts.length,
-              totalChunkTextLength: chunkTexts.join(' ').length,
-              traceId: session.traceId,
-            }));
-          }
-
-          // Process remaining audio (if any) - either final chunk or non-chunked session
+          // Process audio (single-shot, no chunking)
           let remainingWav: Uint8Array | null = null;
-          if (hasRemainingAudio) {
+          if (session.chunks.length > 0 && session.totalBytes > 0) {
             const pcm = concat(session.chunks, session.totalBytes);
             remainingWav = wrapWav(pcm, session.rate, 1, 16);
           }
@@ -552,102 +501,48 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 identity: session.identity,
               });
 
-              // Handle chunked vs non-chunked sessions
-              if (hasChunks) {
-                // Chunked session: concatenate chunk results + transcribe remaining audio
-                let remainingText = '';
+              // Single-shot processing (chunking disabled)
+              const wav = remainingWav!;
 
-                if (remainingWav && remainingWav.length > 44) { // More than just WAV header
-                  // Log remaining audio STT
-                  try {
-                    console.log(JSON.stringify({
-                      event: 'stt.request.remaining',
-                      provider: sttProvider,
-                      audioSizeKB: Number((remainingWav.length / 1024).toFixed(2)),
-                      traceId: session.traceId,
-                    }));
-                  } catch { }
-
-                  const sttStartTime = Date.now();
-                  const res = await transcribeWav(remainingWav, {
-                    provider: sttProvider,
-                    apiKey: sttApiKey,
-                    signal: sttAbort.signal,
-                    model: runtime.stt.model,
-                    language: clientLanguage || runtime.stt.language,
-                    prompt: sttPrompt,
-                    timeoutMs: runtime.stt.timeoutMs,
-                  });
-                  const sttDuration = Date.now() - sttStartTime;
-                  remainingText = res.text;
-                  timings = res.timings;
-
-                  console.log(JSON.stringify({
-                    event: 'stt.complete.remaining',
-                    textLength: remainingText.length,
-                    durationMs: sttDuration,
-                    traceId: session.traceId,
-                  }));
-                }
-
-                // Combine all texts: chunk results + remaining audio
-                const allTexts = [...chunkTexts];
-                if (remainingText) {
-                  allTexts.push(remainingText);
-                }
-                finalText = allTexts.join(' ').trim();
-
-                console.log(JSON.stringify({
-                  event: 'chunked.final_assembly',
-                  chunkCount: chunkTexts.length,
-                  hasRemaining: !!remainingText,
-                  totalTextLength: finalText.length,
-                  traceId: session.traceId,
-                }));
-              } else {
-                // Non-chunked session: process all audio at once (original behavior)
-                const wav = remainingWav!;
-
-                // Log STT request details (console only)
-                try {
-                  const sttLog = {
-                    event: 'stt.request',
-                    provider: sttProvider,
-                    model: runtime.stt.model,
-                    endpoint: sttEndpoint,
-                    language: clientLanguage || runtime.stt.language,
-                    timeoutMs: runtime.stt.timeoutMs,
-                    audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                    traceId: session.traceId,
-                  } as const;
-                  console.log(JSON.stringify(sttLog));
-                } catch { }
-                const sttStartTime = Date.now();
-                const res = await transcribeWav(wav, {
+              // Log STT request details (console only)
+              try {
+                const sttLog = {
+                  event: 'stt.request',
                   provider: sttProvider,
-                  apiKey: sttApiKey,
-                  signal: sttAbort.signal,
                   model: runtime.stt.model,
+                  endpoint: sttEndpoint,
                   language: clientLanguage || runtime.stt.language,
-                  prompt: sttPrompt,
                   timeoutMs: runtime.stt.timeoutMs,
-                });
-                const sttDuration = Date.now() - sttStartTime;
-                finalText = res.text;
-                timings = res.timings;
+                  audioSizeKB: Number((wav.length / 1024).toFixed(2)),
+                  traceId: session.traceId,
+                } as const;
+                console.log(JSON.stringify(sttLog));
+              } catch { }
+              const sttStartTime = Date.now();
+              const res = await transcribeWav(wav, {
+                provider: sttProvider,
+                apiKey: sttApiKey,
+                signal: sttAbort.signal,
+                model: runtime.stt.model,
+                language: clientLanguage || runtime.stt.language,
+                prompt: sttPrompt,
+                timeoutMs: runtime.stt.timeoutMs,
+              });
+              const sttDuration = Date.now() - sttStartTime;
+              finalText = res.text;
+              timings = res.timings;
 
-                // Log STT completion
-                try {
-                  const sttCompleteLog = {
-                    event: 'stt.complete',
-                    provider: sttProvider,
-                    durationMs: sttDuration,
-                    textLength: finalText.length,
-                    traceId: session.traceId,
-                  } as const;
-                  console.log(JSON.stringify(sttCompleteLog));
-                } catch { }
-              }
+              // Log STT completion
+              try {
+                const sttCompleteLog = {
+                  event: 'stt.complete',
+                  provider: sttProvider,
+                  durationMs: sttDuration,
+                  textLength: finalText.length,
+                  traceId: session.traceId,
+                } as const;
+                console.log(JSON.stringify(sttCompleteLog));
+              } catch { }
 
               const editPlan =
                 session.mode === 'edit' && runtime.edit.enabled
@@ -1007,20 +902,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
           if (!socketClosed) {
             try {
-              // Build chunk metrics if this was a chunked session
-              const chunkMetrics = session.chunkStates.size > 0
-                ? Array.from(session.chunkStates.entries())
-                  .sort(([a], [b]) => a - b)
-                  .map(([idx, state]) => ({
-                    index: idx,
-                    bytes: state.totalBytes,
-                    durationMs: state.sttStartAt && state.sttDoneAt
-                      ? state.sttDoneAt - state.sttStartAt
-                      : null,
-                    textLength: state.result?.length ?? 0,
-                  }))
-                : null;
-
               const workerMetrics = {
                 traceId: session.traceId,
                 wsAcceptAt: session.wsAcceptAt ?? null,
@@ -1037,13 +918,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
                 assembleMs,
                 mode: session.mode,
-                // Chunk-level STT metrics (for chunked sessions)
-                chunks: chunkMetrics,
-                chunkCount: session.chunkStates.size || null,
-                // Combined STT durations as comma-separated string for easy reading
-                chunkSttMs: chunkMetrics
-                  ? chunkMetrics.map(c => c.durationMs).filter(d => d != null).join(',')
-                  : null,
                 stt: timings
                   ? {
                     provider: sttProvider,
@@ -1242,151 +1116,18 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           session = createEmptySession();
           sessionActive = false;
         } else if (parsed.type === 'chunk') {
-          // Handle chunk boundary - start STT for accumulated audio immediately
-          const chunkIndex = parsed.chunkIndex;
-          const audioMs = parsed.audioMs;
-
+          // CHUNKING DISABLED: This code path should not be reached since
+          // client has CHUNK_DETECTION_ENABLED = false. If somehow a chunk
+          // message arrives, just log and ignore it.
+          // The previous implementation had untracked async IIFEs that caused
+          // worker hangs (wall time 100+ seconds with only 10ms CPU time).
+          // See: agent-logs/2025-12-12 investigation
           console.log(JSON.stringify({
-            event: 'chunk.received',
-            chunkIndex,
-            audioMs,
-            accumulatedBytes: session.totalBytes,
-            accumulatedFrames: session.frames,
+            event: 'chunk.ignored',
+            reason: 'chunking_disabled',
+            chunkIndex: parsed.chunkIndex,
             traceId: session.traceId,
           }));
-
-          // Take snapshot of current audio and start STT
-          if (session.chunks.length > 0 && session.totalBytes > 0) {
-            const chunkAudio = session.chunks.slice();
-            const chunkBytes = session.totalBytes;
-
-            // Capture session data before async - session object may be reset later
-            const sessionRate = session.rate;
-            const sessionIdentity = { ...session.identity };
-            const sessionTraceId = session.traceId;
-            const sessionLanguage = clientLanguage;
-
-            // Store chunk state
-            session.chunkStates.set(chunkIndex, {
-              index: chunkIndex,
-              audioChunks: chunkAudio,
-              totalBytes: chunkBytes,
-              status: 'transcribing',
-              sttStartAt: Date.now(),
-            });
-            session.pendingChunkSTT.add(chunkIndex);
-
-            // Keep reference to session's chunk tracking (these are stable Maps/Sets)
-            const chunkStatesRef = session.chunkStates;
-            const pendingChunkSTTRef = session.pendingChunkSTT;
-
-            // Clear main buffer for next chunk
-            session.chunks = [];
-            session.totalBytes = 0;
-
-            // Start STT in background (don't await - fire and forget)
-            const runtime = getRuntimeConfig(c.env);
-            const sttProvider = runtime.stt.provider;
-            const sttApiKey =
-              sttProvider === 'fireworks'
-                ? c.env.FIREWORKS_API_KEY
-                : sttProvider === 'deepgram'
-                  ? c.env.DEEPGRAM_API_KEY
-                  : c.env.GROQ_API_KEY;
-
-            if (sttApiKey) {
-              // Run STT async - use captured values, not session directly
-              (async () => {
-                try {
-                  const pcm = concat(chunkAudio, chunkBytes);
-                  const wav = wrapWav(pcm, sessionRate, 1, 16);
-
-                  const sttPrompt = buildSTTPrompt({
-                    basePrompt: runtime.stt.prompt,
-                    identity: sessionIdentity,
-                  });
-
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.start',
-                    chunkIndex,
-                    audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                    traceId: sessionTraceId,
-                  }));
-
-                  const chunkAbort = new AbortController();
-                  const res = await transcribeWav(wav, {
-                    provider: sttProvider,
-                    apiKey: sttApiKey,
-                    signal: chunkAbort.signal,
-                    model: runtime.stt.model,
-                    language: sessionLanguage || runtime.stt.language,
-                    prompt: sttPrompt,
-                    timeoutMs: runtime.stt.timeoutMs,
-                  });
-
-                  const chunkState = chunkStatesRef.get(chunkIndex);
-                  if (chunkState) {
-                    chunkState.status = 'done';
-                    chunkState.result = res.text;
-                    chunkState.sttDoneAt = Date.now();
-                  }
-                  pendingChunkSTTRef.delete(chunkIndex);
-
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.done',
-                    chunkIndex,
-                    textLength: res.text.length,
-                    durationMs: chunkState?.sttDoneAt && chunkState?.sttStartAt
-                      ? chunkState.sttDoneAt - chunkState.sttStartAt
-                      : null,
-                    traceId: sessionTraceId,
-                  }));
-
-                  // Send chunk result to client
-                  if (!socketClosed) {
-                    safely(() =>
-                      server.send(
-                        JSON.stringify({
-                          type: 'chunk_result',
-                          chunkIndex,
-                          text: res.text,
-                          traceId: sessionTraceId,
-                        }),
-                      ),
-                    );
-                  }
-                } catch (err) {
-                  console.log(JSON.stringify({
-                    event: 'chunk.stt.error',
-                    chunkIndex,
-                    error: String(err),
-                    traceId: sessionTraceId,
-                  }));
-                  pendingChunkSTTRef.delete(chunkIndex);
-                  const chunkState = chunkStatesRef.get(chunkIndex);
-                  if (chunkState) {
-                    chunkState.status = 'done';
-                    chunkState.result = '';
-                  }
-                }
-              })();
-            } else {
-              console.log(JSON.stringify({
-                event: 'chunk.stt.no_api_key',
-                chunkIndex,
-                provider: sttProvider,
-                traceId: sessionTraceId,
-              }));
-            }
-          } else {
-            console.log(JSON.stringify({
-              event: 'chunk.no_audio',
-              chunkIndex,
-              chunksLength: session.chunks.length,
-              totalBytes: session.totalBytes,
-              traceId: session.traceId,
-            }));
-          }
         } else if (parsed.type === 'cancel') {
           session = createEmptySession();
           session.canceled = true;
