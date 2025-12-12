@@ -1238,6 +1238,43 @@ export function useTranscription(
       framesSentApprox: 0,
     };
 
+    // Fire-and-forget screenshot capture for OCR context
+    // Don't await - this runs in parallel with WebSocket connection
+    (async () => {
+      try {
+        if (!window.electron?.takeScreenshot) return;
+
+        const screenshotStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const result = await window.electron.takeScreenshot();
+        const screenshotDurationMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - screenshotStartMs;
+
+        if (!result.success || !result.imageBase64) {
+          console.warn('[OCR] Screenshot capture failed:', result.error);
+          return;
+        }
+
+        console.log(`[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB), sending to worker...`);
+
+        // Send screenshot to worker via WebSocket
+        const ws = wsRef.current;
+        if (ws && wsReadyRef.current && ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'context_ocr',
+              imageBase64: result.imageBase64,
+            }));
+            console.log('[OCR] Screenshot sent to worker');
+          } catch (err) {
+            console.warn('[OCR] Failed to send screenshot to worker:', err);
+          }
+        } else {
+          console.warn('[OCR] Cannot send screenshot - WebSocket not ready yet');
+        }
+      } catch (err) {
+        console.warn('[OCR] Screenshot capture error:', err);
+      }
+    })();
+
     try {
       // Check if we already have an authenticated WebSocket from pre-connect
       const alreadyConnected = wsRef.current && wsAuthenticatedRef.current && wsReadyRef.current;
