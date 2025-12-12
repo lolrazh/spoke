@@ -266,125 +266,25 @@ The mode is determined automatically based on whether text is selected. No manua
 
 ---
 
-## Chunked Transcription
+## Chunked Transcription (DEPRECATED)
 
-> ⚠️ **DEPRECATED (2025-12-12):** Chunking has been disabled. The async chunk STT 
-> implementation caused worker hangs (wall time 100+ seconds with only 10ms CPU time)
-> due to untracked async IIFEs. All audio is now processed in a single request.
-> See: agent-logs/2025-12-12 investigation
+**Status:** Disabled as of 2025-12-12
 
-~~For long dictations (10+ seconds), Spoke uses chunked transcription to improve speed, accuracy, and cost-efficiency.~~
+**Reason:** The async chunk STT implementation caused worker hangs (wall time 100+ seconds with only 10ms CPU time) due to untracked async IIFEs that kept workers alive indefinitely. All audio is now processed in a single request.
 
-<chunking status="DISABLED">
-  <rationale>
-    - **Faster responses**: Shorter audio = faster STT processing
-    - **Better accuracy**: Long dictations (30s+) produce degraded STT quality
-    - **Cost optimization**: Groq bills 10s minimum per request, so 8-10s chunks are optimal
-    - **Progressive UI**: User sees partial transcription while still speaking
-  </rationale>
+**Configuration:**
+- `CHUNK_DETECTION_ENABLED = false` in `src/config/vad.ts`
+- Worker ignores `chunk` messages (logs and no-ops)
 
-  <detection file="src/utils/chunkDetector.ts">
-    Client uses existing VAD (Silero) to detect natural sentence pauses:
-    - Detects 700ms of continuous silence (SENTENCE_PAUSE_MS)
-    - Requires minimum 8s of audio before chunking (MIN_CHUNK_AUDIO_MS)
-    - VAD threshold 0.3 for "silence" detection (CHUNK_SILENCE_PROB)
-    - Never force-chunks mid-sentence—only on natural pauses
+**History:**
+- Initial implementation: `agent-logs/2025-12-01_2102_chunked-transcription.md`
+- Deprecation investigation: `agent-logs/2025-12-12_2215_chunking-disabled-worker-hang-fix.md`
 
-    Configuration (src/config/vad.ts):
-    CHUNK_DETECTION_ENABLED = false  // DISABLED
-    MIN_CHUNK_AUDIO_MS = 8000
-    SENTENCE_PAUSE_MS = 700
-    CHUNK_SILENCE_PROB = 0.3
-  </detection>
-
-  <flow>
-    1. User speaks for 10s, pauses naturally between sentences (700ms silence)
-    2. VAD detects sentence pause → chunk boundary event
-    3. Client sends { type: "chunk", chunkIndex: 0, audioMs: 10230 } to worker
-    4. Worker snapshots accumulated PCM audio, starts STT immediately (async)
-    5. Worker clears audio buffer for next chunk
-    6. User continues speaking (chunk 1 starts accumulating)
-    7. Worker completes STT for chunk 0, sends { type: "chunk_result", chunkIndex: 0, text: "..." }
-    8. Client displays chunk 0 text in UI (progressive update)
-    9. User pauses again → chunk 1 sent to worker
-    10. User releases PTT → { type: "end" } sent to worker
-    11. Worker waits for all pending chunk STTs (15s timeout)
-    12. Worker processes remaining audio (final chunk)
-    13. Worker concatenates all chunks in order → final text
-    14. Optional LLM post-processing on complete concatenated text
-    15. Worker sends { type: "final", text: "...", wordCount: ... }
-  </flow>
-
-  <worker_implementation file="worker/src/handlers/ws.ts">
-    Session tracks chunk state:
-    - chunkStates: Map<number, ChunkState> - Stores audio snapshot per chunk
-    - pendingChunkSTT: Set<number> - Tracks ongoing STT operations
-    - currentChunkIndex: number - Next chunk index
-
-    On "chunk" message:
-    1. Take snapshot of session.chunks (accumulated PCM)
-    2. Create ChunkState { audioSnapshot, audioMs, chunkIndex }
-    3. Start async STT (fire-and-forget, non-blocking)
-    4. Clear session.chunks for next chunk
-    5. On STT complete: send chunk_result to client
-
-    On "end" message:
-    1. Wait for all pendingChunkSTT (15s timeout)
-    2. Collect chunk results in order (by chunkIndex)
-    3. Process remaining audio (if any)
-    4. Concatenate: [chunk0, chunk1, ..., remaining].join(' ').trim()
-    5. Continue with optional LLM pass
-    6. Send final result
-  </worker_implementation>
-
-  <progressive_ui file="src/hooks/useTranscription.ts">
-    Client tracks:
-    - chunkResultsRef: Map<number, string> - Stores received chunk texts
-    - pendingChunksRef: Set<number> - Tracks sent but not received chunks
-    - currentChunkIndexRef: number - Next chunk to send
-
-    On chunk_result message:
-    - Store text in chunkResultsRef
-    - Remove from pendingChunksRef
-    - Update UI with progressive text (optional, implementation-specific)
-
-    On final message:
-    - Clear all chunk state
-    - Display complete final text
-  </progressive_ui>
-
-  <benefits>
-    - User sees text appear while still dictating (real-time feedback)
-    - Long dictations process faster (parallel STT per chunk)
-    - Reduced end-to-end latency for 20s+ dictations
-    - Better STT accuracy (shorter audio per request)
-    - Groq billing optimization (8-10s chunks vs 30s+ full audio)
-  </benefits>
-
-  <trade_offs>
-    - Slightly more complex state management (chunk tracking)
-    - Multiple STT API calls per session (but each is faster)
-    - Occasional mid-thought chunking (rare, 700ms pause is conservative)
-    - Requires VAD (Silero) for silence detection
-  </trade_offs>
-
-  <testing>
-    Console logs:
-    [SF] 🔪 CHUNK BOUNDARY { chunkIndex: 0, audioMs: 10230, silenceMs: 720 }
-    [SF] 📤 Sent chunk message { type: "chunk", chunkIndex: 0, audioMs: 10230 }
-    [SF] 📥 Chunk result received { chunkIndex: 0, textLength: 42, pendingCount: 0 }
-    [SF] 📦 FINAL CHUNK STATE { remainingChunk: { audioMs: 5420, chunkIndex: 1 } }
-
-    To test:
-    1. Enable chunking (CHUNK_DETECTION_ENABLED = true)
-    2. Dictate 20-30 seconds with natural pauses
-    3. Watch for chunk boundary detection and progressive results
-  </testing>
-
-  <related_docs>
-    - agent-logs/2025-12-01_2102_chunked-transcription.md (Full implementation)
-  </related_docs>
-</chunking>
+**Future Consideration:**
+If chunking is re-enabled, the implementation must:
+1. Wrap chunk STT in `c.executionCtx.waitUntil()` for proper background work tracking
+2. Replace polling loops with `Promise.all()` for chunk completion
+3. Add proper abort handling for cleanup
 
 ---
 

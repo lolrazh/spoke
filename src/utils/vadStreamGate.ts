@@ -3,12 +3,10 @@ import {
   SAMPLE_RATE_HZ,
   PRE_ROLL_MS,
   POST_ROLL_MS_VAD,
-  CHUNK_DETECTION_ENABLED,
   SPEECH_PROB_END,
 } from "../config/vad";
 import type { VadEngine, VadEvent } from "../types/vad";
 import { VadGate } from "./vadGate";
-import { ChunkDetector, type ChunkEvent } from "./chunkDetector";
 
 /**
  * Streaming gate: accepts Int16 PCM16LE@16k frames, slices into 30ms Float32
@@ -18,7 +16,6 @@ import { ChunkDetector, type ChunkEvent } from "./chunkDetector";
 export class VadStreamGate {
   private engine: VadEngine;
   private gate: VadGate;
-  private chunkDetector: ChunkDetector | null = null;
   private windowSamples: number;
   private preRollSamples: number;
   private postRollSamples: number;
@@ -33,29 +30,20 @@ export class VadStreamGate {
   constructor(
     engine: VadEngine,
     onEvent?: (ev: VadEvent) => void,
-    onChunkEvent?: (ev: ChunkEvent) => void,
   ) {
     this.engine = engine;
     this.gate = new VadGate();
     this.onEvent = onEvent;
-    this.onChunkEvent = onChunkEvent;
     this.windowSamples = Math.round((SAMPLE_RATE_HZ * WINDOW_MS) / 1000);
     this.preRollSamples = Math.round((SAMPLE_RATE_HZ * PRE_ROLL_MS) / 1000);
     this.postRollSamples = Math.round((SAMPLE_RATE_HZ * POST_ROLL_MS_VAD) / 1000);
     this.preRollBuf = new Int16Array(this.preRollSamples);
-
-    // Initialize chunk detector if enabled
-    if (CHUNK_DETECTION_ENABLED) {
-      this.chunkDetector = new ChunkDetector();
-    }
   }
 
   private onEvent?: (ev: VadEvent) => void;
-  private onChunkEvent?: (ev: ChunkEvent) => void;
 
   reset(): void {
     this.gate.reset();
-    this.chunkDetector?.reset();
     this.preRollHead = 0;
     this.preRollCount = 0;
     this.tailRemainingSamples = 0;
@@ -67,16 +55,6 @@ export class VadStreamGate {
   dispose(): void {
     // no-op, engine is owned by caller
     this.reset();
-  }
-
-  /** Get chunk detector state for debugging */
-  getChunkState() {
-    return this.chunkDetector?.getState() ?? null;
-  }
-
-  /** Get remaining unchunked audio info (for final send) */
-  getRemainingChunk() {
-    return this.chunkDetector?.getRemainingChunk() ?? null;
   }
 
   /** Push a full Int16 frame; returns zero or more Int16 chunks to forward */
@@ -132,18 +110,6 @@ export class VadStreamGate {
       const windowHasSpeech = prob > SPEECH_PROB_END; // Use same threshold as gate
       if (windowHasSpeech) {
         this.currentFrameHasSpeech = true;
-      }
-
-      // Feed chunk detector with same VAD decision
-      if (this.chunkDetector) {
-        this.chunkDetector.push(d, this.timeMs);
-        // Drain and emit chunk events
-        const chunkEvents = this.chunkDetector.drainEvents();
-        for (const cev of chunkEvents) {
-          try {
-            this.onChunkEvent?.(cev);
-          } catch {}
-        }
       }
 
       this.timeMs += WINDOW_MS;

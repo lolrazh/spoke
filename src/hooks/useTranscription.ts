@@ -152,11 +152,6 @@ export function useTranscription(
     framesDropped?: number;
   } | null>(null);
 
-  // Chunked transcription state
-  const chunkResultsRef = useRef<Map<number, string>>(new Map());
-  const pendingChunksRef = useRef<Set<number>>(new Set());
-  const currentChunkIndexRef = useRef<number>(0);
-
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -1243,11 +1238,6 @@ export function useTranscription(
       framesSentApprox: 0,
     };
 
-    // Reset chunk state for new session
-    chunkResultsRef.current.clear();
-    pendingChunksRef.current.clear();
-    currentChunkIndexRef.current = 0;
-
     try {
       // Check if we already have an authenticated WebSocket from pre-connect
       const alreadyConnected = wsRef.current && wsAuthenticatedRef.current && wsReadyRef.current;
@@ -1342,43 +1332,6 @@ export function useTranscription(
           (ev) => {
             if (window.devFlags?.devConsoleLogs) {
               console.log("[VAD]", ev.type, { atMs: ev.atMs });
-            }
-          },
-          // Chunk detection events - send chunk message to worker
-          (chunkEv) => {
-            console.log(
-              "[SF] 🔪 CHUNK BOUNDARY",
-              {
-                chunkIndex: chunkEv.chunkIndex,
-                audioMs: chunkEv.audioMs,
-                silenceMs: chunkEv.silenceMs,
-                totalAudioMs: chunkEv.totalAudioMs,
-                atMs: chunkEv.atMs,
-              },
-            );
-
-            // Send chunk message to worker to trigger STT for this chunk
-            const ws = wsRef.current;
-            if (ws && wsReadyRef.current && ws.readyState === WebSocket.OPEN) {
-              try {
-                const chunkMsg = {
-                  type: "chunk",
-                  chunkIndex: chunkEv.chunkIndex,
-                  audioMs: chunkEv.audioMs,
-                };
-                ws.send(JSON.stringify(chunkMsg));
-                pendingChunksRef.current.add(chunkEv.chunkIndex);
-                currentChunkIndexRef.current = chunkEv.chunkIndex + 1;
-                console.log("[SF] 📤 Sent chunk message", chunkMsg);
-              } catch (err) {
-                console.warn("[SF] Failed to send chunk message", err);
-              }
-            } else {
-              console.warn("[SF] ⚠️ Cannot send chunk - WebSocket not ready", {
-                wsExists: !!ws,
-                wsReady: wsReadyRef.current,
-                wsState: ws?.readyState,
-              });
             }
           },
         );
@@ -1608,26 +1561,6 @@ export function useTranscription(
               } else if (msg.type === "llm_status" && msg.state === "llm_processing") {
                 if (window.devFlags?.devConsoleLogs)
                   console.info("[SF] LLM post-process started");
-              } else if (msg.type === "chunk_result") {
-                // Chunk transcription result - store it and show progressive update
-                const chunkIndex = msg.chunkIndex as number;
-                const chunkText = msg.text as string;
-                chunkResultsRef.current.set(chunkIndex, chunkText);
-                pendingChunksRef.current.delete(chunkIndex);
-
-                console.log("[SF] 📥 Chunk result received", {
-                  chunkIndex,
-                  textLength: chunkText.length,
-                  pendingCount: pendingChunksRef.current.size,
-                });
-
-                // Progressive UI update: show accumulated chunk text
-                const sortedIndices = Array.from(chunkResultsRef.current.keys()).sort((a, b) => a - b);
-                const accumulatedText = sortedIndices
-                  .map(idx => chunkResultsRef.current.get(idx) || "")
-                  .join(" ");
-                setText(accumulatedText);
-                try { window.transcript?.update(accumulatedText); } catch { }
               } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
                 // Progressive UI update only; paste remains on final
                 setText((prev) => {
@@ -1976,19 +1909,6 @@ export function useTranscription(
                 if (VAD_ENABLED && vadStreamGateRef.current) {
                   const tail = vadStreamGateRef.current.flushPostRoll();
                   for (const chunk of tail) streamFrame(chunk.buffer as ArrayBuffer);
-
-                  // Log final chunk state for Phase 1 testing
-                  const remainingChunk = vadStreamGateRef.current.getRemainingChunk();
-                  const chunkState = vadStreamGateRef.current.getChunkState();
-                  if (remainingChunk || chunkState) {
-                    console.log(
-                      "[SF] 📦 FINAL CHUNK STATE",
-                      {
-                        remainingChunk,
-                        chunkState,
-                      },
-                    );
-                  }
                 }
               } catch { }
 
