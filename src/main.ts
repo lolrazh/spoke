@@ -56,6 +56,7 @@ import {
   deleteTranscription,
   clearTranscriptions,
 } from "./lib/transcriptionStorage";
+import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
 
@@ -3663,6 +3664,30 @@ app.whenReady().then(async () => {
       return app.getVersion();
     } catch (e) {
       return "";
+    }
+  });
+
+  // Screenshot capture for OCR context (Phase 1)
+  ipcMain.handle("screenshot:capture", async (_event, options) => {
+    try {
+      const result = await captureScreenshot(options);
+      console.log(`[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`);
+      return { success: true, ...result };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("[Screenshot] Capture failed:", errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  });
+
+  // Screenshot test handler (for PoC performance testing)
+  ipcMain.handle("screenshot:test", async () => {
+    try {
+      return await testScreenshotCapture();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("[Screenshot Test] Failed:", errorMsg);
+      return { success: false, error: errorMsg };
     }
   });
 

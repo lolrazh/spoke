@@ -208,6 +208,10 @@ contextBridge.exposeInMainWorld("electron", {
   getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
   // Renderer lifecycle
   rendererReady: () => ipcRenderer.send("renderer-ready"),
+  // Screenshot capture (Phase 1 OCR)
+  takeScreenshot: (options?: { display?: 'active' | number; quality?: number; maxDimension?: number }) =>
+    ipcRenderer.invoke("screenshot:capture", options),
+  testScreenshot: () => ipcRenderer.invoke("screenshot:test"),
 });
 
 // Expose application metadata

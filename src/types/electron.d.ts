@@ -117,6 +117,30 @@ declare global {
       getAuthRedirectUrl: () => Promise<{ url: string }>;
       // Renderer lifecycle
       rendererReady: () => void;
+      // Screenshot capture (Phase 1 OCR)
+      takeScreenshot: (options?: {
+        display?: 'active' | number;
+        quality?: number;
+        maxDimension?: number;
+      }) => Promise<{
+        success: boolean;
+        imageBase64?: string;
+        captureTimeMs?: number;
+        sizeKb?: number;
+        displayId?: number;
+        displayBounds?: { x: number; y: number; width: number; height: number };
+        error?: string;
+      }>;
+      testScreenshot: () => Promise<{
+        success: boolean;
+        metrics?: {
+          captureTimeMs: number;
+          sizeKb: number;
+          displayId: number;
+          resolution: string;
+        };
+        error?: string;
+      }>;
       // Auth helpers
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
