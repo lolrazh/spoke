@@ -14,7 +14,7 @@ The transcription pipeline is built on five principles:
 2. **Flexibility**: Multiple STT/LLM providers, runtime-switchable
 3. **Privacy**: No text stored in database, only local + ephemeral server processing
 4. **Security**: JWT-based authentication with subscription/quota claims embedded
-5. **Efficiency**: Chunked transcription for long dictations (8-10s chunks on natural pauses)
+5. **Simplicity**: Single-shot audio processing (chunking disabled due to reliability issues)
 
 The system supports two modes: **dictation** (voice → text) and **edit** (voice instruction → rewrite selected text).
 
@@ -268,9 +268,14 @@ The mode is determined automatically based on whether text is selected. No manua
 
 ## Chunked Transcription
 
-For long dictations (10+ seconds), Spoke uses chunked transcription to improve speed, accuracy, and cost-efficiency.
+> ⚠️ **DEPRECATED (2025-12-12):** Chunking has been disabled. The async chunk STT 
+> implementation caused worker hangs (wall time 100+ seconds with only 10ms CPU time)
+> due to untracked async IIFEs. All audio is now processed in a single request.
+> See: agent-logs/2025-12-12 investigation
 
-<chunking>
+~~For long dictations (10+ seconds), Spoke uses chunked transcription to improve speed, accuracy, and cost-efficiency.~~
+
+<chunking status="DISABLED">
   <rationale>
     - **Faster responses**: Shorter audio = faster STT processing
     - **Better accuracy**: Long dictations (30s+) produce degraded STT quality
@@ -286,7 +291,7 @@ For long dictations (10+ seconds), Spoke uses chunked transcription to improve s
     - Never force-chunks mid-sentence—only on natural pauses
 
     Configuration (src/config/vad.ts):
-    CHUNK_DETECTION_ENABLED = true
+    CHUNK_DETECTION_ENABLED = false  // DISABLED
     MIN_CHUNK_AUDIO_MS = 8000
     SENTENCE_PAUSE_MS = 700
     CHUNK_SILENCE_PROB = 0.3
@@ -1008,5 +1013,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-04
-**Pipeline Version**: Includes JWT authentication, chunked transcription, quota tracking, edit mode, multi-provider support
+**Last Updated**: 2025-12-12
+**Pipeline Version**: JWT authentication, single-shot audio processing, quota tracking, edit mode, multi-provider support (chunking disabled)
