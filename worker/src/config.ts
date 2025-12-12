@@ -54,3 +54,10 @@ export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
 export const STT_DEFAULT_PROVIDER = 'groq' as const;
 export type STTProvider = 'groq' | 'fireworks' | 'deepgram';
+
+// OCR (Vision Model)
+export const GROQ_OCR_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/spoke/groq/chat/completions';
+export const GROQ_OCR_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+export const OCR_DEFAULT_PROVIDER = 'groq' as const;
+export const OCR_DEFAULT_TIMEOUT_MS = 5000;
+export const OCR_MAX_WORDS = 100;

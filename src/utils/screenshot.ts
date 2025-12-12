@@ -37,14 +37,13 @@ export interface ScreenshotOptions {
     /**
      * JPEG compression quality (0-100).
      * Lower = smaller file, worse quality.
-     * Default: 75 (good balance for OCR)
+     * Default: 75 (optimal for OCR: 293ms, 101KB)
      */
     quality?: number;
 
     /**
      * Maximum width/height. Image will be scaled down if larger.
-     * Undefined = no scaling (full resolution)
-     * Default: undefined (full resolution for now, can optimize later)
+     * Default: 1080 (optimal for OCR performance)
      */
     maxDimension?: number;
 }
@@ -65,7 +64,7 @@ export async function captureScreenshot(
     const {
         display = 'active',
         quality = 75,
-        maxDimension,
+        maxDimension = 1080,
     } = options;
 
     // Step 1: Determine target display
