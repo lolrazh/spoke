@@ -14,9 +14,14 @@ type BuildOptions = {
 };
 
 function sanitizeToken(token: string): string | null {
-  const withoutControl = token.replace(/[\u0000-\u001f\u007f]+/g, " ");
+  const withoutTags = token.replace(/<[^>]*>/g, " ");
+  // eslint-disable-next-line no-control-regex
+  const withoutControl = withoutTags.replace(/[\u0000-\u001f\u007f]+/g, " ");
   const withoutDelimiters = withoutControl.replace(/[,:<>]+/g, " ");
-  const allowedOnly = withoutDelimiters.replace(/[^A-Za-z0-9@._\-+' ]+/g, "");
+  const allowedOnly = withoutDelimiters.replace(
+    /[^A-Za-z0-9@._\-+'()" ]+/g,
+    "",
+  );
   const collapsed = allowedOnly.replace(/\s+/g, " ").trim();
   if (!collapsed) return null;
   return collapsed.length > MAX_TOKEN_LENGTH

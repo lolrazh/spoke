@@ -778,15 +778,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     } as const;
                     console.log(JSON.stringify(llmCompleteLog));
                   } catch { }
-                } else {
                 }
-              }
-
-              // Set final session attributes with all timing data
-              if (timings) {
-              }
-
-              if (llmRouteRules.length > 0) {
               }
 
               if (llmText) {
@@ -842,8 +834,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   }
                 } catch { }
               }
-              if (session.shareTranscriptions) {
-              }
             } else {
               finalText = '';
               connLog.error('[WS] missing STT API key', { provider: sttProvider });
@@ -877,7 +867,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             if (!socketClosed) {
               // Determine error code based on error type
               let errorCode = 4001; // STT_API_ERROR default
-              if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || isAbortError) {
+              if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
                 errorCode = 4002; // STT_TIMEOUT
               } else if (isAbortError) {
                 errorCode = 4004; // AUDIO_PROCESSING_FAILED
@@ -1136,67 +1126,65 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           sessionForOcr.ocrPending = true;
           const imageBase64 = parsed.imageBase64;
 
-          // Payload size guardrail
-          const MAX_OCR_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-          if (imageBase64.length > MAX_OCR_IMAGE_SIZE) {
+          // Guardrails: prevent abusive payload sizes and skip when not configured
+          // Base64 is ~4/3 of bytes; keep this comfortably under Worker limits.
+          const MAX_OCR_IMAGE_BASE64_CHARS = 1_500_000;
+          if (!imageBase64 || imageBase64.length > MAX_OCR_IMAGE_BASE64_CHARS) {
+            sessionForOcr.ocrPending = false;
             console.log(JSON.stringify({
               event: 'ocr.rejected',
-              reason: 'payload_too_large',
-              imageSizeKB: Math.round(imageBase64.length / 1024),
+              reason: !imageBase64 ? 'empty' : 'too_large',
+              imageSizeKB: Math.round((imageBase64?.length || 0) / 1024),
               traceId: sessionForOcr.traceId,
             }));
-            sessionForOcr.ocrPending = false;
-          } else {
-            console.log(JSON.stringify({
-              event: 'ocr.received',
-              imageSizeKB: Math.round(imageBase64.length / 1024),
-              traceId: sessionForOcr.traceId,
-            }));
-
-            // Fire-and-forget OCR extraction
-            c.executionCtx.waitUntil((async () => {
-              try {
-                const { extractOcrWords } = await import('../services/ocr/index.js');
-                const GROQ_API_KEY = c.env.GROQ_API_KEY;
-                if (!GROQ_API_KEY) {
-                  console.log(JSON.stringify({
-                    event: 'ocr.skipped',
-                    reason: 'no_api_key',
-                    traceId: sessionForOcr.traceId,
-                  }));
-                  sessionForOcr.ocrPending = false;
-                  return;
-                }
-
-                const startMs = Date.now();
-                const result = await extractOcrWords({
-                  apiKey: GROQ_API_KEY,
-                  imageBase64,
-                });
-                const durationMs = Date.now() - startMs;
-
-                // Write to captured session only
-                sessionForOcr.ocrWords = result.words;
-                sessionForOcr.ocrReceivedMs = Date.now();
-                sessionForOcr.ocrPending = false;
-
-                console.log(JSON.stringify({
-                  event: 'ocr.complete',
-                  wordCount: result.words.length,
-                  durationMs,
-                  traceId: sessionForOcr.traceId,
-                }));
-              } catch (error) {
-                sessionForOcr.ocrWords = [];
-                sessionForOcr.ocrPending = false;
-                console.log(JSON.stringify({
-                  event: 'ocr.error',
-                  error: String(error),
-                  traceId: sessionForOcr.traceId,
-                }));
-              }
-            })());
+            return;
           }
+          if (!GROQ_API_KEY) {
+            sessionForOcr.ocrPending = false;
+            console.log(JSON.stringify({
+              event: 'ocr.no_api_key',
+              traceId: sessionForOcr.traceId,
+            }));
+            return;
+          }
+
+          console.log(JSON.stringify({
+            event: 'ocr.received',
+            imageSizeKB: Math.round(imageBase64.length / 1024),
+            traceId: sessionForOcr.traceId,
+          }));
+
+          // Fire-and-forget OCR extraction
+          c.executionCtx.waitUntil((async () => {
+            try {
+              const { extractOcrWords } = await import('../services/ocr/index.js');
+              const startMs = Date.now();
+              const result = await extractOcrWords({
+                apiKey: GROQ_API_KEY,
+                imageBase64,
+              });
+              const durationMs = Date.now() - startMs;
+
+              sessionForOcr.ocrWords = result.words;
+              sessionForOcr.ocrReceivedMs = Date.now();
+              sessionForOcr.ocrPending = false;
+
+              console.log(JSON.stringify({
+                event: 'ocr.complete',
+                wordCount: result.words.length,
+                durationMs,
+                traceId: sessionForOcr.traceId,
+              }));
+            } catch (error) {
+              sessionForOcr.ocrWords = [];
+              sessionForOcr.ocrPending = false;
+              console.log(JSON.stringify({
+                event: 'ocr.error',
+                error: String(error),
+                traceId: sessionForOcr.traceId,
+              }));
+            }
+          })());
         } else if (parsed.type === 'cancel') {
           session = createEmptySession();
           session.canceled = true;

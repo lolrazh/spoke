@@ -17,6 +17,22 @@ vi.mock("../utils/audioFeedback", () => ({
   playToggleOn: vi.fn(),
   playToggleOff: vi.fn(),
 }));
+// This suite asserts the pre-VAD streaming behavior (always sends end and processes final),
+// so we disable VAD gating for these tests.
+vi.mock("../config/vad", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    VAD_ENABLED: false,
+  };
+});
+vi.mock("../state/quotaCache", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    isQuotaExceeded: () => false,
+  };
+});
 // Mock Supabase auth to return a fake token
 vi.mock("../lib/supabaseClient", async (importOriginal) => {
   const actual = await importOriginal();
@@ -54,13 +70,30 @@ function renderUseTranscription(opts?: Record<string, unknown>) {
 }
 
 async function waitForWebSocket(): Promise<FakeWebSocket> {
-  for (let i = 0; i < 5; i++) {
+  // start() does async work (mic open, auth handshake), so allow a bit of time.
+  for (let i = 0; i < 50; i++) {
     if (FakeWebSocket.instances.length > 0) {
       return FakeWebSocket.instances[0];
     }
     await new Promise((res) => setTimeout(res, 0));
   }
   throw new Error("WebSocket not created");
+}
+
+async function waitForMetricsPost(timeoutMs = 500): Promise<any[] | undefined> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const calls = (globalThis.fetch as any).mock.calls as any[][];
+    const post = calls.find(
+      (c) => typeof c?.[0] === "string" && String(c[0]).includes("/metrics/session"),
+    );
+    if (post) return post;
+    await new Promise((res) => setTimeout(res, 10));
+  }
+  const calls = (globalThis.fetch as any).mock.calls as any[][];
+  return calls.find(
+    (c) => typeof c?.[0] === "string" && String(c[0]).includes("/metrics/session"),
+  );
 }
 
 async function waitForSent(
@@ -90,9 +123,11 @@ describe("hooks/useTranscription (production-like)", () => {
     AWN: (globalThis as any).AudioWorkletNode,
     WS: (globalThis as any).WebSocket,
     fetch: globalThis.fetch,
+    actEnv: (globalThis as any).IS_REACT_ACT_ENVIRONMENT,
   };
 
   beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     (globalThis as any).AudioContext = FakeAudioContext as any;
     (globalThis as any).AudioWorkletNode = FakeAudioWorkletNode as any;
     (globalThis as any).WebSocket = FakeWebSocket as any;
@@ -121,20 +156,23 @@ describe("hooks/useTranscription (production-like)", () => {
     (globalThis as any).WebSocket = orig.WS;
     globalThis.fetch = orig.fetch as any;
     (globalThis as any).window.fetch = orig.fetch as any;
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = orig.actEnv;
     FakeWebSocket.instances.length = 0;
   });
 
   it("streams start->stop with flush + end and posts metrics", async () => {
     const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
-    // Start recording
-    await act(async () => { await r.hook.start(); });
-    // Allow WS to open
-    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
-    const ws = await waitForWebSocket();
-
-    // Simulate auth success (worker sends auth_ok after receiving auth message)
-    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
-    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
+    let ws: FakeWebSocket | null = null;
+    await act(async () => {
+      const startTask = r.hook.start();
+      ws = await waitForWebSocket();
+      // Allow FakeWebSocket constructor's next-tick open() to run (auth is sent on "open")
+      await new Promise((res) => setTimeout(res, 0));
+      ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+      await new Promise((res) => setTimeout(res, 10));
+      await startTask;
+    });
+    if (!ws) throw new Error("WebSocket not created");
 
     // Should have sent auth and then start messages
     const authMsgs = ws.sent
@@ -175,8 +213,7 @@ describe("hooks/useTranscription (production-like)", () => {
     expect(postedTypes).toContain("reset");
 
     // Metrics POST
-    const calls = (globalThis.fetch as any).mock.calls;
-    const post = calls.find((c: any[]) => typeof c?.[0] === "string" && c?.[0].includes("/metrics/session"));
+    const post = await waitForMetricsPost();
     expect(post).toBeTruthy();
     const payload = JSON.parse(post[1].body);
     expect(payload.shareTranscriptions).toBe(false);
@@ -191,12 +228,18 @@ describe("hooks/useTranscription (production-like)", () => {
       autoInitStream: false,
       shareTranscriptionsEnabled: true,
     });
-    await act(async () => { await r.hook.start(); });
-    await act(async () => { await Promise.resolve(); });
-    const ws = await waitForWebSocket();
-    // Simulate auth success
-    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
-    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
+    let ws: FakeWebSocket | null = null;
+    await act(async () => {
+      const startTask = r.hook.start();
+      ws = await waitForWebSocket();
+      // Allow FakeWebSocket constructor's next-tick open() to run (auth is sent on "open")
+      await new Promise((res) => setTimeout(res, 0));
+      // Simulate auth success
+      ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+      await new Promise((res) => setTimeout(res, 10));
+      await startTask;
+    });
+    if (!ws) throw new Error("WebSocket not created");
     const stopP = r.hook.stop();
     await act(async () => { await Promise.resolve(); });
     ws.emitMessage(
@@ -216,8 +259,7 @@ describe("hooks/useTranscription (production-like)", () => {
     await act(async () => { await stopP; });
     await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
 
-    const calls = (globalThis.fetch as any).mock.calls;
-    const post = calls.find((c: any[]) => typeof c?.[0] === "string" && c?.[0].includes("/metrics/session"));
+    const post = await waitForMetricsPost();
     expect(post).toBeTruthy();
     const payload = JSON.parse(post[1].body);
     expect(payload.shareTranscriptions).toBe(true);
@@ -229,12 +271,18 @@ describe("hooks/useTranscription (production-like)", () => {
 
   it("cancel sends 'cancel' and does not send 'end'", async () => {
     const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
-    await act(async () => { await r.hook.start(); });
-    await act(async () => { await Promise.resolve(); });
-    const ws = await waitForWebSocket();
-    // Simulate auth success
-    ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
-    await act(async () => { await new Promise((res) => setTimeout(res, 10)); });
+    let ws: FakeWebSocket | null = null;
+    await act(async () => {
+      const startTask = r.hook.start();
+      ws = await waitForWebSocket();
+      // Allow FakeWebSocket constructor's next-tick open() to run (auth is sent on "open")
+      await new Promise((res) => setTimeout(res, 0));
+      // Simulate auth success
+      ws.emitMessage(JSON.stringify({ type: "auth_ok", userId: "test-user" }));
+      await new Promise((res) => setTimeout(res, 10));
+      await startTask;
+    });
+    if (!ws) throw new Error("WebSocket not created");
     await act(async () => { await r.hook.cancel(); });
     expect(await waitForSent(ws, "cancel")).toBe(true);
 

@@ -71,7 +71,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   useEffect(() => {

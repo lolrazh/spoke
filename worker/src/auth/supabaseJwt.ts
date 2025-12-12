@@ -71,7 +71,7 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
   const cache: Cache = caches.default;
   const cacheKey = new Request(jwksUrl);
 
-  let cachedResponse = await cache.match(cacheKey);
+  const cachedResponse = await cache.match(cacheKey);
 
   if (cachedResponse) {
     // Found cookies in neighborhood jar! 🎉
