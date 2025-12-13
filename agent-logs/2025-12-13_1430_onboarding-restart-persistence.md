@@ -99,3 +99,67 @@ User wanted to solve the mid-onboarding restart UX problem where screen recordin
 This work attempted to solve a critical UX issue where the macOS screen recording permission requirement (full app restart to take effect) disrupts the onboarding flow. The fundamental problem remains unsolved: Supabase sessions are not persisting across Electron app restarts. Future sessions should focus on understanding Electron's localStorage behavior, potentially using DevTools to inspect what's actually stored and whether it survives restart. Consider whether making screen recording optional or post-onboarding would provide better UX than solving the persistence issue. The session loss may also indicate a broader architecture problem with how Electron windows are configured in this app.
 
 **Critical Unresolved Question:** Why does localStorage (where Supabase stores sessions) not persist across Electron app restarts even with `partition: "persist:main"` configured? This is fundamental to any onboarding restart flow.
+
+---
+
+## Session 2: Custom Storage Adapter Attempt
+
+**Date:** 2025-12-13 18:00
+**Agent:** Claude Opus 4.5 (Antigravity)
+**Status:** ❌ Failed - Window didn't open, only music played
+
+### Root Cause Identified
+
+Web search revealed that **Electron's localStorage is unreliable in packaged apps with `file://` URLs**. This is a known Chromium/Electron limitation:
+- Works in development, fails in production
+- Not guaranteed to persist across app restarts in packaged builds
+
+### What We Attempted
+
+**Approach: Custom Supabase Storage Adapter using electron-store**
+
+Created a custom storage adapter that routes Supabase's session storage through IPC to main process, using `electron-store` (file-based JSON) instead of unreliable localStorage:
+
+1. **`src/lib/sessionStorage.ts`** (NEW) - electron-store based session storage
+2. **`src/main.ts`** - Added IPC handlers for `session:get`/`session:set`/`session:remove`
+3. **`src/preload.ts`** - Exposed `window.sessionStorage` bridge to renderer
+4. **`src/types/electron.d.ts`** - Added TypeScript types
+5. **`src/lib/supabaseClient.ts`** - Added async custom storage adapter:
+
+```typescript
+const electronStorageAdapter = {
+  getItem: async (key: string) => window.sessionStorage.getItem(key),
+  setItem: async (key: string, value: string) => window.sessionStorage.setItem(key, value),
+  removeItem: async (key: string) => window.sessionStorage.removeItem(key),
+};
+
+// Passed to Supabase:
+storage: electronStorageAdapter,
+```
+
+### Why It Failed
+
+**Symptom:** App launches, music plays, but onboarding window never appears.
+
+**Likely Cause:** The async storage adapter may have caused a race condition or blocking issue during Supabase initialization. Supabase calls `getItem()` synchronously during `createClient()`, but our adapter was async (returning Promises). Even though Supabase docs say async is supported, something in the initialization flow may have hung waiting for the IPC round-trip.
+
+### Files Modified (all reverted by user)
+- `src/lib/sessionStorage.ts` (deleted)
+- `src/lib/supabaseClient.ts`
+- `src/main.ts`
+- `src/preload.ts`
+- `src/types/electron.d.ts`
+
+### Key Learning
+
+**Supabase's `storage` adapter may not work well with async IPC in Electron.** The initialization path appears to be sensitive to blocking/async behavior. Need to either:
+1. Use synchronous storage in the renderer (not possible with IPC)
+2. Pre-load session token before Supabase client initialization
+3. Find a different approach entirely
+
+### Alternative Approaches to Consider
+
+1. **Pre-warm session from main process** - Read session from electron-store in main, pass to renderer via preload, inject into Supabase manually
+2. **Synchronous file read in renderer** - If Node integration is enabled, read session file synchronously (security concern)
+3. **Skip screen recording during onboarding** - Make it post-onboarding optional feature (avoid restart problem entirely)
+4. **Two-phase onboarding** - Complete onboarding first, then prompt for screen recording as a "power user" optional step after main app is running
