@@ -10,9 +10,12 @@ import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types
 // Electron's localStorage is unreliable with file:// URLs in packaged builds.
 // We store Supabase session in electron-store and inject it here.
 // 
-// IMPORTANT: We expose a "sessionReady" promise so the renderer can WAIT
+// IMPORTANT: We expose a "waitForSessionReady" function so the renderer can WAIT
 // for session injection to complete before initializing Supabase.
 // This prevents the race condition where Supabase reads empty localStorage.
+//
+// NOTE: We use a function that returns a promise, NOT a bare promise, because
+// contextBridge can only serialize promises returned from functions.
 // ============================================================================
 
 let sessionReadyResolve: () => void;
@@ -35,8 +38,8 @@ const sessionReadyPromise = new Promise<void>((resolve) => {
   }
 })();
 
-// Expose the session ready promise to the renderer
-contextBridge.exposeInMainWorld("sessionReady", sessionReadyPromise);
+// Expose a FUNCTION that returns the promise - bare promises don't serialize!
+contextBridge.exposeInMainWorld("waitForSessionReady", () => sessionReadyPromise);
 
 
 // Expose dev flags so renderer can bypass auth/onboarding in development

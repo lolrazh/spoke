@@ -27,12 +27,12 @@ export async function getSupabase(): Promise<SupabaseClient | null> {
   clientInitPromise = (async () => {
     // Wait for session to be injected into localStorage
     // This is the "wait at the mailbox" fix!
-    if (typeof window !== "undefined" && window.sessionReady) {
+    if (typeof window !== "undefined" && window.waitForSessionReady) {
       try {
-        await window.sessionReady;
+        await window.waitForSessionReady();
         console.log("[Auth] Session ready - localStorage is populated");
       } catch (error) {
-        console.warn("[Auth] sessionReady failed, continuing anyway:", error);
+        console.warn("[Auth] waitForSessionReady failed, continuing anyway:", error);
       }
     }
 

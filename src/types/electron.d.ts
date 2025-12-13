@@ -9,11 +9,15 @@ declare global {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
     /** 
-     * Promise that resolves when session data has been injected into localStorage.
-     * Supabase MUST await this before initializing to avoid the race condition
-     * where it reads an empty localStorage before session injection completes.
+     * Function that returns a promise that resolves when session data has been 
+     * injected into localStorage. Supabase MUST await this before initializing 
+     * to avoid the race condition where it reads an empty localStorage before 
+     * session injection completes.
+     * 
+     * NOTE: This is a function (not a bare promise) because contextBridge
+     * can only serialize promises returned from functions.
      */
-    sessionReady: Promise<void>;
+    waitForSessionReady: () => Promise<void>;
     app: {
       getVersion: () => Promise<string>;
     };
