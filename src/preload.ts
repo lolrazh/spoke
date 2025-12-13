@@ -8,8 +8,17 @@ import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types
 // CRITICAL: Pre-inject Supabase session (MUST run before any renderer code)
 // ============================================================================
 // Electron's localStorage is unreliable with file:// URLs in packaged builds.
-// We store Supabase session in electron-store and inject it here synchronously.
+// We store Supabase session in electron-store and inject it here.
+// 
+// IMPORTANT: We expose a "sessionReady" promise so the renderer can WAIT
+// for session injection to complete before initializing Supabase.
+// This prevents the race condition where Supabase reads empty localStorage.
 // ============================================================================
+
+let sessionReadyResolve: () => void;
+const sessionReadyPromise = new Promise<void>((resolve) => {
+  sessionReadyResolve = resolve;
+});
 
 (async () => {
   try {
@@ -20,8 +29,14 @@ import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types
     console.log("[Preload] Injected session keys:", Object.keys(sessionData));
   } catch (error) {
     console.error("[Preload] Failed to inject session:", error);
+  } finally {
+    // Always resolve - even on error, so the app doesn't hang
+    sessionReadyResolve();
   }
 })();
+
+// Expose the session ready promise to the renderer
+contextBridge.exposeInMainWorld("sessionReady", sessionReadyPromise);
 
 
 // Expose dev flags so renderer can bypass auth/onboarding in development

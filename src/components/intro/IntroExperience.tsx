@@ -44,7 +44,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 
   // Initialize Supabase client early so PKCE flow works correctly
   useEffect(() => {
-    getSupabase(); // Initialize singleton client
+    (async () => {
+      await getSupabase(); // Initialize singleton client (waits for session injection)
+    })();
     return () => {
       isMountedRef.current = false;
     };

@@ -12,13 +12,13 @@ let syncInitialized = false;
 /**
  * Initialize session sync - call once on app start
  */
-export function initializeSessionSync(): void {
+export async function initializeSessionSync(): Promise<void> {
     if (syncInitialized) {
         console.warn("[SessionSync] Already initialized");
         return;
     }
 
-    const supabase = getSupabase();
+    const supabase = await getSupabase();
     if (!supabase) {
         console.warn("[SessionSync] Supabase not available");
         return;

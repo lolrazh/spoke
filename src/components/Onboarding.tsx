@@ -313,6 +313,19 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
+  // ***CRITICAL*** Initialize session sync in Onboarding window!
+  // Without this, sessions authenticated in onboarding are never saved to electron-store.
+  // Previously, sessionSync was only initialized in App.tsx (main window).
+  useEffect(() => {
+    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
+      initializeSessionSync().catch((error) => {
+        console.warn('[Onboarding] Failed to initialize session sync:', error);
+      });
+    }).catch((error) => {
+      console.error('[Onboarding] Failed to import sessionSync:', error);
+    });
+  }, []);
+
   // Setup onboarding background music (autoplay + loop)
   useEffect(() => {
     const audio = new Audio(onboardingMusicUrl);
@@ -616,8 +629,8 @@ const Onboarding: React.FC = () => {
   // Initial auth check
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
-    getSupabase();
     (async () => {
+      await getSupabase(); // Initialize Supabase client (waits for session injection)
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
       const user = await getCurrentUser();
@@ -683,7 +696,8 @@ const Onboarding: React.FC = () => {
 
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
-    getSupabase(); // Ensure client is initialized
+    // Initialize Supabase in background (don't block callback registration)
+    getSupabase().catch(() => { });
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);

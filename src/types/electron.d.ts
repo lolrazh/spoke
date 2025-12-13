@@ -8,6 +8,12 @@ declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
+    /** 
+     * Promise that resolves when session data has been injected into localStorage.
+     * Supabase MUST await this before initializing to avoid the race condition
+     * where it reads an empty localStorage before session injection completes.
+     */
+    sessionReady: Promise<void>;
     app: {
       getVersion: () => Promise<string>;
     };

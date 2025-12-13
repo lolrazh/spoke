@@ -531,7 +531,7 @@ const AppInner: React.FC = () => {
         // Refresh session on app startup to get fresh JWT with latest subscription claims
         // This ensures users who just paid can dictate immediately after restarting the app
         if (!skipAuth) {
-          const supabase = getSupabase();
+          const supabase = await getSupabase();
           if (supabase) {
             try {
               const { data } = await supabase.auth.refreshSession();
@@ -605,7 +605,7 @@ const AppInner: React.FC = () => {
         try {
           prevUserIdRef.current = user?.id ?? null;
         } catch { }
-        const supabase = getSupabase();
+        const supabase = await getSupabase();
         if (supabase) {
           const {
             data: { subscription },
