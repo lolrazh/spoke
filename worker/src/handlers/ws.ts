@@ -1016,7 +1016,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   text: responseText,
                   wordCount, // Send word count to app for local UI update
                   traceId: session.traceId,
-                  // Pass dataset texts so the client can forward to /metrics/session
+                  // Pass dataset texts for user consent (if shareTranscriptions enabled)
                   dataset: session.shareTranscriptions
                     ? { sttText: finalText, llmText: llmText || null }
                     : null,
