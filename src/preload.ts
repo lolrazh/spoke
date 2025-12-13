@@ -289,6 +289,8 @@ contextBridge.exposeInMainWorld("supabaseSession", {
     ipcRenderer.invoke("session:get", { key }),
   removeItem: (key: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("session:remove", { key }),
+  clearAll: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:clear-all"),
 });
 
 // (Removed) dev-only Sentry verification hooks

@@ -32,6 +32,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true); // Start with loading state
   const isMountedRef = useRef(true);
 
   // Match onboarding page transition spring
@@ -53,6 +54,11 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       if (user) {
         console.log("[IntroExperience] User already signed in, skipping intro");
         setVisible(false); // This triggers onFinish via AnimatePresence
+      } else {
+        // User is NOT signed in - show the intro
+        if (isMountedRef.current) {
+          setCheckingAuth(false);
+        }
       }
     })();
     return () => {
@@ -118,7 +124,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
-      {visible && (
+      {visible && !checkingAuth && (
         <motion.div
           className="sf-intro-overlay"
           initial={{ opacity: 0, y: 16 }}

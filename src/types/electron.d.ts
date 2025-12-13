@@ -192,6 +192,7 @@ declare global {
       setItem: (key: string, value: string) => Promise<{ ok: boolean }>;
       getItem: (key: string) => Promise<string | null>;
       removeItem: (key: string) => Promise<{ ok: boolean }>;
+      clearAll: () => Promise<{ ok: boolean }>;
     };
   }
 }

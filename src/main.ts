@@ -61,6 +61,7 @@ import {
   setSessionItem,
   getSessionItem,
   removeSessionItem,
+  clearAllSessionData,
 } from "./lib/sessionStorage";
 import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
@@ -3318,6 +3319,12 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("session:remove", (_event, payload: { key: string }) => {
     removeSessionItem(payload.key);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:clear-all", () => {
+    clearAllSessionData();
+    console.log("[Session] Cleared all session data from electron-store");
     return { ok: true };
   });
 

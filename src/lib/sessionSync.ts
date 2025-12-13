@@ -44,16 +44,11 @@ export async function initializeSessionSync(): Promise<void> {
 
                 console.log(`[SessionSync] Synced ${supabaseKeys.length} keys to electron-store`);
             } else {
-                // No session - clear from electron-store
-                const supabaseKeys = Object.keys(localStorage).filter(key =>
-                    key.startsWith('sb-')
-                );
-
-                for (const key of supabaseKeys) {
-                    await window.supabaseSession.removeItem(key);
-                }
-
-                console.log(`[SessionSync] Cleared ${supabaseKeys.length} keys from electron-store`);
+                // No session (SIGNED_OUT) - clear ALL session data from electron-store
+                // IMPORTANT: Can't iterate localStorage here because Supabase already cleared it!
+                // We must call clearAll() to wipe the electron-store directly.
+                await window.supabaseSession.clearAll();
+                console.log(`[SessionSync] Cleared all session data from electron-store`);
             }
         } catch (error) {
             console.error("[SessionSync] Failed to sync:", error);
