@@ -56,6 +56,13 @@ import {
   deleteTranscription,
   clearTranscriptions,
 } from "./lib/transcriptionStorage";
+import {
+  getAllSessionData,
+  setSessionItem,
+  getSessionItem,
+  removeSessionItem,
+  clearAllSessionData,
+} from "./lib/sessionStorage";
 import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
@@ -377,7 +384,7 @@ let appPreferences: import("./types/shared").AppPreferences = {};
 let appPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
-let onboardingPrefs: { done?: boolean } = {};
+let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
 // ============ Manual Update Check (Tray integration) ============
 type UpdateStatus =
@@ -2902,7 +2909,7 @@ app.whenReady().then(async () => {
     }
     // Persist local onboarding flag so future launches can skip onboarding entirely
     try {
-      onboardingPrefs = { ...onboardingPrefs, done: true };
+      onboardingPrefs = { ...onboardingPrefs, done: true, currentStep: undefined };
       fs.writeFileSync(
         onboardingPrefsPath,
         JSON.stringify(onboardingPrefs, null, 2),
@@ -2939,6 +2946,44 @@ app.whenReady().then(async () => {
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
 
     // Renderer will show any post-sign-in notification; keep main focused on window.
+  });
+
+  // Sync local onboarding flag with database (for dev testing)
+  ipcMain.handle("onboarding:reset-local-flag", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs, done: false };
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
+      console.log("[IPC] Local onboarding flag reset to false");
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to reset local onboarding flag:", error);
+      return { ok: false };
+    }
+  });
+
+  // Get saved onboarding step
+  ipcMain.handle("onboarding:get-step", () => {
+    return onboardingPrefs.currentStep || null;
+  });
+
+  // Save current onboarding step
+  ipcMain.handle("onboarding:set-step", (_event, step: string) => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs, currentStep: step };
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to save onboarding step:", error);
+      return { ok: false };
+    }
   });
 
   // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
@@ -3255,6 +3300,30 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("transcriptions:clear", () => {
     clearTranscriptions();
+    return { ok: true };
+  });
+
+  // Supabase session persistence handlers (for reliable auth across restarts)
+  ipcMain.handle("session:get-all", () => {
+    return getAllSessionData();
+  });
+
+  ipcMain.handle("session:set", (_event, payload: { key: string; value: string }) => {
+    setSessionItem(payload.key, payload.value);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:get", (_event, payload: { key: string }) => {
+    return getSessionItem(payload.key);
+  });
+
+  ipcMain.handle("session:remove", (_event, payload: { key: string }) => {
+    removeSessionItem(payload.key);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:clear-all", () => {
+    clearAllSessionData();
     return { ok: true };
   });
 

@@ -8,6 +8,16 @@ declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
+    /** 
+     * Function that returns a promise that resolves when session data has been 
+     * injected into localStorage. Supabase MUST await this before initializing 
+     * to avoid the race condition where it reads an empty localStorage before 
+     * session injection completes.
+     * 
+     * NOTE: This is a function (not a bare promise) because contextBridge
+     * can only serialize promises returned from functions.
+     */
+    waitForSessionReady: () => Promise<void>;
     app: {
       getVersion: () => Promise<string>;
     };
@@ -101,6 +111,9 @@ declare global {
       ) => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
+      resetOnboardingFlag: () => Promise<{ ok: boolean }>;
+      getOnboardingStep: () => Promise<string | null>;
+      setOnboardingStep: (step: string) => Promise<{ ok: boolean }>;
       getAppPath: () => Promise<string>;
       // Permission lifecycle helpers
       postPermissionGrant?: (
@@ -174,6 +187,12 @@ declare global {
       save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => Promise<TranscriptionItem>;
       delete: (id: string) => Promise<boolean>;
       clear: () => Promise<{ ok: boolean }>;
+    };
+    supabaseSession: {
+      setItem: (key: string, value: string) => Promise<{ ok: boolean }>;
+      getItem: (key: string) => Promise<string | null>;
+      removeItem: (key: string) => Promise<{ ok: boolean }>;
+      clearAll: () => Promise<{ ok: boolean }>;
     };
   }
 }

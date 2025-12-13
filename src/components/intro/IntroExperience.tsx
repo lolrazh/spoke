@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
-import { getSupabase, getGoogleOAuthUrl } from "../../lib/supabaseClient";
+import { getSupabase, getGoogleOAuthUrl, getCurrentUser } from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -32,6 +32,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true); // Start with loading state
   const isMountedRef = useRef(true);
 
   // Match onboarding page transition spring
@@ -43,12 +44,29 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   };
 
   // Initialize Supabase client early so PKCE flow works correctly
+  // AND check if user is already signed in (from persisted session)
   useEffect(() => {
-    getSupabase(); // Initialize singleton client
+    (async () => {
+      await getSupabase(); // Initialize singleton client (waits for session injection)
+
+      // If user is already signed in (session restored), skip the intro!
+      const user = await getCurrentUser();
+      if (user) {
+        // Call onFinish directly - don't use setVisible(false) because
+        // AnimatePresence won't fire onExitComplete if nothing was ever rendered
+        // (checkingAuth was true, so nothing rendered, so no exit animation)
+        onFinish();
+      } else {
+        // User is NOT signed in - show the intro
+        if (isMountedRef.current) {
+          setCheckingAuth(false);
+        }
+      }
+    })();
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [onFinish]);
 
   // Animation stages
   useEffect(() => {
@@ -108,7 +126,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
-      {visible && (
+      {visible && !checkingAuth && (
         <motion.div
           className="sf-intro-overlay"
           initial={{ opacity: 0, y: 16 }}

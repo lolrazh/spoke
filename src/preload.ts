@@ -4,6 +4,43 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types/shared";
 
+// ============================================================================
+// CRITICAL: Pre-inject Supabase session (MUST run before any renderer code)
+// ============================================================================
+// Electron's localStorage is unreliable with file:// URLs in packaged builds.
+// We store Supabase session in electron-store and inject it here.
+// 
+// IMPORTANT: We expose a "waitForSessionReady" function so the renderer can WAIT
+// for session injection to complete before initializing Supabase.
+// This prevents the race condition where Supabase reads empty localStorage.
+//
+// NOTE: We use a function that returns a promise, NOT a bare promise, because
+// contextBridge can only serialize promises returned from functions.
+// ============================================================================
+
+let sessionReadyResolve: () => void;
+const sessionReadyPromise = new Promise<void>((resolve) => {
+  sessionReadyResolve = resolve;
+});
+
+(async () => {
+  try {
+    const sessionData = await ipcRenderer.invoke("session:get-all") as Record<string, string>;
+    for (const [key, value] of Object.entries(sessionData)) {
+      localStorage.setItem(key, value);
+    }
+  } catch (error) {
+    console.error("[Preload] Failed to inject session:", error);
+  } finally {
+    // Always resolve - even on error, so the app doesn't hang
+    sessionReadyResolve();
+  }
+})();
+
+// Expose a FUNCTION that returns the promise - bare promises don't serialize!
+contextBridge.exposeInMainWorld("waitForSessionReady", () => sessionReadyPromise);
+
+
 // Expose dev flags so renderer can bypass auth/onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
   skipAuth:
@@ -183,6 +220,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("ptt:set-target", target),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
+  resetOnboardingFlag: () => ipcRenderer.invoke("onboarding:reset-local-flag"),
+  getOnboardingStep: (): Promise<string | null> => ipcRenderer.invoke("onboarding:get-step"),
+  setOnboardingStep: (step: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("onboarding:set-step", step),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Permission lifecycle helpers
   postPermissionGrant: (type: "accessibility" | "microphone") =>
@@ -233,6 +273,18 @@ contextBridge.exposeInMainWorld("transcriptions", {
     ipcRenderer.invoke("transcriptions:delete", { id }),
   clear: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("transcriptions:clear"),
+});
+
+// Session storage bridge (for Supabase session sync)
+contextBridge.exposeInMainWorld("supabaseSession", {
+  setItem: (key: string, value: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:set", { key, value }),
+  getItem: (key: string): Promise<string | null> =>
+    ipcRenderer.invoke("session:get", { key }),
+  removeItem: (key: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:remove", { key }),
+  clearAll: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:clear-all"),
 });
 
 // (Removed) dev-only Sentry verification hooks

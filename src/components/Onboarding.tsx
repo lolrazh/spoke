@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -267,9 +267,9 @@ const Onboarding: React.FC = () => {
       fadeRafRef.current = requestAnimationFrame(step);
     });
   // Dismiss intro without persisting any flag so it always shows next run
-  const handleIntroFinish = () => {
+  const handleIntroFinish = useCallback(() => {
     setShowIntro(false);
-  };
+  }, []);
 
   // Ensure we reset the controls ready flag when replaying the intro
   useEffect(() => {
@@ -311,6 +311,19 @@ const Onboarding: React.FC = () => {
     return () => {
       cleanupReady && cleanupReady();
     };
+  }, []);
+
+  // ***CRITICAL*** Initialize session sync in Onboarding window!
+  // Without this, sessions authenticated in onboarding are never saved to electron-store.
+  // Previously, sessionSync was only initialized in App.tsx (main window).
+  useEffect(() => {
+    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
+      initializeSessionSync().catch((error) => {
+        console.warn('[Onboarding] Failed to initialize session sync:', error);
+      });
+    }).catch((error) => {
+      console.error('[Onboarding] Failed to import sessionSync:', error);
+    });
   }, []);
 
   // Setup onboarding background music (autoplay + loop)
@@ -359,6 +372,18 @@ const Onboarding: React.FC = () => {
       } catch { }
     })();
   }, [currentStep]);
+
+  // Save current step for mid-onboarding restart recovery
+  useEffect(() => {
+    if (introOnly) return; // Don't save in intro-only mode
+    if (currentStep === "auth") return; // Don't save auth step (default)
+    if (currentStep === "complete") return; // Don't save complete step
+
+    window.electron?.setOnboardingStep?.(currentStep).catch((error) => {
+      console.warn("[Onboarding] Failed to save current step:", error);
+    });
+  }, [currentStep, introOnly]);
+
 
   const toggleMusic = () => {
     const audio = onboardingAudioRef.current;
@@ -604,8 +629,8 @@ const Onboarding: React.FC = () => {
   // Initial auth check
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
-    getSupabase();
     (async () => {
+      await getSupabase(); // Initialize Supabase client (waits for session injection)
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
       const user = await getCurrentUser();
@@ -639,9 +664,28 @@ const Onboarding: React.FC = () => {
           await window.electron?.onboardingComplete();
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           return;
+        } else {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          // This ensures restart mid-onboarding opens onboarding window (not main)
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch (error) {
         if (isMountedRef.current) setSignedInAccount(null);
+      }
+
+      // Check if there's a saved onboarding step (from mid-onboarding restart)
+      try {
+        const savedStep = await window.electron?.getOnboardingStep?.();
+        if (savedStep) {
+          setCurrentStep(savedStep as OnboardingStep);
+          return;
+        }
+      } catch {
+        // Ignore errors - continue with default step
       }
 
       // New users go to name verification first
@@ -651,7 +695,8 @@ const Onboarding: React.FC = () => {
 
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
-    getSupabase(); // Ensure client is initialized
+    // Initialize Supabase in background (don't block callback registration)
+    getSupabase().catch(() => undefined);
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
@@ -687,6 +732,13 @@ const Onboarding: React.FC = () => {
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           switchAccountIntentRef.current = false;
           return;
+        } else if (!profile?.onboarding_done) {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch { }
       if (switchAccountIntentRef.current && !forceOnboarding) {
