@@ -4,18 +4,21 @@
  * Stores Supabase session data in electron-store for reliable persistence.
  * Electron's localStorage with file:// URLs is unreliable in packaged builds,
  * so we use file-based storage and sync it with localStorage.
+ * 
+ * IMPORTANT: Uses "session" store name and "supabaseSession" key for 
+ * backward compatibility with existing user sessions.
  */
 
 import Store from "electron-store";
 
 interface SessionStoreSchema {
-    sessionData: Record<string, string>;
+    supabaseSession: Record<string, string>;
 }
 
 const sessionStore = new Store<SessionStoreSchema>({
-    name: "supabase-session",
+    name: "session",  // Matches legacy file: session.json
     defaults: {
-        sessionData: {},
+        supabaseSession: {},  // Matches legacy key format
     },
 });
 
@@ -23,7 +26,7 @@ const sessionStore = new Store<SessionStoreSchema>({
  * Get all Supabase session data (keys starting with 'sb-')
  */
 export function getAllSessionData(): Record<string, string> {
-    return sessionStore.get("sessionData", {});
+    return sessionStore.get("supabaseSession", {});
 }
 
 /**
@@ -32,7 +35,7 @@ export function getAllSessionData(): Record<string, string> {
 export function setSessionItem(key: string, value: string): void {
     const session = getAllSessionData();
     session[key] = value;
-    sessionStore.set("sessionData", session);
+    sessionStore.set("supabaseSession", session);
 }
 
 /**
@@ -49,12 +52,13 @@ export function getSessionItem(key: string): string | null {
 export function removeSessionItem(key: string): void {
     const session = getAllSessionData();
     delete session[key];
-    sessionStore.set("sessionData", session);
+    sessionStore.set("supabaseSession", session);
 }
 
 /**
  * Clear all session data
  */
 export function clearAllSessionData(): void {
-    sessionStore.set("sessionData", {});
+    sessionStore.set("supabaseSession", {});
 }
+
