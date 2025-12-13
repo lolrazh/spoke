@@ -53,7 +53,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       const user = await getCurrentUser();
       if (user) {
         console.log("[IntroExperience] User already signed in, skipping intro");
-        setVisible(false); // This triggers onFinish via AnimatePresence
+        // Call onFinish directly - don't use setVisible(false) because
+        // AnimatePresence won't fire onExitComplete if nothing was ever rendered
+        // (checkingAuth was true, so nothing rendered, so no exit animation)
+        onFinish();
       } else {
         // User is NOT signed in - show the intro
         if (isMountedRef.current) {
@@ -64,7 +67,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [onFinish]);
 
   // Animation stages
   useEffect(() => {

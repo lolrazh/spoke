@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -267,9 +267,9 @@ const Onboarding: React.FC = () => {
       fadeRafRef.current = requestAnimationFrame(step);
     });
   // Dismiss intro without persisting any flag so it always shows next run
-  const handleIntroFinish = () => {
+  const handleIntroFinish = useCallback(() => {
     setShowIntro(false);
-  };
+  }, []);
 
   // Ensure we reset the controls ready flag when replaying the intro
   useEffect(() => {
