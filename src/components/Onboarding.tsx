@@ -360,6 +360,18 @@ const Onboarding: React.FC = () => {
     })();
   }, [currentStep]);
 
+  // Save current step for mid-onboarding restart recovery
+  useEffect(() => {
+    if (introOnly) return; // Don't save in intro-only mode
+    if (currentStep === "auth") return; // Don't save auth step (default)
+    if (currentStep === "complete") return; // Don't save complete step
+
+    window.electron?.setOnboardingStep?.(currentStep).catch((error) => {
+      console.warn("[Onboarding] Failed to save current step:", error);
+    });
+  }, [currentStep, introOnly]);
+
+
   const toggleMusic = () => {
     const audio = onboardingAudioRef.current;
     if (!audio) return;
@@ -650,6 +662,18 @@ const Onboarding: React.FC = () => {
         }
       } catch (error) {
         if (isMountedRef.current) setSignedInAccount(null);
+      }
+
+      // Check if there's a saved onboarding step (from mid-onboarding restart)
+      try {
+        const savedStep = await window.electron?.getOnboardingStep?.();
+        if (savedStep) {
+          console.log(`[Onboarding] Restoring saved step: ${savedStep}`);
+          setCurrentStep(savedStep as OnboardingStep);
+          return;
+        }
+      } catch (error) {
+        console.warn("[Onboarding] Failed to restore saved step:", error);
       }
 
       // New users go to name verification first

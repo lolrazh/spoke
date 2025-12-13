@@ -102,6 +102,8 @@ declare global {
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
       resetOnboardingFlag: () => Promise<{ ok: boolean }>;
+      getOnboardingStep: () => Promise<string | null>;
+      setOnboardingStep: (step: string) => Promise<{ ok: boolean }>;
       getAppPath: () => Promise<string>;
       // Permission lifecycle helpers
       postPermissionGrant?: (
