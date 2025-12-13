@@ -19,40 +19,23 @@ let clientInitPromise: Promise<SupabaseClient | null> | null = null;
 export async function getSupabase(): Promise<SupabaseClient | null> {
   // Already initialized
   if (client) {
-    console.log("[Auth] getSupabase() - returning cached client");
     return client;
   }
 
   // Initialization in progress - wait for it
   if (clientInitPromise) {
-    console.log("[Auth] getSupabase() - waiting for in-progress init");
     return clientInitPromise;
   }
-
-  console.log("[Auth] getSupabase() - starting initialization");
 
   // Start initialization
   clientInitPromise = (async () => {
     // Wait for session to be injected into localStorage
-    // This is the "wait at the mailbox" fix!
-    console.log("[Auth] Checking for waitForSessionReady...", {
-      hasWindow: typeof window !== "undefined",
-      hasWaitFn: typeof window !== "undefined" && !!window.waitForSessionReady
-    });
-
     if (typeof window !== "undefined" && window.waitForSessionReady) {
       try {
-        console.log("[Auth] Calling waitForSessionReady()...");
         await window.waitForSessionReady();
-        console.log("[Auth] Session ready - localStorage is populated");
-        // Log what's in localStorage
-        const sbKeys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
-        console.log("[Auth] localStorage sb- keys:", sbKeys);
       } catch (error) {
         console.warn("[Auth] waitForSessionReady failed, continuing anyway:", error);
       }
-    } else {
-      console.warn("[Auth] waitForSessionReady NOT AVAILABLE - session may not be injected!");
     }
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -60,7 +43,6 @@ export async function getSupabase(): Promise<SupabaseClient | null> {
       return null;
     }
 
-    console.log("[Auth] Creating Supabase client...");
     client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
         flowType: "pkce",
@@ -69,7 +51,6 @@ export async function getSupabase(): Promise<SupabaseClient | null> {
         persistSession: true,
       },
     });
-    console.log("[Auth] Supabase client created");
 
     return client;
   })();

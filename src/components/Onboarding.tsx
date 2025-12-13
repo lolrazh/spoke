@@ -681,12 +681,11 @@ const Onboarding: React.FC = () => {
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
         if (savedStep) {
-          console.log(`[Onboarding] Restoring saved step: ${savedStep}`);
           setCurrentStep(savedStep as OnboardingStep);
           return;
         }
-      } catch (error) {
-        console.warn("[Onboarding] Failed to restore saved step:", error);
+      } catch {
+        // Ignore errors - continue with default step
       }
 
       // New users go to name verification first

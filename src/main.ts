@@ -3324,7 +3324,6 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("session:clear-all", () => {
     clearAllSessionData();
-    console.log("[Session] Cleared all session data from electron-store");
     return { ok: true };
   });
 

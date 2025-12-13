@@ -52,7 +52,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       // If user is already signed in (session restored), skip the intro!
       const user = await getCurrentUser();
       if (user) {
-        console.log("[IntroExperience] User already signed in, skipping intro");
         // Call onFinish directly - don't use setVisible(false) because
         // AnimatePresence won't fire onExitComplete if nothing was ever rendered
         // (checkingAuth was true, so nothing rendered, so no exit animation)
