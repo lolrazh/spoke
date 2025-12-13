@@ -2941,6 +2941,23 @@ app.whenReady().then(async () => {
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
+  // Sync local onboarding flag with database (for dev testing)
+  ipcMain.handle("onboarding:reset-local-flag", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs, done: false };
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
+      console.log("[IPC] Local onboarding flag reset to false");
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to reset local onboarding flag:", error);
+      return { ok: false };
+    }
+  });
+
   // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
 
   ipcMain.handle("auth:show-onboarding", () => {

@@ -639,6 +639,14 @@ const Onboarding: React.FC = () => {
           await window.electron?.onboardingComplete();
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           return;
+        } else {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          // This ensures restart mid-onboarding opens onboarding window (not main)
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch (error) {
         if (isMountedRef.current) setSignedInAccount(null);
@@ -687,6 +695,13 @@ const Onboarding: React.FC = () => {
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           switchAccountIntentRef.current = false;
           return;
+        } else if (!profile?.onboarding_done) {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch { }
       if (switchAccountIntentRef.current && !forceOnboarding) {

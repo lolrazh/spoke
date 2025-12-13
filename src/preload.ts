@@ -183,6 +183,7 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("ptt:set-target", target),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
+  resetOnboardingFlag: () => ipcRenderer.invoke("onboarding:reset-local-flag"),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Permission lifecycle helpers
   postPermissionGrant: (type: "accessibility" | "microphone") =>
