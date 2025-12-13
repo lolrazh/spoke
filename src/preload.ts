@@ -24,16 +24,21 @@ const sessionReadyPromise = new Promise<void>((resolve) => {
 });
 
 (async () => {
+  console.log("[Preload] Starting session injection...");
   try {
     const sessionData = await ipcRenderer.invoke("session:get-all") as Record<string, string>;
+    console.log("[Preload] Got session data from main, keys:", Object.keys(sessionData));
     for (const [key, value] of Object.entries(sessionData)) {
       localStorage.setItem(key, value);
+      console.log(`[Preload] Set localStorage key: ${key.substring(0, 30)}...`);
     }
     console.log("[Preload] Injected session keys:", Object.keys(sessionData));
+    console.log("[Preload] localStorage now has keys:", Object.keys(localStorage).filter(k => k.startsWith('sb-')));
   } catch (error) {
     console.error("[Preload] Failed to inject session:", error);
   } finally {
     // Always resolve - even on error, so the app doesn't hang
+    console.log("[Preload] Resolving sessionReady promise");
     sessionReadyResolve();
   }
 })();

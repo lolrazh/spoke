@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
-import { getSupabase, getGoogleOAuthUrl } from "../../lib/supabaseClient";
+import { getSupabase, getGoogleOAuthUrl, getCurrentUser } from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -43,9 +43,17 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
   };
 
   // Initialize Supabase client early so PKCE flow works correctly
+  // AND check if user is already signed in (from persisted session)
   useEffect(() => {
     (async () => {
       await getSupabase(); // Initialize singleton client (waits for session injection)
+
+      // If user is already signed in (session restored), skip the intro!
+      const user = await getCurrentUser();
+      if (user) {
+        console.log("[IntroExperience] User already signed in, skipping intro");
+        setVisible(false); // This triggers onFinish via AnimatePresence
+      }
     })();
     return () => {
       isMountedRef.current = false;
