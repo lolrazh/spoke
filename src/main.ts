@@ -56,6 +56,12 @@ import {
   deleteTranscription,
   clearTranscriptions,
 } from "./lib/transcriptionStorage";
+import {
+  getAllSessionData,
+  setSessionItem,
+  getSessionItem,
+  removeSessionItem,
+} from "./lib/sessionStorage";
 import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
@@ -3293,6 +3299,25 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("transcriptions:clear", () => {
     clearTranscriptions();
+    return { ok: true };
+  });
+
+  // Supabase session persistence handlers (for reliable auth across restarts)
+  ipcMain.handle("session:get-all", () => {
+    return getAllSessionData();
+  });
+
+  ipcMain.handle("session:set", (_event, payload: { key: string; value: string }) => {
+    setSessionItem(payload.key, payload.value);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:get", (_event, payload: { key: string }) => {
+    return getSessionItem(payload.key);
+  });
+
+  ipcMain.handle("session:remove", (_event, payload: { key: string }) => {
+    removeSessionItem(payload.key);
     return { ok: true };
   });
 

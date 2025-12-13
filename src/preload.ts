@@ -4,6 +4,26 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types/shared";
 
+// ============================================================================
+// CRITICAL: Pre-inject Supabase session (MUST run before any renderer code)
+// ============================================================================
+// Electron's localStorage is unreliable with file:// URLs in packaged builds.
+// We store Supabase session in electron-store and inject it here synchronously.
+// ============================================================================
+
+(async () => {
+  try {
+    const sessionData = await ipcRenderer.invoke("session:get-all") as Record<string, string>;
+    for (const [key, value] of Object.entries(sessionData)) {
+      localStorage.setItem(key, value);
+    }
+    console.log("[Preload] Injected session keys:", Object.keys(sessionData));
+  } catch (error) {
+    console.error("[Preload] Failed to inject session:", error);
+  }
+})();
+
+
 // Expose dev flags so renderer can bypass auth/onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
   skipAuth:
@@ -236,6 +256,16 @@ contextBridge.exposeInMainWorld("transcriptions", {
     ipcRenderer.invoke("transcriptions:delete", { id }),
   clear: (): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("transcriptions:clear"),
+});
+
+// Session storage bridge (for Supabase session sync)
+contextBridge.exposeInMainWorld("supabaseSession", {
+  setItem: (key: string, value: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:set", { key, value }),
+  getItem: (key: string): Promise<string | null> =>
+    ipcRenderer.invoke("session:get", { key }),
+  removeItem: (key: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("session:remove", { key }),
 });
 
 // (Removed) dev-only Sentry verification hooks

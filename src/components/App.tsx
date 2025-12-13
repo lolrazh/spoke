@@ -373,6 +373,12 @@ const AppInner: React.FC = () => {
     }).catch(() => {
       // Ignore initialization errors; quota will fall back to server checks
     });
+    // Initialize Supabase session sync for reliable auth persistence
+    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
+      initializeSessionSync();
+    }).catch((error) => {
+      console.error('[App] Failed to initialize session sync:', error);
+    });
   }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
