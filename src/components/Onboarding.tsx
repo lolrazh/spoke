@@ -696,7 +696,7 @@ const Onboarding: React.FC = () => {
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
     // Initialize Supabase in background (don't block callback registration)
-    getSupabase().catch(() => undefined);
+    getSupabase().catch((): void => undefined);
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
