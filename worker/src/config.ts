@@ -60,4 +60,4 @@ export const GROQ_OCR_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f4348
 export const GROQ_OCR_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 export const OCR_DEFAULT_PROVIDER = 'groq' as const;
 export const OCR_DEFAULT_TIMEOUT_MS = 5000;
-export const OCR_MAX_WORDS = 100;
+export const OCR_MAX_WORDS = 50;

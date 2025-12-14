@@ -48,7 +48,7 @@ export async function extractOcrWords(opts: ExtractOcrWordsOptions): Promise<Ocr
           ],
         },
       ],
-      temperature: 0.1,
+      temperature: 0.2,
       max_tokens: 500,
       response_format: { type: "json_object" },
     };
