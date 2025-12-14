@@ -622,9 +622,8 @@ const Onboarding: React.FC = () => {
   // Permission aggregates
   const allPermissionsGranted =
     permissions.microphone &&
-    permissions.screenRecording &&
     permissions.accessibility &&
-    permissions.inputMonitoring;
+    permissions.screenRecording;
 
   // Initial auth check
   useEffect(() => {
@@ -1715,98 +1714,6 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-                    {/* Screen Recording Permission */}
-                    <div
-                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.screenRecording ? "opacity-60" : "opacity-100"}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                            <SfIcon
-                              name="rectangle.on.rectangle"
-                              size={16}
-                              className="text-primary/70"
-                            />
-                          </div>
-                          <div className="text-left">
-                            <p className="text-[13px] font-medium text-foreground">
-                              Screen Recording
-                            </p>
-                            <p className="onboarding-permission-desc text-subtle">
-                              Capture screen context for better accuracy.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center">
-                          <div className="relative w-[84px] flex items-center justify-center">
-                            <AnimatePresence mode="wait" initial={false}>
-                              {!permissions.screenRecording ? (
-                                <motion.div
-                                  key={
-                                    ui.screenRecording.loading
-                                      ? "sr-loading"
-                                      : "sr-idle"
-                                  }
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  exit={{ opacity: 0 }}
-                                  className="w-full flex items-center justify-center"
-                                >
-                                  <Button
-                                    size="sm"
-                                    onClick={handleRequestScreenRecording}
-                                    disabled={ui.screenRecording.loading}
-                                    className="text-xs onboarding-cta w-full"
-                                  >
-                                    <div className="relative flex items-center justify-center h-4">
-                                      {ui.screenRecording.loading ? (
-                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                                      ) : (
-                                        <span>Enable</span>
-                                      )}
-                                    </div>
-                                  </Button>
-                                </motion.div>
-                              ) : (
-                                <div className="flex items-center justify-center">
-                                  <motion.svg
-                                    width="22"
-                                    height="22"
-                                    viewBox="0 0 24 24"
-                                    className="text-white/80"
-                                  >
-                                    <motion.path
-                                      initial={{
-                                        pathLength: ui.screenRecording.justGranted
-                                          ? 0
-                                          : 1,
-                                      }}
-                                      animate={{ pathLength: 1 }}
-                                      transition={
-                                        ui.screenRecording.justGranted
-                                          ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
-                                          : { duration: 0 }
-                                      }
-                                      d="M5 13l4 4L19 7"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </motion.svg>
-                                </div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      </div>
-                      {/* No separate denied section; user can press Enable again. */}
-                    </div>
-
                     {/* Accessibility Permission */}
                     <div
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}
@@ -1899,35 +1806,37 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-                    {/* Input Monitoring Permission (restart required) */}
+                    {/* Screen Recording Permission */}
                     <div
-                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : !permissions.accessibility ? "opacity-40" : "opacity-100"}`}
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.screenRecording ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                             <SfIcon
-                              name="keyboard.badge.eye.fill"
-                              size={20}
+                              name="record.circle"
+                              size={16}
                               className="text-primary/70"
                             />
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Input Monitoring
+                              Screen Recording
                             </p>
-                            <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              Capture screen context for better accuracy.
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center">
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
-                              {!permissions.inputMonitoring ? (
+                              {!permissions.screenRecording ? (
                                 <motion.div
                                   key={
-                                    ui.inputMonitoring.loading
-                                      ? "im-loading"
-                                      : "im-idle"
+                                    ui.screenRecording.loading
+                                      ? "sr-loading"
+                                      : "sr-idle"
                                   }
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
@@ -1936,12 +1845,12 @@ const Onboarding: React.FC = () => {
                                 >
                                   <Button
                                     size="sm"
-                                    onClick={handleRequestInputMonitoring}
-                                    disabled={ui.inputMonitoring.loading || !permissions.accessibility}
+                                    onClick={handleRequestScreenRecording}
+                                    disabled={ui.screenRecording.loading}
                                     className="text-xs onboarding-cta w-full"
                                   >
                                     <div className="relative flex items-center justify-center h-4">
-                                      {ui.inputMonitoring.loading ? (
+                                      {ui.screenRecording.loading ? (
                                         <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                       ) : (
                                         <span>Enable</span>
@@ -1959,13 +1868,13 @@ const Onboarding: React.FC = () => {
                                   >
                                     <motion.path
                                       initial={{
-                                        pathLength: ui.inputMonitoring.justGranted
+                                        pathLength: ui.screenRecording.justGranted
                                           ? 0
                                           : 1,
                                       }}
                                       animate={{ pathLength: 1 }}
                                       transition={
-                                        ui.inputMonitoring.justGranted
+                                        ui.screenRecording.justGranted
                                           ? {
                                             duration: 0.45,
                                             ease: [0.25, 0.8, 0.25, 1],
@@ -1986,9 +1895,10 @@ const Onboarding: React.FC = () => {
                           </div>
                         </div>
                       </div>
-
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
+
+
                   </div>
                 </motion.div>
               )}
