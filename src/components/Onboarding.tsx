@@ -1899,6 +1899,11 @@ const Onboarding: React.FC = () => {
                     </div>
 
 
+                    {/* Restart hint */}
+                    <p className="text-xs text-muted-foreground/60 text-center pt-4">
+                      You may need to restart Spoke after enabling permissions.
+                    </p>
+
                   </div>
                 </motion.div>
               )}
