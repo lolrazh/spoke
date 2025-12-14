@@ -1,5 +1,8 @@
 // Minimal test environment shims for DOM, media, and Electron bridges
 
+// Enable React 18 act() environment across the suite
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
 // MediaDevices shim
 if (typeof globalThis.navigator === "undefined") {
   // @ts-ignore

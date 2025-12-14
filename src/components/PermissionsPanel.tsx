@@ -8,7 +8,7 @@ import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 
-type PermissionKey = "microphone" | "accessibility" | "inputMonitoring";
+type PermissionKey = "microphone" | "accessibility" | "screenRecording";
 
 const PERMISSION_COPY: Record<
   PermissionKey,
@@ -40,13 +40,13 @@ const PERMISSION_COPY: Record<
       />
     ),
   },
-  inputMonitoring: {
-    title: "Input Monitoring",
-    description: "Detect the Spoke hotkey",
+  screenRecording: {
+    title: "Screen Recording",
+    description: "Capture screen context for better accuracy",
     icon: (
       <SfIcon
-        name="keyboard.badge.eye.fill"
-        size={20}
+        name="record.circle"
+        size={18}
         className="text-primary/70"
       />
     ),
@@ -82,7 +82,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
     ui,
     requestMicrophone,
     requestAccessibility,
-    requestInputMonitoring,
+    requestScreenRecording,
   } = usePermissionsController();
 
   const permissionEntries = useMemo(() => {
@@ -108,11 +108,11 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
           onRequest: requestAccessibility,
         },
         {
-          key: "inputMonitoring",
-          granted: permissions.inputMonitoring,
-          loading: ui.inputMonitoring.loading,
-          disabled: !permissions.accessibility,
-          onRequest: requestInputMonitoring,
+          key: "screenRecording",
+          granted: permissions.screenRecording,
+          loading: ui.screenRecording.loading,
+          disabled: false,
+          onRequest: requestScreenRecording,
         },
       ];
 
@@ -122,7 +122,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
     ui,
     requestMicrophone,
     requestAccessibility,
-    requestInputMonitoring,
+    requestScreenRecording,
   ]);
 
   const contentRef = useRef<HTMLDivElement>(null);

@@ -109,9 +109,9 @@ async function refreshIdentity(): Promise<UserIdentity> {
   }
 }
 
-function subscribeToAuthChanges() {
+async function subscribeToAuthChanges() {
   if (authUnsubscribe) return;
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return;
   const {
     data: { subscription },
@@ -167,7 +167,7 @@ export async function initUserIdentity(): Promise<UserIdentity> {
   if (initPromise) return initPromise;
   initPromise = (async () => {
     await refreshIdentity();
-    subscribeToAuthChanges();
+    await subscribeToAuthChanges();
     initialized = true;
     return identity;
   })();

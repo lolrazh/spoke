@@ -56,6 +56,14 @@ import {
   deleteTranscription,
   clearTranscriptions,
 } from "./lib/transcriptionStorage";
+import {
+  getAllSessionData,
+  setSessionItem,
+  getSessionItem,
+  removeSessionItem,
+  clearAllSessionData,
+} from "./lib/sessionStorage";
+import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
 
@@ -376,7 +384,7 @@ let appPreferences: import("./types/shared").AppPreferences = {};
 let appPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
-let onboardingPrefs: { done?: boolean } = {};
+let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
 // ============ Manual Update Check (Tray integration) ============
 type UpdateStatus =
@@ -2901,7 +2909,7 @@ app.whenReady().then(async () => {
     }
     // Persist local onboarding flag so future launches can skip onboarding entirely
     try {
-      onboardingPrefs = { ...onboardingPrefs, done: true };
+      onboardingPrefs = { ...onboardingPrefs, done: true, currentStep: undefined };
       fs.writeFileSync(
         onboardingPrefsPath,
         JSON.stringify(onboardingPrefs, null, 2),
@@ -2938,6 +2946,44 @@ app.whenReady().then(async () => {
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
 
     // Renderer will show any post-sign-in notification; keep main focused on window.
+  });
+
+  // Sync local onboarding flag with database (for dev testing)
+  ipcMain.handle("onboarding:reset-local-flag", () => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs, done: false };
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
+      console.log("[IPC] Local onboarding flag reset to false");
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to reset local onboarding flag:", error);
+      return { ok: false };
+    }
+  });
+
+  // Get saved onboarding step
+  ipcMain.handle("onboarding:get-step", () => {
+    return onboardingPrefs.currentStep || null;
+  });
+
+  // Save current onboarding step
+  ipcMain.handle("onboarding:set-step", (_event, step: string) => {
+    try {
+      onboardingPrefs = { ...onboardingPrefs, currentStep: step };
+      fs.writeFileSync(
+        onboardingPrefsPath,
+        JSON.stringify(onboardingPrefs, null, 2),
+        "utf8",
+      );
+      return { ok: true };
+    } catch (error) {
+      console.error("[IPC] Failed to save onboarding step:", error);
+      return { ok: false };
+    }
   });
 
   // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
@@ -3257,6 +3303,30 @@ app.whenReady().then(async () => {
     return { ok: true };
   });
 
+  // Supabase session persistence handlers (for reliable auth across restarts)
+  ipcMain.handle("session:get-all", () => {
+    return getAllSessionData();
+  });
+
+  ipcMain.handle("session:set", (_event, payload: { key: string; value: string }) => {
+    setSessionItem(payload.key, payload.value);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:get", (_event, payload: { key: string }) => {
+    return getSessionItem(payload.key);
+  });
+
+  ipcMain.handle("session:remove", (_event, payload: { key: string }) => {
+    removeSessionItem(payload.key);
+    return { ok: true };
+  });
+
+  ipcMain.handle("session:clear-all", () => {
+    clearAllSessionData();
+    return { ok: true };
+  });
+
   // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)
 
   // Handle dynamic click-through control
@@ -3448,6 +3518,36 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("check-screen-recording-permission", () => {
+    try {
+      const status = systemPreferences.getMediaAccessStatus("screen");
+      console.log("[IPC] Screen recording permission status:", status);
+      return { status, granted: status === "granted" };
+    } catch (error) {
+      console.error("Error checking screen recording permission:", error);
+      return { status: "unknown", granted: false };
+    }
+  });
+
+  ipcMain.handle("request-screen-recording-permission", async () => {
+    try {
+      console.log("[IPC] Requesting screen recording permission...");
+      // Screen recording permission can't be requested via askForMediaAccess
+      // Instead, we trigger a screenshot which prompts the user if needed
+      const { desktopCapturer } = await import("electron");
+      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+
+      // Check the status after attempting capture
+      const status = systemPreferences.getMediaAccessStatus("screen");
+      const granted = status === "granted";
+      console.log("[IPC] Screen recording permission result:", granted);
+      return { success: true, granted };
+    } catch (error) {
+      console.error("Error requesting screen recording permission:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle("open-system-preferences", async (event, pane: string) => {
     try {
       const { shell } = await import("electron");
@@ -3457,6 +3557,10 @@ app.whenReady().then(async () => {
         case "microphone":
           url =
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+          break;
+        case "screen-recording":
+          url =
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
           break;
         case "accessibility":
           url =
@@ -3663,6 +3767,30 @@ app.whenReady().then(async () => {
       return app.getVersion();
     } catch (e) {
       return "";
+    }
+  });
+
+  // Screenshot capture for OCR context (Phase 1)
+  ipcMain.handle("screenshot:capture", async (_event, options) => {
+    try {
+      const result = await captureScreenshot(options);
+      console.log(`[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`);
+      return { success: true, ...result };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("[Screenshot] Capture failed:", errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  });
+
+  // Screenshot test handler (for PoC performance testing)
+  ipcMain.handle("screenshot:test", async () => {
+    try {
+      return await testScreenshotCapture();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("[Screenshot Test] Failed:", errorMsg);
+      return { success: false, error: errorMsg };
     }
   });
 

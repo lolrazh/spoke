@@ -349,7 +349,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     // Open browser immediately - website handles the redirect
     // This provides instant feedback rather than waiting for API response in the app
     try {
-      const supabase = getSupabase();
+      const supabase = await getSupabase();
       if (!supabase) {
         console.error("[Settings] Supabase client not available");
         return;

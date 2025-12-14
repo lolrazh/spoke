@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -70,6 +70,8 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = 
   checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
   checkMicrophonePermission: async () => ({ status: "denied", granted: false }),
   requestMicrophonePermission: async () => ({ success: true, granted: true }),
+  checkScreenRecordingPermission: async () => ({ status: "denied", granted: false }),
+  requestScreenRecordingPermission: async () => ({ success: true, granted: true }),
   askIM: async () => ({ success: true, status: "authorized" }),
   requestAccessibilityPermission: async () => ({ success: true }),
   openSystemPreferences: () => undefined,
@@ -178,6 +180,8 @@ const Onboarding: React.FC = () => {
       checkPermissions: mockPermissions.checkPermissions,
       checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
       requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
+      checkScreenRecordingPermission: mockPermissions.checkScreenRecordingPermission,
+      requestScreenRecordingPermission: mockPermissions.requestScreenRecordingPermission,
       askIM: mockPermissions.askIM,
       requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
       openSystemPreferences: mockPermissions.openSystemPreferences,
@@ -188,6 +192,7 @@ const Onboarding: React.FC = () => {
     ui,
     init: initPermissions,
     requestMicrophone,
+    requestScreenRecording,
     requestAccessibility,
     requestInputMonitoring,
     setPermissions,
@@ -262,9 +267,9 @@ const Onboarding: React.FC = () => {
       fadeRafRef.current = requestAnimationFrame(step);
     });
   // Dismiss intro without persisting any flag so it always shows next run
-  const handleIntroFinish = () => {
+  const handleIntroFinish = useCallback(() => {
     setShowIntro(false);
-  };
+  }, []);
 
   // Ensure we reset the controls ready flag when replaying the intro
   useEffect(() => {
@@ -306,6 +311,19 @@ const Onboarding: React.FC = () => {
     return () => {
       cleanupReady && cleanupReady();
     };
+  }, []);
+
+  // ***CRITICAL*** Initialize session sync in Onboarding window!
+  // Without this, sessions authenticated in onboarding are never saved to electron-store.
+  // Previously, sessionSync was only initialized in App.tsx (main window).
+  useEffect(() => {
+    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
+      initializeSessionSync().catch((error) => {
+        console.warn('[Onboarding] Failed to initialize session sync:', error);
+      });
+    }).catch((error) => {
+      console.error('[Onboarding] Failed to import sessionSync:', error);
+    });
   }, []);
 
   // Setup onboarding background music (autoplay + loop)
@@ -354,6 +372,18 @@ const Onboarding: React.FC = () => {
       } catch { }
     })();
   }, [currentStep]);
+
+  // Save current step for mid-onboarding restart recovery
+  useEffect(() => {
+    if (introOnly) return; // Don't save in intro-only mode
+    if (currentStep === "auth") return; // Don't save auth step (default)
+    if (currentStep === "complete") return; // Don't save complete step
+
+    window.electron?.setOnboardingStep?.(currentStep).catch((error) => {
+      console.warn("[Onboarding] Failed to save current step:", error);
+    });
+  }, [currentStep, introOnly]);
+
 
   const toggleMusic = () => {
     const audio = onboardingAudioRef.current;
@@ -593,13 +623,13 @@ const Onboarding: React.FC = () => {
   const allPermissionsGranted =
     permissions.microphone &&
     permissions.accessibility &&
-    permissions.inputMonitoring;
+    permissions.screenRecording;
 
   // Initial auth check
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
-    getSupabase();
     (async () => {
+      await getSupabase(); // Initialize Supabase client (waits for session injection)
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
       const user = await getCurrentUser();
@@ -633,9 +663,28 @@ const Onboarding: React.FC = () => {
           await window.electron?.onboardingComplete();
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           return;
+        } else {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          // This ensures restart mid-onboarding opens onboarding window (not main)
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch (error) {
         if (isMountedRef.current) setSignedInAccount(null);
+      }
+
+      // Check if there's a saved onboarding step (from mid-onboarding restart)
+      try {
+        const savedStep = await window.electron?.getOnboardingStep?.();
+        if (savedStep) {
+          setCurrentStep(savedStep as OnboardingStep);
+          return;
+        }
+      } catch {
+        // Ignore errors - continue with default step
       }
 
       // New users go to name verification first
@@ -645,7 +694,8 @@ const Onboarding: React.FC = () => {
 
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
-    getSupabase(); // Ensure client is initialized
+    // Initialize Supabase in background (don't block callback registration)
+    getSupabase().catch((): void => undefined);
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
@@ -681,6 +731,13 @@ const Onboarding: React.FC = () => {
           try { window.notifications?.send?.("You've been signed in."); } catch { }
           switchAccountIntentRef.current = false;
           return;
+        } else if (!profile?.onboarding_done) {
+          // Sync local flag with DB - if onboarding not done in DB, reset local flag
+          try {
+            await window.electron?.resetOnboardingFlag?.();
+          } catch (error) {
+            console.warn("[Onboarding] Failed to reset local flag:", error);
+          }
         }
       } catch { }
       if (switchAccountIntentRef.current && !forceOnboarding) {
@@ -1112,6 +1169,10 @@ const Onboarding: React.FC = () => {
     await requestMicrophone();
   };
 
+  const handleRequestScreenRecording = async () => {
+    await requestScreenRecording();
+  };
+
   const handleComplete = async () => {
     // Finish onboarding from the Complete screen
     // Helper should already be running from permissions step, but ensure it's started
@@ -1319,6 +1380,7 @@ const Onboarding: React.FC = () => {
                     // Quick reset for development
                     setPermissions({
                       microphone: false,
+                      screenRecording: false,
                       accessibility: false,
                       inputMonitoring: false,
                     });
@@ -1744,35 +1806,37 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-                    {/* Input Monitoring Permission (restart required) */}
+                    {/* Screen Recording Permission */}
                     <div
-                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : !permissions.accessibility ? "opacity-40" : "opacity-100"}`}
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.screenRecording ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                             <SfIcon
-                              name="keyboard.badge.eye.fill"
-                              size={20}
+                              name="record.circle"
+                              size={16}
                               className="text-primary/70"
                             />
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Input Monitoring
+                              Screen Recording
                             </p>
-                            <p className="onboarding-permission-desc text-subtle">Detect the Hotkey for dictation..</p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              Capture screen context for better accuracy.
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center">
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
-                              {!permissions.inputMonitoring ? (
+                              {!permissions.screenRecording ? (
                                 <motion.div
                                   key={
-                                    ui.inputMonitoring.loading
-                                      ? "im-loading"
-                                      : "im-idle"
+                                    ui.screenRecording.loading
+                                      ? "sr-loading"
+                                      : "sr-idle"
                                   }
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
@@ -1781,12 +1845,12 @@ const Onboarding: React.FC = () => {
                                 >
                                   <Button
                                     size="sm"
-                                    onClick={handleRequestInputMonitoring}
-                                    disabled={ui.inputMonitoring.loading || !permissions.accessibility}
+                                    onClick={handleRequestScreenRecording}
+                                    disabled={ui.screenRecording.loading}
                                     className="text-xs onboarding-cta w-full"
                                   >
                                     <div className="relative flex items-center justify-center h-4">
-                                      {ui.inputMonitoring.loading ? (
+                                      {ui.screenRecording.loading ? (
                                         <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                       ) : (
                                         <span>Enable</span>
@@ -1804,13 +1868,13 @@ const Onboarding: React.FC = () => {
                                   >
                                     <motion.path
                                       initial={{
-                                        pathLength: ui.inputMonitoring.justGranted
+                                        pathLength: ui.screenRecording.justGranted
                                           ? 0
                                           : 1,
                                       }}
                                       animate={{ pathLength: 1 }}
                                       transition={
-                                        ui.inputMonitoring.justGranted
+                                        ui.screenRecording.justGranted
                                           ? {
                                             duration: 0.45,
                                             ease: [0.25, 0.8, 0.25, 1],
@@ -1831,9 +1895,15 @@ const Onboarding: React.FC = () => {
                           </div>
                         </div>
                       </div>
-
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
+
+
+                    {/* Restart hint */}
+                    <p className="text-xs text-muted-foreground/60 text-center pt-4">
+                      You may need to restart Spoke after enabling permissions.
+                    </p>
+
                   </div>
                 </motion.div>
               )}

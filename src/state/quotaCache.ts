@@ -15,7 +15,7 @@
  * - Server validation on app startup (tamper protection)
  */
 
-import { getSupabase } from '../lib/supabaseClient';
+// Note: This module is UI-local and does not directly call Supabase.
 
 // ============================================================================
 // TYPES

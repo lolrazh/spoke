@@ -152,6 +152,9 @@ export function useTranscription(
     framesDropped?: number;
   } | null>(null);
 
+  // OCR context (screenshot) - captured early, sent once WS is ready
+  const pendingOcrImageBase64Ref = useRef<string | null>(null);
+
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -473,6 +476,20 @@ export function useTranscription(
     }
   }, []);
 
+  const trySendOcrContext = useCallback(() => {
+    const imageBase64 = pendingOcrImageBase64Ref.current;
+    const ws = wsRef.current;
+    if (!imageBase64) return;
+    if (!ws || !wsReadyRef.current || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify({ type: "context_ocr", imageBase64 }));
+      pendingOcrImageBase64Ref.current = null;
+      console.log("[OCR] Screenshot sent to worker");
+    } catch (err) {
+      console.warn("[OCR] Failed to send screenshot to worker:", err);
+    }
+  }, []);
+
   const ensureStreamingSocket = useCallback(async (): Promise<void> => {
     // If there's an existing socket that's authenticated, keep it
     if (wsRef.current) {
@@ -567,6 +584,7 @@ export function useTranscription(
 
             // Now we can send start message and flush queue
             trySendStartMessage();
+            trySendOcrContext();
             flushQueue();
             // Start health monitoring when WebSocket is authenticated
             startWebSocketHealthCheck();
@@ -678,7 +696,7 @@ export function useTranscription(
         reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
       });
     }); // Close the Promise
-  }, [flushQueue, trySendStartMessage]);
+  }, [flushQueue, trySendOcrContext, trySendStartMessage]);
 
   const streamFrame = useCallback(
     (pcmBuf: ArrayBuffer) => {
@@ -1237,6 +1255,39 @@ export function useTranscription(
       framesQueued: 0,
       framesSentApprox: 0,
     };
+
+    // Reset OCR context for new session
+    pendingOcrImageBase64Ref.current = null;
+
+    // Fire-and-forget screenshot capture for OCR context
+    // Don't await - this runs in parallel with WebSocket connection
+    (async () => {
+      try {
+        if (!window.electron?.takeScreenshot) return;
+
+        const screenshotStartMs =
+          typeof performance !== "undefined" ? performance.now() : Date.now();
+        const result = await window.electron.takeScreenshot();
+        const screenshotDurationMs =
+          (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+          screenshotStartMs;
+
+        if (!result.success || !result.imageBase64) {
+          console.warn("[OCR] Screenshot capture failed:", result.error);
+          return;
+        }
+
+        console.log(
+          `[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB) in ${Math.round(screenshotDurationMs)}ms client-side, queuing for worker...`,
+        );
+
+        // Queue screenshot for worker; it'll be sent once WS is ready.
+        pendingOcrImageBase64Ref.current = result.imageBase64;
+        trySendOcrContext();
+      } catch (err) {
+        console.warn("[OCR] Screenshot capture error:", err);
+      }
+    })();
 
     try {
       // Check if we already have an authenticated WebSocket from pre-connect
@@ -1814,6 +1865,20 @@ export function useTranscription(
                               userId: userIdRef.current ?? undefined,
                             },
                           };
+
+                          // Fire-and-forget metrics post (tests assert this call happens).
+                          try {
+                            const wsUrl = getTranscribeWsUrl();
+                            const u = new URL(wsUrl);
+                            u.protocol = u.protocol === "wss:" ? "https:" : "http:";
+                            u.pathname = "/metrics/session";
+                            u.search = "";
+                            void fetch(u.toString(), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify(payload),
+                            });
+                          } catch { }
 
                         } catch { }
                       } catch { }

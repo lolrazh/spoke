@@ -35,4 +35,12 @@ describe('services/stt/prompt', () => {
     });
     expect(p).toBe('Your vocabulary includes: Spoke, alert("x"), evil@example.com');
   });
+
+  it('appends OCR words with deduplication', () => {
+    const p = buildSTTPrompt({
+      identity: { name: 'John Doe' },
+      ocrWords: ['Notion', 'GitHub', 'John', 'Spoke'],
+    });
+    expect(p).toBe('Your vocabulary includes: Spoke, John, Doe, Notion, GitHub');
+  });
 });

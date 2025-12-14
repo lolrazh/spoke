@@ -7,21 +7,63 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as
   | undefined;
 
 let client: SupabaseClient | null = null;
+let clientInitPromise: Promise<SupabaseClient | null> | null = null;
 
-export function getSupabase(): SupabaseClient | null {
-  if (client) return client;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.warn("[Auth] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
-    return null;
+/**
+ * Get the Supabase client, waiting for session injection to complete first.
+ * 
+ * IMPORTANT: This waits for window.sessionReady to resolve before creating
+ * the client. This prevents the race condition where Supabase reads an
+ * empty localStorage before the preload script has injected the session.
+ */
+export async function getSupabase(): Promise<SupabaseClient | null> {
+  // Already initialized
+  if (client) {
+    return client;
   }
-  client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-      flowType: "pkce",
-      detectSessionInUrl: false,
-      autoRefreshToken: true,
-      persistSession: true,
-    },
-  });
+
+  // Initialization in progress - wait for it
+  if (clientInitPromise) {
+    return clientInitPromise;
+  }
+
+  // Start initialization
+  clientInitPromise = (async () => {
+    // Wait for session to be injected into localStorage
+    if (typeof window !== "undefined" && window.waitForSessionReady) {
+      try {
+        await window.waitForSessionReady();
+      } catch (error) {
+        console.warn("[Auth] waitForSessionReady failed, continuing anyway:", error);
+      }
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.warn("[Auth] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+      return null;
+    }
+
+    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        flowType: "pkce",
+        detectSessionInUrl: false,
+        autoRefreshToken: true,
+        persistSession: true,
+      },
+    });
+
+    return client;
+  })();
+
+  return clientInitPromise;
+}
+
+/**
+ * Synchronous version of getSupabase - only use this after getSupabase() 
+ * has already been called at least once (e.g., in auth state listeners).
+ * Returns null if client hasn't been initialized yet.
+ */
+export function getSupabaseSync(): SupabaseClient | null {
   return client;
 }
 
@@ -40,7 +82,7 @@ type ProfileRecord = {
 };
 
 export async function getGoogleOAuthUrl(): Promise<string | null> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return null;
 
   // Ask Electron main which redirect to use
@@ -84,7 +126,7 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
 export async function startEmailOtp(
   email: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
 
   const redirect = await (window.electron?.getAuthRedirectUrl?.() ??
@@ -128,7 +170,7 @@ export async function startEmailOtp(
 export async function handleAuthCallbackUrl(
   url: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
 
   console.log(`[Auth] Processing auth callback URL: ${url}`);
@@ -227,7 +269,7 @@ export async function handleAuthCallbackUrl(
 }
 
 export async function getCurrentUser() {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return null;
   try {
     const session = await supabase.auth.getSession();
@@ -258,7 +300,7 @@ export async function getCurrentUser() {
  * @returns The access token string, or null if not authenticated
  */
 export async function getAccessToken(): Promise<string | null> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return null;
   try {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -274,7 +316,7 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export async function signOut(): Promise<void> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return;
   await supabase.auth.signOut();
 
@@ -295,7 +337,7 @@ export async function getProfile(): Promise<{
   onboarding_done: boolean | null;
   share_transcriptions: boolean | null;
 } | null> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const u = await getCurrentUser();
   if (!u) return null;
@@ -326,7 +368,7 @@ export async function getProfileDetailed(): Promise<
   | { ok: false; error: "NO_USER" }
   | { ok: false; error: "NOT_FOUND" }
 > {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
   const u = await getCurrentUser();
   if (!u) return { ok: false, error: "NO_USER" };
@@ -356,7 +398,7 @@ export async function getProfileDetailed(): Promise<
 }
 
 export async function markOnboardingDone(): Promise<boolean> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return false;
   const u = await getCurrentUser();
   if (!u) return false;
@@ -380,7 +422,7 @@ export async function ensureProfileRow(): Promise<
   | { ok: true; existed: boolean }
   | { ok: false; error: string }
 > {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
   const u = await getCurrentUser();
   if (!u) return { ok: false, error: "NO_USER" };
@@ -428,7 +470,7 @@ export async function ensureProfileRow(): Promise<
 const SHARE_PREF_COLUMN = "share_transcriptions";
 
 export async function getShareTranscriptionsPreference(): Promise<boolean | null> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return null;
   const user = await getCurrentUser();
   if (!user) return null;
@@ -452,7 +494,7 @@ export async function getShareTranscriptionsPreference(): Promise<boolean | null
 export async function setShareTranscriptionsPreference(
   enabled: boolean,
 ): Promise<boolean> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return false;
   const user = await getCurrentUser();
   if (!user) return false;
@@ -476,7 +518,7 @@ export async function setShareTranscriptionsPreference(
 export async function updateDisplayName(
   displayName: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const supabase = getSupabase();
+  const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "NO_USER" };

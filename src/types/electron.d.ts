@@ -8,6 +8,16 @@ declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
+    /** 
+     * Function that returns a promise that resolves when session data has been 
+     * injected into localStorage. Supabase MUST await this before initializing 
+     * to avoid the race condition where it reads an empty localStorage before 
+     * session injection completes.
+     * 
+     * NOTE: This is a function (not a bare promise) because contextBridge
+     * can only serialize promises returned from functions.
+     */
+    waitForSessionReady: () => Promise<void>;
     app: {
       getVersion: () => Promise<string>;
     };
@@ -84,6 +94,15 @@ declare global {
         status: string;
         granted: boolean;
       }>;
+      requestScreenRecordingPermission: () => Promise<{
+        success: boolean;
+        granted?: boolean;
+        error?: string;
+      }>;
+      checkScreenRecordingPermission: () => Promise<{
+        status: string;
+        granted: boolean;
+      }>;
       openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
       preparePill: () => Promise<{ success: boolean; error?: string } | void>;
@@ -92,6 +111,9 @@ declare global {
       ) => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
+      resetOnboardingFlag: () => Promise<{ ok: boolean }>;
+      getOnboardingStep: () => Promise<string | null>;
+      setOnboardingStep: (step: string) => Promise<{ ok: boolean }>;
       getAppPath: () => Promise<string>;
       // Permission lifecycle helpers
       postPermissionGrant?: (
@@ -117,6 +139,30 @@ declare global {
       getAuthRedirectUrl: () => Promise<{ url: string }>;
       // Renderer lifecycle
       rendererReady: () => void;
+      // Screenshot capture (Phase 1 OCR)
+      takeScreenshot: (options?: {
+        display?: 'active' | number;
+        quality?: number;
+        maxDimension?: number;
+      }) => Promise<{
+        success: boolean;
+        imageBase64?: string;
+        captureTimeMs?: number;
+        sizeKb?: number;
+        displayId?: number;
+        displayBounds?: { x: number; y: number; width: number; height: number };
+        error?: string;
+      }>;
+      testScreenshot: () => Promise<{
+        success: boolean;
+        metrics?: {
+          captureTimeMs: number;
+          sizeKb: number;
+          displayId: number;
+          resolution: string;
+        };
+        error?: string;
+      }>;
       // Auth helpers
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
@@ -141,6 +187,12 @@ declare global {
       save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => Promise<TranscriptionItem>;
       delete: (id: string) => Promise<boolean>;
       clear: () => Promise<{ ok: boolean }>;
+    };
+    supabaseSession: {
+      setItem: (key: string, value: string) => Promise<{ ok: boolean }>;
+      getItem: (key: string) => Promise<string | null>;
+      removeItem: (key: string) => Promise<{ ok: boolean }>;
+      clearAll: () => Promise<{ ok: boolean }>;
     };
   }
 }
