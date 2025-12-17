@@ -1,7 +1,7 @@
 # WebSocket Stampede & Production Performance Fix
 
 **Date:** 2025-12-17  
-**Agent:** Claude Opus 4.5, Claude Sonnet 4.5  
+**Agent:** Claude Opus 4.5, Claude Sonnet 4.5 , GPT-5.2
 **Status:** ✅ Completed  
 
 ## User Intention
@@ -34,7 +34,7 @@ const ensureStreamingSocket = useCallback(async () => {
 });
 ```
 
-### startingRef State Tracking
+### startingRef State Tracking (and why a cancellation token is also needed)
 ```typescript
 // Tracks in-flight start attempts
 const startingRef = useRef(false);
@@ -50,6 +50,9 @@ if (startingRef.current) {
   return; // Cancel the in-flight start
 }
 ```
+
+**Follow-up correction (same day):** `startingRef` alone is *not* sufficient to cancel an in-flight `start()` because `start()` continues past `await` points without re-checking `startingRef`.  
+We added a **cancellation token** (`startTokenRef`) and `isStale()` checks before committing side effects (setting `recording=true`, initializing AudioContext/worklet, etc.), and `stop()`/`cancel()` now invalidate the token and perform best-effort cleanup.
 
 ### JWKS Prefetch
 ```typescript
@@ -72,6 +75,7 @@ app.use('*', async (c, next) => {
 - `worker/src/auth/supabaseJwt.ts` - Await cache.put(), export getJWKS
 - `worker/src/index.ts` - Added JWKS prefetch middleware
 - `docs/TRANSCRIPTION.md` - Added singleflight and starting_state documentation
+ - `src/components/PermissionsPanel.test.tsx` - Updated selector to match current `SettingsCard` aria-label ("Voice Input")
 
 ## Bugs & Issues Encountered
 
@@ -83,7 +87,8 @@ app.use('*', async (c, next) => {
 2. **Double-Tap Race Condition**
    - **Symptoms:** Recording STARTS when user double-taps to STOP during cold start
    - **Root Cause:** `recording` state only set true AFTER auth completes; `stop()` checks `if (!recording) return`
-   - **Fix:** Added `startingRef` tracking, stop() cancels in-flight start
+   - **Fix (initial):** Added `startingRef` tracking so stop() can attempt to cancel an in-flight start
+   - **Fix (follow-up):** Added `startTokenRef` cancellation token + `isStale()` checks so an in-flight `start()` can’t continue after stop/cancel
 
 3. **JWKS Cache Not Warming**
    - **Symptoms:** Every cold start paid 500ms for JWKS fetch despite caching code
@@ -95,11 +100,17 @@ app.use('*', async (c, next) => {
    - **Root Cause:** Early returns in start() didn't clear `startingRef`
    - **Fix:** Added `startingRef.current = false` before all early returns
 
+5. **CI/Test Failure (follow-up)**
+   - **Symptoms:** `PermissionsPanel.test.tsx` failed to find `'.settings-card[aria-label="Microphone"]'`
+   - **Root Cause:** The permission card label is the `SettingsCard` title ("Voice Input"), not "Microphone"
+   - **Fix:** Updated the selector to `aria-label="Voice Input"`
+
 ## Key Learnings
 
 - **Singleflight ≠ Retry Prevention** - Singleflight prevents PARALLEL connections, but 3-retry loop still creates 3 SEQUENTIAL connections. Both needed attention.
 - **Fire-and-Forget Cache Writes Are Risky** - In Cloudflare Workers, if worker terminates early, non-awaited promises are cancelled. Cache writes especially need `await`.
 - **State Machines Need "In-Flight" States** - Boolean `recording` isn't enough; need to track "starting but not yet recording" separately.
+- **In-flight async needs true cancellation** - A boolean flag alone won’t stop an async function after `await`; you need an explicit cancellation token (or AbortController) and must check it before committing side effects.
 - **Check activeCaptureRef, not just pendingStartTokenRef** - The latter gets cleared early by `handlePermissionOutcome`, but `activeCaptureRef` persists until capture completes.
 
 ## Architecture Decisions
