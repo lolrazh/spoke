@@ -1173,6 +1173,7 @@ export function useTranscription(
         try {
           window.notifications?.send?.(errorMsg);
         } catch { }
+        startingRef.current = false; // Clear starting flag before early return
         return;
       }
     } catch {
@@ -1254,6 +1255,7 @@ export function useTranscription(
         pendingSelectionPromiseRef.current = null;
         selectionGateDeadlineRef.current = null;
         clearSelectionGateTimer();
+        startingRef.current = false; // Clear starting flag before early return
         return;
       }
     }
