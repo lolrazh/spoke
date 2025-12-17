@@ -47,7 +47,7 @@ describe("components/PermissionsPanel", () => {
     expect(cards.length).toBeGreaterThanOrEqual(3);
 
     const micCard = container.querySelector(
-      '.settings-card[aria-label="Microphone"]',
+      '.settings-card[aria-label="Voice Input"]',
     ) as HTMLElement | null;
     expect(micCard).not.toBeNull();
 

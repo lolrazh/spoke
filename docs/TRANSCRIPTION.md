@@ -130,7 +130,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     - **Automatic refresh + pre-connect**: App calls refreshSession() on startup, then pre-connects WebSocket
   </architecture_benefits>
 
-  <jwks_caching added="2025-12-12" file="worker/src/auth/supabaseJwt.ts">
+  <jwks_caching added="2025-12-12" updated="2025-12-17" file="worker/src/auth/supabaseJwt.ts">
     **Problem:** 67% of JWT verifications had cold starts (>500ms) due to JWKS refetch from Supabase
 
     **Solution:** Two-tier "cookie jar" caching strategy:
@@ -155,12 +155,17 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     - Retry verification with fresh JWKS
     - Graceful degradation (one retry, then fail)
 
-    **Performance Impact:**
-    - Cold start rate: 67% → 5% (cache expiry + key rotation only)
-    - JWT verification: 10-50ms (consistent, down from 500-800ms on cold starts)
-    - 266x wall time improvement combined with Sentry removal
+    **2025-12-17 Fixes:**
+    1. **cache.put() now awaited** - Without await, if worker terminates early (loadShed),
+       cache.put() was cancelled and edge cache never warmed. Every cold start paid 500ms.
+    2. **JWKS prefetch on first request** - Worker middleware calls getJWKS() fire-and-forget
+       on first request. Second+ requests hit warm cache (~10ms).
 
-    Reference: agent-logs/2025-12-12_1130_eliminate-cold-starts.md
+    **Performance Impact:**
+    - Cold start rate: 67% → ~0% (prefetch + proper cache population)
+    - JWT verification: 10-50ms (consistent, down from 500-800ms on cold starts)
+
+    Reference: agent-logs/2025-12-12_1130_eliminate-cold-starts.md, agent-logs/2025-12-17_2315_websocket-stampede-fix.md
   </jwks_caching>
 
   <quota_tracking file="worker/src/handlers/ws.ts">
@@ -456,6 +461,40 @@ For now, single-shot processing is reliable and performant for all dictation len
   <connection>
     <url>getTranscribeWsUrl() - env-specific (ws://127.0.0.1:8787/ws or wss://api.spoke.so/ws)</url>
     <binary_type>arraybuffer</binary_type>
+    <singleflight added="2025-12-17" file="src/hooks/useTranscription.ts">
+      **Problem:** Multiple callers (preConnect, start, reconnect) could create parallel WebSocket 
+      connections, causing Cloudflare loadShed errors (3x concurrent requests).
+      
+      **Solution:** Singleflight pattern using connectionPromiseRef:
+      - If connection in progress, return existing Promise instead of creating new connection
+      - Promise cleared in .finally() to allow fresh attempts after completion/failure
+      - Prevents stampede: N callers → 1 connection attempt
+      
+      **Implementation:**
+      ```typescript
+      if (connectionPromiseRef.current) return connectionPromiseRef.current;
+      connectionPromise = (async () => { ... })();
+      connectionPromiseRef.current = connectionPromise.finally(() => {
+        connectionPromiseRef.current = null;
+      });
+      return connectionPromiseRef.current;
+      ```
+    </singleflight>
+    <starting_state added="2025-12-17" file="src/hooks/useTranscription.ts">
+      **Problem:** Double-tap race condition - stop() returns early if recording=false, 
+      but recording only becomes true AFTER auth completes. User taps "stop" during cold 
+      start, but recording starts anyway.
+      
+      **Solution:** startingRef tracks in-flight start attempts:
+      - Set true at start() entry, cleared on success, error, or stop/cancel
+      - stop() checks startingRef and cancels if true
+      - All early returns in start() clear startingRef to prevent stuck state
+      
+      **Early return points that clear startingRef:**
+      - Quota exceeded (line 1177)
+      - Stream open fail (line 1259)
+      - Catch block (line 1524)
+    </starting_state>
     <reconnection>
       Exponential backoff: 150ms base, doubles each attempt (max 2s).
       Circuit breaker: max 10 attempts, then 60s cooldown.

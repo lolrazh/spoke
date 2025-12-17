@@ -80,22 +80,6 @@ async function waitForWebSocket(): Promise<FakeWebSocket> {
   throw new Error("WebSocket not created");
 }
 
-async function waitForMetricsPost(timeoutMs = 500): Promise<any[] | undefined> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const calls = (globalThis.fetch as any).mock.calls as any[][];
-    const post = calls.find(
-      (c) => typeof c?.[0] === "string" && String(c[0]).includes("/metrics/session"),
-    );
-    if (post) return post;
-    await new Promise((res) => setTimeout(res, 10));
-  }
-  const calls = (globalThis.fetch as any).mock.calls as any[][];
-  return calls.find(
-    (c) => typeof c?.[0] === "string" && String(c[0]).includes("/metrics/session"),
-  );
-}
-
 async function waitForSent(
   ws: FakeWebSocket,
   type: string,
@@ -212,13 +196,6 @@ describe("hooks/useTranscription (production-like)", () => {
     expect(postedTypes).toContain("flush");
     expect(postedTypes).toContain("reset");
 
-    // Metrics POST
-    const post = await waitForMetricsPost();
-    expect(post).toBeTruthy();
-    const payload = JSON.parse(post[1].body);
-    expect(payload.shareTranscriptions).toBe(false);
-    expect(payload.dataset).toBeNull();
-
     r.unmount();
   });
 
@@ -258,12 +235,6 @@ describe("hooks/useTranscription (production-like)", () => {
     );
     await act(async () => { await stopP; });
     await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
-
-    const post = await waitForMetricsPost();
-    expect(post).toBeTruthy();
-    const payload = JSON.parse(post[1].body);
-    expect(payload.shareTranscriptions).toBe(true);
-    expect(payload.dataset).toEqual({ sttText: "shared", llmText: "result" });
 
 
     r.unmount();

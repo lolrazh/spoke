@@ -95,8 +95,11 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
     },
   });
 
-  // Put cookies in neighborhood jar (don't wait - do it in background)
-  cache.put(cacheKey, responseToCache);
+  // Put cookies in neighborhood jar - MUST await to ensure cache is populated!
+  // Without await: if worker terminates early (loadShed), cache.put() is cancelled
+  // and the edge cache never warms. This causes EVERY cold start to pay 500ms.
+  // The 10-50ms cache.put() overhead is worth it to save 450-490ms on future cold starts.
+  await cache.put(cacheKey, responseToCache);
 
   return await response.json();
 }
@@ -108,8 +111,10 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
  * 1. Kitchen jar (in-memory) - Instant! But disappears when worker restarts
  * 2. Neighborhood jar (edge cache) - Fast (~10ms), survives restarts
  * 3. Bakery (Supabase) - Slow (~500ms), only when both jars are empty
+ *
+ * Exported for use in worker startup prefetch to warm the cache.
  */
-async function getJWKS(supabaseUrl: string): Promise<ReturnType<typeof createLocalJWKSet>> {
+export async function getJWKS(supabaseUrl: string): Promise<ReturnType<typeof createLocalJWKSet>> {
   const now = Date.now();
 
   // Step 1: Check kitchen jar (fastest)

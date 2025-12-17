@@ -1623,9 +1623,14 @@ const AppInner: React.FC = () => {
             clearTimeout(doubleTapTimerRef.current);
             doubleTapTimerRef.current = null;
           }
-          const pendingTokenId = pendingStartTokenRef.current?.id ?? null;
+          // Check both pendingStartTokenRef AND activeCaptureRef because:
+          // - pendingStartTokenRef gets cleared early by handlePermissionOutcome
+          // - activeCaptureRef persists until the capture session actually completes
+          // This prevents the race where second tap starts NEW recording instead of stopping
+          const pendingTokenId = pendingStartTokenRef.current?.id ?? activeCaptureRef.current?.token ?? null;
           const pendingHandsFree =
-            pendingStartTokenRef.current?.kind === "doubleTap";
+            pendingStartTokenRef.current?.kind === "doubleTap" ||
+            activeCaptureRef.current?.kind === "doubleTap";
           lastTapUpRef.current = null;
           if (latestTransRef.current.recording) {
             pendingStartTokenRef.current = null;
@@ -1638,6 +1643,9 @@ const AppInner: React.FC = () => {
           } else if (pendingHandsFree) {
             pendingStartTokenRef.current = null;
             pushTrace(`PTT double-tap start canceled before activation`);
+            try {
+              latestTransRef.current.cancel();
+            } catch { }
             pillDispatch({ type: "CANCEL" });
             if (pendingTokenId != null) {
               clearActiveCapture(pendingTokenId);
