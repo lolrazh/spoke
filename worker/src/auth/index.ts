@@ -18,6 +18,7 @@
 export {
   verifySupabaseJwt,
   clearJwksCache,
+  getJWKS,
   type JwtVerifyResult,
 } from './supabaseJwt';
 
