@@ -1636,10 +1636,10 @@ const Onboarding: React.FC = () => {
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Microphone
+                              Voice Input
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              Capture your voice for dictation.
+                              Hear your voice to transcribe what you say.
                             </p>
                           </div>
                         </div>
@@ -1729,10 +1729,10 @@ const Onboarding: React.FC = () => {
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Accessibility
+                              Text Insertion
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              Insert recognized text into your apps.
+                              Type text directly into any app for you.
                             </p>
                           </div>
                         </div>
@@ -1821,7 +1821,7 @@ const Onboarding: React.FC = () => {
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Screen Recording
+                              Smart Context
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
                               Capture screen context for better accuracy.

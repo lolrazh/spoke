@@ -19,8 +19,8 @@ const PERMISSION_COPY: Record<
   }
 > = {
   microphone: {
-    title: "Microphone",
-    description: "Capture your voice for dictation",
+    title: "Voice Input",
+    description: "Hear your voice to transcribe what you say",
     icon: (
       <SfIcon
         name="microphone.fill"
@@ -30,8 +30,8 @@ const PERMISSION_COPY: Record<
     ),
   },
   accessibility: {
-    title: "Accessibility",
-    description: "Insert recognized text into your apps",
+    title: "Text Insertion",
+    description: "Type text directly into any app for you",
     icon: (
       <SfIcon
         name="accessibility"
@@ -41,7 +41,7 @@ const PERMISSION_COPY: Record<
     ),
   },
   screenRecording: {
-    title: "Screen Recording",
+    title: "Smart Context",
     description: "Capture screen context for better accuracy",
     icon: (
       <SfIcon
