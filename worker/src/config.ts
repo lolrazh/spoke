@@ -38,11 +38,13 @@ export const GROQ_STT_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f4348
 export const FIREWORKS_STT_TURBO_ENDPOINT = 'https://audio-turbo.api.fireworks.ai/v1/audio/transcriptions';
 export const FIREWORKS_STT_LARGE_ENDPOINT = 'https://audio-prod.api.fireworks.ai/v1/audio/transcriptions';
 export const DEEPGRAM_STT_ENDPOINT = 'https://api.deepgram.com/v1/listen';
+export const SIMPLISMART_STT_ENDPOINT = 'https://http.zkbxe6nuy2.ss-in.s9t.link/predict';
 
 export const GROQ_STT_MODEL = 'whisper-large-v3';
 export const FIREWORKS_STT_TURBO_MODEL = 'whisper-v3-turbo';
 export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
+export const SIMPLISMART_STT_MODEL = 'whisper';
 
 export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';
@@ -53,7 +55,7 @@ export const FIREWORKS_STT_DEFAULT_TEMPERATURES = '0.0,0.2,0.4';
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
 export const STT_DEFAULT_PROVIDER = 'groq' as const;
-export type STTProvider = 'groq' | 'fireworks' | 'deepgram';
+export type STTProvider = 'groq' | 'fireworks' | 'deepgram' | 'simplismart';
 
 // OCR (Vision Model)
 export const GROQ_OCR_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f434807b8a6fe9031a75c71d4393/spoke/groq/chat/completions';

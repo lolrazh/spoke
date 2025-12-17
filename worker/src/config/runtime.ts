@@ -26,6 +26,7 @@ import {
   STT_DEFAULT_PROVIDER,
   FIREWORKS_STT_TURBO_MODEL,
   DEEPGRAM_STT_DEFAULT_MODEL,
+  SIMPLISMART_STT_MODEL,
 } from '../config';
 import type { LLMProvider, STTProvider } from '../config';
 
@@ -144,12 +145,13 @@ function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
 
 function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'fireworks' || s === 'deepgram') return s as STTProvider;
+  if (s === 'groq' || s === 'fireworks' || s === 'deepgram' || s === 'simplismart') return s as STTProvider;
   return fallback;
 }
 
 function defaultSttModelFor(provider: STTProvider): string {
   if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
   if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
+  if (provider === 'simplismart') return SIMPLISMART_STT_MODEL;
   return STT_DEFAULT_MODEL;
 }

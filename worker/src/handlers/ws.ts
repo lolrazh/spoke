@@ -25,6 +25,7 @@ import {
   GROQ_STT_ENDPOINT,
   FIREWORKS_STT_TURBO_ENDPOINT,
   DEEPGRAM_STT_ENDPOINT,
+  SIMPLISMART_STT_ENDPOINT,
   GROQ_LLM_ENDPOINT,
   OPENAI_LLM_ENDPOINT,
   BASETEN_LLM_ENDPOINT,
@@ -40,6 +41,7 @@ type Bindings = {
   GROQ_API_KEY?: string;
   FIREWORKS_API_KEY?: string;
   DEEPGRAM_API_KEY?: string;
+  SIMPLISMART_API_KEY?: string;
   // LLM providers
   OPENAI_API_KEY?: string;
   BASETEN_API_KEY?: string;
@@ -484,13 +486,17 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 ? FIREWORKS_API_KEY
                 : sttProvider === 'deepgram'
                   ? DEEPGRAM_API_KEY
-                  : GROQ_API_KEY;
+                  : sttProvider === 'simplismart'
+                    ? SIMPLISMART_API_KEY
+                    : GROQ_API_KEY;
             const sttEndpoint =
               sttProvider === 'fireworks'
                 ? FIREWORKS_STT_TURBO_ENDPOINT
                 : sttProvider === 'deepgram'
                   ? DEEPGRAM_STT_ENDPOINT
-                  : GROQ_STT_ENDPOINT;
+                  : sttProvider === 'simplismart'
+                    ? SIMPLISMART_STT_ENDPOINT
+                    : GROQ_STT_ENDPOINT;
 
 
             if (sttApiKey) {
