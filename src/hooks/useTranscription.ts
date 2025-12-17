@@ -162,6 +162,9 @@ export function useTranscription(
   // Track when start() is in-flight (between call and setRecording(true))
   // This prevents the race condition where double-tap stop() returns early because recording is still false
   const startingRef = useRef(false);
+  // Cancellation token for in-flight start(): increment to invalidate any pending async continuation.
+  // This is required because stop()/cancel() can run while start() awaits auth/worklet setup.
+  const startTokenRef = useRef(0);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
   const [text, setText] = useState("");
@@ -1152,6 +1155,8 @@ export function useTranscription(
     if (startingRef.current) return; // Prevent concurrent start attempts during auth
 
     startingRef.current = true; // Mark as starting (cleared on success or error)
+    const startToken = ++startTokenRef.current;
+    const isStale = () => startTokenRef.current !== startToken;
     // Start cue moved to PTT/button handlers for immediacy
 
     // Clear previous auth error so re-setting it triggers the useEffect in App.tsx
@@ -1179,6 +1184,7 @@ export function useTranscription(
     } catch {
       // Quota check failed - continue anyway, server will enforce
     }
+    if (isStale()) return;
 
     startSentRef.current = false;
     clearSelectionGateTimer();
@@ -1259,6 +1265,7 @@ export function useTranscription(
         return;
       }
     }
+    if (isStale()) return;
     // Only clear error if not an auth issue (auth errors should persist)
     if (!authError) {
       setError(null);
@@ -1330,6 +1337,7 @@ export function useTranscription(
       // and preConnect() handles background warm-up with retryWithBackoff.
       // If connection fails here, let it surface to the user for manual retry.
       await ensureStreamingSocket();
+      if (isStale()) return;
 
       // Auth succeeded! Now we can start recording
       startingRef.current = false; // Clear starting flag - we're now recording
@@ -1357,6 +1365,7 @@ export function useTranscription(
         }
       })();
       await audioContextRef.current.audioWorklet.addModule(workletUrl);
+      if (isStale()) return;
 
       // Initialize VAD (gate-only). Fail gracefully to energy fallback.
       if (VAD_ENABLED) {
@@ -1525,8 +1534,47 @@ export function useTranscription(
     if (startingRef.current) {
       console.log('[SF] Cancelling in-flight start attempt');
       startingRef.current = false;
-      // The in-flight start() will see startingRef is false and should gracefully exit
-      // For now, just reset state - the start() will fail/return when it checks
+      startTokenRef.current += 1; // invalidate any pending async start continuation
+      // Best-effort cleanup so we don't leave a worker session started or mic active.
+      startSentRef.current = false;
+      pendingSelectionPromiseRef.current = null;
+      selectionGateDeadlineRef.current = null;
+      clearSelectionGateTimer();
+      try { sourceNodeRef.current?.disconnect(); } catch { }
+      try { workletNodeRef.current?.disconnect(); } catch { }
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch { }
+        audioContextRef.current = null;
+      }
+      if (streamRef.current) {
+        try { streamRef.current.getTracks().forEach((t) => t.stop()); } catch { }
+        streamRef.current = null;
+        setReady(false);
+      }
+      // Reset streaming state and close WS (mirrors cancel(), but scoped to in-flight start)
+      sendQueueRef.current = [];
+      sendQueueBytesRef.current = 0;
+      seqRef.current = 0;
+      try { vadStreamGateRef.current?.dispose(); } catch { }
+      vadStreamGateRef.current = null;
+      try { vadEngineRef.current?.dispose(); } catch { }
+      vadEngineRef.current = null;
+      vadReadyRef.current = false;
+      if (wsRef.current) {
+        try {
+          if (wsReadyRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: "cancel" }));
+          }
+        } catch { }
+        try { wsRef.current.close(1000, "cancel"); } catch { }
+        wsRef.current = null;
+        wsReadyRef.current = false;
+        wsAuthenticatedRef.current = false;
+        wsAuthPendingRef.current = false;
+      }
+      metricsRef.current = null;
+      setRecording(false);
+      setProcessing(false);
       return;
     }
 
@@ -2138,6 +2186,7 @@ export function useTranscription(
 
     // Clear in-flight start if any
     startingRef.current = false;
+    startTokenRef.current += 1; // invalidate any pending async start continuation
 
     if (abortControllerRef.current) {
       try {

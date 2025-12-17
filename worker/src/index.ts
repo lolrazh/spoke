@@ -27,14 +27,15 @@ let jwksPrefetched = false;
 // Middleware to prefetch JWKS on first request (fire-and-forget)
 app.use('*', async (c, next) => {
   // Only prefetch once per worker instance
-  if (!jwksPrefetched && c.env.SUPABASE_URL) {
+  const supabaseUrl = c.env.SUPABASE_URL;
+  if (!jwksPrefetched && supabaseUrl) {
     jwksPrefetched = true; // Set immediately to prevent race condition
 
     // Fire-and-forget prefetch - don't await, let it run in background
     (async () => {
       try {
         const { getJWKS } = await import('./auth/supabaseJwt');
-        await getJWKS(c.env.SUPABASE_URL!);
+        await getJWKS(supabaseUrl);
         console.log('[Auth] ✅ JWKS prefetch completed - cache is warm');
       } catch (err) {
         // Silent fail - JWKS will be fetched on first auth if this fails
