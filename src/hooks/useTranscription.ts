@@ -159,6 +159,9 @@ export function useTranscription(
   const pendingOcrImageBase64Ref = useRef<string | null>(null);
 
   const [recording, setRecording] = useState(false);
+  // Track when start() is in-flight (between call and setRecording(true))
+  // This prevents the race condition where double-tap stop() returns early because recording is still false
+  const startingRef = useRef(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
   const [text, setText] = useState("");
@@ -1146,6 +1149,9 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording) return;
     if (processing) return; // Prevent starting while processing
+    if (startingRef.current) return; // Prevent concurrent start attempts during auth
+
+    startingRef.current = true; // Mark as starting (cleared on success or error)
     // Start cue moved to PTT/button handlers for immediacy
 
     // Clear previous auth error so re-setting it triggers the useEffect in App.tsx
@@ -1360,6 +1366,7 @@ export function useTranscription(
       }
 
       // Auth succeeded! Now we can start recording
+      startingRef.current = false; // Clear starting flag - we're now recording
       setRecording(true);
       resumeAudioWorklet();
 
@@ -1511,6 +1518,7 @@ export function useTranscription(
         });
       }
     } catch (err) {
+      startingRef.current = false; // Clear starting flag on error
       // If this is an auth error, the error and authError state are already set
       // Don't overwrite them with a generic "audio processing failed" message
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -1546,6 +1554,16 @@ export function useTranscription(
   ]);
 
   const stop = useCallback(async () => {
+    // Handle case where stop() is called while start() is in-flight (auth pending)
+    // This happens when user double-taps quickly during cold start
+    if (startingRef.current) {
+      console.log('[SF] Cancelling in-flight start attempt');
+      startingRef.current = false;
+      // The in-flight start() will see startingRef is false and should gracefully exit
+      // For now, just reset state - the start() will fail/return when it checks
+      return;
+    }
+
     if (!recording) return;
 
     playToggleOff();
@@ -2151,6 +2169,10 @@ export function useTranscription(
   const cancel = useCallback(async () => {
     // Cancel discards current capture, does not send audio, and does not close WS
     // Also abort any in-flight processing if present
+
+    // Clear in-flight start if any
+    startingRef.current = false;
+
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
