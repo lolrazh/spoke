@@ -8,23 +8,28 @@ Spoke's transcription pipeline transforms voice into text through real-time audi
 
 ## Philosophy
 
-The transcription pipeline is built on five principles:
+The transcription pipeline is built on six principles:
 
-1. **Speed**: Sub-1s end-to-end latency from release to paste
-2. **Flexibility**: Multiple STT/LLM providers, runtime-switchable
+1. **Speed**: Sub-1s end-to-end latency from release to paste, with JWKS edge caching and pre-connect optimization
+2. **Flexibility**: Multiple STT/LLM providers (5 LLM, 3 STT), runtime-switchable via env vars
 3. **Privacy**: No text stored in database, only local + ephemeral server processing
-4. **Security**: JWT-based authentication with subscription/quota claims embedded
-5. **Simplicity**: Single-shot audio processing (chunking disabled due to reliability issues)
+4. **Security**: JWT-based authentication with subscription/quota claims embedded, JWKS cached at edge
+5. **Simplicity**: Single-shot audio processing (chunking removed 2025-12-12)
+6. **Context-Awareness**: OCR-powered vocabulary extraction for improved transcription accuracy
 
-The system supports two modes: **dictation** (voice → text) and **edit** (voice instruction → rewrite selected text).
+The system supports two modes: **dictation** (voice → text) and **edit** (voice instruction → rewrite selected text). As of 2025-12-12, context-aware transcription uses on-screen content via OCR to improve proper noun accuracy.
 
-Authentication happens once at WebSocket connection time—JWT claims provide instant entitlement gating (Pro subscription or free tier quota) with zero database queries during transcription.
+Authentication happens once at WebSocket connection time—JWT claims provide instant entitlement gating (Pro subscription or free tier quota) with zero database queries during transcription. JWKS keys are cached at the edge (two-tier: in-memory + Cache API) for sub-50ms JWT verification.
 
 ---
 
 ## Pipeline Flow
 
 <pipeline>
+  <stage name="context" added="2025-12-12">
+    PTT down → Screenshot capture (Electron desktopCapturer, ~293ms, JPEG quality 75)
+  </stage>
+
   <stage name="capture">
     Microphone → getUserMedia() → 48kHz mono stream
   </stage>
@@ -34,15 +39,19 @@ Authentication happens once at WebSocket connection time—JWT claims provide in
   </stage>
 
   <stage name="stream">
-    WebSocket sends binary frames with 16-byte headers (sequence, size, timestamp)
+    WebSocket sends binary frames (16-byte headers: sequence, size, timestamp) + context_ocr message
+  </stage>
+
+  <stage name="ocr" added="2025-12-12">
+    Worker OCR service (Groq Llama 4 Scout) extracts proper nouns from screenshot (fire-and-forget, ~800-1200ms)
   </stage>
 
   <stage name="transcribe">
-    Cloudflare Worker concatenates PCM, wraps in WAV, calls STT API (Groq/Fireworks/Deepgram)
+    Cloudflare Worker concatenates PCM, wraps in WAV, calls STT API (Groq/Fireworks/Deepgram) with OCR-enriched vocabulary
   </stage>
 
   <stage name="enhance">
-    Optional LLM post-processing (cleanup for dictation, rewrite for edit mode)
+    LLM post-processing with OCR context (fuzzy matching for proper nouns, cleanup for dictation, rewrite for edit mode)
   </stage>
 
   <stage name="insert">
@@ -50,7 +59,7 @@ Authentication happens once at WebSocket connection time—JWT claims provide in
   </stage>
 </pipeline>
 
-Each stage is optimized for low latency—audio worklet runs in dedicated thread, WebSocket uses binary protocol, STT/LLM calls happen in parallel where possible.
+Each stage is optimized for low latency—audio worklet runs in dedicated thread, WebSocket uses binary protocol, OCR runs fire-and-forget (doesn't block audio), STT/LLM calls happen in parallel where possible.
 
 ---
 
@@ -114,10 +123,45 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     - **Zero DB queries during transcription**: All entitlement data in JWT (50x faster auth)
     - **Instant blocking**: Quota check happens at connection time, before audio streams
     - **Cryptographically secure**: JWT signature verified via JWKS (Supabase public key)
+    - **Edge-cached JWKS**: Two-tier caching (in-memory Map + Cache API) eliminates cold starts
+    - **Sub-50ms JWT verification**: JWKS cache reduces cold start rate from 67% to ~5%
     - **Scales infinitely**: Pure CPU work (JWT verification), no database bottleneck
     - **1-hour propagation**: Subscription/quota changes take up to 1 hour to propagate (when JWT refreshes)
-    - **Automatic refresh**: App calls refreshSession() on startup to get fresh claims
+    - **Automatic refresh + pre-connect**: App calls refreshSession() on startup, then pre-connects WebSocket
   </architecture_benefits>
+
+  <jwks_caching added="2025-12-12" file="worker/src/auth/supabaseJwt.ts">
+    **Problem:** 67% of JWT verifications had cold starts (>500ms) due to JWKS refetch from Supabase
+
+    **Solution:** Two-tier "cookie jar" caching strategy:
+
+    Tier 1: In-memory Map
+    - Instant access (0ms overhead)
+    - Cleared on worker restart (frequent in low-traffic periods)
+    - 1-hour TTL
+
+    Tier 2: Cloudflare Cache API
+    - Edge-local persistence (10-50ms access)
+    - Survives worker restarts
+    - 1-hour TTL
+
+    Tier 3: Supabase JWKS endpoint (fallback)
+    - 500-800ms latency
+    - Only when both caches miss or keys rotated
+
+    **Key Rotation Handling:**
+    - Catch JWKSNoMatchingKey error on verification failure
+    - Clear both cache tiers
+    - Retry verification with fresh JWKS
+    - Graceful degradation (one retry, then fail)
+
+    **Performance Impact:**
+    - Cold start rate: 67% → 5% (cache expiry + key rotation only)
+    - JWT verification: 10-50ms (consistent, down from 500-800ms on cold starts)
+    - 266x wall time improvement combined with Sentry removal
+
+    Reference: agent-logs/2025-12-12_1130_eliminate-cold-starts.md
+  </jwks_caching>
 
   <quota_tracking file="worker/src/handlers/ws.ts">
     **Server-Authoritative Architecture:**
@@ -232,6 +276,77 @@ The mode is determined automatically based on whether text is selected. No manua
 
 ---
 
+## OCR Context-Aware Transcription
+
+**Added:** 2025-12-12
+**Status:** ✅ Production
+
+Spoke uses on-screen context to improve transcription accuracy for proper nouns, domain-specific terminology, and unconventional formatting (e.g., "GOLDBEES" instead of "Gold Bees").
+
+<ocr_pipeline>
+  <capture>
+    PTT down triggers screenshot capture via Electron's desktopCapturer API
+    - Performance: ~293ms capture time
+    - Format: JPEG quality 75, max dimension 1080p
+    - Size: ~101KB (80% reduction from lossless)
+    - Timing: Fire-and-forget (doesn't block audio pipeline)
+  </capture>
+
+  <extraction>
+    Worker OCR Service extracts proper nouns from screenshot:
+    - Model: Groq Llama 4 Scout (vision-enabled LLM)
+    - Latency: 800-1200ms (typically completes before STT for dictations >1s)
+    - Max words: 100 proper nouns
+    - Output: Structured JSON with extracted vocabulary
+  </extraction>
+
+  <enrichment>
+    OCR words integrated into transcription pipeline:
+    1. STT Vocabulary: Merged into buildSTTPrompt() with case-insensitive deduplication
+    2. LLM System Prompt: Fuzzy matching instructions to replace phonetically similar words with exact vocabulary spellings
+  </enrichment>
+
+  <websocket>
+    Client sends context_ocr message after start message:
+    {
+      "type": "context_ocr",
+      "screenshot": "base64_jpeg_data",
+      "traceId": "..."
+    }
+
+    Worker processes asynchronously via c.executionCtx.waitUntil() (non-blocking)
+  </websocket>
+
+  <accuracy_improvement>
+    - Proper nouns: "GOLDBEES" ✅ (not "Gold Bees")
+    - Domain terminology: User-specific jargon, product names, acronyms
+    - Formatting: Preserves capitalization and spacing from on-screen content
+    - Works universally: Native apps, Electron apps, web-based editors
+  </accuracy_improvement>
+
+  <privacy>
+    - Screenshots never stored (ephemeral worker processing only)
+    - OCR words used for single transcription session only
+    - No persistent storage of visual content
+  </privacy>
+
+  <files>
+    Client: src/utils/screenshot.ts, src/main.ts (IPC handlers)
+    Worker: worker/src/services/ocr/ (index.ts, prompt.ts, types.ts)
+    Protocol: worker/src/types/messages.ts (ClientContextOcrMessage)
+    Integration: worker/src/services/stt/prompt.ts, worker/src/services/llm/prompt.ts
+  </files>
+
+  <related_logs>
+    - agent-logs/2025-12-12_1334_ocr-context-transcription.md (implementation)
+    - agent-logs/2025-12-12_1703_screen-recording-permission.md (macOS permission required)
+  </related_logs>
+</ocr_pipeline>
+
+**Requirements:** Screen Recording permission (macOS) - added to onboarding flow as 4th (final) permission.
+
+---
+
 ## Audio Capture
 
 <audio_capture file="src/hooks/useTranscription.ts">
@@ -262,29 +377,76 @@ The mode is determined automatically based on whether text is selected. No manua
       Flush support on stop prevents audio loss (partial frame emission).
     </buffering>
   </worklet>
+
+  <vad_silence_cutting updated="2025-12-11" file="src/utils/vadStreamGate.ts">
+    **Per-Frame Speech Detection:**
+    VAD evaluates EACH frame independently for speech content (not just session start/end):
+
+    - Only frames containing actual speech are forwarded to server (using SPEECH_PROB_END threshold)
+    - Silence frames during pauses → buffered to pre-roll, not sent
+    - Prevents Whisper hallucinations caused by weak/trailing audio
+
+    **SENTENCE_PAUSE_MS:** 700ms → 1500ms (2025-12-11)
+    - Conservative threshold for natural sentence boundaries
+    - Only chunks on true "full stop" pauses, not brief pauses for thought
+
+    **Result:** Chunks contain dense, speech-only audio with minimal silence
+
+    Reference: agent-logs/2025-12-11_2015_vad-silence-cutting-fix.md
+  </vad_silence_cutting>
 </audio_capture>
 
 ---
 
 ## Chunked Transcription (DEPRECATED)
 
-**Status:** Disabled as of 2025-12-12
+**Status:** Completely removed as of 2025-12-12
 
 **Reason:** The async chunk STT implementation caused worker hangs (wall time 100+ seconds with only 10ms CPU time) due to untracked async IIFEs that kept workers alive indefinitely. All audio is now processed in a single request.
 
+**Root Cause:**
+```typescript
+// Bad pattern - created orphaned async operations
+(async () => {
+  await transcribeWav(...);
+})();  // NOT wrapped in waitUntil()!
+```
+This created orphaned promises that kept the worker alive indefinitely waiting for completion without being tracked by Cloudflare's execution context.
+
 **Configuration:**
 - `CHUNK_DETECTION_ENABLED = false` in `src/config/vad.ts`
-- Worker ignores `chunk` messages (logs and no-ops)
+- Worker `chunk` message handler replaced with 12-line no-op (logs and ignores)
+
+**Dead Code Cleanup (2025-12-12):**
+Comprehensive cleanup removed ~350 lines of dead code:
+
+Client-side (`src/hooks/useTranscription.ts`):
+- Removed chunk state refs (chunkResultsRef, pendingChunksRef, currentChunkIndexRef)
+- Removed chunk_result message handler (20 lines)
+- Removed chunk state logging and reset logic
+- Simplified chunk detection callback to no-op
+
+Worker-side (`worker/src/handlers/ws.ts`):
+- Removed polling logic (8-second loop waiting for pendingChunkSTT)
+- Removed chunked vs non-chunked branching (95 lines)
+- Removed chunk metrics from worker response
+
+Files deleted:
+- `src/utils/chunkDetector.ts` (140 lines) - Entire chunk detection class
+- Updated `src/utils/vadStreamGate.ts` to remove chunk detection imports/methods
 
 **History:**
 - Initial implementation: `agent-logs/2025-12-01_2102_chunked-transcription.md`
-- Deprecation investigation: `agent-logs/2025-12-12_2215_chunking-disabled-worker-hang-fix.md`
+- Deprecation + initial fix: `agent-logs/2025-12-12_2215_chunking-disabled-worker-hang-fix.md`
+- Complete dead code cleanup: Same log, "Follow-up" section
 
 **Future Consideration:**
 If chunking is re-enabled, the implementation must:
 1. Wrap chunk STT in `c.executionCtx.waitUntil()` for proper background work tracking
 2. Replace polling loops with `Promise.all()` for chunk completion
 3. Add proper abort handling for cleanup
+
+For now, single-shot processing is reliable and performant for all dictation lengths.
 
 ---
 
@@ -344,6 +506,23 @@ If chunking is re-enabled, the implementation must:
         "identity": { "name": "...", "email": "..." } // optional
       }
     </start>
+
+    <context_ocr added="2025-12-12">
+      Client sends after start (optional, for context-aware transcription):
+      {
+        "type": "context_ocr",
+        "screenshot": "base64_encoded_jpeg_data",
+        "traceId": "..."
+      }
+
+      Worker processes asynchronously (fire-and-forget via executionCtx.waitUntil):
+      - Sends screenshot to OCR service (Groq Llama 4 Scout)
+      - Extracts proper nouns and domain-specific vocabulary
+      - Merges OCR words into STT prompt and LLM system prompt
+      - No acknowledgment message sent (non-blocking)
+
+      Timing: OCR completes in ~800-1200ms, typically before STT for dictations >1s
+    </context_ocr>
 
     <chunk>
       Client sends during dictation (on natural sentence pause):
@@ -482,12 +661,28 @@ If chunking is re-enabled, the implementation must:
     - Normal dictation: STT and LLM output similar length → same result
   </quota_tracking>
 
-  <telemetry file="worker/src/utils/telemetry.ts">
+  <telemetry file="worker/src/utils/analytics.ts">
+    **Updated:** 2025-12-12 - Migrated from Sentry + Supabase to Cloudflare Analytics Engine
+
     After session completes:
-    - Insert to dictation_logs table (service role, bypasses RLS)
-    - Stores: word_count, timing metrics, provider info, session metadata
+    - Write to Cloudflare Analytics Engine (zero latency, fire-and-forget)
+    - Events tracked: auth.jwt_verify, db.quota_increment
+    - Schema: 1 index (user_id), 6 blobs (event_type, trace_id, status, provider, error, model), doubles for metrics
+    - Stores: word_count, timing metrics (durationMs, coldStart, success), provider info
     - Does NOT store transcription text (privacy)
-    - Fire-and-forget using waitUntil (zero latency)
+    - Query via SQL in Cloudflare Dashboard
+
+    **Removed (2025-12-11):**
+    - Sentry instrumentation (startSpan, setAttribute calls) - eliminated 150-200 network calls per request
+    - dictation_logs table (deleted 2025-12-13) - replaced by Analytics Engine
+    - Performance impact: 266x faster wall time (400s → 1.5s)
+
+    **Key Metrics:**
+    - JWT verification cold starts (double4=1 when >500ms, indicates JWKS fetch)
+    - Database quota increment timing (identifies slow Supabase calls)
+    - P95/P99 latency percentiles for bottleneck identification
+
+    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-12_0030_analytics-engine-setup.md
   </telemetry>
 </worker>
 
@@ -600,11 +795,19 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
       <edit_model>gpt-4.1-mini</edit_model>
     </openai>
 
-    <baseten default="true">
+    <baseten>
       <endpoint>https://gateway.ai.cloudflare.com/.../baseten/v1/chat/completions</endpoint>
       <default_model>deepseek-ai/DeepSeek-V3.1</default_model>
       <edit_model>moonshotai/Kimi-K2-Instruct-0905</edit_model>
     </baseten>
+
+    <cerebras added="2025-12-05" default="true">
+      <endpoint>https://gateway.ai.cloudflare.com/.../cerebras/v1/chat/completions</endpoint>
+      <default_model>llama-3.3-70b</default_model>
+      <edit_model>qwen-3-235b-a22b-instruct-2507</edit_model>
+      <performance>Fast inference (50-150ms TTFB), competitive with Groq</performance>
+      <caching>Behind AI Gateway with caching enabled</caching>
+    </cerebras>
 
     <openrouter>
       <endpoint>https://openrouter.ai/api/v1/chat/completions</endpoint>
@@ -641,7 +844,7 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
   </streaming>
 
   <env_vars>
-    LLM_PROVIDER=openai|groq|baseten|openrouter (default: baseten)
+    LLM_PROVIDER=openai|groq|baseten|cerebras|openrouter (default: cerebras as of 2025-12-05)
     LLM_MODEL=... (overrides provider default)
     LLM_TEMPERATURE=0.2
     LLM_TIMEOUT_MS=25000
@@ -650,13 +853,13 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
     ENABLE_LLM=1
 
     EDIT_LLM_ENABLED=1
-    EDIT_LLM_PROVIDER=... (default: baseten)
+    EDIT_LLM_PROVIDER=... (default: cerebras as of 2025-12-05)
     EDIT_LLM_MODEL=... (overrides provider default)
     EDIT_LLM_TEMPERATURE=0.6
     EDIT_LLM_TIMEOUT_MS=25000
     EDIT_LLM_STREAM=1
 
-    OPENAI_API_KEY, GROQ_API_KEY, BASETEN_API_KEY, OPENROUTER_API_KEY
+    OPENAI_API_KEY, GROQ_API_KEY, BASETEN_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY
   </env_vars>
 </llm>
 
@@ -689,7 +892,7 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
 
 ## Performance Metrics
 
-Comprehensive timing instrumentation across client and server.
+Comprehensive timing instrumentation across client and server, with telemetry via Cloudflare Analytics Engine.
 
 <metrics>
   <client file="src/hooks/useTranscription.ts:71-92">
@@ -699,7 +902,12 @@ Comprehensive timing instrumentation across client and server.
     drainDoneMs, framesProduced, bytesProduced, framesQueued, framesSentApprox
   </client>
 
-  <server>
+  <server file="worker/src/utils/analytics.ts">
+    **Analytics Engine Events:**
+    - auth.jwt_verify: durationMs, coldStart (1 if >500ms), success, userId
+    - db.quota_increment: durationMs, success, wordCount, error
+
+    **Session Metrics (not persisted, returned in final message):**
     traceId, wsAcceptAt, startedAt, processingStartAt,
     frames, bytes, seqGaps, firstArrivalMs, lastArrivalMs,
     assembleMs, stt { ttfbMs, bodyMs, totalMs },
@@ -714,15 +922,33 @@ Comprehensive timing instrumentation across client and server.
     sttMs = STT API processing time
     llmMs = LLM processing time (if enabled)
     pasteMs = Native text insertion time
+    jwtMs = JWT verification time (tracked in Analytics Engine)
   </derived>
 
   <logging>
-    Client logs single consolidated line:
+    **Client Logs:**
     console.log("[SF] E2E", { traceId, dictationMs, e2eMs, totalMs, sttMs, llmMs, pasteMs, ... })
 
-    Worker logs session summary with all timing data.
+    **Worker Logs:**
+    - Session summary with all timing data (console only, not persisted)
+    - Analytics Engine: auth.jwt_verify and db.quota_increment events
+
+    **Telemetry:**
+    - Replaced Sentry + dictation_logs (2025-12-11/13)
+    - Analytics Engine queries via SQL in Cloudflare Dashboard
+    - P95/P99 latency analysis for bottleneck identification
+
     Both correlated via traceId for end-to-end visibility.
   </logging>
+
+  <optimization_history>
+    - 2025-12-11: Sentry purge (400s → 1.5s wall time, 266x improvement)
+    - 2025-12-12: JWKS edge caching (cold start rate 67% → 5%)
+    - 2025-12-10: Pre-connect on startup (eliminated 4-5s first-dictation freeze)
+    - 2025-12-06: WebSocket retry logic (handles Cloudflare edge rejections)
+
+    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md
+  </optimization_history>
 </metrics>
 
 ---
@@ -913,5 +1139,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-12
-**Pipeline Version**: JWT authentication, single-shot audio processing, quota tracking, edit mode, multi-provider support (chunking disabled)
+**Last Updated**: 2025-12-17
+**Pipeline Version**: OCR context-aware transcription, JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking, edit mode, multi-provider support (5 LLM providers, 3 STT providers), Analytics Engine telemetry
