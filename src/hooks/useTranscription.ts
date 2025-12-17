@@ -117,6 +117,9 @@ export function useTranscription(
   const wsRef = useRef<WebSocket | null>(null);
   const wsReadyRef = useRef(false);
   const wsErrorRef = useRef<string | null>(null);
+  // Singleflight: Track in-flight connection to prevent parallel WebSocket stampede
+  // If this is non-null, a connection attempt is already in progress - return this promise instead of creating new connection
+  const connectionPromiseRef = useRef<Promise<void> | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef<number>(0);
   const seqRef = useRef(0);
@@ -491,6 +494,12 @@ export function useTranscription(
   }, []);
 
   const ensureStreamingSocket = useCallback(async (): Promise<void> => {
+    // SINGLEFLIGHT: If a connection attempt is already in progress, return that promise
+    // This prevents the "3 loadShed" stampede where multiple callers create parallel WebSockets
+    if (connectionPromiseRef.current) {
+      return connectionPromiseRef.current;
+    }
+
     // If there's an existing socket that's authenticated, keep it
     if (wsRef.current) {
       const rs = wsRef.current.readyState;
@@ -503,199 +512,209 @@ export function useTranscription(
       wsRef.current = null;
     }
 
-    // Reset auth state for new connection
-    wsAuthenticatedRef.current = false;
-    wsAuthPendingRef.current = false;
-    wsAuthFailedRef.current = false; // Clear previous auth failure state
+    // Create the connection promise and store it for singleflight
+    const connectionPromise = (async (): Promise<void> => {
+      // Reset auth state for new connection
+      wsAuthenticatedRef.current = false;
+      wsAuthPendingRef.current = false;
+      wsAuthFailedRef.current = false; // Clear previous auth failure state
 
-    // Get access token for authentication
-    let accessToken: string | null = null;
-    try {
-      const { getAccessToken } = await import("../lib/supabaseClient");
-      accessToken = await getAccessToken();
-    } catch (err) {
-      console.warn("[useTranscription] Failed to get access token:", err);
-    }
-
-    // If no token, user is not signed in
-    if (!accessToken) {
-      console.warn("[useTranscription] No access token - user not signed in");
-      setAuthError("not_signed_in");
-      setError("Sign in to start dictating.");
-      throw new Error("Not signed in");
-    }
-
-    const wsUrl = getTranscribeWsUrl();
-    if (!wsEndpointLoggedRef.current) {
+      // Get access token for authentication
+      let accessToken: string | null = null;
       try {
-        console.info("[SF] WS endpoint", { url: wsUrl });
-      } catch { }
-      wsEndpointLoggedRef.current = true;
-    }
-    const ws = new WebSocket(wsUrl);
-    ws.binaryType = "arraybuffer";
-    wsRef.current = ws;
-    wsReadyRef.current = false;
-    wsErrorRef.current = null;
+        const { getAccessToken } = await import("../lib/supabaseClient");
+        accessToken = await getAccessToken();
+      } catch (err) {
+        console.warn("[useTranscription] Failed to get access token:", err);
+      }
 
-    // Create a Promise that resolves when auth succeeds or rejects when it fails
-    return new Promise<void>((resolve, reject) => {
-      // Timeout for the entire auth process (connection + auth)
-      const authTimeout = setTimeout(() => {
-        reject(new Error("Auth timeout"));
-      }, 15000); // 15 seconds total (includes connection time)
+      // If no token, user is not signed in
+      if (!accessToken) {
+        console.warn("[useTranscription] No access token - user not signed in");
+        setAuthError("not_signed_in");
+        setError("Sign in to start dictating.");
+        throw new Error("Not signed in");
+      }
 
-      const cleanup = () => {
-        clearTimeout(authTimeout);
-      };
-
-      ws.addEventListener("open", () => {
-        wsLastActivityRef.current = Date.now(); // Track activity
-        if (metricsRef.current && !metricsRef.current.wsOpenMs)
-          metricsRef.current.wsOpenMs =
-            typeof performance !== "undefined" ? performance.now() : Date.now();
-
-        // Send auth message immediately on open
-        wsAuthPendingRef.current = true;
+      const wsUrl = getTranscribeWsUrl();
+      if (!wsEndpointLoggedRef.current) {
         try {
-          ws.send(JSON.stringify({ type: "auth", token: accessToken }));
-          console.info("[SF] Auth message sent");
-        } catch (err) {
-          console.error("[useTranscription] Failed to send auth message:", err);
+          console.info("[SF] WS endpoint", { url: wsUrl });
+        } catch { }
+        wsEndpointLoggedRef.current = true;
+      }
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+      wsRef.current = ws;
+      wsReadyRef.current = false;
+      wsErrorRef.current = null;
+
+      // Create a Promise that resolves when auth succeeds or rejects when it fails
+      return new Promise<void>((resolve, reject) => {
+        // Timeout for the entire auth process (connection + auth)
+        const authTimeout = setTimeout(() => {
+          reject(new Error("Auth timeout"));
+        }, 15000); // 15 seconds total (includes connection time)
+
+        const cleanup = () => {
+          clearTimeout(authTimeout);
+        };
+
+        ws.addEventListener("open", () => {
+          wsLastActivityRef.current = Date.now(); // Track activity
+          if (metricsRef.current && !metricsRef.current.wsOpenMs)
+            metricsRef.current.wsOpenMs =
+              typeof performance !== "undefined" ? performance.now() : Date.now();
+
+          // Send auth message immediately on open
+          wsAuthPendingRef.current = true;
+          try {
+            ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+            console.info("[SF] Auth message sent");
+          } catch (err) {
+            console.error("[useTranscription] Failed to send auth message:", err);
+            wsAuthPendingRef.current = false;
+          }
+
+          resetReconnectBackoff();
+        });
+
+        ws.addEventListener("message", (event: MessageEvent) => {
+          try {
+            const msg = JSON.parse(String(event.data));
+
+            // Handle auth response
+            if (msg.type === "auth_ok") {
+              console.info("[SF] Auth successful", { userId: msg.userId });
+              wsAuthenticatedRef.current = true;
+              wsAuthPendingRef.current = false;
+              wsReadyRef.current = true;
+              setAuthError(null); // Clear any previous auth error
+              cleanup();
+              resolve(); // Auth succeeded - resolve the Promise
+
+              // Now we can send start message and flush queue
+              trySendStartMessage();
+              trySendOcrContext();
+              flushQueue();
+              // Start health monitoring when WebSocket is authenticated
+              startWebSocketHealthCheck();
+              return;
+            }
+
+            if (msg.type === "auth_error") {
+              console.error("[SF] Auth failed:", msg.error, "code:", msg.code);
+              wsAuthPendingRef.current = false;
+              cleanup();
+              reject(new Error(`Auth failed: ${msg.error}`));
+              // The server will close the connection, onclose will handle cleanup
+              return;
+            }
+          } catch {
+            // Not a JSON message or parse error - ignore for auth handling
+          }
+        });
+
+        ws.addEventListener("error", (event: Event) => {
+          const error = parseWebSocketError(event, { readyState: ws.readyState });
+          wsErrorRef.current = getUserMessage(error);
+          logError(error, "[useTranscription] WebSocket");
+          wsLastActivityRef.current = Date.now(); // Track error as activity
           wsAuthPendingRef.current = false;
-        }
+          if (ws.readyState !== WebSocket.OPEN) {
+            if (wsRef.current === ws) wsRef.current = null;
+            // Don't reconnect if this is an auth failure (close handler will set the error)
+            if (!wsAuthFailedRef.current) {
+              scheduleReconnect();
+            }
+          }
+        });
 
-        resetReconnectBackoff();
-      });
+        ws.addEventListener("close", (event: CloseEvent) => {
+          wsReadyRef.current = false;
+          wsAuthenticatedRef.current = false;
+          wsAuthPendingRef.current = false;
+          wsLastActivityRef.current = Date.now(); // Track close as activity
+          // Reset start flag on close to allow re-sending start message on reconnect
+          startSentRef.current = false;
 
-      ws.addEventListener("message", (event: MessageEvent) => {
-        try {
-          const msg = JSON.parse(String(event.data));
-
-          // Handle auth response
-          if (msg.type === "auth_ok") {
-            console.info("[SF] Auth successful", { userId: msg.userId });
-            wsAuthenticatedRef.current = true;
-            wsAuthPendingRef.current = false;
-            wsReadyRef.current = true;
-            setAuthError(null); // Clear any previous auth error
+          // Handle auth-specific close codes
+          if (event.code === WS_CLOSE_UNAUTHORIZED || event.code === WS_CLOSE_AUTH_TIMEOUT) {
+            console.warn("[SF] Auth failed - unauthorized or timeout", { code: event.code, reason: event.reason });
+            wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+            setAuthError("auth_failed");
+            setError("Session expired. Please sign in again.");
             cleanup();
-            resolve(); // Auth succeeded - resolve the Promise
-
-            // Now we can send start message and flush queue
-            trySendStartMessage();
-            trySendOcrContext();
-            flushQueue();
-            // Start health monitoring when WebSocket is authenticated
-            startWebSocketHealthCheck();
+            reject(new Error("Auth failed"));
+            // Don't auto-reconnect for auth failures
+            if (wsRef.current === ws) {
+              wsRef.current = null;
+            }
+            stopWebSocketHealthCheck();
             return;
           }
 
-          if (msg.type === "auth_error") {
-            console.error("[SF] Auth failed:", msg.error, "code:", msg.code);
-            wsAuthPendingRef.current = false;
+          if (event.code === WS_CLOSE_PAYMENT_REQUIRED) {
+            console.warn("[SF] Payment required", { code: event.code, reason: event.reason });
+            wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+            setAuthError("payment_required");
+            setError("Upgrade to Pro for unlimited dictation.");
             cleanup();
-            reject(new Error(`Auth failed: ${msg.error}`));
-            // The server will close the connection, onclose will handle cleanup
+            reject(new Error("Payment required"));
+            // Don't auto-reconnect for payment required
+            if (wsRef.current === ws) {
+              wsRef.current = null;
+            }
+            stopWebSocketHealthCheck();
             return;
           }
-        } catch {
-          // Not a JSON message or parse error - ignore for auth handling
-        }
-      });
 
-      ws.addEventListener("error", (event: Event) => {
-        const error = parseWebSocketError(event, { readyState: ws.readyState });
-        wsErrorRef.current = getUserMessage(error);
-        logError(error, "[useTranscription] WebSocket");
-        wsLastActivityRef.current = Date.now(); // Track error as activity
-        wsAuthPendingRef.current = false;
-        if (ws.readyState !== WebSocket.OPEN) {
-          if (wsRef.current === ws) wsRef.current = null;
-          // Don't reconnect if this is an auth failure (close handler will set the error)
-          if (!wsAuthFailedRef.current) {
-            scheduleReconnect();
+          if (event.code === WS_CLOSE_QUOTA_EXCEEDED) {
+            console.warn("[SF] Quota exceeded", { code: event.code, reason: event.reason });
+            wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
+            setAuthError("payment_required"); // Reuse payment_required UI (shows upgrade prompt)
+            setError("You've used your free words this month. Upgrade for unlimited.");
+            cleanup();
+            reject(new Error("Quota exceeded"));
+            // Don't auto-reconnect for quota exceeded
+            if (wsRef.current === ws) {
+              wsRef.current = null;
+            }
+            stopWebSocketHealthCheck();
+            return;
           }
-        }
-      });
 
-      ws.addEventListener("close", (event: CloseEvent) => {
-        wsReadyRef.current = false;
-        wsAuthenticatedRef.current = false;
-        wsAuthPendingRef.current = false;
-        wsLastActivityRef.current = Date.now(); // Track close as activity
-        // Reset start flag on close to allow re-sending start message on reconnect
-        startSentRef.current = false;
+          // Handle unexpected close codes (like 1003 from Cloudflare edge rejection)
+          // These are retryable - reject the Promise so ensureStreamingSocket can retry
+          // Code 1000 (Normal Closure) is not an error, so only log true errors
+          if (event.code !== 1000) {
+            console.warn("[SF] WebSocket closed unexpectedly during auth", {
+              code: event.code,
+              reason: event.reason,
+              wasClean: event.wasClean
+            });
+          }
 
-        // Handle auth-specific close codes
-        if (event.code === WS_CLOSE_UNAUTHORIZED || event.code === WS_CLOSE_AUTH_TIMEOUT) {
-          console.warn("[SF] Auth failed - unauthorized or timeout", { code: event.code, reason: event.reason });
-          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
-          setAuthError("auth_failed");
-          setError("Session expired. Please sign in again.");
-          cleanup();
-          reject(new Error("Auth failed"));
-          // Don't auto-reconnect for auth failures
+          // Clean up this connection attempt
           if (wsRef.current === ws) {
             wsRef.current = null;
           }
           stopWebSocketHealthCheck();
-          return;
-        }
 
-        if (event.code === WS_CLOSE_PAYMENT_REQUIRED) {
-          console.warn("[SF] Payment required", { code: event.code, reason: event.reason });
-          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
-          setAuthError("payment_required");
-          setError("Upgrade to Pro for unlimited dictation.");
+          // Reject the Promise so the caller knows auth failed and can retry
+          // For code 1000, this is a graceful close (likely session completed on another connection)
           cleanup();
-          reject(new Error("Payment required"));
-          // Don't auto-reconnect for payment required
-          if (wsRef.current === ws) {
-            wsRef.current = null;
-          }
-          stopWebSocketHealthCheck();
-          return;
-        }
+          reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
+        });
+      }); // Close the inner Promise (returned by the IIFE)
+    })(); // Close the async IIFE
 
-        if (event.code === WS_CLOSE_QUOTA_EXCEEDED) {
-          console.warn("[SF] Quota exceeded", { code: event.code, reason: event.reason });
-          wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
-          setAuthError("payment_required"); // Reuse payment_required UI (shows upgrade prompt)
-          setError("You've used your free words this month. Upgrade for unlimited.");
-          cleanup();
-          reject(new Error("Quota exceeded"));
-          // Don't auto-reconnect for quota exceeded
-          if (wsRef.current === ws) {
-            wsRef.current = null;
-          }
-          stopWebSocketHealthCheck();
-          return;
-        }
+    // Store the promise for singleflight and clear it when done
+    connectionPromiseRef.current = connectionPromise.finally(() => {
+      connectionPromiseRef.current = null;
+    });
 
-        // Handle unexpected close codes (like 1003 from Cloudflare edge rejection)
-        // These are retryable - reject the Promise so ensureStreamingSocket can retry
-        // Code 1000 (Normal Closure) is not an error, so only log true errors
-        if (event.code !== 1000) {
-          console.warn("[SF] WebSocket closed unexpectedly during auth", {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          });
-        }
-
-        // Clean up this connection attempt
-        if (wsRef.current === ws) {
-          wsRef.current = null;
-        }
-        stopWebSocketHealthCheck();
-
-        // Reject the Promise so the caller knows auth failed and can retry
-        // For code 1000, this is a graceful close (likely session completed on another connection)
-        cleanup();
-        reject(new Error(`WebSocket closed during auth (code ${event.code}): ${event.reason || 'unknown'}`));
-      });
-    }); // Close the Promise
+    return connectionPromiseRef.current;
   }, [flushQueue, trySendOcrContext, trySendStartMessage]);
 
   const streamFrame = useCallback(
