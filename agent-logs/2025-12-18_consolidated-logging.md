@@ -1,8 +1,19 @@
 # Consolidated Structured Logging Implementation
 
 **Date:** 2025-12-18
-**Agent:** Claude Sonnet 4.5
-**Status:** ✅ Implemented (pending testing)
+**Agent:** Claude Sonnet 4.5, GPT 5.2
+**Status:** ✅ Implemented (validated locally; follow-up fixes applied 2025-12-19)
+
+## Update (2025-12-19)
+Follow-up hardening was required to make the “all exit paths” claim accurate and to fix trace/timing correctness:
+
+- ✅ **Fixed `worker_lifetime_ms` / `first_frame_latency_ms` correctness**: `wsAcceptAt` was being wiped when `session` was recreated on `start`. We preserved connection-level `wsAcceptAt` across session resets.
+- ✅ **Fixed trace correlation during auth**: auth happened before `start.traceId`, so auth logs often had `trace_id: "unknown"`. We added optional `traceId` to the client `auth` message and adopted it in the worker.
+- ✅ **Ensured `session.complete` on all exit paths**: added `session.complete` on auth timeout, auth failures, auth.required, and client disconnect (with a de-dupe guard to avoid double completion logs).
+- ✅ **Added `session.error` on unexpected STT/LLM failures**: previously imported but unused.
+- ✅ **Validation**: `npm test` passed; `npm run lint` has no new errors (repo-wide warnings are pre-existing).
+
+See: `agent-logs/2025-12-19_2338_consolidated-logging-followup.md` for implementation details and file list.
 
 ## User Intention
 Reduce log verbosity from 26 scattered events to 8 consolidated, meaningful logs that tell the story of each session. Add human-readable `message` fields for Cloudflare dashboard titles, track all timing metrics including router overhead, and ensure logging happens on ALL exit paths (success, errors, timeout, disconnect).
