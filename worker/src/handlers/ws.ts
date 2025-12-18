@@ -162,7 +162,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     return c.text('Too many connections from your IP. Please try again later.', 429);
   }
 
-  const { GROQ_API_KEY, FIREWORKS_API_KEY, DEEPGRAM_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY } = c.env;
+  const { GROQ_API_KEY, FIREWORKS_API_KEY, DEEPGRAM_API_KEY, SIMPLISMART_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY } = c.env;
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();

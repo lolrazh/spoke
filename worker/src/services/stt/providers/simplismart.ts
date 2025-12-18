@@ -37,7 +37,7 @@ export async function transcribeWav(
     task: 'transcribe',
     without_timestamps: true,
     vad_model: 'frame',
-    vad_filter: true,
+    vad_filter: false,
     word_timestamps: false,
     vad_onset: 0.5,
     vad_offset: null,
