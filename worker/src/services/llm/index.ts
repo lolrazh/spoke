@@ -4,6 +4,7 @@ import { chatComplete as openaiChatComplete } from './openai';
 import { chatComplete as basetenChatComplete } from './baseten';
 import { chatComplete as openRouterChatComplete } from './openrouter';
 import { chatComplete as cerebrasChatComplete } from './cerebras';
+import { chatComplete as simplismartChatComplete } from './simplismart';
 
 export type ChatTimings = {
   startAt: number;
@@ -43,6 +44,9 @@ export async function chatCompleteByProvider(
   }
   if (provider === 'cerebras') {
     return cerebrasChatComplete(opts as any) as unknown as ChatResult;
+  }
+  if (provider === 'simplismart') {
+    return simplismartChatComplete(opts as any) as unknown as ChatResult;
   }
   // default groq
   return groqChatComplete(opts as any) as unknown as ChatResult;

@@ -10,11 +10,13 @@ import {
   BASETEN_LLM_DEFAULT_MODEL,
   OPENROUTER_LLM_DEFAULT_MODEL,
   CEREBRAS_LLM_DEFAULT_MODEL,
+  SIMPLISMART_LLM_DEFAULT_MODEL,
   GROQ_EDIT_LLM_DEFAULT_MODEL,
   OPENAI_EDIT_LLM_DEFAULT_MODEL,
   BASETEN_EDIT_LLM_DEFAULT_MODEL,
   OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
   CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
+  SIMPLISMART_EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_PROVIDER,
   EDIT_LLM_DEFAULT_TEMPERATURE,
@@ -26,6 +28,7 @@ import {
   STT_DEFAULT_PROVIDER,
   FIREWORKS_STT_TURBO_MODEL,
   DEEPGRAM_STT_DEFAULT_MODEL,
+  SIMPLISMART_STT_MODEL,
 } from '../config';
 import type { LLMProvider, STTProvider } from '../config';
 
@@ -45,6 +48,7 @@ const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
   baseten: BASETEN_LLM_DEFAULT_MODEL,
   openrouter: OPENROUTER_LLM_DEFAULT_MODEL,
   cerebras: CEREBRAS_LLM_DEFAULT_MODEL,
+  simplismart: SIMPLISMART_LLM_DEFAULT_MODEL,
 };
 
 const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
@@ -53,6 +57,7 @@ const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
   baseten: BASETEN_EDIT_LLM_DEFAULT_MODEL,
   openrouter: OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
   cerebras: CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
+  simplismart: SIMPLISMART_EDIT_LLM_DEFAULT_MODEL,
 };
 
 function defaultModelFor(provider: LLMProvider, fallback: string): string {
@@ -138,18 +143,19 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter' || s === 'cerebras') return s as LLMProvider;
+  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter' || s === 'cerebras' || s === 'simplismart') return s as LLMProvider;
   return fallback;
 }
 
 function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
   const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'fireworks' || s === 'deepgram') return s as STTProvider;
+  if (s === 'groq' || s === 'fireworks' || s === 'deepgram' || s === 'simplismart') return s as STTProvider;
   return fallback;
 }
 
 function defaultSttModelFor(provider: STTProvider): string {
   if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
   if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
+  if (provider === 'simplismart') return SIMPLISMART_STT_MODEL;
   return STT_DEFAULT_MODEL;
 }
