@@ -22,19 +22,19 @@ export const SIMPLISMART_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_EDIT_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_LLM_MODEL_UUID = '23a8dfd7-f6d4-426c-b637-517c205282c7';
 
-export const LLM_DEFAULT_MODEL = SIMPLISMART_LLM_DEFAULT_MODEL;
+export const LLM_DEFAULT_MODEL = BASETEN_LLM_DEFAULT_MODEL;
 export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
-export const LLM_DEFAULT_PROVIDER = 'simplismart' as const;
-export const LLM_ROUTER_ENABLED = false;
+export const LLM_DEFAULT_PROVIDER = 'baseten' as const;
+export const LLM_ROUTER_ENABLED = true;
 export type LLMProvider = 'groq' | 'openai' | 'baseten' | 'openrouter' | 'cerebras' | 'simplismart';
 
-export const EDIT_LLM_DEFAULT_MODEL = SIMPLISMART_EDIT_LLM_DEFAULT_MODEL;
+export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = true;
-export const EDIT_LLM_DEFAULT_PROVIDER = 'simplismart' as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 
 // STT (Audio Transcriptions)
@@ -50,7 +50,7 @@ export const FIREWORKS_STT_LARGE_MODEL = 'whisper-v3';
 export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
 export const SIMPLISMART_STT_MODEL = 'whisper';
 
-export const STT_DEFAULT_MODEL = SIMPLISMART_STT_MODEL;
+export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';
 export const FIREWORKS_STT_DEFAULT_ALIGNMENT_MODEL = 'tdnn_ffn';
 export const FIREWORKS_STT_DEFAULT_PREPROCESSING = 'none';
@@ -58,7 +58,7 @@ export const FIREWORKS_STT_DEFAULT_TEMPERATURES = '0.0,0.2,0.4';
 
 export const STT_DEFAULT_LANGUAGE = 'en';
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-export const STT_DEFAULT_PROVIDER = 'simplismart' as const;
+export const STT_DEFAULT_PROVIDER = 'groq' as const;
 export type STTProvider = 'groq' | 'fireworks' | 'deepgram' | 'simplismart';
 
 // OCR (Vision Model)
