@@ -89,11 +89,16 @@ describe('types/messages.parseClientMessage', () => {
 
   it('parses auth message with token', () => {
     const msg = parseClientMessage({ type: 'auth', token: 'test-jwt-token' });
-    expect(msg).toEqual({ type: 'auth', token: 'test-jwt-token' });
+    expect(msg).toEqual({ type: 'auth', token: 'test-jwt-token', traceId: undefined });
   });
 
   it('parses auth message with empty token', () => {
     const msg = parseClientMessage({ type: 'auth' });
-    expect(msg).toEqual({ type: 'auth', token: '' });
+    expect(msg).toEqual({ type: 'auth', token: '', traceId: undefined });
+  });
+
+  it('parses auth message with traceId', () => {
+    const msg = parseClientMessage({ type: 'auth', token: 't', traceId: 'trace-1' });
+    expect(msg).toEqual({ type: 'auth', token: 't', traceId: 'trace-1' });
   });
 });

@@ -575,7 +575,13 @@ export function useTranscription(
           // Send auth message immediately on open
           wsAuthPendingRef.current = true;
           try {
-            ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+            ws.send(
+              JSON.stringify({
+                type: "auth",
+                token: accessToken,
+                traceId: metricsRef.current?.sessionId,
+              }),
+            );
             console.info("[SF] Auth message sent");
           } catch (err) {
             console.error("[useTranscription] Failed to send auth message:", err);

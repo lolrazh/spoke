@@ -27,6 +27,11 @@ export type ClientAuthMessage = {
   type: 'auth';
   /** Supabase access token (JWT) */
   token: string;
+  /**
+   * Optional session trace ID generated client-side.
+   * When provided, the worker should use this for correlating auth + session logs.
+   */
+  traceId?: string;
 };
 
 export type ClientStartMessage = {
@@ -183,7 +188,8 @@ export function parseClientMessage(msg: unknown): ClientMessage | null {
   if (t === 'auth') {
     const m = msg as any;
     const token = typeof m.token === 'string' ? m.token : '';
-    return { type: 'auth', token };
+    const traceId = typeof m.traceId === 'string' ? m.traceId : undefined;
+    return { type: 'auth', token, traceId };
   }
   if (t === 'start') {
     const m = msg as any;

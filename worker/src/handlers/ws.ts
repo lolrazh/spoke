@@ -175,13 +175,21 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   const [client, server] = Object.values(new WebSocketPair());
 
   let session = createEmptySession();
-  session.wsAcceptAt = Date.now();
+  // Connection-level timestamp: must remain stable even if we reset session state on `start`.
+  const wsAcceptAt = Date.now();
+  session.wsAcceptAt = wsAcceptAt;
   let socketClosed = false;
   let sttAbort: AbortController | null = null;
   let sessionActive = false;
   let finalSent = false;
+  let completionLogged = false;
 
-  const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
+  // Always have a trace ID for correlating logs, even if the client never sends one
+  // (e.g. auth timeout). If the client provides a traceId in auth/start, we adopt it.
+  let traceId: string = crypto.randomUUID();
+  session.traceId = traceId;
+
+  let connLog = createLogger({ ip: clientIP }).with({ traceId });
 
   // Timing metrics for consolidated logging
   let authDurationMs = 0;
@@ -194,8 +202,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   let routerOverheadMs = 0;  // Time between STT complete → LLM start
   let sttProvider = '';
   let sttModel = '';
-  let llmProvider = '';
-  let llmModel = '';
 
   server.accept();
 
@@ -220,8 +226,30 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           outcome: 'timeout',
           duration_ms: AUTH_TIMEOUT_MS,
           cold_start: false,
-          trace_id: session.traceId ?? 'unknown',
+          trace_id: traceId,
         });
+        if (!completionLogged) {
+          const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+          logSessionComplete({
+            outcome: 'timeout',
+            mode: session.mode,
+            worker_lifetime_ms: workerLifetimeMs,
+            auth_ms: authDurationMs,
+            ocr_ms: ocrDurationMs,
+            first_frame_latency_ms: null,
+            audio_streaming_ms: null,
+            assemble_ms: 0,
+            stt_ms: sttDurationMs,
+            llm_ms: llmDurationMs,
+            total_processing_ms: sttDurationMs + llmDurationMs,
+            overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+            trace_id: traceId,
+            user_id: authenticatedUserId ?? undefined,
+            error_stage: 'auth',
+            error_message: 'auth timeout',
+          });
+          completionLogged = true;
+        }
         safely(() =>
           server.send(
             JSON.stringify({
@@ -264,14 +292,43 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             return;
           }
 
+          // Adopt client-provided traceId ASAP so auth logs correlate with the session.
+          if (parsed.traceId && parsed.traceId !== traceId) {
+            traceId = parsed.traceId;
+            session.traceId = traceId;
+            connLog = connLog.with({ traceId });
+          }
+
           const { token } = parsed;
           if (!token) {
             logSessionAuth({
               outcome: 'missing_token',
               duration_ms: 0,
               cold_start: false,
-              trace_id: session.traceId ?? 'unknown',
+              trace_id: traceId,
             });
+            if (!completionLogged) {
+              const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+              logSessionComplete({
+                outcome: 'error_auth',
+                mode: session.mode,
+                worker_lifetime_ms: workerLifetimeMs,
+                auth_ms: authDurationMs,
+                ocr_ms: ocrDurationMs,
+                first_frame_latency_ms: null,
+                audio_streaming_ms: null,
+                assemble_ms: 0,
+                stt_ms: sttDurationMs,
+                llm_ms: llmDurationMs,
+                total_processing_ms: sttDurationMs + llmDurationMs,
+                overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+                trace_id: traceId,
+                user_id: authenticatedUserId ?? undefined,
+                error_stage: 'auth',
+                error_message: 'missing token',
+              });
+              completionLogged = true;
+            }
             safely(() =>
               server.send(
                 JSON.stringify({
@@ -290,6 +347,28 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const supabaseUrl = c.env.SUPABASE_URL;
           if (!supabaseUrl) {
             console.error('[Auth] SUPABASE_URL not configured');
+            if (!completionLogged) {
+              const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+              logSessionComplete({
+                outcome: 'error_auth',
+                mode: session.mode,
+                worker_lifetime_ms: workerLifetimeMs,
+                auth_ms: authDurationMs,
+                ocr_ms: ocrDurationMs,
+                first_frame_latency_ms: null,
+                audio_streaming_ms: null,
+                assemble_ms: 0,
+                stt_ms: sttDurationMs,
+                llm_ms: llmDurationMs,
+                total_processing_ms: sttDurationMs + llmDurationMs,
+                overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+                trace_id: traceId,
+                user_id: authenticatedUserId ?? undefined,
+                error_stage: 'auth',
+                error_message: 'SUPABASE_URL not configured',
+              });
+              completionLogged = true;
+            }
             safely(() =>
               server.send(
                 JSON.stringify({
@@ -320,7 +399,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             success: jwtResult.valid,
             error: jwtResult.valid === false ? jwtResult.error : undefined,
             userId: jwtResult.valid === true ? jwtResult.userId : undefined,
-            traceId: session.traceId,
+            traceId,
             coldStart: authWasColdStart,
           });
 
@@ -329,8 +408,30 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               outcome: 'invalid',
               duration_ms: jwtDurationMs,
               cold_start: authWasColdStart,
-              trace_id: session.traceId ?? 'unknown',
+              trace_id: traceId,
             });
+            if (!completionLogged) {
+              const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+              logSessionComplete({
+                outcome: 'error_auth',
+                mode: session.mode,
+                worker_lifetime_ms: workerLifetimeMs,
+                auth_ms: authDurationMs,
+                ocr_ms: ocrDurationMs,
+                first_frame_latency_ms: null,
+                audio_streaming_ms: null,
+                assemble_ms: 0,
+                stt_ms: sttDurationMs,
+                llm_ms: llmDurationMs,
+                total_processing_ms: sttDurationMs + llmDurationMs,
+                overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+                trace_id: traceId,
+                user_id: authenticatedUserId ?? undefined,
+                error_stage: 'auth',
+                error_message: jwtResult.error,
+              });
+              completionLogged = true;
+            }
             safely(() =>
               server.send(
                 JSON.stringify({
@@ -357,9 +458,31 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 outcome: 'quota_exceeded',
                 duration_ms: jwtDurationMs,
                 cold_start: authWasColdStart,
-                trace_id: session.traceId ?? 'unknown',
+                trace_id: traceId,
                 user_id: jwtResult.userId,
               });
+              if (!completionLogged) {
+                const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+                logSessionComplete({
+                  outcome: 'error_auth',
+                  mode: session.mode,
+                  worker_lifetime_ms: workerLifetimeMs,
+                  auth_ms: authDurationMs,
+                  ocr_ms: ocrDurationMs,
+                  first_frame_latency_ms: null,
+                  audio_streaming_ms: null,
+                  assemble_ms: 0,
+                  stt_ms: sttDurationMs,
+                  llm_ms: llmDurationMs,
+                  total_processing_ms: sttDurationMs + llmDurationMs,
+                  overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+                  trace_id: traceId,
+                  user_id: authenticatedUserId ?? undefined,
+                  error_stage: 'auth',
+                  error_message: 'quota exceeded',
+                });
+                completionLogged = true;
+              }
               safely(() =>
                 server.send(
                   JSON.stringify({
@@ -386,7 +509,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             outcome: 'success',
             duration_ms: jwtDurationMs,
             cold_start: authWasColdStart,
-            trace_id: session.traceId ?? 'unknown',
+            trace_id: traceId,
             user_id: jwtResult.userId,
           });
 
@@ -411,6 +534,28 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             clientIP,
             messageType: parsed.type,
           }));
+          if (!completionLogged) {
+            const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+            logSessionComplete({
+              outcome: 'error_auth',
+              mode: session.mode,
+              worker_lifetime_ms: workerLifetimeMs,
+              auth_ms: authDurationMs,
+              ocr_ms: ocrDurationMs,
+              first_frame_latency_ms: null,
+              audio_streaming_ms: null,
+              assemble_ms: 0,
+              stt_ms: sttDurationMs,
+              llm_ms: llmDurationMs,
+              total_processing_ms: sttDurationMs + llmDurationMs,
+              overhead_ms: Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - sttDurationMs - llmDurationMs),
+              trace_id: traceId,
+              user_id: authenticatedUserId ?? undefined,
+              error_stage: 'auth',
+              error_message: `auth required: ${parsed.type}`,
+            });
+            completionLogged = true;
+          }
           safely(() =>
             server.send(
               JSON.stringify({
@@ -435,11 +580,17 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           }
           sessionActive = true;
           session = createEmptySession();
+          // Preserve connection-level timing across session resets.
+          session.wsAcceptAt = wsAcceptAt;
           session.startedAt = Date.now();
           session.version = parsed.version ?? 1;
           session.format = parsed.format ?? 'pcm16le';
           session.rate = parsed.rate ?? 16000;
-          session.traceId = parsed.traceId;
+          if (parsed.traceId && parsed.traceId !== traceId) {
+            traceId = parsed.traceId;
+            connLog = connLog.with({ traceId });
+          }
+          session.traceId = traceId;
           clientLanguage = parsed.language;
           session.mode = parsed.mode ?? 'dictation';
           session.selection = parsed.selection ?? null;
@@ -863,6 +1014,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             // Determine which stage failed based on whether we got STT results
             const failedStage = finalText ? 'llm' : 'stt';
 
+            if (!isExpectedAbort) {
+              logSessionError({
+                stage: failedStage,
+                error_type: String(e?.name || 'Unknown'),
+                error_message: errorMsg || 'unknown error',
+                provider: failedStage === 'stt' ? sttProvider : llmProvider,
+                trace_id: traceId,
+              });
+            }
+
             // Log detailed error information
             if (!isExpectedAbort) {
               try {
@@ -904,15 +1065,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             }
 
             // Log session failure
-            const workerLifetimeMs = session.wsAcceptAt ? Date.now() - session.wsAcceptAt : 0;
-            const firstFrameLatencyMs = session.wsAcceptAt && session.firstArrivalMs
-              ? session.firstArrivalMs - session.wsAcceptAt
+            const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+            const firstFrameLatencyMs = wsAcceptAt && session.firstArrivalMs
+              ? session.firstArrivalMs - wsAcceptAt
               : null;
             const audioStreamingMs = session.firstArrivalMs && session.lastArrivalMs
               ? session.lastArrivalMs - session.firstArrivalMs
               : null;
             const totalProcessingMs = sttDurationMs + llmDurationMs;
-            const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs);
+            const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs - assembleMs);
 
             logSessionComplete({
               outcome: failedStage === 'stt' ? 'error_stt' : 'error_llm',
@@ -934,6 +1095,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               error_stage: failedStage as 'stt' | 'llm',
               error_message: String(e?.message || e || 'Unknown error'),
             });
+            completionLogged = true;
 
             session = createEmptySession();
             sessionActive = false;
@@ -944,7 +1106,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             try {
               const workerMetrics = {
                 traceId: session.traceId,
-                wsAcceptAt: session.wsAcceptAt ?? null,
+                wsAcceptAt: wsAcceptAt ?? null,
                 startedAt: session.startedAt ?? null,
                 processingStartAt: session.processingStartAt ?? null,
                 frames: session.frames,
@@ -1071,9 +1233,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
           // Log successful session completion
           const t1 = Date.now();
-          const workerLifetimeMs = session.wsAcceptAt ? t1 - session.wsAcceptAt : 0;
-          const firstFrameLatencyMs = session.wsAcceptAt && session.firstArrivalMs
-            ? session.firstArrivalMs - session.wsAcceptAt
+          const workerLifetimeMs = wsAcceptAt ? t1 - wsAcceptAt : 0;
+          const firstFrameLatencyMs = wsAcceptAt && session.firstArrivalMs
+            ? session.firstArrivalMs - wsAcceptAt
             : null;
           const audioStreamingMs = session.firstArrivalMs && session.lastArrivalMs
             ? session.lastArrivalMs - session.firstArrivalMs
@@ -1099,6 +1261,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             stt_provider: sttProvider,
             llm_provider: llmProvider || undefined,
           });
+          completionLogged = true;
           // Legacy metrics for session_summary (kept for backwards compatibility)
           const sttTtfbMsLegacy = timings ? timings.headersAt - timings.startAt : null;
           const sttBodyMs = timings ? timings.bodyDoneAt - timings.headersAt : null;
@@ -1117,7 +1280,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               : Math.max(0, finalizationMs - assembleMs);
 
           try {
-            const wsAccept = session.wsAcceptAt ?? null;
+            const wsAccept = wsAcceptAt ?? null;
             const wsAcceptToFinalMs = wsAccept ? t1 - wsAccept : null;
             const pipeline = session.mode === 'edit'
               ? 'edit'
@@ -1308,6 +1471,34 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     const code = (evt as any)?.code || 1000;
     const reason = (evt as any)?.reason || 'unknown';
     socketClosed = true;
+    if (!completionLogged && !finalSent) {
+      const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
+      const firstFrameLatencyMs = wsAcceptAt && session.firstArrivalMs
+        ? session.firstArrivalMs - wsAcceptAt
+        : null;
+      const audioStreamingMs = session.firstArrivalMs && session.lastArrivalMs
+        ? session.lastArrivalMs - session.firstArrivalMs
+        : null;
+      const totalProcessingMs = sttDurationMs + llmDurationMs;
+      const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs);
+      logSessionComplete({
+        outcome: 'client_disconnect',
+        mode: session.mode,
+        worker_lifetime_ms: workerLifetimeMs,
+        auth_ms: authDurationMs,
+        ocr_ms: ocrDurationMs,
+        first_frame_latency_ms: firstFrameLatencyMs,
+        audio_streaming_ms: audioStreamingMs,
+        assemble_ms: 0,
+        stt_ms: sttDurationMs,
+        llm_ms: llmDurationMs,
+        total_processing_ms: totalProcessingMs,
+        overhead_ms: overheadMs,
+        trace_id: session.traceId ?? traceId,
+        user_id: authenticatedUserId ?? undefined,
+      });
+      completionLogged = true;
+    }
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);
       authTimeoutHandle = null;
