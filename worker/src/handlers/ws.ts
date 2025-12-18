@@ -17,6 +17,15 @@ import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
 import { trackEvent } from '../utils/analytics';
 import {
+  logSessionAuth,
+  logSessionOCR,
+  logSessionAudio,
+  logSessionSTT,
+  logSessionLLM,
+  logSessionComplete,
+  logSessionError,
+} from '../utils/sessionLogger';
+import {
   verifySupabaseJwt,
   WS_CLOSE_CODES,
   AUTH_TIMEOUT_MS,
@@ -174,6 +183,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
   const connLog = createLogger({ ip: clientIP }).with({ traceId: session.traceId });
 
+  // Timing metrics for consolidated logging
+  let authDurationMs = 0;
+  let authWasColdStart = false;
+  let ocrDurationMs = 0;
+  let sttDurationMs = 0;
+  let sttTtfbMs = 0;
+  let llmDurationMs = 0;
+  let llmTtfbMs = 0;
+  let routerOverheadMs = 0;  // Time between STT complete → LLM start
+  let sttProvider = '';
+  let sttModel = '';
+  let llmProvider = '';
+  let llmModel = '';
+
   server.accept();
 
   // --------------------------------------------------------------------------
@@ -193,11 +216,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   if (!skipAuth) {
     authTimeoutHandle = setTimeout(() => {
       if (!authenticated && !socketClosed) {
-        console.log(JSON.stringify({
-          event: 'auth.timeout',
-          clientIP,
-          timeoutMs: AUTH_TIMEOUT_MS,
-        }));
+        logSessionAuth({
+          outcome: 'timeout',
+          duration_ms: AUTH_TIMEOUT_MS,
+          cold_start: false,
+          trace_id: session.traceId ?? 'unknown',
+        });
         safely(() =>
           server.send(
             JSON.stringify({
@@ -242,10 +266,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
           const { token } = parsed;
           if (!token) {
-            console.log(JSON.stringify({
-              event: 'auth.missing_token',
-              clientIP,
-            }));
+            logSessionAuth({
+              outcome: 'missing_token',
+              duration_ms: 0,
+              cold_start: false,
+              trace_id: session.traceId ?? 'unknown',
+            });
             safely(() =>
               server.send(
                 JSON.stringify({
@@ -283,8 +309,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const jwtResult = await verifySupabaseJwt(token, supabaseUrl);
           const jwtDurationMs = Date.now() - jwtStartAt;
 
-          // Track JWT verification performance
-          // Note: Use === false to help TypeScript narrow the discriminated union
+          // Store auth metrics for consolidated logging
+          authDurationMs = jwtDurationMs;
+          authWasColdStart = jwtDurationMs > 500;  // JWKS fetch adds 300-800ms
+
+          // Track JWT verification performance in Analytics Engine
           trackEvent(c.env.ANALYTICS_ENGINE, {
             event: 'auth.jwt_verify',
             durationMs: jwtDurationMs,
@@ -292,18 +321,16 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             error: jwtResult.valid === false ? jwtResult.error : undefined,
             userId: jwtResult.valid === true ? jwtResult.userId : undefined,
             traceId: session.traceId,
-            // Cold start heuristic: JWKS fetch typically adds 300-800ms
-            // If JWT verify > 500ms, likely fetching keys from Supabase
-            coldStart: jwtDurationMs > 500,
+            coldStart: authWasColdStart,
           });
 
           if (jwtResult.valid === false) {
-            console.log(JSON.stringify({
-              event: 'auth.jwt_invalid',
-              clientIP,
-              error: jwtResult.error,
-              code: jwtResult.code,
-            }));
+            logSessionAuth({
+              outcome: 'invalid',
+              duration_ms: jwtDurationMs,
+              cold_start: authWasColdStart,
+              trace_id: session.traceId ?? 'unknown',
+            });
             safely(() =>
               server.send(
                 JSON.stringify({
@@ -326,13 +353,13 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
             if (wordsUsed >= quotaLimit) {
               // Quota exceeded - block
-              console.log(JSON.stringify({
-                event: 'auth.quota_exceeded',
-                clientIP,
-                userId: jwtResult.userId,
-                wordsUsed,
-                quotaLimit,
-              }));
+              logSessionAuth({
+                outcome: 'quota_exceeded',
+                duration_ms: jwtDurationMs,
+                cold_start: authWasColdStart,
+                trace_id: session.traceId ?? 'unknown',
+                user_id: jwtResult.userId,
+              });
               safely(() =>
                 server.send(
                   JSON.stringify({
@@ -346,16 +373,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               releaseConnection(clientIP);
               return;
             }
-
-            // Under quota - allow (log for debugging)
-            console.log(JSON.stringify({
-              event: 'auth.free_tier_allowed',
-              clientIP,
-              userId: jwtResult.userId,
-              wordsUsed,
-              quotaLimit,
-              remaining: quotaLimit - wordsUsed,
-            }));
           }
 
           // Success! Mark as authenticated (works for both Pro and Free users)
@@ -364,13 +381,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           authenticatedEmail = jwtResult.email;
           authenticatedSubscriptionActive = jwtResult.subscriptionActive;
 
-          console.log(JSON.stringify({
-            event: 'auth.success',
-            clientIP,
-            userId: jwtResult.userId,
-            subscriptionActive: jwtResult.subscriptionActive,
-            tier: jwtResult.subscriptionActive ? 'pro' : 'free',
-          }));
+          // Log successful authentication
+          logSessionAuth({
+            outcome: 'success',
+            duration_ms: jwtDurationMs,
+            cold_start: authWasColdStart,
+            trace_id: session.traceId ?? 'unknown',
+            user_id: jwtResult.userId,
+          });
 
           // Send auth success
           safely(() =>
@@ -478,23 +496,25 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmRouteRules: string[] = [];
 
           const runtime = getRuntimeConfig(c.env);
-          const sttProvider = runtime.stt.provider;
+          const runtimeSttProvider = runtime.stt.provider;
+          sttProvider = runtimeSttProvider;
+          sttModel = runtime.stt.model;
 
           try {
             const sttApiKey =
-              sttProvider === 'fireworks'
+              runtimeSttProvider === 'fireworks'
                 ? FIREWORKS_API_KEY
-                : sttProvider === 'deepgram'
+                : runtimeSttProvider === 'deepgram'
                   ? DEEPGRAM_API_KEY
-                  : sttProvider === 'simplismart'
+                  : runtimeSttProvider === 'simplismart'
                     ? SIMPLISMART_API_KEY
                     : GROQ_API_KEY;
             const sttEndpoint =
-              sttProvider === 'fireworks'
+              runtimeSttProvider === 'fireworks'
                 ? FIREWORKS_STT_TURBO_ENDPOINT
-                : sttProvider === 'deepgram'
+                : runtimeSttProvider === 'deepgram'
                   ? DEEPGRAM_STT_ENDPOINT
-                  : sttProvider === 'simplismart'
+                  : runtimeSttProvider === 'simplismart'
                     ? SIMPLISMART_STT_ENDPOINT
                     : GROQ_STT_ENDPOINT;
 
@@ -511,23 +531,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               // Single-shot processing (chunking disabled)
               const wav = remainingWav!;
 
-              // Log STT request details (console only)
-              try {
-                const sttLog = {
-                  event: 'stt.request',
-                  provider: sttProvider,
-                  model: runtime.stt.model,
-                  endpoint: sttEndpoint,
-                  language: clientLanguage || runtime.stt.language,
-                  timeoutMs: runtime.stt.timeoutMs,
-                  audioSizeKB: Number((wav.length / 1024).toFixed(2)),
-                  traceId: session.traceId,
-                } as const;
-                console.log(JSON.stringify(sttLog));
-              } catch { }
+              // Log audio received
+              logSessionAudio({
+                frames: session.frames,
+                bytes_kb: Number((session.totalBytes / 1024).toFixed(2)),
+                streaming_duration_ms: session.firstArrivalMs && session.lastArrivalMs
+                  ? session.lastArrivalMs - session.firstArrivalMs
+                  : null,
+                seq_gaps: session.seqGaps,
+                trace_id: session.traceId ?? 'unknown',
+              });
+
               const sttStartTime = Date.now();
               const res = await transcribeWav(wav, {
-                provider: sttProvider,
+                provider: runtimeSttProvider,
                 apiKey: sttApiKey,
                 signal: sttAbort.signal,
                 model: runtime.stt.model,
@@ -539,17 +556,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               finalText = res.text;
               timings = res.timings;
 
+              // Track STT metrics
+              sttDurationMs = sttDuration;
+              sttTtfbMs = timings ? timings.headersAt - timings.startAt : 0;
+
               // Log STT completion
-              try {
-                const sttCompleteLog = {
-                  event: 'stt.complete',
-                  provider: sttProvider,
-                  durationMs: sttDuration,
-                  textLength: finalText.length,
-                  traceId: session.traceId,
-                } as const;
-                console.log(JSON.stringify(sttCompleteLog));
-              } catch { }
+              logSessionSTT({
+                outcome: 'success',
+                provider: runtimeSttProvider,
+                model: runtime.stt.model,
+                duration_ms: sttDuration,
+                ttfb_ms: sttTtfbMs,
+                text_length: finalText.length,
+                trace_id: session.traceId ?? 'unknown',
+              });
 
               const editPlan =
                 session.mode === 'edit' && runtime.edit.enabled
@@ -688,6 +708,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   llmText = editPlan.originalText;
                 }
               } else if (enableLLM && finalText) {
+                // Track router overhead (time between STT complete → LLM start)
+                const routerStartTime = Date.now();
+
                 // Notify client that LLM processing starts
                 safely(() =>
                   server.send(
@@ -721,31 +744,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                             : GROQ_API_KEY;
 
                 if (apiKeyForProvider) {
-                  // Log LLM request details (console only)
-                  try {
-                    const llmEndpoint =
-                      provider === 'openai'
-                        ? OPENAI_LLM_ENDPOINT
-                        : provider === 'baseten'
-                          ? BASETEN_LLM_ENDPOINT
-                          : provider === 'openrouter'
-                            ? OPENROUTER_LLM_ENDPOINT
-                            : provider === 'cerebras'
-                              ? CEREBRAS_LLM_ENDPOINT
-                              : GROQ_LLM_ENDPOINT;
-                    const llmLog = {
-                      event: 'llm.request',
-                      provider,
-                      model,
-                      endpoint: llmEndpoint,
-                      stream: streamLLM,
-                      timeoutMs: runtime.llm.timeoutMs,
-                      routeRules: llmRouteRules.length ? llmRouteRules : undefined,
-                      traceId: session.traceId,
-                    } as const;
-                    console.log(JSON.stringify(llmLog));
-                  } catch { }
                   const llmStartTime = Date.now();
+                  routerOverheadMs = llmStartTime - routerStartTime;
                   const llmRes = await chatCompleteByProvider(provider, {
                     apiKey: apiKeyForProvider,
                     model,
@@ -776,18 +776,24 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   llmText = llmRes.text || '';
                   llmTimings = llmRes.timings;
                   llmSuccess = llmText.length > 0;
+
+                  // Track LLM metrics
+                  llmDurationMs = llmDuration;
+                  llmTtfbMs = llmTimings
+                    ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt
+                    : 0;
+
                   // Log LLM completion
-                  try {
-                    const llmCompleteLog = {
-                      event: 'llm.complete',
-                      provider,
-                      durationMs: llmDuration,
-                      textLength: llmText.length,
-                      success: llmSuccess,
-                      traceId: session.traceId,
-                    } as const;
-                    console.log(JSON.stringify(llmCompleteLog));
-                  } catch { }
+                  logSessionLLM({
+                    outcome: 'success',
+                    provider,
+                    model,
+                    duration_ms: llmDuration,
+                    ttfb_ms: llmTtfbMs,
+                    router_overhead_ms: routerOverheadMs,
+                    text_length: llmText.length,
+                    trace_id: session.traceId ?? 'unknown',
+                  });
                 }
               }
 
@@ -896,6 +902,39 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             if (!isExpectedAbort) {
               connLog.error(`[WS] ${failedStage.toUpperCase()} error`, { error: String(e), stage: failedStage });
             }
+
+            // Log session failure
+            const workerLifetimeMs = session.wsAcceptAt ? Date.now() - session.wsAcceptAt : 0;
+            const firstFrameLatencyMs = session.wsAcceptAt && session.firstArrivalMs
+              ? session.firstArrivalMs - session.wsAcceptAt
+              : null;
+            const audioStreamingMs = session.firstArrivalMs && session.lastArrivalMs
+              ? session.lastArrivalMs - session.firstArrivalMs
+              : null;
+            const totalProcessingMs = sttDurationMs + llmDurationMs;
+            const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs);
+
+            logSessionComplete({
+              outcome: failedStage === 'stt' ? 'error_stt' : 'error_llm',
+              mode: session.mode,
+              worker_lifetime_ms: workerLifetimeMs,
+              auth_ms: authDurationMs,
+              ocr_ms: ocrDurationMs,
+              first_frame_latency_ms: firstFrameLatencyMs,
+              audio_streaming_ms: audioStreamingMs,
+              assemble_ms: assembleMs,
+              stt_ms: sttDurationMs,
+              llm_ms: llmDurationMs,
+              total_processing_ms: totalProcessingMs,
+              overhead_ms: overheadMs,
+              trace_id: session.traceId ?? 'unknown',
+              user_id: authenticatedUserId ?? undefined,
+              stt_provider: sttProvider,
+              llm_provider: llmProvider,
+              error_stage: failedStage as 'stt' | 'llm',
+              error_message: String(e?.message || e || 'Unknown error'),
+            });
+
             session = createEmptySession();
             sessionActive = false;
             return;
@@ -1030,19 +1069,49 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             safeClose(server, 1000, 'done');
           }
 
+          // Log successful session completion
           const t1 = Date.now();
-          const sttTtfbMs = timings ? timings.headersAt - timings.startAt : null;
+          const workerLifetimeMs = session.wsAcceptAt ? t1 - session.wsAcceptAt : 0;
+          const firstFrameLatencyMs = session.wsAcceptAt && session.firstArrivalMs
+            ? session.firstArrivalMs - session.wsAcceptAt
+            : null;
+          const audioStreamingMs = session.firstArrivalMs && session.lastArrivalMs
+            ? session.lastArrivalMs - session.firstArrivalMs
+            : null;
+          const totalProcessingMs = sttDurationMs + llmDurationMs;
+          const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs - assembleMs);
+
+          logSessionComplete({
+            outcome: 'success',
+            mode: session.mode,
+            worker_lifetime_ms: workerLifetimeMs,
+            auth_ms: authDurationMs,
+            ocr_ms: ocrDurationMs,
+            first_frame_latency_ms: firstFrameLatencyMs,
+            audio_streaming_ms: audioStreamingMs,
+            assemble_ms: assembleMs,
+            stt_ms: sttDurationMs,
+            llm_ms: llmDurationMs,
+            total_processing_ms: totalProcessingMs,
+            overhead_ms: overheadMs,
+            trace_id: session.traceId ?? 'unknown',
+            user_id: authenticatedUserId ?? undefined,
+            stt_provider: sttProvider,
+            llm_provider: llmProvider || undefined,
+          });
+          // Legacy metrics for session_summary (kept for backwards compatibility)
+          const sttTtfbMsLegacy = timings ? timings.headersAt - timings.startAt : null;
           const sttBodyMs = timings ? timings.bodyDoneAt - timings.headersAt : null;
           const sttTotalMs = timings ? timings.bodyDoneAt - timings.startAt : null;
-          const llmTtfbMs = llmTimings ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt : null;
+          const llmTtfbMsLegacy = llmTimings ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt : null;
           const llmBodyMs = llmTimings ? llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt) : null;
           const llmTotalMs = llmTimings ? llmTimings.bodyDoneAt - llmTimings.startAt : null;
           const llmFirstTokenMs =
             llmTimings?.firstDeltaAt != null && llmTimings?.startAt != null
               ? llmTimings.firstDeltaAt - llmTimings.startAt
-              : llmTtfbMs;
+              : llmTtfbMsLegacy;
           const finalizationMs = t1 - t0;
-          const overheadMs =
+          const overheadMsLegacy =
             sttTotalMs != null
               ? Math.max(0, finalizationMs - assembleMs - sttTotalMs - (llmTotalMs ?? 0))
               : Math.max(0, finalizationMs - assembleMs);
@@ -1063,14 +1132,14 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 wsAcceptToFinalMs,
                 assembleMs,
                 sttMs: sttTotalMs,
-                sttTtfbMs,
+                sttTtfbMs: sttTtfbMsLegacy,
                 sttBodyMs,
                 llmMs: llmTotalMs,
-                llmTtfbMs,
+                llmTtfbMs: llmTtfbMsLegacy,
                 llmBodyMs,
                 llmFirstTokenMs,
                 serverProcessingMs: (sttTotalMs ?? 0) + (llmTotalMs ?? 0),
-                overheadMs,
+                overheadMs: overheadMsLegacy,
                 e2eMs: null,
                 captureMs: null,
                 deliverMs: null,
@@ -1141,28 +1210,20 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const MAX_OCR_IMAGE_BASE64_CHARS = 1_500_000;
           if (!imageBase64 || imageBase64.length > MAX_OCR_IMAGE_BASE64_CHARS) {
             sessionForOcr.ocrPending = false;
-            console.log(JSON.stringify({
-              event: 'ocr.rejected',
-              reason: !imageBase64 ? 'empty' : 'too_large',
-              imageSizeKB: Math.round((imageBase64?.length || 0) / 1024),
-              traceId: sessionForOcr.traceId,
-            }));
+            logSessionOCR({
+              outcome: 'rejected',
+              trace_id: sessionForOcr.traceId ?? 'unknown',
+            });
             return;
           }
           if (!GROQ_API_KEY) {
             sessionForOcr.ocrPending = false;
-            console.log(JSON.stringify({
-              event: 'ocr.no_api_key',
-              traceId: sessionForOcr.traceId,
-            }));
+            logSessionOCR({
+              outcome: 'no_api_key',
+              trace_id: sessionForOcr.traceId ?? 'unknown',
+            });
             return;
           }
-
-          console.log(JSON.stringify({
-            event: 'ocr.received',
-            imageSizeKB: Math.round(imageBase64.length / 1024),
-            traceId: sessionForOcr.traceId,
-          }));
 
           // Fire-and-forget OCR extraction
           c.executionCtx.waitUntil((async () => {
@@ -1179,20 +1240,23 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               sessionForOcr.ocrReceivedMs = Date.now();
               sessionForOcr.ocrPending = false;
 
-              console.log(JSON.stringify({
-                event: 'ocr.complete',
-                wordCount: result.words.length,
-                durationMs,
-                traceId: sessionForOcr.traceId,
-              }));
+              // Track OCR timing for consolidated logging
+              ocrDurationMs = durationMs;
+
+              logSessionOCR({
+                outcome: 'success',
+                duration_ms: durationMs,
+                word_count: result.words.length,
+                trace_id: sessionForOcr.traceId ?? 'unknown',
+              });
             } catch (error) {
               sessionForOcr.ocrWords = [];
               sessionForOcr.ocrPending = false;
-              console.log(JSON.stringify({
-                event: 'ocr.error',
-                error: String(error),
-                traceId: sessionForOcr.traceId,
-              }));
+              logSessionOCR({
+                outcome: 'error',
+                trace_id: sessionForOcr.traceId ?? 'unknown',
+                error_message: String(error),
+              });
             }
           })());
         } else if (parsed.type === 'cancel') {
