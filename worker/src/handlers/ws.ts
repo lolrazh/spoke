@@ -587,9 +587,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         ? OPENROUTER_API_KEY
                         : provider === 'cerebras'
                           ? CEREBRAS_API_KEY
-                          : provider === 'groq'
-                            ? GROQ_API_KEY
-                            : undefined;
+                          : provider === 'simplismart'
+                            ? SIMPLISMART_API_KEY
+                            : provider === 'groq'
+                              ? GROQ_API_KEY
+                              : undefined;
 
                 if (apiKeyForProvider) {
                   try {
@@ -714,7 +716,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         ? OPENROUTER_API_KEY
                         : provider === 'cerebras'
                           ? CEREBRAS_API_KEY
-                          : GROQ_API_KEY;
+                          : provider === 'simplismart'
+                            ? SIMPLISMART_API_KEY
+                            : GROQ_API_KEY;
 
                 if (apiKeyForProvider) {
                   // Log LLM request details (console only)
