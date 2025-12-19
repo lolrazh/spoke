@@ -6,6 +6,7 @@ import {
   FIREWORKS_STT_TURBO_MODEL,
   DEEPGRAM_STT_DEFAULT_MODEL,
   SIMPLISMART_STT_MODEL,
+  SIMPLISMART_STT_TURBO_MODEL,
   type STTProvider,
 } from '../../config';
 import { transcribeWav as transcribeGroq } from './providers/groq';

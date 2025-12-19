@@ -11,6 +11,8 @@ export type SimplismartTranscriptionResult = {
 
 import {
   SIMPLISMART_STT_ENDPOINT,
+  SIMPLISMART_STT_TURBO_ENDPOINT,
+  SIMPLISMART_STT_TURBO_MODEL,
   STT_DEFAULT_MODEL,
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_TIMEOUT_MS,
@@ -26,6 +28,12 @@ export async function transcribeWav(
   const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
   const language = opts?.language ?? STT_DEFAULT_LANGUAGE;
   const prompt = opts?.prompt ?? DEFAULT_STT_PROMPT;
+  const model = opts?.model;
+
+  // Select endpoint based on model (turbo uses different endpoint)
+  const endpoint = model === SIMPLISMART_STT_TURBO_MODEL
+    ? SIMPLISMART_STT_TURBO_ENDPOINT
+    : SIMPLISMART_STT_ENDPOINT;
 
   // Convert WAV audio to base64 (process in chunks to avoid stack overflow)
   const chunkSize = 8192;
@@ -65,7 +73,7 @@ export async function transcribeWav(
   }
 
   try {
-    const res = await fetch(SIMPLISMART_STT_ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
