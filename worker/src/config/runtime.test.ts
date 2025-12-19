@@ -11,7 +11,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(['groq','openai','baseten','openrouter']).toContain(cfg.llm.provider);
     expect(typeof cfg.stt.model).toBe('string');
     expect(typeof cfg.stt.language).toBe('string');
-    expect(['groq','fireworks','deepgram']).toContain(cfg.stt.provider);
+    expect(['groq','fireworks','deepgram','simplismart']).toContain(cfg.stt.provider);
   });
 
   it('coerces booleans (reasoning removed)', () => {
@@ -34,7 +34,7 @@ describe('config/runtime.getRuntimeConfig', () => {
     expect(deepgram.stt.provider).toBe('deepgram');
     expect(deepgram.stt.model).toBe(DEEPGRAM_STT_DEFAULT_MODEL);
     const fallback = getRuntimeConfig({ STT_PROVIDER: 'invalid' });
-    expect(['groq','fireworks','deepgram']).toContain(fallback.stt.provider);
+    expect(['groq','fireworks','deepgram','simplismart']).toContain(fallback.stt.provider);
   });
 
   it('parses LLM provider from env (LLM_PROVIDER preferred)', () => {

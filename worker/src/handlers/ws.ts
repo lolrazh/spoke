@@ -15,7 +15,7 @@ import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editP
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
-import { trackEvent, trackSessionLifecycle } from '../utils/analytics';
+import { trackSessionLifecycle } from '../utils/analytics';
 import {
   logSessionAuth,
   logSessionOCR,
@@ -202,8 +202,6 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   let routerOverheadMs = 0;  // Time between STT complete → LLM start
   let sttProvider = '';
   let sttModel = '';
-  let llmProvider = '';
-  let llmModel = '';
 
   // Helper function to log session completion AND write to Analytics Engine
   const trackSessionCompletion = (data: {
@@ -509,7 +507,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
               });
               if (!completionLogged) {
                 const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-                logSessionComplete({
+                trackSessionCompletion({
                   outcome: 'error_auth',
                   mode: session.mode,
                   worker_lifetime_ms: workerLifetimeMs,
@@ -582,7 +580,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           }));
           if (!completionLogged) {
             const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-            logSessionComplete({
+            trackSessionCompletion({
               outcome: 'error_auth',
               mode: session.mode,
               worker_lifetime_ms: workerLifetimeMs,

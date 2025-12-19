@@ -15,40 +15,48 @@
  * Captures complete session metrics in a single data point
  */
 export type SessionLifecycleEvent = {
-    // Identity
-    trace_id: string;
-    user_id?: string;
+  // Identity
+  trace_id: string;
+  user_id?: string;
 
-    // Outcome
-    outcome: 'success' | 'error_auth' | 'error_stt' | 'error_llm' | 'error_send' | 'client_disconnect' | 'timeout' | 'crash';
-    mode: 'dictation' | 'edit';
-    error_stage?: 'auth' | 'ocr' | 'stt' | 'llm' | 'send';
-    error_message?: string;
+  // Outcome
+  outcome:
+    | 'success'
+    | 'error_auth'
+    | 'error_stt'
+    | 'error_llm'
+    | 'error_send'
+    | 'client_disconnect'
+    | 'timeout'
+    | 'crash';
+  mode: 'dictation' | 'edit';
+  error_stage?: 'auth' | 'ocr' | 'stt' | 'llm' | 'send';
+  error_message?: string;
 
-    // Providers
-    stt_provider?: string;
-    llm_provider?: string;
+  // Providers
+  stt_provider?: string;
+  llm_provider?: string;
 
-    // Timing metrics (all in milliseconds)
-    worker_lifetime_ms: number;
-    auth_ms: number;
-    ocr_ms: number;
-    first_frame_latency_ms: number | null;
-    audio_streaming_ms: number | null;
-    assemble_ms: number;
-    stt_ms: number;
-    router_overhead_ms: number;
-    llm_ms: number;
-    total_processing_ms: number;
-    overhead_ms: number;
+  // Timing metrics (all in milliseconds)
+  worker_lifetime_ms: number;
+  auth_ms: number;
+  ocr_ms: number;
+  first_frame_latency_ms: number | null;
+  audio_streaming_ms: number | null;
+  assemble_ms: number;
+  stt_ms: number;
+  router_overhead_ms: number;
+  llm_ms: number;
+  total_processing_ms: number;
+  overhead_ms: number;
 
-    // Traffic metrics
-    audio_frames: number;
-    audio_bytes_kb: number;
-    seq_gaps: number;
+  // Traffic metrics
+  audio_frames: number;
+  audio_bytes_kb: number;
+  seq_gaps: number;
 
-    // Flags
-    cold_start: boolean;
+  // Flags
+  cold_start: boolean;
 };
 
 /**
@@ -56,27 +64,27 @@ export type SessionLifecycleEvent = {
  * Will be deprecated once session.lifecycle is fully rolled out
  */
 export type AnalyticsEvent = {
-    // Event metadata
-    event: string;           // Event type (e.g., 'jwt.verify', 'db.quota_increment')
-    traceId?: string;        // Session trace ID for correlation
-    userId?: string;         // User ID (if authenticated)
+  // Event metadata
+  event: string; // Event type (e.g., 'jwt.verify', 'db.quota_increment')
+  traceId?: string; // Session trace ID for correlation
+  userId?: string; // User ID (if authenticated)
 
-    // Timing metrics (all in milliseconds)
-    durationMs?: number;     // How long the operation took
-    ttfbMs?: number;         // Time to first byte (for network calls)
+  // Timing metrics (all in milliseconds)
+  durationMs?: number; // How long the operation took
+  ttfbMs?: number; // Time to first byte (for network calls)
 
-    // Status
-    success: boolean;        // Did the operation succeed?
-    error?: string;          // Error message (if failed)
+  // Status
+  success: boolean; // Did the operation succeed?
+  error?: string; // Error message (if failed)
 
-    // Context
-    provider?: string;       // Provider name (e.g., 'groq', 'baseten')
-    model?: string;          // Model name (for LLM/STT)
-    cached?: boolean;        // Was this result cached?
-    coldStart?: boolean;     // Was this a cold start?
+  // Context
+  provider?: string; // Provider name (e.g., 'groq', 'baseten')
+  model?: string; // Model name (for LLM/STT)
+  cached?: boolean; // Was this result cached?
+  coldStart?: boolean; // Was this a cold start?
 
-    // Additional metadata (specific to event type)
-    [key: string]: any;
+  // Additional metadata (specific to event type)
+  [key: string]: any;
 };
 
 /**
@@ -84,56 +92,56 @@ export type AnalyticsEvent = {
  * This is the primary analytics event - captures full session metrics
  */
 export function trackSessionLifecycle(
-    analytics: AnalyticsEngineDataset | undefined,
-    event: SessionLifecycleEvent
+  analytics: AnalyticsEngineDataset | undefined,
+  event: SessionLifecycleEvent,
 ): void {
-    // Skip if Analytics Engine is not configured (e.g., in dev environments)
-    if (!analytics) {
-        return;
-    }
+  // Skip if Analytics Engine is not configured (e.g., in dev environments)
+  if (!analytics) {
+    return;
+  }
 
-    try {
-        // Write to Analytics Engine
-        // NOTE: Only ONE index is allowed per data point (used for sampling)
-        // See: https://developers.cloudflare.com/analytics/analytics-engine/limits/
-        analytics.writeDataPoint({
-            // Index: sampling key (only one allowed!)
-            indexes: [
-                event.user_id || 'anonymous',                      // index1: user ID (for sampling)
-            ],
-            // Blob data (queryable strings) - 7 available
-            blobs: [
-                'session.lifecycle',                               // blob1: event type (constant)
-                event.trace_id,                                    // blob2: trace ID (for correlation)
-                event.outcome,                                     // blob3: outcome (success/error_*)
-                event.mode,                                        // blob4: mode (dictation/edit)
-                event.stt_provider || '',                          // blob5: STT provider
-                event.llm_provider || '',                          // blob6: LLM provider
-                event.error_stage || '',                           // blob7: error stage (if failed)
-            ],
-            // Numeric metrics (aggregatable) - 20 available, using 15
-            doubles: [
-                event.worker_lifetime_ms,                          // double1: full worker duration
-                event.auth_ms,                                     // double2: JWT verification time
-                event.ocr_ms,                                      // double3: OCR processing time
-                event.first_frame_latency_ms ?? 0,                 // double4: auth + TLS + first upload
-                event.audio_streaming_ms ?? 0,                     // double5: user speaking duration
-                event.assemble_ms,                                 // double6: audio concatenation time
-                event.stt_ms,                                      // double7: STT API call time
-                event.router_overhead_ms,                          // double8: STT → LLM routing time
-                event.llm_ms,                                      // double9: LLM API call time
-                event.total_processing_ms,                         // double10: stt_ms + llm_ms
-                event.overhead_ms,                                 // double11: everything else
-                event.audio_frames,                                // double12: frame count
-                event.audio_bytes_kb,                              // double13: audio size
-                event.seq_gaps,                                    // double14: dropped frames
-                event.cold_start ? 1 : 0,                          // double15: cold start flag (0/1)
-            ],
-        });
-    } catch (error) {
-        // Silent fail - analytics should never break the worker
-        console.warn('[Analytics] Failed to write session lifecycle:', error);
-    }
+  try {
+    // Write to Analytics Engine
+    // NOTE: Only ONE index is allowed per data point (used for sampling)
+    // See: https://developers.cloudflare.com/analytics/analytics-engine/limits/
+    analytics.writeDataPoint({
+      // Index: sampling key (only one allowed!)
+      indexes: [
+        event.user_id || 'anonymous', // index1: user ID (for sampling)
+      ],
+      // Blob data (queryable strings) - 7 available
+      blobs: [
+        'session.lifecycle', // blob1: event type (constant)
+        event.trace_id, // blob2: trace ID (for correlation)
+        event.outcome, // blob3: outcome (success/error_*)
+        event.mode, // blob4: mode (dictation/edit)
+        event.stt_provider || '', // blob5: STT provider
+        event.llm_provider || '', // blob6: LLM provider
+        event.error_stage || '', // blob7: error stage (if failed)
+      ],
+      // Numeric metrics (aggregatable) - 20 available, using 15
+      doubles: [
+        event.worker_lifetime_ms, // double1: full worker duration
+        event.auth_ms, // double2: JWT verification time
+        event.ocr_ms, // double3: OCR processing time
+        event.first_frame_latency_ms ?? 0, // double4: auth + TLS + first upload
+        event.audio_streaming_ms ?? 0, // double5: user speaking duration
+        event.assemble_ms, // double6: audio concatenation time
+        event.stt_ms, // double7: STT API call time
+        event.router_overhead_ms, // double8: STT → LLM routing time
+        event.llm_ms, // double9: LLM API call time
+        event.total_processing_ms, // double10: stt_ms + llm_ms
+        event.overhead_ms, // double11: everything else
+        event.audio_frames, // double12: frame count
+        event.audio_bytes_kb, // double13: audio size
+        event.seq_gaps, // double14: dropped frames
+        event.cold_start ? 1 : 0, // double15: cold start flag (0/1)
+      ],
+    });
+  } catch (error) {
+    // Silent fail - analytics should never break the worker
+    console.warn('[Analytics] Failed to write session lifecycle:', error);
+  }
 }
 
 /**
@@ -141,76 +149,76 @@ export function trackSessionLifecycle(
  * @deprecated Use trackSessionLifecycle() instead
  */
 export function trackEvent(
-    analytics: AnalyticsEngineDataset | undefined,
-    event: AnalyticsEvent
+  analytics: AnalyticsEngineDataset | undefined,
+  event: AnalyticsEvent,
 ): void {
-    // Skip if Analytics Engine is not configured (e.g., in dev environments)
-    if (!analytics) {
-        return;
-    }
+  // Skip if Analytics Engine is not configured (e.g., in dev environments)
+  if (!analytics) {
+    return;
+  }
 
-    try {
-        // Write to Analytics Engine
-        // NOTE: Only ONE index is allowed per data point (used for sampling)
-        // See: https://developers.cloudflare.com/analytics/analytics-engine/limits/
-        analytics.writeDataPoint({
-            // Index: sampling key (only one allowed!)
-            indexes: [
-                event.userId || 'anonymous',                   // index1: user ID (for sampling)
-            ],
-            // Blob data (queryable strings)
-            blobs: [
-                event.event,                                   // blob1: event type
-                event.traceId || '',                           // blob2: trace ID
-                event.success ? 'success' : 'failure',         // blob3: status
-                event.provider || '',                          // blob4: provider
-                event.error || '',                             // blob5: error message
-                event.model || '',                             // blob6: model name
-            ],
-            // Numeric metrics (aggregatable)
-            doubles: [
-                event.durationMs || 0,                         // double1: duration
-                event.ttfbMs || 0,                             // double2: TTFB
-                event.cached ? 1 : 0,                          // double3: cache hit
-                event.coldStart ? 1 : 0,                       // double4: cold start
-            ],
-        });
-    } catch (error) {
-        // Silent fail - analytics should never break the worker
-        console.warn('[Analytics] Failed to write event:', error);
-    }
+  try {
+    // Write to Analytics Engine
+    // NOTE: Only ONE index is allowed per data point (used for sampling)
+    // See: https://developers.cloudflare.com/analytics/analytics-engine/limits/
+    analytics.writeDataPoint({
+      // Index: sampling key (only one allowed!)
+      indexes: [
+        event.userId || 'anonymous', // index1: user ID (for sampling)
+      ],
+      // Blob data (queryable strings)
+      blobs: [
+        event.event, // blob1: event type
+        event.traceId || '', // blob2: trace ID
+        event.success ? 'success' : 'failure', // blob3: status
+        event.provider || '', // blob4: provider
+        event.error || '', // blob5: error message
+        event.model || '', // blob6: model name
+      ],
+      // Numeric metrics (aggregatable)
+      doubles: [
+        event.durationMs || 0, // double1: duration
+        event.ttfbMs || 0, // double2: TTFB
+        event.cached ? 1 : 0, // double3: cache hit
+        event.coldStart ? 1 : 0, // double4: cold start
+      ],
+    });
+  } catch (error) {
+    // Silent fail - analytics should never break the worker
+    console.warn('[Analytics] Failed to write event:', error);
+  }
 }
 
 /**
  * Track timing for an async operation
  */
 export async function trackTiming<T>(
-    analytics: AnalyticsEngineDataset | undefined,
-    eventName: string,
-    operation: () => Promise<T>,
-    metadata?: Partial<AnalyticsEvent>
+  analytics: AnalyticsEngineDataset | undefined,
+  eventName: string,
+  operation: () => Promise<T>,
+  metadata?: Partial<AnalyticsEvent>,
 ): Promise<T> {
-    const startAt = Date.now();
-    let success = true;
-    let error: string | undefined;
-    let result: T;
+  const startAt = Date.now();
+  let success = true;
+  let error: string | undefined;
+  let result: T;
 
-    try {
-        result = await operation();
-        return result;
-    } catch (err) {
-        success = false;
-        error = err instanceof Error ? err.message : String(err);
-        throw err;
-    } finally {
-        const durationMs = Date.now() - startAt;
+  try {
+    result = await operation();
+    return result;
+  } catch (err) {
+    success = false;
+    error = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    const durationMs = Date.now() - startAt;
 
-        trackEvent(analytics, {
-            event: eventName,
-            durationMs,
-            success,
-            error,
-            ...metadata,
-        });
-    }
+    trackEvent(analytics, {
+      event: eventName,
+      durationMs,
+      success,
+      error,
+      ...metadata,
+    });
+  }
 }
