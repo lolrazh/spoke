@@ -15,7 +15,7 @@ import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editP
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
-import { trackEvent } from '../utils/analytics';
+import { trackEvent, trackSessionLifecycle } from '../utils/analytics';
 import {
   logSessionAuth,
   logSessionOCR,
@@ -202,6 +202,60 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   let routerOverheadMs = 0;  // Time between STT complete → LLM start
   let sttProvider = '';
   let sttModel = '';
+  let llmProvider = '';
+  let llmModel = '';
+
+  // Helper function to log session completion AND write to Analytics Engine
+  const trackSessionCompletion = (data: {
+    outcome: 'success' | 'error_auth' | 'error_stt' | 'error_llm' | 'error_send' | 'client_disconnect' | 'timeout' | 'crash';
+    mode: 'dictation' | 'edit';
+    worker_lifetime_ms: number;
+    auth_ms: number;
+    ocr_ms: number;
+    first_frame_latency_ms: number | null;
+    audio_streaming_ms: number | null;
+    assemble_ms: number;
+    stt_ms: number;
+    llm_ms: number;
+    total_processing_ms: number;
+    overhead_ms: number;
+    trace_id: string;
+    user_id?: string;
+    stt_provider?: string;
+    llm_provider?: string;
+    error_stage?: 'auth' | 'ocr' | 'stt' | 'llm' | 'send';
+    error_message?: string;
+  }) => {
+    // Log to console (for Workers Logs dashboard)
+    logSessionComplete(data);
+
+    // Track in Analytics Engine (for long-term analysis)
+    trackSessionLifecycle(c.env.ANALYTICS_ENGINE, {
+      trace_id: data.trace_id,
+      user_id: data.user_id,
+      outcome: data.outcome,
+      mode: data.mode,
+      error_stage: data.error_stage,
+      error_message: data.error_message,
+      stt_provider: data.stt_provider,
+      llm_provider: data.llm_provider,
+      worker_lifetime_ms: data.worker_lifetime_ms,
+      auth_ms: data.auth_ms,
+      ocr_ms: data.ocr_ms,
+      first_frame_latency_ms: data.first_frame_latency_ms,
+      audio_streaming_ms: data.audio_streaming_ms,
+      assemble_ms: data.assemble_ms,
+      stt_ms: data.stt_ms,
+      router_overhead_ms: routerOverheadMs,
+      llm_ms: data.llm_ms,
+      total_processing_ms: data.total_processing_ms,
+      overhead_ms: data.overhead_ms,
+      audio_frames: session.frames,
+      audio_bytes_kb: Number((session.totalBytes / 1024).toFixed(2)),
+      seq_gaps: session.seqGaps,
+      cold_start: authWasColdStart,
+    });
+  };
 
   server.accept();
 
@@ -230,7 +284,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         });
         if (!completionLogged) {
           const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-          logSessionComplete({
+          trackSessionCompletion({
             outcome: 'timeout',
             mode: session.mode,
             worker_lifetime_ms: workerLifetimeMs,
@@ -309,7 +363,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             });
             if (!completionLogged) {
               const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-              logSessionComplete({
+              trackSessionCompletion({
                 outcome: 'error_auth',
                 mode: session.mode,
                 worker_lifetime_ms: workerLifetimeMs,
@@ -349,7 +403,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             console.error('[Auth] SUPABASE_URL not configured');
             if (!completionLogged) {
               const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-              logSessionComplete({
+              trackSessionCompletion({
                 outcome: 'error_auth',
                 mode: session.mode,
                 worker_lifetime_ms: workerLifetimeMs,
@@ -392,16 +446,8 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           authDurationMs = jwtDurationMs;
           authWasColdStart = jwtDurationMs > 500;  // JWKS fetch adds 300-800ms
 
-          // Track JWT verification performance in Analytics Engine
-          trackEvent(c.env.ANALYTICS_ENGINE, {
-            event: 'auth.jwt_verify',
-            durationMs: jwtDurationMs,
-            success: jwtResult.valid,
-            error: jwtResult.valid === false ? jwtResult.error : undefined,
-            userId: jwtResult.valid === true ? jwtResult.userId : undefined,
-            traceId,
-            coldStart: authWasColdStart,
-          });
+          // NOTE: JWT verification metrics are now tracked in session.lifecycle (trackSessionCompletion)
+          // Old event 'auth.jwt_verify' is deprecated - can be removed once migration is verified in production
 
           if (jwtResult.valid === false) {
             logSessionAuth({
@@ -412,7 +458,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             });
             if (!completionLogged) {
               const workerLifetimeMs = wsAcceptAt ? Date.now() - wsAcceptAt : 0;
-              logSessionComplete({
+              trackSessionCompletion({
                 outcome: 'error_auth',
                 mode: session.mode,
                 worker_lifetime_ms: workerLifetimeMs,
@@ -1075,7 +1121,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
             const totalProcessingMs = sttDurationMs + llmDurationMs;
             const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs - assembleMs);
 
-            logSessionComplete({
+            trackSessionCompletion({
               outcome: failedStage === 'stt' ? 'error_stt' : 'error_llm',
               mode: session.mode,
               worker_lifetime_ms: workerLifetimeMs,
@@ -1195,17 +1241,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                         // Silent fail - quota tracking is non-critical
                         console.warn('[WS] Quota increment error:', error);
                       } finally {
-                        // Track quota increment timing
+                        // NOTE: Quota increment timing is no longer tracked separately
+                        // All session metrics are now in session.lifecycle (trackSessionCompletion)
+                        // Old event 'db.quota_increment' is deprecated - can be removed once migration is verified
                         const quotaDurationMs = Date.now() - quotaStartAt;
-                        trackEvent(c.env.ANALYTICS_ENGINE, {
-                          event: 'db.quota_increment',
-                          durationMs: quotaDurationMs,
-                          success: quotaSuccess,
-                          error: quotaError,
-                          userId: authenticatedUserId,
-                          traceId: session.traceId,
-                          wordCount,
-                        });
+                        // Removed: trackEvent(c.env.ANALYTICS_ENGINE, { event: 'db.quota_increment', ... });
                       }
                     })()
                   );
@@ -1243,7 +1283,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           const totalProcessingMs = sttDurationMs + llmDurationMs;
           const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs - assembleMs);
 
-          logSessionComplete({
+          trackSessionCompletion({
             outcome: 'success',
             mode: session.mode,
             worker_lifetime_ms: workerLifetimeMs,
@@ -1481,7 +1521,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
         : null;
       const totalProcessingMs = sttDurationMs + llmDurationMs;
       const overheadMs = Math.max(0, workerLifetimeMs - authDurationMs - ocrDurationMs - totalProcessingMs);
-      logSessionComplete({
+      trackSessionCompletion({
         outcome: 'client_disconnect',
         mode: session.mode,
         worker_lifetime_ms: workerLifetimeMs,
