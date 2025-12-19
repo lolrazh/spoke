@@ -520,7 +520,8 @@ For now, single-shot processing is reliable and performant for all dictation len
       Client sends first (within 15s of connection):
       {
         "type": "auth",
-        "token": "eyJhbG..." // Supabase JWT access token
+        "token": "eyJhbG...", // Supabase JWT access token
+        "traceId": "..."      // optional (for correlating auth + session logs)
       }
 
       Server responses:
