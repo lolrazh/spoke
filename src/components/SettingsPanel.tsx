@@ -438,7 +438,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("settings")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "settings"
+                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "settings" ? "" : "justify-center"} ${activeTab === "settings"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -453,7 +453,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[17px]" style={{ transition: 'color 200ms ease-out' }}>
+                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
                   <SfIcon name="gearshape.fill" size={17} />
                 </span>
                 <motion.span
@@ -475,7 +475,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("history")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "history"
+                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "history" ? "" : "justify-center"} ${activeTab === "history"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -490,7 +490,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[17px]" style={{ transition: 'color 200ms ease-out' }}>
+                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
                   <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={17} />
                 </span>
                 <motion.span
