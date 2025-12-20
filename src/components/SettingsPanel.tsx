@@ -434,11 +434,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* Tab Navigation - top bezel */}
         <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
           <div className="flex items-center justify-center px-6">
-            <div className="flex items-center gap-1 border border-white/[0.08] rounded-full p-1">
+            <div className="flex items-center gap-0.5 border border-white/[0.08] rounded-full p-1">
               <button
                 onClick={() => setActiveTab("settings")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "settings" ? "" : "justify-center"} ${activeTab === "settings"
+                className={`relative flex items-center gap-0 p-2 rounded-full min-w-[42px] ${activeTab === "settings" ? "" : "justify-center"} ${activeTab === "settings"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -475,7 +475,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("history")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "history" ? "" : "justify-center"} ${activeTab === "history"
+                className={`relative flex items-center gap-0 p-2 rounded-full min-w-[42px] ${activeTab === "history" ? "" : "justify-center"} ${activeTab === "history"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
