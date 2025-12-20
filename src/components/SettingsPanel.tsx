@@ -452,8 +452,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
                   />
                 )}
-                <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
-                  <SfIcon name="gearshape.fill" size={14} />
+                <span className="relative z-10 flex items-center justify-center" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="gearshape.fill" size={15} />
                 </span>
                 <AnimatePresence mode="wait">
                   {activeTab === "settings" && (
@@ -493,8 +493,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
                   />
                 )}
-                <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
-                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={14} />
+                <span className="relative z-10 flex items-center justify-center" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={15} />
                 </span>
                 <AnimatePresence mode="wait">
                   {activeTab === "history" && (
