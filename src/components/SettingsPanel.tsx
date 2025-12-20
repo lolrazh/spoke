@@ -437,7 +437,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="flex items-center gap-1 border border-white/[0.08] rounded-full p-1">
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors duration-300 ${activeTab === "settings"
+                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
+                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full ${activeTab === "settings"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -449,7 +450,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <SfIcon name="gearshape.fill" size={14} className="relative z-10 transition-colors duration-300" />
+                <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="gearshape.fill" size={14} />
+                </span>
                 <AnimatePresence mode="wait">
                   {activeTab === "settings" && (
                     <motion.span
@@ -466,7 +469,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
               <button
                 onClick={() => setActiveTab("history")}
-                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors duration-300 ${activeTab === "history"
+                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
+                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full ${activeTab === "history"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -478,7 +482,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={14} className="relative z-10 transition-colors duration-300" />
+                <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={14} />
+                </span>
                 <AnimatePresence mode="wait">
                   {activeTab === "history" && (
                     <motion.span
