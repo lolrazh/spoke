@@ -702,27 +702,28 @@ For now, single-shot processing is reliable and performant for all dictation len
   </quota_tracking>
 
   <telemetry file="worker/src/utils/analytics.ts">
-    **Updated:** 2025-12-12 - Migrated from Sentry + Supabase to Cloudflare Analytics Engine
+    **Updated:** 2025-12-19 - Consolidated into a single `session.lifecycle` event
 
     After session completes:
     - Write to Cloudflare Analytics Engine (zero latency, fire-and-forget)
-    - Events tracked: auth.jwt_verify, db.quota_increment
-    - Schema: 1 index (user_id), 6 blobs (event_type, trace_id, status, provider, error, model), doubles for metrics
-    - Stores: word_count, timing metrics (durationMs, coldStart, success), provider info
+    - Event tracked: `session.lifecycle` (consolidates auth, OCR, STT, LLM, and quota metrics)
+    - Schema: 1 index (user_id), 7 blobs (outcome, mode, providers, error_stage), 15 doubles (timing breakdown, traffic metrics)
+    - Benefits: 50% reduction in write operations, complete correlation across all pipeline stages
     - Does NOT store transcription text (privacy)
     - Query via SQL in Cloudflare Dashboard
 
-    **Removed (2025-12-11):**
-    - Sentry instrumentation (startSpan, setAttribute calls) - eliminated 150-200 network calls per request
-    - dictation_logs table (deleted 2025-12-13) - replaced by Analytics Engine
-    - Performance impact: 266x faster wall time (400s → 1.5s)
-
     **Key Metrics:**
-    - JWT verification cold starts (double4=1 when >500ms, indicates JWKS fetch)
-    - Database quota increment timing (identifies slow Supabase calls)
+    - `double2`: JWT verification time (auth_ms)
+    - `double15`: Cold start flag (1 if auth > 500ms, indicates JWKS fetch)
+    - `double8`: Router overhead (time between STT → LLM)
+    - `double12/13/14`: Audio quality (frames, size, sequence gaps)
     - P95/P99 latency percentiles for bottleneck identification
 
-    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-12_0030_analytics-engine-setup.md
+    **Removed (2025-12-19):**
+    - Deprecated `auth.jwt_verify` and `db.quota_increment` events in favor of consolidated lifecycle event.
+    - Removed Sentry instrumentation (2025-12-11) - eliminated 150-200 network calls per request.
+
+    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-19_1920_analytics-engine-integration.md
   </telemetry>
 </worker>
 
@@ -944,8 +945,7 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
 
   <server file="worker/src/utils/analytics.ts">
     **Analytics Engine Events:**
-    - auth.jwt_verify: durationMs, coldStart (1 if >500ms), success, userId
-    - db.quota_increment: durationMs, success, wordCount, error
+    - `session.lifecycle`: outcome, mode, providers, error_stage, duration breakdown (auth, OCR, STT, LLM, overhead), audio quality (frames, bytes, gaps), cold_start
 
     **Session Metrics (not persisted, returned in final message):**
     traceId, wsAcceptAt, startedAt, processingStartAt,
@@ -962,7 +962,7 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
     sttMs = STT API processing time
     llmMs = LLM processing time (if enabled)
     pasteMs = Native text insertion time
-    jwtMs = JWT verification time (tracked in Analytics Engine)
+    authMs = JWT verification time (tracked in Analytics Engine)
   </derived>
 
   <logging>
@@ -971,10 +971,11 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
 
     **Worker Logs:**
     - Session summary with all timing data (console only, not persisted)
-    - Analytics Engine: auth.jwt_verify and db.quota_increment events
+    - Analytics Engine: `session.lifecycle` event (consolidated metrics)
 
     **Telemetry:**
     - Replaced Sentry + dictation_logs (2025-12-11/13)
+    - Replaced separate auth/quota events with `session.lifecycle` (2025-12-19)
     - Analytics Engine queries via SQL in Cloudflare Dashboard
     - P95/P99 latency analysis for bottleneck identification
 
@@ -1117,7 +1118,7 @@ Transcription history is stored locally on the user's device—never in the data
   </autosave>
 
   <privacy>
-    Local storage only. Database (dictation_logs) stores metadata, NOT text.
+    Local storage only. Telemetry stores metadata (durations, word counts), NOT text.
     User has full control over their transcription history.
   </privacy>
 </history>
@@ -1179,5 +1180,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-17
-**Pipeline Version**: OCR context-aware transcription, JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking, edit mode, multi-provider support (5 LLM providers, 3 STT providers), Analytics Engine telemetry
+**Last Updated**: 2025-12-20
+**Pipeline Version**: OCR context-aware transcription, JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking, edit mode, multi-provider support (5 LLM providers, 3 STT providers), Consolidated Analytics Engine telemetry

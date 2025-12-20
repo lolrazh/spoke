@@ -13,9 +13,8 @@ The database serves four core functions:
 1. **User Identity**: Profiles linked 1:1 with Supabase Auth users
 2. **Subscription Management**: Dodo Payments integration for billing
 3. **Free Tier Quota Tracking**: Server-authoritative word count limits (2000 words/month)
-4. **Performance Telemetry**: Timing metrics for monitoring (no transcription text)
 
-Privacy is paramount—`dictation_logs` stores word count, latency, provider info, but never the actual transcription. History is stored locally on the user's device.
+Privacy is paramount—all performance telemetry is stored in Cloudflare Analytics Engine (no transcription text). History is stored locally on the user's device.
 
 The quota system is **server-authoritative**: the Cloudflare Worker counts words and writes to the database, ensuring users cannot tamper with their quota. JWT claims provide instant quota gating before audio streams begin.
 
@@ -35,13 +34,6 @@ The quota system is **server-authoritative**: the Cloudflare Worker counts words
     <purpose>Dodo Payments subscription records</purpose>
     <relationship>subscriptions.user_id → auth.users.id (FK, 1:N)</relationship>
     <rows>1</rows>
-    <rls>enabled</rls>
-  </table>
-
-  <table name="dictation_logs">
-    <purpose>Transcription session telemetry (no text stored)</purpose>
-    <relationship>dictation_logs.user_id → auth.users.id (FK, 1:N)</relationship>
-    <rows>1337</rows>
     <rls>enabled</rls>
   </table>
 
@@ -156,53 +148,6 @@ Dodo Payments subscription lifecycle managed entirely by webhook handler.
   <philosophy>
     Single source of truth for billing state.
     App never writes—only reads. Worker handles all lifecycle events.
-  </philosophy>
-</table>
-
-### dictation_logs
-
-Performance telemetry for each transcription session. Privacy-safe—no text stored.
-
-<table name="dictation_logs">
-  <columns>
-    id (uuid, PK)
-    user_id (uuid, FK → auth.users.id)
-    session_id (text, unique) - Client-generated session ID
-    created_at (timestamptz) - Session start
-    completed_at (timestamptz, nullable) - Session end
-    dictation_ms (integer, nullable) - User speaking duration
-    e2e_ms (integer, nullable) - End-to-end latency
-    total_ms (integer, nullable) - Total processing time
-    stt_ms (integer, nullable) - STT provider latency
-    llm_ms (integer, nullable) - LLM processing latency
-    audio_duration_ms (integer, nullable)
-    word_count (integer, nullable)
-    pipeline (text, nullable) - e.g., 'stt+llm', 'edit'
-    stt_provider (text, default 'groq')
-    stt_model (text, nullable)
-    llm_provider (text, nullable)
-    llm_model (text, nullable)
-    ws_close_code (integer, nullable)
-    ws_close_reason (text, nullable)
-  </columns>
-
-  <rls>
-    Service role can INSERT (bypasses RLS).
-    Users can SELECT their own logs (auth.uid() = user_id).
-  </rls>
-
-  <integration>
-    <file path="worker/src/handlers/ws.ts">Inserts on session complete (service role)</file>
-    <file path="worker/src/utils/telemetry.ts">Telemetry helpers</file>
-    <privacy>
-      No transcription text stored, only timing metrics and metadata.
-      Enables performance monitoring without compromising user privacy.
-    </privacy>
-  </integration>
-
-  <philosophy>
-    Telemetry for debugging and optimization, not surveillance.
-    Text stays on the user's device (local history) or is ephemeral (server processing).
   </philosophy>
 </table>
 
@@ -422,7 +367,6 @@ Row Level Security (RLS) ensures users can only access their own data.
 
   <service_role_usage>
     Worker (Cloudflare) uses service role key for:
-    - Inserting dictation_logs (validated via JWT)
     - Processing Dodo webhooks (validates signature)
     - Updating subscriptions table
     - Logging webhook_events
@@ -551,16 +495,6 @@ Client-side database operations live in `src/lib/supabaseClient.ts`.
     WHERE id = (event->>'user_id')::uuid;
   </query>
 
-  <query name="Insert telemetry (worker)">
-    INSERT INTO dictation_logs (
-      user_id, session_id, word_count,
-      stt_ms, llm_ms, e2e_ms, total_ms,
-      stt_provider, stt_model, llm_provider, llm_model,
-      pipeline, audio_duration_ms, completed_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-  </query>
-
   <query name="Log webhook event (worker)">
     INSERT INTO webhook_events (event_id, type, raw)
     VALUES ($1, $2, $3)
@@ -628,17 +562,15 @@ Database schema is managed via Supabase migrations.
 
 <indexes>
   <automatic>
-    Primary keys: profiles.id, subscriptions.id, dictation_logs.id, webhook_events.event_id
+    Primary keys: profiles.id, subscriptions.id, webhook_events.event_id
     Unique constraints: profiles.email, profiles.dodo_customer_id, subscriptions.subscription_id,
-                        dictation_logs.session_id, waitlist.email
+                        waitlist.email
     Foreign keys: auto-indexed on user_id columns
   </automatic>
 
   <recommended_for_scale>
     These indexes will help as data grows:
 
-    CREATE INDEX idx_dictation_logs_created_at ON dictation_logs(created_at);
-    CREATE INDEX idx_dictation_logs_stt_provider ON dictation_logs(stt_provider);
     CREATE INDEX idx_subscriptions_status ON subscriptions(status);
   </recommended_for_scale>
 </indexes>
@@ -650,12 +582,12 @@ Database schema is managed via Supabase migrations.
 <privacy>
   <transcription_text>
     NEVER stored in database. Only stored locally on user's device (electron-store).
-    dictation_logs table stores word_count, timing metrics, provider info—no text.
   </transcription_text>
 
   <telemetry>
-    dictation_logs contains performance metrics only.
-    Used for debugging, monitoring, optimization—not user surveillance.
+    All performance telemetry moved to Cloudflare Analytics Engine (2025-12-11).
+    `dictation_logs` table was completely removed (2025-12-13).
+    Privacy-safe metadata only—no transcription text or recordings.
   </telemetry>
 
   <dataset_consent>
@@ -667,7 +599,7 @@ Database schema is managed via Supabase migrations.
 
   <retention>
     Transcription history: 1000 items max (local storage, auto-pruned).
-    dictation_logs: No automatic deletion (lightweight metrics only).
+    Analytics Engine data: Retained based on Cloudflare dataset settings.
     webhook_events: Append-only audit log (consider periodic archival for production).
   </retention>
 </privacy>
@@ -871,5 +803,5 @@ $function$;
 
 ---
 
-**Last Updated**: 2025-12-04
-**Schema Version**: 5 migrations + unmigrated quota system (includes payment integration and free tier quota)
+**Last Updated**: 2025-12-20
+**Schema Version**: 4 active tables (profiles, subscriptions, webhook_events, waitlist) - `dictation_logs` removed
