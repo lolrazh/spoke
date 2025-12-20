@@ -447,7 +447,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <motion.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-white/10 rounded-full"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    initial={{ scale: 0.95 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
                   />
                 )}
                 <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
@@ -457,9 +459,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   {activeTab === "settings" && (
                     <motion.span
                       initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: "auto" }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      animate={{
+                        opacity: 1,
+                        width: "auto",
+                        transition: { duration: 0.25, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }
+                      }}
+                      exit={{
+                        opacity: 0,
+                        width: 0,
+                        transition: { duration: 0.15, ease: [0.4, 0, 1, 1] }
+                      }}
                       className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                     >
                       Settings
@@ -479,7 +488,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <motion.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-white/10 rounded-full"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    initial={{ scale: 0.95 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
                   />
                 )}
                 <span className="relative z-10" style={{ transition: 'color 200ms ease-out' }}>
@@ -489,9 +500,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   {activeTab === "history" && (
                     <motion.span
                       initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: "auto" }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      animate={{
+                        opacity: 1,
+                        width: "auto",
+                        transition: { duration: 0.25, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }
+                      }}
+                      exit={{
+                        opacity: 0,
+                        width: 0,
+                        transition: { duration: 0.15, ease: [0.4, 0, 1, 1] }
+                      }}
                       className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                     >
                       History
