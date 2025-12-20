@@ -51,7 +51,7 @@ export async function transcribeWav(
     task: 'transcribe' as const,
     word_timestamps: false,
     diarization: false,
-    vad_filter: false,
+    vad_filter: true,
     batch_size: 24,
     length_penalty: 1,
     vad_onset: 0.5,
