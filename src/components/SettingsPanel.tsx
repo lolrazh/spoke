@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { motion, Variants } from "framer-motion";
+import { motion, Variants, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
 import {
@@ -434,26 +434,64 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* Tab Navigation - top bezel */}
         <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
           <div className="flex items-center justify-center px-6">
-            <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden">
+            <div className="flex items-center gap-1 border border-white/[0.08] rounded-full p-1">
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "settings"
-                  ? "bg-white/10 text-foreground"
+                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors duration-300 ${activeTab === "settings"
+                  ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
-                <SfIcon name="gearshape.fill" size={18} />
-                <span className="text-[10px] text-muted-foreground">Settings</span>
+                {activeTab === "settings" && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute inset-0 bg-white/10 rounded-full"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <SfIcon name="gearshape.fill" size={14} className="relative z-10 transition-colors duration-300" />
+                <AnimatePresence mode="wait">
+                  {activeTab === "settings" && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "auto" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
+                    >
+                      Settings
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
               <button
                 onClick={() => setActiveTab("history")}
-                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "history"
-                  ? "bg-white/10 text-foreground"
+                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full transition-colors duration-300 ${activeTab === "history"
+                  ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
-                <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
-                <span className="text-[10px] text-muted-foreground">History</span>
+                {activeTab === "history" && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute inset-0 bg-white/10 rounded-full"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={14} className="relative z-10 transition-colors duration-300" />
+                <AnimatePresence mode="wait">
+                  {activeTab === "history" && (
+                    <motion.span
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "auto" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
+                    >
+                      History
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
             </div>
           </div>
