@@ -447,9 +447,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <motion.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-white/10 rounded-full"
-                    initial={{ scale: 0.95 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   />
                 )}
                 <span className="relative z-10 flex items-center justify-center" style={{ transition: 'color 200ms ease-out' }}>
@@ -488,9 +486,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <motion.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-white/10 rounded-full"
-                    initial={{ scale: 0.95 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 500, damping: 28, mass: 0.8 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   />
                 )}
                 <span className="relative z-10 flex items-center justify-center" style={{ transition: 'color 200ms ease-out' }}>
