@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STT_DEFAULT_MODEL, STT_DEFAULT_PROVIDER } from '../../config';
+import { SIMPLISMART_STT_MODEL, STT_DEFAULT_MODEL, STT_DEFAULT_PROVIDER } from '../../config';
 
 vi.mock('./providers/groq', () => ({
   transcribeWav: vi.fn().mockResolvedValue({
@@ -22,14 +22,23 @@ vi.mock('./providers/deepgram', () => ({
   }),
 }));
 
+vi.mock('./providers/simplismart', () => ({
+  transcribeWav: vi.fn().mockResolvedValue({
+    text: 'simplismart-text',
+    timings: { startAt: 3, headersAt: 6, bodyDoneAt: 9 },
+  }),
+}));
+
 import { transcribeWav } from '.';
 import { transcribeWav as groqTranscribe } from './providers/groq';
 import { transcribeWav as fireworksTranscribe } from './providers/fireworks';
 import { transcribeWav as deepgramTranscribe } from './providers/deepgram';
+import { transcribeWav as simplismartTranscribe } from './providers/simplismart';
 
 const groqMock = vi.mocked(groqTranscribe);
 const fireworksMock = vi.mocked(fireworksTranscribe);
 const deepgramMock = vi.mocked(deepgramTranscribe);
+const simplismartMock = vi.mocked(simplismartTranscribe);
 
 describe('services/stt index transcribeWav', () => {
   beforeEach(() => {
@@ -45,6 +54,7 @@ describe('services/stt index transcribeWav', () => {
       expect(groqMock).toHaveBeenCalledTimes(1);
       expect(fireworksMock).not.toHaveBeenCalled();
       expect(deepgramMock).not.toHaveBeenCalled();
+      expect(simplismartMock).not.toHaveBeenCalled();
       const [, , opts] = groqMock.mock.calls[0];
       expect(opts.model).toBe(STT_DEFAULT_MODEL);
       expect(opts.language).toBeTruthy();
@@ -53,11 +63,24 @@ describe('services/stt index transcribeWav', () => {
       expect(fireworksMock).toHaveBeenCalledTimes(1);
       expect(groqMock).not.toHaveBeenCalled();
       expect(deepgramMock).not.toHaveBeenCalled();
+      expect(simplismartMock).not.toHaveBeenCalled();
     } else {
-      expect(result.text).toBe('deepgram-text');
-      expect(deepgramMock).toHaveBeenCalledTimes(1);
-      expect(groqMock).not.toHaveBeenCalled();
-      expect(fireworksMock).not.toHaveBeenCalled();
+      if (STT_DEFAULT_PROVIDER === 'deepgram') {
+        expect(result.text).toBe('deepgram-text');
+        expect(deepgramMock).toHaveBeenCalledTimes(1);
+        expect(groqMock).not.toHaveBeenCalled();
+        expect(fireworksMock).not.toHaveBeenCalled();
+        expect(simplismartMock).not.toHaveBeenCalled();
+      } else {
+        expect(result.text).toBe('simplismart-text');
+        expect(simplismartMock).toHaveBeenCalledTimes(1);
+        expect(groqMock).not.toHaveBeenCalled();
+        expect(fireworksMock).not.toHaveBeenCalled();
+        expect(deepgramMock).not.toHaveBeenCalled();
+        const [, , opts] = simplismartMock.mock.calls[0];
+        expect(opts.model).toBe(SIMPLISMART_STT_MODEL);
+        expect(opts.language).toBeTruthy();
+      }
     }
   });
 
