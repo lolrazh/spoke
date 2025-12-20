@@ -1335,23 +1335,35 @@ export function useTranscription(
       if (alreadyConnected) {
         console.log('[SF] ✅ Using pre-connected WebSocket (zero auth latency)');
       } else {
-        console.log('[SF] ⏳ WebSocket not pre-connected, establishing connection now...');
+        console.log('[SF] ⏳ WebSocket not pre-connected, establishing connection in parallel...');
       }
 
-      // Establish WebSocket connection and wait for auth
-      // NOTE: Retry logic removed - singleflight prevents parallel connections,
-      // and preConnect() handles background warm-up with retryWithBackoff.
-      // If connection fails here, let it surface to the user for manual retry.
-      await ensureStreamingSocket();
-      if (isStale()) return;
-
-      // Auth succeeded! Now we can start recording
+      // START RECORDING IMMEDIATELY (don't wait for auth)
+      // Auth will complete in background; frames queue in sendQueueRef until ready
       startingRef.current = false; // Clear starting flag - we're now recording
       setRecording(true);
       resumeAudioWorklet();
 
-      // Send the start message
-      trySendStartMessage();
+      // Establish WebSocket connection in PARALLEL (fire-and-forget)
+      // Auth happens in background; queue will buffer frames until wsReadyRef = true
+      // Typical case: auth completes in 10-50ms (before user finishes first word)
+      // Cold start: auth completes in 500ms (while user still speaking)
+      ensureStreamingSocket().catch((err) => {
+        // Auth failed - stop recording and clear buffered frames
+        if (isStale()) return;
+
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[SF] Auth failed during parallel attempt:', errorMessage);
+
+        // Stop recording if still active
+        setRecording(false);
+        // Clear the queue (auth failed, don't send buffered frames)
+        sendQueueRef.current = [];
+        sendQueueBytesRef.current = 0;
+
+        // Error state is already set by ensureStreamingSocket close handlers
+        // (authError and error state are set in the WebSocket close event)
+      });
       // Create AudioContext at device/hardware rate and attach downsampler worklet
       audioContextRef.current = new AudioContext();
       // Resolve worklet URL for both dev (http://localhost) and prod (file://)
