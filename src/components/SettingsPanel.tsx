@@ -438,7 +438,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("settings")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full min-w-[44px] ${activeTab === "settings"
+                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "settings"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -453,17 +453,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[15px]" style={{ transition: 'color 200ms ease-out' }}>
-                  <SfIcon name="gearshape.fill" size={15} />
+                <span className="relative z-10 flex items-center justify-center w-[17px]" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="gearshape.fill" size={17} />
                 </span>
                 <motion.span
                   animate={{
                     opacity: activeTab === "settings" ? 1 : 0,
                     width: activeTab === "settings" ? "auto" : 0,
+                    marginLeft: activeTab === "settings" ? "8px" : "0px"
                   }}
                   transition={{
                     opacity: { duration: activeTab === "settings" ? 0.25 : 0.12 },
-                    width: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                    width: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
+                    marginLeft: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
                   }}
                   className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                 >
@@ -473,7 +475,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <button
                 onClick={() => setActiveTab("history")}
                 style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full min-w-[44px] ${activeTab === "history"
+                className={`relative flex items-center gap-0 p-2.5 rounded-full min-w-[48px] ${activeTab === "history"
                   ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
@@ -488,17 +490,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[15px]" style={{ transition: 'color 200ms ease-out' }}>
-                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={15} />
+                <span className="relative z-10 flex items-center justify-center w-[17px]" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={17} />
                 </span>
                 <motion.span
                   animate={{
                     opacity: activeTab === "history" ? 1 : 0,
                     width: activeTab === "history" ? "auto" : 0,
+                    marginLeft: activeTab === "history" ? "8px" : "0px"
                   }}
                   transition={{
                     opacity: { duration: activeTab === "history" ? 0.25 : 0.12 },
-                    width: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                    width: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
+                    marginLeft: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
                   }}
                   className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                 >
