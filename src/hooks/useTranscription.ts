@@ -2100,11 +2100,40 @@ export function useTranscription(
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
-        if (window.devFlags?.devConsoleLogs) {
-          console.error("[SF] Transcribe exception", {
-            error: (err as Error)?.message,
+        // Always log to console for immediate debugging
+        console.error("[SF] Transcribe exception", {
+          error: (err as Error)?.message,
+          stack: (err as Error)?.stack,
+          traceId: metricsRef.current?.sessionId,
+        });
+
+        // Capture to Sentry with context
+        try {
+          const Sentry = await import("@sentry/electron/renderer");
+          Sentry.captureException(err, {
+            level: "error",
+            tags: {
+              component: "useTranscription",
+              operation: "stop",
+            },
+            contexts: {
+              session: {
+                trace_id: metricsRef.current?.sessionId ?? "unknown",
+                recording_was_active: recording,
+                ws_state: wsRef.current?.readyState ?? null,
+              },
+              timing: {
+                ptt_down_ms: metricsRef.current?.pttDownMs ?? null,
+                stop_invoked_ms: metricsRef.current?.stopInvokedMs ?? null,
+                frames_produced: metricsRef.current?.framesProduced ?? 0,
+                bytes_produced: metricsRef.current?.bytesProduced ?? 0,
+              },
+            },
           });
+        } catch (sentryErr) {
+          console.warn("[SF] Failed to capture error to Sentry:", sentryErr);
         }
+
         setError((err as Error).message);
       }
     } finally {
