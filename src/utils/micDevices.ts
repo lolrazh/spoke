@@ -12,7 +12,7 @@ export function initMicDevicesBridge() {
   });
 
   // Listen for selection change from main
-  window.mic?.onSelectedChanged(({ id }) => {
+  window.mic?.onSelectedChanged(() => {
     // Selection changed
   });
 

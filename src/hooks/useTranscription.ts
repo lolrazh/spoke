@@ -128,7 +128,6 @@ export function useTranscription(
   const flushTimerRef = useRef<number | null>(null);
   // Streaming is always enabled
   const startedMsRef = useRef<number>(0);
-  const wsEndpointLoggedRef = useRef<boolean>(false);
   // Metrics
   const metricsRef = useRef<{
     sessionId: string;
@@ -200,7 +199,6 @@ export function useTranscription(
   const sttPromptRef = useRef<string>(
     buildSTTPrompt({ identity: identityRef.current })
   );
-  const lastLoggedPromptRef = useRef<string | null>(null);
 
   const buildSelectionPayload = useCallback(
     (snapshot: SelectionInspectSnapshot | null): SelectionSnapshotPayload | null => {
@@ -265,12 +263,6 @@ export function useTranscription(
       };
       const prompt = buildSTTPrompt({ identity: identityRef.current });
       sttPromptRef.current = prompt;
-      if (lastLoggedPromptRef.current !== prompt) {
-        lastLoggedPromptRef.current = prompt;
-        try {
-          // STT prompt configured
-        } catch { }
-      }
     });
     initUserIdentity().catch((): null => null);
     return () => {
@@ -345,12 +337,6 @@ export function useTranscription(
       if (name) startPayload.identity.name = name;
       if (email) startPayload.identity.email = email;
     }
-
-    try {
-      if (sttPromptRef.current) {
-        // Using STT prompt
-      }
-    } catch { }
 
     try {
       ws.send(JSON.stringify(startPayload));
@@ -543,12 +529,6 @@ export function useTranscription(
       }
 
       const wsUrl = getTranscribeWsUrl();
-      if (!wsEndpointLoggedRef.current) {
-        try {
-          // WS endpoint configured
-        } catch { }
-        wsEndpointLoggedRef.current = true;
-      }
       const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
@@ -952,10 +932,9 @@ export function useTranscription(
       // Send to main process with a small delay to ensure tray is ready
       setTimeout(() => {
         if (window.mic?.updateDevices) {
-          console.log(
-            "[useTranscription] Sending devices to main process:",
-            audioInputs,
-          );
+          if (window.devFlags?.devConsoleLogs) {
+            console.log("[useTranscription] Sending devices to main process:", audioInputs);
+          }
           window.mic.updateDevices(audioInputs, selectedMicId);
         }
       }, 500);
@@ -973,9 +952,9 @@ export function useTranscription(
 
     // Listen for device changes (plug/unplug)
     const handleDeviceChange = () => {
-      console.log(
-        "[useTranscription] Device change detected, re-enumerating...",
-      );
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Device change detected, re-enumerating...");
+      }
       // Add a small delay to let the system settle after device changes
       setTimeout(() => {
         enumerateAndSendDevices();
@@ -1009,9 +988,9 @@ export function useTranscription(
     if (!window.mic?.onRefreshRequest) return;
 
     const unsubscribe = window.mic.onRefreshRequest(() => {
-      console.log(
-        "[useTranscription] ✅ Refresh devices requested from main process - executing refresh...",
-      );
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Refresh devices requested from main process");
+      }
       if (autoEnumerateDevices) {
         enumerateAndSendDevices();
       }
@@ -1023,7 +1002,9 @@ export function useTranscription(
   // Monitor network connectivity
   useEffect(() => {
     const handleOnline = () => {
-      console.log("[useTranscription] Network connection restored");
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Network connection restored");
+      }
       // Clear any network-related errors when coming back online
       if (error && (error.includes("connection") || error.includes("internet"))) {
         setError(null);
@@ -1035,7 +1016,9 @@ export function useTranscription(
     };
 
     const handleOffline = () => {
-      console.log("[useTranscription] Network connection lost");
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Network connection lost");
+      }
       const networkError = detectNetworkError();
       if (networkError) {
         logError(networkError, "[useTranscription] Network");
@@ -1075,10 +1058,12 @@ export function useTranscription(
           };
         }
 
-        console.log(
-          "[useTranscription] Opening microphone stream with constraints:",
-          constraints,
-        );
+        if (window.devFlags?.devConsoleLogs) {
+          console.log(
+            "[useTranscription] Opening microphone stream with constraints:",
+            constraints,
+          );
+        }
         streamRef.current =
           await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -1335,9 +1320,13 @@ export function useTranscription(
       // Check if we already have an authenticated WebSocket from pre-connect
       const alreadyConnected = wsRef.current && wsAuthenticatedRef.current && wsReadyRef.current;
       if (alreadyConnected) {
-        console.log('[SF] ✅ Using pre-connected WebSocket (zero auth latency)');
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[SF] ✅ Using pre-connected WebSocket (zero auth latency)");
+        }
       } else {
-        console.log('[SF] ⏳ WebSocket not pre-connected, establishing connection in parallel...');
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[SF] ⏳ WebSocket not pre-connected, establishing connection in parallel...");
+        }
       }
 
       // START RECORDING IMMEDIATELY (don't wait for auth)
@@ -1506,13 +1495,11 @@ export function useTranscription(
       ensureStreamingSocket();
 
       if (window.devFlags?.devConsoleLogs) {
-        if (window.devFlags?.devConsoleLogs) {
-          console.info("[SF] AudioContext (PCM capture)", {
-            actualRate: audioContextRef.current.sampleRate,
-            targetRate: TARGET_SAMPLE_RATE,
-            samplesPerChunk: SAMPLES_PER_CHUNK,
-          });
-        }
+        console.info("[SF] AudioContext (PCM capture)", {
+          actualRate: audioContextRef.current.sampleRate,
+          targetRate: TARGET_SAMPLE_RATE,
+          samplesPerChunk: SAMPLES_PER_CHUNK,
+        });
       }
     } catch (err) {
       startingRef.current = false; // Clear starting flag on error
@@ -1554,7 +1541,9 @@ export function useTranscription(
     // Handle case where stop() is called while start() is in-flight (auth pending)
     // This happens when user double-taps quickly during cold start
     if (startingRef.current) {
-      console.log('[SF] Cancelling in-flight start attempt');
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[SF] Cancelling in-flight start attempt");
+      }
       startingRef.current = false;
       startTokenRef.current += 1; // invalidate any pending async start continuation
       // Best-effort cleanup so we don't leave a worker session started or mic active.
@@ -1719,10 +1708,10 @@ export function useTranscription(
                       // Worker sends wordCount in the response - we use it for instant UI feedback
                       if (msg.wordCount && msg.wordCount > 0) {
                         try {
-                          const { incrementQuotaLocal } = await import('../state/quotaCache');
+                          const { incrementQuotaLocal } = await import("../state/quotaCache");
                           incrementQuotaLocal(msg.wordCount); // UI update only
                         } catch (err) {
-                          console.warn('[useTranscription] Quota UI update failed:', err);
+                          console.warn("[useTranscription] Quota UI update failed:", err);
                         }
                       }
                     }

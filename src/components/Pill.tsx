@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useMemo, useEffect } from "react";
+import React, { useLayoutEffect, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SettingsPanel from "./SettingsPanel";
@@ -99,10 +99,6 @@ const Pill: React.FC<PillProps> = ({
   }, [pillState, pillContext, onMetrics]);
 
   const isShowingNotification = pillState === "NOTIFICATION";
-  const isListening = pillState === "LISTENING";
-  const isResting = pillState === "IDLE";
-  const isProcessing = pillState === "PROCESSING";
-  const isHovered = pillState === "HOVER_PREVIEW";
   const isExpanded = pillState === "EXPANDED";
 
   // (Removed noisy state logging)
