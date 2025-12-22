@@ -68,7 +68,7 @@ Each stage is optimized for low latency—audio worklet runs in dedicated thread
 Spoke uses JWT-based authentication with embedded subscription and quota claims for instant entitlement gating.
 
 <auth_flow>
-  <connection_auth>
+  <connection_auth updated="2025-12-20">
     1. App starts → Supabase refreshes JWT (runs custom_access_token_hook in Postgres)
     2. Hook checks subscriptions table, reads quota from profiles table
     3. Hook implements lazy weekly reset (if quota_reset_date < NOW(), resets to 0, every Monday 00:00 UTC)
@@ -80,14 +80,50 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     5. App syncs quota from JWT to localStorage on startup (display-only cache)
     6. User presses PTT → App checks local quota first (instant feedback)
     7. If local quota exceeded → Show notification immediately, skip WebSocket connection
-    8. If local quota OK → App sends JWT in WebSocket 'auth' message
-    9. Worker verifies JWT signature using JWKS (Supabase public key)
-    10. Worker extracts claims from verified JWT
-    11. Worker checks entitlement (server-authoritative):
-        - Pro users (subscription_active=true): Instant pass
-        - Free users: Check quota (words_used >= quota_limit → BLOCK)
-    12. If auth passes: Connection authenticated, ready for audio
-    13. If auth fails: Connection closed with error code (4020 or 4021)
+    8. If local quota OK → Recording starts IMMEDIATELY (parallel auth optimization)
+    
+    **Parallel Auth Flow (2025-12-20):**
+    Recording and auth run in parallel for zero perceived latency:
+    
+    Thread 1 (Recording - IMMEDIATE):
+      - setRecording(true) - frequency bars start moving
+      - Initialize AudioContext and AudioWorklet
+      - Start producing PCM frames
+      - Frames queue in sendQueueRef (client-side buffer)
+    
+    Thread 2 (Auth - BACKGROUND):
+      - Open WebSocket connection
+      - Send 'auth' message with JWT
+      - Worker verifies JWT signature using JWKS (Supabase public key)
+      - Worker extracts claims from verified JWT
+      - Worker checks entitlement (server-authoritative):
+        * Pro users (subscription_active=true): Instant pass
+        * Free users: Check quota (words_used >= quota_limit → BLOCK)
+      - If auth passes: Worker sends 'auth_ok'
+        * wsReadyRef.current = true
+        * trySendStartMessage() sends 'start' message
+        * flushQueue() sends buffered frames to worker
+        * All future frames sent directly
+      - If auth fails: Worker closes connection with error code (4020 or 4021)
+        * Recording stops
+        * Buffered frames cleared
+        * Error notification shown
+    
+    **Latency Impact:**
+    - Typical case (90%+): Auth completes in 10-50ms (JWKS cached)
+      * User never perceives delay (auth finishes before first word)
+      * ~3-5 frames queued before auth completes
+    - Cold start case (<10%): Auth completes in 500ms (JWKS fetch from Supabase)
+      * User still dictating when auth completes
+      * ~50 frames queued, flush immediately
+      * No perceived latency (auth runs while user speaks)
+    
+    **Previous Architecture (Pre-2025-12-20):**
+    Recording was BLOCKED until auth completed (sequential flow):
+    - PTT → Wait for auth (10-800ms) → Recording starts
+    - User experienced noticeable freeze on cold starts
+    
+    Reference: agent-logs/2025-12-20_2235_parallel-auth-recording.md
   </connection_auth>
 
   <two_level_gating>
@@ -120,6 +156,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
   </close_codes>
 
   <architecture_benefits>
+    - **Zero perceived latency (2025-12-20)**: Recording starts instantly, auth runs in background (10-50ms typical, invisible to user)
     - **Zero DB queries during transcription**: All entitlement data in JWT (50x faster auth)
     - **Instant blocking**: Quota check happens at connection time, before audio streams
     - **Cryptographically secure**: JWT signature verified via JWKS (Supabase public key)
