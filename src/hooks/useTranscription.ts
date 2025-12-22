@@ -8,7 +8,7 @@ import type {
   SelectionSnapshotPayload,
 } from "../types/protocol";
 import { playToggleOff } from "../utils/audioFeedback";
-import { ClientSessionEventBuilder } from "../utils/clientSessionLogger";
+import { ClientSessionEventBuilder, type ClientSessionOutcome } from "../utils/clientSessionLogger";
 import {
   MICROPHONE_PREFERRED_RATE,
   TARGET_SAMPLE_RATE,
@@ -1313,9 +1313,11 @@ export function useTranscription(
           return;
         }
 
-        console.log(
-          `[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB) in ${Math.round(screenshotDurationMs)}ms client-side, queuing for worker...`,
-        );
+        if (window.devFlags?.devConsoleLogs) {
+          console.log(
+            `[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB) in ${Math.round(screenshotDurationMs)}ms client-side, queuing for worker...`,
+          );
+        }
 
         // Queue screenshot for worker; it'll be sent once WS is ready.
         pendingOcrImageBase64Ref.current = result.imageBase64;
@@ -1882,10 +1884,8 @@ export function useTranscription(
                               m.framesForwarded
                             )
                             .setServerMetrics({
-                              worker_lifetime_ms: (worker as any)?.workerLifetimeMs ?? undefined,
                               stt_ms: sttMs ?? undefined,
                               llm_ms: worker?.llm?.totalMs ?? undefined,
-                              audio_streaming_ms: (worker as any)?.audioStreamingMs ?? undefined,
                             })
                             .setOutcome('success', {
                               text: msg.text,
@@ -1911,9 +1911,22 @@ export function useTranscription(
                   const appError = parseServerError(serverError);
                   logError(appError, "[useTranscription] Server");
 
-                  // Emit error event
+                  // Emit error event - map to available outcome types
+                  const msgLower = appError.message?.toLowerCase() || '';
+                  let errorOutcome: ClientSessionOutcome = 'error_unknown';
+
+                  if (msgLower.includes('subscription') || msgLower.includes('auth') || msgLower.includes('sign in')) {
+                    errorOutcome = 'error_auth';
+                  } else if (msgLower.includes('timeout')) {
+                    errorOutcome = 'error_timeout';
+                  } else if (msgLower.includes('network') || msgLower.includes('connection')) {
+                    errorOutcome = 'error_network';
+                  } else if (msgLower.includes('websocket') || msgLower.includes('ws')) {
+                    errorOutcome = 'error_ws_failed';
+                  }
+
                   sessionEventRef.current?.setOutcome(
-                    appError.message?.toLowerCase().includes('subscription') ? 'error_auth' : 'error_unknown',
+                    errorOutcome,
                     undefined,
                     { message: appError.message, type: String(appError.code) }
                   ).emit();
