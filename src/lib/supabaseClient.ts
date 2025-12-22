@@ -316,16 +316,22 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export async function signOut(): Promise<void> {
+  console.log("[supabaseClient] signOut() called");
   const supabase = await getSupabase();
-  if (!supabase) return;
+  if (!supabase) {
+    console.warn("[supabaseClient] signOut() - no supabase client");
+    return;
+  }
   await supabase.auth.signOut();
+  console.log("[supabaseClient] Supabase signOut() complete");
 
   // Clear cached user identity on sign-out
   try {
     const { clearUserIdentityCache } = await import("../state/userIdentity");
+    console.log("[supabaseClient] Calling clearUserIdentityCache()");
     clearUserIdentityCache();
-  } catch {
-    // Ignore if import fails
+  } catch (err) {
+    console.error("[supabaseClient] Failed to clear user identity cache:", err);
   }
 }
 
