@@ -500,7 +500,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                               Usage
                             </span>
                             <span className="text-[9px] text-white/30 font-normal leading-none">
-                              resets monthly
+                              Resets Monday
                             </span>
                           </div>
                           <span className="text-[11px] text-white/50 tabular-nums">

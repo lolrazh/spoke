@@ -551,15 +551,15 @@ const AppInner: React.FC = () => {
                   // Update local cache with quota and subscription status
                   const { updateQuotaFromServer } = await import('../state/quotaCache');
                   updateQuotaFromServer({
-                    wordsUsed: typeof payload.words_used_this_month === 'number'
-                      ? payload.words_used_this_month
+                    wordsUsed: typeof payload.words_used_this_week === 'number'
+                      ? payload.words_used_this_week
                       : 0,
                     resetDate: payload.quota_reset_date || null,
                     isPro,
                   });
                   console.log('[App] Subscription & quota synced from JWT:', {
                     isPro,
-                    wordsUsed: payload.words_used_this_month,
+                    wordsUsed: payload.words_used_this_week,
                     resetDate: payload.quota_reset_date
                   });
                 } catch (e) {

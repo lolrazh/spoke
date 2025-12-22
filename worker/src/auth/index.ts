@@ -30,7 +30,7 @@ export const WS_CLOSE_CODES = {
   UNAUTHORIZED: 4010,
   /** Valid user but no active subscription */
   PAYMENT_REQUIRED: 4020,
-  /** Free tier user exceeded monthly quota */
+  /** Free tier user exceeded weekly quota */
   QUOTA_EXCEEDED: 4021,
   /** Auth message timeout (no auth message received within timeout) */
   AUTH_TIMEOUT: 4011,
