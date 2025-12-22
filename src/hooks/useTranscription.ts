@@ -1851,7 +1851,7 @@ export function useTranscription(
                         const sttMs = (() => {
                           const total =
                             worker?.stt?.totalMs ?? worker?.groq?.totalMs ?? null;
-                          return total != null ? Math.round(total) : statusToFinalRecvMs;
+                          return total != null ? Math.round(total) : null;
                         })();
                         // Compute deliver latency without relying on cross-host clock sync:
                         // estimate = (finalRecv - statusRecv) - sttMs
@@ -1885,7 +1885,7 @@ export function useTranscription(
                             )
                             .setServerMetrics({
                               stt_ms: sttMs ?? undefined,
-                              llm_ms: worker?.llm?.totalMs ?? undefined,
+                              llm_ms: worker?.llm?.totalMs != null ? Math.round(worker.llm.totalMs) : undefined,
                             })
                             .setOutcome('success', {
                               text: msg.text,
