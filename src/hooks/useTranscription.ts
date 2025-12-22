@@ -1656,6 +1656,7 @@ export function useTranscription(
           const onAbort = () => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome('cancelled').emit();
               cleanup(true);
               // Inform server to drop the session if the socket is still open
               try {
@@ -1947,6 +1948,11 @@ export function useTranscription(
           const onError = () => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_ws_failed',
+                undefined,
+                { message: 'WebSocket connection error' }
+              ).emit();
               cleanup();
               reject(new Error("WebSocket connection error"));
             }
@@ -1954,6 +1960,11 @@ export function useTranscription(
           const onClose = () => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_ws_closed',
+                undefined,
+                { message: 'WebSocket closed before final' }
+              ).emit();
               cleanup();
               reject(new Error("WebSocket closed before final"));
             }
@@ -1968,6 +1979,11 @@ export function useTranscription(
           const timeoutId = setTimeout(() => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_timeout',
+                undefined,
+                { message: 'Timed out waiting for transcription result' }
+              ).emit();
               cleanup();
               reject(new Error("Timed out waiting for transcription result"));
             }
@@ -2137,38 +2153,13 @@ export function useTranscription(
         ).emit();
 
         // Always log to console for immediate debugging
-        console.error("[SF] Transcribe exception", {
+        console.error("[Session] Transcribe exception", {
           error: (err as Error)?.message,
           stack: (err as Error)?.stack,
           traceId: metricsRef.current?.sessionId,
         });
 
-        // Capture to Sentry with context
-        try {
-          const Sentry = await import("@sentry/electron/renderer");
-          Sentry.captureException(err, {
-            level: "error",
-            tags: {
-              component: "useTranscription",
-              operation: "stop",
-            },
-            contexts: {
-              session: {
-                trace_id: metricsRef.current?.sessionId ?? "unknown",
-                recording_was_active: recording,
-                ws_state: wsRef.current?.readyState ?? null,
-              },
-              timing: {
-                ptt_down_ms: metricsRef.current?.pttDownMs ?? null,
-                stop_invoked_ms: metricsRef.current?.stopInvokedMs ?? null,
-                frames_produced: metricsRef.current?.framesProduced ?? 0,
-                bytes_produced: metricsRef.current?.bytesProduced ?? 0,
-              },
-            },
-          });
-        } catch (sentryErr) {
-          console.warn("[SF] Failed to capture error to Sentry:", sentryErr);
-        }
+        // Note: Sentry capture is handled automatically by the wide event emission above
 
         setError((err as Error).message);
       }
