@@ -158,7 +158,7 @@ as $$
 
     -- For free tier users, add quota claims
     if has_subscription = false then
-      select words_used_this_month, quota_reset_date
+      select words_used_this_week, quota_reset_date
       into words_used, reset_date
       from public.profiles
       where id = (event->>'user_id')::uuid;
@@ -166,14 +166,14 @@ as $$
       -- Lazy weekly reset (Monday 00:00 UTC)
       if reset_date is null or reset_date < now() then
         update public.profiles
-        set words_used_this_month = 0,
-            quota_reset_date = date_trunc('week', now() + interval '1 week')  -- Note: user updates 'month' to 'week'
+        set words_used_this_week = 0,
+            quota_reset_date = date_trunc('week', now() + interval '1 week')
         where id = (event->>'user_id')::uuid;
         words_used := 0;
       end if;
 
-      claims := jsonb_set(claims, '{words_used_this_month}', to_jsonb(coalesce(words_used, 0)));
-      claims := jsonb_set(claims, '{quota_limit}', to_jsonb(1000));  -- Note: user updates this from 2000 to 1000
+      claims := jsonb_set(claims, '{words_used_this_week}', to_jsonb(coalesce(words_used, 0)));
+      claims := jsonb_set(claims, '{quota_limit}', to_jsonb(1000));
     end if;
 
     event := jsonb_set(event, '{claims}', claims);
@@ -200,7 +200,7 @@ $$;
   sub: "user-uuid",
   email: "user@example.com",
   subscription_active: false,
-  words_used_this_month: 342,
+  words_used_this_week: 342,
   quota_limit: 1000,
   quota_reset_date: "2025-01-06T00:00:00Z"  // Next Monday 00:00 UTC
 }
@@ -248,7 +248,7 @@ export async function verifySupabaseJwt(
   });
 
   const subscriptionActive = payload.subscription_active === true;
-  const wordsUsedThisMonth = payload.words_used_this_month;
+  const wordsUsedThisWeek = payload.words_used_this_week;
   const quotaLimit = payload.quota_limit;
 
   return {
@@ -276,7 +276,7 @@ if (!jwtResult.valid) {
 
 // Pro users bypass quota check
 if (!jwtResult.subscriptionActive) {
-  const wordsUsed = jwtResult.wordsUsedThisMonth ?? 0;
+  const wordsUsed = jwtResult.wordsUsedThisWeek ?? 0;
   const quotaLimit = jwtResult.quotaLimit ?? 1000;
 
   if (wordsUsed >= quotaLimit) {
@@ -355,8 +355,8 @@ Instead of cron jobs, reset happens on-demand in the auth hook:
 -- In custom_access_token_hook()
 if reset_date is null or reset_date < now() then
   update public.profiles
-  set words_used_this_month = 0,
-      quota_reset_date = date_trunc('week', now() + interval '1 week')  -- Note: user updates 'month' to 'week'
+  set words_used_this_week = 0,
+      quota_reset_date = date_trunc('week', now() + interval '1 week')
   where id = (event->>'user_id')::uuid;
 end if;
 ```
@@ -468,7 +468,7 @@ All auth failures normalized to user-friendly messages:
 | No token | "Sign in to start dictating." |
 | 4010 (expired) | "Session expired. Please sign in again." |
 | 4020 (no subscription) | "Upgrade to Pro for unlimited dictation." |
-| 4021 (quota) | "You've used your free words this month. Upgrade for unlimited." |
+| 4021 (quota) | "You've used your free words this week. Upgrade for unlimited." |
 
 ### Notification Reliability
 
@@ -678,7 +678,7 @@ npm run dev:local
 | Payment stuck in "pending" | Check Dodo dashboard for errors, verify test card |
 | Webhook not firing | Verify events selected in Dodo webhook config |
 | JWT claims not updating | Ensure auth hook is VOLATILE, call refreshSession() |
-| Quota showing 0 | Check database has words_used_this_month value |
+| Quota showing 0 | Check database has words_used_this_week value |
 | Billing portal fails | Check user has dodo_customer_id in profiles table |
 
 ---

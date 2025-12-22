@@ -69,8 +69,8 @@ User profile data tied to authentication. Each authenticated user gets one profi
     share_transcriptions (boolean, default false) - Dataset consent
     onboarding_done (boolean, default false) - Skip onboarding if true
     dodo_customer_id (text, nullable, unique) - Dodo Payments customer ID
-    words_used_this_month (integer, default 0) - Free tier quota tracking
-    quota_reset_date (timestamptz, nullable) - Monthly reset timestamp
+    words_used_this_week (integer, default 0) - Free tier quota tracking
+    quota_reset_date (timestamptz, nullable) - Weekly reset timestamp (Monday 00:00 UTC)
     created_at, updated_at (timestamptz)
   </columns>
 
@@ -97,7 +97,7 @@ User profile data tied to authentication. Each authenticated user gets one profi
 
   <quota_tracking>
     Free tier users have a 1000 word/week limit tracked server-side:
-    - words_used_this_month: Current usage counter (incremented by worker, reset weekly)
+    - words_used_this_week: Current usage counter (incremented by worker, reset weekly)
     - quota_reset_date: Next reset date (lazy weekly reset in auth hook, every Monday 00:00 UTC)
 
     Architecture (server-authoritative):
@@ -232,9 +232,9 @@ Database functions provide reusable logic for common operations.
     <signature>increment_quota_simple(p_user_id uuid, p_word_count integer) RETURNS void</signature>
     <type>Database function (VOLATILE, SECURITY DEFINER)</type>
     <action>
-      Increments words_used_this_month by p_word_count for the given user:
+      Increments words_used_this_week by p_word_count for the given user:
       UPDATE profiles
-      SET words_used_this_month = COALESCE(words_used_this_month, 0) + p_word_count
+      SET words_used_this_week = COALESCE(words_used_this_week, 0) + p_word_count
       WHERE id = p_user_id;
 
       Uses COALESCE to handle NULL initial values.
@@ -277,15 +277,15 @@ Database functions provide reusable logic for common operations.
       1. Checks if user has active subscription (status = 'active')
       2. Adds subscription_active claim to JWT (boolean)
       3. For FREE tier users only (no subscription):
-         - Reads words_used_this_month and quota_reset_date from profiles
+         - Reads words_used_this_week and quota_reset_date from profiles
          - Implements lazy weekly reset (every Monday 00:00 UTC):
            IF quota_reset_date IS NULL OR quota_reset_date &lt; NOW() THEN
-             - Reset words_used_this_month to 0
+             - Reset words_used_this_week to 0
              - Set quota_reset_date to start of next week (Monday)
              - Update profiles table with new values
          - Adds quota claims to JWT:
-           - words_used_this_month (integer)
-           - quota_limit (1000, hardcoded - you will update this to your preferred limit)
+           - words_used_this_week (integer)
+           - quota_limit (1000, hardcoded)
            - quota_reset_date (timestamptz, for debugging)
 
       Error handling: Returns event with just subscription_active on failure.
@@ -305,7 +305,7 @@ Database functions provide reusable logic for common operations.
       <file path="worker/src/auth/supabaseJwt.ts">
         verifySupabaseJwt() extracts claims from JWT:
         - subscriptionActive (boolean)
-        - wordsUsedThisMonth (number, free tier only)
+        - wordsUsedThisWeek (number, free tier only)
         - quotaLimit (number, free tier only)
       </file>
       <file path="worker/src/handlers/ws.ts">
@@ -329,7 +329,7 @@ Database functions provide reusable logic for common operations.
       - User opens app on Tuesday, Dec 24 (week after reset date)
       - JWT refresh triggers custom_access_token_hook()
       - Hook sees quota_reset_date (Dec 23 00:00 UTC) &lt; NOW() (Dec 24)
-      - Resets words_used_this_month to 0, sets quota_reset_date to Dec 30 (next Monday) 00:00 UTC
+      - Resets words_used_this_week to 0, sets quota_reset_date to Dec 30 (next Monday) 00:00 UTC
       - User starts fresh week with 1000 words
     </lazy_reset_logic>
     <security>
@@ -391,7 +391,7 @@ Client-side database operations live in `src/lib/supabaseClient.ts`.
   <function name="getProfileDetailed">
     <signature>async getProfileDetailed(): Promise&lt;{ok: true, data: ProfileRecord} | {ok: false, error: string}&gt;</signature>
     <description>
-      Returns current user's full profile including quota fields (words_used_this_month,
+      Returns current user's full profile including quota fields (words_used_this_week,
       quota_reset_date) and subscription info. Used for detailed profile views.
       Returns error-wrapped result for better error handling.
     </description>
@@ -455,7 +455,7 @@ Client-side database operations live in `src/lib/supabaseClient.ts`.
     SELECT
       id, email, display_name, avatar_url,
       onboarding_done, share_transcriptions,
-      words_used_this_month, quota_reset_date
+      words_used_this_week, quota_reset_date
     FROM profiles
     WHERE id = auth.uid()
   </query>
@@ -477,21 +477,21 @@ Client-side database operations live in `src/lib/supabaseClient.ts`.
 
     -- Function atomically updates:
     -- UPDATE profiles
-    -- SET words_used_this_month = COALESCE(words_used_this_month, 0) + $2
+    -- SET words_used_this_week = COALESCE(words_used_this_week, 0) + $2
     -- WHERE id = $1;
   </query>
 
   <query name="Check quota in auth hook">
     -- Runs inside custom_access_token_hook()
-    SELECT words_used_this_month, quota_reset_date
+    SELECT words_used_this_week, quota_reset_date
     FROM public.profiles
     WHERE id = (event->>'user_id')::uuid;
 
     -- If reset needed (when reset_date &lt; NOW()):
     UPDATE public.profiles
     SET
-      words_used_this_month = 0,
-      quota_reset_date = DATE_TRUNC('week', NOW() + INTERVAL '1 week')  -- Note: you will update 'month' to 'week'
+      words_used_this_week = 0,
+      quota_reset_date = DATE_TRUNC('week', NOW() + INTERVAL '1 week')
     WHERE id = (event->>'user_id')::uuid;
   </query>
 
@@ -542,7 +542,7 @@ Database schema is managed via Supabase migrations.
 
   <migration version="(unmigrated)" name="Free tier quota system">
     Added to profiles table:
-    - words_used_this_month (integer, default 0)
+    - words_used_this_week (integer, default 0)
     - quota_reset_date (timestamptz, nullable)
 
     Added functions:
@@ -617,7 +617,7 @@ The `custom_access_token_hook()` function must be registered in Supabase Auth se
   <description>
     This hook runs during JWT generation/refresh to add custom claims:
     - subscription_active: Whether user has active paid subscription
-    - words_used_this_month: Current quota usage (free tier only)
+    - words_used_this_week: Current quota usage (free tier only)
     - quota_limit: Weekly word limit (free tier only, hardcoded to 1000)
     - quota_reset_date: Next reset date (free tier only, every Monday 00:00 UTC)
   </description>
@@ -737,14 +737,14 @@ Comprehensive overview of the server-authoritative quota system.
 
     Logic:
     IF quota_reset_date IS NULL OR quota_reset_date < NOW() THEN
-      words_used_this_month = 0
+      words_used_this_week = 0
       quota_reset_date = DATE_TRUNC('week', NOW() + INTERVAL '1 week')  -- Next Monday
 
     Example timeline:
     - Monday Dec 16: User uses 300 words, quota_reset_date = Dec 23 00:00:00 UTC
     - Wednesday Dec 18: User uses 400 more words (total: 700)
     - Tuesday Dec 24: User opens app → JWT refresh → hook sees reset_date (Dec 23) < NOW() (Dec 24)
-    - Hook resets: words_used_this_month = 0, quota_reset_date = Dec 30 00:00:00 UTC (next Monday)
+    - Hook resets: words_used_this_week = 0, quota_reset_date = Dec 30 00:00:00 UTC (next Monday)
     - User now has 1000 words available for the new week
   </weekly_reset_strategy>
 
@@ -772,7 +772,7 @@ Comprehensive overview of the server-authoritative quota system.
 
 ### Quota Not Syncing from Database to JWT
 
-**Symptom**: Database shows correct `words_used_this_month`, but Worker logs show `wordsUsed: 0` from JWT claims.
+**Symptom**: Database shows correct `words_used_this_week`, but Worker logs show `wordsUsed: 0` from JWT claims.
 
 **Root Cause**: The `custom_access_token_hook()` function was defined as `STABLE`, which prohibits UPDATE operations in PostgreSQL. The lazy weekly reset logic (which writes to `profiles` table) was silently failing.
 
@@ -795,7 +795,7 @@ $function$;
 ```
 
 **Verification**:
-1. Check database: `SELECT words_used_this_month FROM profiles WHERE id = auth.uid();`
+1. Check database: `SELECT words_used_this_week FROM profiles WHERE id = auth.uid();`
 2. Force JWT refresh: `supabase.auth.refreshSession()` in app
 3. Check Worker logs for `wordsUsed` in JWT claims
 4. Check app localStorage: `localStorage.getItem('sf.quotaWordsUsed')`

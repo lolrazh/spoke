@@ -74,7 +74,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     3. Hook implements lazy weekly reset (if quota_reset_date < NOW(), resets to 0, every Monday 00:00 UTC)
     4. Hook adds claims to JWT:
        - subscription_active (boolean) - Pro tier status
-       - words_used_this_month (number) - Free tier usage (after reset if needed)
+       - words_used_this_week (number) - Free tier usage (after reset if needed)
        - quota_limit (number) - Free tier limit (1000 words/week)
        - quota_reset_date (timestamp) - Next reset date
     5. App syncs quota from JWT to localStorage on startup (display-only cache)
@@ -1148,7 +1148,7 @@ Transcription history is stored locally on the user's device—never in the data
 **Debugging Steps:**
 ```bash
 # 1. Check database truth
-SELECT words_used_this_month, quota_reset_date FROM profiles WHERE id = auth.uid();
+SELECT words_used_this_week, quota_reset_date FROM profiles WHERE id = auth.uid();
 
 # 2. Force JWT refresh in app (DevTools Console)
 await window.supabase.auth.refreshSession();
@@ -1176,7 +1176,7 @@ localStorage.getItem('sf.quotaLimit');
 - Added "Quota" to error pattern recognition in catch block
 - Enhanced pill reducer to handle quota error messages
 
-**Verification**: Set `localStorage.setItem('sf.quotaWordsUsed', '2000')` and try to dictate. Notification should appear immediately.
+**Verification**: Set `localStorage.setItem('sf.quotaWordsUsed', '1000')` and try to dictate. Notification should appear immediately.
 
 ---
 
