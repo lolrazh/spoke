@@ -24,7 +24,7 @@ try {
         name: cachedName,
         email: cachedEmail,
       };
-      console.log("[UserIdentity] Hydrated from cache:", { name: cachedName, email: cachedEmail });
+      // Cache hydrated
     }
   }
 } catch {
@@ -54,7 +54,7 @@ function emit(next: UserIdentity) {
         window.localStorage.removeItem(CACHE_KEY_EMAIL);
       }
 
-      console.log("[UserIdentity] Cache updated:", { name: sanitized.name, email: sanitized.email });
+      // Cache updated
     }
   } catch {
     // ignore storage failures
@@ -218,7 +218,7 @@ export function clearUserIdentityCache() {
       window.localStorage.removeItem(CACHE_KEY_EMAIL);
       // Remove legacy key for backward compatibility
       window.localStorage.removeItem("sf.lastUserEmail");
-      console.log("[UserIdentity] Cache cleared");
+      // Cache cleared
     }
   } catch {
     // ignore storage failures

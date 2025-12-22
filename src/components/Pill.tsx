@@ -105,11 +105,7 @@ const Pill: React.FC<PillProps> = ({
   const isHovered = pillState === "HOVER_PREVIEW";
   const isExpanded = pillState === "EXPANDED";
 
-  useEffect(() => {
-    console.log(
-      `[Pill] State: ${pillState}, isResting=${isResting}, isListening=${isListening}, isProcessing=${isProcessing}, isHovered=${isHovered}, isExpanded=${isExpanded}`,
-    );
-  }, [pillState, isResting, isListening, isProcessing, isHovered, isExpanded]);
+  // (Removed noisy state logging)
 
   // Track previous state to detect transitions into IDLE
   useEffect(() => {

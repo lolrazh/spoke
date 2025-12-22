@@ -215,7 +215,6 @@ type PillMetrics = {
 const usePillMachine = () => {
   const [machine, dispatch] = useReducer(
     (state: PillMachineState, event: PillEvent) => {
-      console.log(`[Reducer] Dispatching ${event.type}`);
       return pillReducer(state, event);
     },
     { state: "IDLE", context: {} },

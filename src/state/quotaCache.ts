@@ -71,12 +71,7 @@ try {
                 limit: QUOTA_LIMIT,
                 isPro: cachedIsPro === 'true',
             };
-            console.log('[QuotaCache] Hydrated from cache:', {
-                wordsUsed: quota.wordsUsed,
-                resetDate: quota.resetDate,
-                limit: quota.limit,
-                isPro: quota.isPro,
-            });
+            // Cache hydrated successfully
         }
     }
 } catch {
@@ -124,11 +119,7 @@ function emit(next: QuotaState) {
             // Also cache subscription status
             window.localStorage.setItem('sf.isPro', sanitized.isPro ? 'true' : 'false');
 
-            console.log('[QuotaCache] Cache updated:', {
-                wordsUsed: sanitized.wordsUsed,
-                resetDate: sanitized.resetDate,
-                isPro: sanitized.isPro,
-            });
+            // Cache updated
         }
     } catch {
         // Ignore storage failures
@@ -189,10 +180,7 @@ export function incrementQuotaLocal(wordCount: number): void {
         isPro: quota.isPro,
     });
 
-    console.log('[QuotaCache] Incremented locally (UI only):', {
-        added: wordCount,
-        total: nextWordsUsed,
-    });
+    // Quota incremented locally
 }
 
 // ============================================================================
@@ -208,7 +196,7 @@ export function initQuotaCache(): void {
     if (initialized) return;
 
     initialized = true;
-    console.log('[QuotaCache] Initialized (read-only UI cache)');
+    // Initialized
 }
 
 // ============================================================================
@@ -257,7 +245,7 @@ export function clearQuotaCache(): void {
             window.localStorage.removeItem(CACHE_KEY_RESET_DATE);
             window.localStorage.removeItem(CACHE_KEY_LAST_SYNCED);
             window.localStorage.removeItem('sf.isPro');
-            console.log('[QuotaCache] Cache cleared');
+            // Cache cleared
         }
     } catch {
         // Ignore storage failures
@@ -286,7 +274,7 @@ export function updateQuotaFromServer(serverQuota: {
     resetDate: string | null;
     isPro?: boolean;
 }): void {
-    console.log('[QuotaCache] Updating from server:', serverQuota);
+    // Updating from server
 
     emit({
         wordsUsed: serverQuota.wordsUsed,

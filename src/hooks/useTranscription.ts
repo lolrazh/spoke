@@ -268,7 +268,7 @@ export function useTranscription(
       if (lastLoggedPromptRef.current !== prompt) {
         lastLoggedPromptRef.current = prompt;
         try {
-          console.info("[SF] STT prompt", prompt);
+          // STT prompt configured
         } catch { }
       }
     });
@@ -348,7 +348,7 @@ export function useTranscription(
 
     try {
       if (sttPromptRef.current) {
-        console.info("[SF] Using STT prompt", sttPromptRef.current);
+        // Using STT prompt
       }
     } catch { }
 
@@ -545,7 +545,7 @@ export function useTranscription(
       const wsUrl = getTranscribeWsUrl();
       if (!wsEndpointLoggedRef.current) {
         try {
-          console.info("[SF] WS endpoint", { url: wsUrl });
+          // WS endpoint configured
         } catch { }
         wsEndpointLoggedRef.current = true;
       }
@@ -582,7 +582,7 @@ export function useTranscription(
                 traceId: metricsRef.current?.sessionId,
               }),
             );
-            console.info("[SF] Auth message sent");
+            // Auth message sent
           } catch (err) {
             console.error("[useTranscription] Failed to send auth message:", err);
             wsAuthPendingRef.current = false;
@@ -597,7 +597,7 @@ export function useTranscription(
 
             // Handle auth response
             if (msg.type === "auth_ok") {
-              console.info("[SF] Auth successful", { userId: msg.userId });
+              // Auth successful
               wsAuthenticatedRef.current = true;
               wsAuthPendingRef.current = false;
               wsReadyRef.current = true;
@@ -947,7 +947,7 @@ export function useTranscription(
           label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
         }));
 
-      console.log("[useTranscription] Found audio input devices:", audioInputs);
+      // Audio devices enumerated
 
       // Send to main process with a small delay to ensure tray is ready
       setTimeout(() => {
@@ -997,7 +997,7 @@ export function useTranscription(
     if (!window.mic?.onSelectedChanged) return;
 
     const unsubscribe = window.mic.onSelectedChanged(({ id }) => {
-      console.log("[useTranscription] Microphone selection changed to:", id);
+      // Microphone selection changed
       setSelectedMicId(id);
     });
 
@@ -1094,28 +1094,30 @@ export function useTranscription(
           const settings = track.getSettings();
           const capabilities = track.getCapabilities?.() || {};
 
-          console.log("[useTranscription] Actual audio track settings:", {
-            sampleRate: settings.sampleRate,
-            channelCount: settings.channelCount,
-            echoCancellation: settings.echoCancellation,
-            noiseSuppression: settings.noiseSuppression,
-            autoGainControl: settings.autoGainControl,
-            deviceId: settings.deviceId,
-            groupId: settings.groupId,
-          });
+          if (window.devFlags?.devConsoleLogs) {
+            console.log("[useTranscription] Actual audio track settings:", {
+              sampleRate: settings.sampleRate,
+              channelCount: settings.channelCount,
+              echoCancellation: settings.echoCancellation,
+              noiseSuppression: settings.noiseSuppression,
+              autoGainControl: settings.autoGainControl,
+              deviceId: settings.deviceId,
+              groupId: settings.groupId,
+            });
 
-          console.log("[useTranscription] Audio track capabilities:", {
-            sampleRate: capabilities.sampleRate,
-            channelCount: capabilities.channelCount,
-            echoCancellation: capabilities.echoCancellation,
-            noiseSuppression: capabilities.noiseSuppression,
-            autoGainControl: capabilities.autoGainControl,
-          });
+            console.log("[useTranscription] Audio track capabilities:", {
+              sampleRate: capabilities.sampleRate,
+              channelCount: capabilities.channelCount,
+              echoCancellation: capabilities.echoCancellation,
+              noiseSuppression: capabilities.noiseSuppression,
+              autoGainControl: capabilities.autoGainControl,
+            });
+          }
         }
 
         setReady(true);
         setError(null);
-        console.log("[useTranscription] Microphone stream opened successfully");
+        // Microphone stream opened
         return true;
       } catch (err) {
         console.error(
@@ -1504,11 +1506,13 @@ export function useTranscription(
       ensureStreamingSocket();
 
       if (window.devFlags?.devConsoleLogs) {
-        console.info("[SF] AudioContext (PCM capture)", {
-          actualRate: audioContextRef.current.sampleRate,
-          targetRate: TARGET_SAMPLE_RATE,
-          samplesPerChunk: SAMPLES_PER_CHUNK,
-        });
+        if (window.devFlags?.devConsoleLogs) {
+          console.info("[SF] AudioContext (PCM capture)", {
+            actualRate: audioContextRef.current.sampleRate,
+            targetRate: TARGET_SAMPLE_RATE,
+            samplesPerChunk: SAMPLES_PER_CHUNK,
+          });
+        }
       }
     } catch (err) {
       startingRef.current = false; // Clear starting flag on error
@@ -1676,11 +1680,7 @@ export function useTranscription(
                         ? performance.now()
                         : Date.now();
                 }
-                if (window.devFlags?.devConsoleLogs)
-                  console.info("[SF] Transcribe processing started");
-              } else if (msg.type === "llm_status" && msg.state === "llm_processing") {
-                if (window.devFlags?.devConsoleLogs)
-                  console.info("[SF] LLM post-process started");
+                // (Processing/LLM logs removed - were redundant with E2E log)
               } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
                 // Progressive UI update only; paste remains on final
                 setText((prev) => {
@@ -2312,7 +2312,7 @@ export function useTranscription(
     // Establish WebSocket connection and authenticate in background
     // Throws error for retry logic in App.tsx
     await ensureStreamingSocket();
-    console.info("[SF] Pre-connected to Worker successfully");
+    // Pre-connected to Worker successfully
   }, [ensureStreamingSocket]);
 
   return {
