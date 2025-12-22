@@ -22,6 +22,11 @@
 - If you change design tokens, UI components, or interaction patterns, update `docs/DESIGN.md` (tokens, examples, and any affected guidance).
 - If you change the transcription pipeline or worker protocol/behavior, update `docs/TRANSCRIPTION.md` accordingly.
 - If you change the release/update flow, update `docs/UPDATE_PIPELINE.md` and any README pointers.
+- If you change authentication flows, JWT claims, or Supabase integration, update `docs/AUTH.md`.
+- If you change database schema, RLS policies, or Supabase queries, update `docs/DATABASE.md`.
+- If you change payment/subscription logic (Dodo checkout, webhooks, tiers), update `docs/PAYMENTS.md`.
+- If you change permission flows (mic, accessibility, screen recording), update `docs/PERMISSIONS.md`.
+- If you change user metrics or tracking, update `docs/USER_METRICS.md`.
 - Reference the relevant `agent-logs/*` entry in your PR/notes for continuity.
 
 ## Updates & Releases
@@ -39,12 +44,25 @@
   - DMG stapled (optional but recommended for first installs): `xcrun stapler validate out/make/**/Spoke-<version>.dmg`
 
 ## Transcription & Worker (Overview)
-- End-to-end: mic capture → 16kHz PCM worklet → binary WS frames → Cloudflare Worker (PCM concat + WAV wrap) → Groq STT → optional LLM → final text → native insertion.
+- End-to-end: mic capture → 16kHz PCM worklet → binary WS frames → Cloudflare Worker (PCM concat + WAV wrap) → STT (default: Simplismart) → optional LLM (default: Baseten) → final text → native insertion.
 - Dev endpoints: `VITE_TRANSCRIBE_WS_URL=ws://127.0.0.1:8787/ws` (local), prod `wss://api.spoke.so/ws`.
 - Commands: run worker locally with `npm run dev:ws` (from `worker/`); start app pointing to local WS via `npm run dev:local`.
 - Key files (client): `src/hooks/useTranscription.ts` (pipeline + WS), `public/worklets/pcm16-downsampler.worklet.js` (resample), `src/utils/pcm.ts` (frame header), `src/config/audio.ts` (CHUNK_MS, POST_ROLL_MS, WS buffers), `src/config/vad.ts` + `src/utils/vad*` (gate-only VAD, optional).
-- Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/index.ts` + `worker/src/services/stt/providers/*` (STT), `worker/src/services/llm/{openai,groq,baseten}.ts` (optional LLM), `worker/src/config/runtime.ts` (env-driven provider/model/stream settings).
-- Environment: client `VITE_TRANSCRIBE_WS_URL`; worker STT `GROQ_API_KEY` / `FIREWORKS_API_KEY`; LLM supports `LLM_PROVIDER` (openai|groq|baseten), `LLM_MODEL`, `LLM_STREAM`, and keys `OPENAI_API_KEY` / `GROQ_API_KEY` / `BASETEN_API_KEY`. See `docs/TRANSCRIPTION.md` for the full matrix.
+- Key files (worker): `worker/src/handlers/ws.ts` (WS), `worker/src/ws/session.ts` (state), `worker/src/audio/codec.ts` (concat/wav), `worker/src/services/stt/index.ts` + `worker/src/services/stt/providers/*` (STT), `worker/src/services/llm/{baseten,groq,openai,openrouter,cerebras,simplismart}.ts` (LLM), `worker/src/services/ocr/` (screen context), `worker/src/config.ts` (canonical provider/model constants).
+- Environment: client `VITE_TRANSCRIBE_WS_URL`; worker STT keys `SIMPLISMART_API_KEY` (default), `GROQ_API_KEY`, `FIREWORKS_API_KEY`, `DEEPGRAM_API_KEY`; LLM keys `BASETEN_API_KEY` (default), `GROQ_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY`, `SIMPLISMART_API_KEY`. See `docs/TRANSCRIPTION.md` for the full matrix.
+
+### STT & LLM Providers
+- **STT Providers** (`STTProvider` type): `groq`, `fireworks`, `deepgram`, `simplismart` (default). Default model: `whisper-turbo` via Simplismart.
+- **LLM Providers** (`LLMProvider` type): `groq`, `openai`, `baseten` (default), `openrouter`, `cerebras`, `simplismart`. Default model: DeepSeek-V3.2 via Baseten.
+- **Edit Mode**: Uses separate models for text refinement. Default: `moonshotai/Kimi-K2-Instruct-0905` via Baseten for edit operations.
+- Provider/model configuration: `worker/src/config.ts` (constants) and `worker/src/config/runtime.ts` (env parsing).
+
+### OCR Screen Context
+- Optional screen capture for context-aware transcription (e.g., "fix the typo on screen").
+- Requires screen recording permission (gated, shows permission prompt).
+- OCR via Groq vision model (`meta-llama/llama-4-scout-17b-16e-instruct`).
+- Speech-gated: OCR only sent to worker after VAD detects speech (avoids wasting tokens on accidental hotkey taps).
+- Key files: `src/hooks/useTranscription.ts` (screenshot capture), `worker/src/services/ocr/` (vision extraction).
 
 ### PTT Gestures & Guards
 - Hold‑to‑speak: press Right Option ≥ 80 ms → start dictation; releasing stops.
@@ -109,6 +127,19 @@ When the user asks you to “log” or “write a log” for this session:
 - Secrets: Do not commit. Use `.env` (app) and `worker/.dev.vars` (worker) locally.
 - Sentry: Configure `VITE_SENTRY_DSN` and `VITE_SENTRY_ENVIRONMENT`.
 - Preload: Add renderer bridges only via `preload.ts`; avoid exposing Node APIs directly.
+
+## State & Caching
+- **User Identity Cache** (`src/state/userIdentity.ts`): Caches user name/email with localStorage hydration. Must clear `initPromise` on sign-out to avoid stale data across account switches.
+- **Quota Cache** (`src/state/quotaCache.ts`): Tracks words used this week and Pro status. Synced from JWT claims on sign-in and app startup.
+- **Account Switching**: Both identity and quota caches must be cleared on sign-out (auth listener + polling-detected paths). JWT claims synced in `SIGNED_IN` handler for immediate tier updates.
+- See `agent-logs/2025-12-22_1658_account-switching-cache-fix.md` for cache architecture details.
+
+## Free Tier & Quota System
+- Free users get 1,000 words/week; Pro users have unlimited words.
+- Quota tracked in `public.profiles.words_used_this_week` with weekly reset via `quota_reset_date`.
+- Pro status determined by `subscription_active` claim in JWT (set by payment webhook).
+- UI shows progress bar and remaining words in Settings Panel for free users.
+- See `docs/PAYMENTS.md` for subscription/webhook architecture.
 
 ## Quick Run & Validate
 - Dev app: `npm run dev` (or `npm run dev:local` to target local WS).
