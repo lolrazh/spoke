@@ -92,9 +92,9 @@ export function logClientSession(event: ClientSessionEvent): void {
     event.outcome === "success" || event.outcome === "cancelled" ? "info" : "error";
 
   if (level === "error") {
-    console.error("[ClientSession]", event);
+    console.error("[Session]", event);
   } else {
-    console.info("[ClientSession]", event);
+    console.info("[Session]", event);
   }
 
   // Send to Sentry on failures
@@ -142,7 +142,7 @@ export function logClientSession(event: ClientSessionEvent): void {
           },
         });
       } catch (err) {
-        console.warn("[ClientSession] Failed to send to Sentry:", err);
+        console.warn("[Session] Failed to send to Sentry:", err);
       }
     })();
   }
@@ -236,10 +236,10 @@ export class ClientSessionEventBuilder {
   }
 
   setServerMetrics(metrics: {
-    workerLifetimeMs?: number;
-    sttMs?: number;
-    llmMs?: number;
-    audioStreamingMs?: number;
+    worker_lifetime_ms?: number;
+    stt_ms?: number;
+    llm_ms?: number;
+    audio_streaming_ms?: number;
   }): this {
     this.event.server = metrics;
     return this;
@@ -286,7 +286,7 @@ export class ClientSessionEventBuilder {
   emit(): void {
     if (!this.event.outcome) {
       console.warn(
-        "[ClientSession] emit() called without outcome - setting to error_unknown",
+        "[Session] emit() called without outcome - setting to error_unknown",
       );
       this.event.outcome = "error_unknown";
     }

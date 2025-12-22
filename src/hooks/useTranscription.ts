@@ -8,6 +8,7 @@ import type {
   SelectionSnapshotPayload,
 } from "../types/protocol";
 import { playToggleOff } from "../utils/audioFeedback";
+import { ClientSessionEventBuilder } from "../utils/clientSessionLogger";
 import {
   MICROPHONE_PREFERRED_RATE,
   TARGET_SAMPLE_RATE,
@@ -128,6 +129,8 @@ export function useTranscription(
   const flushTimerRef = useRef<number | null>(null);
   // Streaming is always enabled
   const startedMsRef = useRef<number>(0);
+  // Session event builder for wide event logging
+  const sessionEventRef = useRef<ClientSessionEventBuilder | null>(null);
   // Metrics
   const metricsRef = useRef<{
     sessionId: string;
@@ -1283,6 +1286,12 @@ export function useTranscription(
       framesSentApprox: 0,
     };
 
+    // Initialize session event builder for wide event logging
+    sessionEventRef.current = new ClientSessionEventBuilder(
+      metricsRef.current.sessionId,
+      sessionModeRef.current
+    );
+
     // Reset OCR context for new session
     pendingOcrImageBase64Ref.current = null;
 
@@ -1849,31 +1858,41 @@ export function useTranscription(
                             ? Math.max(0, Math.round(finalRecv - statusRecv - (sttMs || 0)))
                             : null;
 
-                        // Compact single-line breakdown
-                        const chunkCount = (worker?.chunkCount as number | null) ?? null;
-                        const chunkSttMs = (worker?.chunkSttMs as string | null) ?? null;
+                        // Emit wide event using session builder
+                        try {
+                          const traceId = (msg?.traceId as string | undefined) || m.sessionId;
 
-                        const breakdown = {
-                          traceId:
-                            (msg?.traceId as string | undefined) || m.sessionId,
-                          // Redefine e2eMs to mean post-dictation latency (stop -> paste)
-                          e2eMs: postDictationE2eMs,
-                          dictationMs,
-                          totalMs: totalPttDownToPasteMs,
-                          wsOpenMs: wsOpenDeltaMs,
-                          captureMs,
-                          endToStatusMs: endSendToStatusMs,
-                          sttMs,
-                          deliverMs,
-                          pasteMs: finalToPasteDoneMs,
-                          frames: m.framesProduced,
-                          bytesKB: Number((m.bytesProduced / 1024).toFixed(1)),
-                          seqGaps: (msg?.metrics?.worker?.seqGaps as number) ?? 0,
-                          // Chunk metrics (if chunked session)
-                          ...(chunkCount ? { chunkCount, chunkSttMs } : {}),
-                        };
-
-                        console.log("[SF] E2E", breakdown);
+                          sessionEventRef.current
+                            ?.setTraceId(traceId)
+                            .setTiming({
+                              pttDownMs: m.pttDownMs,
+                              wsOpenMs: m.wsOpenMs,
+                              firstFrameOutMs: m.firstFrameOutMs,
+                              lastFrameOutMs: m.lastFrameOutMs,
+                              stopInvokedMs: m.stopInvokedMs,
+                              endSentMs: m.endSentMs,
+                              sttStartMs: m.sttStartMs,
+                              finalRecvMs: finalRecv ?? undefined,
+                              pasteStartMs: m.pasteStartMs,
+                              pasteDoneMs: pasteDone ?? undefined,
+                            })
+                            .setAudioMetrics(
+                              m.framesProduced,
+                              m.bytesProduced,
+                              m.framesForwarded
+                            )
+                            .setServerMetrics({
+                              worker_lifetime_ms: (worker as any)?.workerLifetimeMs ?? undefined,
+                              stt_ms: sttMs ?? undefined,
+                              llm_ms: worker?.llm?.totalMs ?? undefined,
+                              audio_streaming_ms: (worker as any)?.audioStreamingMs ?? undefined,
+                            })
+                            .setOutcome('success', {
+                              text: msg.text,
+                              wordCount: msg.wordCount
+                            })
+                            .emit();
+                        } catch { }
                       } catch { }
                     }
                   } catch { }
@@ -1891,6 +1910,14 @@ export function useTranscription(
                   const serverError = msg as ServerErrorResponse;
                   const appError = parseServerError(serverError);
                   logError(appError, "[useTranscription] Server");
+
+                  // Emit error event
+                  sessionEventRef.current?.setOutcome(
+                    appError.message?.toLowerCase().includes('subscription') ? 'error_auth' : 'error_unknown',
+                    undefined,
+                    { message: appError.message, type: String(appError.code) }
+                  ).emit();
+
                   // Close after receiving error response
                   try {
                     ws.close(1011, "server error");
@@ -2089,6 +2116,13 @@ export function useTranscription(
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
+        // Emit error event for wide logging
+        sessionEventRef.current?.setOutcome(
+          'error_unknown',
+          undefined,
+          { message: (err as Error)?.message }
+        ).emit();
+
         // Always log to console for immediate debugging
         console.error("[SF] Transcribe exception", {
           error: (err as Error)?.message,
