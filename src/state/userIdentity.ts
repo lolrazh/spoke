@@ -36,16 +36,8 @@ function emit(next: UserIdentity) {
     name: typeof next.name === "string" ? next.name : null,
     email: typeof next.email === "string" ? next.email : null,
   };
-  console.log("[UserIdentity] emit() called:", {
-    current: { name: identity.name, email: identity.email },
-    next: { name: sanitized.name, email: sanitized.email },
-  });
-  if (identity.name === sanitized.name && identity.email === sanitized.email) {
-    console.log("[UserIdentity] emit() BLOCKED by change guard - values unchanged");
-    return;
-  }
+  if (identity.name === sanitized.name && identity.email === sanitized.email) return;
   identity = sanitized;
-  console.log("[UserIdentity] emit() updating identity to:", { name: identity.name, email: identity.email });
 
   // Update cache with both name and email
   try {
@@ -124,11 +116,8 @@ async function subscribeToAuthChanges() {
   const {
     data: { subscription },
   } = supabase.auth.onAuthStateChange((event, session) => {
-    console.log("[UserIdentity] Auth event:", event, "- User ID:", session?.user?.id ?? "none");
-
     // Clear identity on sign out
     if (event === "SIGNED_OUT") {
-      console.log("[UserIdentity] SIGNED_OUT - clearing identity");
       emit({ name: null, email: null });
       return;
     }
@@ -137,7 +126,6 @@ async function subscribeToAuthChanges() {
     // IMPORTANT: Defer Supabase operations to avoid breaking the auth listener
     // See: https://supabase.com/docs/client/auth-onauthstatechange
     if (event === "SIGNED_IN" && session?.user) {
-      console.log("[UserIdentity] SIGNED_IN - updating identity from session");
       // ✅ IMMEDIATE cache update with session data (prevents race condition)
       const metadata = (session.user.user_metadata as UserMetadata | undefined) ?? null;
       const quickName = metadata?.name ?? null;
@@ -164,19 +152,13 @@ async function subscribeToAuthChanges() {
 }
 
 export function subscribeUserIdentity(listener: (value: UserIdentity) => void) {
-  console.log("[UserIdentity] New subscription added. Total listeners:", listeners.size + 1);
-  console.log("[UserIdentity] Initialized:", initialized, "- Current identity:", { name: identity.name, email: identity.email });
   listeners.add(listener);
   // Only fire immediately if we've already initialized
   // This prevents stale cache from flashing before refresh completes
   if (initialized) {
-    console.log("[UserIdentity] Firing immediately with current identity");
     listener(identity);
-  } else {
-    console.log("[UserIdentity] NOT firing immediately - not yet initialized");
   }
   return () => {
-    console.log("[UserIdentity] Subscription removed. Remaining listeners:", listeners.size - 1);
     listeners.delete(listener);
   };
 }
@@ -224,22 +206,11 @@ export function isUserIdentityInitialized(): boolean {
  * Clear user identity cache (used on sign-out)
  */
 export function clearUserIdentityCache() {
-  console.log("[UserIdentity] ===== clearUserIdentityCache() CALLED =====");
-  console.log("[UserIdentity] Before clear:", {
-    name: identity.name,
-    email: identity.email,
-    localStorage_name: typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem(CACHE_KEY_NAME) : null,
-    localStorage_email: typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem(CACHE_KEY_EMAIL) : null,
-  });
-
   identity = { name: null, email: null };
 
-  // 🔥 CRITICAL FIX: Clear the cached initPromise to force re-initialization
+  // Clear the cached initPromise to force re-initialization
   // This prevents stale promises from Account A being returned when Account B signs in
   initPromise = null;
-  console.log("[UserIdentity] Cleared initPromise to force re-initialization on next init");
-
-  console.log("[UserIdentity] After in-memory clear:", { name: identity.name, email: identity.email });
 
   try {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -247,24 +218,17 @@ export function clearUserIdentityCache() {
       window.localStorage.removeItem(CACHE_KEY_EMAIL);
       // Remove legacy key for backward compatibility
       window.localStorage.removeItem("sf.lastUserEmail");
-      console.log("[UserIdentity] localStorage cleared. Verification:", {
-        name: window.localStorage.getItem(CACHE_KEY_NAME),
-        email: window.localStorage.getItem(CACHE_KEY_EMAIL),
-      });
+      console.log("[UserIdentity] Cache cleared");
     }
-  } catch (err) {
-    console.error("[UserIdentity] Failed to clear localStorage:", err);
+  } catch {
+    // ignore storage failures
   }
   // Notify listeners about the cleared state
-  console.log("[UserIdentity] Notifying", listeners.size, "listeners with cleared state");
   for (const listener of listeners) {
     try {
       listener(identity);
-    } catch (err) {
-      console.error("[UserIdentity] Listener notification failed:", err);
-    }
+    } catch { }
   }
-  console.log("[UserIdentity] ===== clearUserIdentityCache() COMPLETE =====");
 }
 
 export function resetUserIdentityForTests() {

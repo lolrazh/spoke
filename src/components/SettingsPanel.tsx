@@ -211,18 +211,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Subscribe to centralized user identity cache
   useEffect(() => {
-    console.log("[SettingsPanel] Subscribing to userIdentity");
-
     // Initialize user identity (loads from cache immediately, then fetches from DB)
     initUserIdentity().then((identity) => {
-      console.log("[SettingsPanel] initUserIdentity resolved:", { name: identity.name, email: identity.email });
       setUserEmail(identity.email);
       setUserName(identity.name);
     }).catch((): null => null);
 
     // Subscribe to identity changes (handles sign-in/sign-out automatically)
     const unsubscribe = subscribeUserIdentity((identity) => {
-      console.log("[SettingsPanel] Received identity update:", { name: identity.name, email: identity.email });
       setUserEmail(identity.email);
       setUserName(identity.name);
     });
