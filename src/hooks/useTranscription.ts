@@ -1930,7 +1930,7 @@ export function useTranscription(
                     errorOutcome,
                     undefined,
                     { message: appError.message, type: String(appError.code) }
-                  ).emit();
+                  );
 
                   // Close after receiving error response
                   try {
@@ -1952,7 +1952,7 @@ export function useTranscription(
                 'error_ws_failed',
                 undefined,
                 { message: 'WebSocket connection error' }
-              ).emit();
+              );
               cleanup();
               reject(new Error("WebSocket connection error"));
             }
@@ -1964,7 +1964,7 @@ export function useTranscription(
                 'error_ws_closed',
                 undefined,
                 { message: 'WebSocket closed before final' }
-              ).emit();
+              );
               cleanup();
               reject(new Error("WebSocket closed before final"));
             }
@@ -1983,7 +1983,7 @@ export function useTranscription(
                 'error_timeout',
                 undefined,
                 { message: 'Timed out waiting for transcription result' }
-              ).emit();
+              );
               cleanup();
               reject(new Error("Timed out waiting for transcription result"));
             }
@@ -2145,12 +2145,8 @@ export function useTranscription(
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
-        // Emit error event for wide logging
-        sessionEventRef.current?.setOutcome(
-          'error_unknown',
-          undefined,
-          { message: (err as Error)?.message }
-        ).emit();
+        // Emit error event for wide logging (outcome already set by error handlers)
+        sessionEventRef.current?.emit();
 
         // Always log to console for immediate debugging
         console.error("[Session] Transcribe exception", {
