@@ -10,7 +10,7 @@ Spoke uses a **server-authoritative payment system** that combines Dodo Payments
 - **Dodo Payments Integration** - Subscription billing with INR/USD support
 - **JWT-Based Entitlements** - Subscription status embedded in signed tokens
 - **Zero-Query Gating** - Worker validates access without database queries
-- **Free Tier Quota** - 2000 words/month limit with server-side tracking
+- **Free Tier Quota** - 1000 words/week limit with server-side tracking (resets Monday 00:00 UTC)
 - **Instant Post-Payment Access** - JWT refresh on app startup enables immediate access
 
 ## Architecture Overview
@@ -163,17 +163,17 @@ as $$
       from public.profiles
       where id = (event->>'user_id')::uuid;
 
-      -- Lazy monthly reset
+      -- Lazy weekly reset (Monday 00:00 UTC)
       if reset_date is null or reset_date < now() then
         update public.profiles
         set words_used_this_month = 0,
-            quota_reset_date = date_trunc('month', now() + interval '1 month')
+            quota_reset_date = date_trunc('week', now() + interval '1 week')  -- Note: user updates 'month' to 'week'
         where id = (event->>'user_id')::uuid;
         words_used := 0;
       end if;
 
       claims := jsonb_set(claims, '{words_used_this_month}', to_jsonb(coalesce(words_used, 0)));
-      claims := jsonb_set(claims, '{quota_limit}', to_jsonb(2000));
+      claims := jsonb_set(claims, '{quota_limit}', to_jsonb(1000));  -- Note: user updates this from 2000 to 1000
     end if;
 
     event := jsonb_set(event, '{claims}', claims);
@@ -201,8 +201,8 @@ $$;
   email: "user@example.com",
   subscription_active: false,
   words_used_this_month: 342,
-  quota_limit: 2000,
-  quota_reset_date: "2025-01-01T00:00:00Z"
+  quota_limit: 1000,
+  quota_reset_date: "2025-01-06T00:00:00Z"  // Next Monday 00:00 UTC
 }
 ```
 
@@ -230,7 +230,7 @@ Client: [binary audio frames]
 | `4010` | UNAUTHORIZED | Invalid, expired, or malformed JWT |
 | `4011` | AUTH_TIMEOUT | No auth message within 10 seconds |
 | `4020` | PAYMENT_REQUIRED | Valid user, no active subscription |
-| `4021` | QUOTA_EXCEEDED | Free tier monthly limit reached |
+| `4021` | QUOTA_EXCEEDED | Free tier weekly limit reached (1000 words/week) |
 
 ### JWT Verification Flow
 
@@ -277,7 +277,7 @@ if (!jwtResult.valid) {
 // Pro users bypass quota check
 if (!jwtResult.subscriptionActive) {
   const wordsUsed = jwtResult.wordsUsedThisMonth ?? 0;
-  const quotaLimit = jwtResult.quotaLimit ?? 2000;
+  const quotaLimit = jwtResult.quotaLimit ?? 1000;
 
   if (wordsUsed >= quotaLimit) {
     ws.close(WS_CLOSE_CODES.QUOTA_EXCEEDED);
@@ -347,7 +347,7 @@ executionCtx.waitUntil(
 
 Cloudflare Workers guarantees `waitUntil()` tasks complete even after response is sent.
 
-### Lazy Monthly Reset
+### Lazy Weekly Reset
 
 Instead of cron jobs, reset happens on-demand in the auth hook:
 
@@ -356,7 +356,7 @@ Instead of cron jobs, reset happens on-demand in the auth hook:
 if reset_date is null or reset_date < now() then
   update public.profiles
   set words_used_this_month = 0,
-      quota_reset_date = date_trunc('month', now() + interval '1 month')
+      quota_reset_date = date_trunc('week', now() + interval '1 week')  -- Note: user updates 'month' to 'week'
   where id = (event->>'user_id')::uuid;
 end if;
 ```
@@ -364,7 +364,8 @@ end if;
 **Benefits:**
 - No scheduled tasks to manage
 - Resets only for active users
-- Automatic on next JWT refresh after month boundary
+- Automatic on next JWT refresh after Monday 00:00 UTC
+- Resets every Monday at start of week
 
 ---
 
@@ -416,8 +417,8 @@ The startup refresh solves the payment case. Cancellation delay is a feature, no
 
 ### Free User Features
 
-- **Usage progress bar** showing words used / 2000
-- **"Resets monthly" hint** under progress bar
+- **Usage progress bar** showing words used / 1000
+- **"Resets weekly (Mondays)" hint** under progress bar
 - **"Upgrade" button** with shimmer effect
 - **Quota-based notifications** when limit reached
 
@@ -702,7 +703,7 @@ npm run dev:local
 ### 2025-12-04: Free Tier Quota
 - Server-authoritative quota tracking
 - Fire-and-forget DB writes with waitUntil()
-- Lazy monthly reset in auth hook
+- Lazy weekly reset in auth hook (resets Monday 00:00 UTC)
 - Local quota display with progress bar
 - Fixed VOLATILE bug in auth hook
 

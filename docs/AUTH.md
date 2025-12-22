@@ -197,8 +197,8 @@ if (!skipAuth) {
 
 **Why This Matters:**
 - After payment, users need fresh JWT with `subscription_active: true` claim
-- Ensures quota claims are up-to-date (words_used_this_month, quota_limit)
-- Runs Custom Access Token Hook in Postgres to check subscriptions table
+- Ensures quota claims are up-to-date (words_used_this_month, quota_limit for weekly reset)
+- Runs Custom Access Token Hook in Postgres to check subscriptions table and reset quota if needed (Monday 00:00 UTC)
 - Allows instant access after subscription changes (just restart app)
 
 ### JWT Claims (Custom Access Token Hook)
@@ -212,15 +212,15 @@ JWTs include custom claims added by Supabase Custom Access Token Hook:
   email: "user@example.com",
   subscription_active: true,           // Pro tier status
   words_used_this_month: 342,          // Free tier usage (if no subscription)
-  quota_limit: 2000,                   // Free tier limit (if no subscription)
-  quota_reset_date: "2025-01-01T00:00:00Z"  // Next reset (if no subscription)
+  quota_limit: 1000,                   // Free tier limit (if no subscription, 1000 words/week)
+  quota_reset_date: "2025-01-06T00:00:00Z"  // Next reset (if no subscription, Monday 00:00 UTC)
 }
 ```
 
 **Hook Behavior:**
 - Runs on token generation/refresh (login, startup refresh, hourly refresh)
 - Checks `subscriptions` table for active subscription
-- For free tier users: reads quota from `profiles` table, implements lazy monthly reset
+- For free tier users: reads quota from `profiles` table, implements lazy weekly reset (every Monday 00:00 UTC)
 - For Pro users: only adds `subscription_active: true`, skips quota fields
 - Embeds data in JWT for instant worker-side gating (zero DB queries during transcription)
 
@@ -734,7 +734,7 @@ The Cloudflare Worker now fully enforces JWT-based authentication and entitlemen
 - `4011` AUTH_TIMEOUT - No auth message within 15s
 - `4012` UNAUTHORIZED - Invalid or expired JWT
 - `4020` PAYMENT_REQUIRED - No active subscription (feature requires Pro)
-- `4021` QUOTA_EXCEEDED - Free tier monthly limit reached (2000 words)
+- `4021` QUOTA_EXCEEDED - Free tier weekly limit reached (1000 words/week, resets Monday)
 
 **Security:**
 - Zero database queries during auth check (all data in JWT claims)

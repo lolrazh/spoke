@@ -22,9 +22,9 @@
 // ============================================================================
 
 export type QuotaState = {
-    wordsUsed: number;        // How many words used this month
+    wordsUsed: number;        // How many words used this week
     resetDate: string | null; // When quota resets (ISO timestamp)
-    limit: number;            // Monthly limit (hardcoded to 2000)
+    limit: number;            // Weekly limit (hardcoded to 1000)
     isPro: boolean;           // Is user a Pro subscriber? (unlimited dictation)
 };
 
@@ -35,7 +35,7 @@ export type QuotaState = {
 const CACHE_KEY_WORDS_USED = 'sf.quotaWordsUsed';
 const CACHE_KEY_RESET_DATE = 'sf.quotaResetDate';
 const CACHE_KEY_LAST_SYNCED = 'sf.quotaLastSynced';
-const QUOTA_LIMIT = 2000; // Free tier limit - hardcoded for now
+const QUOTA_LIMIT = 1000; // Free tier limit (1k/week) - hardcoded for now
 
 // ============================================================================
 // STATE

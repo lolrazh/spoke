@@ -685,7 +685,7 @@ export function useTranscription(
             console.warn("[SF] Quota exceeded", { code: event.code, reason: event.reason });
             wsAuthFailedRef.current = true; // Mark as auth failure to prevent reconnects
             setAuthError("payment_required"); // Reuse payment_required UI (shows upgrade prompt)
-            setError("You've used your free words this month. Upgrade for unlimited.");
+            setError("You've used your free words this week. Upgrade for unlimited.");
             cleanup();
             reject(new Error("Quota exceeded"));
             // Don't auto-reconnect for quota exceeded
@@ -1176,7 +1176,7 @@ export function useTranscription(
       const { isQuotaExceeded } = await import('../state/quotaCache');
       if (isQuotaExceeded()) {
         console.log('[useTranscription] Local quota check: exceeded');
-        const errorMsg = "You've used your free words this month. Upgrade for unlimited.";
+        const errorMsg = "You've used your free words this week. Upgrade for unlimited.";
         setAuthError("payment_required");
         setError(errorMsg);
         // Send notification directly for immediate feedback

@@ -34,7 +34,7 @@
  * - exp: Expiration timestamp
  * - iss: Issuer (your Supabase project URL)
  * - subscription_active: Has active subscription
- * - words_used_this_month: Free tier quota usage
+ * - words_used_this_month: Free tier quota usage (weekly reset)
  */
 
 import { createLocalJWKSet, jwtVerify, JWTPayload, errors } from 'jose';
@@ -145,8 +145,8 @@ export type JwtVerifyResult =
     userId: string;
     email: string;
     subscriptionActive: boolean;
-    wordsUsedThisMonth?: number;  // Free tier: current quota usage
-    quotaLimit?: number;           // Free tier: monthly limit (2000)
+    wordsUsedThisMonth?: number;  // Free tier: current quota usage (weekly)
+    quotaLimit?: number;           // Free tier: weekly limit (1000)
     payload: JWTPayload;
   }
   | { valid: false; error: string; code: 'invalid' | 'expired' | 'malformed' };

@@ -71,11 +71,11 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
   <connection_auth>
     1. App starts → Supabase refreshes JWT (runs custom_access_token_hook in Postgres)
     2. Hook checks subscriptions table, reads quota from profiles table
-    3. Hook implements lazy monthly reset (if quota_reset_date < NOW(), resets to 0)
+    3. Hook implements lazy weekly reset (if quota_reset_date < NOW(), resets to 0, every Monday 00:00 UTC)
     4. Hook adds claims to JWT:
        - subscription_active (boolean) - Pro tier status
        - words_used_this_month (number) - Free tier usage (after reset if needed)
-       - quota_limit (number) - Free tier limit (2000)
+       - quota_limit (number) - Free tier limit (1000 words/week)
        - quota_reset_date (timestamp) - Next reset date
     5. App syncs quota from JWT to localStorage on startup (display-only cache)
     6. User presses PTT → App checks local quota first (instant feedback)
@@ -116,7 +116,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     4011: AUTH_TIMEOUT - No auth message received within 15s
     4012: UNAUTHORIZED - Invalid or expired JWT
     4020: PAYMENT_REQUIRED - Valid user but no active subscription (free tier not implemented for this feature)
-    4021: QUOTA_EXCEEDED - Free tier user exceeded monthly word limit (2000 words/month)
+    4021: QUOTA_EXCEEDED - Free tier user exceeded weekly word limit (1000 words/week, resets Monday 00:00 UTC)
   </close_codes>
 
   <architecture_benefits>

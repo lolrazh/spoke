@@ -494,7 +494,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           if (!jwtResult.subscriptionActive) {
             // Free tier user - check quota
             const wordsUsed = jwtResult.wordsUsedThisMonth ?? 0;
-            const quotaLimit = jwtResult.quotaLimit ?? 2000;
+            const quotaLimit = jwtResult.quotaLimit ?? 1000;
 
             if (wordsUsed >= quotaLimit) {
               // Quota exceeded - block
@@ -531,7 +531,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 server.send(
                   JSON.stringify({
                     type: 'auth_error',
-                    error: 'Free words used up this month',
+                    error: 'Free words used up this week',
                     code: WS_CLOSE_CODES.QUOTA_EXCEEDED,
                   }),
                 ),

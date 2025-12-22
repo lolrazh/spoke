@@ -12,7 +12,7 @@ The database serves four core functions:
 
 1. **User Identity**: Profiles linked 1:1 with Supabase Auth users
 2. **Subscription Management**: Dodo Payments integration for billing
-3. **Free Tier Quota Tracking**: Server-authoritative word count limits (2000 words/month)
+3. **Free Tier Quota Tracking**: Server-authoritative word count limits (1000 words/week, resets Monday)
 
 Privacy is paramount—all performance telemetry is stored in Cloudflare Analytics Engine (no transcription text). History is stored locally on the user's device.
 
@@ -96,9 +96,9 @@ User profile data tied to authentication. Each authenticated user gets one profi
   </integration>
 
   <quota_tracking>
-    Free tier users have a 2000 word/month limit tracked server-side:
-    - words_used_this_month: Current usage counter (incremented by worker)
-    - quota_reset_date: Next reset date (lazy monthly reset in auth hook)
+    Free tier users have a 1000 word/week limit tracked server-side:
+    - words_used_this_month: Current usage counter (incremented by worker, reset weekly)
+    - quota_reset_date: Next reset date (lazy weekly reset in auth hook, every Monday 00:00 UTC)
 
     Architecture (server-authoritative):
     1. Worker counts words from STT output (spoken words, not LLM output)
@@ -278,14 +278,14 @@ Database functions provide reusable logic for common operations.
       2. Adds subscription_active claim to JWT (boolean)
       3. For FREE tier users only (no subscription):
          - Reads words_used_this_month and quota_reset_date from profiles
-         - Implements lazy monthly reset:
+         - Implements lazy weekly reset (every Monday 00:00 UTC):
            IF quota_reset_date IS NULL OR quota_reset_date &lt; NOW() THEN
              - Reset words_used_this_month to 0
-             - Set quota_reset_date to start of next month
+             - Set quota_reset_date to start of next week (Monday)
              - Update profiles table with new values
          - Adds quota claims to JWT:
            - words_used_this_month (integer)
-           - quota_limit (2000, hardcoded)
+           - quota_limit (1000, hardcoded - you will update this to your preferred limit)
            - quota_reset_date (timestamptz, for debugging)
 
       Error handling: Returns event with just subscription_active on failure.
@@ -319,18 +319,18 @@ Database functions provide reusable logic for common operations.
       </file>
     </usage>
     <lazy_reset_logic>
-      Monthly reset is lazy (on-demand) rather than scheduled:
+      Weekly reset is lazy (on-demand) rather than scheduled:
       - Avoids cron jobs or scheduled tasks
-      - Resets automatically when user next refreshes token after month boundary
+      - Resets automatically when user next refreshes token after week boundary (Monday 00:00 UTC)
       - Efficient: only resets for users who are active
 
       Example:
-      - User last used app on Nov 15
-      - User opens app on Dec 10
+      - User last used app on Monday, Dec 16
+      - User opens app on Tuesday, Dec 24 (week after reset date)
       - JWT refresh triggers custom_access_token_hook()
-      - Hook sees quota_reset_date (Dec 1) &lt; NOW() (Dec 10)
-      - Resets words_used_this_month to 0, sets quota_reset_date to Jan 1
-      - User starts fresh month with 2000 words
+      - Hook sees quota_reset_date (Dec 23 00:00 UTC) &lt; NOW() (Dec 24)
+      - Resets words_used_this_month to 0, sets quota_reset_date to Dec 30 (next Monday) 00:00 UTC
+      - User starts fresh week with 1000 words
     </lazy_reset_logic>
     <security>
       Runs in database with full access (auth.users, public.profiles, public.subscriptions).
@@ -487,11 +487,11 @@ Client-side database operations live in `src/lib/supabaseClient.ts`.
     FROM public.profiles
     WHERE id = (event->>'user_id')::uuid;
 
-    -- If reset needed:
+    -- If reset needed (when reset_date &lt; NOW()):
     UPDATE public.profiles
     SET
       words_used_this_month = 0,
-      quota_reset_date = DATE_TRUNC('month', NOW() + INTERVAL '1 month')
+      quota_reset_date = DATE_TRUNC('week', NOW() + INTERVAL '1 week')  -- Note: you will update 'month' to 'week'
     WHERE id = (event->>'user_id')::uuid;
   </query>
 
@@ -618,8 +618,8 @@ The `custom_access_token_hook()` function must be registered in Supabase Auth se
     This hook runs during JWT generation/refresh to add custom claims:
     - subscription_active: Whether user has active paid subscription
     - words_used_this_month: Current quota usage (free tier only)
-    - quota_limit: Monthly word limit (free tier only, hardcoded to 2000)
-    - quota_reset_date: Next reset date (free tier only)
+    - quota_limit: Weekly word limit (free tier only, hardcoded to 1000)
+    - quota_reset_date: Next reset date (free tier only, every Monday 00:00 UTC)
   </description>
 
   <when_called>
@@ -632,7 +632,7 @@ The `custom_access_token_hook()` function must be registered in Supabase Auth se
   <performance>
     - Runs synchronously during auth flow
     - Adds ~10-50ms to JWT generation (depends on DB performance)
-    - Lazy reset logic only executes when needed (once per month per user)
+    - Lazy reset logic only executes when needed (once per week per user, Monday 00:00 UTC)
     - Pro users skip quota logic entirely (minimal overhead)
   </performance>
 
@@ -662,7 +662,7 @@ Comprehensive overview of the server-authoritative quota system.
     - Zero-latency tracking: Fire-and-forget DB writes using waitUntil()
     - JWT-based gating: Instant blocking at auth time (no DB queries during transcription)
     - Fair word counting: STT output (spoken words), not LLM output
-    - Lazy monthly reset: On-demand reset in auth hook (no cron jobs)
+    - Lazy weekly reset: On-demand reset in auth hook (no cron jobs), resets Monday 00:00 UTC
   </design_principles>
 
   <flow>
@@ -725,7 +725,7 @@ Comprehensive overview of the server-authoritative quota system.
     Result: Zero perceived latency for users, quota still tracked reliably.
   </latency_optimization>
 
-  <monthly_reset_strategy>
+  <weekly_reset_strategy>
     Lazy reset in custom_access_token_hook():
 
     Advantages:
@@ -733,19 +733,20 @@ Comprehensive overview of the server-authoritative quota system.
     - Only resets for active users (efficient)
     - Automatic and self-healing
     - Works across timezones (uses UTC)
+    - Resets every Monday 00:00 UTC
 
     Logic:
     IF quota_reset_date IS NULL OR quota_reset_date < NOW() THEN
       words_used_this_month = 0
-      quota_reset_date = DATE_TRUNC('month', NOW() + INTERVAL '1 month')
+      quota_reset_date = DATE_TRUNC('week', NOW() + INTERVAL '1 week')  -- Next Monday
 
     Example timeline:
-    - Nov 15: User uses 500 words, quota_reset_date = Dec 1 00:00:00 UTC
-    - Nov 30: User uses 300 more words (total: 800)
-    - Dec 10: User opens app → JWT refresh → hook sees reset_date < NOW()
-    - Hook resets: words_used_this_month = 0, quota_reset_date = Jan 1 00:00:00 UTC
-    - User now has 2000 words available for December
-  </monthly_reset_strategy>
+    - Monday Dec 16: User uses 300 words, quota_reset_date = Dec 23 00:00:00 UTC
+    - Wednesday Dec 18: User uses 400 more words (total: 700)
+    - Tuesday Dec 24: User opens app → JWT refresh → hook sees reset_date (Dec 23) < NOW() (Dec 24)
+    - Hook resets: words_used_this_month = 0, quota_reset_date = Dec 30 00:00:00 UTC (next Monday)
+    - User now has 1000 words available for the new week
+  </weekly_reset_strategy>
 
   <ui_display_caching>
     App uses localStorage for instant progress bar updates (display-only):
@@ -773,7 +774,7 @@ Comprehensive overview of the server-authoritative quota system.
 
 **Symptom**: Database shows correct `words_used_this_month`, but Worker logs show `wordsUsed: 0` from JWT claims.
 
-**Root Cause**: The `custom_access_token_hook()` function was defined as `STABLE`, which prohibits UPDATE operations in PostgreSQL. The lazy monthly reset logic (which writes to `profiles` table) was silently failing.
+**Root Cause**: The `custom_access_token_hook()` function was defined as `STABLE`, which prohibits UPDATE operations in PostgreSQL. The lazy weekly reset logic (which writes to `profiles` table) was silently failing.
 
 **Error Message** (when manually executing hook):
 ```
