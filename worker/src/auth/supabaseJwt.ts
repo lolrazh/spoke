@@ -34,7 +34,7 @@
  * - exp: Expiration timestamp
  * - iss: Issuer (your Supabase project URL)
  * - subscription_active: Has active subscription
- * - words_used_this_month: Free tier quota usage (weekly reset)
+ * - words_used_this_week: Free tier quota usage (weekly reset, Mondays 00:00 UTC)
  */
 
 import { createLocalJWKSet, jwtVerify, JWTPayload, errors } from 'jose';
@@ -145,8 +145,8 @@ export type JwtVerifyResult =
     userId: string;
     email: string;
     subscriptionActive: boolean;
-    wordsUsedThisMonth?: number;  // Free tier: current quota usage (weekly)
-    quotaLimit?: number;           // Free tier: weekly limit (1000)
+    wordsUsedThisWeek?: number;  // Free tier: current quota usage (weekly)
+    quotaLimit?: number;          // Free tier: weekly limit (1000)
     payload: JWTPayload;
   }
   | { valid: false; error: string; code: 'invalid' | 'expired' | 'malformed' };
@@ -200,8 +200,8 @@ export async function verifySupabaseJwt(
     const subscriptionActive = payload.subscription_active === true;
 
     // Extract quota claims (only present for free tier users)
-    const wordsUsedThisMonth = typeof payload.words_used_this_month === 'number'
-      ? payload.words_used_this_month
+    const wordsUsedThisWeek = typeof payload.words_used_this_week === 'number'
+      ? payload.words_used_this_week
       : undefined;
     const quotaLimit = typeof payload.quota_limit === 'number'
       ? payload.quota_limit
@@ -220,7 +220,7 @@ export async function verifySupabaseJwt(
       userId,
       email: email || '',
       subscriptionActive,
-      wordsUsedThisMonth,
+      wordsUsedThisWeek,
       quotaLimit,
       payload,
     };
@@ -245,8 +245,8 @@ export async function verifySupabaseJwt(
         const userId = payload.sub;
         const email = payload.email as string | undefined;
         const subscriptionActive = payload.subscription_active === true;
-        const wordsUsedThisMonth = typeof payload.words_used_this_month === 'number'
-          ? payload.words_used_this_month
+        const wordsUsedThisWeek = typeof payload.words_used_this_week === 'number'
+          ? payload.words_used_this_week
           : undefined;
         const quotaLimit = typeof payload.quota_limit === 'number'
           ? payload.quota_limit
@@ -266,7 +266,7 @@ export async function verifySupabaseJwt(
           userId,
           email: email || '',
           subscriptionActive,
-          wordsUsedThisMonth,
+          wordsUsedThisWeek,
           quotaLimit,
           payload,
         };

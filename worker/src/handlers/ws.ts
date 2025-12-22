@@ -493,7 +493,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           // JWT is valid — check subscription or quota
           if (!jwtResult.subscriptionActive) {
             // Free tier user - check quota
-            const wordsUsed = jwtResult.wordsUsedThisMonth ?? 0;
+            const wordsUsed = jwtResult.wordsUsedThisWeek ?? 0;
             const quotaLimit = jwtResult.quotaLimit ?? 1000;
 
             if (wordsUsed >= quotaLimit) {
