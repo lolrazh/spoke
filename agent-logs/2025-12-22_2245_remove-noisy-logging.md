@@ -69,6 +69,16 @@ Key motivation: Console was spammed with quota updates, state changes, device en
 
 **File:** `src/hooks/useTranscription.ts` lines 1913-1926
 
+### 🐛 Bug: Double emit() Causes Duplicate Logging and Sentry Reports
+**What happened:** Error handlers (WebSocket error, close, timeout, server error) called `.setOutcome(...).emit()` and then rejected the Promise. These rejections were caught by the outer catch block, which called `.setOutcome('error_unknown').emit()` again. This resulted in:
+- Two console log lines per failed session
+- The second emit overwrote the specific error outcome to `error_unknown`
+- Two Sentry error reports per failure (doubling error counts and billing)
+
+**Fix:** Removed `.emit()` calls from individual error handlers so they only set the outcome. The outer catch block now just calls `.emit()` once with the already-set outcome. This ensures each error path logs exactly once with the correct specific outcome.
+
+**Files:** `src/hooks/useTranscription.ts` lines 1933, 1955, 1967, 1986, 2149
+
 ---
 
 ## Key Learnings & Decisions
