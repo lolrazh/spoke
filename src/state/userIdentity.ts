@@ -207,6 +207,11 @@ export function isUserIdentityInitialized(): boolean {
  */
 export function clearUserIdentityCache() {
   identity = { name: null, email: null };
+
+  // Clear the cached initPromise to force re-initialization
+  // This prevents stale promises from Account A being returned when Account B signs in
+  initPromise = null;
+
   try {
     if (typeof window !== "undefined" && window.localStorage) {
       window.localStorage.removeItem(CACHE_KEY_NAME);

@@ -648,6 +648,30 @@ const AppInner: React.FC = () => {
               setCurrentUserId(currentUserId);
               // Defer Supabase call to avoid breaking the auth listener
               setTimeout(() => loadSharePreference(currentUserId), 0);
+
+              // Sync quota/subscription from JWT on sign-in
+              // This ensures switching accounts shows the correct tier immediately
+              setTimeout(async () => {
+                try {
+                  if (session?.access_token) {
+                    const payloadBase64 = session.access_token.split('.')[1];
+                    const payloadJson = atob(payloadBase64);
+                    const payload = JSON.parse(payloadJson);
+                    const isPro = payload.subscription_active === true;
+                    const { updateQuotaFromServer } = await import('../state/quotaCache');
+                    updateQuotaFromServer({
+                      wordsUsed: typeof payload.words_used_this_week === 'number'
+                        ? payload.words_used_this_week
+                        : 0,
+                      resetDate: payload.quota_reset_date || null,
+                      isPro,
+                    });
+                  }
+                } catch (e) {
+                  console.warn('[App] Failed to sync quota from JWT on sign-in:', e);
+                }
+              }, 0);
+
               // Pre-connect to Worker after sign in with retry logic
               setTimeout(() => {
                 void retryWithBackoff(
@@ -673,6 +697,13 @@ const AppInner: React.FC = () => {
                     // Cancel any active or in-flight transcription when signing out
                     latestTransRef.current?.cancel?.();
                   } catch { }
+
+                  // Clear quota cache on sign-out to prevent stale data
+                  try {
+                    const { clearQuotaCache } = await import('../state/quotaCache');
+                    clearQuotaCache();
+                  } catch { }
+
                   try { window.notifications?.send?.("Signed out"); } catch { }
                   setPendingHideAfterCollapse({
                     active: true,
@@ -707,6 +738,13 @@ const AppInner: React.FC = () => {
                   setCurrentUserId(null);
                   loadSharePreference(null);
                   try { latestTransRef.current?.cancel?.(); } catch { }
+
+                  // Clear quota cache on polling-detected sign-out
+                  try {
+                    const { clearQuotaCache } = await import('../state/quotaCache');
+                    clearQuotaCache();
+                  } catch { }
+
                   try { window.notifications?.send?.("Signed out"); } catch { }
                   setPendingHideAfterCollapse({
                     active: true,
