@@ -1957,16 +1957,37 @@ export function useTranscription(
               reject(new Error("WebSocket connection error"));
             }
           };
-          const onClose = () => {
+          const onClose = (event: CloseEvent) => {
             if (!settled) {
+              // If the socket closed normally (code 1000), the worker likely sent
+              // a final message before closing. Give the message handler a brief
+              // moment to process it (it will resolve the promise). Only error if
+              // the socket closed abnormally or we're still unsettled after a delay.
+              if (event.code === 1000) {
+                // Normal closure - wait a tick for message handler to process final
+                setTimeout(() => {
+                  if (!settled) {
+                    settled = true;
+                    sessionEventRef.current?.setOutcome(
+                      'error_ws_closed',
+                      undefined,
+                      { message: 'WebSocket closed normally but no final received' }
+                    );
+                    cleanup();
+                    reject(new Error("WebSocket closed before final"));
+                  }
+                }, 50);
+                return;
+              }
+              // Abnormal closure - error immediately
               settled = true;
               sessionEventRef.current?.setOutcome(
                 'error_ws_closed',
                 undefined,
-                { message: 'WebSocket closed before final' }
+                { message: `WebSocket closed abnormally (code ${event.code})` }
               );
               cleanup();
-              reject(new Error("WebSocket closed before final"));
+              reject(new Error(`WebSocket closed before final (code ${event.code})`));
             }
           };
 
