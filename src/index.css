@@ -1520,12 +1520,12 @@ body {
   }
 
   .switch-track[data-state="checked"] {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-color: rgba(255, 255, 255, 0.1); /* Match nav bar active state */
     border-color: var(--stroke-fg-mid);
   }
 
   .switch-track[data-state="checked"]:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    background-color: rgba(255, 255, 255, 0.13); /* Slightly brighter on hover */
     border-color: var(--stroke-fg-xstrong);
   }
 
