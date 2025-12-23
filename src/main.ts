@@ -670,7 +670,6 @@ function centerWindowOnDisplay(
       width: currentBounds.width,
       height: currentBounds.height,
     });
-    logBounds("centerWindowOnDisplay");
   }
 }
 
@@ -710,7 +709,6 @@ function ensureEnvelopeForDisplay(
     current.y !== newY
   ) {
     coalescedSetBounds({ x: newX, y: newY, width: targetW, height: targetH });
-    logBounds("ensureEnvelopeForDisplay");
   }
   return { scale, width: targetW, height: targetH };
 }
@@ -872,14 +870,10 @@ function startFollowCursor(): void {
       const point = screen.getCursorScreenPoint();
       const display = getDisplayForPoint(point);
       if (display.id !== activeDisplayId) {
-        const prevId = activeDisplayId;
         activeDisplayId = display.id;
         const result = ensureEnvelopeForDisplay(display);
         const scale = result?.scale ?? computeScaleForDisplay(display);
         emitActiveDisplayInfo(display, scale);
-        console.log(
-          `[FollowCursor] Display changed ${prevId ?? "none"} -> ${display.id} @ scaleFactor=${display.scaleFactor}, logicalWidth=${display.size.width}, scale=${scale}`,
-        );
       }
     } catch (err) {
       logger.main.warn("startFollowCursor tick failed", err);
@@ -902,9 +896,6 @@ function syncToCurrentDisplay(reason: string): void {
     const sized = ensureEnvelopeForDisplay(display);
     const scale = sized?.scale ?? computeScaleForDisplay(display);
     emitActiveDisplayInfo(display, scale);
-    console.log(
-      `[DisplayChange] ${reason}: active=${display.id} width=${display.size.width} scale=${scale}`,
-    );
   } catch (e) {
     logger.main.warn("syncToCurrentDisplay failed", e);
   }
@@ -1265,12 +1256,8 @@ function preSpawnPasteHelper() {
   });
 }
 
-function logBounds(tag: string) {
-  if (!mainWindow) return;
-  const b = mainWindow.getBounds();
-  const [cw, ch] = mainWindow.getContentSize();
-  console.log(`[${tag}] bounds=%o content=%o`, b, { w: cw, h: ch });
-}
+// Removed: noisy bounds logging
+// function logBounds(tag: string) { ... }
 
 // Microphone preference management functions
 function loadMicPreferences(): MicPreferences {
@@ -1739,7 +1726,6 @@ const createWindow = () => {
         false,
       );
       if (process.platform === "darwin") mainWindow.invalidateShadow();
-      logBounds("ready-to-show -> top-align");
     } catch (e) {
       console.warn("Failed to top-align on ready-to-show:", e);
     }
@@ -1810,7 +1796,6 @@ const createWindow = () => {
     width: ISLAND_WIDTH,
     height: ISLAND_HEIGHT,
   });
-  logBounds("createWindow");
   // Immediately size envelope for display scale and notify renderer
   const sized = ensureEnvelopeForDisplay(cursorDisplay);
   emitActiveDisplayInfo(
@@ -1918,7 +1903,6 @@ ipcMain.on("renderer-ready", (event) => {
 
     try {
       smoothShow(mainWindow);
-      logBounds("renderer-ready -> show");
     } catch (e) {
       console.warn("[renderer-ready] Failed to show:", e);
     }
@@ -2847,7 +2831,6 @@ app.whenReady().then(async () => {
           },
           false,
         );
-        logBounds("prepare-pill -> hide");
       }
       return { success: true };
     } catch (error) {

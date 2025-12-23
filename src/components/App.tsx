@@ -215,7 +215,6 @@ type PillMetrics = {
 const usePillMachine = () => {
   const [machine, dispatch] = useReducer(
     (state: PillMachineState, event: PillEvent) => {
-      console.log(`[Reducer] Dispatching ${event.type}`);
       return pillReducer(state, event);
     },
     { state: "IDLE", context: {} },
@@ -244,7 +243,6 @@ const AppInner: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
-  const notchDecisionLogRef = useRef<string | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
   const lastToastTsRef = useRef<number | null>(null);
   const lastFocusTsRef = useRef<number | null>(
@@ -879,15 +877,7 @@ const AppInner: React.FC = () => {
         storedWidth && storedWidth > 0 ? storedWidth : null;
       setNotchWidth(nextNotchWidth);
 
-      const scaleStr = Number.isFinite(s) ? s.toFixed(3) : "?";
-      const notchStr =
-        nextNotchWidth && Number.isFinite(nextNotchWidth)
-          ? nextNotchWidth.toFixed(2)
-          : "none";
-      const source = storedWidth ? "stored-preference" : "fallback";
-      console.log(
-        `[Display] active=${payload?.id ?? "?"} scale=${scaleStr} notch=${notchStr} source=${source}`,
-      );
+      // Display info updated (removed noisy logging)
     });
   }, []);
 
@@ -1473,15 +1463,7 @@ const AppInner: React.FC = () => {
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
 
   useEffect(() => {
-    const notchAvailable = typeof notchTarget === "number" && notchTarget > 0;
-    const reason = notchAvailable
-      ? `locked to notch width ${notchTarget.toFixed(2)}`
-      : `fallback to TOKENS.PILL_BASE_W (${TOKENS.PILL_BASE_W}) * scale ${S.toFixed(3)}`;
-    const key = `${BASE_W}-${reason}`;
-    if (notchDecisionLogRef.current !== key) {
-      notchDecisionLogRef.current = key;
-      console.log(`[PillWidth] base=${BASE_W}px (${reason})`);
-    }
+    // Pill width computed from notch (removed noisy logging)
   }, [BASE_W, S, notchTarget]);
 
   // Measure notification width whenever notif message changes

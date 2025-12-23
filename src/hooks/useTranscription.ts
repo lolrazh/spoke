@@ -8,6 +8,7 @@ import type {
   SelectionSnapshotPayload,
 } from "../types/protocol";
 import { playToggleOff } from "../utils/audioFeedback";
+import { ClientSessionEventBuilder, type ClientSessionOutcome } from "../utils/clientSessionLogger";
 import {
   MICROPHONE_PREFERRED_RATE,
   TARGET_SAMPLE_RATE,
@@ -128,7 +129,8 @@ export function useTranscription(
   const flushTimerRef = useRef<number | null>(null);
   // Streaming is always enabled
   const startedMsRef = useRef<number>(0);
-  const wsEndpointLoggedRef = useRef<boolean>(false);
+  // Session event builder for wide event logging
+  const sessionEventRef = useRef<ClientSessionEventBuilder | null>(null);
   // Metrics
   const metricsRef = useRef<{
     sessionId: string;
@@ -200,7 +202,6 @@ export function useTranscription(
   const sttPromptRef = useRef<string>(
     buildSTTPrompt({ identity: identityRef.current })
   );
-  const lastLoggedPromptRef = useRef<string | null>(null);
 
   const buildSelectionPayload = useCallback(
     (snapshot: SelectionInspectSnapshot | null): SelectionSnapshotPayload | null => {
@@ -265,12 +266,6 @@ export function useTranscription(
       };
       const prompt = buildSTTPrompt({ identity: identityRef.current });
       sttPromptRef.current = prompt;
-      if (lastLoggedPromptRef.current !== prompt) {
-        lastLoggedPromptRef.current = prompt;
-        try {
-          console.info("[SF] STT prompt", prompt);
-        } catch { }
-      }
     });
     initUserIdentity().catch((): null => null);
     return () => {
@@ -345,12 +340,6 @@ export function useTranscription(
       if (name) startPayload.identity.name = name;
       if (email) startPayload.identity.email = email;
     }
-
-    try {
-      if (sttPromptRef.current) {
-        console.info("[SF] Using STT prompt", sttPromptRef.current);
-      }
-    } catch { }
 
     try {
       ws.send(JSON.stringify(startPayload));
@@ -543,12 +532,6 @@ export function useTranscription(
       }
 
       const wsUrl = getTranscribeWsUrl();
-      if (!wsEndpointLoggedRef.current) {
-        try {
-          console.info("[SF] WS endpoint", { url: wsUrl });
-        } catch { }
-        wsEndpointLoggedRef.current = true;
-      }
       const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
       wsRef.current = ws;
@@ -582,7 +565,7 @@ export function useTranscription(
                 traceId: metricsRef.current?.sessionId,
               }),
             );
-            console.info("[SF] Auth message sent");
+            // Auth message sent
           } catch (err) {
             console.error("[useTranscription] Failed to send auth message:", err);
             wsAuthPendingRef.current = false;
@@ -597,7 +580,7 @@ export function useTranscription(
 
             // Handle auth response
             if (msg.type === "auth_ok") {
-              console.info("[SF] Auth successful", { userId: msg.userId });
+              // Auth successful
               wsAuthenticatedRef.current = true;
               wsAuthPendingRef.current = false;
               wsReadyRef.current = true;
@@ -947,15 +930,14 @@ export function useTranscription(
           label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
         }));
 
-      console.log("[useTranscription] Found audio input devices:", audioInputs);
+      // Audio devices enumerated
 
       // Send to main process with a small delay to ensure tray is ready
       setTimeout(() => {
         if (window.mic?.updateDevices) {
-          console.log(
-            "[useTranscription] Sending devices to main process:",
-            audioInputs,
-          );
+          if (window.devFlags?.devConsoleLogs) {
+            console.log("[useTranscription] Sending devices to main process:", audioInputs);
+          }
           window.mic.updateDevices(audioInputs, selectedMicId);
         }
       }, 500);
@@ -973,9 +955,9 @@ export function useTranscription(
 
     // Listen for device changes (plug/unplug)
     const handleDeviceChange = () => {
-      console.log(
-        "[useTranscription] Device change detected, re-enumerating...",
-      );
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Device change detected, re-enumerating...");
+      }
       // Add a small delay to let the system settle after device changes
       setTimeout(() => {
         enumerateAndSendDevices();
@@ -997,7 +979,7 @@ export function useTranscription(
     if (!window.mic?.onSelectedChanged) return;
 
     const unsubscribe = window.mic.onSelectedChanged(({ id }) => {
-      console.log("[useTranscription] Microphone selection changed to:", id);
+      // Microphone selection changed
       setSelectedMicId(id);
     });
 
@@ -1009,9 +991,9 @@ export function useTranscription(
     if (!window.mic?.onRefreshRequest) return;
 
     const unsubscribe = window.mic.onRefreshRequest(() => {
-      console.log(
-        "[useTranscription] ✅ Refresh devices requested from main process - executing refresh...",
-      );
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Refresh devices requested from main process");
+      }
       if (autoEnumerateDevices) {
         enumerateAndSendDevices();
       }
@@ -1023,7 +1005,9 @@ export function useTranscription(
   // Monitor network connectivity
   useEffect(() => {
     const handleOnline = () => {
-      console.log("[useTranscription] Network connection restored");
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Network connection restored");
+      }
       // Clear any network-related errors when coming back online
       if (error && (error.includes("connection") || error.includes("internet"))) {
         setError(null);
@@ -1035,7 +1019,9 @@ export function useTranscription(
     };
 
     const handleOffline = () => {
-      console.log("[useTranscription] Network connection lost");
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[useTranscription] Network connection lost");
+      }
       const networkError = detectNetworkError();
       if (networkError) {
         logError(networkError, "[useTranscription] Network");
@@ -1075,10 +1061,12 @@ export function useTranscription(
           };
         }
 
-        console.log(
-          "[useTranscription] Opening microphone stream with constraints:",
-          constraints,
-        );
+        if (window.devFlags?.devConsoleLogs) {
+          console.log(
+            "[useTranscription] Opening microphone stream with constraints:",
+            constraints,
+          );
+        }
         streamRef.current =
           await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -1094,28 +1082,30 @@ export function useTranscription(
           const settings = track.getSettings();
           const capabilities = track.getCapabilities?.() || {};
 
-          console.log("[useTranscription] Actual audio track settings:", {
-            sampleRate: settings.sampleRate,
-            channelCount: settings.channelCount,
-            echoCancellation: settings.echoCancellation,
-            noiseSuppression: settings.noiseSuppression,
-            autoGainControl: settings.autoGainControl,
-            deviceId: settings.deviceId,
-            groupId: settings.groupId,
-          });
+          if (window.devFlags?.devConsoleLogs) {
+            console.log("[useTranscription] Actual audio track settings:", {
+              sampleRate: settings.sampleRate,
+              channelCount: settings.channelCount,
+              echoCancellation: settings.echoCancellation,
+              noiseSuppression: settings.noiseSuppression,
+              autoGainControl: settings.autoGainControl,
+              deviceId: settings.deviceId,
+              groupId: settings.groupId,
+            });
 
-          console.log("[useTranscription] Audio track capabilities:", {
-            sampleRate: capabilities.sampleRate,
-            channelCount: capabilities.channelCount,
-            echoCancellation: capabilities.echoCancellation,
-            noiseSuppression: capabilities.noiseSuppression,
-            autoGainControl: capabilities.autoGainControl,
-          });
+            console.log("[useTranscription] Audio track capabilities:", {
+              sampleRate: capabilities.sampleRate,
+              channelCount: capabilities.channelCount,
+              echoCancellation: capabilities.echoCancellation,
+              noiseSuppression: capabilities.noiseSuppression,
+              autoGainControl: capabilities.autoGainControl,
+            });
+          }
         }
 
         setReady(true);
         setError(null);
-        console.log("[useTranscription] Microphone stream opened successfully");
+        // Microphone stream opened
         return true;
       } catch (err) {
         console.error(
@@ -1296,6 +1286,12 @@ export function useTranscription(
       framesSentApprox: 0,
     };
 
+    // Initialize session event builder for wide event logging
+    sessionEventRef.current = new ClientSessionEventBuilder(
+      metricsRef.current.sessionId,
+      sessionModeRef.current
+    );
+
     // Reset OCR context for new session
     pendingOcrImageBase64Ref.current = null;
 
@@ -1317,9 +1313,11 @@ export function useTranscription(
           return;
         }
 
-        console.log(
-          `[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB) in ${Math.round(screenshotDurationMs)}ms client-side, queuing for worker...`,
-        );
+        if (window.devFlags?.devConsoleLogs) {
+          console.log(
+            `[OCR] Screenshot captured in ${result.captureTimeMs}ms (${result.sizeKb}KB) in ${Math.round(screenshotDurationMs)}ms client-side, queuing for worker...`,
+          );
+        }
 
         // Queue screenshot for worker; it'll be sent once WS is ready.
         pendingOcrImageBase64Ref.current = result.imageBase64;
@@ -1333,9 +1331,13 @@ export function useTranscription(
       // Check if we already have an authenticated WebSocket from pre-connect
       const alreadyConnected = wsRef.current && wsAuthenticatedRef.current && wsReadyRef.current;
       if (alreadyConnected) {
-        console.log('[SF] ✅ Using pre-connected WebSocket (zero auth latency)');
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[SF] ✅ Using pre-connected WebSocket (zero auth latency)");
+        }
       } else {
-        console.log('[SF] ⏳ WebSocket not pre-connected, establishing connection in parallel...');
+        if (window.devFlags?.devConsoleLogs) {
+          console.log("[SF] ⏳ WebSocket not pre-connected, establishing connection in parallel...");
+        }
       }
 
       // START RECORDING IMMEDIATELY (don't wait for auth)
@@ -1550,7 +1552,9 @@ export function useTranscription(
     // Handle case where stop() is called while start() is in-flight (auth pending)
     // This happens when user double-taps quickly during cold start
     if (startingRef.current) {
-      console.log('[SF] Cancelling in-flight start attempt');
+      if (window.devFlags?.devConsoleLogs) {
+        console.log("[SF] Cancelling in-flight start attempt");
+      }
       startingRef.current = false;
       startTokenRef.current += 1; // invalidate any pending async start continuation
       // Best-effort cleanup so we don't leave a worker session started or mic active.
@@ -1652,6 +1656,7 @@ export function useTranscription(
           const onAbort = () => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome('cancelled').emit();
               cleanup(true);
               // Inform server to drop the session if the socket is still open
               try {
@@ -1676,11 +1681,7 @@ export function useTranscription(
                         ? performance.now()
                         : Date.now();
                 }
-                if (window.devFlags?.devConsoleLogs)
-                  console.info("[SF] Transcribe processing started");
-              } else if (msg.type === "llm_status" && msg.state === "llm_processing") {
-                if (window.devFlags?.devConsoleLogs)
-                  console.info("[SF] LLM post-process started");
+                // (Processing/LLM logs removed - were redundant with E2E log)
               } else if (msg.type === "llm_delta" && typeof msg.delta === "string") {
                 // Progressive UI update only; paste remains on final
                 setText((prev) => {
@@ -1719,10 +1720,10 @@ export function useTranscription(
                       // Worker sends wordCount in the response - we use it for instant UI feedback
                       if (msg.wordCount && msg.wordCount > 0) {
                         try {
-                          const { incrementQuotaLocal } = await import('../state/quotaCache');
+                          const { incrementQuotaLocal } = await import("../state/quotaCache");
                           incrementQuotaLocal(msg.wordCount); // UI update only
                         } catch (err) {
-                          console.warn('[useTranscription] Quota UI update failed:', err);
+                          console.warn("[useTranscription] Quota UI update failed:", err);
                         }
                       }
                     }
@@ -1851,7 +1852,7 @@ export function useTranscription(
                         const sttMs = (() => {
                           const total =
                             worker?.stt?.totalMs ?? worker?.groq?.totalMs ?? null;
-                          return total != null ? Math.round(total) : statusToFinalRecvMs;
+                          return total != null ? Math.round(total) : null;
                         })();
                         // Compute deliver latency without relying on cross-host clock sync:
                         // estimate = (finalRecv - statusRecv) - sttMs
@@ -1860,31 +1861,39 @@ export function useTranscription(
                             ? Math.max(0, Math.round(finalRecv - statusRecv - (sttMs || 0)))
                             : null;
 
-                        // Compact single-line breakdown
-                        const chunkCount = (worker?.chunkCount as number | null) ?? null;
-                        const chunkSttMs = (worker?.chunkSttMs as string | null) ?? null;
+                        // Emit wide event using session builder
+                        try {
+                          const traceId = (msg?.traceId as string | undefined) || m.sessionId;
 
-                        const breakdown = {
-                          traceId:
-                            (msg?.traceId as string | undefined) || m.sessionId,
-                          // Redefine e2eMs to mean post-dictation latency (stop -> paste)
-                          e2eMs: postDictationE2eMs,
-                          dictationMs,
-                          totalMs: totalPttDownToPasteMs,
-                          wsOpenMs: wsOpenDeltaMs,
-                          captureMs,
-                          endToStatusMs: endSendToStatusMs,
-                          sttMs,
-                          deliverMs,
-                          pasteMs: finalToPasteDoneMs,
-                          frames: m.framesProduced,
-                          bytesKB: Number((m.bytesProduced / 1024).toFixed(1)),
-                          seqGaps: (msg?.metrics?.worker?.seqGaps as number) ?? 0,
-                          // Chunk metrics (if chunked session)
-                          ...(chunkCount ? { chunkCount, chunkSttMs } : {}),
-                        };
-
-                        console.log("[SF] E2E", breakdown);
+                          sessionEventRef.current
+                            ?.setTraceId(traceId)
+                            .setTiming({
+                              pttDownMs: m.pttDownMs,
+                              wsOpenMs: m.wsOpenMs,
+                              firstFrameOutMs: m.firstFrameOutMs,
+                              lastFrameOutMs: m.lastFrameOutMs,
+                              stopInvokedMs: m.stopInvokedMs,
+                              endSentMs: m.endSentMs,
+                              sttStartMs: m.sttStartMs,
+                              finalRecvMs: finalRecv ?? undefined,
+                              pasteStartMs: m.pasteStartMs,
+                              pasteDoneMs: pasteDone ?? undefined,
+                            })
+                            .setAudioMetrics(
+                              m.framesProduced,
+                              m.bytesProduced,
+                              m.framesForwarded
+                            )
+                            .setServerMetrics({
+                              stt_ms: sttMs ?? undefined,
+                              llm_ms: worker?.llm?.totalMs != null ? Math.round(worker.llm.totalMs) : undefined,
+                            })
+                            .setOutcome('success', {
+                              text: msg.text,
+                              wordCount: msg.wordCount
+                            })
+                            .emit();
+                        } catch { }
                       } catch { }
                     }
                   } catch { }
@@ -1902,6 +1911,27 @@ export function useTranscription(
                   const serverError = msg as ServerErrorResponse;
                   const appError = parseServerError(serverError);
                   logError(appError, "[useTranscription] Server");
+
+                  // Emit error event - map to available outcome types
+                  const msgLower = appError.message?.toLowerCase() || '';
+                  let errorOutcome: ClientSessionOutcome = 'error_unknown';
+
+                  if (msgLower.includes('subscription') || msgLower.includes('auth') || msgLower.includes('sign in')) {
+                    errorOutcome = 'error_auth';
+                  } else if (msgLower.includes('timeout')) {
+                    errorOutcome = 'error_timeout';
+                  } else if (msgLower.includes('network') || msgLower.includes('connection')) {
+                    errorOutcome = 'error_network';
+                  } else if (msgLower.includes('websocket') || msgLower.includes('ws')) {
+                    errorOutcome = 'error_ws_failed';
+                  }
+
+                  sessionEventRef.current?.setOutcome(
+                    errorOutcome,
+                    undefined,
+                    { message: appError.message, type: String(appError.code) }
+                  );
+
                   // Close after receiving error response
                   try {
                     ws.close(1011, "server error");
@@ -1918,15 +1948,46 @@ export function useTranscription(
           const onError = () => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_ws_failed',
+                undefined,
+                { message: 'WebSocket connection error' }
+              );
               cleanup();
               reject(new Error("WebSocket connection error"));
             }
           };
-          const onClose = () => {
+          const onClose = (event: CloseEvent) => {
             if (!settled) {
+              // If the socket closed normally (code 1000), the worker likely sent
+              // a final message before closing. Give the message handler a brief
+              // moment to process it (it will resolve the promise). Only error if
+              // the socket closed abnormally or we're still unsettled after a delay.
+              if (event.code === 1000) {
+                // Normal closure - wait a tick for message handler to process final
+                setTimeout(() => {
+                  if (!settled) {
+                    settled = true;
+                    sessionEventRef.current?.setOutcome(
+                      'error_ws_closed',
+                      undefined,
+                      { message: 'WebSocket closed normally but no final received' }
+                    );
+                    cleanup();
+                    reject(new Error("WebSocket closed before final"));
+                  }
+                }, 50);
+                return;
+              }
+              // Abnormal closure - error immediately
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_ws_closed',
+                undefined,
+                { message: `WebSocket closed abnormally (code ${event.code})` }
+              );
               cleanup();
-              reject(new Error("WebSocket closed before final"));
+              reject(new Error(`WebSocket closed before final (code ${event.code})`));
             }
           };
 
@@ -1939,6 +2000,11 @@ export function useTranscription(
           const timeoutId = setTimeout(() => {
             if (!settled) {
               settled = true;
+              sessionEventRef.current?.setOutcome(
+                'error_timeout',
+                undefined,
+                { message: 'Timed out waiting for transcription result' }
+              );
               cleanup();
               reject(new Error("Timed out waiting for transcription result"));
             }
@@ -2100,11 +2166,18 @@ export function useTranscription(
       if ((err as DOMException)?.name === "AbortError") {
         // No-op: canceled by user
       } else {
-        if (window.devFlags?.devConsoleLogs) {
-          console.error("[SF] Transcribe exception", {
-            error: (err as Error)?.message,
-          });
-        }
+        // Emit error event for wide logging (outcome already set by error handlers)
+        sessionEventRef.current?.emit();
+
+        // Always log to console for immediate debugging
+        console.error("[Session] Transcribe exception", {
+          error: (err as Error)?.message,
+          stack: (err as Error)?.stack,
+          traceId: metricsRef.current?.sessionId,
+        });
+
+        // Note: Sentry capture is handled automatically by the wide event emission above
+
         setError((err as Error).message);
       }
     } finally {
@@ -2283,7 +2356,7 @@ export function useTranscription(
     // Establish WebSocket connection and authenticate in background
     // Throws error for retry logic in App.tsx
     await ensureStreamingSocket();
-    console.info("[SF] Pre-connected to Worker successfully");
+    // Pre-connected to Worker successfully
   }, [ensureStreamingSocket]);
 
   return {

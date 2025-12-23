@@ -26,7 +26,7 @@ export async function initTranscriptionHistory(): Promise<TranscriptionItem[]> {
     try {
       items = await window.transcriptions.getAll();
       initialized = true;
-      console.log(`[TranscriptionHistory] Loaded ${items.length} items`);
+      // Loaded successfully
     } catch (error) {
       console.error("[TranscriptionHistory] Failed to load:", error);
       items = [];
