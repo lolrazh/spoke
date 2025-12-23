@@ -846,12 +846,12 @@ body {
     --ring: 0 0% 83.1%;
     --radius: 0.5rem;
     /* Radius scale tokens */
-    --radius-lg: var(--radius);
+    --radius-lg: 0.75rem;
     --radius-md: calc(var(--radius) - 2px);
     --radius-sm: calc(var(--radius) - 4px);
     /* Semantic radius tokens */
     --radius-window: 12px;
-    --radius-pill: var(--radius-lg);
+    --radius-pill: var(--radius);
     --mouse-x: 0px;
     --mouse-y: 0px;
 
@@ -1520,12 +1520,12 @@ body {
   }
 
   .switch-track[data-state="checked"] {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
+    background-color: rgba(255, 255, 255, 0.1); /* Match nav bar active state */
     border-color: var(--stroke-fg-mid);
   }
 
   .switch-track[data-state="checked"]:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
+    background-color: rgba(255, 255, 255, 0.13); /* Slightly brighter on hover */
     border-color: var(--stroke-fg-xstrong);
   }
 

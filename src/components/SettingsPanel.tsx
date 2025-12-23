@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { motion, Variants } from "framer-motion";
+import { motion, Variants, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
 import {
@@ -434,26 +434,80 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* Tab Navigation - top bezel */}
         <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
           <div className="flex items-center justify-center px-6">
-            <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden">
+            <div className="flex items-center gap-0.5 border border-white/[0.08] rounded-lg p-1">
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "settings"
-                  ? "bg-white/10 text-foreground"
+                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
+                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "settings" ? "" : "justify-center"} ${activeTab === "settings"
+                  ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
-                <SfIcon name="gearshape.fill" size={18} />
-                <span className="text-[10px] text-muted-foreground">Settings</span>
+                {activeTab === "settings" && (
+                  <motion.div
+                    key="settings-bg"
+                    className="absolute inset-0 bg-white/10 rounded-md"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="gearshape.fill" size={17} />
+                </span>
+                <motion.span
+                  animate={{
+                    opacity: activeTab === "settings" ? 1 : 0,
+                    width: activeTab === "settings" ? "auto" : 0,
+                    marginLeft: activeTab === "settings" ? "8px" : "0px"
+                  }}
+                  transition={{
+                    opacity: { duration: activeTab === "settings" ? 0.25 : 0.12 },
+                    width: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
+                    marginLeft: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                  }}
+                  className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
+                >
+                  Settings
+                </motion.span>
               </button>
               <button
                 onClick={() => setActiveTab("history")}
-                className={`flex flex-col items-center gap-1 px-4 py-2 rounded-md transition-all duration-200 ${activeTab === "history"
-                  ? "bg-white/10 text-foreground"
+                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
+                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "history" ? "" : "justify-center"} ${activeTab === "history"
+                  ? "text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
               >
-                <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={18} />
-                <span className="text-[10px] text-muted-foreground">History</span>
+                {activeTab === "history" && (
+                  <motion.div
+                    key="history-bg"
+                    className="absolute inset-0 bg-white/10 rounded-md"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
+                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={17} />
+                </span>
+                <motion.span
+                  animate={{
+                    opacity: activeTab === "history" ? 1 : 0,
+                    width: activeTab === "history" ? "auto" : 0,
+                    marginLeft: activeTab === "history" ? "8px" : "0px"
+                  }}
+                  transition={{
+                    opacity: { duration: activeTab === "history" ? 0.25 : 0.12 },
+                    width: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
+                    marginLeft: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                  }}
+                  className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
+                >
+                  History
+                </motion.span>
               </button>
             </div>
           </div>
