@@ -22,19 +22,19 @@ export const SIMPLISMART_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_EDIT_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_LLM_MODEL_UUID = '23a8dfd7-f6d4-426c-b637-517c205282c7';
 
-export const LLM_DEFAULT_MODEL = CEREBRAS_LLM_DEFAULT_MODEL;
+export const LLM_DEFAULT_MODEL = BASETEN_LLM_DEFAULT_MODEL;
 export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = true;
-export const LLM_DEFAULT_PROVIDER = 'cerebras' as const;
+export const LLM_DEFAULT_PROVIDER = 'baseten' as const;
 export const LLM_ROUTER_ENABLED = true;
 export type LLMProvider = 'groq' | 'openai' | 'baseten' | 'openrouter' | 'cerebras' | 'simplismart';
 
-export const EDIT_LLM_DEFAULT_MODEL = CEREBRAS_EDIT_LLM_DEFAULT_MODEL;
+export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = true;
-export const EDIT_LLM_DEFAULT_PROVIDER = 'cerebras' as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = 'baseten' as const;
 
 
 // STT (Audio Transcriptions)
