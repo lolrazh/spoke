@@ -64,7 +64,7 @@ export const DEEPGRAM_STT_DEFAULT_MODEL = 'nova-3';
 export const SIMPLISMART_STT_MODEL = 'whisper';
 export const SIMPLISMART_STT_TURBO_MODEL = 'whisper-turbo';
 
-export const STT_DEFAULT_MODEL = SIMPLISMART_STT_MODEL;
+export const STT_DEFAULT_MODEL = SIMPLISMART_STT_TURBO_MODEL;
 export const FIREWORKS_STT_DEFAULT_VAD_MODEL = 'silero';
 export const FIREWORKS_STT_DEFAULT_ALIGNMENT_MODEL = 'tdnn_ffn';
 export const FIREWORKS_STT_DEFAULT_PREPROCESSING = 'none';
