@@ -1793,6 +1793,11 @@ export function useTranscription(
                               bodyMs?: number | null;
                               totalMs?: number | null;
                               routeRules?: string[] | null;
+                              // Smart routing metrics
+                              tier?: "bypass" | "default" | "advanced" | "edit" | null;
+                              triggeredRules?: string[] | null;
+                              promptTokens?: number | null;
+                              bypassed?: boolean;
                             } | null;
                             finalSentAt?: number | null;
                             chunkCount?: number | null;
@@ -1887,6 +1892,11 @@ export function useTranscription(
                             .setServerMetrics({
                               stt_ms: sttMs ?? undefined,
                               llm_ms: worker?.llm?.totalMs != null ? Math.round(worker.llm.totalMs) : undefined,
+                              // Smart routing metrics
+                              llm_tier: worker?.llm?.tier ?? undefined,
+                              llm_triggered_rules: worker?.llm?.triggeredRules ?? undefined,
+                              llm_prompt_tokens: worker?.llm?.promptTokens ?? undefined,
+                              llm_bypassed: worker?.llm?.bypassed ?? undefined,
                             })
                             .setOutcome('success', {
                               text: msg.text,

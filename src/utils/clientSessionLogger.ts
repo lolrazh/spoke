@@ -79,6 +79,11 @@ export interface ClientSessionEvent {
     stt_ms?: number;
     llm_ms?: number;
     audio_streaming_ms?: number;
+    // Smart routing metrics
+    llm_tier?: "bypass" | "default" | "advanced" | "edit";
+    llm_triggered_rules?: string[];
+    llm_prompt_tokens?: number;
+    llm_bypassed?: boolean;
   };
 }
 
@@ -240,6 +245,11 @@ export class ClientSessionEventBuilder {
     stt_ms?: number;
     llm_ms?: number;
     audio_streaming_ms?: number;
+    // Smart routing metrics
+    llm_tier?: "bypass" | "default" | "advanced" | "edit";
+    llm_triggered_rules?: string[];
+    llm_prompt_tokens?: number;
+    llm_bypassed?: boolean;
   }): this {
     this.event.server = metrics;
     return this;

@@ -1223,18 +1223,26 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     totalMs: timings.bodyDoneAt - timings.startAt,
                   }
                   : null,
-                llm: llmTimings
+                llm: llmTimings || modelTier
                   ? {
-                    provider: llmProvider,
-                    model: llmModel,
-                    startAt: llmTimings.startAt,
-                    headersAt: llmTimings.headersAt,
-                    firstDeltaAt: llmTimings.firstDeltaAt ?? null,
-                    bodyDoneAt: llmTimings.bodyDoneAt,
-                    ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
-                    bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
-                    totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
-                    routeRules: llmRouteRules.length ? llmRouteRules : null,
+                    // LLM call metrics (only if LLM was invoked)
+                    ...(llmTimings ? {
+                      provider: llmProvider,
+                      model: llmModel,
+                      startAt: llmTimings.startAt,
+                      headersAt: llmTimings.headersAt,
+                      firstDeltaAt: llmTimings.firstDeltaAt ?? null,
+                      bodyDoneAt: llmTimings.bodyDoneAt,
+                      ttfbMs: (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt,
+                      bodyMs: llmTimings.bodyDoneAt - (llmTimings.firstDeltaAt ?? llmTimings.headersAt),
+                      totalMs: llmTimings.bodyDoneAt - llmTimings.startAt,
+                      routeRules: llmRouteRules.length ? llmRouteRules : null,
+                    } : {}),
+                    // Smart routing metrics (always included when router is active)
+                    tier: modelTier || null,
+                    triggeredRules: triggeredRules.length ? triggeredRules : null,
+                    promptTokens: promptTokens || null,
+                    bypassed: llmBypassed,
                   }
                   : null,
                 finalSentAt: Date.now(),
