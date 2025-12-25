@@ -42,11 +42,14 @@ const LENGTH_THRESHOLD_WORDS = 180;
  * Smart routing for transcription post-processing
  *
  * Decision tree:
- * 1. No triggers detected → BYPASS (no LLM, use raw STT)
- * 2. Long text (>1200 chars) → ADVANCED model
- * 3. Triggers detected → DEFAULT model (fast)
+ * 1. No triggers detected → BYPASS (no LLM, use raw STT - even if long!)
+ * 2. Triggers detected + normal length → DEFAULT model (fast)
+ * 3. Triggers detected + long text (>1200 chars) → ADVANCED model (upgrade from default)
  *
- * Note: Edit mode should call this separately and always use EDIT tier
+ * Note: Length is an "upgrade modifier" only applied AFTER triggers are detected.
+ * Long text without triggers still bypasses the LLM entirely.
+ *
+ * Edit mode should call selectEditRoute() separately and always use EDIT tier.
  *
  * @param text - STT output text
  * @param triggerContext - Detected triggers from detectTriggers()
@@ -74,25 +77,7 @@ export function selectSmartRoute(
     };
   }
 
-  const triggeredRules = Array.from(triggerContext.triggers);
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-  const isLong = normalized.length >= LENGTH_THRESHOLD_CHARS || wordCount >= LENGTH_THRESHOLD_WORDS;
-
-  // Long text → ADVANCED model (smarter, slower) - regardless of triggers
-  if (isLong) {
-    return {
-      tier: 'advanced',
-      provider: runtime.advanced.provider,
-      model: runtime.advanced.model,
-      temperature: runtime.advanced.temperature,
-      timeoutMs: runtime.advanced.timeoutMs,
-      stream: runtime.advanced.stream,
-      triggeredRules,
-      reason: `long_text_${normalized.length}_chars_${wordCount}_words`,
-    };
-  }
-
-  // No triggers detected → BYPASS
+  // No triggers detected → BYPASS (regardless of length)
   if (!triggerContext.requiresLLM) {
     return {
       tier: 'bypass',
@@ -103,6 +88,25 @@ export function selectSmartRoute(
       stream: undefined,
       triggeredRules: [],
       reason: 'no_triggers_detected',
+    };
+  }
+
+  // Triggers detected - now check if we need advanced model
+  const triggeredRules = Array.from(triggerContext.triggers);
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const isLong = normalized.length >= LENGTH_THRESHOLD_CHARS || wordCount >= LENGTH_THRESHOLD_WORDS;
+
+  // Triggers + long text → ADVANCED model (upgrade from default)
+  if (isLong) {
+    return {
+      tier: 'advanced',
+      provider: runtime.advanced.provider,
+      model: runtime.advanced.model,
+      temperature: runtime.advanced.temperature,
+      timeoutMs: runtime.advanced.timeoutMs,
+      stream: runtime.advanced.stream,
+      triggeredRules,
+      reason: `long_with_triggers_${normalized.length}_chars_${wordCount}_words`,
     };
   }
 

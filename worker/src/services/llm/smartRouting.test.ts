@@ -125,8 +125,8 @@ describe('services/llm/smartRouting', () => {
   });
 
   describe('selectSmartRoute - advanced tier', () => {
-    it('routes long text to advanced model by character count', () => {
-      const longText = 'a'.repeat(1300);
+    it('routes long text WITH triggers to advanced model by character count', () => {
+      const longText = 'Please make this uppercase. ' + 'a'.repeat(1300);
       const triggerContext = detectTriggers(longText);
       const decision = selectSmartRoute(longText, triggerContext, baseRuntime);
 
@@ -134,35 +134,38 @@ describe('services/llm/smartRouting', () => {
       expect(decision.provider).toBe('cerebras');
       expect(decision.model).toBe('kimi-k2-instruct');
       expect(decision.temperature).toBe(0.3);
-      expect(decision.reason).toContain('long_text');
-      expect(decision.reason).toContain('1300_chars');
+      expect(decision.reason).toContain('long_with_triggers');
+      expect(decision.triggeredRules).toContain('casing');
     });
 
-    it('routes long text to advanced model by word count', () => {
-      const longText = Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
+    it('routes long text WITH triggers to advanced model by word count', () => {
+      const longText = 'Add an at symbol here. ' + Array.from({ length: 200 }, (_, i) => `word${i}`).join(' ');
       const triggerContext = detectTriggers(longText);
       const decision = selectSmartRoute(longText, triggerContext, baseRuntime);
 
       expect(decision.tier).toBe('advanced');
-      expect(decision.reason).toContain('200_words');
+      expect(decision.reason).toContain('long_with_triggers');
+      expect(decision.triggeredRules).toContain('symbols');
     });
 
-    it('routes to advanced even with no triggers if text is long', () => {
+    it('bypasses LLM for long text WITHOUT triggers', () => {
       const longCleanText = Array.from({ length: 200 }, (_, i) => `sentence${i}`).join(' ');
       const triggerContext = detectTriggers(longCleanText);
       const decision = selectSmartRoute(longCleanText, triggerContext, baseRuntime);
 
-      // Long text overrides bypass
-      expect(decision.tier).toBe('advanced');
+      // Long text WITHOUT triggers should still bypass
+      expect(decision.tier).toBe('bypass');
+      expect(decision.triggeredRules).toEqual([]);
     });
 
-    it('prefers advanced over default for long text with triggers', () => {
+    it('upgrades from default to advanced for long text with triggers', () => {
       const longTextWithTriggers = 'Please spell it as S-P-O-K-E. ' + 'a'.repeat(1200);
       const triggerContext = detectTriggers(longTextWithTriggers);
       const decision = selectSmartRoute(longTextWithTriggers, triggerContext, baseRuntime);
 
       expect(decision.tier).toBe('advanced');
       expect(decision.triggeredRules).toContain('spelling');
+      expect(decision.reason).toContain('long_with_triggers');
     });
   });
 
