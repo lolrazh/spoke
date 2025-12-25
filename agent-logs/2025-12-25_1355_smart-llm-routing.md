@@ -2,6 +2,7 @@
 
 **Date:** 2025-12-25
 **Agent:** Claude Sonnet 4.5
+**Sessions:** 3 sessions (11:32 AM, 12:55 PM, 1:55 PM)
 **Status:** ✅ Completed
 
 ## User Intention
@@ -115,15 +116,80 @@ Decision tree:
 - **Length threshold at 1200 chars / 180 words:** Balanced heuristic for "needs smarter model". Only applies when triggers exist.
 - **No filler word removal in bypass tier:** User chose to skip local processing tier (Tier 1). Fillers only removed by LLM when triggers fire.
 
+---
+
+## Session 2: Advanced Model Configuration (12:55 PM)
+
+User identified missing configuration for advanced model tier. Initial implementation reused `EDIT_LLM_DEFAULT_*` constants, but needed separate `ADVANCED_LLM_DEFAULT_*` constants for independent configuration.
+
+### What We Accomplished
+- ✅ **Added provider-specific advanced models** - Created `GROQ_ADVANCED_LLM_DEFAULT_MODEL`, `OPENAI_ADVANCED_LLM_DEFAULT_MODEL`, etc. for all 6 providers
+- ✅ **Added global advanced defaults** - `ADVANCED_LLM_DEFAULT_MODEL`, `ADVANCED_LLM_DEFAULT_TEMPERATURE` (0.3), `ADVANCED_LLM_DEFAULT_TIMEOUT_MS` (30s), `ADVANCED_LLM_DEFAULT_STREAM`, `ADVANCED_LLM_DEFAULT_PROVIDER` ('baseten')
+- ✅ **Updated runtime configuration** - Added `PROVIDER_ADVANCED_MODELS` mapping and `defaultAdvancedModelFor()` helper
+- ✅ **Fixed advanced tier initialization** - Now uses `ADVANCED_LLM_DEFAULT_*` instead of falling back to `EDIT_LLM_DEFAULT_*`
+
+### Files Modified
+- `worker/src/config.ts` - Added 6 provider-specific advanced model constants + 5 global advanced defaults
+- `worker/src/config/runtime.ts` - Imported advanced constants, added provider mapping, updated getRuntimeConfig() to use advanced defaults
+
+### Result
+Now advanced tier can be configured independently via `ADVANCED_LLM_MODEL`, `ADVANCED_LLM_PROVIDER`, `ADVANCED_LLM_TEMPERATURE` env vars. For now defaults to same models as edit tier (both use Kimi K2), but infrastructure is in place for future divergence.
+
+---
+
+## Session 3: Wide Events Logging Integration (1:55 PM)
+
+User wanted to ensure smart routing metrics follow the "Wide Events / Canonical Log Lines" philosophy from https://loggingsucks.com/. Previous work in agent-logs/2025-12-22_2245_remove-noisy-logging.md migrated app to emit ONE structured `[Session]` log per transcription. Smart routing metrics were logged in worker session summary but **not sent to client** for the wide event.
+
+### What We Accomplished
+- ✅ **Extended ClientSessionEvent interface** - Added 4 smart routing fields to `server` section: `llm_tier`, `llm_triggered_rules`, `llm_prompt_tokens`, `llm_bypassed`
+- ✅ **Updated worker metrics payload** - Modified `workerMetrics.llm` to include smart routing metrics alongside timing metrics
+- ✅ **Fixed bypass case logging** - Changed condition from `llmTimings ?` to `llmTimings || modelTier ?` so bypass cases send metrics even when LLM wasn't called
+- ✅ **Updated client extraction** - Added smart routing fields to worker type definition and `setServerMetrics()` call
+
+### Files Modified
+- `src/utils/clientSessionLogger.ts` - Extended `ClientSessionEvent.server` interface and `setServerMetrics()` signature
+- `worker/src/handlers/ws.ts:1226-1247` - Modified `workerMetrics.llm` to include smart routing fields using spread operator
+- `src/hooks/useTranscription.ts:1785-1801` - Added smart routing fields to worker type, lines 1892-1899 extract and pass metrics
+
+### Wide Event Structure
+```typescript
+[Session] {
+  timestamp: "2025-12-25T...",
+  trace_id: "abc123",
+  mode: "dictation",
+  outcome: "success",
+
+  server: {
+    stt_ms: 180,
+    llm_ms: undefined,        // undefined if bypassed
+    llm_tier: "bypass",       // bypass/default/advanced/edit
+    llm_triggered_rules: [],  // e.g., ["spelling", "casing"]
+    llm_prompt_tokens: 0,     // e.g., 470 tokens
+    llm_bypassed: true        // true if no LLM call
+  },
+
+  text_length: 150,
+  word_count: 25
+}
+```
+
+### Key Learning
+Wide events must include ALL relevant metrics, not just timing. Smart routing decisions (tier, triggers, tokens, bypass) are high-cardinality context critical for debugging latency issues and validating routing logic. The bypass case is especially important to log - proves 0ms LLM latency.
+
+---
+
 ## Ready for Next Session
 
-- ✅ **Smart routing fully integrated** - All 73 tests passing (40 triggers + 17 composer + 16 routing)
+- ✅ **Smart routing fully integrated** - All 166 tests passing (40 triggers + 17 composer + 16 routing)
 - ✅ **TypeScript compilation clean** - No errors, only pre-existing warnings
-- ✅ **Metrics tracking in place** - Session summaries now include `tier`, `triggeredRules`, `promptTokens`, `llmBypassed`
-- ✅ **Environment variables documented** - `ADVANCED_LLM_*` env vars work same as `EDIT_LLM_*`
+- ✅ **Advanced model configuration** - Separate `ADVANCED_LLM_*` env vars for independent tuning
+- ✅ **Wide events integration** - Smart routing metrics flow from worker → client → canonical `[Session]` log
+- ✅ **Metrics tracking in place** - Session summaries (worker) and wide events (client) include `tier`, `triggeredRules`, `promptTokens`, `llmBypassed`
 - 🔧 **End-to-end testing needed** - Not yet tested with live transcriptions, only unit tests
 - 🔧 **Trigger tuning potential** - May need to adjust patterns based on real usage (false positives/negatives)
 - 🔧 **Length threshold tuning** - 1200 chars is initial estimate, may optimize based on latency/quality metrics
+- 🔧 **Prompt optimization** - Need to optimize each modular prompt segment to maintain accuracy/quality of old monolithic prompt
 
 ## Context for Future
 
