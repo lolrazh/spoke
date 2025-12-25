@@ -9,12 +9,15 @@ import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
-import { selectLLMRoute } from '../services/llm/routing';
-import { buildLLMSystemPrompt } from '../services/llm/prompt';
+import { selectLLMRoute } from '../services/llm/routing'; // DEPRECATED: will be replaced by smartRouting
+import { buildLLMSystemPrompt } from '../services/llm/prompt'; // DEPRECATED: will be replaced by prompts/composer
 import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editPrompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
 import { safely } from '../utils/safely';
+import { detectTriggers } from '../services/llm/triggers';
+import { composeDynamicPrompt, estimatePromptTokens } from '../services/llm/prompts';
+import { selectSmartRoute, selectEditRoute } from '../services/llm/smartRouting';
 import { trackSessionLifecycle } from '../utils/analytics';
 import {
   logSessionAuth,
@@ -689,6 +692,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmProvider: string | null = null;
           let llmModel: string | null = null;
           let llmRouteRules: string[] = [];
+          let triggeredRules: string[] = []; // New: triggers detected by smart router
+          let promptTokens: number = 0; // New: estimated prompt token count
+          let llmBypassed: boolean = false; // New: was LLM skipped entirely?
+          let modelTier: string = ''; // New: which tier was used (bypass/default/advanced/edit)
 
           const runtime = getRuntimeConfig(c.env);
           const runtimeSttProvider = runtime.stt.provider;
@@ -789,9 +796,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   ),
                 );
 
-                const provider = runtime.edit.provider;
+                // EDIT MODE: Always use edit tier
+                const editRouteDecision = selectEditRoute(runtime);
+                modelTier = editRouteDecision.tier;
+                const provider = editRouteDecision.provider!;
+                const model = editRouteDecision.model!;
                 llmProvider = provider;
-                const model = runtime.edit.model;
                 llmModel = model;
                 const apiKeyForProvider =
                   provider === 'openai'
@@ -906,25 +916,51 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 // Track router overhead (time between STT complete → LLM start)
                 const routerStartTime = Date.now();
 
-                // Notify client that LLM processing starts
-                safely(() =>
-                  server.send(
-                    JSON.stringify({
-                      type: 'llm_status',
-                      state: 'llm_processing',
-                      traceId: session.traceId,
-                      serverTs: Date.now(),
-                    }),
-                  ),
-                );
+                // SMART ROUTING: Detect triggers and route to appropriate tier
+                const triggerContext = detectTriggers(finalText);
+                const routeDecision = selectSmartRoute(finalText, triggerContext, runtime);
 
-                const streamLLM = runtime.llm.stream;
-                const routeDecision = selectLLMRoute(finalText, runtime.llm);
-                const provider = routeDecision.provider;
-                const model = routeDecision.model;
+                // Track smart routing metrics
+                modelTier = routeDecision.tier;
+                triggeredRules = routeDecision.triggeredRules;
+
+                // BYPASS: No LLM needed - use raw STT
+                if (routeDecision.tier === 'bypass') {
+                  llmBypassed = true;
+                  llmText = finalText;
+                  llmSuccess = true;
+                  promptTokens = 0;
+
+                  // Log bypass
+                  try {
+                    const bypassLog = {
+                      event: 'llm.bypassed',
+                      reason: routeDecision.reason,
+                      textLength: finalText.length,
+                      traceId: session.traceId,
+                    } as const;
+                    console.log(JSON.stringify(bypassLog));
+                  } catch { }
+                } else {
+                  // LLM PROCESSING: default or advanced tier
+                  // Notify client that LLM processing starts
+                  safely(() =>
+                    server.send(
+                      JSON.stringify({
+                        type: 'llm_status',
+                        state: 'llm_processing',
+                        traceId: session.traceId,
+                        serverTs: Date.now(),
+                      }),
+                    ),
+                  );
+
+                const streamLLM = routeDecision.stream ?? runtime.llm.stream;
+                const provider = routeDecision.provider!;
+                const model = routeDecision.model!;
                 llmProvider = provider;
                 llmModel = model;
-                llmRouteRules = routeDecision.matchedRuleIds;
+                llmRouteRules = triggeredRules;
                 const apiKeyForProvider =
                   provider === 'openai'
                     ? c.env.OPENAI_API_KEY
@@ -941,13 +977,23 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 if (apiKeyForProvider) {
                   const llmStartTime = Date.now();
                   routerOverheadMs = llmStartTime - routerStartTime;
+
+                  // DYNAMIC PROMPT: Compose based on detected triggers
+                  const systemPrompt = composeDynamicPrompt(triggerContext, {
+                    vocabulary: sttPrompt,
+                    model,
+                    currentDate: runtime.llm.currentDate,
+                  });
+                  promptTokens = estimatePromptTokens(systemPrompt);
+
                   const llmRes = await chatCompleteByProvider(provider, {
                     apiKey: apiKeyForProvider,
                     model,
-                    systemPrompt: buildLLMSystemPrompt({ model, currentDate: runtime.llm.currentDate, sttPrompt }),
+                    systemPrompt,
                     userContent: finalText,
                     stream: streamLLM,
-                    temperature: runtime.llm.temperature,
+                    temperature: routeDecision.temperature ?? runtime.llm.temperature,
+                    timeoutMs: routeDecision.timeoutMs,
                     signal: sttAbort.signal,
                     providerConfig:
                       provider === 'openrouter'
@@ -990,6 +1036,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     trace_id: session.traceId ?? 'unknown',
                   });
                 }
+                } // Close else block for LLM processing (bypass vs process)
               }
 
               if (llmText) {
@@ -1356,11 +1403,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     : null,
               },
               result: { textLen: (llmText || finalText).length },
-              llm: llmProvider
+              llm: llmProvider || modelTier
                 ? {
                   provider: llmProvider,
                   model: llmModel,
                   routeRules: llmRouteRules.length ? llmRouteRules : null,
+                  tier: modelTier || null,
+                  triggeredRules: triggeredRules.length ? triggeredRules : null,
+                  promptTokens: promptTokens || null,
+                  bypassed: llmBypassed,
                 }
                 : null,
               edit:

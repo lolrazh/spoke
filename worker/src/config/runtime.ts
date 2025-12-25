@@ -89,6 +89,14 @@ export type RuntimeConfig = {
     prompt?: string;
     timeoutMs: number;
   };
+  advanced: {
+    enabled: boolean;
+    stream: boolean;
+    model: string;
+    temperature: number;
+    timeoutMs: number;
+    provider: LLMProvider;
+  };
   edit: {
     enabled: boolean;
     stream: boolean;
@@ -124,6 +132,19 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     ? Number(env.STT_TIMEOUT_MS)
     : STT_DEFAULT_TIMEOUT_MS;
 
+  // Advanced LLM (for complex/long transcriptions, separate from edit)
+  const advancedEnabled = toBool(env.ADVANCED_LLM_ENABLED, true);
+  const advancedStream = toBool(env.ADVANCED_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
+  const advancedProvider = parseProvider(env.ADVANCED_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
+  const advancedModel = env.ADVANCED_LLM_MODEL || defaultEditModelFor(advancedProvider, EDIT_LLM_DEFAULT_MODEL);
+  const advancedTemperature = Number.isFinite(Number(env.ADVANCED_LLM_TEMPERATURE))
+    ? Number(env.ADVANCED_LLM_TEMPERATURE)
+    : EDIT_LLM_DEFAULT_TEMPERATURE;
+  const advancedTimeoutMs = Number.isFinite(Number(env.ADVANCED_LLM_TIMEOUT_MS))
+    ? Number(env.ADVANCED_LLM_TIMEOUT_MS)
+    : EDIT_LLM_DEFAULT_TIMEOUT_MS;
+
+  // Edit LLM (only for edit mode with selected text)
   const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
   const editStream = toBool(env.EDIT_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
   const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
@@ -138,6 +159,7 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   return {
     llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider, routerEnabled },
     stt: { provider: sttProvider, model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
+    advanced: { enabled: advancedEnabled, stream: advancedStream, model: advancedModel, temperature: advancedTemperature, timeoutMs: advancedTimeoutMs, provider: advancedProvider },
     edit: { enabled: editEnabled, stream: editStream, model: editModel, temperature: editTemperature, timeoutMs: editTimeoutMs, provider: editProvider },
   };
 }
