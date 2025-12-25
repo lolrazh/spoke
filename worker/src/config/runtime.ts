@@ -11,12 +11,23 @@ import {
   OPENROUTER_LLM_DEFAULT_MODEL,
   CEREBRAS_LLM_DEFAULT_MODEL,
   SIMPLISMART_LLM_DEFAULT_MODEL,
+  GROQ_ADVANCED_LLM_DEFAULT_MODEL,
+  OPENAI_ADVANCED_LLM_DEFAULT_MODEL,
+  BASETEN_ADVANCED_LLM_DEFAULT_MODEL,
+  OPENROUTER_ADVANCED_LLM_DEFAULT_MODEL,
+  CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL,
+  SIMPLISMART_ADVANCED_LLM_DEFAULT_MODEL,
   GROQ_EDIT_LLM_DEFAULT_MODEL,
   OPENAI_EDIT_LLM_DEFAULT_MODEL,
   BASETEN_EDIT_LLM_DEFAULT_MODEL,
   OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
   CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
   SIMPLISMART_EDIT_LLM_DEFAULT_MODEL,
+  ADVANCED_LLM_DEFAULT_MODEL,
+  ADVANCED_LLM_DEFAULT_PROVIDER,
+  ADVANCED_LLM_DEFAULT_TEMPERATURE,
+  ADVANCED_LLM_DEFAULT_TIMEOUT_MS,
+  ADVANCED_LLM_DEFAULT_STREAM,
   EDIT_LLM_DEFAULT_MODEL,
   EDIT_LLM_DEFAULT_PROVIDER,
   EDIT_LLM_DEFAULT_TEMPERATURE,
@@ -52,6 +63,15 @@ const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
   simplismart: SIMPLISMART_LLM_DEFAULT_MODEL,
 };
 
+const PROVIDER_ADVANCED_MODELS: Record<LLMProvider, string> = {
+  groq: GROQ_ADVANCED_LLM_DEFAULT_MODEL,
+  openai: OPENAI_ADVANCED_LLM_DEFAULT_MODEL,
+  baseten: BASETEN_ADVANCED_LLM_DEFAULT_MODEL,
+  openrouter: OPENROUTER_ADVANCED_LLM_DEFAULT_MODEL,
+  cerebras: CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL,
+  simplismart: SIMPLISMART_ADVANCED_LLM_DEFAULT_MODEL,
+};
+
 const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
   groq: GROQ_EDIT_LLM_DEFAULT_MODEL,
   openai: OPENAI_EDIT_LLM_DEFAULT_MODEL,
@@ -63,6 +83,10 @@ const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
 
 function defaultModelFor(provider: LLMProvider, fallback: string): string {
   return PROVIDER_DEFAULT_MODELS[provider] ?? fallback;
+}
+
+function defaultAdvancedModelFor(provider: LLMProvider, fallback: string): string {
+  return PROVIDER_ADVANCED_MODELS[provider] ?? fallback;
 }
 
 function defaultEditModelFor(provider: LLMProvider, fallback: string): string {
@@ -134,15 +158,15 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
   // Advanced LLM (for complex/long transcriptions, separate from edit)
   const advancedEnabled = toBool(env.ADVANCED_LLM_ENABLED, true);
-  const advancedStream = toBool(env.ADVANCED_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
-  const advancedProvider = parseProvider(env.ADVANCED_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
-  const advancedModel = env.ADVANCED_LLM_MODEL || defaultEditModelFor(advancedProvider, EDIT_LLM_DEFAULT_MODEL);
+  const advancedStream = toBool(env.ADVANCED_LLM_STREAM, ADVANCED_LLM_DEFAULT_STREAM);
+  const advancedProvider = parseProvider(env.ADVANCED_LLM_PROVIDER, ADVANCED_LLM_DEFAULT_PROVIDER);
+  const advancedModel = env.ADVANCED_LLM_MODEL || defaultAdvancedModelFor(advancedProvider, ADVANCED_LLM_DEFAULT_MODEL);
   const advancedTemperature = Number.isFinite(Number(env.ADVANCED_LLM_TEMPERATURE))
     ? Number(env.ADVANCED_LLM_TEMPERATURE)
-    : EDIT_LLM_DEFAULT_TEMPERATURE;
+    : ADVANCED_LLM_DEFAULT_TEMPERATURE;
   const advancedTimeoutMs = Number.isFinite(Number(env.ADVANCED_LLM_TIMEOUT_MS))
     ? Number(env.ADVANCED_LLM_TIMEOUT_MS)
-    : EDIT_LLM_DEFAULT_TIMEOUT_MS;
+    : ADVANCED_LLM_DEFAULT_TIMEOUT_MS;
 
   // Edit LLM (only for edit mode with selected text)
   const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
