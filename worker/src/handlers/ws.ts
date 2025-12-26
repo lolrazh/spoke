@@ -691,9 +691,9 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           let llmModel: string | null = null;
           let llmRouteRules: string[] = [];
           let triggeredRules: string[] = []; // New: triggers detected by smart router
-          let promptTokens: number = 0; // New: estimated prompt token count
-          let llmBypassed: boolean = false; // New: was LLM skipped entirely?
-          let modelTier: string = ''; // New: which tier was used (bypass/default/advanced/edit)
+          let promptTokens = 0; // New: estimated prompt token count
+          let llmBypassed = false; // New: was LLM skipped entirely?
+          let modelTier = ''; // New: which tier was used (bypass/default/advanced/edit)
 
           const runtime = getRuntimeConfig(c.env);
           const runtimeSttProvider = runtime.stt.provider;
