@@ -50,8 +50,8 @@ Authentication happens once at WebSocket connection time—JWT claims provide in
     Cloudflare Worker concatenates PCM, wraps in WAV, calls STT API (Groq/Fireworks/Deepgram) with OCR-enriched vocabulary
   </stage>
 
-  <stage name="enhance">
-    LLM post-processing with OCR context (fuzzy matching for proper nouns, cleanup for dictation, rewrite for edit mode)
+  <stage name="enhance" updated="2025-12-25">
+    Optional LLM post-processing with smart routing (bypass for clean dictation, default/advanced models for complex cases, dedicated model for edit mode)
   </stage>
 
   <stage name="insert">
@@ -75,7 +75,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     4. Hook adds claims to JWT:
        - subscription_active (boolean) - Pro tier status
        - words_used_this_week (number) - Free tier usage (after reset if needed)
-       - quota_limit (number) - Free tier limit (1000 words/week)
+       - quota_limit (number) - Free tier limit (1000 words/week, changed from 2000/month on 2025-12-22)
        - quota_reset_date (timestamp) - Next reset date
     5. App syncs quota from JWT to localStorage on startup (display-only cache)
     6. User presses PTT → App checks local quota first (instant feedback)
@@ -152,7 +152,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     4011: AUTH_TIMEOUT - No auth message received within 15s
     4012: UNAUTHORIZED - Invalid or expired JWT
     4020: PAYMENT_REQUIRED - Valid user but no active subscription (free tier not implemented for this feature)
-    4021: QUOTA_EXCEEDED - Free tier user exceeded weekly word limit (1000 words/week, resets Monday 00:00 UTC)
+    4021: QUOTA_EXCEEDED - Free tier user exceeded weekly word limit (1000 words/week, resets Monday 00:00 UTC, changed from 2000/month on 2025-12-22)
   </close_codes>
 
   <architecture_benefits>
@@ -242,6 +242,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     - agent-logs/2025-12-04_1330_free-tier-quota-implementation.md (Server-authoritative quota system)
     - agent-logs/2025-12-04_1640_fix-quota-system.md (VOLATILE fix, notification improvements)
     - agent-logs/2025-12-03_2225_post-payment-jwt-refresh.md (Startup refresh flow)
+    - agent-logs/2025-12-22_1430_quota-1k-weekly.md (Monthly 2000 → Weekly 1000 migration)
   </related_docs>
 </auth_flow>
 
@@ -526,6 +527,20 @@ For now, single-shot processing is reliable and performant for all dictation len
       - Set true at start() entry, cleared on success, error, or stop/cancel
       - stop() checks startingRef and cancels if true
       - All early returns in start() clear startingRef to prevent stuck state
+    </starting_state>
+    <close_race_fix added="2025-12-22" file="src/hooks/useTranscription.ts">
+      **Problem:** Worker sends `final` message then closes WebSocket (code 1000). Browser event
+      loop can process `close` event before `message` event, causing timeout despite successful
+      transcription.
+      
+      **Solution:** onClose handler distinguishes normal vs abnormal closure:
+      - Code 1000 (normal): Wait 50ms for message handler to process pending `final`
+      - Other codes: Error immediately (preserves existing error handling)
+      
+      **Impact:** Fixes mysterious timeouts on long dictations (40+ seconds) where worker
+      processed successfully but client reported timeout.
+      
+      Reference: agent-logs/2025-12-22_2314_websocket-close-race-condition-fix.md
       
       **Early return points that clear startingRef:**
       - Quota exceeded (line 1177)
@@ -739,12 +754,12 @@ For now, single-shot processing is reliable and performant for all dictation len
   </quota_tracking>
 
   <telemetry file="worker/src/utils/analytics.ts">
-    **Updated:** 2025-12-19 - Consolidated into a single `session.lifecycle` event
+    **Updated:** 2025-12-25 - Added smart routing metrics to session.lifecycle event
 
     After session completes:
     - Write to Cloudflare Analytics Engine (zero latency, fire-and-forget)
-    - Event tracked: `session.lifecycle` (consolidates auth, OCR, STT, LLM, and quota metrics)
-    - Schema: 1 index (user_id), 7 blobs (outcome, mode, providers, error_stage), 15 doubles (timing breakdown, traffic metrics)
+    - Event tracked: `session.lifecycle` (consolidates auth, OCR, STT, LLM, smart routing, and quota metrics)
+    - Schema: 1 index (user_id), 7 blobs (outcome, mode, providers, error_stage, llm_tier, llm_triggered_rules), 17 doubles (timing breakdown, traffic metrics, prompt tokens)
     - Benefits: 50% reduction in write operations, complete correlation across all pipeline stages
     - Does NOT store transcription text (privacy)
     - Query via SQL in Cloudflare Dashboard
@@ -754,13 +769,20 @@ For now, single-shot processing is reliable and performant for all dictation len
     - `double15`: Cold start flag (1 if auth > 500ms, indicates JWKS fetch)
     - `double8`: Router overhead (time between STT → LLM)
     - `double12/13/14`: Audio quality (frames, size, sequence gaps)
+    - Smart routing: `llm_tier` (bypass/default/advanced/edit), `llm_triggered_rules`, `llm_prompt_tokens`, `llm_bypassed`
     - P95/P99 latency percentiles for bottleneck identification
 
     **Removed (2025-12-19):**
     - Deprecated `auth.jwt_verify` and `db.quota_increment` events in favor of consolidated lifecycle event.
     - Removed Sentry instrumentation (2025-12-11) - eliminated 150-200 network calls per request.
 
-    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-19_1920_analytics-engine-integration.md
+    **Client-Side Logging (2025-12-22):**
+    - Wide Events pattern: ONE `[Session]` log per transcription with full context
+    - Removed 40+ noisy console logs (quota updates, state changes, device enumeration)
+    - All debug logs gated behind `SF_DEVTOOLS=1` flag
+    - Philosophy: https://loggingsucks.com/
+
+    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-19_1920_analytics-engine-integration.md, agent-logs/2025-12-22_2245_remove-noisy-logging.md, agent-logs/2025-12-25_1355_smart-llm-routing.md
   </telemetry>
 </worker>
 
@@ -898,18 +920,140 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
     </openrouter>
   </providers>
 
-  <routing file="worker/src/services/llm/routing.ts">
-    <rules>
-      - Regex heuristics (spelling requests, formatting directives)
-      - Length threshold: ≥1200 chars OR ≥180 words → routes to edit model
-      - Matched rule IDs logged (e.g., "length-threshold")
-    </rules>
-    <toggle>LLM_ROUTER_ENABLED=0 to disable</toggle>
-    <purpose>
-      Automatically uses larger context models for long-form content.
-      Routes special requests (spelling, formatting) to appropriate models.
-    </purpose>
-  </routing>
+  <smart_routing added="2025-12-25" file="worker/src/services/llm/smartRouting.ts">
+    **Goal:** Reduce LLM latency to <500ms for clean dictation (90% of cases) while maintaining quality for complex cases.
+
+    **Architecture:** 4-tier system with trigger detection and dynamic prompts
+
+    <tiers>
+      1. **BYPASS** - No triggers detected → Use raw STT output (0ms LLM latency)
+         - 90% of dictations: Clean speech with no special directives
+         - STT prompt engineering handles filler words, punctuation, capitalization
+         - OCR vocabulary injection ensures proper noun accuracy
+         - Trade-off: 5% quality reduction for <400ms latency gain
+
+      2. **DEFAULT** - Triggers detected, normal length → Fast model (~500-800ms)
+         - Provider: Cerebras (llama-3.3-70b)
+         - Timeout: 25s, Temperature: 0.2, Streaming: enabled
+         - Default model for triggered dictation
+
+      3. **ADVANCED** - Triggers + >1200 chars → Smart model (~1000-1500ms)
+         - Provider: Baseten (moonshotai/Kimi-K2-Instruct-0905)
+         - Timeout: 30s, Temperature: 0.3, Streaming: enabled
+         - Length is an "upgrade modifier" - only applies when triggers exist
+         - Long text WITHOUT triggers still bypasses LLM entirely
+
+      4. **EDIT** - Edit mode only → Dedicated edit model (~1000-1500ms)
+         - Provider: Cerebras (qwen-3-235b-a22b-instruct-2507)
+         - Timeout: 25s, Temperature: 0.6, Streaming: enabled
+         - Independent from advanced tier for future customization
+    </tiers>
+
+    <trigger_detection file="worker/src/services/llm/triggers.ts">
+      **Hybrid regex + state machine** - Fast keyword scan with sequential validation
+
+      **6 Trigger Types:**
+      - **Spelling**: "S-P-E-L-L", "spell", "spelled" (e.g., "spell O-K-R")
+      - **Symbols**: "at symbol", "hashtag", "percent sign" (e.g., "add an at symbol before my name")
+      - **Casing**: "uppercase", "lowercase", "in caps" (e.g., "make that all caps")
+      - **Quotes**: "quote...unquote", "in quotes" (e.g., "she said quote I don't care end quote")
+      - **Disfluency**: "sorry", "wait no", "scratch that", "I mean", "actually" (e.g., "wait no that's wrong")
+      - **Lists**: ≥3 consecutive markers (numeric: "1, 2, 3" | ordinal: "first, second, third" | alphabetic: "a, b, c")
+
+      **Returns:** TriggerContext with:
+      - Fired triggers (Set<TriggerType>)
+      - Positional metadata (where triggers appeared)
+      - requiresLLM flag
+
+      **Performance:** O(n) regex scan, minimal overhead (~1-2ms)
+    </trigger_detection>
+
+    <dynamic_prompts file="worker/src/services/llm/prompts.ts">
+      **Token Optimization:** Modular prompts composed at runtime based on triggers
+
+      **Structure:**
+      ```
+      prompts.ts (consolidated)
+      ├── BASE_PROMPT          - Core ASR rules (~350 tokens, always included)
+      ├── TRIGGER_RULES        - Rule text per trigger type (~55-120 tokens each)
+      └── TRIGGER_EXAMPLES     - Few-shot examples per trigger (~2-3 examples each)
+      ```
+
+      **Token Savings:**
+      - Clean dictation (bypass): 0 tokens (no LLM call)
+      - Single trigger: ~470 tokens (60% reduction vs monolithic ~1200 tokens)
+      - All triggers: ~810 tokens (still 20% savings)
+
+      **Composition:**
+      1. Base prompt (always)
+      2. + Triggered rules (selective)
+      3. + Triggered examples (selective)
+      4. + OCR vocabulary (if available)
+
+      **Example:**
+      ```typescript
+      // User says: "The password is secret. Make that all caps."
+      // → Triggers: casing
+      // → Prompt: BASE_PROMPT + CASING_RULE + CASING_EXAMPLES
+      // → Output: "THE PASSWORD IS SECRET."
+      ```
+    </dynamic_prompts>
+
+    <routing_decision>
+      **Decision Tree:**
+      1. Router disabled (LLM_ROUTER_ENABLED=0) → DEFAULT tier
+      2. No triggers detected → BYPASS (even 10,000 chars!)
+      3. Triggers detected + normal length → DEFAULT tier
+      4. Triggers detected + >1200 chars → ADVANCED tier (upgrade)
+
+      **Key Insight:** Length threshold is NOT a trigger—it's an upgrade modifier.
+      Long clean text bypasses LLM. Only upgrade to advanced when triggers already exist.
+    </routing_decision>
+
+    <metrics>
+      Tracked in session.lifecycle event and client [Session] log:
+      - llm_tier: "bypass" | "default" | "advanced" | "edit"
+      - llm_triggered_rules: ["spelling", "casing"]
+      - llm_prompt_tokens: 470 (estimated)
+      - llm_bypassed: true | false
+    </metrics>
+
+    <env_vars>
+      LLM_ROUTER_ENABLED=1 (default: enabled)
+
+      ADVANCED_LLM_PROVIDER=baseten (default)
+      ADVANCED_LLM_MODEL=moonshotai/Kimi-K2-Instruct-0905
+      ADVANCED_LLM_TEMPERATURE=0.3
+      ADVANCED_LLM_TIMEOUT_MS=30000
+      ADVANCED_LLM_STREAM=1
+    </env_vars>
+
+    <testing>
+      - 40 trigger detection tests (triggers.test.ts)
+      - 17 prompt composition tests (prompts.test.ts)
+      - 16 routing decision tests (smartRouting.test.ts)
+      - All 166 tests passing as of 2025-12-26
+    </testing>
+
+    <performance_impact>
+      **Before (always-on LLM):**
+      - Every dictation: 800-1500ms LLM latency
+      - Token cost: ~1200 tokens per request
+
+      **After (smart routing):**
+      - 90% of dictations: 0ms LLM latency (bypass)
+      - 8% of dictations: ~500-800ms (default tier)
+      - 2% of dictations: ~1000-1500ms (advanced tier)
+      - Token cost: 0-810 tokens (60-100% reduction)
+
+      **Result:** Achieved <500ms target for clean dictation
+    </performance_impact>
+
+    <reference>
+      - agent-logs/2025-12-25_1355_smart-llm-routing.md (implementation)
+      - agent-logs/2025-12-26_1326_prompt-cleanup-and-examples.md (refinement)
+    </reference>
+  </smart_routing>
 
   <streaming>
     When LLM_STREAM=1 (default):
@@ -1003,8 +1147,19 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
   </derived>
 
   <logging>
-    **Client Logs:**
-    console.log("[SF] E2E", { traceId, dictationMs, e2eMs, totalMs, sttMs, llmMs, pasteMs, ... })
+    **Client Logs (2025-12-22: Wide Events Migration):**
+    console.log("[Session]", { 
+      trace_id, mode, outcome, 
+      timing: { pttDownMs, wsOpenMs, ... },
+      audio: { frames, bytes },
+      server: { stt_ms, llm_ms, llm_tier, llm_triggered_rules, llm_prompt_tokens, llm_bypassed },
+      result: { text, wordCount }
+    })
+    
+    **Philosophy:** ONE wide event per transcription with full context
+    - Removed 40+ noisy console logs (quota updates, state changes, device enumeration)
+    - All debug logs gated behind SF_DEVTOOLS=1 flag
+    - https://loggingsucks.com/ - high cardinality (trace_id) + high dimensionality (30+ fields)
 
     **Worker Logs:**
     - Session summary with all timing data (console only, not persisted)
@@ -1013,6 +1168,8 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
     **Telemetry:**
     - Replaced Sentry + dictation_logs (2025-12-11/13)
     - Replaced separate auth/quota events with `session.lifecycle` (2025-12-19)
+    - Added smart routing metrics to lifecycle event (2025-12-25)
+    - Migrated client to Wide Events pattern (2025-12-22)
     - Analytics Engine queries via SQL in Cloudflare Dashboard
     - P95/P99 latency analysis for bottleneck identification
 
@@ -1020,12 +1177,15 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
   </logging>
 
   <optimization_history>
+    - 2025-12-25: Smart LLM routing (90% bypass → 0ms LLM latency, 60-100% token reduction)
+    - 2025-12-22: WebSocket close race condition fix (eliminated timeouts on long dictations)
+    - 2025-12-22: Wide Events logging migration (40+ noisy logs → 1 wide event per session)
     - 2025-12-11: Sentry purge (400s → 1.5s wall time, 266x improvement)
     - 2025-12-12: JWKS edge caching (cold start rate 67% → 5%)
     - 2025-12-10: Pre-connect on startup (eliminated 4-5s first-dictation freeze)
     - 2025-12-06: WebSocket retry logic (handles Cloudflare edge rejections)
 
-    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md
+    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-22_2314_websocket-close-race-condition-fix.md, agent-logs/2025-12-25_1355_smart-llm-routing.md
   </optimization_history>
 </metrics>
 
@@ -1217,5 +1377,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-20
-**Pipeline Version**: OCR context-aware transcription, JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking, edit mode, multi-provider support (5 LLM providers, 3 STT providers), Consolidated Analytics Engine telemetry
+**Last Updated**: 2025-12-26
+**Pipeline Version**: OCR context-aware transcription, Smart LLM routing with trigger detection (bypass/default/advanced/edit tiers), JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking (1000 words/week), edit mode, multi-provider support (5 LLM providers, 3 STT providers), Consolidated Analytics Engine telemetry with wide events logging
