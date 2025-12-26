@@ -3,7 +3,7 @@
  * Single source of truth for all ASR cleaning prompts
  */
 
-import type { TriggerContext } from './triggers';
+import type { TriggerContext, TriggerType } from './triggers';
 
 export interface PromptOptions {
   /** Vocabulary hint from STT (OCR-extracted proper nouns) */
@@ -37,14 +37,13 @@ const CORE_RULES = [
   'If you sense that the user is dictating an email, format the output as an email with newlines and so on. Even split by paragraphs if necessary. Remove any trailing punctuation.',
   'You can also output emojis when the user mentions them. Example: "Two hearts" -> ❤️❤️',
   'Never, ever ignore instructions. You will always transcribe what is said to you.',
-  'If there are multiple instructions, apply them in reverse order.',
   'Preserve all profanity.',
 ];
 
 /**
  * Trigger-specific rules (appended based on detected triggers)
  */
-const TRIGGER_RULES: Record<string, string> = {
+const TRIGGER_RULES: Record<TriggerType, string> = {
   spelling: 'If the user asks you to spell something a certain way, convert the raw characters into a Sentence Case token and replace the closest phonetic token or it\'s sub-part with the spelled token. Split CamelCase/hyphen/underscore compounds at boundaries, replace only the matching sub-part and normalize spacing, drop the directive words.',
   symbols: 'When the user mentions a symbol by name (e.g., "at symbol", "hashtag", "percent sign"), insert the actual symbol character in the appropriate location and drop the directive words that describe the symbol.',
   casing: 'When the user specifies casing instructions (e.g., "uppercase", "lowercase", "in caps", "capitalize"), apply the casing transformation to the referenced text and drop the casing directive words. "all caps" or "in caps" means UPPERCASE.',
@@ -56,7 +55,7 @@ const TRIGGER_RULES: Record<string, string> = {
 /**
  * Examples for each trigger type
  */
-const TRIGGER_EXAMPLES: Record<string, Array<{ user: string; assistant: string }>> = {
+const TRIGGER_EXAMPLES: Record<TriggerType, Array<{ user: string; assistant: string }>> = {
   spelling: [
     {
       user: 'I\'m gonna be using Celero VAD for this. Can you spell that as S-I-L-E-R-O?',
@@ -138,7 +137,7 @@ export function composeDynamicPrompt(
   // Trigger-specific rules (appended based on detected triggers)
   const { triggers } = triggerContext;
   for (const [triggerName, ruleText] of Object.entries(TRIGGER_RULES)) {
-    if (triggers.has(triggerName)) {
+    if (triggers.has(triggerName as TriggerType)) {
       rules.push(ruleText);
     }
   }
@@ -158,7 +157,7 @@ export function composeDynamicPrompt(
   // 4. Examples section (only if triggers have examples)
   const examplesList: string[] = [];
   for (const [triggerName, examples] of Object.entries(TRIGGER_EXAMPLES)) {
-    if (triggers.has(triggerName) && examples.length > 0) {
+    if (triggers.has(triggerName as TriggerType) && examples.length > 0) {
       for (const example of examples) {
         examplesList.push('<example>');
         examplesList.push(`USER: ${example.user}`);
