@@ -22,7 +22,6 @@ export type ChatCompleteOptions = {
   signal?: AbortSignal;
 };
 
-import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
 import {
   SIMPLISMART_LLM_ENDPOINT,
   SIMPLISMART_LLM_DEFAULT_MODEL,
@@ -37,7 +36,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
   const {
     apiKey,
     model = SIMPLISMART_LLM_DEFAULT_MODEL,
-    systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
+    systemPrompt = '',
     userContent,
     stream = false,
     temperature = LLM_DEFAULT_TEMPERATURE,

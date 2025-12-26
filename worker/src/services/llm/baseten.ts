@@ -22,7 +22,6 @@ export type ChatCompleteOptions = {
   signal?: AbortSignal;
 };
 
-import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
 import { BASETEN_LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
 import { safeJson } from '../../utils/ws';
 import { safely } from '../../utils/safely';
@@ -32,7 +31,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<BasetenCh
   const {
     apiKey,
     model = LLM_DEFAULT_MODEL,
-    systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
+    systemPrompt = '',
     userContent,
     stream = true,
     temperature = LLM_DEFAULT_TEMPERATURE,

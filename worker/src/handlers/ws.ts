@@ -9,8 +9,6 @@ import { concat, parseFrameHeader, wrapWav } from '../audio/codec';
 import { createEmptySession, logSession } from '../ws/session';
 import { transcribeWav } from '../services/stt';
 import { chatCompleteByProvider } from '../services/llm';
-import { selectLLMRoute } from '../services/llm/routing'; // DEPRECATED: will be replaced by smartRouting
-import { buildLLMSystemPrompt } from '../services/llm/prompt'; // DEPRECATED: will be replaced by prompts/composer
 import { prepareEditRequest, buildEditSystemPrompt } from '../services/llm/editPrompt';
 import { buildSTTPrompt } from '../services/stt/prompt';
 import { getRuntimeConfig } from '../config/runtime';
