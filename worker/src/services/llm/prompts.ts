@@ -73,22 +73,33 @@ const TRIGGER_EXAMPLES: Record<string, Array<{ user: string; assistant: string }
   ],
   symbols: [
     {
-      user: 'Look mom, no hands. Tag mom with an ad symbol and show excitement.',
-      assistant: 'Look mom, no hands! @mom',
+      user: 'Look mom, no hands! Put an ad symbol before mom and add a party emoji.',
+      assistant: 'Look @mom, no hands! 🎉',
     },
     {
-      user: 'Send this to Groq. Add an at symbol before Groq.',
-      assistant: 'Send this to @Groq.',
+      user: 'My email is john at gmail dot com.',
+      assistant: 'My email is john@gmail.com.',
     },
   ],
   casing: [
     {
-      user: 'The acronym is D-N-A, in all caps.',
-      assistant: 'The acronym is DNA.',
+      user: 'The password is secret. Make that all caps.',
+      assistant: 'THE PASSWORD IS SECRET.',
+    },
+    {
+      user: 'Hey, What\'s up? What\'s going on? Write that in lowercase.',
+      assistant: 'hey, what\'s up? what\'s going on?',
     },
   ],
   quotes: [
-    // User will provide better examples
+    {
+      user: 'I mean they said I was quote-unquote lucky to be here. What the fuck do they mean by that?',
+      assistant: 'I mean they said I was "lucky" to be here. What the fuck do they mean by that?',
+    },
+    {
+      user: 'She literally said quote I don\'t care about your feelings end quote. Can you believe that?',
+      assistant: 'She literally said "I don\'t care about your feelings." Can you believe that?',
+    },
   ],
   disfluency: [
     {

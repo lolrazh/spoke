@@ -33,7 +33,7 @@ describe('services/llm/prompts', () => {
 
       expect(prompt).toContain('symbol by name');
       expect(prompt).toContain('<examples>');
-      expect(prompt).toContain('@Groq');
+      expect(prompt).toContain('@mom');
       expect(prompt).not.toContain('spell something a certain way');
     });
 
@@ -51,7 +51,8 @@ describe('services/llm/prompts', () => {
       const prompt = composeDynamicPrompt(triggerContext);
 
       expect(prompt).toContain('quote-unquote');
-      // No examples yet for quotes (user will provide better ones)
+      expect(prompt).toContain('<examples>');
+      expect(prompt).toContain('"lucky"');
     });
 
     it('includes disfluency module when disfluency trigger fires', () => {
@@ -79,7 +80,7 @@ describe('services/llm/prompts', () => {
       expect(prompt).toContain('symbol by name');
       expect(prompt).toContain('spell something a certain way');
       expect(prompt).toContain('<examples>');
-      expect(prompt).toContain('@Groq');
+      expect(prompt).toContain('@mom');
       expect(prompt).toContain('CLAUDE.md');
     });
 
