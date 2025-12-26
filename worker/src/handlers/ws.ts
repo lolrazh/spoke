@@ -1317,6 +1317,10 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                 }),
               );
 
+              // Mark final as sent IMMEDIATELY to prevent onClose from logging client_disconnect
+              // if client closes during our 100ms delay period
+              finalSent = true;
+
               // Wait 100ms before closing to ensure message is flushed through network buffers
               // This prevents Cloudflare proxy from dropping the final message when socket closes
               // immediately after send, which caused production timeouts.
@@ -1446,7 +1450,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           } catch (err) {
             connLog.error('[WS] session summary failed', { error: String(err) });
           }
-          finalSent = true;
+          // finalSent = true already set earlier (before 100ms delay)
           session = createEmptySession();
           sessionActive = false;
         } else if (parsed.type === 'chunk') {
@@ -1613,7 +1617,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
   });
 
   server.addEventListener('error', (evt) => {
-    connLog.error('[WS] socket error', { error: String(evt) });
+    // Only log errors if session wasn't already completed successfully
+    // When client closes after receiving final, it triggers error event - this is normal
+    if (!finalSent && !completionLogged) {
+      connLog.error('[WS] socket error', { error: String(evt) });
+    }
     socketClosed = true;
     if (authTimeoutHandle) {
       clearTimeout(authTimeoutHandle);

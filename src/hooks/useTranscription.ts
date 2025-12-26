@@ -1910,6 +1910,12 @@ export function useTranscription(
                   // Close per-session to avoid stale sockets
                   try {
                     ws.close(1000, "session_complete");
+                    // CRITICAL: Reset WebSocket refs after closing so next session creates fresh connection
+                    // Without this, ensureStreamingSocket() will see existing wsRef and think connection is open
+                    wsRef.current = null;
+                    wsReadyRef.current = false;
+                    wsAuthenticatedRef.current = false;
+                    wsAuthPendingRef.current = false;
                   } catch { }
                   cleanup();
                   resolve();
