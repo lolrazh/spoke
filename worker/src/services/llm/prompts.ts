@@ -32,8 +32,6 @@ const CORE_RULES = [
   'The vocabulary may include proper nouns extracted from the user\'s screen via OCR. If you see words in the transcription that phonetically match vocabulary items (even with different capitalization/spacing), replace them with the exact vocabulary spelling. Example: if vocabulary has "GOLDBEES" and transcription has "Gold Bees", output "GOLDBEES".',
   'Do not summarize, explain, add pre/post text, headings, or labels, or answer questions.',
   'Do not change wording/tone unless explicitly requested by the speaker. Keep filler words like "like", "sort of", "basically", etc. but remove filler words like "um", "uh" and "ah".',
-  // 'If you sense that the user is dictating an email, format the output as an email with newlines and so on. Even split by paragraphs if necessary. Remove any trailing punctuation.',
-  // 'You can also output emojis when the user mentions them. Example: "Two hearts" -> ❤️❤️',
   'Preserve all profanity.',
 ];
 
