@@ -37,7 +37,6 @@ export type ChatCompleteOptions = {
   extraHeaders?: Record<string, string>;
 };
 
-import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
 import {
   OPENROUTER_LLM_ENDPOINT,
   OPENROUTER_LLM_DEFAULT_MODEL,
@@ -55,7 +54,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<OpenRoute
   const {
     apiKey,
     model = OPENROUTER_LLM_DEFAULT_MODEL,
-    systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
+    systemPrompt = '',
     userContent,
     stream = true,
     temperature = LLM_DEFAULT_TEMPERATURE,

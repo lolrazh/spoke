@@ -9,16 +9,22 @@ export const CEREBRAS_LLM_ENDPOINT = 'https://gateway.ai.cloudflare.com/v1/b738f
 export const SIMPLISMART_LLM_ENDPOINT = 'https://api.simplismart.live/chat/completions';
 
 export const GROQ_LLM_DEFAULT_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+export const GROQ_ADVANCED_LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const GROQ_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct-0905';
 export const OPENAI_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
+export const OPENAI_ADVANCED_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
 export const OPENAI_EDIT_LLM_DEFAULT_MODEL = 'gpt-4.1-mini';
 export const BASETEN_LLM_DEFAULT_MODEL = 'deepseek-ai/DeepSeek-V3.2';
+export const BASETEN_ADVANCED_LLM_DEFAULT_MODEL = 'moonshotai/Kimi-K2-Instruct-0905';
 export const BASETEN_EDIT_LLM_DEFAULT_MODEL = 'moonshotai/Kimi-K2-Instruct-0905';
 export const OPENROUTER_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
+export const OPENROUTER_ADVANCED_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
 export const OPENROUTER_EDIT_LLM_DEFAULT_MODEL = 'qwen/qwen3-235b-a22b-2507';
 export const CEREBRAS_LLM_DEFAULT_MODEL = 'llama-3.3-70b';
+export const CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL = 'qwen-3-235b-a22b-instruct-2507';
 export const CEREBRAS_EDIT_LLM_DEFAULT_MODEL = 'qwen-3-235b-a22b-instruct-2507';
 export const SIMPLISMART_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
+export const SIMPLISMART_ADVANCED_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_EDIT_LLM_DEFAULT_MODEL = 'google/gemma-3-27b-it';
 export const SIMPLISMART_LLM_MODEL_UUID = '23a8dfd7-f6d4-426c-b637-517c205282c7';
 
@@ -35,6 +41,12 @@ export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = true;
 export const EDIT_LLM_DEFAULT_PROVIDER = 'cerebras' as const;
+
+export const ADVANCED_LLM_DEFAULT_MODEL = CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL;
+export const ADVANCED_LLM_DEFAULT_TEMPERATURE = 0.3;
+export const ADVANCED_LLM_DEFAULT_TIMEOUT_MS = 30_000;
+export const ADVANCED_LLM_DEFAULT_STREAM = true;
+export const ADVANCED_LLM_DEFAULT_PROVIDER = 'cerebras' as const;
 
 
 // STT (Audio Transcriptions)

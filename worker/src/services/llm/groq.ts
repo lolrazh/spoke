@@ -22,7 +22,6 @@ export type ChatCompleteOptions = {
   signal?: AbortSignal;
 };
 
-import { DEFAULT_LLM_SYSTEM_PROMPT } from './prompt';
 import { GROQ_LLM_ENDPOINT, LLM_DEFAULT_MODEL, LLM_DEFAULT_TEMPERATURE, LLM_DEFAULT_TIMEOUT_MS } from '../../config';
 import { safeJson } from '../../utils/ws';
 import { safely } from '../../utils/safely';
@@ -31,8 +30,7 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<GroqChatR
   const {
     apiKey,
     model = LLM_DEFAULT_MODEL,
-    // Default to shared system prompt, but allow override
-    systemPrompt = DEFAULT_LLM_SYSTEM_PROMPT,
+    systemPrompt = '',
     userContent,
     stream = false,
     temperature = LLM_DEFAULT_TEMPERATURE,
