@@ -953,87 +953,87 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                     ),
                   );
 
-                const streamLLM = routeDecision.stream ?? runtime.llm.stream;
-                const provider = routeDecision.provider!;
-                const model = routeDecision.model!;
-                llmProvider = provider;
-                llmModel = model;
-                llmRouteRules = triggeredRules;
-                const apiKeyForProvider =
-                  provider === 'openai'
-                    ? c.env.OPENAI_API_KEY
-                    : provider === 'baseten'
-                      ? c.env.BASETEN_API_KEY
-                      : provider === 'openrouter'
-                        ? OPENROUTER_API_KEY
-                        : provider === 'cerebras'
-                          ? CEREBRAS_API_KEY
-                          : provider === 'simplismart'
-                            ? SIMPLISMART_API_KEY
-                            : GROQ_API_KEY;
+                  const streamLLM = routeDecision.stream ?? runtime.llm.stream;
+                  const provider = routeDecision.provider!;
+                  const model = routeDecision.model!;
+                  llmProvider = provider;
+                  llmModel = model;
+                  llmRouteRules = triggeredRules;
+                  const apiKeyForProvider =
+                    provider === 'openai'
+                      ? c.env.OPENAI_API_KEY
+                      : provider === 'baseten'
+                        ? c.env.BASETEN_API_KEY
+                        : provider === 'openrouter'
+                          ? OPENROUTER_API_KEY
+                          : provider === 'cerebras'
+                            ? CEREBRAS_API_KEY
+                            : provider === 'simplismart'
+                              ? SIMPLISMART_API_KEY
+                              : GROQ_API_KEY;
 
-                if (apiKeyForProvider) {
-                  const llmStartTime = Date.now();
-                  routerOverheadMs = llmStartTime - routerStartTime;
+                  if (apiKeyForProvider) {
+                    const llmStartTime = Date.now();
+                    routerOverheadMs = llmStartTime - routerStartTime;
 
-                  // DYNAMIC PROMPT: Compose based on detected triggers
-                  const systemPrompt = composeDynamicPrompt(triggerContext, {
-                    vocabulary: sttPrompt,
-                    model,
-                    currentDate: runtime.llm.currentDate,
-                  });
-                  promptTokens = estimatePromptTokens(systemPrompt);
+                    // DYNAMIC PROMPT: Compose based on detected triggers
+                    const systemPrompt = composeDynamicPrompt(triggerContext, {
+                      vocabulary: sttPrompt,
+                      model,
+                      currentDate: runtime.llm.currentDate,
+                    });
+                    promptTokens = estimatePromptTokens(systemPrompt);
 
-                  const llmRes = await chatCompleteByProvider(provider, {
-                    apiKey: apiKeyForProvider,
-                    model,
-                    systemPrompt,
-                    userContent: finalText,
-                    stream: streamLLM,
-                    temperature: routeDecision.temperature ?? runtime.llm.temperature,
-                    timeoutMs: routeDecision.timeoutMs,
-                    signal: sttAbort.signal,
-                    providerConfig:
-                      provider === 'openrouter'
-                        ? buildOpenRouterProviderConfig(c.env)
-                        : undefined,
-                    extraHeaders:
-                      provider === 'openrouter'
-                        ? buildOpenRouterHeaders(c.env)
-                        : undefined,
-                    onDelta: (delta) => {
-                      if (!socketClosed && streamLLM && delta) {
-                        safely(() =>
-                          server.send(
-                            JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
-                          ),
-                        );
-                      }
-                    },
-                  });
-                  const llmDuration = Date.now() - llmStartTime;
-                  llmText = llmRes.text || '';
-                  llmTimings = llmRes.timings;
-                  llmSuccess = llmText.length > 0;
+                    const llmRes = await chatCompleteByProvider(provider, {
+                      apiKey: apiKeyForProvider,
+                      model,
+                      systemPrompt,
+                      userContent: finalText,
+                      stream: streamLLM,
+                      temperature: routeDecision.temperature ?? runtime.llm.temperature,
+                      timeoutMs: routeDecision.timeoutMs,
+                      signal: sttAbort.signal,
+                      providerConfig:
+                        provider === 'openrouter'
+                          ? buildOpenRouterProviderConfig(c.env)
+                          : undefined,
+                      extraHeaders:
+                        provider === 'openrouter'
+                          ? buildOpenRouterHeaders(c.env)
+                          : undefined,
+                      onDelta: (delta) => {
+                        if (!socketClosed && streamLLM && delta) {
+                          safely(() =>
+                            server.send(
+                              JSON.stringify({ type: 'llm_delta', delta, traceId: session.traceId }),
+                            ),
+                          );
+                        }
+                      },
+                    });
+                    const llmDuration = Date.now() - llmStartTime;
+                    llmText = llmRes.text || '';
+                    llmTimings = llmRes.timings;
+                    llmSuccess = llmText.length > 0;
 
-                  // Track LLM metrics
-                  llmDurationMs = llmDuration;
-                  llmTtfbMs = llmTimings
-                    ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt
-                    : 0;
+                    // Track LLM metrics
+                    llmDurationMs = llmDuration;
+                    llmTtfbMs = llmTimings
+                      ? (llmTimings.firstDeltaAt ?? llmTimings.headersAt) - llmTimings.startAt
+                      : 0;
 
-                  // Log LLM completion
-                  logSessionLLM({
-                    outcome: 'success',
-                    provider,
-                    model,
-                    duration_ms: llmDuration,
-                    ttfb_ms: llmTtfbMs,
-                    router_overhead_ms: routerOverheadMs,
-                    text_length: llmText.length,
-                    trace_id: session.traceId ?? 'unknown',
-                  });
-                }
+                    // Log LLM completion
+                    logSessionLLM({
+                      outcome: 'success',
+                      provider,
+                      model,
+                      duration_ms: llmDuration,
+                      ttfb_ms: llmTtfbMs,
+                      router_overhead_ms: routerOverheadMs,
+                      text_length: llmText.length,
+                      trace_id: session.traceId ?? 'unknown',
+                    });
+                  }
                 } // Close else block for LLM processing (bypass vs process)
               }
 
@@ -1316,6 +1316,12 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
                   metrics: { worker: workerMetrics },
                 }),
               );
+
+              // Wait 100ms before closing to ensure message is flushed through network buffers
+              // This prevents Cloudflare proxy from dropping the final message when socket closes
+              // immediately after send, which caused production timeouts.
+              // See: agent-logs/2025-12-22_2314_websocket-close-race-condition-fix.md
+              await new Promise(resolve => setTimeout(resolve, 100));
             } catch (error) {
               connLog.error('[WS] final send failed', { error: String(error) });
             }
