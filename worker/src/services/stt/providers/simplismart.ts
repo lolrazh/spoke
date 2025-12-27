@@ -43,6 +43,7 @@ export async function transcribeWav(
       : SIMPLISMART_STT_ENDPOINT;
 
   // Convert WAV audio to base64 (process in chunks to avoid stack overflow)
+  const base64EncodeStart = Date.now();
   const chunkSize = 8192;
   let binaryString = "";
   for (let i = 0; i < wav.length; i += chunkSize) {
@@ -50,6 +51,7 @@ export async function transcribeWav(
     binaryString += String.fromCharCode(...chunk);
   }
   const base64Audio = btoa(binaryString);
+  const base64EncodeMs = Date.now() - base64EncodeStart;
 
   // Build request body following Simplismart API format
   const requestBody = {
@@ -80,6 +82,13 @@ export async function transcribeWav(
   }
 
   try {
+    // Detailed timing breakdown for network debugging
+    const timingLog: Record<string, number> = {};
+
+    // 1. Measure DNS + connection setup (first fetch to endpoint)
+    const fetchStartAt = Date.now();
+    timingLog.fetch_start = fetchStartAt;
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -90,6 +99,7 @@ export async function transcribeWav(
       signal: controller.signal,
     });
     const headersAt = Date.now();
+    timingLog.headers_received = headersAt;
 
     if (!res.ok) {
       const body = await res.text();
@@ -103,6 +113,39 @@ export async function transcribeWav(
       segments?: any[];
     };
     const bodyDoneAt = Date.now();
+    timingLog.body_done = bodyDoneAt;
+
+    // Calculate granular timing breakdown
+    const ttfb = headersAt - startAt; // Time to first byte (includes DNS, TCP, TLS, request send, server processing)
+    const bodyRead = bodyDoneAt - headersAt; // Response body download
+    const total = bodyDoneAt - startAt;
+
+    // Base64 encoding overhead measurement
+    const base64Size = base64Audio.length;
+    const wavSize = wav.length;
+    const compressionRatio = (wavSize / base64Size) * 100;
+
+    // Log detailed breakdown for debugging production latency
+    console.log(`[STT:Simplismart] Latency breakdown:`, {
+      endpoint: endpoint.includes("au163kpw51") ? "turbo" : "standard",
+      audio_size_kb: (wavSize / 1024).toFixed(2),
+      base64_size_kb: (base64Size / 1024).toFixed(2),
+      compression_ratio: compressionRatio.toFixed(1) + "%",
+      timings: {
+        base64_encode_ms: base64EncodeMs, // Client-side base64 encoding (happens before fetch)
+        total_ms: total, // End-to-end from fetch() start to body parsed
+        ttfb_ms: ttfb, // DNS + TCP + TLS + Request Send + Server Processing
+        body_read_ms: bodyRead, // Response body download + JSON parse
+        // Breakdown estimates (since fetch API doesn't expose granular metrics):
+        // - DNS resolution: typically 10-50ms for cached, 100-500ms for uncached
+        // - TCP handshake: ~1 RTT (round-trip time to India from CF edge)
+        // - TLS handshake: ~2 RTT
+        // - Request send: depends on request size (~base64Size bytes) and bandwidth
+        // - Server processing: ttfb - (DNS + TCP + TLS + Request send)
+      },
+      server_reported_time_ms: json.request_time ?? null, // Simplismart's internal processing time
+      estimated_network_overhead_ms: ttfb - (json.request_time ?? 0), // DNS + TCP + TLS + Request send
+    });
 
     // Join transcription array into single text
     const transcriptionText = Array.isArray(json?.transcription)
