@@ -143,8 +143,9 @@ export async function transcribeWav(
         // - Upload: depends on payload size (4MB base64 = ~100-300ms on slow uplink)
         // - Server: ttfb - (DNS + TCP + TLS + upload) ≈ server_reported_time_ms
       },
-      server_reported_time_ms: json.request_time ?? null, // Simplismart's internal processing time
-      estimated_network_overhead_ms: ttfb - (json.request_time ?? 0), // DNS + TCP + TLS + Request send
+      // NOTE: Simplismart API returns request_time in SECONDS (e.g., 0.037 = 37ms)
+      server_reported_time_ms: json.request_time != null ? json.request_time * 1000 : null,
+      estimated_network_overhead_ms: ttfb - ((json.request_time ?? 0) * 1000), // DNS + TCP + TLS + Request send
     });
 
     // Join transcription array into single text

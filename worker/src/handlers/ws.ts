@@ -182,6 +182,11 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
 
   const logger = createLogger();
   const clientIP = getClientIP(c.req.raw);
+
+  // Log CF datacenter (colo) to understand geographic routing
+  const cfColo = (c.req.raw as any).cf?.colo ?? "unknown";
+  console.log(`[WS] Connection from ${clientIP}, CF colo: ${cfColo}`);
+
   if (!trackConnection(clientIP)) {
     return c.text(
       "Too many connections from your IP. Please try again later.",
