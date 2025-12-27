@@ -3,7 +3,7 @@ export type SttPromptIdentity = {
   email?: string | null;
 };
 
-export const DEFAULT_STT_PROMPT = 'Your vocabulary includes: Spoke';
+export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Spoke";
 
 const MAX_TOKEN_LENGTH = 80;
 
@@ -15,12 +15,15 @@ type BuildOptions = {
 };
 
 function sanitizeToken(token: string): string | null {
-  const withoutTags = token.replace(/<[^>]*>/g, ' ');
+  const withoutTags = token.replace(/<[^>]*>/g, " ");
   // eslint-disable-next-line no-control-regex
-  const withoutControl = withoutTags.replace(/[\u0000-\u001f\u007f]+/g, ' ');
-  const withoutDelimiters = withoutControl.replace(/[,:<>]+/g, ' ');
-  const allowedOnly = withoutDelimiters.replace(/[^A-Za-z0-9@._\-+'()" ]+/g, '');
-  const collapsed = allowedOnly.replace(/\s+/g, ' ').trim();
+  const withoutControl = withoutTags.replace(/[\u0000-\u001f\u007f]+/g, " ");
+  const withoutDelimiters = withoutControl.replace(/[,:<>]+/g, " ");
+  const allowedOnly = withoutDelimiters.replace(
+    /[^A-Za-z0-9@._\-+'()" ]+/g,
+    "",
+  );
+  const collapsed = allowedOnly.replace(/\s+/g, " ").trim();
   if (!collapsed) return null;
   return collapsed.length > MAX_TOKEN_LENGTH
     ? collapsed.slice(0, MAX_TOKEN_LENGTH)
@@ -43,8 +46,8 @@ function formatTokens(tokens: Array<string | null | undefined>): string[] {
 }
 
 function baseVocabularyTokens(base: string): string[] {
-  const [, tail = base] = base.split(':');
-  return formatTokens(tail.split(','));
+  const [, tail = base] = base.split(":");
+  return formatTokens(tail.split(","));
 }
 
 export function buildSTTPrompt(options?: BuildOptions): string {
@@ -72,5 +75,5 @@ export function buildSTTPrompt(options?: BuildOptions): string {
     (token) => !baseTokens.has(token.toLowerCase()),
   );
   if (filtered.length === 0) return base;
-  return `${base}, ${filtered.join(', ')}`;
+  return `${base}, ${filtered.join(", ")}`;
 }

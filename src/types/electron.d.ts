@@ -2,18 +2,22 @@
  * TypeScript declarations for the Electron API exposed to the renderer process
  */
 
-import type { SelectionInspectSnapshot, ActiveDisplayPayload, TranscriptionItem } from "./shared";
+import type {
+  SelectionInspectSnapshot,
+  ActiveDisplayPayload,
+  TranscriptionItem,
+} from "./shared";
 
 declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
     webkitAudioContext?: typeof AudioContext;
-    /** 
-     * Function that returns a promise that resolves when session data has been 
-     * injected into localStorage. Supabase MUST await this before initializing 
-     * to avoid the race condition where it reads an empty localStorage before 
+    /**
+     * Function that returns a promise that resolves when session data has been
+     * injected into localStorage. Supabase MUST await this before initializing
+     * to avoid the race condition where it reads an empty localStorage before
      * session injection completes.
-     * 
+     *
      * NOTE: This is a function (not a bare promise) because contextBridge
      * can only serialize promises returned from functions.
      */
@@ -40,12 +44,17 @@ declare global {
       ) => Promise<{ success: boolean; error?: string }>;
     };
     selection: {
-      inspect: (options?: { contextChars?: number }) => Promise<SelectionInspectSnapshot>;
+      inspect: (options?: {
+        contextChars?: number;
+      }) => Promise<SelectionInspectSnapshot>;
     };
     notifications: {
       send: (message: string, actionId?: string | null) => void;
       on: (
-        callback: (payload: { message: string; actionId: string | null }) => void,
+        callback: (payload: {
+          message: string;
+          actionId: string | null;
+        }) => void,
       ) => () => void;
     };
     ptt: {
@@ -134,14 +143,16 @@ declare global {
       showFloatingBar: () => Promise<{ ok: boolean; error?: string }>;
       // Dock visibility helpers (macOS only)
       getDockVisible: () => Promise<{ visible: boolean }>;
-      setDockVisible: (visible: boolean) => Promise<{ ok: boolean; error?: string }>;
+      setDockVisible: (
+        visible: boolean,
+      ) => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       getAuthRedirectUrl: () => Promise<{ url: string }>;
       // Renderer lifecycle
       rendererReady: () => void;
       // Screenshot capture (Phase 1 OCR)
       takeScreenshot: (options?: {
-        display?: 'active' | number;
+        display?: "active" | number;
         quality?: number;
         maxDimension?: number;
       }) => Promise<{
@@ -184,7 +195,11 @@ declare global {
     };
     transcriptions: {
       getAll: () => Promise<TranscriptionItem[]>;
-      save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => Promise<TranscriptionItem>;
+      save: (payload: {
+        text: string;
+        timestamp: number;
+        mode: "dictation" | "edit";
+      }) => Promise<TranscriptionItem>;
       delete: (id: string) => Promise<boolean>;
       clear: () => Promise<{ ok: boolean }>;
     };
@@ -197,4 +212,4 @@ declare global {
   }
 }
 
-export { };
+export {};

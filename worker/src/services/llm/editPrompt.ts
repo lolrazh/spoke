@@ -1,7 +1,7 @@
-import type { ClientSelectionPayload } from '../../types/messages';
+import type { ClientSelectionPayload } from "../../types/messages";
 
 function normalizeText(value: string | null | undefined): string {
-  if (!value) return '';
+  if (!value) return "";
   return value.trim();
 }
 
@@ -18,12 +18,12 @@ export function buildEditPrompt(input: {
   originalText: string;
 }): string {
   return [
-    'Instructions:',
+    "Instructions:",
     input.instructions,
-    '',
-    'Original Text:',
+    "",
+    "Original Text:",
     input.originalText,
-  ].join('\n');
+  ].join("\n");
 }
 
 export function prepareEditRequest(params: {
@@ -54,8 +54,8 @@ export function prepareEditRequest(params: {
 }
 
 export function buildEditSystemPrompt(opts?: { sttPrompt?: string }): string {
-  const sttPrompt = (opts?.sttPrompt || '').trim();
-  const vocabLine = sttPrompt ? `${sttPrompt}\n` : '';
+  const sttPrompt = (opts?.sttPrompt || "").trim();
+  const vocabLine = sttPrompt ? `${sttPrompt}\n` : "";
   return `
 You are an expert writing editor for Spoke, an AI dictation app.
 You will receive plain text sections labelled "Instructions:" and "Original Text:".

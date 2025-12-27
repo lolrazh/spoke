@@ -149,7 +149,10 @@ function sanitizeEdgeInsets(raw: NotchRawEdgeInsets | null | undefined): {
   };
 }
 
-function sanitizeScreen(raw: NotchRawScreen, timestamp: number): DisplayNotchInfo | null {
+function sanitizeScreen(
+  raw: NotchRawScreen,
+  timestamp: number,
+): DisplayNotchInfo | null {
   if (!raw || typeof raw !== "object") return null;
   const id = Math.trunc(toNumber(raw.id, -1));
   if (id < 0) return null;
@@ -179,10 +182,14 @@ function sanitizeScreen(raw: NotchRawScreen, timestamp: number): DisplayNotchInf
   };
 }
 
-function sanitizeNotchReport(raw: NotchRawReport | null | undefined): NotchReport | null {
+function sanitizeNotchReport(
+  raw: NotchRawReport | null | undefined,
+): NotchReport | null {
   if (!raw || typeof raw !== "object") return null;
   const timestamp = toNumber(raw.timestamp, Date.now() / 1000);
-  const screensRaw = Array.isArray(raw.screens) ? (raw.screens as NotchRawScreen[]) : [];
+  const screensRaw = Array.isArray(raw.screens)
+    ? (raw.screens as NotchRawScreen[])
+    : [];
   const screens: DisplayNotchInfo[] = [];
   for (const item of screensRaw) {
     const screen = sanitizeScreen(item, timestamp);
@@ -217,14 +224,15 @@ import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
 // Vite injects env at build time; provide a typed fallback for the main process
-const VITE_ENV: Record<string, string | undefined> = (
-  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ??
-  {}
-);
+const VITE_ENV: Record<string, string | undefined> =
+  (import.meta as unknown as { env?: Record<string, string | undefined> })
+    .env ?? {};
 
 const sentryDsn = VITE_ENV.VITE_SENTRY_DSN ?? process.env.VITE_SENTRY_DSN;
-const sentryEnv = VITE_ENV.VITE_SENTRY_ENVIRONMENT ?? (app.isPackaged ? "prod" : "dev");
-const devFlag = VITE_ENV.DEV === "1" || VITE_ENV.DEV === "true" || !app.isPackaged;
+const sentryEnv =
+  VITE_ENV.VITE_SENTRY_ENVIRONMENT ?? (app.isPackaged ? "prod" : "dev");
+const devFlag =
+  VITE_ENV.DEV === "1" || VITE_ENV.DEV === "true" || !app.isPackaged;
 
 Sentry.init({
   // Use a single DSN variable for both main/renderer (Vite-injected)
@@ -241,7 +249,7 @@ Sentry.init({
           const u = new URL(event.request.url);
           u.search = ""; // strip query params
           event.request.url = u.toString();
-        } catch { }
+        } catch {}
       }
       if (event.request?.headers) {
         const headers = event.request.headers as Record<string, string>;
@@ -261,7 +269,7 @@ Sentry.init({
           return b;
         });
       }
-    } catch { }
+    } catch {}
     return event;
   },
 });
@@ -292,8 +300,9 @@ const pasteHelpers = new Set<ChildProcess>();
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
-let preSpawnedPasteHelper: import("child_process").ChildProcessWithoutNullStreams | null =
-  null;
+let preSpawnedPasteHelper:
+  | import("child_process").ChildProcessWithoutNullStreams
+  | null = null;
 // Track readiness of the pre-spawned paste helper (daemon)
 let preSpawnReady: Promise<void> | null = null;
 let resolvePreSpawnReady: (() => void) | null = null;
@@ -408,18 +417,24 @@ function sendNotify(message: string) {
     // Prefer whichever window is available; send to both if present
     if (mainWindow && !mainWindow.isDestroyed())
       mainWindow.webContents.send("notify", message);
-  } catch { }
+  } catch {}
   try {
     if (onboardingWindow && !onboardingWindow.isDestroyed())
       onboardingWindow.webContents.send("notify", message);
-  } catch { }
+  } catch {}
 }
 
-function setUpdateState(next: UpdateStatus, opts?: { version?: string; error?: string }) {
+function setUpdateState(
+  next: UpdateStatus,
+  opts?: { version?: string; error?: string },
+) {
   updateStatus = next;
   updateAvailableVersion = opts?.version ?? updateAvailableVersion;
-  updateError = opts?.error ?? (next === "error" ? (opts?.error || "Unknown error") : null);
-  try { rebuildTrayMenu(); } catch { }
+  updateError =
+    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+  try {
+    rebuildTrayMenu();
+  } catch {}
 }
 
 function getReleasesUrl(): string {
@@ -428,8 +443,14 @@ function getReleasesUrl(): string {
 
 function compareSemver(a: string, b: string): number {
   // Returns -1 if a<b, 0 if equal, 1 if a>b
-  const pa = a.split("-")[0].split(".").map((n) => parseInt(n, 10));
-  const pb = b.split("-")[0].split(".").map((n) => parseInt(n, 10));
+  const pa = a
+    .split("-")[0]
+    .split(".")
+    .map((n) => parseInt(n, 10));
+  const pb = b
+    .split("-")[0]
+    .split(".")
+    .map((n) => parseInt(n, 10));
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const na = pa[i] || 0;
     const nb = pb[i] || 0;
@@ -497,16 +518,19 @@ function initUpdaterEventBridgeOnce() {
         manualUpdateCheckInFlight = false;
       });
       autoUpdater.on("error", (err: any) => {
-        const msg = (err && (err.message || String(err))) || "Unknown updater error";
+        const msg =
+          (err && (err.message || String(err))) || "Unknown updater error";
         setUpdateState("error", { error: msg });
-        if (manualUpdateCheckInFlight) sendNotify(`Update check failed: ${msg}`);
+        if (manualUpdateCheckInFlight)
+          sendNotify(`Update check failed: ${msg}`);
         manualUpdateCheckInFlight = false;
       });
       autoUpdater.on("download-progress", () => {
         setUpdateState("available"); // remain in available/downloading state
       });
       autoUpdater.on("update-downloaded", (info: any) => {
-        const v = info?.version || info?.updateInfo?.version || updateAvailableVersion;
+        const v =
+          info?.version || info?.updateInfo?.version || updateAvailableVersion;
         updateAvailableVersion = v ?? updateAvailableVersion;
         updateReadyToInstall = true;
         setUpdateState("available"); // keep as available; expose restart action via tray
@@ -546,7 +570,10 @@ async function manualCheckForUpdates(silent = false): Promise<void> {
         return; // handled by updater events; skip manifest fallback
       } catch (e: any) {
         // If the delegated check fails, fall back to manifest probe
-        console.warn("[auto-update] Delegated check failed, falling back:", e?.message || e);
+        console.warn(
+          "[auto-update] Delegated check failed, falling back:",
+          e?.message || e,
+        );
         // Fall through to manifest-based check
       }
     }
@@ -562,19 +589,26 @@ async function manualCheckForUpdates(silent = false): Promise<void> {
     let latest: string | null = null;
     if (manifest?.currentRelease) {
       latest = String(manifest.currentRelease);
-    } else if (Array.isArray(manifest?.releases) && manifest.releases.length > 0) {
+    } else if (
+      Array.isArray(manifest?.releases) &&
+      manifest.releases.length > 0
+    ) {
       // Take the highest by version string compare
-      latest = manifest.releases
-        .map((r: any) => r?.version || r?.updateTo?.version)
-        .filter(Boolean)
-        .map(String)
-        .sort((a: string, b: string) => compareSemver(a, b))
-        .pop() || null;
+      latest =
+        manifest.releases
+          .map((r: any) => r?.version || r?.updateTo?.version)
+          .filter(Boolean)
+          .map(String)
+          .sort((a: string, b: string) => compareSemver(a, b))
+          .pop() || null;
     }
     const current = app.getVersion();
     if (latest && compareSemver(latest, current) > 0) {
       setUpdateState("available", { version: latest });
-      if (!silent) sendNotify(`Update available: v${latest}. It will download automatically.`);
+      if (!silent)
+        sendNotify(
+          `Update available: v${latest}. It will download automatically.`,
+        );
     } else {
       setUpdateState("not-available");
       if (!silent) sendNotify("You’re up to date.");
@@ -587,7 +621,9 @@ async function manualCheckForUpdates(silent = false): Promise<void> {
 }
 
 function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
-  try { if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer); } catch { }
+  try {
+    if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer);
+  } catch {}
   pendingUpdateCheckTimer = setTimeout(async () => {
     pendingUpdateCheckTimer = null;
     console.log(`[auto-update] Triggered background check: ${reason}`);
@@ -595,8 +631,13 @@ function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
     await manualCheckForUpdates(silent);
     if (updateStatus === "error") {
       // Exponential backoff up to 24h
-      updateBackoffMs = Math.min(prevBackoff ? prevBackoff * 2 : 15 * 60 * 1000, 24 * 60 * 60 * 1000);
-      console.log(`[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0) / 60000)}m`);
+      updateBackoffMs = Math.min(
+        prevBackoff ? prevBackoff * 2 : 15 * 60 * 1000,
+        24 * 60 * 60 * 1000,
+      );
+      console.log(
+        `[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0) / 60000)}m`,
+      );
       scheduleUpdateCheck(updateBackoffMs!, "backoff-retry", true);
     } else {
       updateBackoffMs = null;
@@ -718,8 +759,11 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
     const notch = getNotchInfoForDisplay(display.id);
     const notchPayload = notch ? cloneDisplayNotchInfo(notch) : null;
     if (!notchPayload) {
-      const knownIds = notchReport?.screens.map((s) => s.id).join(", ") ?? "none";
-      const scaleStr = Number.isFinite(scale) ? scale.toFixed(3) : String(scale);
+      const knownIds =
+        notchReport?.screens.map((s) => s.id).join(", ") ?? "none";
+      const scaleStr = Number.isFinite(scale)
+        ? scale.toFixed(3)
+        : String(scale);
       logger.main.info(
         `[Notch] no match for display id=${display.id}. Known notch ids: ${knownIds} (scale=${scaleStr})`,
       );
@@ -780,26 +824,31 @@ async function refreshNotchInfo(reason: string): Promise<void> {
       timeout: 2000,
       maxBuffer: 512 * 1024,
     });
-    const raw = typeof stdout === "string" ? stdout : (stdout as Buffer).toString("utf8");
+    const raw =
+      typeof stdout === "string" ? stdout : (stdout as Buffer).toString("utf8");
     const parsed = sanitizeNotchReport(JSON.parse(raw) as NotchRawReport);
     notchReport = parsed;
     notchReporterMissingWarned = false;
     const summary = parsed
       ? parsed.screens
-        .map((screen) => {
-          const width =
-            screen.hasNotch && screen.notchWidth > 0 && Number.isFinite(screen.notchWidth)
-              ? `${screen.notchWidth.toFixed(2)}px`
-              : "no-notch";
-          return `id=${screen.id}:${width}`;
-        })
-        .join(", ")
+          .map((screen) => {
+            const width =
+              screen.hasNotch &&
+              screen.notchWidth > 0 &&
+              Number.isFinite(screen.notchWidth)
+                ? `${screen.notchWidth.toFixed(2)}px`
+                : "no-notch";
+            return `id=${screen.id}:${width}`;
+          })
+          .join(", ")
       : null;
     logger.main.info(
       `[Notch] refresh ${reason}: ${summary && summary.length > 0 ? summary : "no valid screens"}`,
     );
   } catch (err) {
-    logger.main.warn(`[Notch] Failed to refresh notch info (${reason}): ${String(err)}`);
+    logger.main.warn(
+      `[Notch] Failed to refresh notch info (${reason}): ${String(err)}`,
+    );
     return;
   }
 
@@ -820,14 +869,18 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
   // Refresh notch info to get all displays
   await refreshNotchInfo("initial-detection");
 
-  if (!notchReport || !notchReport.screens || notchReport.screens.length === 0) {
+  if (
+    !notchReport ||
+    !notchReport.screens ||
+    notchReport.screens.length === 0
+  ) {
     logger.main.info("[PillPrefs] No notch report available");
     return null;
   }
 
   // Find the built-in display with a notch
   const builtInWithNotch = notchReport.screens.find(
-    (screen) => screen.isBuiltIn && screen.hasNotch && screen.notchWidth > 0
+    (screen) => screen.isBuiltIn && screen.hasNotch && screen.notchWidth > 0,
   );
 
   if (!builtInWithNotch) {
@@ -843,14 +896,20 @@ async function detectAndStoreNotchWidth(): Promise<number | null> {
   // Clamp to reasonable range to handle unexpected hardware or API quirks
   let finalWidth = adjustedWidth;
   if (adjustedWidth < 150) {
-    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 150px`);
+    logger.main.warn(
+      `[PillPrefs] Width ${adjustedWidth.toFixed(2)}px below minimum, clamping to 150px`,
+    );
     finalWidth = 150;
   } else if (adjustedWidth > 250) {
-    logger.main.warn(`[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 250px`);
+    logger.main.warn(
+      `[PillPrefs] Width ${adjustedWidth.toFixed(2)}px above maximum, clamping to 250px`,
+    );
     finalWidth = 250;
   }
 
-  logger.main.info(`[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`);
+  logger.main.info(
+    `[PillPrefs] Detected notch width: ${detectedWidth.toFixed(2)}px, storing adjusted: ${finalWidth.toFixed(2)}px on display ${builtInWithNotch.id}`,
+  );
 
   // Store the validated width
   pillPreferences.notchWidth = finalWidth;
@@ -943,9 +1002,11 @@ const DEFAULT_INSPECT_CONTEXT_CHARS = 96;
 const INSPECT_SELECTION_TIMEOUT_MS = 1500;
 
 function clampInspectContextChars(input?: number): number {
-  if (typeof input !== "number" || Number.isNaN(input)) return DEFAULT_INSPECT_CONTEXT_CHARS;
+  if (typeof input !== "number" || Number.isNaN(input))
+    return DEFAULT_INSPECT_CONTEXT_CHARS;
   const clamped = Math.floor(input);
-  if (!Number.isFinite(clamped) || clamped <= 0) return DEFAULT_INSPECT_CONTEXT_CHARS;
+  if (!Number.isFinite(clamped) || clamped <= 0)
+    return DEFAULT_INSPECT_CONTEXT_CHARS;
   // AX read becomes sluggish with very large windows; cap to a reasonable slice
   return Math.min(clamped, 512);
 }
@@ -957,7 +1018,9 @@ function extractBase64Section(source: string, label: string): string | null {
   const valueStart = start + token.length;
   const nextNewline = source.indexOf("\n", valueStart);
   const slice =
-    nextNewline === -1 ? source.slice(valueStart) : source.slice(valueStart, nextNewline);
+    nextNewline === -1
+      ? source.slice(valueStart)
+      : source.slice(valueStart, nextNewline);
   const trimmed = slice.trim();
   if (!trimmed) return null;
   try {
@@ -980,7 +1043,8 @@ function extractFallbackSection(source: string, label: string): string | null {
 
   for (let i = startIdx + 1; i < lines.length; i += 1) {
     const line = lines[i];
-    if (/^(selectedRange|selectedText|context|valueLength|read)/.test(line)) break;
+    if (/^(selectedRange|selectedText|context|valueLength|read)/.test(line))
+      break;
     if (/^[a-zA-Z]+B64:/.test(line)) break;
     collected.push(line);
   }
@@ -1004,13 +1068,16 @@ function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
   const sourceMatch = normalized.match(/selectionSource:([^\n]+)/);
   const rawSource = sourceMatch ? sourceMatch[1].trim() : "none";
   const source: SelectionInspectSnapshot["source"] =
-    rawSource === "ax" || rawSource === "clipboard" ? (rawSource as "ax" | "clipboard") : "none";
+    rawSource === "ax" || rawSource === "clipboard"
+      ? (rawSource as "ax" | "clipboard")
+      : "none";
 
   const valueLengthMatch = normalized.match(/valueLength:(-?\d+)/);
   const valueLength = valueLengthMatch ? Number(valueLengthMatch[1]) : null;
 
   let selectedText = extractBase64Section(normalized, "selectedText");
-  if (selectedText === null) selectedText = extractFallbackSection(normalized, "selectedText");
+  if (selectedText === null)
+    selectedText = extractFallbackSection(normalized, "selectedText");
 
   let context = extractBase64Section(normalized, "context");
   if (context === null) context = extractFallbackSection(normalized, "context");
@@ -1018,7 +1085,8 @@ function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
   const normalizedRange =
     range && range.location >= 0 && range.length >= 0 ? range : null;
   const hadSelection = Boolean(
-    (normalizedRange && normalizedRange.length > 0) || (selectedText && selectedText.length > 0),
+    (normalizedRange && normalizedRange.length > 0) ||
+      (selectedText && selectedText.length > 0),
   );
 
   const result: SelectionInspectSnapshot = {
@@ -1086,7 +1154,7 @@ async function inspectFocusedSelection(
     const timer = setTimeout(() => {
       try {
         helper.kill("SIGKILL");
-      } catch { }
+      } catch {}
       done({
         ok: false,
         status: "timeout",
@@ -1128,7 +1196,9 @@ async function inspectFocusedSelection(
     helper.on("close", (code) => {
       const parsed = parseInspectOutput(stdout);
       if (code !== 0) {
-        parsed.status = parsed.ok ? `exit:${code}` : `${parsed.status}|exit:${code}`;
+        parsed.status = parsed.ok
+          ? `exit:${code}`
+          : `${parsed.status}|exit:${code}`;
         if (!parsed.error) parsed.error = `Helper exited with code ${code}`;
         parsed.ok = false;
       }
@@ -1160,7 +1230,7 @@ async function startHelperIfIMGranted(): Promise<void> {
         if (hasIM) {
           try {
             startFnListener();
-          } catch { }
+          } catch {}
         } else {
           console.log("[FnListener] IM not granted; helper start deferred");
         }
@@ -1168,28 +1238,31 @@ async function startHelperIfIMGranted(): Promise<void> {
       });
     });
   } catch (e) {
-    console.warn("[FnListener] Preflight IM check failed:", (e as Error)?.message);
+    console.warn(
+      "[FnListener] Preflight IM check failed:",
+      (e as Error)?.message,
+    );
   }
 }
 
 function getHelperPath(): string {
   return app.isPackaged
     ? path.join(
-      process.resourcesPath,
-      "Spoke Helper.app",
-      "Contents",
-      "MacOS",
-      "Spoke Helper",
-    )
+        process.resourcesPath,
+        "Spoke Helper.app",
+        "Contents",
+        "MacOS",
+        "Spoke Helper",
+      )
     : path.join(
-      app.getAppPath(),
-      "native",
-      "bin",
-      "Spoke Helper.app",
-      "Contents",
-      "MacOS",
-      "Spoke Helper",
-    );
+        app.getAppPath(),
+        "native",
+        "bin",
+        "Spoke Helper.app",
+        "Contents",
+        "MacOS",
+        "Spoke Helper",
+      );
 }
 
 function preSpawnPasteHelper() {
@@ -1241,9 +1314,9 @@ function preSpawnPasteHelper() {
     preSpawnedPasteHelper.once("exit", () => {
       try {
         preSpawnedPasteHelper?.stdout?.off("data", onData as any);
-      } catch { }
+      } catch {}
     });
-  } catch { }
+  } catch {}
 
   pasteHelpers.add(preSpawnedPasteHelper);
   preSpawnedPasteHelper.once("exit", () => {
@@ -1309,7 +1382,9 @@ function loadPillPreferences(): import("./types/shared").PillPreferences {
   return {};
 }
 
-function savePillPreferences(prefs: import("./types/shared").PillPreferences): void {
+function savePillPreferences(
+  prefs: import("./types/shared").PillPreferences,
+): void {
   try {
     // Ensure userData directory exists
     const userDataDir = app.getPath("userData");
@@ -1340,7 +1415,9 @@ function loadAppPreferences(): import("./types/shared").AppPreferences {
   return {};
 }
 
-function saveAppPreferences(prefs: import("./types/shared").AppPreferences): void {
+function saveAppPreferences(
+  prefs: import("./types/shared").AppPreferences,
+): void {
   try {
     // Ensure userData directory exists
     const userDataDir = app.getPath("userData");
@@ -1611,12 +1688,17 @@ const smoothShow = (win: BrowserWindow | null, fadeMs = 140) => {
     // Show immediately at 0 opacity to avoid any pre-paint flash
     win.show();
     // Small timeout to ensure first styled frame is committed
-    setTimeout(() => {
-      if (!win || win.isDestroyed()) return;
-      win.setOpacity(1);
-    }, Math.max(50, Math.min(fadeMs, 300)));
+    setTimeout(
+      () => {
+        if (!win || win.isDestroyed()) return;
+        win.setOpacity(1);
+      },
+      Math.max(50, Math.min(fadeMs, 300)),
+    );
   } catch (e) {
-    try { win?.show(); } catch { }
+    try {
+      win?.show();
+    } catch {}
   }
 };
 
@@ -1626,13 +1708,22 @@ const smoothHide = (win: BrowserWindow | null, fadeMs = 140) => {
     // Start fade-out by dropping opacity to 0, then hide.
     win.setOpacity(1);
     setTimeout(() => {
-      try { win.setOpacity(0); } catch { }
-      setTimeout(() => {
-        try { win.hide(); } catch { }
-      }, Math.max(50, Math.min(fadeMs, 300)));
+      try {
+        win.setOpacity(0);
+      } catch {}
+      setTimeout(
+        () => {
+          try {
+            win.hide();
+          } catch {}
+        },
+        Math.max(50, Math.min(fadeMs, 300)),
+      );
     }, 0);
   } catch (e) {
-    try { win?.hide(); } catch { }
+    try {
+      win?.hide();
+    } catch {}
   }
 };
 
@@ -1734,7 +1825,7 @@ const createWindow = () => {
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         mainWindow.webContents.openDevTools({ mode: "detach" });
-      } catch { }
+      } catch {}
       console.log("DevTools opened (staging)");
     } else if (
       MAIN_WINDOW_VITE_DEV_SERVER_URL &&
@@ -1744,7 +1835,7 @@ const createWindow = () => {
       if (pttTarget === "main") {
         try {
           mainWindow.webContents.openDevTools({ mode: "detach" });
-        } catch { }
+        } catch {}
         console.log(
           "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
         );
@@ -1883,7 +1974,12 @@ ipcMain.on("renderer-ready", (event) => {
       activeDisplayId = currentDisplay.id;
       const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
       mainWindow.setBounds(
-        { x: current.x, y: targetY, width: current.width, height: current.height },
+        {
+          x: current.x,
+          y: targetY,
+          width: current.width,
+          height: current.height,
+        },
         false,
       );
       if (process.platform === "darwin") mainWindow.invalidateShadow();
@@ -1962,38 +2058,38 @@ function createOnboardingWindow() {
 
   const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
     ? (() => {
-      try {
-        const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-        const wsOverride =
-          VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-          process.env.VITE_TRANSCRIBE_WS_URL;
-        if (wsOverride && String(wsOverride).trim())
-          u.searchParams.set("ws", String(wsOverride).trim());
-        return `${u.toString()}#/onboarding`;
-      } catch {
-        return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
-      }
-    })()
+        try {
+          const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+          const wsOverride =
+            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+            process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim())
+            u.searchParams.set("ws", String(wsOverride).trim());
+          return `${u.toString()}#/onboarding`;
+        } catch {
+          return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
+        }
+      })()
     : (() => {
-      try {
-        const filePath = path.join(
-          __dirname,
-          `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-        );
-        const u = pathToFileURL(filePath);
-        const wsOverride =
-          VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-          process.env.VITE_TRANSCRIBE_WS_URL;
-        if (wsOverride && String(wsOverride).trim())
-          u.searchParams.set("ws", String(wsOverride).trim());
-        return `${u.toString()}#/onboarding`;
-      } catch {
-        return `file://${path.join(
-          __dirname,
-          `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-        )}#/onboarding`;
-      }
-    })();
+        try {
+          const filePath = path.join(
+            __dirname,
+            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+          );
+          const u = pathToFileURL(filePath);
+          const wsOverride =
+            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
+            process.env.VITE_TRANSCRIBE_WS_URL;
+          if (wsOverride && String(wsOverride).trim())
+            u.searchParams.set("ws", String(wsOverride).trim());
+          return `${u.toString()}#/onboarding`;
+        } catch {
+          return `file://${path.join(
+            __dirname,
+            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+          )}#/onboarding`;
+        }
+      })();
 
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
@@ -2046,7 +2142,7 @@ function createOnboardingWindow() {
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
         onboardingWindow.webContents.openDevTools({ mode: "detach" });
-      } catch { }
+      } catch {}
       console.log("[Onboarding] DevTools opened (staging)");
     }
   });
@@ -2112,7 +2208,9 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 
   const updateItems: Electron.MenuItemConstructorOptions[] = [];
   const buildCheckLabel = () =>
-    updateStatus === "checking" ? "Checking for Updates…" : "Check for Updates…";
+    updateStatus === "checking"
+      ? "Checking for Updates…"
+      : "Check for Updates…";
 
   function restartToInstallUpdate() {
     try {
@@ -2124,8 +2222,10 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
         autoUpdater.quitAndInstall();
         return;
       }
-    } catch { }
-    console.log("[Updater] quitAndInstall unavailable; relaunching app as fallback");
+    } catch {}
+    console.log(
+      "[Updater] quitAndInstall unavailable; relaunching app as fallback",
+    );
     try {
       app.relaunch();
       app.quit();
@@ -2165,8 +2265,8 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     buildPasteTranscriptItem(
       () => lastTranscript,
       () => {
-        pasteLastTranscript().catch(err => {
-          console.error('[TrayMenu] Error pasting transcript:', err);
+        pasteLastTranscript().catch((err) => {
+          console.error("[TrayMenu] Error pasting transcript:", err);
         });
       },
     ),
@@ -2181,7 +2281,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     { type: "separator" },
     {
       label: "Quit Spoke",
-      accelerator: 'CommandOrControl+Q',
+      accelerator: "CommandOrControl+Q",
       click: () => {
         console.log("[Tray Menu] Quit Spoke clicked");
         isQuitting = true;
@@ -2219,8 +2319,8 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
     buildPasteTranscriptItem(
       () => lastTranscript,
       () => {
-        pasteLastTranscript().catch(err => {
-          console.error('[ContextMenu] Error pasting transcript:', err);
+        pasteLastTranscript().catch((err) => {
+          console.error("[ContextMenu] Error pasting transcript:", err);
         });
       },
     ),
@@ -2384,7 +2484,7 @@ ipcMain.handle(
               new Promise<void>((resolve) => setTimeout(resolve, 300)),
             ]);
           }
-        } catch { }
+        } catch {}
         // Send paste command to daemon
         preSpawnedPasteHelper.stdin?.write("paste\n");
 
@@ -2403,13 +2503,17 @@ ipcMain.handle(
           // Fallback timeout
           setTimeout(() => {
             preSpawnedPasteHelper?.stdout?.off("data", onData);
-            console.log(`[PasteHelper] Pre-spawned helper timeout, assuming success`);
+            console.log(
+              `[PasteHelper] Pre-spawned helper timeout, assuming success`,
+            );
             resolve();
           }, 1000);
         });
       } else {
         // Fallback: spawn new helper if pre-spawn failed
-        console.log(`[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`);
+        console.log(
+          `[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`,
+        );
         const proc = spawnHelper(helperPath, ["--mode=paste"], false);
 
         await new Promise<void>((resolve) => {
@@ -2420,11 +2524,16 @@ ipcMain.handle(
           proc.on("close", (code) => {
             if (stderrBuffer)
               console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
-            console.log(`[PasteHelper] fallback paste helper exited with code ${code}`);
+            console.log(
+              `[PasteHelper] fallback paste helper exited with code ${code}`,
+            );
             resolve();
           });
           proc.on("error", (error) => {
-            console.error("[PasteHelper] Error executing fallback paste-helper:", error);
+            console.error(
+              "[PasteHelper] Error executing fallback paste-helper:",
+              error,
+            );
             resolve();
           });
         });
@@ -2434,7 +2543,7 @@ ipcMain.handle(
       setTimeout(() => {
         try {
           clipboard.writeText(originalClipboardText);
-        } catch { }
+        } catch {}
       }, 300);
 
       console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
@@ -2470,7 +2579,9 @@ async function pasteLastTranscript() {
   }
 
   try {
-    console.log("[PasteShortcut] Pasting last transcript via Command+Control+V");
+    console.log(
+      "[PasteShortcut] Pasting last transcript via Command+Control+V",
+    );
 
     const originalClipboardText = clipboard.readText();
     const payloadText = lastTranscript.trimStart();
@@ -2529,9 +2640,8 @@ async function pasteLastTranscript() {
     setTimeout(() => {
       try {
         clipboard.writeText(originalClipboardText);
-      } catch { }
+      } catch {}
     }, 300);
-
   } catch (error) {
     console.error("[PasteShortcut] Error pasting transcript:", error);
   }
@@ -2548,12 +2658,8 @@ app.whenReady().then(async () => {
       // Always register with explicit exe and app path in dev
       const exe = process.execPath;
       const appPath = path.resolve(process.argv[1] || "");
-      const ok = app.setAsDefaultProtocolClient("spoke-dev", exe, [
-        appPath,
-      ]);
-      console.log(
-        `[Auth] Registered dev protocol handler (spoke-dev): ${ok}`,
-      );
+      const ok = app.setAsDefaultProtocolClient("spoke-dev", exe, [appPath]);
+      console.log(`[Auth] Registered dev protocol handler (spoke-dev): ${ok}`);
       console.log(
         `[Auth] isDefaultProtocolClient(dev):`,
         app.isDefaultProtocolClient("spoke-dev"),
@@ -2635,7 +2741,7 @@ app.whenReady().then(async () => {
   appPreferences = loadAppPreferences();
   // Default to showing in dock if preference not set
   const showInDock = appPreferences.showInDock ?? true;
-  if (process.platform === 'darwin') {
+  if (process.platform === "darwin") {
     try {
       if (showInDock) {
         app.dock.show();
@@ -2656,15 +2762,14 @@ app.whenReady().then(async () => {
       (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL ||
       process.env.VITE_TRANSCRIBE_WS_URL;
     const wsUrlToLog =
-      envWs ||
-      (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.spoke.so/ws");
+      envWs || (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.spoke.so/ws");
     console.log("[Main] WS endpoint", wsUrlToLog);
     console.log("[Main] Flags", {
       VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
       VITE_ALLOW_DEV_WS: VITE_ENV?.VITE_ALLOW_DEV_WS,
       VITE_SENTRY_ENVIRONMENT: VITE_ENV?.VITE_SENTRY_ENVIRONMENT,
     });
-  } catch { }
+  } catch {}
   console.log(
     "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
   );
@@ -2682,14 +2787,14 @@ app.whenReady().then(async () => {
       // Local development HTTP/WS (dev or staging with flag)
       ...(allowLocal
         ? [
-          "http://127.0.0.1:8787",
-          "http://localhost:8787",
-          "ws://127.0.0.1:8787",
-          "ws://localhost:8787",
-          // Vite dev server (HMR)
-          "http://localhost:*",
-          "ws://localhost:*",
-        ]
+            "http://127.0.0.1:8787",
+            "http://localhost:8787",
+            "ws://127.0.0.1:8787",
+            "ws://localhost:8787",
+            // Vite dev server (HMR)
+            "http://localhost:*",
+            "ws://localhost:*",
+          ]
         : []),
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
@@ -2742,7 +2847,10 @@ app.whenReady().then(async () => {
   // Startup flow:
   // - FORCE_ONBOARDING => always show onboarding (ignore local flag)
   // - Otherwise, skip onboarding when SKIP_ONBOARDING or local done flag
-  if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true)) {
+  if (
+    !FORCE_ONBOARDING &&
+    (SKIP_ONBOARDING || onboardingPrefs?.done === true)
+  ) {
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
@@ -2755,16 +2863,18 @@ app.whenReady().then(async () => {
 
       // Detect and store notch width if not already stored
       if (!pillPreferences.notchWidth) {
-        detectAndStoreNotchWidth().then((width) => {
-          if (width && mainWindow && !mainWindow.isDestroyed()) {
-            // Re-emit display info with the newly stored width
-            const display = getDisplayForWindow();
-            const scale = computeScaleForDisplay(display);
-            emitActiveDisplayInfo(display, scale);
-          }
-        }).catch((err) => {
-          logger.main.error("[PillPrefs] Failed to detect notch width:", err);
-        });
+        detectAndStoreNotchWidth()
+          .then((width) => {
+            if (width && mainWindow && !mainWindow.isDestroyed()) {
+              // Re-emit display info with the newly stored width
+              const display = getDisplayForWindow();
+              const scale = computeScaleForDisplay(display);
+              emitActiveDisplayInfo(display, scale);
+            }
+          })
+          .catch((err) => {
+            logger.main.error("[PillPrefs] Failed to detect notch width:", err);
+          });
       }
 
       // Schedule background update check ~60s after startup with jitter
@@ -2892,13 +3002,17 @@ app.whenReady().then(async () => {
     }
     // Persist local onboarding flag so future launches can skip onboarding entirely
     try {
-      onboardingPrefs = { ...onboardingPrefs, done: true, currentStep: undefined };
+      onboardingPrefs = {
+        ...onboardingPrefs,
+        done: true,
+        currentStep: undefined,
+      };
       fs.writeFileSync(
         onboardingPrefsPath,
         JSON.stringify(onboardingPrefs, null, 2),
         "utf8",
       );
-    } catch { }
+    } catch {}
     if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow();
     } else {
@@ -2913,16 +3027,18 @@ app.whenReady().then(async () => {
 
     // Detect and store notch width if not already stored (for new users)
     if (!pillPreferences.notchWidth) {
-      detectAndStoreNotchWidth().then((width) => {
-        if (width && mainWindow && !mainWindow.isDestroyed()) {
-          // Re-emit display info with the newly stored width
-          const display = getDisplayForWindow();
-          const scale = computeScaleForDisplay(display);
-          emitActiveDisplayInfo(display, scale);
-        }
-      }).catch((err) => {
-        logger.main.error("[PillPrefs] Failed to detect notch width:", err);
-      });
+      detectAndStoreNotchWidth()
+        .then((width) => {
+          if (width && mainWindow && !mainWindow.isDestroyed()) {
+            // Re-emit display info with the newly stored width
+            const display = getDisplayForWindow();
+            const scale = computeScaleForDisplay(display);
+            emitActiveDisplayInfo(display, scale);
+          }
+        })
+        .catch((err) => {
+          logger.main.error("[PillPrefs] Failed to detect notch width:", err);
+        });
     }
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
@@ -2979,12 +3095,12 @@ app.whenReady().then(async () => {
         JSON.stringify(onboardingPrefs, null, 2),
         "utf8",
       );
-    } catch { }
+    } catch {}
     // Hide pill/main, show onboarding
     try {
       if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
         smoothHide(mainWindow);
-    } catch { }
+    } catch {}
     if (onboardingWindow && !onboardingWindow.isDestroyed()) {
       smoothShow(onboardingWindow);
     } else {
@@ -3009,7 +3125,12 @@ app.whenReady().then(async () => {
       const needMove = current.y !== targetY;
       if (needMove) {
         mainWindow.setBounds(
-          { x: current.x, y: targetY, width: current.width, height: current.height },
+          {
+            x: current.x,
+            y: targetY,
+            width: current.width,
+            height: current.height,
+          },
           false,
         );
         if (process.platform === "darwin") mainWindow.invalidateShadow();
@@ -3043,7 +3164,12 @@ app.whenReady().then(async () => {
         const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
         if (current.y !== hideY) {
           mainWindow.setBounds(
-            { x: current.x, y: hideY, width: current.width, height: current.height },
+            {
+              x: current.x,
+              y: hideY,
+              width: current.width,
+              height: current.height,
+            },
             false,
           );
           if (process.platform === "darwin") mainWindow.invalidateShadow();
@@ -3058,7 +3184,12 @@ app.whenReady().then(async () => {
       const needMove = current.y !== targetY;
       if (needMove) {
         mainWindow.setBounds(
-          { x: current.x, y: targetY, width: current.width, height: current.height },
+          {
+            x: current.x,
+            y: targetY,
+            width: current.width,
+            height: current.height,
+          },
           false,
         );
         if (process.platform === "darwin") mainWindow.invalidateShadow();
@@ -3087,7 +3218,12 @@ app.whenReady().then(async () => {
       const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
       if (current.y !== targetY) {
         mainWindow.setBounds(
-          { x: current.x, y: targetY, width: current.width, height: current.height },
+          {
+            x: current.x,
+            y: targetY,
+            width: current.width,
+            height: current.height,
+          },
           false,
         );
         if (process.platform === "darwin") mainWindow.invalidateShadow();
@@ -3150,20 +3286,21 @@ app.whenReady().then(async () => {
       payload:
         | string
         | {
-          message: string;
-          actionId?: string | null;
-        },
+            message: string;
+            actionId?: string | null;
+          },
     ) => {
       const next =
         typeof payload === "string"
           ? { message: payload, actionId: null }
           : {
-            message: payload?.message ?? "",
-            actionId:
-              typeof payload?.actionId === "string" ? payload.actionId : null,
-          };
+              message: payload?.message ?? "",
+              actionId:
+                typeof payload?.actionId === "string" ? payload.actionId : null,
+            };
       console.log(
-        `[IPC Main] Received show-notification request, forwarding to renderer: ${next.message}${next.actionId ? ` (action=${next.actionId})` : ""
+        `[IPC Main] Received show-notification request, forwarding to renderer: ${next.message}${
+          next.actionId ? ` (action=${next.actionId})` : ""
         }`,
       );
       mainWindow?.webContents.send("notify", next);
@@ -3176,7 +3313,7 @@ app.whenReady().then(async () => {
       // Check ~60s after wake with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "resume", true);
     });
-  } catch { }
+  } catch {}
   // Note: network regain detection is renderer-friendly via navigator.onLine.
   // Main process lacks a stable 'online' event; we rely on periodic checks + resume.
 
@@ -3233,49 +3370,58 @@ app.whenReady().then(async () => {
     return { visible };
   });
 
-  ipcMain.handle("dock:set-visible", async (_event, payload: { visible: boolean }) => {
-    try {
-      const { visible } = payload;
+  ipcMain.handle(
+    "dock:set-visible",
+    async (_event, payload: { visible: boolean }) => {
+      try {
+        const { visible } = payload;
 
-      // Set flag to prevent blur-triggered collapse during dock operation
-      dockOperationInProgress = true;
+        // Set flag to prevent blur-triggered collapse during dock operation
+        dockOperationInProgress = true;
 
-      // Only apply dock operations on macOS
-      if (process.platform === 'darwin') {
-        if (visible) {
-          await app.dock.show();
-          logger.main.info("[Dock] Showing dock icon");
-        } else {
-          app.dock.hide();
-          logger.main.info("[Dock] Hiding dock icon");
+        // Only apply dock operations on macOS
+        if (process.platform === "darwin") {
+          if (visible) {
+            await app.dock.show();
+            logger.main.info("[Dock] Showing dock icon");
+          } else {
+            app.dock.hide();
+            logger.main.info("[Dock] Hiding dock icon");
+          }
         }
+
+        // Save preference regardless of platform
+        appPreferences.showInDock = visible;
+        saveAppPreferences(appPreferences);
+
+        // Clear flag after a brief delay to allow focus to settle
+        setTimeout(() => {
+          dockOperationInProgress = false;
+        }, 300);
+
+        return { ok: true };
+      } catch (e) {
+        dockOperationInProgress = false; // Clear flag on error
+        logger.main.error("[Dock] Failed to set visibility:", e);
+        return { ok: false, error: (e as Error).message };
       }
-
-      // Save preference regardless of platform
-      appPreferences.showInDock = visible;
-      saveAppPreferences(appPreferences);
-
-      // Clear flag after a brief delay to allow focus to settle
-      setTimeout(() => {
-        dockOperationInProgress = false;
-      }, 300);
-
-      return { ok: true };
-    } catch (e) {
-      dockOperationInProgress = false; // Clear flag on error
-      logger.main.error("[Dock] Failed to set visibility:", e);
-      return { ok: false, error: (e as Error).message };
-    }
-  });
+    },
+  );
 
   // Transcription history storage handlers
   ipcMain.handle("transcriptions:get-all", () => {
     return getTranscriptions();
   });
 
-  ipcMain.handle("transcriptions:save", (_event, payload: { text: string; timestamp: number; mode: "dictation" | "edit" }) => {
-    return saveTranscription(payload);
-  });
+  ipcMain.handle(
+    "transcriptions:save",
+    (
+      _event,
+      payload: { text: string; timestamp: number; mode: "dictation" | "edit" },
+    ) => {
+      return saveTranscription(payload);
+    },
+  );
 
   ipcMain.handle("transcriptions:delete", (_event, payload: { id: string }) => {
     return deleteTranscription(payload.id);
@@ -3291,10 +3437,13 @@ app.whenReady().then(async () => {
     return getAllSessionData();
   });
 
-  ipcMain.handle("session:set", (_event, payload: { key: string; value: string }) => {
-    setSessionItem(payload.key, payload.value);
-    return { ok: true };
-  });
+  ipcMain.handle(
+    "session:set",
+    (_event, payload: { key: string; value: string }) => {
+      setSessionItem(payload.key, payload.value);
+      return { ok: true };
+    },
+  );
 
   ipcMain.handle("session:get", (_event, payload: { key: string }) => {
     return getSessionItem(payload.key);
@@ -3396,7 +3545,7 @@ app.whenReady().then(async () => {
     BrowserWindow.getAllWindows().forEach((window) => {
       try {
         window.webContents.send("transcript:updated", text);
-      } catch { }
+      } catch {}
     });
   });
 
@@ -3411,10 +3560,7 @@ app.whenReady().then(async () => {
 
       // Check if the helper exists
       if (!fs.existsSync(helperPath)) {
-        console.error(
-          "Spoke Helper binary not found at path:",
-          helperPath,
-        );
+        console.error("Spoke Helper binary not found at path:", helperPath);
         return { needAX, needIM: true, isDev };
       }
 
@@ -3461,16 +3607,26 @@ app.whenReady().then(async () => {
         return { success: true, via: "fallback-main" } as const;
       }
 
-      return await new Promise<{ success: boolean; status?: string; error?: string }>((resolve) => {
-        const helper = spawn(helperPath, ["--ask-ax"], { stdio: ["ignore", "pipe", "pipe"] });
+      return await new Promise<{
+        success: boolean;
+        status?: string;
+        error?: string;
+      }>((resolve) => {
+        const helper = spawn(helperPath, ["--ask-ax"], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
         let stdout = "";
         helper.stdout.on("data", (d) => (stdout += d.toString()));
         helper.on("close", () => {
-          if (stdout.includes("ax-granted")) resolve({ success: true, status: "authorized" });
-          else if (stdout.includes("ax-denied")) resolve({ success: true, status: "denied" });
+          if (stdout.includes("ax-granted"))
+            resolve({ success: true, status: "authorized" });
+          else if (stdout.includes("ax-denied"))
+            resolve({ success: true, status: "denied" });
           else resolve({ success: false, error: "Unexpected helper output" });
         });
-        helper.on("error", (e) => resolve({ success: false, error: (e as Error).message }));
+        helper.on("error", (e) =>
+          resolve({ success: false, error: (e as Error).message }),
+        );
       });
     } catch (error) {
       console.error("Error requesting accessibility permission:", error);
@@ -3518,7 +3674,10 @@ app.whenReady().then(async () => {
       // Screen recording permission can't be requested via askForMediaAccess
       // Instead, we trigger a screenshot which prompts the user if needed
       const { desktopCapturer } = await import("electron");
-      await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+      await desktopCapturer.getSources({
+        types: ["screen"],
+        thumbnailSize: { width: 1, height: 1 },
+      });
 
       // Check the status after attempting capture
       const status = systemPreferences.getMediaAccessStatus("screen");
@@ -3686,7 +3845,7 @@ app.whenReady().then(async () => {
             console.log("[Ask-IM] Input Monitoring permission granted");
             try {
               await startHelperIfIMGranted();
-            } catch { }
+            } catch {}
             resolve({ success: true, status: "authorized", isDev });
           } else if (stdout.includes("im-denied")) {
             console.log("[Ask-IM] Input Monitoring permission denied");
@@ -3721,28 +3880,33 @@ app.whenReady().then(async () => {
     return app.getAppPath();
   });
 
-  ipcMain.handle("selection:inspect", async (_event, payload?: SelectionInspectOptions) => {
-    const contextChars =
-      payload && typeof payload === "object" && typeof payload.contextChars === "number"
-        ? payload.contextChars
-        : undefined;
-    try {
-      return await inspectFocusedSelection({ contextChars });
-    } catch (error) {
-      return {
-        ok: false,
-        status: "exception",
-        range: null,
-        selectedText: null,
-        context: null,
-        valueLength: null,
-        hadSelection: false,
-        source: "none",
-        rawOutput: "",
-        error: (error as Error)?.message ?? "Selection inspection failed",
-      } satisfies SelectionInspectSnapshot;
-    }
-  });
+  ipcMain.handle(
+    "selection:inspect",
+    async (_event, payload?: SelectionInspectOptions) => {
+      const contextChars =
+        payload &&
+        typeof payload === "object" &&
+        typeof payload.contextChars === "number"
+          ? payload.contextChars
+          : undefined;
+      try {
+        return await inspectFocusedSelection({ contextChars });
+      } catch (error) {
+        return {
+          ok: false,
+          status: "exception",
+          range: null,
+          selectedText: null,
+          context: null,
+          valueLength: null,
+          hadSelection: false,
+          source: "none",
+          rawOutput: "",
+          error: (error as Error)?.message ?? "Selection inspection failed",
+        } satisfies SelectionInspectSnapshot;
+      }
+    },
+  );
 
   // Provide application version to renderer via preload bridge
   ipcMain.handle("app:get-version", () => {
@@ -3757,7 +3921,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("screenshot:capture", async (_event, options) => {
     try {
       const result = await captureScreenshot(options);
-      console.log(`[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`);
+      console.log(
+        `[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`,
+      );
       return { success: true, ...result };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -3788,7 +3954,7 @@ app.whenReady().then(async () => {
             if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
               preSpawnedPasteHelper.stdin?.write("exit\n");
             }
-          } catch { }
+          } catch {}
           preSpawnedPasteHelper = null;
           preSpawnReady = null;
           resolvePreSpawnReady = null;
@@ -3800,7 +3966,7 @@ app.whenReady().then(async () => {
           // Ask pill to refresh devices list to ensure clean state
           try {
             mainWindow?.webContents.send("mic:refresh-devices");
-          } catch { }
+          } catch {}
           return { ok: true };
         }
         return { ok: false, error: "Unknown type" };
@@ -3834,21 +4000,26 @@ app.whenReady().then(async () => {
   });
 
   // Register global shortcut for pasting last transcript
-  const shortcutRegistered = globalShortcut.register('CommandOrControl+Control+V', () => {
-    console.log('[GlobalShortcut] Command+Control+V pressed');
-    // Notify renderer that paste shortcut was pressed (for history-on-expand UX)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('paste-shortcut-pressed');
-    }
-    pasteLastTranscript().catch(err => {
-      console.error('[GlobalShortcut] Error in pasteLastTranscript:', err);
-    });
-  });
+  const shortcutRegistered = globalShortcut.register(
+    "CommandOrControl+Control+V",
+    () => {
+      console.log("[GlobalShortcut] Command+Control+V pressed");
+      // Notify renderer that paste shortcut was pressed (for history-on-expand UX)
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("paste-shortcut-pressed");
+      }
+      pasteLastTranscript().catch((err) => {
+        console.error("[GlobalShortcut] Error in pasteLastTranscript:", err);
+      });
+    },
+  );
 
   if (shortcutRegistered) {
-    console.log('[GlobalShortcut] Command+Control+V successfully registered');
+    console.log("[GlobalShortcut] Command+Control+V successfully registered");
   } else {
-    console.error('[GlobalShortcut] Failed to register Command+Control+V (may be in use by another app)');
+    console.error(
+      "[GlobalShortcut] Failed to register Command+Control+V (may be in use by another app)",
+    );
   }
 });
 
@@ -3856,11 +4027,11 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   try {
     devAuthServer?.close();
-  } catch { }
+  } catch {}
 
   // Unregister all global shortcuts
   globalShortcut.unregisterAll();
-  console.log('[GlobalShortcut] All shortcuts unregistered');
+  console.log("[GlobalShortcut] All shortcuts unregistered");
 });
 
 // Handle deep links like spoke://auth/callback?code=...
@@ -3923,7 +4094,9 @@ app.on("activate", () => {
 
   // Guard: Don't create windows before app is ready (can happen on fresh install)
   if (!app.isReady()) {
-    console.log("[App Event] activate: App not ready yet, skipping window creation");
+    console.log(
+      "[App Event] activate: App not ready yet, skipping window creation",
+    );
     return;
   }
 
@@ -3948,14 +4121,20 @@ app.on("activate", () => {
     // If no windows exist at all, create the appropriate window
     if (allWindows.length === 0) {
       console.log("[App Event] activate: No windows exist, creating window");
-      if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true))
+      if (
+        !FORCE_ONBOARDING &&
+        (SKIP_ONBOARDING || onboardingPrefs?.done === true)
+      )
         createWindow();
       else createOnboardingWindow();
     }
     // If windows exist but are all destroyed/invalid, recreate main window
     else if (!mainWindow || mainWindow.isDestroyed()) {
       console.log("[App Event] activate: Main window is destroyed, recreating");
-      if (!FORCE_ONBOARDING && (SKIP_ONBOARDING || onboardingPrefs?.done === true))
+      if (
+        !FORCE_ONBOARDING &&
+        (SKIP_ONBOARDING || onboardingPrefs?.done === true)
+      )
         createWindow();
       else createOnboardingWindow();
     }
@@ -3971,7 +4150,7 @@ app.on("before-quit", () => {
   // Attempt to flush pending Sentry events before quitting (best-effort)
   try {
     void Sentry.close(2000);
-  } catch { }
+  } catch {}
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
@@ -3979,7 +4158,8 @@ app.on("before-quit", () => {
   if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
     try {
       preSpawnedPasteHelper.stdin?.write("exit\n");
-      if (preSpawnedPasteHelper.pid) process.kill(preSpawnedPasteHelper.pid, "SIGKILL");
+      if (preSpawnedPasteHelper.pid)
+        process.kill(preSpawnedPasteHelper.pid, "SIGKILL");
     } catch (e) {
       // ignore
     }
@@ -4012,7 +4192,7 @@ app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
   try {
     void Sentry.close(2000);
-  } catch { }
+  } catch {}
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 
@@ -4122,7 +4302,8 @@ function startFnListener() {
         else if (pttTarget === "main")
           targetWindow = mainWindow || onboardingWindow;
         else targetWindow = onboardingWindow || mainWindow;
-        const mirrorWindow = targetWindow === mainWindow ? onboardingWindow : mainWindow;
+        const mirrorWindow =
+          targetWindow === mainWindow ? onboardingWindow : mainWindow;
         if (trimmedLine === "ready") {
           // Signal to both windows that PTT is ready
           onboardingWindow?.webContents.send("ptt-ready");
@@ -4144,7 +4325,7 @@ function startFnListener() {
             if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
               preSpawnedPasteHelper.stdin?.write("exit\n");
             }
-          } catch { }
+          } catch {}
           preSpawnedPasteHelper = null;
           preSpawnReady = null;
           resolvePreSpawnReady = null;
@@ -4196,9 +4377,7 @@ function startFnListener() {
     });
 
     fnProc.stderr?.on("data", (chunk: string) => {
-      console.error(
-        `[FnListener] Spoke Helper stderr: ${chunk.toString()}`,
-      );
+      console.error(`[FnListener] Spoke Helper stderr: ${chunk.toString()}`);
     });
 
     fnProc.on("error", (error: Error) => {

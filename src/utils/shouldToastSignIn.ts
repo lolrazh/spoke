@@ -1,4 +1,9 @@
-export type SignInEvent = "SIGNED_IN" | "TOKEN_REFRESHED" | "INITIAL_SESSION" | "USER_UPDATED" | string;
+export type SignInEvent =
+  | "SIGNED_IN"
+  | "TOKEN_REFRESHED"
+  | "INITIAL_SESSION"
+  | "USER_UPDATED"
+  | string;
 
 export type ToastGateInputs = {
   event: SignInEvent;
@@ -42,7 +47,8 @@ export function shouldToastSignIn(inp: ToastGateInputs): boolean {
 
   // Intent evidence within freshness window
   const within = (ts: number | null) => (ts ? now - ts <= freshnessMs : false);
-  const hasIntentEvidence = within(authIntentTs) || within(authCallbackTs) || within(onboardingTs);
+  const hasIntentEvidence =
+    within(authIntentTs) || within(authCallbackTs) || within(onboardingTs);
   if (!hasIntentEvidence) return false;
 
   // App visibility/focus guards
@@ -50,10 +56,13 @@ export function shouldToastSignIn(inp: ToastGateInputs): boolean {
   if (msSinceFocus != null && msSinceFocus < focusGuardMs) return false;
 
   // Cooldown unless user id changed (already allowed by isNewLogin)
-  if (lastToastTs != null && now - lastToastTs < cooldownMs && prevUserId === currentUserId) {
+  if (
+    lastToastTs != null &&
+    now - lastToastTs < cooldownMs &&
+    prevUserId === currentUserId
+  ) {
     return false;
   }
 
   return true;
 }
-

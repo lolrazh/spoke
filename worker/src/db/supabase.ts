@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 type Env = {
   SUPABASE_URL?: string;
@@ -13,7 +13,9 @@ let cachedClient: SupabaseClient | null = null;
  */
 export function getSupabaseClient(env: Env): SupabaseClient | null {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn('[Supabase] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    console.warn(
+      "[Supabase] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+    );
     return null;
   }
 
@@ -23,16 +25,19 @@ export function getSupabaseClient(env: Env): SupabaseClient | null {
   }
 
   try {
-    cachedClient = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
+    cachedClient = createClient(
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
       },
-    });
+    );
     return cachedClient;
   } catch (error) {
-    console.error('[Supabase] Failed to create client:', error);
+    console.error("[Supabase] Failed to create client:", error);
     return null;
   }
 }
-

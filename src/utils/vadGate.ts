@@ -19,9 +19,12 @@ export class VadGate {
 
   push(decision: VadDecision, atMs: number): void {
     const p = decision.probability;
-    const isSpeech = typeof p === "number"
-      ? (this.speaking ? p > SPEECH_PROB_END : p >= SPEECH_PROB_START)
-      : decision.isSpeech;
+    const isSpeech =
+      typeof p === "number"
+        ? this.speaking
+          ? p > SPEECH_PROB_END
+          : p >= SPEECH_PROB_START
+        : decision.isSpeech;
 
     if (isSpeech) {
       this.currentSpeechMs += WINDOW_MS;
@@ -57,4 +60,3 @@ export class VadGate {
     this.events = [];
   }
 }
-

@@ -15,7 +15,20 @@ const PAGE_SIZE = 50;
 // Helper function to format date as "MMM DD, YYYY" in caps
 const formatDateLabel = (timestamp: number): string => {
   const date = new Date(timestamp);
-  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const months = [
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+  ];
   const month = months[date.getMonth()];
   const day = date.getDate();
   const year = date.getFullYear();
@@ -25,7 +38,11 @@ const formatDateLabel = (timestamp: number): string => {
 // Helper function to get start of day for a timestamp
 const getStartOfDay = (timestamp: number): number => {
   const date = new Date(timestamp);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
 };
 
 // Helper function to group items by date categories
@@ -35,7 +52,10 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
   const startOfYesterday = startOfToday - oneDay;
 
   // Use a Map to collect items by their date key
-  const groupMap = new Map<string, { label: string; items: HistoryItemData[]; sortKey: number }>();
+  const groupMap = new Map<
+    string,
+    { label: string; items: HistoryItemData[]; sortKey: number }
+  >();
 
   items.forEach((item) => {
     let label: string;
@@ -77,7 +97,7 @@ const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
 
 const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<HistoryItemData[]>(() =>
-    getTranscriptionHistory().map(toHistoryItem)
+    getTranscriptionHistory().map(toHistoryItem),
   );
   const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -88,7 +108,9 @@ const TranscriptionHistoryView: React.FC = () => {
   // Initialize the initial batch IDs on first render
   useEffect(() => {
     if (initialBatchIdsRef.current.size === 0 && historyItems.length > 0) {
-      const initialIds = historyItems.slice(0, PAGE_SIZE).map(item => item.id);
+      const initialIds = historyItems
+        .slice(0, PAGE_SIZE)
+        .map((item) => item.id);
       initialBatchIdsRef.current = new Set(initialIds);
     }
   }, [historyItems]);
@@ -103,7 +125,7 @@ const TranscriptionHistoryView: React.FC = () => {
 
   // Only process the visible slice of items
   const visibleItems = historyItems.slice(0, displayedCount);
-  
+
   // Memoize grouping since it does real work (Map creation, sorting)
   const groupedItems = React.useMemo(() => {
     return groupItemsByDate(visibleItems);
@@ -111,7 +133,9 @@ const TranscriptionHistoryView: React.FC = () => {
 
   // Load more items when scrolling to bottom
   const loadMore = useCallback(() => {
-    setDisplayedCount((prev) => Math.min(prev + PAGE_SIZE, historyItems.length));
+    setDisplayedCount((prev) =>
+      Math.min(prev + PAGE_SIZE, historyItems.length),
+    );
   }, [historyItems.length]);
 
   // Intersection observer for infinite scroll
@@ -125,7 +149,7 @@ const TranscriptionHistoryView: React.FC = () => {
           loadMore();
         }
       },
-      { rootMargin: "100px" } // Start loading 100px before reaching the bottom
+      { rootMargin: "100px" }, // Start loading 100px before reaching the bottom
     );
 
     observer.observe(sentinel);
@@ -176,9 +200,7 @@ const TranscriptionHistoryView: React.FC = () => {
                 skipAnimation={shouldSkipAnimation(item.id)}
               />
               {/* Don't show border after last item */}
-              {index === group.items.length - 1 && (
-                <div className="h-0" />
-              )}
+              {index === group.items.length - 1 && <div className="h-0" />}
             </div>
           ))}
         </DateGroup>

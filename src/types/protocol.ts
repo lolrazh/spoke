@@ -65,7 +65,11 @@ export type ServerChunkResult = {
   traceId?: string;
 };
 
-export type ServerMsg = ServerStatus | ServerFinal | ServerError | ServerChunkResult;
+export type ServerMsg =
+  | ServerStatus
+  | ServerFinal
+  | ServerError
+  | ServerChunkResult;
 
 // Per-frame binary header (little-endian)
 // u32 seq | u32 nbytes | u64 client_ts_ns

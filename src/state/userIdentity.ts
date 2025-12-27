@@ -1,4 +1,8 @@
-import { getCurrentUser, getSupabase, type UserMetadata } from "../lib/supabaseClient";
+import {
+  getCurrentUser,
+  getSupabase,
+  type UserMetadata,
+} from "../lib/supabaseClient";
 
 export type UserIdentity = {
   name: string | null;
@@ -36,7 +40,8 @@ function emit(next: UserIdentity) {
     name: typeof next.name === "string" ? next.name : null,
     email: typeof next.email === "string" ? next.email : null,
   };
-  if (identity.name === sanitized.name && identity.email === sanitized.email) return;
+  if (identity.name === sanitized.name && identity.email === sanitized.email)
+    return;
   identity = sanitized;
 
   // Update cache with both name and email
@@ -89,7 +94,10 @@ async function refreshIdentity(): Promise<UserIdentity> {
       const profile = await getProfile();
       displayName = profile?.display_name ?? null;
     } catch (e) {
-      console.warn("[UserIdentity] Failed to fetch profile, falling back to metadata", e);
+      console.warn(
+        "[UserIdentity] Failed to fetch profile, falling back to metadata",
+        e,
+      );
     }
 
     // Fallback to user_metadata.name if profile doesn't have a display_name
@@ -127,7 +135,8 @@ async function subscribeToAuthChanges() {
     // See: https://supabase.com/docs/client/auth-onauthstatechange
     if (event === "SIGNED_IN" && session?.user) {
       // ✅ IMMEDIATE cache update with session data (prevents race condition)
-      const metadata = (session.user.user_metadata as UserMetadata | undefined) ?? null;
+      const metadata =
+        (session.user.user_metadata as UserMetadata | undefined) ?? null;
       const quickName = metadata?.name ?? null;
       const quickEmail = session.user.email ?? null;
 
@@ -227,7 +236,7 @@ export function clearUserIdentityCache() {
   for (const listener of listeners) {
     try {
       listener(identity);
-    } catch { }
+    } catch {}
   }
 }
 
@@ -237,7 +246,7 @@ export function resetUserIdentityForTests() {
   if (authUnsubscribe) {
     try {
       authUnsubscribe();
-    } catch { }
+    } catch {}
   }
   authUnsubscribe = null;
   initPromise = null;
@@ -248,5 +257,5 @@ export function resetUserIdentityForTests() {
       window.localStorage.removeItem(CACHE_KEY_EMAIL);
       window.localStorage.removeItem("sf.lastUserEmail");
     }
-  } catch { }
+  } catch {}
 }

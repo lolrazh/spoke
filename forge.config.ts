@@ -13,10 +13,15 @@ import { execa } from "execa";
 const signIdentity = process.env.APPLE_IDENTITY;
 
 const appleId = process.env.APPLE_ID;
-const applePassword = process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
+const applePassword =
+  process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
 const appleTeamId = process.env.APPLE_TEAM_ID || process.env.TEAM_ID;
 // Notarization control: APPLE_NOTARIZE=1 explicitly enables, =0 disables
-const notarizeFlag = (process.env.APPLE_NOTARIZE || process.env.FORGE_ENABLE_NOTARIZE || "").toLowerCase();
+const notarizeFlag = (
+  process.env.APPLE_NOTARIZE ||
+  process.env.FORGE_ENABLE_NOTARIZE ||
+  ""
+).toLowerCase();
 const enableNotarize =
   notarizeFlag === "1" || notarizeFlag === "true"
     ? true
@@ -51,10 +56,10 @@ const config: ForgeConfig = {
       "./native/bin/notch-reporter",
     ],
     extendInfo: {
-      CFBundleIconName: 'Spoke'
+      CFBundleIconName: "Spoke",
     },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
-    osxSign: ({
+    osxSign: {
       identity: signIdentity,
       preAutoEntitlements: false,
       // Ensure the nested helper app and its binary are signed with the same identity
@@ -89,16 +94,16 @@ const config: ForgeConfig = {
         }
         return base;
       },
-    }) as any,
+    } as any,
     // Notarization: automatically enabled when Developer ID + Apple credentials are present
     ...(enableNotarize && appleId && applePassword && appleTeamId
       ? {
-        osxNotarize: {
-          appleId,
-          appleIdPassword: applePassword,
-          teamId: appleTeamId,
-        },
-      }
+          osxNotarize: {
+            appleId,
+            appleIdPassword: applePassword,
+            teamId: appleTeamId,
+          },
+        }
       : {}),
   },
   rebuildConfig: {},
@@ -185,40 +190,55 @@ const config: ForgeConfig = {
     },
     postPackage: async () => {
       const ms = Date.now() - (timings["packageStart"] || Date.now());
-      console.log(`[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s`);
+      console.log(
+        `[Forge] PostPackage: completed in ${(ms / 1000).toFixed(1)}s`,
+      );
     },
     postMake: async (_forgeConfig, results) => {
       // Log produced artifacts
       try {
         const anyResults = results as any;
         const artifactLists: string[][] = anyResults.map((r: any) =>
-          Array.isArray(r) ? (r as string[]) : Array.isArray(r?.artifacts) ? (r.artifacts as string[]) : [],
+          Array.isArray(r)
+            ? (r as string[])
+            : Array.isArray(r?.artifacts)
+              ? (r.artifacts as string[])
+              : [],
         );
-        const artifactPaths: string[] = ([] as string[]).concat(...artifactLists);
+        const artifactPaths: string[] = ([] as string[]).concat(
+          ...artifactLists,
+        );
         for (const a of artifactPaths) {
           try {
             const stat = fs.statSync(a);
             console.log(
               `[Forge] Artifact: ${a} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`,
             );
-          } catch { }
+          } catch {}
         }
 
         // Notarize + staple DMG(s) after make (before publish uploads)
         if (process.platform !== "darwin") return;
 
-        const dmgPaths = artifactPaths.filter((p) => p.toLowerCase().endsWith(".dmg"));
+        const dmgPaths = artifactPaths.filter((p) =>
+          p.toLowerCase().endsWith(".dmg"),
+        );
         if (!dmgPaths.length) return;
 
         // Respect the same notarization gating as the app bundle
-        const notarizeFlag = (process.env.APPLE_NOTARIZE || process.env.FORGE_ENABLE_NOTARIZE || "").toLowerCase();
+        const notarizeFlag = (
+          process.env.APPLE_NOTARIZE ||
+          process.env.FORGE_ENABLE_NOTARIZE ||
+          ""
+        ).toLowerCase();
         const appleIdEnv = appleId;
         const applePasswordEnv = applePassword;
         const appleTeamIdEnv = appleTeamId;
         const enableDmgs =
           notarizeFlag === "1" ||
           notarizeFlag === "true" ||
-          (notarizeFlag !== "0" && Boolean(appleIdEnv && applePasswordEnv && appleTeamIdEnv));
+          (notarizeFlag !== "0" &&
+            Boolean(appleIdEnv && applePasswordEnv && appleTeamIdEnv));
 
         if (!enableDmgs) {
           console.log("[DMG Notarize] Skipped (credentials or flag missing)");
@@ -246,10 +266,16 @@ const config: ForgeConfig = {
             );
 
             console.log(`[DMG Staple] Stapling: ${dmg}`);
-            await execa("xcrun", ["stapler", "staple", dmg], { stdio: "inherit" });
+            await execa("xcrun", ["stapler", "staple", dmg], {
+              stdio: "inherit",
+            });
 
             try {
-              const { stdout } = await execa("xcrun", ["stapler", "validate", dmg]);
+              const { stdout } = await execa("xcrun", [
+                "stapler",
+                "validate",
+                dmg,
+              ]);
               console.log(`[DMG Staple] Validate: ${stdout.trim()}`);
             } catch (e) {
               console.warn("[DMG Staple] Validate warning:", e);

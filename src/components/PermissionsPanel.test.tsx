@@ -25,9 +25,19 @@ describe("components/PermissionsPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
     (window as any).electron = {
-      checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
-      checkMicrophonePermission: async () => ({ granted: false, status: "denied" }),
-      requestMicrophonePermission: vi.fn(async () => ({ success: true, granted: true })),
+      checkPermissions: async () => ({
+        needAX: true,
+        needIM: true,
+        isDev: true,
+      }),
+      checkMicrophonePermission: async () => ({
+        granted: false,
+        status: "denied",
+      }),
+      requestMicrophonePermission: vi.fn(async () => ({
+        success: true,
+        granted: true,
+      })),
       requestAccessibilityPermission: vi.fn(async () => ({ success: true })),
       askIM: vi.fn(async () => ({ success: true, status: "authorized" })),
       openSystemPreferences: vi.fn(),
@@ -51,7 +61,9 @@ describe("components/PermissionsPanel", () => {
     ) as HTMLElement | null;
     expect(micCard).not.toBeNull();
 
-    const micButton = micCard?.querySelector("button") as HTMLButtonElement | null;
+    const micButton = micCard?.querySelector(
+      "button",
+    ) as HTMLButtonElement | null;
     expect(micButton).not.toBeNull();
 
     micButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));

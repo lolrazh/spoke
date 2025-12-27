@@ -26,7 +26,11 @@ const formatTime = (timestamp: number): string => {
   return `${displayHours}:${displayMinutes} ${ampm}`;
 };
 
-const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy, skipAnimation = false }) => {
+const HistoryItem: React.FC<HistoryItemProps> = ({
+  item,
+  onCopy,
+  skipAnimation = false,
+}) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -79,7 +83,7 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy, skipAnimation =
                     type: "spring",
                     stiffness: 600,
                     damping: 15,
-                    mass: 0.5
+                    mass: 0.5,
                   }}
                 >
                   <motion.path
@@ -99,10 +103,14 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ item, onCopy, skipAnimation =
                     type: "spring",
                     stiffness: 600,
                     damping: 15,
-                    mass: 0.5
+                    mass: 0.5,
                   }}
                 >
-                  <SfIcon name="document.on.document" size={14} className="text-muted-foreground/50 hover:text-foreground transition-colors" />
+                  <SfIcon
+                    name="document.on.document"
+                    size={14}
+                    className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

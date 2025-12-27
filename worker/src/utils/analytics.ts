@@ -21,16 +21,16 @@ export type SessionLifecycleEvent = {
 
   // Outcome
   outcome:
-    | 'success'
-    | 'error_auth'
-    | 'error_stt'
-    | 'error_llm'
-    | 'error_send'
-    | 'client_disconnect'
-    | 'timeout'
-    | 'crash';
-  mode: 'dictation' | 'edit';
-  error_stage?: 'auth' | 'ocr' | 'stt' | 'llm' | 'send';
+    | "success"
+    | "error_auth"
+    | "error_stt"
+    | "error_llm"
+    | "error_send"
+    | "client_disconnect"
+    | "timeout"
+    | "crash";
+  mode: "dictation" | "edit";
+  error_stage?: "auth" | "ocr" | "stt" | "llm" | "send";
   error_message?: string;
 
   // Providers
@@ -107,17 +107,17 @@ export function trackSessionLifecycle(
     analytics.writeDataPoint({
       // Index: sampling key (only one allowed!)
       indexes: [
-        event.user_id || 'anonymous', // index1: user ID (for sampling)
+        event.user_id || "anonymous", // index1: user ID (for sampling)
       ],
       // Blob data (queryable strings) - 7 available
       blobs: [
-        'session.lifecycle', // blob1: event type (constant)
+        "session.lifecycle", // blob1: event type (constant)
         event.trace_id, // blob2: trace ID (for correlation)
         event.outcome, // blob3: outcome (success/error_*)
         event.mode, // blob4: mode (dictation/edit)
-        event.stt_provider || '', // blob5: STT provider
-        event.llm_provider || '', // blob6: LLM provider
-        event.error_stage || '', // blob7: error stage (if failed)
+        event.stt_provider || "", // blob5: STT provider
+        event.llm_provider || "", // blob6: LLM provider
+        event.error_stage || "", // blob7: error stage (if failed)
       ],
       // Numeric metrics (aggregatable) - 20 available, using 15
       doubles: [
@@ -140,7 +140,7 @@ export function trackSessionLifecycle(
     });
   } catch (error) {
     // Silent fail - analytics should never break the worker
-    console.warn('[Analytics] Failed to write session lifecycle:', error);
+    console.warn("[Analytics] Failed to write session lifecycle:", error);
   }
 }
 
@@ -164,16 +164,16 @@ export function trackEvent(
     analytics.writeDataPoint({
       // Index: sampling key (only one allowed!)
       indexes: [
-        event.userId || 'anonymous', // index1: user ID (for sampling)
+        event.userId || "anonymous", // index1: user ID (for sampling)
       ],
       // Blob data (queryable strings)
       blobs: [
         event.event, // blob1: event type
-        event.traceId || '', // blob2: trace ID
-        event.success ? 'success' : 'failure', // blob3: status
-        event.provider || '', // blob4: provider
-        event.error || '', // blob5: error message
-        event.model || '', // blob6: model name
+        event.traceId || "", // blob2: trace ID
+        event.success ? "success" : "failure", // blob3: status
+        event.provider || "", // blob4: provider
+        event.error || "", // blob5: error message
+        event.model || "", // blob6: model name
       ],
       // Numeric metrics (aggregatable)
       doubles: [
@@ -185,7 +185,7 @@ export function trackEvent(
     });
   } catch (error) {
     // Silent fail - analytics should never break the worker
-    console.warn('[Analytics] Failed to write event:', error);
+    console.warn("[Analytics] Failed to write event:", error);
   }
 }
 

@@ -16,13 +16,19 @@ import {
   STT_DEFAULT_MODEL,
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_TIMEOUT_MS,
-} from '../../../config';
-import { DEFAULT_STT_PROMPT } from '../prompt';
+} from "../../../config";
+import { DEFAULT_STT_PROMPT } from "../prompt";
 
 export async function transcribeWav(
   wav: Uint8Array,
   apiKey: string,
-  opts?: { timeoutMs?: number; signal?: AbortSignal; language?: string; prompt?: string; model?: string },
+  opts?: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    language?: string;
+    prompt?: string;
+    model?: string;
+  },
 ): Promise<SimplismartTranscriptionResult> {
   const startAt = Date.now();
   const timeoutMs = opts?.timeoutMs ?? STT_DEFAULT_TIMEOUT_MS;
@@ -31,13 +37,14 @@ export async function transcribeWav(
   const model = opts?.model;
 
   // Select endpoint based on model (turbo uses different endpoint)
-  const endpoint = model === SIMPLISMART_STT_TURBO_MODEL
-    ? SIMPLISMART_STT_TURBO_ENDPOINT
-    : SIMPLISMART_STT_ENDPOINT;
+  const endpoint =
+    model === SIMPLISMART_STT_TURBO_MODEL
+      ? SIMPLISMART_STT_TURBO_ENDPOINT
+      : SIMPLISMART_STT_ENDPOINT;
 
   // Convert WAV audio to base64 (process in chunks to avoid stack overflow)
   const chunkSize = 8192;
-  let binaryString = '';
+  let binaryString = "";
   for (let i = 0; i < wav.length; i += chunkSize) {
     const chunk = wav.subarray(i, Math.min(i + chunkSize, wav.length));
     binaryString += String.fromCharCode(...chunk);
@@ -48,7 +55,7 @@ export async function transcribeWav(
   const requestBody = {
     audio_data: base64Audio,
     language: language,
-    task: 'transcribe' as const,
+    task: "transcribe" as const,
     word_timestamps: false,
     diarization: false,
     vad_filter: true,
@@ -69,15 +76,15 @@ export async function transcribeWav(
   }, timeoutMs);
   if (opts?.signal) {
     if (opts.signal.aborted) controller.abort();
-    else opts.signal.addEventListener('abort', onExternalAbort);
+    else opts.signal.addEventListener("abort", onExternalAbort);
   }
 
   try {
     const res = await fetch(endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal,
@@ -99,8 +106,8 @@ export async function transcribeWav(
 
     // Join transcription array into single text
     const transcriptionText = Array.isArray(json?.transcription)
-      ? json.transcription.join(' ')
-      : '';
+      ? json.transcription.join(" ")
+      : "";
 
     return {
       text: transcriptionText,
@@ -108,6 +115,6 @@ export async function transcribeWav(
     };
   } finally {
     clearTimeout(timeoutId);
-    if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);
+    if (opts?.signal) opts.signal.removeEventListener("abort", onExternalAbort);
   }
 }

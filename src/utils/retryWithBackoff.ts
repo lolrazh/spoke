@@ -27,7 +27,7 @@ export interface RetryOptions {
  */
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
-  options: RetryOptions
+  options: RetryOptions,
 ): Promise<T | void> {
   const {
     maxRetries = PRECONNECT_MAX_RETRIES,
@@ -48,16 +48,17 @@ export async function retryWithBackoff<T>(
       const errorMsg = err instanceof Error ? err.message : String(err);
 
       if (retries < maxRetries) {
-        const backoffMs = initialDelayMs * Math.pow(backoffMultiplier, retries - 1);
+        const backoffMs =
+          initialDelayMs * Math.pow(backoffMultiplier, retries - 1);
         console.warn(
           `[App] ${context} attempt ${retries} failed, retrying in ${backoffMs}ms:`,
-          errorMsg
+          errorMsg,
         );
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
       } else {
         console.warn(
           `[App] ${context} failed after ${maxRetries} attempts, will retry on first dictation:`,
-          errorMsg
+          errorMsg,
         );
       }
     }

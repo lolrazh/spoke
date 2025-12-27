@@ -22,34 +22,18 @@ const PERMISSION_COPY: Record<
     title: "Voice Input",
     description: "Hear your voice to transcribe what you say",
     icon: (
-      <SfIcon
-        name="microphone.fill"
-        size={18}
-        className="text-primary/70"
-      />
+      <SfIcon name="microphone.fill" size={18} className="text-primary/70" />
     ),
   },
   accessibility: {
     title: "Text Insertion",
     description: "Type text directly into any app for you",
-    icon: (
-      <SfIcon
-        name="accessibility"
-        size={18}
-        className="text-primary/70"
-      />
-    ),
+    icon: <SfIcon name="accessibility" size={18} className="text-primary/70" />,
   },
   screenRecording: {
     title: "Smart Context",
     description: "Capture screen context for better accuracy",
-    icon: (
-      <SfIcon
-        name="record.circle"
-        size={18}
-        className="text-primary/70"
-      />
-    ),
+    icon: <SfIcon name="record.circle" size={18} className="text-primary/70" />,
   },
 };
 
@@ -76,7 +60,9 @@ interface PermissionsPanelProps {
   onHeightChange?: (height: number) => void;
 }
 
-const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) => {
+const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
+  onHeightChange,
+}) => {
   const {
     permissions,
     ui,
@@ -93,28 +79,28 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({ onHeightChange }) =
       disabled: boolean;
       onRequest: () => Promise<void> | void;
     }> = [
-        {
-          key: "microphone",
-          granted: permissions.microphone,
-          loading: ui.microphone.loading,
-          disabled: false,
-          onRequest: requestMicrophone,
-        },
-        {
-          key: "accessibility",
-          granted: permissions.accessibility,
-          loading: ui.accessibility.loading,
-          disabled: false,
-          onRequest: requestAccessibility,
-        },
-        {
-          key: "screenRecording",
-          granted: permissions.screenRecording,
-          loading: ui.screenRecording.loading,
-          disabled: false,
-          onRequest: requestScreenRecording,
-        },
-      ];
+      {
+        key: "microphone",
+        granted: permissions.microphone,
+        loading: ui.microphone.loading,
+        disabled: false,
+        onRequest: requestMicrophone,
+      },
+      {
+        key: "accessibility",
+        granted: permissions.accessibility,
+        loading: ui.accessibility.loading,
+        disabled: false,
+        onRequest: requestAccessibility,
+      },
+      {
+        key: "screenRecording",
+        granted: permissions.screenRecording,
+        loading: ui.screenRecording.loading,
+        disabled: false,
+        onRequest: requestScreenRecording,
+      },
+    ];
 
     return entries;
   }, [

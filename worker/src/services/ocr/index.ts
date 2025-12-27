@@ -16,7 +16,9 @@ export interface ExtractOcrWordsOptions {
   maxWords?: number;
 }
 
-export async function extractOcrWords(opts: ExtractOcrWordsOptions): Promise<OcrResult> {
+export async function extractOcrWords(
+  opts: ExtractOcrWordsOptions,
+): Promise<OcrResult> {
   const {
     apiKey,
     imageBase64,

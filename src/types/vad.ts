@@ -17,5 +17,3 @@ export interface VadEngine {
 export type VadEvent =
   | { type: "speech_start"; atMs: number }
   | { type: "speech_end"; atMs: number };
-
-

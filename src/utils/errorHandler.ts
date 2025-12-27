@@ -1,4 +1,10 @@
-import { ErrorCode, ERROR_MESSAGES, isRetryableError, type AppError, type ServerErrorResponse } from "../types/errors";
+import {
+  ErrorCode,
+  ERROR_MESSAGES,
+  isRetryableError,
+  type AppError,
+  type ServerErrorResponse,
+} from "../types/errors";
 
 /**
  * Create an AppError from an error code
@@ -6,7 +12,7 @@ import { ErrorCode, ERROR_MESSAGES, isRetryableError, type AppError, type Server
 export function createAppError(
   code: ErrorCode,
   technicalMessage?: string,
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>,
 ): AppError {
   return {
     code,
@@ -22,8 +28,11 @@ export function createAppError(
  */
 export function parseServerError(serverError: ServerErrorResponse): AppError {
   const code = (serverError.code as ErrorCode) || ErrorCode.UNKNOWN_ERROR;
-  const message = ERROR_MESSAGES[code] || serverError.body || ERROR_MESSAGES[ErrorCode.UNKNOWN_ERROR];
-  
+  const message =
+    ERROR_MESSAGES[code] ||
+    serverError.body ||
+    ERROR_MESSAGES[ErrorCode.UNKNOWN_ERROR];
+
   return {
     code,
     message,
@@ -41,7 +50,7 @@ export function detectNetworkError(): AppError | null {
     return createAppError(
       ErrorCode.NETWORK_OFFLINE,
       "Browser reports offline",
-      { onLine: navigator.onLine }
+      { onLine: navigator.onLine },
     );
   }
   return null;
@@ -55,34 +64,26 @@ export function parseMediaError(error: unknown): AppError {
     switch (error.name) {
       case "NotAllowedError":
       case "PermissionDeniedError":
-        return createAppError(
-          ErrorCode.MIC_PERMISSION_DENIED,
-          error.message,
-          { errorName: error.name }
-        );
+        return createAppError(ErrorCode.MIC_PERMISSION_DENIED, error.message, {
+          errorName: error.name,
+        });
       case "NotFoundError":
       case "DevicesNotFoundError":
-        return createAppError(
-          ErrorCode.MIC_NOT_AVAILABLE,
-          error.message,
-          { errorName: error.name }
-        );
+        return createAppError(ErrorCode.MIC_NOT_AVAILABLE, error.message, {
+          errorName: error.name,
+        });
       case "NotReadableError":
       case "TrackStartError":
-        return createAppError(
-          ErrorCode.MIC_NOT_AVAILABLE,
-          error.message,
-          { errorName: error.name }
-        );
+        return createAppError(ErrorCode.MIC_NOT_AVAILABLE, error.message, {
+          errorName: error.name,
+        });
       default:
-        return createAppError(
-          ErrorCode.UNKNOWN_ERROR,
-          error.message,
-          { errorName: error.name }
-        );
+        return createAppError(ErrorCode.UNKNOWN_ERROR, error.message, {
+          errorName: error.name,
+        });
     }
   }
-  
+
   const message = error instanceof Error ? error.message : String(error);
   return createAppError(ErrorCode.UNKNOWN_ERROR, message);
 }
@@ -92,12 +93,12 @@ export function parseMediaError(error: unknown): AppError {
  */
 export function parseWebSocketError(
   event: Event | CloseEvent | string,
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>,
 ): AppError {
   // Check network connectivity first
   const networkError = detectNetworkError();
   if (networkError) return networkError;
-  
+
   // CloseEvent with specific codes
   if (typeof event === "object" && "code" in event) {
     const closeEvent = event as CloseEvent;
@@ -107,13 +108,13 @@ export function parseWebSocketError(
         return createAppError(
           ErrorCode.WS_DISCONNECTED,
           closeEvent.reason || "WebSocket closed normally",
-          { code: closeEvent.code, reason: closeEvent.reason, ...context }
+          { code: closeEvent.code, reason: closeEvent.reason, ...context },
         );
       case 1006: // Abnormal closure (no close frame)
         return createAppError(
           ErrorCode.WS_CONNECTION_FAILED,
           "Connection failed (abnormal closure)",
-          { code: closeEvent.code, ...context }
+          { code: closeEvent.code, ...context },
         );
       case 1008: // Policy violation
       case 1009: // Message too large
@@ -121,20 +122,25 @@ export function parseWebSocketError(
         return createAppError(
           ErrorCode.WS_DISCONNECTED,
           closeEvent.reason || `WebSocket error (${closeEvent.code})`,
-          { code: closeEvent.code, reason: closeEvent.reason, ...context }
+          { code: closeEvent.code, reason: closeEvent.reason, ...context },
         );
       default:
         return createAppError(
           ErrorCode.WS_DISCONNECTED,
           `WebSocket closed with code ${closeEvent.code}`,
-          { code: closeEvent.code, reason: closeEvent.reason, ...context }
+          { code: closeEvent.code, reason: closeEvent.reason, ...context },
         );
     }
   }
-  
+
   // Generic connection failure
-  const technicalMessage = typeof event === "string" ? event : "WebSocket connection failed";
-  return createAppError(ErrorCode.WS_CONNECTION_FAILED, technicalMessage, context);
+  const technicalMessage =
+    typeof event === "string" ? event : "WebSocket connection failed";
+  return createAppError(
+    ErrorCode.WS_CONNECTION_FAILED,
+    technicalMessage,
+    context,
+  );
 }
 
 /**

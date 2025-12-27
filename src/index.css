@@ -54,7 +54,10 @@
     pointer-events: none;
     background-color: hsl(var(--background, 0 0% 3.9%));
     /* Square dotted grid: single layer, no diagonal offset */
-    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.05) 1px,
+      transparent 1px
+    );
     background-position: 0 0;
     background-size: 24px 24px;
     /* Default: no hole to avoid early bald patch before logo appears */
@@ -68,15 +71,15 @@
       50% 40% at 50% 42%,
       transparent 0%,
       transparent 30%,
-      rgba(255,255,255,0.85) 55%,
-      rgba(255,255,255,1) 70%
+      rgba(255, 255, 255, 0.85) 55%,
+      rgba(255, 255, 255, 1) 70%
     );
     mask-image: radial-gradient(
       50% 40% at 50% 42%,
       transparent 0%,
       transparent 30%,
-      rgba(255,255,255,0.85) 55%,
-      rgba(255,255,255,1) 70%
+      rgba(255, 255, 255, 0.85) 55%,
+      rgba(255, 255, 255, 1) 70%
     );
   }
 
@@ -98,7 +101,10 @@
     pointer-events: none;
     background-color: hsl(var(--background, 0 0% 3.9%));
     /* Subtle square dotted grid */
-    background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px
+    );
     background-position: 0 0;
     background-size: 24px 24px;
     z-index: 0;
@@ -125,7 +131,7 @@
     width: 160px;
     height: auto;
     image-rendering: -webkit-optimize-contrast;
-    filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
+    filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.35));
     user-select: none;
   }
 
@@ -140,36 +146,44 @@
     font-size: clamp(30px, 7.2vw, 60px);
     line-height: 1.25;
     letter-spacing: -0.01em;
-    background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(255,255,255,0.85) 100%);
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 1) 0%,
+      rgba(255, 255, 255, 0.85) 100%
+    );
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
 
   .sf-intro-sub {
-    font-family: "Lexend Deca", system-ui, -apple-system, sans-serif;
+    font-family:
+      "Lexend Deca",
+      system-ui,
+      -apple-system,
+      sans-serif;
     font-size: 16px !important;
     font-weight: 300;
-    color: rgba(255,255,255,0.7);
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .sf-intro-cta {
     margin-top: 6px;
     padding: 10px 14px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.92);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     backdrop-filter: blur(12px);
     transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
   }
   .sf-intro-cta:hover {
-    background: rgba(255,255,255,0.12);
-    border-color: rgba(255,255,255,0.18);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
     transform: translateY(-1px);
-    box-shadow: 0 12px 28px rgba(0,0,0,0.4);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
   }
   .sf-intro-cta:focus-visible {
-    outline: 2px solid rgba(255,255,255,0.2);
+    outline: 2px solid rgba(255, 255, 255, 0.2);
     outline-offset: 2px;
   }
 
@@ -178,9 +192,9 @@
     top: 18px;
     right: 18px;
     padding: 6px 10px;
-    background: rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.85);
-    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
     font-size: 12px;
     backdrop-filter: blur(8px);
@@ -517,12 +531,12 @@
   }
 
   .disappear-reverse {
-    animation: disappear-reverse 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+    animation: disappear-reverse 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }
 
   /* Segment collapsing for layout-based text movement */
   .segment-collapsing {
-    transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   /* Success container glow - slow and passionate */
@@ -545,7 +559,7 @@
     /* Slow, passionate ease-out */
     animation: success-container-glow 1s ease-out forwards;
   }
-  
+
   /* Character replacement animations */
   @keyframes replacement-fade-out {
     0% {
@@ -573,7 +587,7 @@
       background-size: 100% 2px;
     }
   }
-  
+
   @keyframes replacement-fade-in {
     0% {
       opacity: 0;
@@ -582,22 +596,22 @@
       opacity: 1;
     }
   }
-  
+
   .replacement-fade-out {
-    animation: replacement-fade-out 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+    animation: replacement-fade-out 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     display: inline-block;
   }
-  
+
   .replacement-fade-in {
-    animation: replacement-fade-in 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+    animation: replacement-fade-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     display: inline-block;
   }
-  
+
   /* Segment width transition for replacements */
   .segment-replacing {
-    transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
-  
+
   /* Insertion animations - materialize from nothing */
   @keyframes insertion-fade-in {
     0% {
@@ -607,15 +621,15 @@
       opacity: 1;
     }
   }
-  
+
   .insertion-fade-in {
-    animation: insertion-fade-in 1s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+    animation: insertion-fade-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     display: inline-block;
   }
-  
+
   /* Segment width transition for insertions */
   .segment-inserting {
-    transition: width 1s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
+    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   /* Collapsed state dots - smaller size but maintain the same spacing */
@@ -1525,7 +1539,12 @@ body {
   }
 
   .switch-track[data-state="checked"]:hover {
-    background-color: rgba(255, 255, 255, 0.13); /* Slightly brighter on hover */
+    background-color: rgba(
+      255,
+      255,
+      255,
+      0.13
+    ); /* Slightly brighter on hover */
     border-color: var(--stroke-fg-xstrong);
   }
 

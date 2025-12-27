@@ -70,7 +70,9 @@ export function buildSTTPrompt(options?: BuildOptions): string {
   const baseTokens = new Set(
     baseVocabularyTokens(base).map((token) => token.toLowerCase()),
   );
-  const filtered = combined.filter((token) => !baseTokens.has(token.toLowerCase()));
+  const filtered = combined.filter(
+    (token) => !baseTokens.has(token.toLowerCase()),
+  );
   if (filtered.length === 0) return base;
   return `${base}, ${filtered.join(", ")}`;
 }

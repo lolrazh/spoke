@@ -46,7 +46,12 @@ const Toggle: React.FC<{
   disabled?: boolean;
   inGroup?: boolean;
 }> = ({ enabled, onChange, label, description, icon, disabled, inGroup }) => (
-  <SettingsCard title={label} description={description} icon={icon} inGroup={inGroup}>
+  <SettingsCard
+    title={label}
+    description={description}
+    icon={icon}
+    inGroup={inGroup}
+  >
     <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
   </SettingsCard>
 );
@@ -62,7 +67,9 @@ const SelectField: React.FC<{
   <SettingsCard
     title={label}
     description={description}
-    icon={<SfIcon name="microphone.fill" size={16} className="text-primary/70" />}
+    icon={
+      <SfIcon name="microphone.fill" size={16} className="text-primary/70" />
+    }
     inGroup={inGroup}
   >
     <div className="ml-2">
@@ -130,7 +137,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   initialTab = "settings",
 }) => {
   // State
-  const [activeTab, setActiveTab] = useState<"settings" | "history">(initialTab);
+  const [activeTab, setActiveTab] = useState<"settings" | "history">(
+    initialTab,
+  );
 
   // Sync activeTab when initialTab prop changes (e.g., on re-expand with paste timing)
   const prevInitialTabRef = useRef(initialTab);
@@ -183,7 +192,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             if (isMounted) setShowFloatingBar(vis.visible);
           }
         }
-      } catch { }
+      } catch {}
     })();
 
     return () => {
@@ -201,7 +210,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         if (result && typeof result.visible === "boolean") {
           if (isMounted) setShowInDock(result.visible);
         }
-      } catch { }
+      } catch {}
     })();
 
     return () => {
@@ -212,10 +221,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Subscribe to centralized user identity cache
   useEffect(() => {
     // Initialize user identity (loads from cache immediately, then fetches from DB)
-    initUserIdentity().then((identity) => {
-      setUserEmail(identity.email);
-      setUserName(identity.name);
-    }).catch((): null => null);
+    initUserIdentity()
+      .then((identity) => {
+        setUserEmail(identity.email);
+        setUserName(identity.name);
+      })
+      .catch((): null => null);
 
     // Subscribe to identity changes (handles sign-in/sign-out automatically)
     const unsubscribe = subscribeUserIdentity((identity) => {
@@ -355,7 +366,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.access_token) {
         console.error("[Settings] No session found for billing portal");
         return;
@@ -432,16 +445,26 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Content container for height measurement - includes navbar */}
       <div ref={contentRef}>
         {/* Tab Navigation - top bezel */}
-        <div className="bg-background flex-shrink-0 no-drag" style={{ paddingTop: "var(--nav-bar-padding-top)", paddingBottom: "6px" }}>
+        <div
+          className="bg-background flex-shrink-0 no-drag"
+          style={{
+            paddingTop: "var(--nav-bar-padding-top)",
+            paddingBottom: "6px",
+          }}
+        >
           <div className="flex items-center justify-center px-6">
             <div className="flex items-center gap-0.5 border border-white/[0.08] rounded-lg p-1">
               <button
                 onClick={() => setActiveTab("settings")}
-                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "settings" ? "" : "justify-center"} ${activeTab === "settings"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                  }`}
+                style={{
+                  transition:
+                    "background-color 200ms ease-out, color 200ms ease-out",
+                }}
+                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "settings" ? "" : "justify-center"} ${
+                  activeTab === "settings"
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                }`}
               >
                 {activeTab === "settings" && (
                   <motion.div
@@ -453,19 +476,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
+                <span
+                  className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0"
+                  style={{ transition: "color 200ms ease-out" }}
+                >
                   <SfIcon name="gearshape.fill" size={17} />
                 </span>
                 <motion.span
                   animate={{
                     opacity: activeTab === "settings" ? 1 : 0,
                     width: activeTab === "settings" ? "auto" : 0,
-                    marginLeft: activeTab === "settings" ? "8px" : "0px"
+                    marginLeft: activeTab === "settings" ? "8px" : "0px",
                   }}
                   transition={{
-                    opacity: { duration: activeTab === "settings" ? 0.25 : 0.12 },
-                    width: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
-                    marginLeft: { duration: activeTab === "settings" ? 0.25 : 0.12, ease: activeTab === "settings" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                    opacity: {
+                      duration: activeTab === "settings" ? 0.25 : 0.12,
+                    },
+                    width: {
+                      duration: activeTab === "settings" ? 0.25 : 0.12,
+                      ease:
+                        activeTab === "settings"
+                          ? [0.34, 1.56, 0.64, 1]
+                          : [0.4, 0, 1, 1],
+                    },
+                    marginLeft: {
+                      duration: activeTab === "settings" ? 0.25 : 0.12,
+                      ease:
+                        activeTab === "settings"
+                          ? [0.34, 1.56, 0.64, 1]
+                          : [0.4, 0, 1, 1],
+                    },
                   }}
                   className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                 >
@@ -474,11 +514,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
               <button
                 onClick={() => setActiveTab("history")}
-                style={{ transition: 'background-color 200ms ease-out, color 200ms ease-out' }}
-                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "history" ? "" : "justify-center"} ${activeTab === "history"
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                  }`}
+                style={{
+                  transition:
+                    "background-color 200ms ease-out, color 200ms ease-out",
+                }}
+                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "history" ? "" : "justify-center"} ${
+                  activeTab === "history"
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                }`}
               >
                 {activeTab === "history" && (
                   <motion.div
@@ -490,19 +534,39 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     transition={{ duration: 0.15 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0" style={{ transition: 'color 200ms ease-out' }}>
-                  <SfIcon name="clock.arrow.trianglehead.counterclockwise.rotate.90" size={17} />
+                <span
+                  className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0"
+                  style={{ transition: "color 200ms ease-out" }}
+                >
+                  <SfIcon
+                    name="clock.arrow.trianglehead.counterclockwise.rotate.90"
+                    size={17}
+                  />
                 </span>
                 <motion.span
                   animate={{
                     opacity: activeTab === "history" ? 1 : 0,
                     width: activeTab === "history" ? "auto" : 0,
-                    marginLeft: activeTab === "history" ? "8px" : "0px"
+                    marginLeft: activeTab === "history" ? "8px" : "0px",
                   }}
                   transition={{
-                    opacity: { duration: activeTab === "history" ? 0.25 : 0.12 },
-                    width: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] },
-                    marginLeft: { duration: activeTab === "history" ? 0.25 : 0.12, ease: activeTab === "history" ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1] }
+                    opacity: {
+                      duration: activeTab === "history" ? 0.25 : 0.12,
+                    },
+                    width: {
+                      duration: activeTab === "history" ? 0.25 : 0.12,
+                      ease:
+                        activeTab === "history"
+                          ? [0.34, 1.56, 0.64, 1]
+                          : [0.4, 0, 1, 1],
+                    },
+                    marginLeft: {
+                      duration: activeTab === "history" ? 0.25 : 0.12,
+                      ease:
+                        activeTab === "history"
+                          ? [0.34, 1.56, 0.64, 1]
+                          : [0.4, 0, 1, 1],
+                    },
                   }}
                   className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
                 >
@@ -519,7 +583,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div
             className="absolute top-0 left-0 right-0 h-12 pointer-events-none z-20 transition-opacity duration-200"
             style={{
-              background: "linear-gradient(to bottom, hsl(var(--background)), transparent)",
+              background:
+                "linear-gradient(to bottom, hsl(var(--background)), transparent)",
               opacity: canScrollUp ? 1 : 0,
             }}
           />
@@ -529,9 +594,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ maxHeight: "530px" }}
             onScroll={updateScrollIndicators}
           >
-            <div
-              className="max-w-lg mx-auto w-full px-5 pt-0 pb-14"
-            >
+            <div className="max-w-lg mx-auto w-full px-5 pt-0 pb-14">
               {activeTab === "settings" ? (
                 <motion.div
                   initial="hidden"
@@ -558,7 +621,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             </span>
                           </div>
                           <span className="text-[11px] text-white/50 tabular-nums">
-                            {quotaState.wordsUsed.toLocaleString()} / {quotaState.limit.toLocaleString()}
+                            {quotaState.wordsUsed.toLocaleString()} /{" "}
+                            {quotaState.limit.toLocaleString()}
                           </span>
                         </div>
                         {/* Progress bar */}
@@ -624,7 +688,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           try {
                             await window.electron?.setDockVisible?.(enabled);
                           } catch (error) {
-                            console.error("[Settings] Failed to set dock visibility:", error);
+                            console.error(
+                              "[Settings] Failed to set dock visibility:",
+                              error,
+                            );
                           }
                         }}
                         icon={
@@ -667,14 +734,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <SectionSeparator title="Account" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
                       {userEmail ? (
-                        <div className={`relative overflow-hidden ${quotaState?.isPro ? 'shimmer' : ''}`}>
+                        <div
+                          className={`relative overflow-hidden ${quotaState?.isPro ? "shimmer" : ""}`}
+                        >
                           <div className="p-3 flex items-center justify-between gap-3">
                             <div className="flex items-center gap-3 min-w-0">
                               {/* Avatar with optional PRO badge */}
                               <div className="relative shrink-0">
                                 <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center">
                                   <span className="text-[11px] font-semibold tracking-wide">
-                                    {(userName || userEmail || "").slice(0, 1).toUpperCase()}
+                                    {(userName || userEmail || "")
+                                      .slice(0, 1)
+                                      .toUpperCase()}
                                   </span>
                                 </div>
                                 {/* PRO badge - only shown for Pro users */}
@@ -682,8 +753,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                   <div
                                     className="absolute -top-1 -right-1.5 text-white/90 text-[6px] font-bold px-1.5 py-0.5 rounded leading-none border border-white/10"
                                     style={{
-                                      background: 'linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)',
-                                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
+                                      background:
+                                        "linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)",
+                                      boxShadow:
+                                        "0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
                                     }}
                                   >
                                     PRO
@@ -718,7 +791,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 <Button
                                   variant="secondary"
                                   size="sm"
-                                  onClick={() => window.electron?.openExternal?.("https://spoke.so/pricing")}
+                                  onClick={() =>
+                                    window.electron?.openExternal?.(
+                                      "https://spoke.so/pricing",
+                                    )
+                                  }
                                   className="relative overflow-hidden shimmer-fast"
                                 >
                                   Upgrade
@@ -731,7 +808,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                 disabled={isSigningOut}
                                 className="!w-9 !px-0 flex items-center justify-center"
                               >
-                                <SfIcon name="rectangle.portrait.and.arrow.right" size={16} className="text-white/60" />
+                                <SfIcon
+                                  name="rectangle.portrait.and.arrow.right"
+                                  size={16}
+                                  className="text-white/60"
+                                />
                               </Button>
                             </div>
                           </div>
@@ -747,7 +828,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             onClick={async () => {
                               try {
                                 await window.electron?.showOnboarding?.();
-                              } catch { }
+                              } catch {}
                             }}
                           >
                             Open Onboarding to Sign In
@@ -756,7 +837,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       )}
                     </div>
                   </motion.section>
-
                 </motion.div>
               ) : (
                 <TranscriptionHistoryView />
@@ -771,7 +851,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div
             className="absolute -top-12 left-0 right-0 h-12 pointer-events-none transition-opacity duration-200"
             style={{
-              background: "linear-gradient(to bottom, transparent, hsl(var(--background)))",
+              background:
+                "linear-gradient(to bottom, transparent, hsl(var(--background)))",
               opacity: canScrollDown ? 1 : 0,
             }}
           />
@@ -784,13 +865,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   alt="Spoke Icon"
                   className="w-4 h-4 brightness-0 invert"
                 />
-                <p className="text-[10px] text-muted-foreground opacity-70">{appVersion ? `Spoke Beta ${appVersion}` : ""}</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">
+                  {appVersion ? `Spoke Beta ${appVersion}` : ""}
+                </p>
               </div>
             )}
           </div>
         </div>
       </div>
-    </div >
+    </div>
   );
 };
 

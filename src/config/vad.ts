@@ -51,9 +51,9 @@ export const ORT_WASM_BASE_URL = "/vad/ort-wasm/"; // directory containing *.was
 
 function resolveAssetUrl(relPath: string): string {
   try {
-    const base = (
-      (import.meta as unknown) as { env?: Record<string, unknown> }
-    )?.env?.BASE_URL ?? "./";
+    const base =
+      (import.meta as unknown as { env?: Record<string, unknown> })?.env
+        ?.BASE_URL ?? "./";
     const joined = `${String(base).replace(/\/$/, "")}${relPath.startsWith("/") ? relPath : `/${relPath}`}`;
     return new URL(
       joined,
@@ -73,5 +73,3 @@ export function getOrtWasmBaseURL(): string {
   const url = resolveAssetUrl(ORT_WASM_BASE_URL);
   return url.endsWith("/") ? url : `${url}/`;
 }
-
-

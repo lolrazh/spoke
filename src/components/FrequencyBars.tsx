@@ -38,11 +38,11 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
   // Smooth transition between listening and processing states
   useEffect(() => {
-    const targetBlend = isProcessing ? 1 : (isListening ? 0 : transitionBlend);
+    const targetBlend = isProcessing ? 1 : isListening ? 0 : transitionBlend;
 
     let rafId: number;
     const animate = () => {
-      setTransitionBlend(prev => {
+      setTransitionBlend((prev) => {
         const diff = targetBlend - prev;
         if (Math.abs(diff) < 0.01) return targetBlend;
         // Smooth spring-like interpolation
@@ -108,9 +108,19 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
     return baseHeights.map((_, index) => {
       const listeningHeight = listeningHeights[index];
       const processingHeight = processingHeights[index];
-      return listeningHeight * (1 - transitionBlend) + processingHeight * transitionBlend;
+      return (
+        listeningHeight * (1 - transitionBlend) +
+        processingHeight * transitionBlend
+      );
     });
-  }, [audioLevel, isListening, isProcessing, ticker, baseHeights, transitionBlend]);
+  }, [
+    audioLevel,
+    isListening,
+    isProcessing,
+    ticker,
+    baseHeights,
+    transitionBlend,
+  ]);
 
   return (
     <div className="frequency-bars-container">
@@ -121,18 +131,18 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
         return (
           <motion.div
             key={`freq-${index}`}
-            className={`frequency-element ${isDot ? 'as-dot' : 'as-bar'}`}
+            className={`frequency-element ${isDot ? "as-dot" : "as-bar"}`}
             animate={{
               height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
-              borderRadius: isDot ? '50%' : '1px',
+              borderRadius: isDot ? "50%" : "1px",
               opacity: isDot ? (isHovered ? 0.8 : 0.6) : 1.0,
             }}
             transition={{
               height: {
                 type: "spring",
-                stiffness: (isListening || isProcessing) ? 750 : 350,
-                damping: (isListening || isProcessing) ? 19 : 28,
+                stiffness: isListening || isProcessing ? 750 : 350,
+                damping: isListening || isProcessing ? 19 : 28,
                 mass: 0.25,
               },
               width: { duration: 0.15 },

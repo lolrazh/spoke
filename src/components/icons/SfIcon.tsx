@@ -11,7 +11,9 @@ const RAW_SVG_SYMBOLS = import.meta.glob<string>(
   },
 );
 
-const svgRegistry: Record<string, string> = Object.entries(RAW_SVG_SYMBOLS).reduce(
+const svgRegistry: Record<string, string> = Object.entries(
+  RAW_SVG_SYMBOLS,
+).reduce(
   (acc, [path, svg]) => {
     const afterRoot = path.substring(
       path.lastIndexOf("sf-symbols/") + "sf-symbols/".length,
@@ -48,7 +50,7 @@ function sanitizeSvg(svg: string, title?: string): string {
       .replace(/\s+height="[^"]*"/gi, "")
       .replace(/\s+fill="[^"]*"/gi, "")
       .replace(/\s+stroke="[^"]*"/gi, "");
-    const fillAttr = /fill=/i.test(attrs) ? "" : " fill=\"currentColor\"";
+    const fillAttr = /fill=/i.test(attrs) ? "" : ' fill="currentColor"';
     return `<svg${withoutDimensions} width="100%" height="100%"${fillAttr} focusable="false">`;
   });
 

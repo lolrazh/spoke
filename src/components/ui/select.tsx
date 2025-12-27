@@ -73,41 +73,50 @@ type SelectContentProps = React.ComponentPropsWithoutRef<
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   SelectContentProps
->(({ className, children, position = "popper", inPlace = false, ...props }, ref) => {
-  const content = (
-    <SelectPrimitive.Content
-      ref={ref}
-      className={cn(
-        "card-floating relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-white/10 text-white will-change-transform outline-none ring-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        position === "popper" &&
-          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-        className,
-      )}
-      style={{
-        WebkitAppRegion: "no-drag",
-        backgroundColor: "rgb(10, 10, 10)" // Solid background matching settings panel
-      }}
-      position={position}
-      side="bottom"
-      align="end"
-      {...props}
-    >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
+>(
+  (
+    { className, children, position = "popper", inPlace = false, ...props },
+    ref,
+  ) => {
+    const content = (
+      <SelectPrimitive.Content
+        ref={ref}
         className={cn(
-          "p-1",
+          "card-floating relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-lg border border-white/10 text-white will-change-transform outline-none ring-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
+            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          className,
         )}
+        style={{
+          WebkitAppRegion: "no-drag",
+          backgroundColor: "rgb(10, 10, 10)", // Solid background matching settings panel
+        }}
+        position={position}
+        side="bottom"
+        align="end"
+        {...props}
       >
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
-    </SelectPrimitive.Content>
-  );
+        <SelectScrollUpButton />
+        <SelectPrimitive.Viewport
+          className={cn(
+            "p-1",
+            position === "popper" &&
+              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
+          )}
+        >
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectScrollDownButton />
+      </SelectPrimitive.Content>
+    );
 
-  return inPlace ? content : <SelectPrimitive.Portal>{content}</SelectPrimitive.Portal>;
-});
+    return inPlace ? (
+      content
+    ) : (
+      <SelectPrimitive.Portal>{content}</SelectPrimitive.Portal>
+    );
+  },
+);
 SelectContent.displayName = SelectPrimitive.Content.displayName;
 
 const SelectLabel = React.forwardRef<

@@ -1,4 +1,4 @@
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 export type LogContext = Record<string, unknown> | undefined;
 
@@ -16,16 +16,16 @@ function log(level: LogLevel, msg: string, ctx?: LogContext) {
     // Use native console methods to preserve log levels
     const line = JSON.stringify(entry);
     switch (level) {
-      case 'debug':
+      case "debug":
         (console.debug || console.log)(line);
         break;
-      case 'info':
+      case "info":
         (console.info || console.log)(line);
         break;
-      case 'warn':
+      case "warn":
         (console.warn || console.log)(line);
         break;
-      case 'error':
+      case "error":
         (console.error || console.log)(line);
         break;
       default:
@@ -33,18 +33,24 @@ function log(level: LogLevel, msg: string, ctx?: LogContext) {
     }
   } catch (e) {
     // Fallback
-    const fn = (level === 'error' && console.error) || (level === 'warn' && console.warn) || console.log;
-    fn(`[${level}] ${msg} ${ctx ? JSON.stringify(ctx) : ''}`);
+    const fn =
+      (level === "error" && console.error) ||
+      (level === "warn" && console.warn) ||
+      console.log;
+    fn(`[${level}] ${msg} ${ctx ? JSON.stringify(ctx) : ""}`);
   }
 }
 
 export function createLogger(base?: LogContext): Logger {
-  const bind = (extra?: LogContext): LogContext => ({ ...(base || {}), ...(extra || {}) });
+  const bind = (extra?: LogContext): LogContext => ({
+    ...(base || {}),
+    ...(extra || {}),
+  });
   return {
-    debug: (msg, ctx) => log('debug', msg, bind(ctx)),
-    info: (msg, ctx) => log('info', msg, bind(ctx)),
-    warn: (msg, ctx) => log('warn', msg, bind(ctx)),
-    error: (msg, ctx) => log('error', msg, bind(ctx)),
+    debug: (msg, ctx) => log("debug", msg, bind(ctx)),
+    info: (msg, ctx) => log("info", msg, bind(ctx)),
+    warn: (msg, ctx) => log("warn", msg, bind(ctx)),
+    error: (msg, ctx) => log("error", msg, bind(ctx)),
     with: (ctx) => createLogger(bind(ctx)),
   };
 }

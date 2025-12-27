@@ -16,9 +16,10 @@ export function buildAudioConstraints(options?: {
   if (options?.sampleRate != null) track.sampleRate = options.sampleRate;
   if (options?.channelCount != null) track.channelCount = options.channelCount;
   if (options?.deviceId && options.deviceId !== "default") {
-    track.deviceId = { exact: options.deviceId } as ConstrainDOMStringParameters;
+    track.deviceId = {
+      exact: options.deviceId,
+    } as ConstrainDOMStringParameters;
   }
 
   return { audio: track } as MediaStreamConstraints;
 }
-

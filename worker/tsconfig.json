@@ -19,10 +19,7 @@
     "module": "es2022",
     "noEmit": true,
     "lib": ["es2022", "DOM", "DOM.Iterable", "WebWorker"],
-    "types": [
-      "./worker-configuration.d.ts",
-      "@types/node"
-    ]
+    "types": ["./worker-configuration.d.ts", "@types/node"]
   },
   "exclude": ["node_modules", "dist", "tests"],
   "include": ["src", "worker-configuration.d.ts", "../shared/**/*"]

@@ -26,8 +26,15 @@ describe("components/SettingsPanel behavior", () => {
     (window as any).electron = {
       getFloatingBarEnabled: async () => ({ enabled: true }),
       isFloatingBarVisible: async () => ({ visible: true }),
-      checkPermissions: async () => ({ needAX: false, needIM: false, isDev: true }),
-      checkMicrophonePermission: async () => ({ status: "granted", granted: true }),
+      checkPermissions: async () => ({
+        needAX: false,
+        needIM: false,
+        isDev: true,
+      }),
+      checkMicrophonePermission: async () => ({
+        status: "granted",
+        granted: true,
+      }),
       showOnboarding: async () => ({ ok: true }),
       openSystemPreferences: async () => {},
     };
@@ -41,10 +48,13 @@ describe("components/SettingsPanel behavior", () => {
     // Media devices
     // @ts-ignore
     navigator.mediaDevices = {
-      enumerateDevices: vi.fn(async () => [
-        { kind: "audioinput", deviceId: "mic1", label: "Mic 1" },
-        { kind: "audioinput", deviceId: "mic2", label: "Mic 2" },
-      ] as any),
+      enumerateDevices: vi.fn(
+        async () =>
+          [
+            { kind: "audioinput", deviceId: "mic1", label: "Mic 1" },
+            { kind: "audioinput", deviceId: "mic2", label: "Mic 2" },
+          ] as any,
+      ),
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } as any;
@@ -53,14 +63,20 @@ describe("components/SettingsPanel behavior", () => {
   it("fires onToggleFloatingBar when user toggles the switch", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const onToggle = vi.fn();
-    const { container, unmount } = render(React.createElement(SettingsPanel, { onToggleFloatingBar: onToggle }));
-    await act(async () => { await Promise.resolve(); });
+    const { container, unmount } = render(
+      React.createElement(SettingsPanel, { onToggleFloatingBar: onToggle }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     const switches = Array.from(container.querySelectorAll(".switch-track"));
     // First switch is "Show Floating Bar"
     const first = switches[0] as HTMLElement;
     first.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(onToggle).toHaveBeenCalled();
 
     unmount();

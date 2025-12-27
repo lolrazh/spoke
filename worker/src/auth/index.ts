@@ -20,7 +20,7 @@ export {
   clearJwksCache,
   getJWKS,
   type JwtVerifyResult,
-} from './supabaseJwt';
+} from "./supabaseJwt";
 
 /**
  * WebSocket close codes for auth errors

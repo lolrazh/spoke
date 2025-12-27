@@ -67,7 +67,7 @@ export function buildPasteTranscriptItem(
   return {
     label: "Paste Last Transcript",
     enabled: text.length > 0,
-    accelerator: 'CommandOrControl+Control+V',
+    accelerator: "CommandOrControl+Control+V",
     click: () => {
       if (onPaste) onPaste();
     },

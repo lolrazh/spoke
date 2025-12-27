@@ -11,7 +11,7 @@ let clientInitPromise: Promise<SupabaseClient | null> | null = null;
 
 /**
  * Get the Supabase client, waiting for session injection to complete first.
- * 
+ *
  * IMPORTANT: This waits for window.sessionReady to resolve before creating
  * the client. This prevents the race condition where Supabase reads an
  * empty localStorage before the preload script has injected the session.
@@ -34,12 +34,17 @@ export async function getSupabase(): Promise<SupabaseClient | null> {
       try {
         await window.waitForSessionReady();
       } catch (error) {
-        console.warn("[Auth] waitForSessionReady failed, continuing anyway:", error);
+        console.warn(
+          "[Auth] waitForSessionReady failed, continuing anyway:",
+          error,
+        );
       }
     }
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.warn("[Auth] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+      console.warn(
+        "[Auth] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY",
+      );
       return null;
     }
 
@@ -59,7 +64,7 @@ export async function getSupabase(): Promise<SupabaseClient | null> {
 }
 
 /**
- * Synchronous version of getSupabase - only use this after getSupabase() 
+ * Synchronous version of getSupabase - only use this after getSupabase()
  * has already been called at least once (e.g., in auth state listeners).
  * Returns null if client hasn't been initialized yet.
  */
@@ -101,7 +106,7 @@ export async function getGoogleOAuthUrl(): Promise<string | null> {
   // Mark user intent before kicking off OAuth
   try {
     markAuthIntent("google");
-  } catch { }
+  } catch {}
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -150,7 +155,7 @@ export async function startEmailOtp(
   // Mark user intent before kicking off OTP
   try {
     markAuthIntent("email");
-  } catch { }
+  } catch {}
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -216,7 +221,9 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] OAuth PKCE code exchange successful`);
-      try { markAuthCallback(); } catch { }
+      try {
+        markAuthCallback();
+      } catch {}
       return { ok: true };
     }
 
@@ -236,7 +243,9 @@ export async function handleAuthCallbackUrl(
           return { ok: false, error: error.message };
         }
         console.log(`[Auth] Magic link session set successfully`);
-        try { markAuthCallback(); } catch { }
+        try {
+          markAuthCallback();
+        } catch {}
         return { ok: true };
       }
     }
@@ -255,7 +264,9 @@ export async function handleAuthCallbackUrl(
         return { ok: false, error: error.message };
       }
       console.log(`[Auth] PKCE email OTP verification successful`);
-      try { markAuthCallback(); } catch { }
+      try {
+        markAuthCallback();
+      } catch {}
       return { ok: true };
     }
 
@@ -296,14 +307,17 @@ export async function getCurrentUser() {
  * Get the current Supabase access token (JWT)
  * This token can be sent to the Worker for authentication
  * Supabase automatically refreshes the token when needed
- * 
+ *
  * @returns The access token string, or null if not authenticated
  */
 export async function getAccessToken(): Promise<string | null> {
   const supabase = await getSupabase();
   if (!supabase) return null;
   try {
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
     if (error) {
       console.warn("[Supabase] getSession failed:", error.message);
       return null;
@@ -354,16 +368,16 @@ export async function getProfile(): Promise<{
 
 export async function getProfileDetailed(): Promise<
   | {
-    ok: true;
-    data: {
-      id: string;
-      email: string | null;
-      display_name: string | null;
-      avatar_url: string | null;
-      onboarding_done: boolean | null;
-      share_transcriptions: boolean | null;
-    };
-  }
+      ok: true;
+      data: {
+        id: string;
+        email: string | null;
+        display_name: string | null;
+        avatar_url: string | null;
+        onboarding_done: boolean | null;
+        share_transcriptions: boolean | null;
+      };
+    }
   | { ok: false; error: string }
   | { ok: false; error: "NO_USER" }
   | { ok: false; error: "NOT_FOUND" }
@@ -419,8 +433,7 @@ export async function markOnboardingDone(): Promise<boolean> {
  * Returns { ok: true, existed: boolean } where existed indicates whether the row was already present.
  */
 export async function ensureProfileRow(): Promise<
-  | { ok: true; existed: boolean }
-  | { ok: false; error: string }
+  { ok: true; existed: boolean } | { ok: false; error: string }
 > {
   const supabase = await getSupabase();
   if (!supabase) return { ok: false, error: "Supabase not configured" };
@@ -469,7 +482,9 @@ export async function ensureProfileRow(): Promise<
 
 const SHARE_PREF_COLUMN = "share_transcriptions";
 
-export async function getShareTranscriptionsPreference(): Promise<boolean | null> {
+export async function getShareTranscriptionsPreference(): Promise<
+  boolean | null
+> {
   const supabase = await getSupabase();
   if (!supabase) return null;
   const user = await getCurrentUser();
@@ -484,7 +499,8 @@ export async function getShareTranscriptionsPreference(): Promise<boolean | null
       if (status === 406 || status === 404) return false;
       return null;
     }
-    const share = (data as { share_transcriptions?: boolean | null } | null)?.share_transcriptions;
+    const share = (data as { share_transcriptions?: boolean | null } | null)
+      ?.share_transcriptions;
     return share === true;
   } catch {
     return null;
@@ -560,7 +576,10 @@ export async function updateDisplayName(
   if (result.ok) return result;
 
   // Retry once on failure
-  console.warn("[updateDisplayName] First attempt failed, retrying...", result.error);
+  console.warn(
+    "[updateDisplayName] First attempt failed, retrying...",
+    result.error,
+  );
   await new Promise((resolve) => setTimeout(resolve, 500));
   return attemptUpdate();
 }

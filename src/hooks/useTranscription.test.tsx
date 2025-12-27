@@ -4,7 +4,10 @@ import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import { useTranscription } from "./useTranscription";
 import { FakeWebSocket } from "../test/fakes/fakeWebSocket";
-import { FakeAudioContext, FakeAudioWorkletNode } from "../test/fakes/fakeAudio";
+import {
+  FakeAudioContext,
+  FakeAudioWorkletNode,
+} from "../test/fakes/fakeAudio";
 
 vi.mock("../config/api", async (importOriginal) => {
   const actual = await importOriginal();
@@ -51,7 +54,9 @@ function renderUseTranscription(opts?: Record<string, unknown>) {
     current: null,
   };
   function Test(): null {
-    const hook = useTranscription(opts as Parameters<typeof useTranscription>[0]);
+    const hook = useTranscription(
+      opts as Parameters<typeof useTranscription>[0],
+    );
     out.current = hook;
     return null;
   }
@@ -145,7 +150,10 @@ describe("hooks/useTranscription (production-like)", () => {
   });
 
   it("streams start->stop with flush + end and posts metrics", async () => {
-    const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
+    const r = renderUseTranscription({
+      autoEnumerateDevices: false,
+      autoInitStream: false,
+    });
     let ws: FakeWebSocket | null = null;
     await act(async () => {
       const startTask = r.hook.start();
@@ -173,7 +181,9 @@ describe("hooks/useTranscription (production-like)", () => {
 
     // Stop and simulate server replies
     const stopP = r.hook.stop();
-    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+    });
     ws.emitMessage(JSON.stringify({ type: "status", state: "processing" }));
     await waitForSent(ws, "end");
     ws.emitMessage(
@@ -183,14 +193,19 @@ describe("hooks/useTranscription (production-like)", () => {
         dataset: { sttText: "hello world", llmText: null },
       }),
     );
-    await act(async () => { await stopP; });
-    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
+    await act(async () => {
+      await stopP;
+    });
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+    });
 
     // Verify final text applied and clipboard updated
     expect(r.hook.text).toBe("hello world");
 
     // Verify worklet received flush -> reset
-    const lastWorklet = (globalThis as any).__lastWorklet as FakeAudioWorkletNode;
+    const lastWorklet = (globalThis as any)
+      .__lastWorklet as FakeAudioWorkletNode;
     const posted = (lastWorklet.port as any).posted as unknown[];
     const postedTypes = posted.map((m: any) => m?.type);
     expect(postedTypes).toContain("flush");
@@ -218,7 +233,9 @@ describe("hooks/useTranscription (production-like)", () => {
     });
     if (!ws) throw new Error("WebSocket not created");
     const stopP = r.hook.stop();
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
     ws.emitMessage(
       JSON.stringify({
         type: "status",
@@ -233,15 +250,21 @@ describe("hooks/useTranscription (production-like)", () => {
         dataset: { sttText: "shared", llmText: "result" },
       }),
     );
-    await act(async () => { await stopP; });
-    await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
-
+    await act(async () => {
+      await stopP;
+    });
+    await act(async () => {
+      await new Promise((res) => setTimeout(res, 0));
+    });
 
     r.unmount();
   });
 
   it("cancel sends 'cancel' and does not send 'end'", async () => {
-    const r = renderUseTranscription({ autoEnumerateDevices: false, autoInitStream: false });
+    const r = renderUseTranscription({
+      autoEnumerateDevices: false,
+      autoInitStream: false,
+    });
     let ws: FakeWebSocket | null = null;
     await act(async () => {
       const startTask = r.hook.start();
@@ -254,7 +277,9 @@ describe("hooks/useTranscription (production-like)", () => {
       await startTask;
     });
     if (!ws) throw new Error("WebSocket not created");
-    await act(async () => { await r.hook.cancel(); });
+    await act(async () => {
+      await r.hook.cancel();
+    });
     expect(await waitForSent(ws, "cancel")).toBe(true);
 
     const sent = ws.sent

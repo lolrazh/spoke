@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
-import { getSupabase, getGoogleOAuthUrl, getCurrentUser } from "../../lib/supabaseClient";
+import {
+  getSupabase,
+  getGoogleOAuthUrl,
+  getCurrentUser,
+} from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -22,12 +26,18 @@ const prefersReducedMotion = () => {
 
 const GridBackground: React.FC<{ holeActive: boolean }> = ({ holeActive }) => {
   return (
-    <div className={`sf-intro-grid${holeActive ? " hole-active" : ""}`} aria-hidden />
+    <div
+      className={`sf-intro-grid${holeActive ? " hole-active" : ""}`}
+      aria-hidden
+    />
   );
 };
 
-
-export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFinish, onReadyForControls }) => {
+export const IntroExperience: React.FC<IntroExperienceProps> = ({
+  logoSrc,
+  onFinish,
+  onReadyForControls,
+}) => {
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
@@ -79,7 +89,11 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
     const t0 = setTimeout(() => setStage(1), 600);
     const t1 = setTimeout(() => setStage(2), 1200);
     const t2 = setTimeout(() => setStage(3), 1800);
-    return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); };
+    return () => {
+      clearTimeout(t0);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [reduced]);
 
   const handleGoogleLogin = async () => {
@@ -103,9 +117,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 
   const handleSkip = () => {
     try {
-      const root = document.querySelector('.onboarding-window');
-      if (root) root.classList.remove('resizing');
-    } catch { }
+      const root = document.querySelector(".onboarding-window");
+      if (root) root.classList.remove("resizing");
+    } catch {}
     setVisible(false);
   };
 
@@ -117,12 +131,13 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
       // Delay slightly so headline and CTA finish easing before showing controls
       const delay = reduced ? 120 : 650; // CTA anim ~550ms + small buffer
       const id = setTimeout(() => {
-        try { onReadyForControls && onReadyForControls(); } catch { }
+        try {
+          onReadyForControls && onReadyForControls();
+        } catch {}
       }, delay);
       return () => clearTimeout(id);
     }
   }, [stage, onReadyForControls, reduced]);
-
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
@@ -145,7 +160,12 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
             alt="Spoke logo"
             className="sf-intro-logo"
             initial={{ opacity: 0, y: 10, scale: 0.985, filter: "blur(8px)" }}
-            animate={{ opacity: stage >= 2 ? 1 : 0, y: stage >= 2 ? 0 : 10, scale: stage >= 2 ? 1 : 0.985, filter: stage >= 2 ? "blur(0px)" : "blur(8px)" }}
+            animate={{
+              opacity: stage >= 2 ? 1 : 0,
+              y: stage >= 2 ? 0 : 10,
+              scale: stage >= 2 ? 1 : 0.985,
+              filter: stage >= 2 ? "blur(0px)" : "blur(8px)",
+            }}
             transition={{ duration: 0.9, ease: [0.25, 0.8, 0.25, 1] }}
           />
 
@@ -162,14 +182,19 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
                 So Good You'll Want to Lick It
               </h1>
               <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
-                Let's get you set up for the most intelligent dictation in the world.
+                Let's get you set up for the most intelligent dictation in the
+                world.
               </p>
             </motion.div>
             {/* CTA */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 10 }}
-              transition={{ duration: 0.55, ease: [0.25, 0.8, 0.25, 1], delay: 0.1 }}
+              transition={{
+                duration: 0.55,
+                ease: [0.25, 0.8, 0.25, 1],
+                delay: 0.1,
+              }}
               className="space-y-2"
             >
               <Button
@@ -182,7 +207,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
                 </div>
               </Button>
               {authError && (
-                <div className="text-[12px] text-red-300 text-center">{authError}</div>
+                <div className="text-[12px] text-red-300 text-center">
+                  {authError}
+                </div>
               )}
             </motion.div>
           </div>
@@ -193,4 +220,3 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({ logoSrc, onFin
 };
 
 export default IntroExperience;
-

@@ -1,5 +1,10 @@
 import type { VadDecision, VadEngine } from "../types/vad";
-import { WINDOW_MS, SAMPLE_RATE_HZ, getVadModelURL, getOrtWasmBaseURL } from "../config/vad";
+import {
+  WINDOW_MS,
+  SAMPLE_RATE_HZ,
+  getVadModelURL,
+  getOrtWasmBaseURL,
+} from "../config/vad";
 
 // Lazy imports typed as any to avoid pulling heavy types in the renderer bundle type-check
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,11 +40,14 @@ export class SileroVadEngine implements VadEngine {
     } as const;
 
     try {
-      this.runner = await VadWeb.default?.(opts) ?? (await VadWeb.VAD?.(opts));
+      this.runner =
+        (await VadWeb.default?.(opts)) ?? (await VadWeb.VAD?.(opts));
       if (!this.runner) throw new Error("VAD runner unavailable");
       this.initialized = true;
     } catch (e) {
-      throw new Error("Failed to initialize VAD engine: " + (e as Error).message);
+      throw new Error(
+        "Failed to initialize VAD engine: " + (e as Error).message,
+      );
     }
   }
 
@@ -49,8 +57,11 @@ export class SileroVadEngine implements VadEngine {
       const res = this.runner.process(window);
       // Normalize return shape: some wrappers return boolean, some object
       if (typeof res === "boolean") return { isSpeech: res };
-      const isSpeech = !!res?.isSpeech || (typeof res?.probability === "number" && res.probability >= 0.5);
-      const probability = typeof res?.probability === "number" ? res.probability : undefined;
+      const isSpeech =
+        !!res?.isSpeech ||
+        (typeof res?.probability === "number" && res.probability >= 0.5);
+      const probability =
+        typeof res?.probability === "number" ? res.probability : undefined;
       return { isSpeech, probability };
     } catch {
       // Fail-open: treat as speech to avoid data loss
@@ -59,11 +70,15 @@ export class SileroVadEngine implements VadEngine {
   }
 
   reset(): void {
-    try { this.runner?.reset?.(); } catch {}
+    try {
+      this.runner?.reset?.();
+    } catch {}
   }
 
   dispose(): void {
-    try { this.runner?.release?.(); } catch {}
+    try {
+      this.runner?.release?.();
+    } catch {}
     this.runner = null;
     this.initialized = false;
   }
@@ -84,7 +99,10 @@ export class EnergyVadEngine implements VadEngine {
     const rms = Math.sqrt(sum / Math.max(1, window.length));
     return { isSpeech: rms >= this.rmsThreshold };
   }
-  reset(): void { return; }
-  dispose(): void { return; }
+  reset(): void {
+    return;
+  }
+  dispose(): void {
+    return;
+  }
 }
-

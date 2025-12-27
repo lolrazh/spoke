@@ -63,7 +63,9 @@ function hydrateFromStorage() {
   lastToastTs = readNumber(LS_KEYS.lastToastTs);
 }
 
-try { hydrateFromStorage(); } catch {}
+try {
+  hydrateFromStorage();
+} catch {}
 
 export function markAuthIntent(provider: string) {
   authIntentProvider = provider;

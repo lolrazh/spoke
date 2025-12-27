@@ -1,4 +1,9 @@
-import { DEEPGRAM_STT_ENDPOINT, DEEPGRAM_STT_DEFAULT_MODEL, STT_DEFAULT_LANGUAGE, STT_DEFAULT_TIMEOUT_MS } from '../../../config';
+import {
+  DEEPGRAM_STT_ENDPOINT,
+  DEEPGRAM_STT_DEFAULT_MODEL,
+  STT_DEFAULT_LANGUAGE,
+  STT_DEFAULT_TIMEOUT_MS,
+} from "../../../config";
 
 type BasicTimings = {
   startAt: number;
@@ -36,23 +41,26 @@ export async function transcribeWav(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   if (opts?.signal) {
     if (opts.signal.aborted) controller.abort();
-    else opts.signal.addEventListener('abort', onExternalAbort);
+    else opts.signal.addEventListener("abort", onExternalAbort);
   }
 
   const endpointUrl = new URL(DEEPGRAM_STT_ENDPOINT);
-  endpointUrl.searchParams.set('model', model);
-  endpointUrl.searchParams.set('language', language);
+  endpointUrl.searchParams.set("model", model);
+  endpointUrl.searchParams.set("language", language);
 
-  const audioBuffer = wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength);
+  const audioBuffer = wav.buffer.slice(
+    wav.byteOffset,
+    wav.byteOffset + wav.byteLength,
+  );
 
   try {
     const requestUrl = endpointUrl.toString();
     const res = await fetch(requestUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Token ${apiKey}`,
-        'Content-Type': 'audio/wav',
-        Accept: 'application/json',
+        "Content-Type": "audio/wav",
+        Accept: "application/json",
       },
       body: audioBuffer,
       signal: controller.signal,
@@ -75,21 +83,25 @@ export async function transcribeWav(
     };
   } finally {
     clearTimeout(timeoutId);
-    if (opts?.signal) opts.signal.removeEventListener('abort', onExternalAbort);
+    if (opts?.signal) opts.signal.removeEventListener("abort", onExternalAbort);
   }
 }
 
 function extractTranscript(payload: Record<string, any>): string {
   const channel = payload?.results?.channels?.[0];
-  const alternatives = Array.isArray(channel?.alternatives) ? channel.alternatives : [];
+  const alternatives = Array.isArray(channel?.alternatives)
+    ? channel.alternatives
+    : [];
   const primary = alternatives[0] ?? {};
 
   const paragraphNodes = primary?.paragraphs?.paragraphs;
   if (Array.isArray(paragraphNodes) && paragraphNodes.length > 0) {
     const paragraphText = paragraphNodes
-      .map((p: any) => (typeof p?.transcript === 'string' ? p.transcript.trim() : ''))
+      .map((p: any) =>
+        typeof p?.transcript === "string" ? p.transcript.trim() : "",
+      )
       .filter(Boolean)
-      .join(' ')
+      .join(" ")
       .trim();
     if (paragraphText.length > 0) return paragraphText;
   }
@@ -102,10 +114,10 @@ function extractTranscript(payload: Record<string, any>): string {
   ];
 
   for (const candidate of transcriptCandidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate.trim();
     }
   }
 
-  return '';
+  return "";
 }

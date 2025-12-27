@@ -37,7 +37,7 @@
  * - words_used_this_week: Free tier quota usage (weekly reset, Mondays 00:00 UTC)
  */
 
-import { createLocalJWKSet, jwtVerify, JWTPayload, errors } from 'jose';
+import { createLocalJWKSet, jwtVerify, JWTPayload, errors } from "jose";
 
 /**
  * 🍪 THE COOKIE JAR (Cache Strategy)
@@ -49,10 +49,13 @@ import { createLocalJWKSet, jwtVerify, JWTPayload, errors } from 'jose';
  * This eliminates 93% of cold starts by keeping JWKS keys cached at the edge.
  * Recommended by jose library author: https://github.com/panva/jose/discussions/661
  */
-const jwksCache = new Map<string, {
-  jwks: any;        // The actual cookies (JWKS keys)
-  expiresAt: number; // When to get fresh cookies (timestamp)
-}>();
+const jwksCache = new Map<
+  string,
+  {
+    jwks: any; // The actual cookies (JWKS keys)
+    expiresAt: number; // When to get fresh cookies (timestamp)
+  }
+>();
 
 // How long cookies stay fresh: 1 hour (Supabase rarely changes keys)
 const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -75,12 +78,12 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
 
   if (cachedResponse) {
     // Found cookies in neighborhood jar! 🎉
-    console.log('[Auth] 🍪 JWKS from edge cache (fast ~10ms)');
+    console.log("[Auth] 🍪 JWKS from edge cache (fast ~10ms)");
     return await cachedResponse.json();
   }
 
   // Step 2: Neighborhood jar is empty - go to bakery (Supabase)
-  console.log('[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)');
+  console.log("[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)");
   const response = await fetch(jwksUrl);
 
   if (!response.ok) {
@@ -90,8 +93,8 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
   // Step 3: Fill the neighborhood jar for next time
   const responseToCache = new Response(response.clone().body, {
     headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': `public, max-age=${JWKS_CACHE_TTL_MS / 1000}`, // 1 hour
+      "Content-Type": "application/json",
+      "Cache-Control": `public, max-age=${JWKS_CACHE_TTL_MS / 1000}`, // 1 hour
     },
   });
 
@@ -114,7 +117,9 @@ async function fetchJWKS(supabaseUrl: string): Promise<any> {
  *
  * Exported for use in worker startup prefetch to warm the cache.
  */
-export async function getJWKS(supabaseUrl: string): Promise<ReturnType<typeof createLocalJWKSet>> {
+export async function getJWKS(
+  supabaseUrl: string,
+): Promise<ReturnType<typeof createLocalJWKSet>> {
   const now = Date.now();
 
   // Step 1: Check kitchen jar (fastest)
@@ -141,15 +146,15 @@ export async function getJWKS(supabaseUrl: string): Promise<ReturnType<typeof cr
  */
 export type JwtVerifyResult =
   | {
-    valid: true;
-    userId: string;
-    email: string;
-    subscriptionActive: boolean;
-    wordsUsedThisWeek?: number;  // Free tier: current quota usage (weekly)
-    quotaLimit?: number;          // Free tier: weekly limit (1000)
-    payload: JWTPayload;
-  }
-  | { valid: false; error: string; code: 'invalid' | 'expired' | 'malformed' };
+      valid: true;
+      userId: string;
+      email: string;
+      subscriptionActive: boolean;
+      wordsUsedThisWeek?: number; // Free tier: current quota usage (weekly)
+      quotaLimit?: number; // Free tier: weekly limit (1000)
+      payload: JWTPayload;
+    }
+  | { valid: false; error: string; code: "invalid" | "expired" | "malformed" };
 
 /**
  * Verify a Supabase JWT and extract user information
@@ -171,15 +176,15 @@ export type JwtVerifyResult =
  */
 export async function verifySupabaseJwt(
   token: string,
-  supabaseUrl: string
+  supabaseUrl: string,
 ): Promise<JwtVerifyResult> {
   // Basic validation
-  if (!token || typeof token !== 'string') {
-    return { valid: false, error: 'Token is required', code: 'malformed' };
+  if (!token || typeof token !== "string") {
+    return { valid: false, error: "Token is required", code: "malformed" };
   }
 
-  if (!supabaseUrl || typeof supabaseUrl !== 'string') {
-    return { valid: false, error: 'Supabase URL is required', code: 'invalid' };
+  if (!supabaseUrl || typeof supabaseUrl !== "string") {
+    return { valid: false, error: "Supabase URL is required", code: "invalid" };
   }
 
   try {
@@ -191,7 +196,7 @@ export async function verifySupabaseJwt(
       // Verify the token was issued by this Supabase project
       issuer: `${supabaseUrl}/auth/v1`,
       // Verify the token is for authenticated users
-      audience: 'authenticated',
+      audience: "authenticated",
     });
 
     // Extract required claims
@@ -200,25 +205,25 @@ export async function verifySupabaseJwt(
     const subscriptionActive = payload.subscription_active === true;
 
     // Extract quota claims (only present for free tier users)
-    const wordsUsedThisWeek = typeof payload.words_used_this_week === 'number'
-      ? payload.words_used_this_week
-      : undefined;
-    const quotaLimit = typeof payload.quota_limit === 'number'
-      ? payload.quota_limit
-      : undefined;
+    const wordsUsedThisWeek =
+      typeof payload.words_used_this_week === "number"
+        ? payload.words_used_this_week
+        : undefined;
+    const quotaLimit =
+      typeof payload.quota_limit === "number" ? payload.quota_limit : undefined;
 
     if (!userId) {
       return {
         valid: false,
-        error: 'Token missing user ID (sub claim)',
-        code: 'malformed',
+        error: "Token missing user ID (sub claim)",
+        code: "malformed",
       };
     }
 
     return {
       valid: true,
       userId,
-      email: email || '',
+      email: email || "",
       subscriptionActive,
       wordsUsedThisWeek,
       quotaLimit,
@@ -228,7 +233,7 @@ export async function verifySupabaseJwt(
     // 🔄 SPECIAL CASE: Bakery changed their recipe (key rotation)
     // This happens when Supabase rotates their signing keys (rare)
     if (error instanceof errors.JWKSNoMatchingKey) {
-      console.log('[Auth] 🔄 Key rotation detected - getting fresh JWKS');
+      console.log("[Auth] 🔄 Key rotation detected - getting fresh JWKS");
 
       // Throw away old cookies and get fresh ones
       jwksCache.delete(supabaseUrl);
@@ -238,25 +243,27 @@ export async function verifySupabaseJwt(
         const JWKS = await getJWKS(supabaseUrl);
         const { payload } = await jwtVerify(token, JWKS, {
           issuer: `${supabaseUrl}/auth/v1`,
-          audience: 'authenticated',
+          audience: "authenticated",
         });
 
         // Extract claims (same code as above)
         const userId = payload.sub;
         const email = payload.email as string | undefined;
         const subscriptionActive = payload.subscription_active === true;
-        const wordsUsedThisWeek = typeof payload.words_used_this_week === 'number'
-          ? payload.words_used_this_week
-          : undefined;
-        const quotaLimit = typeof payload.quota_limit === 'number'
-          ? payload.quota_limit
-          : undefined;
+        const wordsUsedThisWeek =
+          typeof payload.words_used_this_week === "number"
+            ? payload.words_used_this_week
+            : undefined;
+        const quotaLimit =
+          typeof payload.quota_limit === "number"
+            ? payload.quota_limit
+            : undefined;
 
         if (!userId) {
           return {
             valid: false,
-            error: 'Token missing user ID (sub claim)',
-            code: 'malformed',
+            error: "Token missing user ID (sub claim)",
+            code: "malformed",
           };
         }
 
@@ -264,7 +271,7 @@ export async function verifySupabaseJwt(
         return {
           valid: true,
           userId,
-          email: email || '',
+          email: email || "",
           subscriptionActive,
           wordsUsedThisWeek,
           quotaLimit,
@@ -274,44 +281,44 @@ export async function verifySupabaseJwt(
         // Still failed after getting fresh cookies - token is actually invalid
         return {
           valid: false,
-          error: 'Invalid token even after JWKS refresh',
-          code: 'invalid',
+          error: "Invalid token even after JWKS refresh",
+          code: "invalid",
         };
       }
     }
 
     // Handle other error types from jose
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    const errorName = error instanceof Error ? error.name : "UnknownError";
 
     // Log for debugging (will appear in Cloudflare logs)
-    console.error('[Auth] JWT verification failed:', {
+    console.error("[Auth] JWT verification failed:", {
       error: errorMessage,
       name: errorName,
     });
 
     // Determine error code based on error type
     if (
-      errorName === 'JWTExpired' ||
-      errorMessage.includes('exp') ||
-      errorMessage.includes('expired')
+      errorName === "JWTExpired" ||
+      errorMessage.includes("exp") ||
+      errorMessage.includes("expired")
     ) {
       return {
         valid: false,
-        error: 'Token has expired',
-        code: 'expired',
+        error: "Token has expired",
+        code: "expired",
       };
     }
 
     if (
-      errorName === 'JWTClaimValidationFailed' ||
-      errorMessage.includes('issuer') ||
-      errorMessage.includes('audience')
+      errorName === "JWTClaimValidationFailed" ||
+      errorMessage.includes("issuer") ||
+      errorMessage.includes("audience")
     ) {
       return {
         valid: false,
         error: `Token validation failed: ${errorMessage}`,
-        code: 'invalid',
+        code: "invalid",
       };
     }
 
@@ -319,7 +326,7 @@ export async function verifySupabaseJwt(
     return {
       valid: false,
       error: `Invalid token: ${errorMessage}`,
-      code: 'invalid',
+      code: "invalid",
     };
   }
 }
@@ -333,5 +340,5 @@ export async function verifySupabaseJwt(
  */
 export function clearJwksCache(): void {
   jwksCache.clear();
-  console.log('[Auth] JWKS cache cleared');
+  console.log("[Auth] JWKS cache cleared");
 }

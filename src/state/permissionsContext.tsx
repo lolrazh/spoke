@@ -26,8 +26,9 @@ type PermissionsControllerContext = {
   lastSnapshotAt: number | null;
 };
 
-const PermissionsContext =
-  createContext<PermissionsControllerContext | null>(null);
+const PermissionsContext = createContext<PermissionsControllerContext | null>(
+  null,
+);
 
 export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -144,4 +145,3 @@ export function usePermissionsController(): PermissionsControllerContext {
   }
   return ctx;
 }
-

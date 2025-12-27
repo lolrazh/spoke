@@ -25,7 +25,9 @@ export function getTranscriptions(): TranscriptionItem[] {
  * Save a new transcription to storage
  * Automatically prunes to MAX_ITEMS
  */
-export function saveTranscription(item: Omit<TranscriptionItem, "id">): TranscriptionItem {
+export function saveTranscription(
+  item: Omit<TranscriptionItem, "id">,
+): TranscriptionItem {
   const transcriptions = store.get("transcriptions", []);
 
   const newItem: TranscriptionItem = {

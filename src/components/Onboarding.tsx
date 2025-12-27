@@ -28,7 +28,10 @@ import {
   signOut,
   updateDisplayName,
 } from "../lib/supabaseClient";
-import { usePermissions, type PermissionProvider } from "../hooks/usePermissions";
+import {
+  usePermissions,
+  type PermissionProvider,
+} from "../hooks/usePermissions";
 import { updateIdentityLocal } from "../state/userIdentity";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
@@ -58,27 +61,34 @@ const devFlags = {
 };
 
 const AUTH_EASE_VISIBLE: [number, number, number, number] = [
-  0.25,
-  0.8,
-  0.25,
-  1,
+  0.25, 0.8, 0.25, 1,
 ];
 const AUTH_EASE_EXIT: [number, number, number, number] = [0.4, 0, 0.2, 1];
 
 // Simple mock for now - starting in disabled state for UI development
-const mockPermissions: PermissionProvider & { resetPermissions?: () => void } = {
-  checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
-  checkMicrophonePermission: async () => ({ status: "denied", granted: false }),
-  requestMicrophonePermission: async () => ({ success: true, granted: true }),
-  checkScreenRecordingPermission: async () => ({ status: "denied", granted: false }),
-  requestScreenRecordingPermission: async () => ({ success: true, granted: true }),
-  askIM: async () => ({ success: true, status: "authorized" }),
-  requestAccessibilityPermission: async () => ({ success: true }),
-  openSystemPreferences: () => undefined,
-  resetPermissions: () => {
-    if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
-  },
-};
+const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
+  {
+    checkPermissions: async () => ({ needAX: true, needIM: true, isDev: true }),
+    checkMicrophonePermission: async () => ({
+      status: "denied",
+      granted: false,
+    }),
+    requestMicrophonePermission: async () => ({ success: true, granted: true }),
+    checkScreenRecordingPermission: async () => ({
+      status: "denied",
+      granted: false,
+    }),
+    requestScreenRecordingPermission: async () => ({
+      success: true,
+      granted: true,
+    }),
+    askIM: async () => ({ success: true, status: "authorized" }),
+    requestAccessibilityPermission: async () => ({ success: true }),
+    openSystemPreferences: () => undefined,
+    resetPermissions: () => {
+      if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
+    },
+  };
 
 type OnboardingStep =
   | "auth"
@@ -160,7 +170,8 @@ const TapRipple: React.FC<{
 };
 
 const Onboarding: React.FC = () => {
-  const introOnly = params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
+  const introOnly =
+    params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
@@ -169,24 +180,31 @@ const Onboarding: React.FC = () => {
   void authEmailRequested; // Magic link flow preserved but hidden from UI
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(null);
+  const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(
+    null,
+  );
   const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [sessionValid, setSessionValid] = useState(false);
   // Name verification state
   const [editableName, setEditableName] = useState<string>("");
   // Permissions via shared hook (deduplicated across surfaces)
-  const mockProvider: PermissionProvider | undefined = devFlags.mockPermissionStates
-    ? {
-      checkPermissions: mockPermissions.checkPermissions,
-      checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
-      requestMicrophonePermission: mockPermissions.requestMicrophonePermission,
-      checkScreenRecordingPermission: mockPermissions.checkScreenRecordingPermission,
-      requestScreenRecordingPermission: mockPermissions.requestScreenRecordingPermission,
-      askIM: mockPermissions.askIM,
-      requestAccessibilityPermission: mockPermissions.requestAccessibilityPermission,
-      openSystemPreferences: mockPermissions.openSystemPreferences,
-    }
-    : undefined;
+  const mockProvider: PermissionProvider | undefined =
+    devFlags.mockPermissionStates
+      ? {
+          checkPermissions: mockPermissions.checkPermissions,
+          checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
+          requestMicrophonePermission:
+            mockPermissions.requestMicrophonePermission,
+          checkScreenRecordingPermission:
+            mockPermissions.checkScreenRecordingPermission,
+          requestScreenRecordingPermission:
+            mockPermissions.requestScreenRecordingPermission,
+          askIM: mockPermissions.askIM,
+          requestAccessibilityPermission:
+            mockPermissions.requestAccessibilityPermission,
+          openSystemPreferences: mockPermissions.openSystemPreferences,
+        }
+      : undefined;
   const {
     permissions,
     ui,
@@ -196,7 +214,10 @@ const Onboarding: React.FC = () => {
     requestAccessibility,
     requestInputMonitoring,
     setPermissions,
-  } = usePermissions(mockProvider, { pollIntervalMs: 1000, deepLinkGraceMs: 4000 });
+  } = usePermissions(mockProvider, {
+    pollIntervalMs: 1000,
+    deepLinkGraceMs: 4000,
+  });
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
@@ -214,11 +235,13 @@ const Onboarding: React.FC = () => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafIdRef = useRef<number | null>(null);
-  const [barValues, setBarValues] = useState<number[]>(Array.from({ length: 24 }, () => 0));
+  const [barValues, setBarValues] = useState<number[]>(
+    Array.from({ length: 24 }, () => 0),
+  );
   const [speakingDetected, setSpeakingDetected] = useState(false);
-  const [micDevices, setMicDevices] = useState<Array<{ id: string; label: string }>>([
-    { id: "default", label: "System Default" },
-  ]);
+  const [micDevices, setMicDevices] = useState<
+    Array<{ id: string; label: string }>
+  >([{ id: "default", label: "System Default" }]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   // Background music during onboarding
@@ -229,9 +252,13 @@ const Onboarding: React.FC = () => {
 
   // Record onboarding visibility for auth intent correlation
   useEffect(() => {
-    try { markOnboardingEvent(); } catch { }
+    try {
+      markOnboardingEvent();
+    } catch {}
     return () => {
-      try { markOnboardingEvent(); } catch { }
+      try {
+        markOnboardingEvent();
+      } catch {}
     };
   }, []);
 
@@ -288,7 +315,9 @@ const Onboarding: React.FC = () => {
     }
     return (
       <div className="absolute inset-0 flex items-center justify-center">
-        <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>Replay intro</button>
+        <button className="sf-intro-cta" onClick={() => setShowIntro(true)}>
+          Replay intro
+        </button>
       </div>
     );
   };
@@ -317,13 +346,18 @@ const Onboarding: React.FC = () => {
   // Without this, sessions authenticated in onboarding are never saved to electron-store.
   // Previously, sessionSync was only initialized in App.tsx (main window).
   useEffect(() => {
-    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
-      initializeSessionSync().catch((error) => {
-        console.warn('[Onboarding] Failed to initialize session sync:', error);
+    import("../lib/sessionSync")
+      .then(({ initializeSessionSync }) => {
+        initializeSessionSync().catch((error) => {
+          console.warn(
+            "[Onboarding] Failed to initialize session sync:",
+            error,
+          );
+        });
+      })
+      .catch((error) => {
+        console.error("[Onboarding] Failed to import sessionSync:", error);
       });
-    }).catch((error) => {
-      console.error('[Onboarding] Failed to import sessionSync:', error);
-    });
   }, []);
 
   // Setup onboarding background music (autoplay + loop)
@@ -350,7 +384,7 @@ const Onboarding: React.FC = () => {
       try {
         audio.pause();
         audio.src = "";
-      } catch { }
+      } catch {}
       onboardingAudioRef.current = null;
     };
   }, []);
@@ -369,7 +403,7 @@ const Onboarding: React.FC = () => {
           onboardingAudioRef.current.pause();
           setMusicEnabled(false);
         }
-      } catch { }
+      } catch {}
     })();
   }, [currentStep]);
 
@@ -383,7 +417,6 @@ const Onboarding: React.FC = () => {
       console.warn("[Onboarding] Failed to save current step:", error);
     });
   }, [currentStep, introOnly]);
-
 
   const toggleMusic = () => {
     const audio = onboardingAudioRef.current;
@@ -408,8 +441,10 @@ const Onboarding: React.FC = () => {
       (async () => {
         try {
           await fadeVolumeTo(0, 600);
-        } catch { }
-        try { audio.pause(); } catch { }
+        } catch {}
+        try {
+          audio.pause();
+        } catch {}
       })();
     }
   };
@@ -510,7 +545,10 @@ const Onboarding: React.FC = () => {
               d="M 37.060546875 4.94140625 L 3.416015625 39.359375"
               initial={{ pathLength: drawForward ? 0 : 1, opacity: 0.9 }}
               animate={{ pathLength: drawForward ? 1 : 0, opacity: 0.9 }}
-              transition={{ duration: drawForward ? 0.24 : 0.2, ease: "easeOut" }}
+              transition={{
+                duration: drawForward ? 0.24 : 0.2,
+                ease: "easeOut",
+              }}
             />
           </motion.svg>
         )}
@@ -649,7 +687,7 @@ const Onboarding: React.FC = () => {
         // Ensure a profile row exists for returning users (or first login on this device)
         try {
           await ensureProfileRow();
-        } catch { }
+        } catch {}
         const profile = await getProfile();
         const account = deriveAccountSummary(profile, user);
         if (isMountedRef.current) setSignedInAccount(account);
@@ -661,7 +699,9 @@ const Onboarding: React.FC = () => {
           }
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
-          try { window.notifications?.send?.("You've been signed in."); } catch { }
+          try {
+            window.notifications?.send?.("You've been signed in.");
+          } catch {}
           return;
         } else {
           // Sync local flag with DB - if onboarding not done in DB, reset local flag
@@ -714,7 +754,7 @@ const Onboarding: React.FC = () => {
         // Ensure a profile row exists as soon as login completes
         try {
           await ensureProfileRow();
-        } catch { }
+        } catch {}
         const profile = await getProfile();
         const currentUser = await getCurrentUser();
         if (isMountedRef.current)
@@ -728,7 +768,9 @@ const Onboarding: React.FC = () => {
           // (Removed) auth:set-signed-in — Supabase session is the source of truth
           await window.electron?.onboardingComplete();
           // Show a consistent post sign-in toast once the pill/main window is up
-          try { window.notifications?.send?.("You've been signed in."); } catch { }
+          try {
+            window.notifications?.send?.("You've been signed in.");
+          } catch {}
           switchAccountIntentRef.current = false;
           return;
         } else if (!profile?.onboarding_done) {
@@ -739,7 +781,7 @@ const Onboarding: React.FC = () => {
             console.warn("[Onboarding] Failed to reset local flag:", error);
           }
         }
-      } catch { }
+      } catch {}
       if (switchAccountIntentRef.current && !forceOnboarding) {
         switchAccountIntentRef.current = false;
         return;
@@ -920,7 +962,11 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       // Reset Option key visual state when leaving hotkey pages
-      if (currentStep === "hotkey-info" || currentStep === "hotkey-test" || currentStep === "hands-free-test") {
+      if (
+        currentStep === "hotkey-info" ||
+        currentStep === "hotkey-test" ||
+        currentStep === "hands-free-test"
+      ) {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex + 1]);
@@ -932,7 +978,11 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       // Reset Option key visual state when leaving hotkey pages
-      if (currentStep === "hotkey-info" || currentStep === "hotkey-test" || currentStep === "hands-free-test") {
+      if (
+        currentStep === "hotkey-info" ||
+        currentStep === "hotkey-test" ||
+        currentStep === "hands-free-test"
+      ) {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex - 1]);
@@ -942,7 +992,12 @@ const Onboarding: React.FC = () => {
   // Prepare the pill (create main window + tray) when entering test steps
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if ((currentStep === "hotkey-test" || currentStep === "hands-free-test" || currentStep === "edit-test") && !pillPreparedRef.current) {
+    if (
+      (currentStep === "hotkey-test" ||
+        currentStep === "hands-free-test" ||
+        currentStep === "edit-test") &&
+      !pillPreparedRef.current
+    ) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -954,10 +1009,16 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (currentStep === "hotkey-test" || currentStep === "hands-free-test" || currentStep === "edit-test") {
+    if (
+      currentStep === "hotkey-test" ||
+      currentStep === "hands-free-test" ||
+      currentStep === "edit-test"
+    ) {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
-      try { (window.electron as any)?.revealPillForTest?.(); } catch { }
+      try {
+        (window.electron as any)?.revealPillForTest?.();
+      } catch {}
     }
   }, [currentStep]);
 
@@ -965,19 +1026,19 @@ const Onboarding: React.FC = () => {
   const stopMic = () => {
     try {
       if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
-    } catch { }
+    } catch {}
     rafIdRef.current = null;
     try {
       analyserRef.current?.disconnect();
-    } catch { }
+    } catch {}
     analyserRef.current = null;
     try {
       audioCtxRef.current?.close();
-    } catch { }
+    } catch {}
     audioCtxRef.current = null;
     try {
       micStreamRef.current?.getTracks()?.forEach((t) => t.stop());
-    } catch { }
+    } catch {}
     micStreamRef.current = null;
   };
 
@@ -990,9 +1051,9 @@ const Onboarding: React.FC = () => {
         audio:
           selectedMicId && selectedMicId !== "default"
             ? {
-              deviceId: { exact: selectedMicId },
-              ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
-            }
+                deviceId: { exact: selectedMicId },
+                ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
+              }
             : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -1039,7 +1100,7 @@ const Onboarding: React.FC = () => {
       setSpeakingDetected(false);
       try {
         if (isDevelopment) console.error("[Onboarding] startMic failed:", e);
-      } catch { }
+      } catch {}
     }
   };
 
@@ -1059,7 +1120,7 @@ const Onboarding: React.FC = () => {
     try {
       // Persist selection to main so app-wide mic matches user choice
       if (selectedMicId) window.mic?.select?.(selectedMicId);
-    } catch { }
+    } catch {}
   }, [selectedMicId]);
 
   // Enumerate mics when entering mic-check
@@ -1073,37 +1134,46 @@ const Onboarding: React.FC = () => {
         try {
           const res = await window.mic?.getSelected?.();
           seedId = res?.id ?? null;
-        } catch { }
+        } catch {}
         const devices = await navigator.mediaDevices.enumerateDevices();
         const inputs = devices
           .filter((d) => d.kind === "audioinput")
-          .map((d) => ({ id: d.deviceId || "default", label: d.label || "Microphone" }));
+          .map((d) => ({
+            id: d.deviceId || "default",
+            label: d.label || "Microphone",
+          }));
         const deduped = inputs.length
           ? inputs
           : [{ id: "default", label: "System Default" }];
         if (!cancelled) {
           setMicDevices(deduped);
-          const next = seedId && deduped.some((d) => d.id === seedId) ? seedId : deduped[0]?.id;
+          const next =
+            seedId && deduped.some((d) => d.id === seedId)
+              ? seedId
+              : deduped[0]?.id;
           if (next) setSelectedMicId(next);
           try {
             window.mic?.updateDevices?.(
               deduped.map((d) => ({ id: d.id, label: d.label })),
               next || undefined,
             );
-          } catch { }
+          } catch {}
         }
       } catch {
-        if (!cancelled) setMicDevices([{ id: "default", label: "System Default" }]);
+        if (!cancelled)
+          setMicDevices([{ id: "default", label: "System Default" }]);
       }
     })();
     const off = window.mic?.onSelectedChanged?.(({ id }) => {
       try {
         if (id && id !== selectedMicId) setSelectedMicId(id);
-      } catch { }
+      } catch {}
     });
     return () => {
       cancelled = true;
-      try { off && off(); } catch { }
+      try {
+        off && off();
+      } catch {}
     };
   }, [currentStep]);
 
@@ -1128,8 +1198,8 @@ const Onboarding: React.FC = () => {
         textAreaRef.current?.dataset?.onboardingStep === currentStep
           ? textAreaRef.current
           : document.querySelector<HTMLTextAreaElement>(
-            `textarea[data-onboarding-step="${currentStep}"]`,
-          );
+              `textarea[data-onboarding-step="${currentStep}"]`,
+            );
 
       if (!active) {
         timeoutId = setTimeout(focusActiveTextArea, 80);
@@ -1186,7 +1256,7 @@ const Onboarding: React.FC = () => {
       window.electron?.setPttTarget?.("main");
       try {
         await markOnboardingDone();
-      } catch { }
+      } catch {}
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
@@ -1298,7 +1368,9 @@ const Onboarding: React.FC = () => {
         <button
           className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
           onClick={toggleMusic}
-          aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+          aria-label={
+            musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"
+          }
           title={musicEnabled ? "Mute music" : "Unmute music"}
         >
           <SpeakerToggleIcon enabled={musicEnabled} />
@@ -1396,14 +1468,21 @@ const Onboarding: React.FC = () => {
       )}
 
       {/* Speaker toggle - show before mic-check only */}
-      {(showIntro || currentStep === "auth" || currentStep === "name-verification" || currentStep === "permissions") && (
+      {(showIntro ||
+        currentStep === "auth" ||
+        currentStep === "name-verification" ||
+        currentStep === "permissions") && (
         <AnimatePresence initial={false}>
           {(showIntro ? introControlsReady : true) && (
             <motion.button
               key={showIntro ? "intro-toggle" : "onboarding-toggle"}
               className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
               onClick={toggleMusic}
-              aria-label={musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"}
+              aria-label={
+                musicEnabled
+                  ? "Mute onboarding music"
+                  : "Unmute onboarding music"
+              }
               title={musicEnabled ? "Mute music" : "Unmute music"}
               initial={{ opacity: 0, scale: 0.9, y: -2, filter: "blur(4px)" }}
               animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
@@ -1435,7 +1514,9 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                      {signedInAccount ? "You're Signed In" : "Let's Get You Signed In"}
+                      {signedInAccount
+                        ? "You're Signed In"
+                        : "Let's Get You Signed In"}
                     </h1>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       {signedInAccount
@@ -1454,8 +1535,9 @@ const Onboarding: React.FC = () => {
                         className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
                       >
                         <div
-                          className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${sessionValid ? "opacity-100" : "opacity-60"
-                            }`}
+                          className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
+                            sessionValid ? "opacity-100" : "opacity-60"
+                          }`}
                           aria-live="polite"
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -1494,7 +1576,9 @@ const Onboarding: React.FC = () => {
                           </Button>
                         </div>
                         {authError && (
-                          <div className="text-[12px] text-red-300">{authError}</div>
+                          <div className="text-[12px] text-red-300">
+                            {authError}
+                          </div>
                         )}
                       </motion.div>
                     ) : (
@@ -1512,12 +1596,16 @@ const Onboarding: React.FC = () => {
                           onClick={handleGoogle}
                         >
                           <div className="flex items-center justify-center gap-2">
-                            <span className="text-primary font-medium text-lg">G</span>
+                            <span className="text-primary font-medium text-lg">
+                              G
+                            </span>
                             <span>Continue with Google</span>
                           </div>
                         </Button>
                         {authError && (
-                          <div className="text-[12px] text-red-300">{authError}</div>
+                          <div className="text-[12px] text-red-300">
+                            {authError}
+                          </div>
                         )}
                       </motion.div>
                     )}
@@ -1555,9 +1643,13 @@ const Onboarding: React.FC = () => {
                         aria-live="polite"
                       >
                         <span className="keycap-legend-top font-system">⌥</span>
-                        <span className="keycap-legend-bottom font-system">option</span>
+                        <span className="keycap-legend-bottom font-system">
+                          option
+                        </span>
                       </div>
-                      <p className="onboarding-note">Hold for push-to-talk, double tap for hands-free mode.</p>
+                      <p className="onboarding-note">
+                        Hold for push-to-talk, double tap for hands-free mode.
+                      </p>
                     </div>
                   </div>
                   {/* Removed central Continue button; Next lives in bottom-right consistently */}
@@ -1692,9 +1784,9 @@ const Onboarding: React.FC = () => {
                                       transition={
                                         ui.microphone.justGranted
                                           ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
+                                              duration: 0.45,
+                                              ease: [0.25, 0.8, 0.25, 1],
+                                            }
                                           : { duration: 0 }
                                       }
                                       d="M5 13l4 4L19 7"
@@ -1784,9 +1876,9 @@ const Onboarding: React.FC = () => {
                                       transition={
                                         ui.accessibility.justGranted
                                           ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
+                                              duration: 0.45,
+                                              ease: [0.25, 0.8, 0.25, 1],
+                                            }
                                           : { duration: 0 }
                                       }
                                       d="M5 13l4 4L19 7"
@@ -1868,7 +1960,8 @@ const Onboarding: React.FC = () => {
                                   >
                                     <motion.path
                                       initial={{
-                                        pathLength: ui.screenRecording.justGranted
+                                        pathLength: ui.screenRecording
+                                          .justGranted
                                           ? 0
                                           : 1,
                                       }}
@@ -1876,9 +1969,9 @@ const Onboarding: React.FC = () => {
                                       transition={
                                         ui.screenRecording.justGranted
                                           ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
+                                              duration: 0.45,
+                                              ease: [0.25, 0.8, 0.25, 1],
+                                            }
                                           : { duration: 0 }
                                       }
                                       d="M5 13l4 4L19 7"
@@ -1898,18 +1991,15 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-
                     {/* Restart hint */}
                     <p className="text-xs text-muted-foreground/60 text-center pt-4">
                       You may need to restart Spoke after enabling permissions.
                     </p>
-
                   </div>
                 </motion.div>
               )}
 
-              {/* Mic Check Step */
-              }
+              {/* Mic Check Step */}
               {currentStep === "mic-check" && (
                 <motion.div
                   key="mic-check"
@@ -1924,20 +2014,28 @@ const Onboarding: React.FC = () => {
                       Let’s Check Your Microphone
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Pick the right input and say a few words. The bars should bounce.
+                      Pick the right input and say a few words. The bars should
+                      bounce.
                     </p>
                   </div>
 
                   <div className="onboarding-section space-y-5">
                     {/* Mic selector */}
                     <div className="mx-auto w-full max-w-xl">
-                      <Select value={selectedMicId} onValueChange={(v) => setSelectedMicId(v)}>
+                      <Select
+                        value={selectedMicId}
+                        onValueChange={(v) => setSelectedMicId(v)}
+                      >
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select microphone" />
                         </SelectTrigger>
                         <SelectContent inPlace>
                           {micDevices.map((d) => (
-                            <SelectItem key={d.id} value={d.id} className="text-sm">
+                            <SelectItem
+                              key={d.id}
+                              value={d.id}
+                              className="text-sm"
+                            >
                               {d.label || "Microphone"}
                             </SelectItem>
                           ))}
@@ -1987,7 +2085,8 @@ const Onboarding: React.FC = () => {
                     <div className="onboarding-section">
                       {/* Sample hint as tertiary text for improved hierarchy */}
                       <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                        Try saying: "Let's go! I'm so excited to use Spoke! Write all of that in caps."
+                        Try saying: "Let's go! I'm so excited to use Spoke!
+                        Write all of that in caps."
                       </div>
 
                       {/* Dictation Textarea */}
@@ -2027,13 +2126,15 @@ const Onboarding: React.FC = () => {
                         Let's Try Hands-Free Mode
                       </h2>
                       <p className="text-sm text-subtle leading-relaxed subheading">
-                        Double tap the hotkey to start dictation. Tap again to stop.
+                        Double tap the hotkey to start dictation. Tap again to
+                        stop.
                       </p>
                     </div>
                     <div className="onboarding-section">
                       {/* Sample hint as tertiary text for improved hierarchy */}
                       <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                        Try saying: "Look mom, no hands! Tag mom with an at symbol. And show excitement."
+                        Try saying: "Look mom, no hands! Tag mom with an at
+                        symbol. And show excitement."
                       </div>
 
                       {/* Dictation Textarea */}
@@ -2073,7 +2174,8 @@ const Onboarding: React.FC = () => {
                         Let's Try Edit Mode
                       </h2>
                       <p className="text-sm text-subtle leading-relaxed subheading">
-                        Select the text, hold the hotkey and give it instructions.
+                        Select the text, hold the hotkey and give it
+                        instructions.
                       </p>
                     </div>
                     <div className="onboarding-section">
@@ -2095,7 +2197,6 @@ const Onboarding: React.FC = () => {
                           data-onboarding-step="edit-test"
                         />
                       </div>
-
                     </div>
                   </div>
                 </motion.div>
@@ -2141,9 +2242,13 @@ const Onboarding: React.FC = () => {
                         aria-live="polite"
                       >
                         <span className="keycap-legend-top font-system">⌘</span>
-                        <span className="keycap-legend-bottom font-system">command</span>
+                        <span className="keycap-legend-bottom font-system">
+                          command
+                        </span>
                       </div>
-                      <p className="onboarding-note">You can tap this key any time to cancel dictation.</p>
+                      <p className="onboarding-note">
+                        You can tap this key any time to cancel dictation.
+                      </p>
                     </div>
                   </div>
                 </motion.div>
@@ -2173,11 +2278,23 @@ const Onboarding: React.FC = () => {
                       {/* Pill container - positioned at top like real macOS island */}
                       <div className="relative">
                         {/* First ripple */}
-                        <TapRipple delay={0} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                        <TapRipple
+                          delay={0}
+                          top="calc(50% - 11px)"
+                          left="calc(50% - 11px)"
+                        />
                         {/* Second ripple */}
-                        <TapRipple delay={0.2} top="calc(50% - 11px)" left="calc(50% - 11px)" />
+                        <TapRipple
+                          delay={0.2}
+                          top="calc(50% - 11px)"
+                          left="calc(50% - 11px)"
+                        />
                         {/* Close tap ripple */}
-                        <TapRipple delay={1.26} top="calc(100% - 19px)" left="calc(50% - 11px)" />
+                        <TapRipple
+                          delay={1.26}
+                          top="calc(100% - 19px)"
+                          left="calc(50% - 11px)"
+                        />
                         {/* Pill shape - single stroke line that expands to settings */}
                         <motion.div
                           className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
@@ -2188,7 +2305,13 @@ const Onboarding: React.FC = () => {
                           animate={{
                             width: ["35px", "35px", "100px", "100px", "35px"],
                             height: ["3px", "3px", "117px", "117px", "3px"],
-                            borderRadius: ["1.5px", "1.5px", "4px", "4px", "1.5px"],
+                            borderRadius: [
+                              "1.5px",
+                              "1.5px",
+                              "4px",
+                              "4px",
+                              "1.5px",
+                            ],
                           }}
                           transition={{
                             duration: 3.0,
@@ -2246,7 +2369,10 @@ const Onboarding: React.FC = () => {
                   <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                     You're all set
                   </h2>
-                  <p className="text-sm text-subtle leading-relaxed">It's been a pleasure onboarding you. You can now start dictating.</p>
+                  <p className="text-sm text-subtle leading-relaxed">
+                    It's been a pleasure onboarding you. You can now start
+                    dictating.
+                  </p>
                   <div className="pt-2 flex justify-center">
                     <Button
                       onClick={handleComplete}
@@ -2274,12 +2400,11 @@ const Onboarding: React.FC = () => {
               </Button>
             )}
 
-            {currentStep === "auth" && (
-              <div className="flex-1" />
-            )}
+            {currentStep === "auth" && <div className="flex-1" />}
 
             {/* Next button appears consistently; permissions step still gated */}
-            {currentStep !== "hotkey-test" && currentStep !== "hands-free-test" ? (
+            {currentStep !== "hotkey-test" &&
+            currentStep !== "hands-free-test" ? (
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -2287,7 +2412,11 @@ const Onboarding: React.FC = () => {
                 }}
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "auth" && (!signedInAccount || !sessionValid || authLoading || isSwitchingAccount)) ||
+                  (currentStep === "auth" &&
+                    (!signedInAccount ||
+                      !sessionValid ||
+                      authLoading ||
+                      isSwitchingAccount)) ||
                   (currentStep === "name-verification" && !editableName.trim())
                 }
               >

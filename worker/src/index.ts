@@ -1,5 +1,5 @@
-import { Hono } from 'hono';
-import { wsRoute } from './handlers/ws';
+import { Hono } from "hono";
+import { wsRoute } from "./handlers/ws";
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -25,7 +25,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 let jwksPrefetched = false;
 
 // Middleware to prefetch JWKS on first request (fire-and-forget)
-app.use('*', async (c, next) => {
+app.use("*", async (c, next) => {
   // Only prefetch once per worker instance
   const supabaseUrl = c.env.SUPABASE_URL;
   if (!jwksPrefetched && supabaseUrl) {
@@ -34,12 +34,15 @@ app.use('*', async (c, next) => {
     // Fire-and-forget prefetch - don't await, let it run in background
     (async () => {
       try {
-        const { getJWKS } = await import('./auth/supabaseJwt');
+        const { getJWKS } = await import("./auth/supabaseJwt");
         await getJWKS(supabaseUrl);
-        console.log('[Auth] ✅ JWKS prefetch completed - cache is warm');
+        console.log("[Auth] ✅ JWKS prefetch completed - cache is warm");
       } catch (err) {
         // Silent fail - JWKS will be fetched on first auth if this fails
-        console.warn('[Auth] ⚠️ JWKS prefetch failed (will fetch on first auth):', err);
+        console.warn(
+          "[Auth] ⚠️ JWKS prefetch failed (will fetch on first auth):",
+          err,
+        );
       }
     })();
   }
@@ -48,9 +51,9 @@ app.use('*', async (c, next) => {
 });
 
 // Health check
-app.get('/', (c) => c.text('ok'));
+app.get("/", (c) => c.text("ok"));
 
 // WebSocket transcription endpoint
-app.get('/ws', wsRoute);
+app.get("/ws", wsRoute);
 
 export default app;

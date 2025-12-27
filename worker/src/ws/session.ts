@@ -1,7 +1,7 @@
 import type {
   ClientSelectionPayload,
   ClientSessionMode,
-} from '../types/messages';
+} from "../types/messages";
 
 export type AudioSession = ReturnType<typeof createEmptySession>;
 
@@ -15,7 +15,7 @@ export type ChunkState = {
   index: number;
   audioChunks: Uint8Array[];
   totalBytes: number;
-  status: 'buffering' | 'transcribing' | 'done';
+  status: "buffering" | "transcribing" | "done";
   result?: string;
   sttStartAt?: number;
   sttDoneAt?: number;
@@ -24,7 +24,7 @@ export type ChunkState = {
 export function createEmptySession() {
   return {
     version: 2,
-    format: 'pcm16le' as const,
+    format: "pcm16le" as const,
     rate: 16000,
     startedAt: Date.now(),
     frames: 0,
@@ -38,7 +38,7 @@ export function createEmptySession() {
     traceId: undefined as string | undefined,
     wsAcceptAt: undefined as number | undefined,
     processingStartAt: undefined as number | undefined,
-    mode: 'dictation' as ClientSessionMode,
+    mode: "dictation" as ClientSessionMode,
     selection: null as ClientSelectionPayload | null,
     shareTranscriptions: false,
     identity: { name: null, email: null } as SessionIdentity,
@@ -73,8 +73,8 @@ export function logSession(
       mode: s.mode,
       ...extra,
     };
-    log('session', info);
+    log("session", info);
   } catch (error) {
-    log('logSession error', { error: String(error) });
+    log("logSession error", { error: String(error) });
   }
 }

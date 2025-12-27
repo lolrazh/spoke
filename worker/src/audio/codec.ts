@@ -26,11 +26,11 @@ export function wrapWav(
   const header = new ArrayBuffer(44);
   const view = new DataView(header);
   // RIFF
-  writeStr(view, 0, 'RIFF');
+  writeStr(view, 0, "RIFF");
   view.setUint32(4, 36 + dataSize, true);
-  writeStr(view, 8, 'WAVE');
+  writeStr(view, 8, "WAVE");
   // fmt
-  writeStr(view, 12, 'fmt ');
+  writeStr(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, channels, true);
@@ -41,7 +41,7 @@ export function wrapWav(
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bitsPerSample, true);
   // data
-  writeStr(view, 36, 'data');
+  writeStr(view, 36, "data");
   view.setUint32(40, dataSize, true);
 
   const out = new Uint8Array(44 + dataSize);
@@ -53,4 +53,3 @@ export function wrapWav(
 function writeStr(view: DataView, offset: number, s: string) {
   for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
 }
-

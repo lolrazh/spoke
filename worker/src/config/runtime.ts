@@ -41,16 +41,16 @@ import {
   DEEPGRAM_STT_DEFAULT_MODEL,
   SIMPLISMART_STT_MODEL,
   SIMPLISMART_STT_TURBO_MODEL,
-} from '../config';
-import type { LLMProvider, STTProvider } from '../config';
+} from "../config";
+import type { LLMProvider, STTProvider } from "../config";
 
 type Boolish = string | undefined | null | boolean;
 
 function toBool(v: Boolish, fallback: boolean): boolean {
-  if (typeof v === 'boolean') return v;
-  const s = (v ?? '').toString().toLowerCase();
-  if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
-  if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
+  if (typeof v === "boolean") return v;
+  const s = (v ?? "").toString().toLowerCase();
+  if (s === "1" || s === "true" || s === "yes" || s === "on") return true;
+  if (s === "0" || s === "false" || s === "no" || s === "off") return false;
   return fallback;
 }
 
@@ -85,15 +85,16 @@ function defaultModelFor(provider: LLMProvider, fallback: string): string {
   return PROVIDER_DEFAULT_MODELS[provider] ?? fallback;
 }
 
-function defaultAdvancedModelFor(provider: LLMProvider, fallback: string): string {
+function defaultAdvancedModelFor(
+  provider: LLMProvider,
+  fallback: string,
+): string {
   return PROVIDER_ADVANCED_MODELS[provider] ?? fallback;
 }
 
 function defaultEditModelFor(provider: LLMProvider, fallback: string): string {
   return PROVIDER_EDIT_MODELS[provider] ?? fallback;
 }
-
-
 
 export type RuntimeConfig = {
   llm: {
@@ -135,8 +136,12 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   // LLM
   const enabled = toBool(env.ENABLE_LLM, true);
   const stream = toBool(env.LLM_STREAM, LLM_DEFAULT_STREAM);
-  const userDefaultProvider = (env.LLM_DEFAULT_PROVIDER as string) || LLM_DEFAULT_PROVIDER;
-  const provider = parseProvider(env.LLM_PROVIDER, userDefaultProvider as LLMProvider);
+  const userDefaultProvider =
+    (env.LLM_DEFAULT_PROVIDER as string) || LLM_DEFAULT_PROVIDER;
+  const provider = parseProvider(
+    env.LLM_PROVIDER,
+    userDefaultProvider as LLMProvider,
+  );
   const model = env.LLM_MODEL || defaultModelFor(provider, LLM_DEFAULT_MODEL);
   const temperature = Number.isFinite(Number(env.LLM_TEMPERATURE))
     ? Number(env.LLM_TEMPERATURE)
@@ -144,7 +149,8 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   const llmTimeoutMs = Number.isFinite(Number(env.LLM_TIMEOUT_MS))
     ? Number(env.LLM_TIMEOUT_MS)
     : LLM_DEFAULT_TIMEOUT_MS;
-  const currentDate = (env.LLM_CURRENT_DATE || new Date().toISOString().slice(0, 10)) as string;
+  const currentDate = (env.LLM_CURRENT_DATE ||
+    new Date().toISOString().slice(0, 10)) as string;
   const routerEnabled = toBool(env.LLM_ROUTER_ENABLED, LLM_ROUTER_ENABLED);
 
   // STT
@@ -158,10 +164,20 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
 
   // Advanced LLM (for complex/long transcriptions, separate from edit)
   const advancedEnabled = toBool(env.ADVANCED_LLM_ENABLED, true);
-  const advancedStream = toBool(env.ADVANCED_LLM_STREAM, ADVANCED_LLM_DEFAULT_STREAM);
-  const advancedProvider = parseProvider(env.ADVANCED_LLM_PROVIDER, ADVANCED_LLM_DEFAULT_PROVIDER);
-  const advancedModel = env.ADVANCED_LLM_MODEL || defaultAdvancedModelFor(advancedProvider, ADVANCED_LLM_DEFAULT_MODEL);
-  const advancedTemperature = Number.isFinite(Number(env.ADVANCED_LLM_TEMPERATURE))
+  const advancedStream = toBool(
+    env.ADVANCED_LLM_STREAM,
+    ADVANCED_LLM_DEFAULT_STREAM,
+  );
+  const advancedProvider = parseProvider(
+    env.ADVANCED_LLM_PROVIDER,
+    ADVANCED_LLM_DEFAULT_PROVIDER,
+  );
+  const advancedModel =
+    env.ADVANCED_LLM_MODEL ||
+    defaultAdvancedModelFor(advancedProvider, ADVANCED_LLM_DEFAULT_MODEL);
+  const advancedTemperature = Number.isFinite(
+    Number(env.ADVANCED_LLM_TEMPERATURE),
+  )
     ? Number(env.ADVANCED_LLM_TEMPERATURE)
     : ADVANCED_LLM_DEFAULT_TEMPERATURE;
   const advancedTimeoutMs = Number.isFinite(Number(env.ADVANCED_LLM_TIMEOUT_MS))
@@ -171,8 +187,13 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
   // Edit LLM (only for edit mode with selected text)
   const editEnabled = toBool(env.EDIT_LLM_ENABLED, true);
   const editStream = toBool(env.EDIT_LLM_STREAM, EDIT_LLM_DEFAULT_STREAM);
-  const editProvider = parseProvider(env.EDIT_LLM_PROVIDER, EDIT_LLM_DEFAULT_PROVIDER);
-  const editModel = env.EDIT_LLM_MODEL || defaultEditModelFor(editProvider, EDIT_LLM_DEFAULT_MODEL);
+  const editProvider = parseProvider(
+    env.EDIT_LLM_PROVIDER,
+    EDIT_LLM_DEFAULT_PROVIDER,
+  );
+  const editModel =
+    env.EDIT_LLM_MODEL ||
+    defaultEditModelFor(editProvider, EDIT_LLM_DEFAULT_MODEL);
   const editTemperature = Number.isFinite(Number(env.EDIT_LLM_TEMPERATURE))
     ? Number(env.EDIT_LLM_TEMPERATURE)
     : EDIT_LLM_DEFAULT_TEMPERATURE;
@@ -181,28 +202,71 @@ export function getRuntimeConfig(env: Record<string, any>): RuntimeConfig {
     : EDIT_LLM_DEFAULT_TIMEOUT_MS;
 
   return {
-    llm: { enabled, stream, model, temperature, timeoutMs: llmTimeoutMs, currentDate, provider, routerEnabled },
-    stt: { provider: sttProvider, model: sttModel, language: sttLanguage, prompt: sttPrompt, timeoutMs: sttTimeoutMs },
-    advanced: { enabled: advancedEnabled, stream: advancedStream, model: advancedModel, temperature: advancedTemperature, timeoutMs: advancedTimeoutMs, provider: advancedProvider },
-    edit: { enabled: editEnabled, stream: editStream, model: editModel, temperature: editTemperature, timeoutMs: editTimeoutMs, provider: editProvider },
+    llm: {
+      enabled,
+      stream,
+      model,
+      temperature,
+      timeoutMs: llmTimeoutMs,
+      currentDate,
+      provider,
+      routerEnabled,
+    },
+    stt: {
+      provider: sttProvider,
+      model: sttModel,
+      language: sttLanguage,
+      prompt: sttPrompt,
+      timeoutMs: sttTimeoutMs,
+    },
+    advanced: {
+      enabled: advancedEnabled,
+      stream: advancedStream,
+      model: advancedModel,
+      temperature: advancedTemperature,
+      timeoutMs: advancedTimeoutMs,
+      provider: advancedProvider,
+    },
+    edit: {
+      enabled: editEnabled,
+      stream: editStream,
+      model: editModel,
+      temperature: editTemperature,
+      timeoutMs: editTimeoutMs,
+      provider: editProvider,
+    },
   };
 }
 
 function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
-  const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'openai' || s === 'baseten' || s === 'openrouter' || s === 'cerebras' || s === 'simplismart') return s as LLMProvider;
+  const s = (v ?? "").toString().toLowerCase();
+  if (
+    s === "groq" ||
+    s === "openai" ||
+    s === "baseten" ||
+    s === "openrouter" ||
+    s === "cerebras" ||
+    s === "simplismart"
+  )
+    return s as LLMProvider;
   return fallback;
 }
 
 function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
-  const s = (v ?? '').toString().toLowerCase();
-  if (s === 'groq' || s === 'fireworks' || s === 'deepgram' || s === 'simplismart') return s as STTProvider;
+  const s = (v ?? "").toString().toLowerCase();
+  if (
+    s === "groq" ||
+    s === "fireworks" ||
+    s === "deepgram" ||
+    s === "simplismart"
+  )
+    return s as STTProvider;
   return fallback;
 }
 
 function defaultSttModelFor(provider: STTProvider): string {
-  if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
-  if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
-  if (provider === 'simplismart') return SIMPLISMART_STT_TURBO_MODEL;
+  if (provider === "fireworks") return FIREWORKS_STT_TURBO_MODEL;
+  if (provider === "deepgram") return DEEPGRAM_STT_DEFAULT_MODEL;
+  if (provider === "simplismart") return SIMPLISMART_STT_TURBO_MODEL;
   return STT_DEFAULT_MODEL;
 }

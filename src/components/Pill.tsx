@@ -249,18 +249,23 @@ const Pill: React.FC<PillProps> = ({
   // Micro-physics transition for the overshoot pulse
   const transitionWithImpact = shouldImpactPulse
     ? {
-      ...transitionForState,
-      // Use a snappy spring for the tiny scale pulse
-      scale: {
-        type: "spring" as const,
-        stiffness: 600,
-        damping: 32,
-        mass: 0.5,
-      },
-      // Spring chain: width leads, height follows by a hair
-      width: { ...(transitionForState as unknown as Record<string, unknown>) },
-      height: { ...(transitionForState as unknown as Record<string, unknown>), delay: 0.015 },
-    }
+        ...transitionForState,
+        // Use a snappy spring for the tiny scale pulse
+        scale: {
+          type: "spring" as const,
+          stiffness: 600,
+          damping: 32,
+          mass: 0.5,
+        },
+        // Spring chain: width leads, height follows by a hair
+        width: {
+          ...(transitionForState as unknown as Record<string, unknown>),
+        },
+        height: {
+          ...(transitionForState as unknown as Record<string, unknown>),
+          delay: 0.015,
+        },
+      }
     : transitionForState;
 
   return (
@@ -344,18 +349,19 @@ const Pill: React.FC<PillProps> = ({
             ) : isShowingNotification ? (
               <motion.span
                 key="notification"
-                className={`notification-text ${isTextTruncated ? "truncated" : ""} ${pillContext.notifAction ? "cursor-pointer" : ""
-                  }`}
+                className={`notification-text ${isTextTruncated ? "truncated" : ""} ${
+                  pillContext.notifAction ? "cursor-pointer" : ""
+                }`}
                 role={pillContext.notifAction ? "button" : undefined}
                 tabIndex={pillContext.notifAction ? 0 : undefined}
                 onKeyDown={
                   pillContext.notifAction && onNotificationAction
                     ? (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onNotificationAction(pillContext.notifAction!);
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onNotificationAction(pillContext.notifAction!);
+                        }
                       }
-                    }
                     : undefined
                 }
                 initial={{ opacity: 0 }}

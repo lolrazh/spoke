@@ -8,12 +8,12 @@ import {
   SIMPLISMART_STT_MODEL,
   SIMPLISMART_STT_TURBO_MODEL,
   type STTProvider,
-} from '../../config';
-import { transcribeWav as transcribeGroq } from './providers/groq';
-import { transcribeWav as transcribeFireworks } from './providers/fireworks';
-import { transcribeWav as transcribeDeepgram } from './providers/deepgram';
-import { transcribeWav as transcribeSimplismart } from './providers/simplismart';
-import { stripHallucinations } from './postprocess';
+} from "../../config";
+import { transcribeWav as transcribeGroq } from "./providers/groq";
+import { transcribeWav as transcribeFireworks } from "./providers/fireworks";
+import { transcribeWav as transcribeDeepgram } from "./providers/deepgram";
+import { transcribeWav as transcribeSimplismart } from "./providers/simplismart";
+import { stripHallucinations } from "./postprocess";
 
 type BaseOptions = {
   apiKey: string;
@@ -52,7 +52,7 @@ export async function transcribeWav(
 
   let result: TranscriptionResult;
 
-  if (provider === 'groq') {
+  if (provider === "groq") {
     result = await transcribeGroq(wav, opts.apiKey, {
       model,
       language,
@@ -60,7 +60,7 @@ export async function transcribeWav(
       timeoutMs,
       signal: opts.signal,
     });
-  } else if (provider === 'fireworks') {
+  } else if (provider === "fireworks") {
     result = await transcribeFireworks(wav, opts.apiKey, {
       model,
       language,
@@ -68,7 +68,7 @@ export async function transcribeWav(
       timeoutMs,
       signal: opts.signal,
     });
-  } else if (provider === 'deepgram') {
+  } else if (provider === "deepgram") {
     result = await transcribeDeepgram(wav, opts.apiKey, {
       model,
       language,
@@ -76,7 +76,7 @@ export async function transcribeWav(
       timeoutMs,
       signal: opts.signal,
     });
-  } else if (provider === 'simplismart') {
+  } else if (provider === "simplismart") {
     result = await transcribeSimplismart(wav, opts.apiKey, {
       model,
       language,
@@ -96,8 +96,8 @@ export async function transcribeWav(
 }
 
 function defaultModelFor(provider: STTProvider): string {
-  if (provider === 'fireworks') return FIREWORKS_STT_TURBO_MODEL;
-  if (provider === 'deepgram') return DEEPGRAM_STT_DEFAULT_MODEL;
-  if (provider === 'simplismart') return SIMPLISMART_STT_MODEL;
+  if (provider === "fireworks") return FIREWORKS_STT_TURBO_MODEL;
+  if (provider === "deepgram") return DEEPGRAM_STT_DEFAULT_MODEL;
+  if (provider === "simplismart") return SIMPLISMART_STT_MODEL;
   return STT_DEFAULT_MODEL;
 }

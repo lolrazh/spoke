@@ -87,16 +87,16 @@ const pillReducer = (
       if (event.type === "NOTIFY") {
         // If it's an error notification (starts with common error phrases),
         // show it immediately instead of queuing it
-        const isErrorNotif = event.msg && (
-          event.msg.includes("required") ||
-          event.msg.includes("failed") ||
-          event.msg.includes("error") ||
-          event.msg.includes("expired") ||
-          event.msg.includes("Upgrade") ||
-          event.msg.includes("Sign in") ||
-          event.msg.includes("free words") ||
-          event.msg.toLowerCase().includes("subscription")
-        );
+        const isErrorNotif =
+          event.msg &&
+          (event.msg.includes("required") ||
+            event.msg.includes("failed") ||
+            event.msg.includes("error") ||
+            event.msg.includes("expired") ||
+            event.msg.includes("Upgrade") ||
+            event.msg.includes("Sign in") ||
+            event.msg.includes("free words") ||
+            event.msg.toLowerCase().includes("subscription"));
 
         if (isErrorNotif) {
           // Cancel listening and show error notification immediately
@@ -193,7 +193,8 @@ const PERMISSION_NOTIFICATION_REPEAT_DELAY_MS =
   PERMISSION_NOTIFICATION_DURATION_MS + 2000;
 const PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS = 3500;
 
-const PERMISSION_NOTIFICATION_MESSAGE = "Permissions required. Double click to review.";
+const PERMISSION_NOTIFICATION_MESSAGE =
+  "Permissions required. Double click to review.";
 const PERMISSION_NOTIFICATION_ACTION_ID = "open-permissions";
 
 const logPermissionsDebug = (...args: unknown[]) => {
@@ -277,7 +278,9 @@ const AppInner: React.FC = () => {
   // Track when paste shortcut (Cmd+Ctrl+V) was last pressed for history-on-expand UX
   const lastPasteShortcutTsRef = useRef<number | null>(null);
   // Initial tab for settings panel (computed on expand based on paste timing)
-  const [initialSettingsTab, setInitialSettingsTab] = useState<"settings" | "history">("settings");
+  const [initialSettingsTab, setInitialSettingsTab] = useState<
+    "settings" | "history"
+  >("settings");
 
   const clearPermissionNotificationLoop = useCallback(() => {
     if (permissionNotificationTimerRef.current) {
@@ -286,23 +289,29 @@ const AppInner: React.FC = () => {
     }
   }, []);
 
-  const handleSettingsPanelHeight = useCallback((height: number) => {
-    if (!Number.isFinite(height) || height <= 0) return;
-    const normalized = Math.round(height);
-    if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
-    setSettingsPanelContentHeight((prev) =>
-      prev === normalized ? prev : normalized,
-    );
-  }, [settingsPanelMeasured]);
+  const handleSettingsPanelHeight = useCallback(
+    (height: number) => {
+      if (!Number.isFinite(height) || height <= 0) return;
+      const normalized = Math.round(height);
+      if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
+      setSettingsPanelContentHeight((prev) =>
+        prev === normalized ? prev : normalized,
+      );
+    },
+    [settingsPanelMeasured],
+  );
 
-  const handlePermissionsPanelHeight = useCallback((height: number) => {
-    if (!Number.isFinite(height) || height <= 0) return;
-    const normalized = Math.round(height);
-    if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
-    setPermissionsPanelContentHeight((prev) =>
-      prev === normalized ? prev : normalized,
-    );
-  }, [permissionsPanelMeasured]);
+  const handlePermissionsPanelHeight = useCallback(
+    (height: number) => {
+      if (!Number.isFinite(height) || height <= 0) return;
+      const normalized = Math.round(height);
+      if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
+      setPermissionsPanelContentHeight((prev) =>
+        prev === normalized ? prev : normalized,
+      );
+    },
+    [permissionsPanelMeasured],
+  );
 
   const sendPermissionNotification = useCallback(
     (reason: "detected" | "repeat" | "changed" | "ptt" | "manual") => {
@@ -315,7 +324,7 @@ const AppInner: React.FC = () => {
           PERMISSION_NOTIFICATION_MESSAGE,
           PERMISSION_NOTIFICATION_ACTION_ID,
         );
-      } catch { }
+      } catch {}
     },
     [],
   );
@@ -323,24 +332,24 @@ const AppInner: React.FC = () => {
   const schedulePermissionNotification = useCallback(
     (delay: number) => {
       clearPermissionNotificationLoop();
-      permissionNotificationTimerRef.current = setTimeout(() => {
-        permissionNotificationTimerRef.current = null;
-        if (missingCountRef.current > 0) {
-          sendPermissionNotification("repeat");
-          schedulePermissionNotification(
-            PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
-          );
-        }
-      }, Math.max(delay, 0));
+      permissionNotificationTimerRef.current = setTimeout(
+        () => {
+          permissionNotificationTimerRef.current = null;
+          if (missingCountRef.current > 0) {
+            sendPermissionNotification("repeat");
+            schedulePermissionNotification(
+              PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
+            );
+          }
+        },
+        Math.max(delay, 0),
+      );
     },
     [clearPermissionNotificationLoop, sendPermissionNotification],
   );
 
   const triggerPermissionNotification = useCallback(
-    (
-      reason: "detected" | "changed" | "ptt" | "manual",
-      delay?: number,
-    ) => {
+    (reason: "detected" | "changed" | "ptt" | "manual", delay?: number) => {
       sendPermissionNotification(reason);
       schedulePermissionNotification(
         delay ?? PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
@@ -366,17 +375,21 @@ const AppInner: React.FC = () => {
       // Ignore initialization errors; app can function without history
     });
     // Initialize quota cache (starts 5-min sync timer, hydrates from localStorage)
-    import('../state/quotaCache').then(({ initQuotaCache }) => {
-      initQuotaCache();
-    }).catch(() => {
-      // Ignore initialization errors; quota will fall back to server checks
-    });
+    import("../state/quotaCache")
+      .then(({ initQuotaCache }) => {
+        initQuotaCache();
+      })
+      .catch(() => {
+        // Ignore initialization errors; quota will fall back to server checks
+      });
     // Initialize Supabase session sync for reliable auth persistence
-    import('../lib/sessionSync').then(({ initializeSessionSync }) => {
-      initializeSessionSync();
-    }).catch((error) => {
-      console.error('[App] Failed to initialize session sync:', error);
-    });
+    import("../lib/sessionSync")
+      .then(({ initializeSessionSync }) => {
+        initializeSessionSync();
+      })
+      .catch((error) => {
+        console.error("[App] Failed to initialize session sync:", error);
+      });
   }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
@@ -399,13 +412,13 @@ const AppInner: React.FC = () => {
           if (!user) {
             try {
               window.notifications?.send?.("Sign in to dictate");
-            } catch { }
+            } catch {}
             try {
               await window.electron?.showOnboarding?.();
-            } catch { }
+            } catch {}
             return false;
           }
-        } catch { }
+        } catch {}
       }
       const mic = await window.electron?.checkMicrophonePermission?.();
       if (!mic?.granted) {
@@ -437,7 +450,7 @@ const AppInner: React.FC = () => {
         seeded = true;
         setShareTranscriptionsEnabled(stored === "true");
       }
-    } catch { }
+    } catch {}
 
     setShareTranscriptionsLoading(true);
     try {
@@ -455,7 +468,7 @@ const AppInner: React.FC = () => {
             `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
             value ? "true" : "false",
           );
-        } catch { }
+        } catch {}
       }
     } catch {
       if (!seeded) setShareTranscriptionsEnabled(false);
@@ -470,7 +483,7 @@ const AppInner: React.FC = () => {
       if (!userId) {
         try {
           window.notifications?.send?.("Sign in to change this setting");
-        } catch { }
+        } catch {}
         return;
       }
       if (shareTranscriptionsUpdating) return;
@@ -489,14 +502,12 @@ const AppInner: React.FC = () => {
             `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
             enabled ? "true" : "false",
           );
-        } catch { }
+        } catch {}
       } catch {
         setShareTranscriptionsEnabled(previous);
         try {
-          window.notifications?.send?.(
-            "Unable to update sharing preference",
-          );
-        } catch { }
+          window.notifications?.send?.("Unable to update sharing preference");
+        } catch {}
       } finally {
         setShareTranscriptionsUpdating(false);
       }
@@ -510,7 +521,7 @@ const AppInner: React.FC = () => {
       try {
         lastFocusTsRef.current =
           typeof performance !== "undefined" ? performance.now() : null;
-      } catch { }
+      } catch {}
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -533,13 +544,15 @@ const AppInner: React.FC = () => {
           if (supabase) {
             try {
               const { data } = await supabase.auth.refreshSession();
-              console.log('[App] Session refreshed on startup - JWT claims updated');
+              console.log(
+                "[App] Session refreshed on startup - JWT claims updated",
+              );
 
               // Sync local quota/subscription cache with fresh server data
               if (data?.session?.access_token) {
                 try {
                   // Decode JWT payload to get custom claims
-                  const payloadBase64 = data.session.access_token.split('.')[1];
+                  const payloadBase64 = data.session.access_token.split(".")[1];
                   const payloadJson = atob(payloadBase64);
                   const payload = JSON.parse(payloadJson);
 
@@ -547,25 +560,31 @@ const AppInner: React.FC = () => {
                   const isPro = payload.subscription_active === true;
 
                   // Update local cache with quota and subscription status
-                  const { updateQuotaFromServer } = await import('../state/quotaCache');
+                  const { updateQuotaFromServer } = await import(
+                    "../state/quotaCache"
+                  );
                   updateQuotaFromServer({
-                    wordsUsed: typeof payload.words_used_this_week === 'number'
-                      ? payload.words_used_this_week
-                      : 0,
+                    wordsUsed:
+                      typeof payload.words_used_this_week === "number"
+                        ? payload.words_used_this_week
+                        : 0,
                     resetDate: payload.quota_reset_date || null,
                     isPro,
                   });
-                  console.log('[App] Subscription & quota synced from JWT:', {
+                  console.log("[App] Subscription & quota synced from JWT:", {
                     isPro,
                     wordsUsed: payload.words_used_this_week,
-                    resetDate: payload.quota_reset_date
+                    resetDate: payload.quota_reset_date,
                   });
                 } catch (e) {
-                  console.warn('[App] Failed to sync quota from JWT:', e);
+                  console.warn("[App] Failed to sync quota from JWT:", e);
                 }
               }
             } catch (error) {
-              console.warn('[App] Failed to refresh session on startup:', error);
+              console.warn(
+                "[App] Failed to refresh session on startup:",
+                error,
+              );
               // Continue anyway - getCurrentUser will return cached session
             }
           }
@@ -575,26 +594,25 @@ const AppInner: React.FC = () => {
         if (!user && !skipAuth) {
           try {
             await window.electron?.showOnboarding?.();
-          } catch { }
+          } catch {}
           try {
             latestTransRef.current?.cancel?.();
-          } catch { }
+          } catch {}
           setCurrentUserId(null);
           await loadSharePreference(null);
         } else if (user) {
           try {
             await window.electron?.showFloatingBar?.();
-          } catch { }
+          } catch {}
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
 
           // Pre-connect to Worker to avoid first-dictation latency
           // CRITICAL: This must happen AFTER JWT refresh completes (above)
           // Retry with exponential backoff to handle transient network issues
-          void retryWithBackoff(
-            () => trans.preConnect(),
-            { context: 'Pre-connect on startup' }
-          );
+          void retryWithBackoff(() => trans.preConnect(), {
+            context: "Pre-connect on startup",
+          });
         } else {
           setCurrentUserId(null);
           await loadSharePreference(null);
@@ -602,7 +620,7 @@ const AppInner: React.FC = () => {
         // Seed previous user for transition detection
         try {
           prevUserIdRef.current = user?.id ?? null;
-        } catch { }
+        } catch {}
         const supabase = await getSupabase();
         if (supabase) {
           const {
@@ -615,9 +633,11 @@ const AppInner: React.FC = () => {
               const currentUserId = session.user.id ?? null;
               const now = Date.now();
               const signals = getSignals();
-              const docHidden = typeof document !== "undefined" ? document.hidden : false;
+              const docHidden =
+                typeof document !== "undefined" ? document.hidden : false;
               const msSinceFocus =
-                typeof performance !== "undefined" && lastFocusTsRef.current != null
+                typeof performance !== "undefined" &&
+                lastFocusTsRef.current != null
                   ? performance.now() - lastFocusTsRef.current
                   : null;
               const allow = shouldToastSignIn({
@@ -639,7 +659,9 @@ const AppInner: React.FC = () => {
               if (allow) {
                 // Update last-toast timestamp to suppress any late duplicate triggers.
                 lastToastTsRef.current = now;
-                try { setLastToastTs(now); } catch { }
+                try {
+                  setLastToastTs(now);
+                } catch {}
               }
               // Update previous after handling
               prevUserIdRef.current = currentUserId;
@@ -652,30 +674,35 @@ const AppInner: React.FC = () => {
               setTimeout(async () => {
                 try {
                   if (session?.access_token) {
-                    const payloadBase64 = session.access_token.split('.')[1];
+                    const payloadBase64 = session.access_token.split(".")[1];
                     const payloadJson = atob(payloadBase64);
                     const payload = JSON.parse(payloadJson);
                     const isPro = payload.subscription_active === true;
-                    const { updateQuotaFromServer } = await import('../state/quotaCache');
+                    const { updateQuotaFromServer } = await import(
+                      "../state/quotaCache"
+                    );
                     updateQuotaFromServer({
-                      wordsUsed: typeof payload.words_used_this_week === 'number'
-                        ? payload.words_used_this_week
-                        : 0,
+                      wordsUsed:
+                        typeof payload.words_used_this_week === "number"
+                          ? payload.words_used_this_week
+                          : 0,
                       resetDate: payload.quota_reset_date || null,
                       isPro,
                     });
                   }
                 } catch (e) {
-                  console.warn('[App] Failed to sync quota from JWT on sign-in:', e);
+                  console.warn(
+                    "[App] Failed to sync quota from JWT on sign-in:",
+                    e,
+                  );
                 }
               }, 0);
 
               // Pre-connect to Worker after sign in with retry logic
               setTimeout(() => {
-                void retryWithBackoff(
-                  () => trans.preConnect(),
-                  { context: 'Pre-connect after sign-in' }
-                );
+                void retryWithBackoff(() => trans.preConnect(), {
+                  context: "Pre-connect after sign-in",
+                });
               }, 0);
               return;
             }
@@ -694,20 +721,26 @@ const AppInner: React.FC = () => {
                   try {
                     // Cancel any active or in-flight transcription when signing out
                     latestTransRef.current?.cancel?.();
-                  } catch { }
+                  } catch {}
 
                   // Clear quota cache on sign-out to prevent stale data
                   try {
-                    const { clearQuotaCache } = await import('../state/quotaCache');
+                    const { clearQuotaCache } = await import(
+                      "../state/quotaCache"
+                    );
                     clearQuotaCache();
-                  } catch { }
+                  } catch {}
 
-                  try { window.notifications?.send?.("Signed out"); } catch { }
+                  try {
+                    window.notifications?.send?.("Signed out");
+                  } catch {}
                   setPendingHideAfterCollapse({
                     active: true,
                     message: "Signed out",
                     onAfter: async () => {
-                      try { await window.electron?.showOnboarding?.(); } catch { }
+                      try {
+                        await window.electron?.showOnboarding?.();
+                      } catch {}
                     },
                   });
                 })();
@@ -735,29 +768,37 @@ const AppInner: React.FC = () => {
                   prevUserIdRef.current = null;
                   setCurrentUserId(null);
                   loadSharePreference(null);
-                  try { latestTransRef.current?.cancel?.(); } catch { }
+                  try {
+                    latestTransRef.current?.cancel?.();
+                  } catch {}
 
                   // Clear quota cache on polling-detected sign-out
                   try {
-                    const { clearQuotaCache } = await import('../state/quotaCache');
+                    const { clearQuotaCache } = await import(
+                      "../state/quotaCache"
+                    );
                     clearQuotaCache();
-                  } catch { }
+                  } catch {}
 
-                  try { window.notifications?.send?.("Signed out"); } catch { }
+                  try {
+                    window.notifications?.send?.("Signed out");
+                  } catch {}
                   setPendingHideAfterCollapse({
                     active: true,
                     message: "Signed out",
                     onAfter: async () => {
-                      try { await window.electron?.showOnboarding?.(); } catch { }
+                      try {
+                        await window.electron?.showOnboarding?.();
+                      } catch {}
                     },
                   });
                 }
                 // If error: likely network issue — ignore and retain current UX
-              } catch { }
+              } catch {}
             }, 60000);
-          } catch { }
+          } catch {}
         }
-      } catch { }
+      } catch {}
     })();
     return () => {
       if (unsubscribe) unsubscribe();
@@ -782,10 +823,10 @@ const AppInner: React.FC = () => {
   const isLongPressRef = useRef(false);
   const isOptionDownRef = useRef(false);
   const gestureTokenCounterRef = useRef(0);
-  const pendingStartTokenRef = useRef<
-    { id: number; kind: "hold" | "doubleTap" }
-    | null
-  >(null);
+  const pendingStartTokenRef = useRef<{
+    id: number;
+    kind: "hold" | "doubleTap";
+  } | null>(null);
   const holdActivationNonceRef = useRef<number | null>(null);
   // Prevent double-playing the start cue when long-press timer and
   // double-tap start race on first gesture after idle
@@ -805,13 +846,11 @@ const AppInner: React.FC = () => {
     result: boolean | null;
   }>({ token: null, result: null });
   const permissionCheckPromiseRef = useRef<Promise<boolean> | null>(null);
-  const activeCaptureRef = useRef<
-    { token: number; kind: "hold" | "doubleTap" }
-    | null
-  >(null);
-  const postStartActionRef = useRef<Map<number, "cancel" | "stop">>(
-    new Map(),
-  );
+  const activeCaptureRef = useRef<{
+    token: number;
+    kind: "hold" | "doubleTap";
+  } | null>(null);
+  const postStartActionRef = useRef<Map<number, "cancel" | "stop">>(new Map());
   const prevRecordingRef = useRef(trans.recording);
 
   const beginPermissionCheck = useCallback(() => {
@@ -823,7 +862,10 @@ const AppInner: React.FC = () => {
     promise
       .then((allowed) => {
         if (permissionCheckStateRef.current.token === nextToken) {
-          permissionCheckStateRef.current = { token: nextToken, result: allowed };
+          permissionCheckStateRef.current = {
+            token: nextToken,
+            result: allowed,
+          };
         }
         return allowed;
       })
@@ -907,9 +949,7 @@ const AppInner: React.FC = () => {
         logPermissionsDebug("missing:changed", missingPermissions);
         triggerPermissionNotification("changed");
       } else if (!permissionNotificationTimerRef.current) {
-        schedulePermissionNotification(
-          PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
-        );
+        schedulePermissionNotification(PERMISSION_NOTIFICATION_REPEAT_DELAY_MS);
       }
     } else {
       if (prevCount > 0) {
@@ -961,7 +1001,9 @@ const AppInner: React.FC = () => {
       if (typeof token === "number") {
         postStartActionRef.current.delete(token);
         if (activeCaptureRef.current?.token === token) {
-          pushTrace(`Capture session cleared (${activeCaptureRef.current.kind}) token=${token}`);
+          pushTrace(
+            `Capture session cleared (${activeCaptureRef.current.kind}) token=${token}`,
+          );
           activeCaptureRef.current = null;
         }
         return;
@@ -978,11 +1020,7 @@ const AppInner: React.FC = () => {
   );
 
   const monitorStartResolution = useCallback(
-    (
-      token: number,
-      kind: "hold" | "doubleTap",
-      promise: Promise<unknown>,
-    ) => {
+    (token: number, kind: "hold" | "doubleTap", promise: Promise<unknown>) => {
       promise
         .then(() => {
           const scheduled = postStartActionRef.current.get(token);
@@ -993,19 +1031,20 @@ const AppInner: React.FC = () => {
           if (scheduled === "cancel") {
             try {
               latestTransRef.current.cancel();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "CANCEL" });
           } else {
             try {
               latestTransRef.current.stop();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "PTT_STOP" });
           }
           clearActiveCapture(token);
         })
         .catch((err) => {
           pushTrace(
-            `Start failed for ${kind} token=${token}: ${err instanceof Error ? err.message : String(err)
+            `Start failed for ${kind} token=${token}: ${
+              err instanceof Error ? err.message : String(err)
             }`,
           );
           clearActiveCapture(token);
@@ -1014,7 +1053,12 @@ const AppInner: React.FC = () => {
           postStartActionRef.current.delete(token);
         });
     },
-    [clearActiveCapture, pillDispatch, pushTrace, triggerPermissionNotification],
+    [
+      clearActiveCapture,
+      pillDispatch,
+      pushTrace,
+      triggerPermissionNotification,
+    ],
   );
 
   useEffect(() => {
@@ -1032,18 +1076,13 @@ const AppInner: React.FC = () => {
         pushTrace("Auto-cancel hold capture after late start");
         try {
           latestTransRef.current.cancel();
-        } catch { }
+        } catch {}
         pillDispatch({ type: "CANCEL" });
         clearActiveCapture(active.token);
       }
     }
     prevRecordingRef.current = trans.recording;
-  }, [
-    clearActiveCapture,
-    pillDispatch,
-    pushTrace,
-    trans.recording,
-  ]);
+  }, [clearActiveCapture, pillDispatch, pushTrace, trans.recording]);
 
   const snapshotPermissionGuard = useCallback(
     (refresh = false) => {
@@ -1097,7 +1136,7 @@ const AppInner: React.FC = () => {
         }
         try {
           latestTransRef.current.cancel();
-        } catch { }
+        } catch {}
         pushTrace(`PTT ${kind} gate denied`);
         pillDispatch({ type: "CANCEL" });
         try {
@@ -1110,7 +1149,7 @@ const AppInner: React.FC = () => {
           } else {
             window.notifications?.send?.("Sign in to dictate");
           }
-        } catch { }
+        } catch {}
         clearActiveCapture(tokenId);
         return;
       }
@@ -1163,8 +1202,7 @@ const AppInner: React.FC = () => {
   useEffect(() => {
     const cleanup = window.notifications.on(({ message, actionId }) => {
       pushTrace(
-        `Notify: "${message}"${actionId ? ` (action=${actionId})` : ""
-        } `,
+        `Notify: "${message}"${actionId ? ` (action=${actionId})` : ""} `,
       );
       logPermissionsDebug("notification:received", {
         message,
@@ -1344,10 +1382,12 @@ const AppInner: React.FC = () => {
           setTimeout(async () => {
             try {
               await window.electron?.hideFloatingBarIndefinitely?.();
-            } catch { }
+            } catch {}
             // Allow the fade-out in main to complete before showing onboarding
             setTimeout(() => {
-              try { onAfter && onAfter(); } catch { }
+              try {
+                onAfter && onAfter();
+              } catch {}
               setPendingHideAfterCollapse({ active: false, message: "" });
             }, 180);
           }, 100); // let pill reach IDLE state properly before starting fade-out
@@ -1380,7 +1420,7 @@ const AppInner: React.FC = () => {
           }
           try {
             window.electron?.focusWindow?.();
-          } catch { }
+          } catch {}
           break;
         default:
           logPermissionsDebug("notification:action-unknown", { actionId });
@@ -1390,18 +1430,21 @@ const AppInner: React.FC = () => {
     [pillDispatch, pushTrace, schedulePermissionNotification],
   );
 
-  const notifyThenHide = useCallback((message: string, onAfter?: () => void) => {
-    try {
-      window.notifications?.send?.(message);
-    } catch { }
-    // Defer actual hide until NOTIFICATION finishes and we return to IDLE
-    setPendingHideAfterCollapse({
-      active: true,
-      message,
-      onAfter,
-      deferNotification: false,
-    });
-  }, []);
+  const notifyThenHide = useCallback(
+    (message: string, onAfter?: () => void) => {
+      try {
+        window.notifications?.send?.(message);
+      } catch {}
+      // Defer actual hide until NOTIFICATION finishes and we return to IDLE
+      setPendingHideAfterCollapse({
+        active: true,
+        message,
+        onAfter,
+        deferNotification: false,
+      });
+    },
+    [],
+  );
 
   const handleCollapse = useCallback(() => {
     const { active, message, deferNotification } = pendingHideAfterCollapse;
@@ -1416,7 +1459,7 @@ const AppInner: React.FC = () => {
       setTimeout(() => {
         try {
           window.notifications?.send?.(message);
-        } catch { }
+        } catch {}
       }, 0);
     }
   }, [pendingHideAfterCollapse, pillDispatch]);
@@ -1530,7 +1573,7 @@ const AppInner: React.FC = () => {
         if (!startCuePlayedRef.current) {
           try {
             playToggleOn();
-          } catch { }
+          } catch {}
           startCuePlayedRef.current = true;
         }
         if (doubleTapTimerRef.current) {
@@ -1538,11 +1581,8 @@ const AppInner: React.FC = () => {
           doubleTapTimerRef.current = null;
         }
         lastTapUpRef.current = null;
-        const {
-          permissionToken,
-          permissionResult,
-          permissionPromise,
-        } = snapshotPermissionGuard();
+        const { permissionToken, permissionResult, permissionPromise } =
+          snapshotPermissionGuard();
         pushTrace(`PTT long press start (pending gate)`);
         pillDispatch({ type: "PTT_START" });
         const tokenId = ++gestureTokenCounterRef.current;
@@ -1565,18 +1605,15 @@ const AppInner: React.FC = () => {
           startResult = latestTransRef.current.start();
         } catch (err) {
           pushTrace(
-            `PTT hold start failed synchronously: ${err instanceof Error ? err.message : String(err)
+            `PTT hold start failed synchronously: ${
+              err instanceof Error ? err.message : String(err)
             }`,
           );
           clearActiveCapture(tokenId);
           pillDispatch({ type: "CANCEL" });
           return;
         }
-        monitorStartResolution(
-          tokenId,
-          "hold",
-          Promise.resolve(startResult),
-        );
+        monitorStartResolution(tokenId, "hold", Promise.resolve(startResult));
         if (permissionResult === true) {
           void handlePermissionOutcome(true, tokenId, "hold", permissionToken);
           return;
@@ -1647,7 +1684,10 @@ const AppInner: React.FC = () => {
           // - pendingStartTokenRef gets cleared early by handlePermissionOutcome
           // - activeCaptureRef persists until the capture session actually completes
           // This prevents the race where second tap starts NEW recording instead of stopping
-          const pendingTokenId = pendingStartTokenRef.current?.id ?? activeCaptureRef.current?.token ?? null;
+          const pendingTokenId =
+            pendingStartTokenRef.current?.id ??
+            activeCaptureRef.current?.token ??
+            null;
           const pendingHandsFree =
             pendingStartTokenRef.current?.kind === "doubleTap" ||
             activeCaptureRef.current?.kind === "doubleTap";
@@ -1665,24 +1705,21 @@ const AppInner: React.FC = () => {
             pushTrace(`PTT double-tap start canceled before activation`);
             try {
               latestTransRef.current.cancel();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "CANCEL" });
             if (pendingTokenId != null) {
               clearActiveCapture(pendingTokenId);
             }
           } else {
-            const {
-              permissionToken,
-              permissionResult,
-              permissionPromise,
-            } = snapshotPermissionGuard();
+            const { permissionToken, permissionResult, permissionPromise } =
+              snapshotPermissionGuard();
             const tokenId = ++gestureTokenCounterRef.current;
             pendingStartTokenRef.current = { id: tokenId, kind: "doubleTap" };
             beginCaptureSession(tokenId, "doubleTap");
             if (!startCuePlayedRef.current) {
               try {
                 playToggleOn();
-              } catch { }
+              } catch {}
               startCuePlayedRef.current = true;
             }
             pillDispatch({ type: "PTT_START" });
@@ -1701,7 +1738,8 @@ const AppInner: React.FC = () => {
               startResult = latestTransRef.current.start();
             } catch (err) {
               pushTrace(
-                `PTT double-tap start failed synchronously: ${err instanceof Error ? err.message : String(err)
+                `PTT double-tap start failed synchronously: ${
+                  err instanceof Error ? err.message : String(err)
                 }`,
               );
               clearActiveCapture(tokenId);
@@ -1732,7 +1770,8 @@ const AppInner: React.FC = () => {
           }
         } else {
           lastTapUpRef.current = now;
-          if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
+          if (doubleTapTimerRef.current)
+            clearTimeout(doubleTapTimerRef.current);
           doubleTapTimerRef.current = setTimeout(() => {
             lastTapUpRef.current = null;
             doubleTapTimerRef.current = null;
@@ -1801,7 +1840,7 @@ const AppInner: React.FC = () => {
         onExpand={() => {
           // Check if paste shortcut was pressed within last 5 seconds
           const pasteTs = lastPasteShortcutTsRef.current;
-          const withinWindow = pasteTs && (Date.now() - pasteTs) < 5000;
+          const withinWindow = pasteTs && Date.now() - pasteTs < 5000;
           setInitialSettingsTab(withinWindow ? "history" : "settings");
           // Clear the timestamp so subsequent expands don't trigger history
           lastPasteShortcutTsRef.current = null;
@@ -1831,11 +1870,12 @@ const AppInner: React.FC = () => {
             }
             try {
               await window.electron?.showFloatingBar?.();
-            } catch { }
+            } catch {}
             return;
           }
 
-          const message = "Floating Bar Hidden. Use the Tray Menu to bring it back.";
+          const message =
+            "Floating Bar Hidden. Use the Tray Menu to bring it back.";
           // If expanded, defer notification until collapse to avoid jank
           if (pillState === "EXPANDED") {
             setPendingHideAfterCollapse({

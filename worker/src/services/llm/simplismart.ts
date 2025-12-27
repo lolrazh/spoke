@@ -28,15 +28,17 @@ import {
   SIMPLISMART_LLM_MODEL_UUID,
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
-} from '../../config';
-import { safeJson } from '../../utils/ws';
-import { safely } from '../../utils/safely';
+} from "../../config";
+import { safeJson } from "../../utils/ws";
+import { safely } from "../../utils/safely";
 
-export async function chatComplete(opts: ChatCompleteOptions): Promise<SimplismartChatResult> {
+export async function chatComplete(
+  opts: ChatCompleteOptions,
+): Promise<SimplismartChatResult> {
   const {
     apiKey,
     model = SIMPLISMART_LLM_DEFAULT_MODEL,
-    systemPrompt = '',
+    systemPrompt = "",
     userContent,
     stream = false,
     temperature = LLM_DEFAULT_TEMPERATURE,
@@ -51,15 +53,15 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   if (signal) {
     if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort);
+    else signal.addEventListener("abort", onExternalAbort);
   }
 
   try {
     const body: any = {
       model,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
       ],
       max_tokens: 1024,
       stream,
@@ -67,10 +69,10 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
     };
 
     const res = await fetch(SIMPLISMART_LLM_ENDPOINT, {
-      method: 'POST',
+      method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         id: SIMPLISMART_LLM_MODEL_UUID,
       },
       body: JSON.stringify(body),
@@ -79,26 +81,33 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
     const headersAt = Date.now();
 
     if (!res.ok) {
-      const t = await res.text().catch(() => '');
+      const t = await res.text().catch(() => "");
       throw new Error(`Simplismart Chat error: ${res.status} ${t}`);
     }
 
     if (!stream) {
       const json = (await res.json()) as any;
       const content =
-        json?.choices?.[0]?.message?.content ?? json?.choices?.[0]?.delta?.content ?? '';
+        json?.choices?.[0]?.message?.content ??
+        json?.choices?.[0]?.delta?.content ??
+        "";
       const bodyDoneAt = Date.now();
 
-      return { text: content || '', timings: { startAt, headersAt, bodyDoneAt } };
+      return {
+        text: content || "",
+        timings: { startAt, headersAt, bodyDoneAt },
+      };
     }
 
     // Streamed SSE response
     const reader = res.body?.getReader();
     if (!reader) {
-      throw new Error('Simplismart Chat streaming not supported: missing body reader');
+      throw new Error(
+        "Simplismart Chat streaming not supported: missing body reader",
+      );
     }
-    let buf = '';
-    let out = '';
+    let buf = "";
+    let out = "";
     let firstDeltaAt: number | undefined = undefined;
     const decoder = new TextDecoder();
     for (;;) {
@@ -106,18 +115,18 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       for (;;) {
-        const idx = buf.indexOf('\n');
+        const idx = buf.indexOf("\n");
         if (idx === -1) break;
         const line = buf.slice(0, idx).trim();
         buf = buf.slice(idx + 1);
         if (!line) continue;
-        if (line.startsWith('data:')) {
+        if (line.startsWith("data:")) {
           const data = line.slice(5).trim();
-          if (data === '[DONE]') continue;
+          if (data === "[DONE]") continue;
           const obj = safeJson<any>(data);
           if (!obj) continue;
           const choice = obj?.choices?.[0];
-          const delta = choice?.delta?.content ?? '';
+          const delta = choice?.delta?.content ?? "";
           if (delta) {
             if (!firstDeltaAt) firstDeltaAt = Date.now();
             out += delta;
@@ -130,9 +139,12 @@ export async function chatComplete(opts: ChatCompleteOptions): Promise<Simplisma
     }
     const bodyDoneAt = Date.now();
 
-    return { text: out, timings: { startAt, headersAt, firstDeltaAt, bodyDoneAt } };
+    return {
+      text: out,
+      timings: { startAt, headersAt, firstDeltaAt, bodyDoneAt },
+    };
   } finally {
     clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+    if (signal) signal.removeEventListener("abort", onExternalAbort);
   }
 }

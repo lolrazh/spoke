@@ -35,4 +35,3 @@ export class FakeAudioWorkletNode {
   connect() {}
   disconnect() {}
 }
-

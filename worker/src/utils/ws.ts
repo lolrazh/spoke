@@ -1,4 +1,4 @@
-export function safeClose(ws: WebSocket, code = 1000, reason = 'OK') {
+export function safeClose(ws: WebSocket, code = 1000, reason = "OK") {
   try {
     ws.close(code, reason);
   } catch {
@@ -13,4 +13,3 @@ export function safeJson<T = any>(s: string): T | null {
     return null;
   }
 }
-

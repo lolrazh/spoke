@@ -2,14 +2,18 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { ActiveDisplayPayload, MicDevice, TranscriptionItem } from "./types/shared";
+import type {
+  ActiveDisplayPayload,
+  MicDevice,
+  TranscriptionItem,
+} from "./types/shared";
 
 // ============================================================================
 // CRITICAL: Pre-inject Supabase session (MUST run before any renderer code)
 // ============================================================================
 // Electron's localStorage is unreliable with file:// URLs in packaged builds.
 // We store Supabase session in electron-store and inject it here.
-// 
+//
 // IMPORTANT: We expose a "waitForSessionReady" function so the renderer can WAIT
 // for session injection to complete before initializing Supabase.
 // This prevents the race condition where Supabase reads empty localStorage.
@@ -25,7 +29,10 @@ const sessionReadyPromise = new Promise<void>((resolve) => {
 
 (async () => {
   try {
-    const sessionData = await ipcRenderer.invoke("session:get-all") as Record<string, string>;
+    const sessionData = (await ipcRenderer.invoke("session:get-all")) as Record<
+      string,
+      string
+    >;
     for (const [key, value] of Object.entries(sessionData)) {
       localStorage.setItem(key, value);
     }
@@ -38,8 +45,10 @@ const sessionReadyPromise = new Promise<void>((resolve) => {
 })();
 
 // Expose a FUNCTION that returns the promise - bare promises don't serialize!
-contextBridge.exposeInMainWorld("waitForSessionReady", () => sessionReadyPromise);
-
+contextBridge.exposeInMainWorld(
+  "waitForSessionReady",
+  () => sessionReadyPromise,
+);
 
 // Expose dev flags so renderer can bypass auth/onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
@@ -79,10 +88,8 @@ contextBridge.exposeInMainWorld("contextMenu", {
 contextBridge.exposeInMainWorld("transcript", {
   update: (text: string) => ipcRenderer.send("transcript:update", text),
   subscribe: (cb: (text: string) => void) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      text: string,
-    ) => cb(text);
+    const listener = (_event: Electron.IpcRendererEvent, text: string) =>
+      cb(text);
     ipcRenderer.on("transcript:updated", listener);
     return () => ipcRenderer.removeListener("transcript:updated", listener);
   },
@@ -100,7 +107,10 @@ contextBridge.exposeInMainWorld("selection", {
 
 contextBridge.exposeInMainWorld("notifications", {
   send: (message: string, actionId?: string | null) =>
-    ipcRenderer.send("show-notification", { message, actionId: actionId ?? null }),
+    ipcRenderer.send("show-notification", {
+      message,
+      actionId: actionId ?? null,
+    }),
   on: (
     callback: (payload: { message: string; actionId?: string | null }) => void,
   ) => {
@@ -221,8 +231,10 @@ contextBridge.exposeInMainWorld("electron", {
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
   resetOnboardingFlag: () => ipcRenderer.invoke("onboarding:reset-local-flag"),
-  getOnboardingStep: (): Promise<string | null> => ipcRenderer.invoke("onboarding:get-step"),
-  setOnboardingStep: (step: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("onboarding:set-step", step),
+  getOnboardingStep: (): Promise<string | null> =>
+    ipcRenderer.invoke("onboarding:get-step"),
+  setOnboardingStep: (step: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("onboarding:set-step", step),
   getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Permission lifecycle helpers
   postPermissionGrant: (type: "accessibility" | "microphone") =>
@@ -244,7 +256,9 @@ contextBridge.exposeInMainWorld("electron", {
   // Dock visibility helpers (macOS only)
   getDockVisible: (): Promise<{ visible: boolean }> =>
     ipcRenderer.invoke("dock:get-visible"),
-  setDockVisible: (visible: boolean): Promise<{ ok: boolean; error?: string }> =>
+  setDockVisible: (
+    visible: boolean,
+  ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("dock:set-visible", { visible }),
   // Generic external URL opener for OAuth links
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
@@ -253,8 +267,11 @@ contextBridge.exposeInMainWorld("electron", {
   // Renderer lifecycle
   rendererReady: () => ipcRenderer.send("renderer-ready"),
   // Screenshot capture (Phase 1 OCR)
-  takeScreenshot: (options?: { display?: 'active' | number; quality?: number; maxDimension?: number }) =>
-    ipcRenderer.invoke("screenshot:capture", options),
+  takeScreenshot: (options?: {
+    display?: "active" | number;
+    quality?: number;
+    maxDimension?: number;
+  }) => ipcRenderer.invoke("screenshot:capture", options),
   testScreenshot: () => ipcRenderer.invoke("screenshot:test"),
 });
 
@@ -267,7 +284,11 @@ contextBridge.exposeInMainWorld("app", {
 contextBridge.exposeInMainWorld("transcriptions", {
   getAll: (): Promise<TranscriptionItem[]> =>
     ipcRenderer.invoke("transcriptions:get-all"),
-  save: (payload: { text: string; timestamp: number; mode: "dictation" | "edit" }): Promise<TranscriptionItem> =>
+  save: (payload: {
+    text: string;
+    timestamp: number;
+    mode: "dictation" | "edit";
+  }): Promise<TranscriptionItem> =>
     ipcRenderer.invoke("transcriptions:save", payload),
   delete: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("transcriptions:delete", { id }),

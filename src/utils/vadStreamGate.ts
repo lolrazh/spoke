@@ -27,16 +27,15 @@ export class VadStreamGate {
   private timeMs = 0; // approximate timeline in ms, step by WINDOW_MS
   private currentFrameHasSpeech = false; // track if current frame contains speech
 
-  constructor(
-    engine: VadEngine,
-    onEvent?: (ev: VadEvent) => void,
-  ) {
+  constructor(engine: VadEngine, onEvent?: (ev: VadEvent) => void) {
     this.engine = engine;
     this.gate = new VadGate();
     this.onEvent = onEvent;
     this.windowSamples = Math.round((SAMPLE_RATE_HZ * WINDOW_MS) / 1000);
     this.preRollSamples = Math.round((SAMPLE_RATE_HZ * PRE_ROLL_MS) / 1000);
-    this.postRollSamples = Math.round((SAMPLE_RATE_HZ * POST_ROLL_MS_VAD) / 1000);
+    this.postRollSamples = Math.round(
+      (SAMPLE_RATE_HZ * POST_ROLL_MS_VAD) / 1000,
+    );
     this.preRollBuf = new Int16Array(this.preRollSamples);
   }
 
@@ -59,7 +58,8 @@ export class VadStreamGate {
 
   /** Push a full Int16 frame; returns zero or more Int16 chunks to forward */
   pushFrame(frameBuf: ArrayBuffer | Int16Array): Int16Array[] {
-    const int16 = frameBuf instanceof Int16Array ? frameBuf : new Int16Array(frameBuf);
+    const int16 =
+      frameBuf instanceof Int16Array ? frameBuf : new Int16Array(frameBuf);
     // Convert to Float32 in [-1,1]
     const f32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
@@ -116,14 +116,18 @@ export class VadStreamGate {
 
       const events = this.gate.drainEvents();
       for (const ev of events) {
-        try { this.onEvent?.(ev); } catch {}
+        try {
+          this.onEvent?.(ev);
+        } catch {}
         if (ev.type === "speech_start") {
           // On start, flush pre-roll first as a single contiguous chunk
           if (this.preRollCount > 0) {
             const n = this.preRollCount;
             const chunk = new Int16Array(n);
             // Reconstruct contiguous order from ring buffer
-            const start = (this.preRollHead - n + this.preRollBuf.length) % this.preRollBuf.length;
+            const start =
+              (this.preRollHead - n + this.preRollBuf.length) %
+              this.preRollBuf.length;
             const first = Math.min(n, this.preRollBuf.length - start);
             chunk.set(this.preRollBuf.subarray(start, start + first), 0);
             if (n > first) {
@@ -144,7 +148,10 @@ export class VadStreamGate {
     if (this.currentFrameHasSpeech || this.tailRemainingSamples > 0) {
       out.push(int16);
       if (this.tailRemainingSamples > 0) {
-        this.tailRemainingSamples = Math.max(0, this.tailRemainingSamples - int16.length);
+        this.tailRemainingSamples = Math.max(
+          0,
+          this.tailRemainingSamples - int16.length,
+        );
       }
     } else {
       // This frame is silence - buffer it to pre-roll
@@ -154,7 +161,10 @@ export class VadStreamGate {
         if (this.preRollSamples === 0) break;
         this.preRollBuf[this.preRollHead] = src[i];
         this.preRollHead = (this.preRollHead + 1) % this.preRollBuf.length;
-        this.preRollCount = Math.min(this.preRollCount + 1, this.preRollBuf.length);
+        this.preRollCount = Math.min(
+          this.preRollCount + 1,
+          this.preRollBuf.length,
+        );
       }
     }
 
@@ -173,4 +183,3 @@ export class VadStreamGate {
     return [];
   }
 }
-

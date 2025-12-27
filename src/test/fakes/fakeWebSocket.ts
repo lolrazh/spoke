@@ -41,11 +41,18 @@ export class FakeWebSocket {
     this.sent.push(data);
   }
 
-  addEventListener(type: "open" | "message" | "error" | "close", cb: Listener, opts?: AddEventListenerOptions) {
+  addEventListener(
+    type: "open" | "message" | "error" | "close",
+    cb: Listener,
+    opts?: AddEventListenerOptions,
+  ) {
     (this.listeners[type] ||= []).push(cb);
   }
 
-  removeEventListener(type: "open" | "message" | "error" | "close", cb: Listener) {
+  removeEventListener(
+    type: "open" | "message" | "error" | "close",
+    cb: Listener,
+  ) {
     this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== cb);
   }
 
@@ -61,4 +68,3 @@ export class FakeWebSocket {
     (this.listeners.close || []).forEach((fn) => fn(ev));
   }
 }
-

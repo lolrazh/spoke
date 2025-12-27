@@ -32,7 +32,7 @@ export function stripHallucinations(text: string): string {
   // Try to match and remove each hallucination pattern
   for (const pattern of HALLUCINATION_PATTERNS) {
     if (pattern.test(trimmed)) {
-      const cleaned = trimmed.replace(pattern, '').trim();
+      const cleaned = trimmed.replace(pattern, "").trim();
 
       // Don't strip if the result would be empty - let user retry dictation
       if (cleaned.length === 0) {

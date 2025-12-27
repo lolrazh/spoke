@@ -72,9 +72,14 @@ export const ParticlesCanvas: React.FC<ParticlesCanvasProps> = ({
     };
 
     const initStars = () => {
-      const baseDensity = Math.min(420, Math.floor((window.innerWidth * window.innerHeight) / 20000));
+      const baseDensity = Math.min(
+        420,
+        Math.floor((window.innerWidth * window.innerHeight) / 20000),
+      );
       const adjustedDensity = Math.floor(baseDensity * density);
-      starsRef.current = new Array(Math.max(120, adjustedDensity)).fill(0).map(() => makeStar());
+      starsRef.current = new Array(Math.max(120, adjustedDensity))
+        .fill(0)
+        .map(() => makeStar());
     };
     initStars();
 
@@ -120,14 +125,14 @@ export const ParticlesCanvas: React.FC<ParticlesCanvasProps> = ({
         const localAlpha = Math.max(0.3, Math.min(1, distFrac * 1.05));
         ctx2.globalAlpha = opacity * localAlpha;
         // Draw a short trail for motion impression
-        const trail = Math.min(10 * dpr, (s.speed * dt * 0.7));
+        const trail = Math.min(10 * dpr, s.speed * dt * 0.7);
         ctx2.beginPath();
         ctx2.arc(x, y, rpx * 0.65, 0, Math.PI * 2);
         ctx2.fill();
         // trail line slightly behind the star along radial direction
         const tx = x + Math.cos(s.theta) * trail;
         const ty = y + Math.sin(s.theta) * trail;
-        ctx2.globalAlpha = (opacity * 0.45) * localAlpha;
+        ctx2.globalAlpha = opacity * 0.45 * localAlpha;
         ctx2.strokeStyle = "rgba(255,255,255,0.8)";
         ctx2.lineWidth = Math.max(0.5 * dpr, rpx * 0.25);
         ctx2.beginPath();

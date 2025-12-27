@@ -57,7 +57,7 @@ export function isTranscriptionHistoryInitialized(): boolean {
  * Callback is called immediately with current state, then on each change.
  */
 export function subscribeTranscriptionHistory(
-  listener: (items: TranscriptionItem[]) => void
+  listener: (items: TranscriptionItem[]) => void,
 ): () => void {
   listeners.add(listener);
   listener(items);
@@ -72,7 +72,7 @@ export function subscribeTranscriptionHistory(
  */
 export async function addTranscription(
   text: string,
-  mode: "dictation" | "edit"
+  mode: "dictation" | "edit",
 ): Promise<TranscriptionItem> {
   const newItem = await window.transcriptions.save({
     text,

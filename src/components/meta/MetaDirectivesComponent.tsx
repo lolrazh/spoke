@@ -4,7 +4,7 @@ import { MOTION } from "../../config/motionTokens";
 
 interface TextSegment {
   text: string;
-  type: 'normal' | 'strikethrough' | 'insertion';
+  type: "normal" | "strikethrough" | "insertion";
   replacementText?: string; // For character-level replacements (e.g., 'a' -> 'e')
 }
 
@@ -23,8 +23,8 @@ const tricks: Trick[] = [
     segments: [
       { text: "I need it by ", type: "normal" },
       { text: "12pm Friday. Actually, scratch that. ", type: "strikethrough" },
-      { text: "11am Thursday.", type: "normal" }
-    ]
+      { text: "11am Thursday.", type: "normal" },
+    ],
   },
   {
     id: "spelling",
@@ -35,7 +35,7 @@ const tricks: Trick[] = [
       { text: "a", type: "strikethrough", replacementText: "e" },
       { text: "mma model?", type: "normal" },
       { text: " Spell that G-E-M-M-A.", type: "strikethrough" },
-    ]
+    ],
   },
   {
     id: "quotes",
@@ -45,8 +45,8 @@ const tricks: Trick[] = [
       { text: "They said I was ", type: "normal" },
       { text: "quote-unquote ", type: "strikethrough", replacementText: '"' },
       { text: "lucky.", type: "normal" },
-      { text: '"', type: "insertion" }
-    ]
+      { text: '"', type: "insertion" },
+    ],
   },
   {
     id: "replace",
@@ -55,8 +55,8 @@ const tricks: Trick[] = [
     segments: [
       { text: "Now we're dictating on ", type: "normal" },
       { text: "Windows. Wait, replace Windows with ", type: "strikethrough" },
-      { text: "MacOS", type: "normal" }
-    ]
+      { text: "MacOS", type: "normal" },
+    ],
   },
   {
     id: "emphasis",
@@ -64,11 +64,15 @@ const tricks: Trick[] = [
     description: "Add emphasis to specific words or phrases",
     segments: [
       { text: "Okay that was like", type: "normal" },
-      { text: " really ", type: "strikethrough", replacementText: " **really** " },
+      {
+        text: " really ",
+        type: "strikethrough",
+        replacementText: " **really** ",
+      },
       { text: "good.", type: "normal" },
-      { text: " Emphasize really ", type: "strikethrough" }
-    ]
-  }
+      { text: " Emphasize really ", type: "strikethrough" },
+    ],
+  },
   // Other tricks will be added later
 ];
 
@@ -79,9 +83,12 @@ const POST_ANIMATION_DELAY_MS = 600; // Slight dwell between cycles per UX guida
 
 // Helper function to split text for smart strikethrough (ignores leading/trailing spaces)
 const splitTextForStrikethrough = (text: string) => {
-  const leadingSpaces = text.match(/^(\s*)/)?.[1] || '';
-  const trailingSpaces = text.match(/(\s*)$/)?.[1] || '';
-  const middleContent = text.slice(leadingSpaces.length, text.length - trailingSpaces.length);
+  const leadingSpaces = text.match(/^(\s*)/)?.[1] || "";
+  const trailingSpaces = text.match(/(\s*)$/)?.[1] || "";
+  const middleContent = text.slice(
+    leadingSpaces.length,
+    text.length - trailingSpaces.length,
+  );
 
   return { leadingSpaces, middleContent, trailingSpaces };
 };
@@ -93,16 +100,18 @@ const SegmentTypewriter: React.FC<{
 }> = ({ segments, onSuccessGlow, onCycleComplete }) => {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentCharIndex, setCurrentCharIndex] = useState(0);
-  const [displayedSegments, setDisplayedSegments] = useState<{
-    segment: TextSegment;
-    text: string;
-    shouldStrike: boolean;
-    isDisappearing: boolean;
-    isReplacing: boolean;
-    isInserting: boolean;
-    measuredWidth?: number;
-    replacementWidth?: number;
-  }[]>([]);
+  const [displayedSegments, setDisplayedSegments] = useState<
+    {
+      segment: TextSegment;
+      text: string;
+      shouldStrike: boolean;
+      isDisappearing: boolean;
+      isReplacing: boolean;
+      isInserting: boolean;
+      measuredWidth?: number;
+      replacementWidth?: number;
+    }[]
+  >([]);
   const [isTyping, setIsTyping] = useState(true);
   const segmentRefs = React.useRef<(HTMLSpanElement | null)[]>([]);
   const triggeredAnimationsRef = React.useRef(false);
@@ -110,19 +119,24 @@ const SegmentTypewriter: React.FC<{
   const timeoutsRef = React.useRef<number[]>([]);
 
   const clearScheduledTimeouts = React.useCallback(() => {
-    timeoutsRef.current.forEach(timeoutId => window.clearTimeout(timeoutId));
+    timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     timeoutsRef.current = [];
   }, []);
 
-  const scheduleTimeout = React.useCallback((callback: () => void, delay: number) => {
-    const timeoutId = window.setTimeout(() => {
-      timeoutsRef.current = timeoutsRef.current.filter(id => id !== timeoutId);
-      callback();
-    }, delay);
+  const scheduleTimeout = React.useCallback(
+    (callback: () => void, delay: number) => {
+      const timeoutId = window.setTimeout(() => {
+        timeoutsRef.current = timeoutsRef.current.filter(
+          (id) => id !== timeoutId,
+        );
+        callback();
+      }, delay);
 
-    timeoutsRef.current.push(timeoutId);
-    return timeoutId;
-  }, []);
+      timeoutsRef.current.push(timeoutId);
+      return timeoutId;
+    },
+    [],
+  );
 
   // Reset when segments change
   useEffect(() => {
@@ -154,7 +168,7 @@ const SegmentTypewriter: React.FC<{
         // Add current character
         const newChar = segmentText[currentCharIndex];
 
-        setDisplayedSegments(prev => {
+        setDisplayedSegments((prev) => {
           const updated = [...prev];
           if (updated.length <= currentSegmentIndex) {
             updated.push({
@@ -163,7 +177,7 @@ const SegmentTypewriter: React.FC<{
               shouldStrike: false,
               isDisappearing: false,
               isReplacing: false,
-              isInserting: false
+              isInserting: false,
             });
           } else {
             updated[currentSegmentIndex].text += newChar;
@@ -171,20 +185,24 @@ const SegmentTypewriter: React.FC<{
           return updated;
         });
 
-        setCurrentCharIndex(prev => prev + 1);
+        setCurrentCharIndex((prev) => prev + 1);
       }, 25); // 25ms per character for faster typing
 
       return () => clearTimeout(timeout);
     } else {
       // Segment complete, move to next segment
-      setCurrentSegmentIndex(prev => prev + 1);
+      setCurrentSegmentIndex((prev) => prev + 1);
       setCurrentCharIndex(0);
     }
   }, [currentSegmentIndex, currentCharIndex, segments]);
 
   // Trigger strikethrough animation and disappearance after ALL text is finished typing
   useEffect(() => {
-    if (isTyping || displayedSegments.length !== segments.length || triggeredAnimationsRef.current) {
+    if (
+      isTyping ||
+      displayedSegments.length !== segments.length ||
+      triggeredAnimationsRef.current
+    ) {
       return;
     }
 
@@ -192,13 +210,21 @@ const SegmentTypewriter: React.FC<{
 
     // Find all strikethrough segments
     const strikethroughIndices = displayedSegments
-      .map((displayed, index) => (displayed.segment.type === "strikethrough" && !displayed.shouldStrike ? index : -1))
-      .filter(index => index !== -1);
+      .map((displayed, index) =>
+        displayed.segment.type === "strikethrough" && !displayed.shouldStrike
+          ? index
+          : -1,
+      )
+      .filter((index) => index !== -1);
 
     // Find all insertion segments
     const insertionIndices = displayedSegments
-      .map((displayed, index) => (displayed.segment.type === "insertion" && !displayed.isInserting ? index : -1))
-      .filter(index => index !== -1);
+      .map((displayed, index) =>
+        displayed.segment.type === "insertion" && !displayed.isInserting
+          ? index
+          : -1,
+      )
+      .filter((index) => index !== -1);
 
     if (strikethroughIndices.length === 0 && insertionIndices.length === 0) {
       scheduleTimeout(() => {
@@ -212,9 +238,9 @@ const SegmentTypewriter: React.FC<{
 
     // Strike all strikethrough segments simultaneously
     scheduleTimeout(() => {
-      setDisplayedSegments(prev => {
+      setDisplayedSegments((prev) => {
         const updated = [...prev];
-        strikethroughIndices.forEach(index => {
+        strikethroughIndices.forEach((index) => {
           updated[index].shouldStrike = true;
         });
         return updated;
@@ -223,7 +249,7 @@ const SegmentTypewriter: React.FC<{
 
     // Measure widths and trigger disappearance/replacement
     scheduleTimeout(() => {
-      strikethroughIndices.forEach(index => {
+      strikethroughIndices.forEach((index) => {
         const element = segmentRefs.current[index];
         if (!element) return;
 
@@ -245,7 +271,7 @@ const SegmentTypewriter: React.FC<{
           document.body.removeChild(tempSpan);
 
           // Set widths and trigger replacement
-          setDisplayedSegments(prev => {
+          setDisplayedSegments((prev) => {
             const updated = [...prev];
             updated[index].measuredWidth = oldWidth;
             updated[index].replacementWidth = newWidth;
@@ -255,7 +281,7 @@ const SegmentTypewriter: React.FC<{
           // Trigger replacement animation
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              setDisplayedSegments(prev => {
+              setDisplayedSegments((prev) => {
                 const updated = [...prev];
                 updated[index].isReplacing = true;
                 return updated;
@@ -266,7 +292,7 @@ const SegmentTypewriter: React.FC<{
           // For regular removal: measure and collapse
           const width = element.offsetWidth;
 
-          setDisplayedSegments(prev => {
+          setDisplayedSegments((prev) => {
             const updated = [...prev];
             updated[index].measuredWidth = width;
             return updated;
@@ -275,7 +301,7 @@ const SegmentTypewriter: React.FC<{
           // Trigger collapse animation
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              setDisplayedSegments(prev => {
+              setDisplayedSegments((prev) => {
                 const updated = [...prev];
                 updated[index].isDisappearing = true;
                 return updated;
@@ -286,7 +312,7 @@ const SegmentTypewriter: React.FC<{
       });
 
       // Handle insertions - measure and trigger insertion animation
-      insertionIndices.forEach(index => {
+      insertionIndices.forEach((index) => {
         const element = segmentRefs.current[index];
         if (!element) return;
 
@@ -303,7 +329,7 @@ const SegmentTypewriter: React.FC<{
         document.body.removeChild(tempSpan);
 
         // Set measured width (start from 0, will expand to this)
-        setDisplayedSegments(prev => {
+        setDisplayedSegments((prev) => {
           const updated = [...prev];
           updated[index].measuredWidth = insertionWidth;
           return updated;
@@ -312,7 +338,7 @@ const SegmentTypewriter: React.FC<{
         // Trigger insertion animation
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            setDisplayedSegments(prev => {
+            setDisplayedSegments((prev) => {
               const updated = [...prev];
               updated[index].isInserting = true;
               return updated;
@@ -333,7 +359,14 @@ const SegmentTypewriter: React.FC<{
         }
       }, 1000); // Full glow cycle
     }, 2050); // 1050ms before animations start + 1000ms animation duration
-  }, [isTyping, displayedSegments, segments, onSuccessGlow, onCycleComplete, scheduleTimeout]);
+  }, [
+    isTyping,
+    displayedSegments,
+    segments,
+    onSuccessGlow,
+    onCycleComplete,
+    scheduleTimeout,
+  ]);
 
   return (
     <div className="text-sm leading-relaxed text-white font-sans">
@@ -341,32 +374,37 @@ const SegmentTypewriter: React.FC<{
         {displayedSegments.map((displayed, index) => (
           <span
             key={index}
-            ref={el => segmentRefs.current[index] = el}
-            className={`inline-block overflow-hidden ${displayed.isDisappearing ? 'segment-collapsing' : ''
-              } ${displayed.isReplacing ? 'segment-replacing' : ''
-              } ${displayed.isInserting ? 'segment-inserting' : ''
-              }`}
+            ref={(el) => (segmentRefs.current[index] = el)}
+            className={`inline-block overflow-hidden ${
+              displayed.isDisappearing ? "segment-collapsing" : ""
+            } ${displayed.isReplacing ? "segment-replacing" : ""} ${
+              displayed.isInserting ? "segment-inserting" : ""
+            }`}
             style={{
-              width: displayed.measuredWidth !== undefined
-                ? (displayed.isDisappearing
-                  ? '0px'
-                  : displayed.isReplacing && displayed.replacementWidth !== undefined
-                    ? `${displayed.replacementWidth}px`
-                    : displayed.isInserting
-                      ? `${displayed.measuredWidth}px`
-                      : `${displayed.measuredWidth}px`)
-                : displayed.segment.type === 'insertion' && !displayed.isInserting
-                  ? '0px'
-                  : 'auto',
+              width:
+                displayed.measuredWidth !== undefined
+                  ? displayed.isDisappearing
+                    ? "0px"
+                    : displayed.isReplacing &&
+                        displayed.replacementWidth !== undefined
+                      ? `${displayed.replacementWidth}px`
+                      : displayed.isInserting
+                        ? `${displayed.measuredWidth}px`
+                        : `${displayed.measuredWidth}px`
+                  : displayed.segment.type === "insertion" &&
+                      !displayed.isInserting
+                    ? "0px"
+                    : "auto",
             }}
           >
-            {displayed.segment.type === 'strikethrough' ? (
+            {displayed.segment.type === "strikethrough" ? (
               displayed.segment.replacementText && displayed.isReplacing ? (
                 // Replacement: show both old and new text with crossfade
-                <span className="relative inline-block" style={{ whiteSpace: 'pre' }}>
-                  <span className="replacement-fade-out">
-                    {displayed.text}
-                  </span>
+                <span
+                  className="relative inline-block"
+                  style={{ whiteSpace: "pre" }}
+                >
+                  <span className="replacement-fade-out">{displayed.text}</span>
                   <span className="replacement-fade-in absolute top-0 left-0">
                     {displayed.segment.replacementText}
                   </span>
@@ -374,23 +412,31 @@ const SegmentTypewriter: React.FC<{
               ) : (
                 // Regular strikethrough or pre-replacement state - Smart split rendering
                 (() => {
-                  const { leadingSpaces, middleContent, trailingSpaces } = splitTextForStrikethrough(displayed.text);
+                  const { leadingSpaces, middleContent, trailingSpaces } =
+                    splitTextForStrikethrough(displayed.text);
                   return (
-                    <span className="inline-block" style={{ whiteSpace: 'pre' }}>
+                    <span
+                      className="inline-block"
+                      style={{ whiteSpace: "pre" }}
+                    >
                       {leadingSpaces && (
-                        <span className={`inline-block ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}>
+                        <span
+                          className={`inline-block ${displayed.isDisappearing ? "disappear-reverse" : ""}`}
+                        >
                           {leadingSpaces}
                         </span>
                       )}
                       {middleContent && (
                         <span
-                          className={`inline-block ${displayed.shouldStrike ? 'strikethrough-animate' : ''} ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}
+                          className={`inline-block ${displayed.shouldStrike ? "strikethrough-animate" : ""} ${displayed.isDisappearing ? "disappear-reverse" : ""}`}
                         >
                           {middleContent}
                         </span>
                       )}
                       {trailingSpaces && (
-                        <span className={`inline-block ${displayed.isDisappearing ? 'disappear-reverse' : ''}`}>
+                        <span
+                          className={`inline-block ${displayed.isDisappearing ? "disappear-reverse" : ""}`}
+                        >
                           {trailingSpaces}
                         </span>
                       )}
@@ -398,13 +444,21 @@ const SegmentTypewriter: React.FC<{
                   );
                 })()
               )
-            ) : displayed.segment.type === 'insertion' ? (
+            ) : displayed.segment.type === "insertion" ? (
               // Insertion: fade in from invisible
-              <span className={`inline-block ${displayed.isInserting ? 'insertion-fade-in' : ''}`} style={{ whiteSpace: 'pre', opacity: displayed.isInserting ? undefined : 0 }}>
+              <span
+                className={`inline-block ${displayed.isInserting ? "insertion-fade-in" : ""}`}
+                style={{
+                  whiteSpace: "pre",
+                  opacity: displayed.isInserting ? undefined : 0,
+                }}
+              >
                 {displayed.text}
               </span>
             ) : (
-              <span className="inline-block" style={{ whiteSpace: 'pre' }}>{displayed.text}</span>
+              <span className="inline-block" style={{ whiteSpace: "pre" }}>
+                {displayed.text}
+              </span>
             )}
           </span>
         ))}
@@ -418,7 +472,9 @@ const TricksComponent: React.FC = () => {
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [showCardGlow, setShowCardGlow] = useState(false);
-  const [cardPhase, setCardPhase] = useState<"entering" | "steady" | "exiting">("entering");
+  const [cardPhase, setCardPhase] = useState<"entering" | "steady" | "exiting">(
+    "entering",
+  );
   const [cycleId, setCycleId] = useState(0);
   const hoveredIndexRef = React.useRef<number | null>(null);
   const transitionTimersRef = React.useRef<number[]>([]);
@@ -426,21 +482,31 @@ const TricksComponent: React.FC = () => {
   const selectedTrick = tricks[activeCardIndex];
 
   const clearTransitionTimers = React.useCallback(() => {
-    transitionTimersRef.current.forEach(timerId => window.clearTimeout(timerId));
+    transitionTimersRef.current.forEach((timerId) =>
+      window.clearTimeout(timerId),
+    );
     transitionTimersRef.current = [];
   }, []);
 
-  const scheduleTransitionTimeout = React.useCallback((callback: () => void, delay: number) => {
-    const timerId = window.setTimeout(() => {
-      transitionTimersRef.current = transitionTimersRef.current.filter(id => id !== timerId);
-      callback();
-    }, delay);
-    transitionTimersRef.current.push(timerId);
-    return timerId;
-  }, []);
+  const scheduleTransitionTimeout = React.useCallback(
+    (callback: () => void, delay: number) => {
+      const timerId = window.setTimeout(() => {
+        transitionTimersRef.current = transitionTimersRef.current.filter(
+          (id) => id !== timerId,
+        );
+        callback();
+      }, delay);
+      transitionTimersRef.current.push(timerId);
+      return timerId;
+    },
+    [],
+  );
 
   useEffect(() => {
-    const timerId = window.setTimeout(() => setCardPhase("steady"), ENTRY_DURATION_MS);
+    const timerId = window.setTimeout(
+      () => setCardPhase("steady"),
+      ENTRY_DURATION_MS,
+    );
     return () => window.clearTimeout(timerId);
   }, []);
 
@@ -449,10 +515,19 @@ const TricksComponent: React.FC = () => {
   const beginCardTransition = React.useCallback(
     (
       nextIndex: number,
-      options?: { delayBeforeExit?: number; forceRestart?: boolean; immediateHighlight?: boolean }
+      options?: {
+        delayBeforeExit?: number;
+        forceRestart?: boolean;
+        immediateHighlight?: boolean;
+      },
     ) => {
-      const { delayBeforeExit = 0, forceRestart = false, immediateHighlight = false } = options || {};
-      const shouldTransitionCard = forceRestart || nextIndex !== activeCardIndex;
+      const {
+        delayBeforeExit = 0,
+        forceRestart = false,
+        immediateHighlight = false,
+      } = options || {};
+      const shouldTransitionCard =
+        forceRestart || nextIndex !== activeCardIndex;
 
       clearTransitionTimers();
       setShowCardGlow(false);
@@ -476,7 +551,7 @@ const TricksComponent: React.FC = () => {
 
         scheduleTransitionTimeout(() => {
           setActiveCardIndex(nextIndex);
-          setCycleId(prev => prev + 1);
+          setCycleId((prev) => prev + 1);
           setCardPhase("entering");
 
           scheduleTransitionTimeout(() => {
@@ -485,7 +560,7 @@ const TricksComponent: React.FC = () => {
         }, EXIT_DURATION_MS);
       }, delayBeforeExit);
     },
-    [activeCardIndex, clearTransitionTimers, scheduleTransitionTimeout]
+    [activeCardIndex, clearTransitionTimers, scheduleTransitionTimeout],
   );
 
   const handleTypewriterComplete = React.useCallback(() => {
@@ -551,8 +626,11 @@ const TricksComponent: React.FC = () => {
             <motion.button
               key={trick.id}
               variants={tagVariants}
-              className={`meta-directive-tag px-3 py-1.5 ${highlightedIndex === index ? "meta-directive-tag-active" : "meta-directive-tag-inactive"
-                }`}
+              className={`meta-directive-tag px-3 py-1.5 ${
+                highlightedIndex === index
+                  ? "meta-directive-tag-active"
+                  : "meta-directive-tag-inactive"
+              }`}
               type="button"
               onMouseEnter={() => handlePointerEnter(index)}
               onMouseLeave={() => handlePointerLeave(index)}
@@ -560,7 +638,9 @@ const TricksComponent: React.FC = () => {
               onBlur={() => handlePointerLeave(index)}
               layoutId={`tag-${trick.id}`}
             >
-              <span className="font-medium text-xs leading-tight">{trick.title}</span>
+              <span className="font-medium text-xs leading-tight">
+                {trick.title}
+              </span>
             </motion.button>
           ))}
         </div>
@@ -576,7 +656,10 @@ const TricksComponent: React.FC = () => {
                   : { opacity: 1, scale: 1 }
               }
               initial={false}
-              transition={{ duration: MOTION.durations.standard, ease: TRANSITION_EASE }}
+              transition={{
+                duration: MOTION.durations.standard,
+                ease: TRANSITION_EASE,
+              }}
             >
               <div className="text-left overflow-x-auto whitespace-nowrap">
                 <SegmentTypewriter

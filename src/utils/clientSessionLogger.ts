@@ -94,7 +94,9 @@ export interface ClientSessionEvent {
 export function logClientSession(event: ClientSessionEvent): void {
   // Always log to console (structured JSON)
   const level =
-    event.outcome === "success" || event.outcome === "cancelled" ? "info" : "error";
+    event.outcome === "success" || event.outcome === "cancelled"
+      ? "info"
+      : "error";
 
   if (level === "error") {
     console.error("[Session]", event);
@@ -192,7 +194,11 @@ export class ClientSessionEventBuilder {
     return this;
   }
 
-  setWsState(ready: boolean, authenticated: boolean, finalState?: number): this {
+  setWsState(
+    ready: boolean,
+    authenticated: boolean,
+    finalState?: number,
+  ): this {
     this.event.ws_ready = ready;
     this.event.ws_authenticated = authenticated;
     if (finalState !== undefined) {
@@ -220,9 +226,12 @@ export class ClientSessionEventBuilder {
   }): this {
     if (metrics.pttDownMs) this.event.ptt_down_ms = metrics.pttDownMs;
     if (metrics.wsOpenMs) this.event.ws_open_ms = metrics.wsOpenMs;
-    if (metrics.firstFrameOutMs) this.event.first_frame_out_ms = metrics.firstFrameOutMs;
-    if (metrics.lastFrameOutMs) this.event.last_frame_out_ms = metrics.lastFrameOutMs;
-    if (metrics.stopInvokedMs) this.event.stop_invoked_ms = metrics.stopInvokedMs;
+    if (metrics.firstFrameOutMs)
+      this.event.first_frame_out_ms = metrics.firstFrameOutMs;
+    if (metrics.lastFrameOutMs)
+      this.event.last_frame_out_ms = metrics.lastFrameOutMs;
+    if (metrics.stopInvokedMs)
+      this.event.stop_invoked_ms = metrics.stopInvokedMs;
     if (metrics.endSentMs) this.event.end_sent_ms = metrics.endSentMs;
     if (metrics.sttStartMs) this.event.stt_start_ms = metrics.sttStartMs;
     if (metrics.finalRecvMs) this.event.final_recv_ms = metrics.finalRecvMs;
@@ -231,7 +240,11 @@ export class ClientSessionEventBuilder {
     return this;
   }
 
-  setAudioMetrics(frames: number, bytes: number, framesForwarded?: number): this {
+  setAudioMetrics(
+    frames: number,
+    bytes: number,
+    framesForwarded?: number,
+  ): this {
     this.event.frames_produced = frames;
     this.event.bytes_produced = bytes;
     if (framesForwarded !== undefined) {

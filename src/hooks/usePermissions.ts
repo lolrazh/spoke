@@ -28,7 +28,11 @@ export type PermissionProvider = {
   }>;
   requestAccessibilityPermission: () => Promise<{ success: boolean }>;
   openSystemPreferences: (
-    pane: "microphone" | "input-monitoring" | "accessibility" | "screen-recording",
+    pane:
+      | "microphone"
+      | "input-monitoring"
+      | "accessibility"
+      | "screen-recording",
   ) => void | Promise<void>;
 };
 
@@ -55,11 +59,7 @@ const debugPermLog = (...args: unknown[]) => {
   if (typeof window === "undefined") return;
   if (!window?.devFlags?.devConsoleLogs) return;
   try {
-    console.debug(
-      "[Permissions]",
-      new Date().toISOString(),
-      ...args,
-    );
+    console.debug("[Permissions]", new Date().toISOString(), ...args);
   } catch {
     // ignore logging errors
   }
@@ -98,7 +98,8 @@ const defaultProvider: PermissionProvider | null =
           };
         },
         requestScreenRecordingPermission: async () => {
-          const res = await window.electron?.requestScreenRecordingPermission?.();
+          const res =
+            await window.electron?.requestScreenRecordingPermission?.();
           return {
             success: !!res?.success,
             granted: res?.granted ?? false,
@@ -108,14 +109,16 @@ const defaultProvider: PermissionProvider | null =
           const res = await window.electron?.askIM?.();
           return {
             success: !!res?.success,
-            status: (res?.status as "authorized" | "denied" | string) ?? "denied",
+            status:
+              (res?.status as "authorized" | "denied" | string) ?? "denied",
           };
         },
         requestAccessibilityPermission: async () => {
-          const res = (await window.electron?.requestAccessibilityPermission?.()) as
-            | { success?: boolean }
-            | void
-            | undefined;
+          const res =
+            (await window.electron?.requestAccessibilityPermission?.()) as
+              | { success?: boolean }
+              | void
+              | undefined;
           return {
             success:
               !!res && typeof res === "object" && "success" in res
@@ -130,14 +133,29 @@ const defaultProvider: PermissionProvider | null =
     : null;
 
 export function usePermissions(provider?: PermissionProvider, opts?: Options) {
-  const p: PermissionProvider =
-    provider ??
+  const p: PermissionProvider = provider ??
     defaultProvider ?? {
-      checkPermissions: async () => ({ needAX: true, needIM: true, isDev: false }),
-      checkMicrophonePermission: async () => ({ granted: false, status: "unknown" }),
-      requestMicrophonePermission: async () => ({ success: false, granted: false }),
-      checkScreenRecordingPermission: async () => ({ granted: false, status: "unknown" }),
-      requestScreenRecordingPermission: async () => ({ success: false, granted: false }),
+      checkPermissions: async () => ({
+        needAX: true,
+        needIM: true,
+        isDev: false,
+      }),
+      checkMicrophonePermission: async () => ({
+        granted: false,
+        status: "unknown",
+      }),
+      requestMicrophonePermission: async () => ({
+        success: false,
+        granted: false,
+      }),
+      checkScreenRecordingPermission: async () => ({
+        granted: false,
+        status: "unknown",
+      }),
+      requestScreenRecordingPermission: async () => ({
+        success: false,
+        granted: false,
+      }),
       askIM: async () => ({ success: false, status: "denied" }),
       requestAccessibilityPermission: async () => ({ success: false }),
       openSystemPreferences: () => undefined,
@@ -205,22 +223,35 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
 
   const requestMicrophone = async () => {
     try {
-      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: true },
+      }));
       debugPermLog("request:microphone:start");
       const res = await p.requestMicrophonePermission();
       if (res?.success && res?.granted) {
         setPermissions((prev) => ({ ...prev, microphone: true }));
-        setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+        setUi((prev) => ({
+          ...prev,
+          microphone: { loading: false, justGranted: true },
+        }));
         debugPermLog("request:microphone:granted");
-        try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
+        try {
+          await window.electron?.postPermissionGrant?.("microphone");
+        } catch {}
         setTimeout(() => {
           if (!mountedRef.current) return;
-          setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
+          setUi((prev) => ({
+            ...prev,
+            microphone: { ...prev.microphone, justGranted: false },
+          }));
         }, 800);
         return;
       }
       // Open System Settings and poll
-      try { p.openSystemPreferences("microphone"); } catch {}
+      try {
+        p.openSystemPreferences("microphone");
+      } catch {}
       debugPermLog("request:microphone:polling");
       if (timersRef.current.mic) clearInterval(timersRef.current.mic);
       timersRef.current.mic = setInterval(async () => {
@@ -229,38 +260,63 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           clearInterval(timersRef.current.mic);
           timersRef.current.mic = null;
           setPermissions((prev) => ({ ...prev, microphone: true }));
-          setUi((prev) => ({ ...prev, microphone: { loading: false, justGranted: true } }));
+          setUi((prev) => ({
+            ...prev,
+            microphone: { loading: false, justGranted: true },
+          }));
           debugPermLog("request:microphone:granted-via-poll");
-          try { await window.electron?.postPermissionGrant?.("microphone"); } catch {}
+          try {
+            await window.electron?.postPermissionGrant?.("microphone");
+          } catch {}
           setTimeout(() => {
             if (!mountedRef.current) return;
-            setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, justGranted: false } }));
+            setUi((prev) => ({
+              ...prev,
+              microphone: { ...prev.microphone, justGranted: false },
+            }));
           }, 800);
         }
       }, pollMs);
-      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: false },
+      }));
     } catch {
-      setUi((prev) => ({ ...prev, microphone: { ...prev.microphone, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        microphone: { ...prev.microphone, loading: false },
+      }));
     }
   };
 
   const requestScreenRecording = async () => {
     try {
-      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        screenRecording: { ...prev.screenRecording, loading: true },
+      }));
       debugPermLog("request:screen-recording:start");
       const res = await p.requestScreenRecordingPermission();
       if (res?.success && res?.granted) {
         setPermissions((prev) => ({ ...prev, screenRecording: true }));
-        setUi((prev) => ({ ...prev, screenRecording: { loading: false, justGranted: true } }));
+        setUi((prev) => ({
+          ...prev,
+          screenRecording: { loading: false, justGranted: true },
+        }));
         debugPermLog("request:screen-recording:granted");
         setTimeout(() => {
           if (!mountedRef.current) return;
-          setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, justGranted: false } }));
+          setUi((prev) => ({
+            ...prev,
+            screenRecording: { ...prev.screenRecording, justGranted: false },
+          }));
         }, 800);
         return;
       }
       // Open System Settings and poll
-      try { p.openSystemPreferences("screen-recording"); } catch {}
+      try {
+        p.openSystemPreferences("screen-recording");
+      } catch {}
       debugPermLog("request:screen-recording:polling");
       if (timersRef.current.sr) clearInterval(timersRef.current.sr);
       timersRef.current.sr = setInterval(async () => {
@@ -269,36 +325,59 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           clearInterval(timersRef.current.sr);
           timersRef.current.sr = null;
           setPermissions((prev) => ({ ...prev, screenRecording: true }));
-          setUi((prev) => ({ ...prev, screenRecording: { loading: false, justGranted: true } }));
+          setUi((prev) => ({
+            ...prev,
+            screenRecording: { loading: false, justGranted: true },
+          }));
           debugPermLog("request:screen-recording:granted-via-poll");
           setTimeout(() => {
             if (!mountedRef.current) return;
-            setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, justGranted: false } }));
+            setUi((prev) => ({
+              ...prev,
+              screenRecording: { ...prev.screenRecording, justGranted: false },
+            }));
           }, 800);
         }
       }, pollMs);
-      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        screenRecording: { ...prev.screenRecording, loading: false },
+      }));
     } catch {
-      setUi((prev) => ({ ...prev, screenRecording: { ...prev.screenRecording, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        screenRecording: { ...prev.screenRecording, loading: false },
+      }));
     }
   };
 
   const requestInputMonitoring = async () => {
     try {
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: true } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: true },
+      }));
       debugPermLog("request:input-monitoring:start");
       const out = await p.askIM();
       if (out?.success && out.status === "authorized") {
         setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
-        setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+        setUi((prev) => ({
+          ...prev,
+          inputMonitoring: { loading: false, justGranted: true },
+        }));
         debugPermLog("request:input-monitoring:authorized");
         setTimeout(() => {
           if (!mountedRef.current) return;
-          setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
+          }));
         }, 800);
         return;
       }
-      try { p.openSystemPreferences("input-monitoring"); } catch {}
+      try {
+        p.openSystemPreferences("input-monitoring");
+      } catch {}
       debugPermLog("request:input-monitoring:polling");
       if (timersRef.current.im) clearInterval(timersRef.current.im);
       timersRef.current.im = setInterval(async () => {
@@ -307,48 +386,76 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           clearInterval(timersRef.current.im);
           timersRef.current.im = null;
           setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
-          setUi((prev) => ({ ...prev, inputMonitoring: { loading: false, justGranted: true } }));
+          setUi((prev) => ({
+            ...prev,
+            inputMonitoring: { loading: false, justGranted: true },
+          }));
           debugPermLog("request:input-monitoring:authorized-via-poll");
           setTimeout(() => {
             if (!mountedRef.current) return;
-            setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, justGranted: false } }));
+            setUi((prev) => ({
+              ...prev,
+              inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
+            }));
           }, 800);
         }
       }, pollMs);
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: false },
+      }));
     } catch {
-      setUi((prev) => ({ ...prev, inputMonitoring: { ...prev.inputMonitoring, loading: false } }));
+      setUi((prev) => ({
+        ...prev,
+        inputMonitoring: { ...prev.inputMonitoring, loading: false },
+      }));
     }
   };
 
-  const requestAccessibility = async () =>
-    {
-      try {
-        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: true } }));
-        debugPermLog("request:accessibility:start");
-        const out = await p.requestAccessibilityPermission();
-        if (out?.success) {
-          // Will still require user to toggle in System Settings; start polling
+  const requestAccessibility = async () => {
+    try {
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: true },
+      }));
+      debugPermLog("request:accessibility:start");
+      const out = await p.requestAccessibilityPermission();
+      if (out?.success) {
+        // Will still require user to toggle in System Settings; start polling
+      }
+      if (timersRef.current.ax) clearInterval(timersRef.current.ax);
+      timersRef.current.ax = setInterval(async () => {
+        const sys = await p.checkPermissions();
+        if (sys && !sys.needAX) {
+          clearInterval(timersRef.current.ax);
+          timersRef.current.ax = null;
+          setPermissions((prev) => ({ ...prev, accessibility: true }));
+          setUi((prev) => ({
+            ...prev,
+            accessibility: { loading: false, justGranted: true },
+          }));
+          debugPermLog("request:accessibility:authorized");
+          try {
+            await window.electron?.postPermissionGrant?.("accessibility");
+          } catch {}
+          setTimeout(() => {
+            if (!mountedRef.current) return;
+            setUi((prev) => ({
+              ...prev,
+              accessibility: { ...prev.accessibility, justGranted: false },
+            }));
+          }, 800);
         }
-        if (timersRef.current.ax) clearInterval(timersRef.current.ax);
-        timersRef.current.ax = setInterval(async () => {
-          const sys = await p.checkPermissions();
-          if (sys && !sys.needAX) {
-            clearInterval(timersRef.current.ax);
-            timersRef.current.ax = null;
-            setPermissions((prev) => ({ ...prev, accessibility: true }));
-            setUi((prev) => ({ ...prev, accessibility: { loading: false, justGranted: true } }));
-            debugPermLog("request:accessibility:authorized");
-            try { await window.electron?.postPermissionGrant?.("accessibility"); } catch {}
-            setTimeout(() => {
-              if (!mountedRef.current) return;
-              setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, justGranted: false } }));
-            }, 800);
-          }
-        }, pollMs);
-        setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
-      } catch {
-      setUi((prev) => ({ ...prev, accessibility: { ...prev.accessibility, loading: false } }));
+      }, pollMs);
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: false },
+      }));
+    } catch {
+      setUi((prev) => ({
+        ...prev,
+        accessibility: { ...prev.accessibility, loading: false },
+      }));
     }
   };
 

@@ -3,8 +3,8 @@
 // In the renderer (Vite), prefer VITE_* env. Fallback to sensible defaults.
 export function getTranscribeUrl(): string {
   try {
-    const env = ((import.meta as unknown) as { env?: Record<string, unknown> })
-      .env || {};
+    const env =
+      (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
     const override = env?.VITE_TRANSCRIBE_URL as string | undefined;
     if (override && override.trim()) return override.trim();
 
@@ -32,8 +32,8 @@ export function getTranscribeUrl(): string {
 // WebSocket endpoint for real-time transcription
 export function getTranscribeWsUrl(): string {
   try {
-    const env = ((import.meta as unknown) as { env?: Record<string, unknown> })
-      .env || {};
+    const env =
+      (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
     // Highest priority: explicit URL from query param (?ws=...)
     try {
       if (typeof window !== "undefined") {
@@ -41,7 +41,7 @@ export function getTranscribeWsUrl(): string {
         const qp = qs.get("ws");
         if (qp && qp.trim()) return normalize(qp.trim());
       }
-    } catch { }
+    } catch {}
     const override = env?.VITE_TRANSCRIBE_WS_URL as string | undefined;
     if (override && override.trim()) return normalize(override.trim());
 
@@ -65,8 +65,6 @@ export function getTranscribeWsUrl(): string {
     return "wss://api.spoke.so/ws";
   }
 }
-
-
 
 function normalize(input: string): string {
   try {
