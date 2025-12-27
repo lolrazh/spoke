@@ -267,6 +267,5 @@ function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
 function defaultSttModelFor(provider: STTProvider): string {
   if (provider === "fireworks") return FIREWORKS_STT_TURBO_MODEL;
   if (provider === "deepgram") return DEEPGRAM_STT_DEFAULT_MODEL;
-  if (provider === "simplismart") return SIMPLISMART_STT_TURBO_MODEL;
   return STT_DEFAULT_MODEL;
 }
