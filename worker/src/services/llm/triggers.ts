@@ -97,8 +97,6 @@ interface ListCandidate {
 }
 
 class SequenceTracker {
-  private listCandidates: ListCandidate[] = [];
-
   /**
    * Detects list patterns by tracking sequential markers
    * Returns true if ≥3 items in sequence detected
