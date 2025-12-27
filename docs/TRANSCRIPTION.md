@@ -11,7 +11,7 @@ Spoke's transcription pipeline transforms voice into text through real-time audi
 The transcription pipeline is built on six principles:
 
 1. **Speed**: Sub-1s end-to-end latency from release to paste, with JWKS edge caching and pre-connect optimization
-2. **Flexibility**: Multiple STT/LLM providers (5 LLM, 3 STT), runtime-switchable via env vars
+2. **Flexibility**: Multiple STT/LLM providers (6 LLM, 4 STT), runtime-switchable via env vars
 3. **Privacy**: No text stored in database, only local + ephemeral server processing
 4. **Security**: JWT-based authentication with subscription/quota claims embedded, JWKS cached at edge
 5. **Simplicity**: Single-shot audio processing (chunking removed 2025-12-12)
@@ -818,6 +818,16 @@ Multiple STT providers are supported, runtime-switchable via env vars.
       <model default="nova-3">Override with DEEPGRAM_STT_DEFAULT_MODEL or STT_MODEL</model>
       <features>Automatic punctuation + paragraphs</features>
     </deepgram>
+
+    <simplismart default="true" added="2025-12-18">
+      <endpoint>https://http.au163kpw51.ss-in.s9t.link/predict (turbo)</endpoint>
+      <endpoint_standard>https://http.zkbxe6nuy2.ss-in.s9t.link/predict</endpoint_standard>
+      <auth>Authorization: Bearer {SIMPLISMART_API_KEY}</auth>
+      <model default="whisper-turbo">Override with STT_MODEL (whisper or whisper-turbo)</model>
+      <features>Base64 audio encoding (chunked to avoid stack overflow), VAD filter, beam search, custom initial prompt support</features>
+      <format>Accepts base64-encoded WAV audio via JSON request body (audio_data field)</format>
+      <performance>Turbo model uses separate optimized endpoint for faster inference</performance>
+    </simplismart>
   </providers>
 
   <vocabulary file="worker/src/services/stt/prompt.ts">
@@ -849,12 +859,12 @@ Multiple STT providers are supported, runtime-switchable via env vars.
   </hallucination_filter>
 
   <env_vars>
-    STT_PROVIDER=groq|fireworks|deepgram (default: groq)
+    STT_PROVIDER=groq|fireworks|deepgram|simplismart (default: simplismart)
     STT_MODEL=... (overrides provider default)
     STT_PROMPT=... (custom vocabulary base)
     STT_LANGUAGE=en
     STT_TIMEOUT_MS=25000
-    GROQ_API_KEY, FIREWORKS_API_KEY, DEEPGRAM_API_KEY
+    GROQ_API_KEY, FIREWORKS_API_KEY, DEEPGRAM_API_KEY, SIMPLISMART_API_KEY
   </env_vars>
 </stt>
 
@@ -918,6 +928,17 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
         See worker/src/handlers/ws.ts:78-124 for full config.
       </config>
     </openrouter>
+
+    <simplismart added="2025-12-18">
+      <endpoint>https://api.simplismart.live/chat/completions</endpoint>
+      <default_model>google/gemma-3-27b-it</default_model>
+      <edit_model>google/gemma-3-27b-it</edit_model>
+      <advanced_model>google/gemma-3-27b-it</advanced_model>
+      <format>OpenAI-compatible chat completions API</format>
+      <auth>Authorization: Bearer {SIMPLISMART_API_KEY}, Custom "id" header with model UUID</auth>
+      <streaming>Supports streaming via SSE with delta accumulation</streaming>
+      <special_headers>Requires "id" header containing SIMPLISMART_LLM_MODEL_UUID (23a8dfd7-f6d4-426c-b637-517c205282c7)</special_headers>
+    </simplismart>
   </providers>
 
   <smart_routing added="2025-12-25" file="worker/src/services/llm/smartRouting.ts">
@@ -1066,7 +1087,7 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
   </streaming>
 
   <env_vars>
-    LLM_PROVIDER=openai|groq|baseten|cerebras|openrouter (default: cerebras as of 2025-12-05)
+    LLM_PROVIDER=openai|groq|baseten|cerebras|openrouter|simplismart (default: cerebras as of 2025-12-05)
     LLM_MODEL=... (overrides provider default)
     LLM_TEMPERATURE=0.2
     LLM_TIMEOUT_MS=25000
@@ -1081,7 +1102,7 @@ Optional LLM enhancement for dictation cleanup or edit mode rewrites.
     EDIT_LLM_TIMEOUT_MS=25000
     EDIT_LLM_STREAM=1
 
-    OPENAI_API_KEY, GROQ_API_KEY, BASETEN_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY
+    OPENAI_API_KEY, GROQ_API_KEY, BASETEN_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, SIMPLISMART_API_KEY
   </env_vars>
 </llm>
 
@@ -1377,5 +1398,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-26
-**Pipeline Version**: OCR context-aware transcription, Smart LLM routing with trigger detection (bypass/default/advanced/edit tiers), JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking (1000 words/week), edit mode, multi-provider support (5 LLM providers, 3 STT providers), Consolidated Analytics Engine telemetry with wide events logging
+**Last Updated**: 2025-12-27
+**Pipeline Version**: OCR context-aware transcription, Smart LLM routing with trigger detection (bypass/default/advanced/edit tiers), JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking (1000 words/week), edit mode, multi-provider support (6 LLM providers: Groq, OpenAI, Baseten, Cerebras, OpenRouter, Simplismart; 4 STT providers: Groq, Fireworks, Deepgram, Simplismart), Consolidated Analytics Engine telemetry with wide events logging
