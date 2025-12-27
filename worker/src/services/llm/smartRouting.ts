@@ -43,10 +43,12 @@ const LENGTH_THRESHOLD_WORDS = 180;
  *
  * Decision tree:
  * 1. No triggers detected → BYPASS (no LLM, use raw STT - even if long!)
- * 2. Triggers detected + normal length → DEFAULT model (fast)
- * 3. Triggers detected + long text (>1200 chars) → ADVANCED model (upgrade from default)
+ * 2. Spelling trigger detected → ADVANCED model (always, regardless of length)
+ * 3. Other triggers + long text (>1200 chars) → ADVANCED model (upgrade from default)
+ * 4. Other triggers + normal length → DEFAULT model (fast)
  *
- * Note: Length is an "upgrade modifier" only applied AFTER triggers are detected.
+ * Note: Spelling requires the advanced model because it needs careful handling.
+ * Length is an "upgrade modifier" only applied AFTER triggers are detected.
  * Long text without triggers still bypasses the LLM entirely.
  *
  * Edit mode should call selectEditRoute() separately and always use EDIT tier.
@@ -95,6 +97,21 @@ export function selectSmartRoute(
   const triggeredRules = Array.from(triggerContext.triggers);
   const wordCount = normalized.split(/\s+/).filter(Boolean).length;
   const isLong = normalized.length >= LENGTH_THRESHOLD_CHARS || wordCount >= LENGTH_THRESHOLD_WORDS;
+  const hasSpelling = triggerContext.triggers.has('spelling');
+
+  // Spelling trigger → ADVANCED model (always, regardless of length)
+  if (hasSpelling) {
+    return {
+      tier: 'advanced',
+      provider: runtime.advanced.provider,
+      model: runtime.advanced.model,
+      temperature: runtime.advanced.temperature,
+      timeoutMs: runtime.advanced.timeoutMs,
+      stream: runtime.advanced.stream,
+      triggeredRules,
+      reason: 'spelling_trigger',
+    };
+  }
 
   // Triggers + long text → ADVANCED model (upgrade from default)
   if (isLong) {

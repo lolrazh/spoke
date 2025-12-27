@@ -62,17 +62,17 @@ describe('services/llm/smartRouting', () => {
   });
 
   describe('selectSmartRoute - default tier', () => {
-    it('routes to default model for spelling triggers', () => {
+    it('routes to advanced model for spelling triggers (always)', () => {
       const text = 'Please spell that as S-P-O-K-E';
       const triggerContext = detectTriggers(text);
       const decision = selectSmartRoute(text, triggerContext, baseRuntime);
 
-      expect(decision.tier).toBe('default');
+      expect(decision.tier).toBe('advanced');
       expect(decision.provider).toBe('cerebras');
-      expect(decision.model).toBe('llama-3.3-70b-versatile');
-      expect(decision.temperature).toBe(0.2);
+      expect(decision.model).toBe('kimi-k2-instruct');
+      expect(decision.temperature).toBe(0.3);
       expect(decision.triggeredRules).toContain('spelling');
-      expect(decision.reason).toContain('triggers_detected');
+      expect(decision.reason).toBe('spelling_trigger');
     });
 
     it('routes to default model for symbol triggers', () => {
@@ -158,14 +158,14 @@ describe('services/llm/smartRouting', () => {
       expect(decision.triggeredRules).toEqual([]);
     });
 
-    it('upgrades from default to advanced for long text with triggers', () => {
+    it('routes to advanced for spelling even with long text', () => {
       const longTextWithTriggers = 'Please spell it as S-P-O-K-E. ' + 'a'.repeat(1200);
       const triggerContext = detectTriggers(longTextWithTriggers);
       const decision = selectSmartRoute(longTextWithTriggers, triggerContext, baseRuntime);
 
       expect(decision.tier).toBe('advanced');
       expect(decision.triggeredRules).toContain('spelling');
-      expect(decision.reason).toContain('long_with_triggers');
+      expect(decision.reason).toBe('spelling_trigger');
     });
   });
 
