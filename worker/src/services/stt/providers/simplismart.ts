@@ -116,9 +116,9 @@ export async function transcribeWav(
     timingLog.body_done = bodyDoneAt;
 
     // Calculate granular timing breakdown
-    const ttfb = headersAt - startAt; // Time to first byte (includes DNS, TCP, TLS, request send, server processing)
-    const bodyRead = bodyDoneAt - headersAt; // Response body download
-    const total = bodyDoneAt - startAt;
+    const ttfb = headersAt - fetchStartAt; // Time to first byte (DNS, TCP, TLS, upload, server processing)
+    const bodyRead = bodyDoneAt - headersAt; // Response body download + JSON parse
+    const total = bodyDoneAt - fetchStartAt; // Total fetch time (excludes base64 encoding)
 
     // Base64 encoding overhead measurement
     const base64Size = base64Audio.length;
@@ -132,16 +132,16 @@ export async function transcribeWav(
       base64_size_kb: (base64Size / 1024).toFixed(2),
       compression_ratio: compressionRatio.toFixed(1) + "%",
       timings: {
-        base64_encode_ms: base64EncodeMs, // Client-side base64 encoding (happens before fetch)
-        total_ms: total, // End-to-end from fetch() start to body parsed
-        ttfb_ms: ttfb, // DNS + TCP + TLS + Request Send + Server Processing
-        body_read_ms: bodyRead, // Response body download + JSON parse
-        // Breakdown estimates (since fetch API doesn't expose granular metrics):
-        // - DNS resolution: typically 10-50ms for cached, 100-500ms for uncached
-        // - TCP handshake: ~1 RTT (round-trip time to India from CF edge)
-        // - TLS handshake: ~2 RTT
-        // - Request send: depends on request size (~base64Size bytes) and bandwidth
-        // - Server processing: ttfb - (DNS + TCP + TLS + Request send)
+        base64_encode_ms: base64EncodeMs, // Worker CPU time for base64 encoding (separate from fetch)
+        total_ms: total, // fetch() call duration (DNS + TCP + TLS + upload + server + download)
+        ttfb_ms: ttfb, // Time until response headers received (network + server processing)
+        body_read_ms: bodyRead, // Time to download response body + parse JSON
+        // ttfb breakdown (not individually measurable via fetch API):
+        // - DNS: 10-50ms cached, 100-500ms uncached
+        // - TCP handshake: ~1 RTT to India (~200-300ms from US)
+        // - TLS handshake: ~2 RTT (~400-600ms from US)
+        // - Upload: depends on payload size (4MB base64 = ~100-300ms on slow uplink)
+        // - Server: ttfb - (DNS + TCP + TLS + upload) ≈ server_reported_time_ms
       },
       server_reported_time_ms: json.request_time ?? null, // Simplismart's internal processing time
       estimated_network_overhead_ms: ttfb - (json.request_time ?? 0), // DNS + TCP + TLS + Request send
