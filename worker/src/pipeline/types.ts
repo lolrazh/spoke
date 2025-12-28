@@ -161,3 +161,14 @@ export interface EnhanceResult {
   provider?: string;
   model?: string;
 }
+
+/**
+ * Result from audio frame handling
+ */
+export interface AudioFrameResult {
+  success: boolean;
+  error?: string;
+}
+
+// Re-export Bindings type from handlers/ws for convenience
+export type { Bindings } from "../handlers/ws";

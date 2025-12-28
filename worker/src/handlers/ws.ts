@@ -7,7 +7,9 @@ import { createLogger } from "../utils/logger";
 import { safeClose, safeJson } from "../utils/ws";
 import { concat, parseFrameHeader, wrapWav } from "../audio/codec";
 import { createEmptySession, logSession } from "../ws/session";
+import { handleAudioFrame } from "../pipeline/audio";
 import { transcribeWav } from "../services/stt";
+import type { ConnectionContext } from "../pipeline/types";
 import { chatCompleteByProvider } from "../services/llm";
 import {
   prepareEditRequest,
@@ -45,7 +47,7 @@ import {
   SIMPLISMART_LLM_ENDPOINT,
 } from "../config";
 
-type Bindings = {
+export type Bindings = {
   // Supabase (required for auth)
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
@@ -56,12 +58,12 @@ type Bindings = {
   BASETEN_API_KEY?: string;
   CEREBRAS_API_KEY?: string;
   // LLM config
-  ENABLE_LLM?: string; // '1' | 'true' to enable
-  LLM_STREAM?: string; // '1' | 'true' to stream deltas
-  LLM_MODEL?: string; // default from src/config.ts
-  // Auth bypass (for dev/testing)
-  SKIP_AUTH?: string; // '1' | 'true' to skip auth check
-  // Analytics Engine (optional - graceful degradation if not configured)
+  ENABLE_LLM?: string;
+  LLM_STREAM?: string;
+  LLM_MODEL?: string;
+  // Auth bypass
+  SKIP_AUTH?: string;
+  // Analytics Engine
   ANALYTICS_ENGINE?: AnalyticsEngineDataset;
 };
 
@@ -73,7 +75,10 @@ function parseBoolish(value?: string): boolean | undefined {
   return undefined;
 }
 
-export function wsRoute(c: Context<{ Bindings: Bindings }>) {
+export function wsRoute(
+  c: Context<{ Bindings: Bindings }>,
+  ctx: ConnectionContext,
+) {
   if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
     return c.text("Expected a websocket connection", 426);
   }
@@ -1624,38 +1629,15 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           }
         }
       } else if (data instanceof ArrayBuffer) {
-        const buf = new Uint8Array(data);
-        if (buf.byteLength < 16) return;
-        const { seq, nbytes } = parseFrameHeader(buf);
-        if (16 + nbytes > buf.byteLength) return;
-        const payload = buf.subarray(16, 16 + nbytes);
+        const result = handleAudioFrame(ctx, data);
 
-        const now = Date.now();
-        if (session.firstArrivalMs === null) session.firstArrivalMs = now;
-        session.lastArrivalMs = now;
-
-        if (session.lastSeq !== null && seq !== session.lastSeq + 1) {
-          session.seqGaps += 1;
+        if (!result.success) {
+          if (
+            result.error === "frame too small" ||
+            result.error === "payload size mismatch"
+          )
+            return;
         }
-        session.lastSeq = seq;
-
-        const MAX_BYTES = 20 * 1024 * 1024;
-        if (session.totalBytes + payload.byteLength > MAX_BYTES) {
-          server.send(
-            JSON.stringify({
-              type: "error",
-              code: 4003,
-              body: "audio too large",
-              retryable: false,
-            }),
-          );
-          safeClose(server, 1009, "payload too large");
-          session = createEmptySession();
-          return;
-        }
-        session.chunks.push(payload);
-        session.totalBytes += payload.byteLength;
-        session.frames += 1;
       }
     } catch (e: any) {
       connLog.error("[WS] message error", { error: String(e) });
