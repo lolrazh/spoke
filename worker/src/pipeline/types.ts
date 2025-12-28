@@ -10,7 +10,7 @@ export interface RuntimeConfig {
     model: string;
     language: string;
     timeoutMs: number;
-    prompt: string;
+    prompt?: string;
   };
   llm: {
     enabled: boolean;
@@ -19,7 +19,16 @@ export interface RuntimeConfig {
     temperature: number;
     timeoutMs: number;
     stream: boolean;
-    currentDate?: string;
+    routerEnabled: boolean;
+    currentDate: string;
+  };
+  advanced: {
+    enabled: boolean;
+    provider: "groq" | "baseten" | "cerebras" | "simplismart";
+    model: string;
+    temperature: number;
+    timeoutMs: number;
+    stream: boolean;
   };
   edit: {
     enabled: boolean;
@@ -169,6 +178,3 @@ export interface AudioFrameResult {
   success: boolean;
   error?: string;
 }
-
-// Re-export Bindings type from handlers/ws for convenience
-export type { Bindings } from "../handlers/ws";
