@@ -105,7 +105,7 @@ describe("WebSocket Handler - Quota Sync", () => {
   it("should include wordCount in final message for successful transcription", async () => {
     // Mock transcribe to return a result
     const mockTranscribeResult = {
-      text: "this is a test transcription with seven words",
+      text: "this is a test transcription with eight words total",
       provider: "groq",
       model: "whisper-large-v3",
       durationMs: 100,
@@ -135,11 +135,11 @@ describe("WebSocket Handler - Quota Sync", () => {
     const finalText = mockTranscribeResult.text;
     const expectedWordCount = finalText.split(/\s+/).filter(Boolean).length;
 
-    expect(expectedWordCount).toBe(7);
+    expect(expectedWordCount).toBe(9);
 
     // We can't easily test the actual message without a full integration,
     // but we can verify the logic is correct
-    expect(finalText.split(/\s+/).filter(Boolean)).toHaveLength(7);
+    expect(finalText.split(/\s+/).filter(Boolean)).toHaveLength(9);
   });
 
   it("should calculate wordCount correctly for empty session", () => {
