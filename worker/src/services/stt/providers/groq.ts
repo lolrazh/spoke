@@ -37,7 +37,10 @@ export async function transcribeWav(
   // Granular timing: FormData creation
   const formStartAt = Date.now();
   const form = new FormData();
-  const file = new File([wav], "audio.wav", { type: "audio/wav" });
+  // Create a new ArrayBuffer to satisfy TypeScript's strict type checking for BlobPart
+  const buffer = new ArrayBuffer(wav.byteLength);
+  new Uint8Array(buffer).set(wav);
+  const file = new File([buffer], "audio.wav", { type: "audio/wav" });
   form.append("file", file);
   form.append("model", model);
   form.append("language", language);
