@@ -42,15 +42,9 @@ export async function transcribeWav(
       ? SIMPLISMART_STT_TURBO_ENDPOINT
       : SIMPLISMART_STT_ENDPOINT;
 
-  // Convert WAV audio to base64 (process in chunks to avoid stack overflow)
+  // Convert WAV audio to base64 (avoid large string concatenation)
   const base64EncodeStart = Date.now();
-  const chunkSize = 8192;
-  let binaryString = "";
-  for (let i = 0; i < wav.length; i += chunkSize) {
-    const chunk = wav.subarray(i, Math.min(i + chunkSize, wav.length));
-    binaryString += String.fromCharCode(...chunk);
-  }
-  const base64Audio = btoa(binaryString);
+  const base64Audio = Buffer.from(wav).toString("base64");
   const base64EncodeMs = Date.now() - base64EncodeStart;
 
   // Build request body following Simplismart API format

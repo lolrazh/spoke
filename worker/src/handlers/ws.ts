@@ -776,6 +776,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
           if (session.chunks.length > 0 && session.totalBytes > 0) {
             const pcm = concat(session.chunks, session.totalBytes);
             remainingWav = wrapWav(pcm, session.rate, 1, 16);
+            session.chunks = [];
           }
 
           const assembleMs = Date.now() - assembleStart;
