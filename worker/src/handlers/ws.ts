@@ -242,7 +242,14 @@ async function handleEndMessage(
   if (!sttResult) {
     // Empty session
     const text = "";
-    ctx.server.send(JSON.stringify({ type: "final", text }));
+    ctx.server.send(
+      JSON.stringify({
+        type: "final",
+        text,
+        wordCount: 0,
+        traceId: ctx.traceId,
+      }),
+    );
     safeClose(ctx.server, 1000, "done");
     ctx.sessionActive = false;
     return;
@@ -252,6 +259,7 @@ async function handleEndMessage(
   const route = routeTranscript(ctx, sttResult.text);
 
   let finalText = sttResult.text;
+  let llmText: string | null = null;
 
   // Enhance if needed (LAZY LOAD)
   if (route.requiresLLM) {
@@ -263,10 +271,44 @@ async function handleEndMessage(
       ctx.runtime.stt.prompt,
     );
     finalText = enhanced.text;
+    llmText = enhanced.text;
   }
 
-  // Send final
-  ctx.server.send(JSON.stringify({ type: "final", text: finalText }));
+  // Calculate word count for quota sync
+  const wordCount = finalText.split(/\s+/).filter(Boolean).length;
+
+  // Construct worker metrics
+  const workerMetrics = {
+    traceId: ctx.traceId,
+    wsAcceptAt: ctx.timing.wsAcceptAt,
+    startedAt: ctx.session.startedAt,
+    processingStartAt: ctx.timing.processingStartAt ?? null,
+    frames: ctx.session.frames,
+    bytes: ctx.session.totalBytes,
+    seqGaps: ctx.session.seqGaps,
+    firstArrivalMs: ctx.session.firstArrivalMs,
+    lastArrivalMs: ctx.session.lastArrivalMs,
+    firstToLastArrivalMs:
+      ctx.session.firstArrivalMs && ctx.session.lastArrivalMs
+        ? ctx.session.lastArrivalMs - ctx.session.firstArrivalMs
+        : null,
+    assembleMs: ctx.timing.assembleMs ?? null,
+    mode: ctx.session.mode,
+  };
+
+  // Send final with full context for quota sync
+  ctx.server.send(
+    JSON.stringify({
+      type: "final",
+      text: finalText,
+      wordCount, // For local quota UI update
+      traceId: ctx.traceId,
+      dataset: ctx.session.shareTranscriptions
+        ? { sttText: sttResult.text, llmText }
+        : null,
+      metrics: { worker: workerMetrics },
+    }),
+  );
   ctx.finalSent = true;
 
   // Background tasks
