@@ -105,6 +105,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     finalSent: false,
     completionLogged: false,
     timing: { wsAcceptAt: Date.now() },
+    executionCtx: c.executionCtx,
   };
 
   ctx.session.wsAcceptAt = ctx.timing.wsAcceptAt;
@@ -199,7 +200,7 @@ function handleStartMessage(ctx: ConnectionContext, parsed: any): void {
   }
 
   ctx.sessionActive = true;
-  ctx.session.mode = parsed.mode ?? "transcribe";
+  ctx.session.mode = parsed.mode ?? "dictation";
   ctx.session.selection = parsed.selection;
 
   if (parsed.identity) {
@@ -269,7 +270,7 @@ async function handleEndMessage(
   ctx.finalSent = true;
 
   // Background tasks
-  scheduleBackgroundTasks(ctx, sttResult, finalText);
+  scheduleBackgroundTasks(ctx, sttResult, finalText, ctx.executionCtx);
 
   safeClose(ctx.server, 1000, "done");
   ctx.sessionActive = false;
@@ -413,7 +414,7 @@ function scheduleBackgroundTasks(
     stt_ms: ctx.timing.sttDurationMs ?? 0,
     llm_ms: ctx.timing.llmDurationMs ?? 0,
     total_processing_ms:
-      ctx.timing.sttDurationMs ?? 0 + (ctx.timing.llmDurationMs ?? 0),
+      (ctx.timing.sttDurationMs ?? 0) + (ctx.timing.llmDurationMs ?? 0),
     overhead_ms:
       totalProcessingMs -
       (ctx.timing.sttDurationMs ?? 0) -

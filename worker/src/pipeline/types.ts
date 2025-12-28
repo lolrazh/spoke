@@ -113,6 +113,7 @@ export interface ConnectionContext {
   // Control
   abortController: AbortController | null;
   authTimeoutHandle: ReturnType<typeof setTimeout> | null;
+  executionCtx?: ExecutionContext;
 
   // Flags
   sessionActive: boolean;

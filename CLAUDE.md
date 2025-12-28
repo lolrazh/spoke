@@ -33,7 +33,7 @@ Spoke is a macOS dictation app built with Electron, React, and TypeScript. The a
 ### Core Components
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication
 2. **React Renderer** (`src/components/App.tsx`) - Glassmorphic pill UI with state machine pattern
-3. **Cloudflare Worker** (`worker/src/`) - Real-time transcription service via WebSocket
+3. **Cloudflare Worker** (`worker/src/`) - Real-time transcription service via WebSocket with modular pipeline architecture
 4. **Native Helper** (`native/spoke-helper.c`) - macOS accessibility API integration for text insertion
 
 ### Pill State Machine
@@ -43,7 +43,17 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 - Real-time audio streaming via WebSocket with binary protocol
 - 16kHz PCM16 audio with 16-byte headers: `[4B sequence][4B payload_size][8B timestamp]`
 - Voice Activity Detection (VAD) using @ricky0123/vad-web
-- Groq Whisper-large-v3 model for transcription
+- Modular pipeline architecture with ConnectionContext pattern:
+  - `worker/src/pipeline/types.ts` - Shared types (ConnectionContext, RuntimeConfig, etc.)
+  - `worker/src/pipeline/auth.ts` - Auth handler (JWT verification, quota checks)
+  - `worker/src/pipeline/audio.ts` - Binary frame accumulation (parses 16-byte headers)
+  - `worker/src/pipeline/transcribe.ts` - STT orchestration (WAV assembly, API calls)
+  - `worker/src/pipeline/router.ts` - Bypass/LLM decision (trigger detection)
+  - `worker/src/pipeline/enhance.ts` - LLM enhancement (lazy loaded for 90% bypass case)
+  - `worker/src/pipeline/ocr.ts` - OCR extraction (async with executionCtx)
+  - `worker/src/background/tasks.ts` - Quota increment, analytics logging
+  - `worker/src/handlers/ws.ts` - Orchestrator (435 lines, down from 1890, -78%)
+- Groq Whisper-large-v3 model for transcription (STT)
 
 ### Authentication
 - Supabase authentication with Google OAuth
@@ -103,7 +113,7 @@ The app includes a native C helper for text insertion via macOS Accessibility AP
 Binary protocol optimized for real-time audio streaming:
 - Uses 16-byte headers with sequence, payload size, and timestamp
 - PCM16 audio data payload (little-endian)
-- Handled in `src/hooks/useTranscription.ts` and `worker/src/handlers/ws.ts`
+- Handled in `src/hooks/useTranscription.ts` and `worker/src/pipeline/audio.ts`
 
 ## Database (Supabase)
 
