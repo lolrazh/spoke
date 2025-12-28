@@ -22,6 +22,7 @@ import { handleAudioFrame } from "../pipeline/audio";
 import { transcribe } from "../pipeline/transcribe";
 import { routeTranscript } from "../pipeline/router";
 import { extractOCR } from "../pipeline/ocr";
+import { buildSTTPrompt } from "../services/stt/prompt";
 
 // Logging
 import { logSessionComplete, logSessionError } from "../utils/sessionLogger";
@@ -199,9 +200,29 @@ function handleStartMessage(ctx: ConnectionContext, parsed: any): void {
     return;
   }
 
+  // Guard against duplicate start
+  if (ctx.sessionActive) {
+    const logger = createLogger();
+    logger.warn("[WS] duplicate start ignored");
+    return;
+  }
+
   ctx.sessionActive = true;
+
+  // Initialize session fields from start message
+  ctx.session.startedAt = Date.now();
+  ctx.session.version = parsed.version ?? 2;
+  ctx.session.format = parsed.format ?? "pcm16le";
+  ctx.session.rate = parsed.rate ?? 16000;
   ctx.session.mode = parsed.mode ?? "dictation";
   ctx.session.selection = parsed.selection;
+  ctx.session.shareTranscriptions = parsed.shareTranscriptions === true;
+
+  // Update traceId if client provides one
+  if (parsed.traceId && parsed.traceId !== ctx.traceId) {
+    ctx.traceId = parsed.traceId;
+    ctx.session.traceId = parsed.traceId;
+  }
 
   if (parsed.identity) {
     ctx.session.identity = {
@@ -224,6 +245,9 @@ async function handleEndMessage(
     logger.warn("[WS] end message before start");
     return;
   }
+
+  // Track processing start time
+  ctx.timing.processingStartAt = Date.now();
 
   // Send processing status
   safely(() =>
@@ -264,12 +288,17 @@ async function handleEndMessage(
   // Enhance if needed (LAZY LOAD)
   if (route.requiresLLM) {
     const { enhance } = await import("../pipeline/enhance");
-    const enhanced = await enhance(
-      ctx,
-      sttResult.text,
-      route,
-      ctx.runtime.stt.prompt,
-    );
+
+    // Build full STT prompt with identity and OCR context
+    // (same as what transcribe() builds internally)
+    const sttPrompt = buildSTTPrompt({
+      basePrompt: ctx.runtime.stt.prompt,
+      identity: ctx.session.identity,
+      ocrWords:
+        ctx.session.ocrWords.length > 0 ? ctx.session.ocrWords : undefined,
+    });
+
+    const enhanced = await enhance(ctx, sttResult.text, route, sttPrompt);
     finalText = enhanced.text;
     llmText = enhanced.text;
   }
