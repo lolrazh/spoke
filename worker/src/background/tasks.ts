@@ -50,32 +50,23 @@ export function scheduleQuotaIncrement(
 
 /**
  * Schedules analytics logging
- *
- * Note: Full analytics implementation depends on requirements.
- * For now, we just log session completion via logSessionComplete.
  */
 export function scheduleAnalytics(
   ctx: ConnectionContext,
   data: any,
-  executionCtx?: ExecutionContext,
+  executionCtx: ExecutionContext,
 ): void {
-  const task = (async () => {
-    try {
-      console.log("[Background] Session analytics:", {
-        trace_id: ctx.traceId,
-        user_id: ctx.userId,
-        data,
-      });
-    } catch (error) {
-      console.warn("[Background] Analytics logging failed:", error);
-    }
-  })();
-
-  // If executionCtx is available, use waitUntil for proper lifecycle
-  if (executionCtx) {
-    executionCtx.waitUntil(task);
-  } else {
-    // Fire-and-forget fallback
-    task.catch(() => {});
-  }
+  executionCtx.waitUntil(
+    (async () => {
+      try {
+        console.log("[Background] Session analytics:", {
+          trace_id: ctx.traceId,
+          user_id: ctx.userId,
+          data,
+        });
+      } catch (error) {
+        console.warn("[Background] Analytics logging failed:", error);
+      }
+    })(),
+  );
 }

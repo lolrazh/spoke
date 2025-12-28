@@ -21,6 +21,7 @@ import {
 import { handleAudioFrame } from "../pipeline/audio";
 import { transcribe } from "../pipeline/transcribe";
 import { routeTranscript } from "../pipeline/router";
+import { extractOCR } from "../pipeline/ocr";
 
 // Logging
 import { logSessionComplete, logSessionError } from "../utils/sessionLogger";
@@ -281,9 +282,14 @@ function handleOCRMessage(ctx: ConnectionContext, parsed: any): void {
     return;
   }
 
-  if (parsed.words && parsed.words.length > 0) {
-    ctx.session.ocrWords = parsed.words;
+  const imageBase64 = parsed.imageBase64;
+  if (!imageBase64) {
+    return;
   }
+
+  ctx.session.ocrPending = true;
+
+  extractOCR(ctx, imageBase64);
 }
 
 function handleCancelMessage(ctx: ConnectionContext, parsed: any): void {
@@ -364,6 +370,7 @@ function scheduleBackgroundTasks(
   ctx: ConnectionContext,
   sttResult: any,
   finalText: string,
+  executionCtx?: ExecutionContext,
 ): void {
   // Calculate word count for quota
   const wordCount = finalText
@@ -372,15 +379,19 @@ function scheduleBackgroundTasks(
     .filter((w) => w.length > 0).length;
 
   // Schedule quota increment (for free tier users)
-  scheduleQuotaIncrement(ctx, wordCount);
+  scheduleQuotaIncrement(ctx, wordCount, executionCtx);
 
   // Schedule analytics logging
-  scheduleAnalytics(ctx, {
-    stt_provider: sttResult.provider,
-    stt_model: sttResult.model,
-    final_text: finalText,
-    word_count: wordCount,
-  });
+  scheduleAnalytics(
+    ctx,
+    {
+      stt_provider: sttResult.provider,
+      stt_model: sttResult.model,
+      final_text: finalText,
+      word_count: wordCount,
+    },
+    executionCtx,
+  );
 
   // Log session completion
   const totalProcessingMs = Date.now() - ctx.timing.wsAcceptAt;
