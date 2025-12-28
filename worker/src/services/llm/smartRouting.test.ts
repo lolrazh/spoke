@@ -234,15 +234,16 @@ describe("services/llm/smartRouting", () => {
     });
 
     it("uses edit config values", () => {
-      const customRuntime: RuntimeConfig = {
-        ...baseRuntime,
-        edit: {
-          enabled: true,
-          stream: false,
-          model: "custom-edit-model",
-          temperature: 0.8,
-          timeoutMs: 40_000,
-          provider: "baseten",
+        const customRuntime: RuntimeConfig = {
+          ...baseRuntime,
+          edit: {
+            enabled: true,
+            stream: false,
+            model: "custom-edit-model",
+            temperature: 0.8,
+            timeoutMs: 40_000,
+            provider: "baseten",
+          },
         };
 
         const decision = selectEditRoute(customRuntime);
