@@ -3,15 +3,11 @@ import {
   STT_DEFAULT_PROVIDER,
   STT_DEFAULT_LANGUAGE,
   STT_DEFAULT_TIMEOUT_MS,
-  FIREWORKS_STT_TURBO_MODEL,
-  DEEPGRAM_STT_DEFAULT_MODEL,
   SIMPLISMART_STT_MODEL,
   SIMPLISMART_STT_TURBO_MODEL,
   type STTProvider,
 } from "../../config";
 import { transcribeWav as transcribeGroq } from "./providers/groq";
-import { transcribeWav as transcribeFireworks } from "./providers/fireworks";
-import { transcribeWav as transcribeDeepgram } from "./providers/deepgram";
 import { transcribeWav as transcribeSimplismart } from "./providers/simplismart";
 import { stripHallucinations } from "./postprocess";
 
@@ -52,40 +48,26 @@ export async function transcribeWav(
 
   let result: TranscriptionResult;
 
-  if (provider === "groq") {
-    result = await transcribeGroq(wav, opts.apiKey, {
-      model,
-      language,
-      prompt: opts.prompt,
-      timeoutMs,
-      signal: opts.signal,
-    });
-  } else if (provider === "fireworks") {
-    result = await transcribeFireworks(wav, opts.apiKey, {
-      model,
-      language,
-      prompt: opts.prompt,
-      timeoutMs,
-      signal: opts.signal,
-    });
-  } else if (provider === "deepgram") {
-    result = await transcribeDeepgram(wav, opts.apiKey, {
-      model,
-      language,
-      prompt: opts.prompt,
-      timeoutMs,
-      signal: opts.signal,
-    });
-  } else if (provider === "simplismart") {
-    result = await transcribeSimplismart(wav, opts.apiKey, {
-      model,
-      language,
-      prompt: opts.prompt,
-      timeoutMs,
-      signal: opts.signal,
-    });
-  } else {
-    throw new Error(`Unsupported STT provider: ${String(provider)}`);
+  switch (provider) {
+    case "simplismart":
+      result = await transcribeSimplismart(wav, opts.apiKey, {
+        model,
+        language,
+        prompt: opts.prompt,
+        timeoutMs,
+        signal: opts.signal,
+      });
+      break;
+    case "groq":
+    default:
+      result = await transcribeGroq(wav, opts.apiKey, {
+        model,
+        language,
+        prompt: opts.prompt,
+        timeoutMs,
+        signal: opts.signal,
+      });
+      break;
   }
 
   // Apply post-processing to filter out hallucinations
@@ -96,8 +78,6 @@ export async function transcribeWav(
 }
 
 function defaultModelFor(provider: STTProvider): string {
-  if (provider === "fireworks") return FIREWORKS_STT_TURBO_MODEL;
-  if (provider === "deepgram") return DEEPGRAM_STT_DEFAULT_MODEL;
   if (provider === "simplismart") return SIMPLISMART_STT_MODEL;
   return STT_DEFAULT_MODEL;
 }

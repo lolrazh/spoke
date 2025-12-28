@@ -242,17 +242,17 @@ describe("services/llm/smartRouting", () => {
           model: "custom-edit-model",
           temperature: 0.8,
           timeoutMs: 40_000,
-          provider: "openai",
-        },
-      };
+          provider: "baseten",
+        };
 
-      const decision = selectEditRoute(customRuntime);
+        const decision = selectEditRoute(customRuntime);
 
-      expect(decision.provider).toBe("openai");
-      expect(decision.model).toBe("custom-edit-model");
-      expect(decision.temperature).toBe(0.8);
-      expect(decision.timeoutMs).toBe(40_000);
-      expect(decision.stream).toBe(false);
+        expect(decision.provider).toBe("baseten");
+        expect(decision.model).toBe("custom-edit-model");
+        expect(decision.temperature).toBe(0.8);
+        expect(decision.timeoutMs).toBe(40_000);
+        expect(decision.stream).toBe(false);
+      });
     });
   });
 });
