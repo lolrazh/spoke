@@ -37,7 +37,8 @@ export async function transcribeWav(
   // Granular timing: FormData creation
   const formStartAt = Date.now();
   const form = new FormData();
-  const file = new File([wav], "audio.wav", { type: "audio/wav" });
+  const arrayBuffer = wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength) as ArrayBuffer;
+  const file = new File([arrayBuffer], "audio.wav", { type: "audio/wav" });
   form.append("file", file);
   form.append("model", model);
   form.append("language", language);
