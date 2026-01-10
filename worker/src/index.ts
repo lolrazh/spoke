@@ -3,11 +3,8 @@ import { wsRoute } from "./handlers/ws";
 
 type Bindings = {
   GROQ_API_KEY?: string;
-  FIREWORKS_API_KEY?: string;
-  DEEPGRAM_API_KEY?: string;
-  OPENAI_API_KEY?: string;
+  SIMPLISMART_API_KEY?: string;
   BASETEN_API_KEY?: string;
-  OPENROUTER_API_KEY?: string;
   CEREBRAS_API_KEY?: string;
   ENABLE_LLM?: string;
   LLM_STREAM?: string;

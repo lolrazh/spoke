@@ -1,8 +1,6 @@
 import type { LLMProvider } from "../../config";
 import { chatComplete as groqChatComplete } from "./groq";
-import { chatComplete as openaiChatComplete } from "./openai";
 import { chatComplete as basetenChatComplete } from "./baseten";
-import { chatComplete as openRouterChatComplete } from "./openrouter";
 import { chatComplete as cerebrasChatComplete } from "./cerebras";
 import { chatComplete as simplismartChatComplete } from "./simplismart";
 
@@ -33,21 +31,15 @@ export async function chatCompleteByProvider(
   provider: LLMProvider,
   opts: ChatCompleteOptions,
 ): Promise<ChatResult> {
-  if (provider === "baseten") {
-    return basetenChatComplete(opts as any) as unknown as ChatResult;
+  switch (provider) {
+    case "baseten":
+      return basetenChatComplete(opts as any) as unknown as ChatResult;
+    case "cerebras":
+      return cerebrasChatComplete(opts as any) as unknown as ChatResult;
+    case "simplismart":
+      return simplismartChatComplete(opts as any) as unknown as ChatResult;
+    case "groq":
+    default:
+      return groqChatComplete(opts as any) as unknown as ChatResult;
   }
-  if (provider === "openai") {
-    return openaiChatComplete(opts as any) as unknown as ChatResult;
-  }
-  if (provider === "openrouter") {
-    return openRouterChatComplete(opts as any) as unknown as ChatResult;
-  }
-  if (provider === "cerebras") {
-    return cerebrasChatComplete(opts as any) as unknown as ChatResult;
-  }
-  if (provider === "simplismart") {
-    return simplismartChatComplete(opts as any) as unknown as ChatResult;
-  }
-  // default groq
-  return groqChatComplete(opts as any) as unknown as ChatResult;
 }

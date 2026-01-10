@@ -6,21 +6,15 @@ import {
   LLM_DEFAULT_PROVIDER,
   LLM_ROUTER_ENABLED,
   GROQ_LLM_DEFAULT_MODEL,
-  OPENAI_LLM_DEFAULT_MODEL,
   BASETEN_LLM_DEFAULT_MODEL,
-  OPENROUTER_LLM_DEFAULT_MODEL,
   CEREBRAS_LLM_DEFAULT_MODEL,
   SIMPLISMART_LLM_DEFAULT_MODEL,
   GROQ_ADVANCED_LLM_DEFAULT_MODEL,
-  OPENAI_ADVANCED_LLM_DEFAULT_MODEL,
   BASETEN_ADVANCED_LLM_DEFAULT_MODEL,
-  OPENROUTER_ADVANCED_LLM_DEFAULT_MODEL,
   CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL,
   SIMPLISMART_ADVANCED_LLM_DEFAULT_MODEL,
   GROQ_EDIT_LLM_DEFAULT_MODEL,
-  OPENAI_EDIT_LLM_DEFAULT_MODEL,
   BASETEN_EDIT_LLM_DEFAULT_MODEL,
-  OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
   CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
   SIMPLISMART_EDIT_LLM_DEFAULT_MODEL,
   ADVANCED_LLM_DEFAULT_MODEL,
@@ -37,8 +31,6 @@ import {
   STT_DEFAULT_MODEL,
   STT_DEFAULT_TIMEOUT_MS,
   STT_DEFAULT_PROVIDER,
-  FIREWORKS_STT_TURBO_MODEL,
-  DEEPGRAM_STT_DEFAULT_MODEL,
   SIMPLISMART_STT_MODEL,
   SIMPLISMART_STT_TURBO_MODEL,
 } from "../config";
@@ -56,27 +48,21 @@ function toBool(v: Boolish, fallback: boolean): boolean {
 
 const PROVIDER_DEFAULT_MODELS: Record<LLMProvider, string> = {
   groq: GROQ_LLM_DEFAULT_MODEL,
-  openai: OPENAI_LLM_DEFAULT_MODEL,
   baseten: BASETEN_LLM_DEFAULT_MODEL,
-  openrouter: OPENROUTER_LLM_DEFAULT_MODEL,
   cerebras: CEREBRAS_LLM_DEFAULT_MODEL,
   simplismart: SIMPLISMART_LLM_DEFAULT_MODEL,
 };
 
 const PROVIDER_ADVANCED_MODELS: Record<LLMProvider, string> = {
   groq: GROQ_ADVANCED_LLM_DEFAULT_MODEL,
-  openai: OPENAI_ADVANCED_LLM_DEFAULT_MODEL,
   baseten: BASETEN_ADVANCED_LLM_DEFAULT_MODEL,
-  openrouter: OPENROUTER_ADVANCED_LLM_DEFAULT_MODEL,
   cerebras: CEREBRAS_ADVANCED_LLM_DEFAULT_MODEL,
   simplismart: SIMPLISMART_ADVANCED_LLM_DEFAULT_MODEL,
 };
 
 const PROVIDER_EDIT_MODELS: Record<LLMProvider, string> = {
   groq: GROQ_EDIT_LLM_DEFAULT_MODEL,
-  openai: OPENAI_EDIT_LLM_DEFAULT_MODEL,
   baseten: BASETEN_EDIT_LLM_DEFAULT_MODEL,
-  openrouter: OPENROUTER_EDIT_LLM_DEFAULT_MODEL,
   cerebras: CEREBRAS_EDIT_LLM_DEFAULT_MODEL,
   simplismart: SIMPLISMART_EDIT_LLM_DEFAULT_MODEL,
 };
@@ -242,9 +228,7 @@ function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
   const s = (v ?? "").toString().toLowerCase();
   if (
     s === "groq" ||
-    s === "openai" ||
     s === "baseten" ||
-    s === "openrouter" ||
     s === "cerebras" ||
     s === "simplismart"
   )
@@ -254,18 +238,11 @@ function parseProvider(v: unknown, fallback: LLMProvider): LLMProvider {
 
 function parseSttProvider(v: unknown, fallback: STTProvider): STTProvider {
   const s = (v ?? "").toString().toLowerCase();
-  if (
-    s === "groq" ||
-    s === "fireworks" ||
-    s === "deepgram" ||
-    s === "simplismart"
-  )
-    return s as STTProvider;
+  if (s === "groq" || s === "simplismart") return s as STTProvider;
   return fallback;
 }
 
 function defaultSttModelFor(provider: STTProvider): string {
-  if (provider === "fireworks") return FIREWORKS_STT_TURBO_MODEL;
-  if (provider === "deepgram") return DEEPGRAM_STT_DEFAULT_MODEL;
+  if (provider === "simplismart") return SIMPLISMART_STT_MODEL;
   return STT_DEFAULT_MODEL;
 }
