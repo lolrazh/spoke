@@ -7,9 +7,15 @@
   "name": "spoke-api",
   "main": "src/index.ts",
   "compatibility_date": "2025-11-09",
-  "compatibility_flags": ["nodejs_compat", "nodejs_als"],
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_als"
+  ],
   "observability": {
     "enabled": true,
+    "traces": {
+      "enabled": true
+    }
   },
   "routes": [
     {

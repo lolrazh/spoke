@@ -13,11 +13,11 @@ type LogLevel = "info" | "warn" | "error" | "debug";
 
 type SessionAuthLog = {
   outcome:
-    | "success"
-    | "quota_exceeded"
-    | "invalid"
-    | "timeout"
-    | "missing_token";
+  | "success"
+  | "quota_exceeded"
+  | "invalid"
+  | "timeout"
+  | "missing_token";
   duration_ms: number;
   cold_start: boolean;
   trace_id: string;
@@ -65,15 +65,16 @@ type SessionLLMLog = {
 
 type SessionCompleteLog = {
   outcome:
-    | "success"
-    | "error_auth"
-    | "error_stt"
-    | "error_llm"
-    | "error_send"
-    | "client_disconnect"
-    | "timeout"
-    | "crash";
+  | "success"
+  | "error_auth"
+  | "error_stt"
+  | "error_llm"
+  | "error_send"
+  | "client_disconnect"
+  | "timeout"
+  | "crash";
   mode: "dictation" | "edit";
+  worker_boot_ms: number;
   worker_lifetime_ms: number;
   auth_ms: number;
   ocr_ms: number;
@@ -294,6 +295,7 @@ export function logSessionComplete(data: SessionCompleteLog): void {
   const {
     outcome,
     mode,
+    worker_boot_ms,
     worker_lifetime_ms,
     auth_ms,
     ocr_ms,
@@ -330,6 +332,7 @@ export function logSessionComplete(data: SessionCompleteLog): void {
       event: "session.complete",
       outcome,
       mode,
+      worker_boot_ms,
       worker_lifetime_ms,
       auth_ms,
       ocr_ms,

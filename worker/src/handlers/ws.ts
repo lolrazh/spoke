@@ -67,6 +67,10 @@ const messageHandlers: Record<
  * WebSocket route handler - entry point for all connections
  */
 export function wsRoute(c: Context<{ Bindings: Bindings }>) {
+  // Capture boot timestamp FIRST - before any other processing
+  // This helps measure cold start overhead (workerBootedAt → wsAcceptAt gap)
+  const workerBootedAt = Date.now();
+
   if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
     return c.text("Expected a websocket connection", 426);
   }
@@ -105,7 +109,7 @@ export function wsRoute(c: Context<{ Bindings: Bindings }>) {
     sessionActive: false,
     finalSent: false,
     completionLogged: false,
-    timing: { wsAcceptAt: Date.now() },
+    timing: { workerBootedAt, wsAcceptAt: Date.now() },
     executionCtx: c.executionCtx,
   };
 
@@ -470,6 +474,7 @@ function scheduleBackgroundTasks(
   logSessionComplete({
     outcome: "success",
     mode: ctx.session.mode as "dictation" | "edit",
+    worker_boot_ms: ctx.timing.wsAcceptAt - ctx.timing.workerBootedAt,
     worker_lifetime_ms: totalProcessingMs,
     auth_ms: ctx.timing.authDurationMs ?? 0,
     ocr_ms: ctx.timing.ocrDurationMs ?? 0,

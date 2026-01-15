@@ -67,6 +67,7 @@ export type Bindings = {
  * Timing metrics collected throughout the pipeline
  */
 export interface TimingMetrics {
+  workerBootedAt: number;
   wsAcceptAt: number;
   authStartAt?: number;
   authDurationMs?: number;
