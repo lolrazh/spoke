@@ -10,7 +10,7 @@ Spoke's transcription pipeline transforms voice into text through real-time audi
 
 The transcription pipeline is built on six principles:
 
-1. **Speed**: Sub-1s end-to-end latency from release to paste, with JWKS edge caching and pre-connect optimization
+1. **Speed**: Sub-1s end-to-end latency from release to paste, with JWKS edge caching and parallel auth
 2. **Flexibility**: Multiple STT/LLM providers (6 LLM, 4 STT), runtime-switchable via env vars
 3. **Privacy**: No text stored in database, only local + ephemeral server processing
 4. **Security**: JWT-based authentication with subscription/quota claims embedded, JWKS cached at edge
@@ -164,7 +164,7 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     - **Sub-50ms JWT verification**: JWKS cache reduces cold start rate from 67% to ~5%
     - **Scales infinitely**: Pure CPU work (JWT verification), no database bottleneck
     - **1-hour propagation**: Subscription/quota changes take up to 1 hour to propagate (when JWT refreshes)
-    - **Automatic refresh + pre-connect**: App calls refreshSession() on startup, then pre-connects WebSocket
+    - **Automatic refresh + parallel auth**: App calls refreshSession() on startup, auth runs in parallel with recording start (2025-01-15: pre-connect removed to avoid Cloudflare loadShed on idle connections)
   </architecture_benefits>
 
   <jwks_caching added="2025-12-12" updated="2025-12-17" file="worker/src/auth/supabaseJwt.ts">
