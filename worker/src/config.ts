@@ -62,11 +62,11 @@ export const GROQ_STT_MODEL = "whisper-large-v3";
 export const SIMPLISMART_STT_MODEL = "whisper";
 export const SIMPLISMART_STT_TURBO_MODEL = "whisper-turbo";
 
-export const STT_DEFAULT_MODEL = GROQ_STT_MODEL;
+export const STT_DEFAULT_MODEL = SIMPLISMART_STT_TURBO_MODEL;
 
 export const STT_DEFAULT_LANGUAGE = "en";
 export const STT_DEFAULT_TIMEOUT_MS = 25_000;
-export const STT_DEFAULT_PROVIDER = "groq" as const;
+export const STT_DEFAULT_PROVIDER = "simplismart" as const;
 export type STTProvider = "groq" | "simplismart";
 
 // OCR (Vision Model)
