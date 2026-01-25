@@ -1881,9 +1881,8 @@ export function useTranscription(
                       // Worker sends wordCount in the response - we use it for instant UI feedback
                       if (msg.wordCount && msg.wordCount > 0) {
                         try {
-                          const { incrementQuotaLocal } = await import(
-                            "../state/quotaCache"
-                          );
+                          const { incrementQuotaLocal } =
+                            await import("../state/quotaCache");
                           incrementQuotaLocal(msg.wordCount); // UI update only
                         } catch (err) {
                           console.warn(
@@ -2036,6 +2035,25 @@ export function useTranscription(
                             null;
                           return total != null ? Math.round(total) : null;
                         })();
+                        const workerLifetimeMs =
+                          worker?.wsAcceptAt != null &&
+                          worker?.finalSentAt != null
+                            ? Math.max(
+                                0,
+                                Math.round(
+                                  worker.finalSentAt - worker.wsAcceptAt,
+                                ),
+                              )
+                            : null;
+                        const workerAudioMs =
+                          worker?.firstToLastArrivalMs != null
+                            ? Math.max(
+                                0,
+                                Math.round(worker.firstToLastArrivalMs),
+                              )
+                            : null;
+                        const workerSeqGaps =
+                          worker?.seqGaps != null ? worker.seqGaps : null;
                         // Compute deliver latency without relying on cross-host clock sync:
                         // estimate = (finalRecv - statusRecv) - sttMs
                         const deliverMs =
@@ -2075,10 +2093,22 @@ export function useTranscription(
                               m.framesForwarded,
                             )
                             .setServerMetrics({
+                              worker_lifetime_ms:
+                                workerLifetimeMs != null
+                                  ? workerLifetimeMs
+                                  : undefined,
                               stt_ms: sttMs ?? undefined,
                               llm_ms:
                                 worker?.llm?.totalMs != null
                                   ? Math.round(worker.llm.totalMs)
+                                  : undefined,
+                              audio_streaming_ms:
+                                workerAudioMs != null
+                                  ? workerAudioMs
+                                  : undefined,
+                              seq_gaps:
+                                workerSeqGaps != null
+                                  ? workerSeqGaps
                                   : undefined,
                               // Smart routing metrics
                               llm_tier: worker?.llm?.tier ?? undefined,

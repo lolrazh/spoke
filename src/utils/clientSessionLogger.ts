@@ -79,6 +79,7 @@ export interface ClientSessionEvent {
     stt_ms?: number;
     llm_ms?: number;
     audio_streaming_ms?: number;
+    seq_gaps?: number;
     // Smart routing metrics
     llm_tier?: "bypass" | "default" | "advanced" | "edit";
     llm_triggered_rules?: string[];
@@ -258,6 +259,7 @@ export class ClientSessionEventBuilder {
     stt_ms?: number;
     llm_ms?: number;
     audio_streaming_ms?: number;
+    seq_gaps?: number;
     // Smart routing metrics
     llm_tier?: "bypass" | "default" | "advanced" | "edit";
     llm_triggered_rules?: string[];

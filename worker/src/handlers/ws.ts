@@ -311,12 +311,15 @@ async function handleEndMessage(
   // Calculate word count for quota sync
   const wordCount = finalText.split(/\s+/).filter(Boolean).length;
 
+  const finalSentAt = Date.now();
+
   // Construct worker metrics
   const workerMetrics = {
     traceId: ctx.traceId,
     wsAcceptAt: ctx.timing.wsAcceptAt,
     startedAt: ctx.session.startedAt,
     processingStartAt: ctx.timing.processingStartAt ?? null,
+    finalSentAt,
     frames: ctx.session.frames,
     bytes: ctx.session.totalBytes,
     seqGaps: ctx.session.seqGaps,
