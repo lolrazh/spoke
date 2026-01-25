@@ -53,6 +53,7 @@ export interface ClientSessionEvent {
   last_frame_out_ms?: number;
   stop_invoked_ms?: number;
   end_sent_ms?: number;
+  end_ack_ms?: number;
   stt_start_ms?: number;
   final_recv_ms?: number;
   paste_start_ms?: number;
@@ -220,6 +221,7 @@ export class ClientSessionEventBuilder {
     lastFrameOutMs?: number;
     stopInvokedMs?: number;
     endSentMs?: number;
+    endAckMs?: number;
     sttStartMs?: number;
     finalRecvMs?: number;
     pasteStartMs?: number;
@@ -234,6 +236,7 @@ export class ClientSessionEventBuilder {
     if (metrics.stopInvokedMs)
       this.event.stop_invoked_ms = metrics.stopInvokedMs;
     if (metrics.endSentMs) this.event.end_sent_ms = metrics.endSentMs;
+    if (metrics.endAckMs) this.event.end_ack_ms = metrics.endAckMs;
     if (metrics.sttStartMs) this.event.stt_start_ms = metrics.sttStartMs;
     if (metrics.finalRecvMs) this.event.final_recv_ms = metrics.finalRecvMs;
     if (metrics.pasteStartMs) this.event.paste_start_ms = metrics.pasteStartMs;

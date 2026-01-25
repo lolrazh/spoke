@@ -252,7 +252,19 @@ async function handleEndMessage(
   }
 
   // Track processing start time
-  ctx.timing.processingStartAt = Date.now();
+  const processingStartAt = Date.now();
+  ctx.timing.processingStartAt = processingStartAt;
+
+  // Let client know we received the end signal (diagnostic)
+  safely(() =>
+    ctx.server.send(
+      JSON.stringify({
+        type: "end_ack",
+        traceId: ctx.session.traceId,
+        serverTs: processingStartAt,
+      }),
+    ),
+  );
 
   // Send processing status
   safely(() =>

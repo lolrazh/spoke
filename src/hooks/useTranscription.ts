@@ -145,6 +145,7 @@ export function useTranscription(
     lastFrameOutMs?: number;
     wsEndMs?: number; // maintained for backward compat; equals endSentMs
     endSentMs?: number;
+    endAckMs?: number;
     sttStartMs?: number;
     sttEndMs?: number;
     finalRenderMs?: number;
@@ -1835,6 +1836,14 @@ export function useTranscription(
                         : Date.now();
                 }
                 // (Processing/LLM logs removed - were redundant with E2E log)
+              } else if (msg.type === "end_ack") {
+                if (!metricsRef.current?.endAckMs) {
+                  if (metricsRef.current)
+                    metricsRef.current.endAckMs =
+                      typeof performance !== "undefined"
+                        ? performance.now()
+                        : Date.now();
+                }
               } else if (
                 msg.type === "llm_delta" &&
                 typeof msg.delta === "string"
@@ -2082,6 +2091,7 @@ export function useTranscription(
                               lastFrameOutMs: m.lastFrameOutMs,
                               stopInvokedMs: m.stopInvokedMs,
                               endSentMs: m.endSentMs,
+                              endAckMs: m.endAckMs,
                               sttStartMs: m.sttStartMs,
                               finalRecvMs: finalRecv ?? undefined,
                               pasteStartMs: m.pasteStartMs,

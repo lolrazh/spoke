@@ -99,6 +99,12 @@ export type ServerStatusMessage = {
   serverTs: number;
 };
 
+export type ServerEndAckMessage = {
+  type: "end_ack";
+  traceId?: string;
+  serverTs: number;
+};
+
 export type ServerLlmStatusMessage = {
   type: "llm_status";
   state: "llm_processing";
@@ -176,6 +182,7 @@ export type ServerMessage =
   | ServerAuthOkMessage
   | ServerAuthErrorMessage
   | ServerStatusMessage
+  | ServerEndAckMessage
   | ServerFinalMessage
   | ServerErrorMessage
   | ServerLlmStatusMessage
