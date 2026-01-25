@@ -1,0 +1,6254 @@
+[
+  {
+    "source": {
+      "level": "info",
+      "msg": "session",
+      "tag": "close",
+      "traceId": "7owa0vdzs3f",
+      "mode": "dictation",
+      "ts": 1769346590564,
+      "frames": 52,
+      "bytesKB": 181.25,
+      "seqGaps": 0,
+      "firstToLastArrivalMs": 2648
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:50.564Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCSV4MP2HWTDRPQGH9NZ6",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "session",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "session"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "ts": 1769346590564
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:50.564Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCSV4MP2HWTDRPQGH9NZ5",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection closed: code=1000, reason=\"done\""
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Session: Completed in 5.2s (353ms STT)",
+      "event": "session.complete",
+      "outcome": "success",
+      "mode": "dictation",
+      "trace_id": "7owa0vdzs3f",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "stt_provider": "groq",
+      "worker_boot_ms": 0,
+      "worker_lifetime_ms": 5194,
+      "auth_ms": 1233,
+      "ocr_ms": 650,
+      "first_frame_latency_ms": 1837,
+      "audio_streaming_ms": 2648,
+      "assemble_ms": 0,
+      "stt_ms": 353,
+      "llm_ms": 0,
+      "total_processing_ms": 353,
+      "overhead_ms": 4841
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:49.977Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCS8STRGWVYMJ0259MMWR",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Session: Completed in 5.2s (353ms STT)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Session: Completed in 5.2s (353ms STT)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Background] Session analytics:",
+      "trace_id": "7owa0vdzs3f",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "data": {
+        "stt_provider": "groq",
+        "stt_model": "whisper-large-v3",
+        "final_text": "If I wanted to deploy V3 on Amazon Bedrock, how much would it cost me?",
+        "word_count": 15
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:49.977Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCS8STRGWVYMJ0259MMWQ",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Background] Session analytics:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Background] Session analytics:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "STT: groq transcribed in 353ms → 70 chars",
+      "event": "session.stt",
+      "outcome": "success",
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "trace_id": "7owa0vdzs3f",
+      "duration_ms": 353,
+      "ttfb_ms": 353,
+      "text_length": 70
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:49.977Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCS8STRGWVYMJ0259MMWP",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "STT: groq transcribed in 353ms → 70 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "STT: groq transcribed in 353ms → 70 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[STT:Groq] Latency breakdown:",
+      "audio_size_kb": "181.29",
+      "timings": {
+        "form_creation_ms": 0,
+        "fetch_ttfb_ms": 353,
+        "body_read_ms": 0,
+        "total_fetch_ms": 353,
+        "total_ms": 353
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:49.977Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCS8STRGWVYMJ0259MMWN",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[STT:Groq] Latency breakdown:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[STT:Groq] Latency breakdown:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Audio: 52 frames, 181.25KB over 2.6s",
+      "event": "session.audio",
+      "trace_id": "7owa0vdzs3f",
+      "frames": 52,
+      "bytes_kb": 181.25,
+      "streaming_duration_ms": 2648,
+      "seq_gaps": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:49.624Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCRXRGNTP523PVJG4BN0Z",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Audio: 52 frames, 181.25KB over 2.6s",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Audio: 52 frames, 181.25KB over 2.6s"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "multipart/form-data\\; boundary=12b10997b46d152a4bd06cef2d2aa675"
+          },
+          "body": {
+            "size": 186373
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/audio/transcriptions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/audio/transcriptions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 16
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "b7e51df5aef82542",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "fetch",
+      "startTime": 1769346589624,
+      "endTime": 1769346589977,
+      "duration": 352,
+      "durationMS": 352
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:49.624Z",
+    "$metadata": {
+      "id": "01KFTMCRXR000000000000000G",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "b7e51df5aef82542",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/audio/transcriptions",
+      "startTime": "2026-01-25T13:09:49.624Z",
+      "endTime": "2026-01-25T13:09:49.977Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "OCR: Extracted 9 words in 650ms",
+      "event": "session.ocr",
+      "outcome": "success",
+      "trace_id": "7owa0vdzs3f",
+      "duration_ms": 650,
+      "word_count": 9
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:47.270Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH31",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "OCR: Extracted 9 words in 650ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "OCR: Extracted 9 words in 650ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 56396
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 13
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "9fe5d71cbe5b329a",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "fetch",
+      "startTime": 1769346586620,
+      "endTime": 1769346587268,
+      "duration": 648,
+      "durationMS": 648
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:46.620Z",
+    "$metadata": {
+      "id": "01KFTMCNZW000000000000000D",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "9fe5d71cbe5b329a",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/chat/completions",
+      "startTime": "2026-01-25T13:09:46.620Z",
+      "endTime": "2026-01-25T13:09:47.268Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cold_start": true,
+      "level": "info",
+      "message": "Auth: JWT verified in 1233ms [cold start]",
+      "event": "session.auth",
+      "outcome": "success",
+      "trace_id": "7owa0vdzs3f",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "duration_ms": 1233
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:46.077Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH30",
+      "requestId": "9c3801ba28bc81ce",
+      "traceId": "7owa0vdzs3f",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Auth: JWT verified in 1233ms [cold start]",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Auth: JWT verified in 1233ms [cold start]"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:46.076Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH2Z",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET",
+          "payload": {
+            "header": {
+              "cache_control": "public, max-age=3600"
+            },
+            "status_code": 200
+          }
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 11
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "c1d65f6a7209cd04",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "cache_put",
+      "startTime": 1769346586070,
+      "endTime": 1769346586076,
+      "duration": 5,
+      "durationMS": 5
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:46.070Z",
+    "$metadata": {
+      "id": "01KFTMCNEP000000000000000B",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "c1d65f6a7209cd04",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "cache_put",
+      "startTime": "2026-01-25T13:09:46.070Z",
+      "endTime": "2026-01-25T13:09:46.076Z",
+      "service": "spoke-api",
+      "spanName": "cache_put",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET",
+          "payload": {
+            "header": {
+              "cache_control": "public, max-age=3600"
+            },
+            "status_code": 200
+          }
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 9
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "8c6b5f3a6bfde860",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "cache_put",
+      "startTime": 1769346586068,
+      "endTime": 1769346586070,
+      "duration": 2,
+      "durationMS": 2
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:46.068Z",
+    "$metadata": {
+      "id": "01KFTMCNEM0000000000000009",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "8c6b5f3a6bfde860",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "cache_put",
+      "startTime": "2026-01-25T13:09:46.068Z",
+      "endTime": "2026-01-25T13:09:46.070Z",
+      "service": "spoke-api",
+      "spanName": "cache_put",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:44.861Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH2Y",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "GET"
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+        "scheme": "https",
+        "path": "/auth/v1/.well-known/jwks.json"
+      },
+      "server": {
+        "address": "irxhzzbhrlshpvnwzyka.supabase.co"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 8
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "c96edd00a1754af7",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "fetch",
+      "startTime": 1769346584861,
+      "endTime": 1769346586070,
+      "duration": 1209,
+      "durationMS": 1209
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:44.861Z",
+    "$metadata": {
+      "id": "01KFTMCM8X0000000000000008",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "c96edd00a1754af7",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "fetch /auth/v1/.well-known/jwks.json",
+      "startTime": "2026-01-25T13:09:44.861Z",
+      "endTime": "2026-01-25T13:09:46.070Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": false,
+          "cache_status": "STALE",
+          "status_code": 504,
+          "body": {
+            "size": 0
+          }
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 6
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "8cbc2054f605e237",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "cache_match",
+      "startTime": 1769346584844,
+      "endTime": 1769346584861,
+      "duration": 16,
+      "durationMS": 16
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:44.844Z",
+    "$metadata": {
+      "id": "01KFTMCM8C0000000000000006",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "8cbc2054f605e237",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T13:09:44.844Z",
+      "endTime": "2026-01-25T13:09:44.861Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:44.797Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH2X",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "GET"
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+        "scheme": "https",
+        "path": "/auth/v1/.well-known/jwks.json"
+      },
+      "server": {
+        "address": "irxhzzbhrlshpvnwzyka.supabase.co"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 7
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "0eeb2d60bef94251",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "fetch",
+      "startTime": 1769346584797,
+      "endTime": 1769346586068,
+      "duration": 1271,
+      "durationMS": 1271
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:44.797Z",
+    "$metadata": {
+      "id": "01KFTMCM6X0000000000000007",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "0eeb2d60bef94251",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "fetch /auth/v1/.well-known/jwks.json",
+      "startTime": "2026-01-25T13:09:44.797Z",
+      "endTime": "2026-01-25T13:09:46.068Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "ts": 1769346584783
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:44.783Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce"
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH2W",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection from <IPV6>, CF colo: SIN"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": false,
+          "cache_status": "STALE",
+          "status_code": 504,
+          "body": {
+            "size": 0
+          }
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 4
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "7004014098347005",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "name": "cache_match",
+      "startTime": 1769346584783,
+      "endTime": 1769346584797,
+      "duration": 13,
+      "durationMS": 13
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:44.783Z",
+    "$metadata": {
+      "id": "01KFTMCM6F0000000000000004",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "7004014098347005",
+      "trigger": "spoke-api",
+      "parentSpanId": "9e764f7fb2d70e8b",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T13:09:44.783Z",
+      "endTime": "2026-01-25T13:09:44.797Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T13:09:44.718Z",
+    "$workers": {
+      "event": {
+        "request": {
+          "cf": {
+            "requestHeaderNames": {},
+            "isEUCountry": false,
+            "httpProtocol": "HTTP/1.1",
+            "tlsCipher": "AEAD-AES128-GCM-SHA256",
+            "continent": "AS",
+            "clientAcceptEncoding": "gzip, deflate, br",
+            "verifiedBotCategory": "",
+            "country": "IN",
+            "region": "Telangana",
+            "tlsClientCiphersSha1": "2ZAKwkCa11K/M6lJA3762o1mwes=",
+            "tlsClientAuth": {
+              "certIssuerDNLegacy": "",
+              "certIssuerSKI": "",
+              "certSubjectDNRFC2253": "",
+              "certSubjectDNLegacy": "",
+              "certFingerprintSHA256": "",
+              "certNotBefore": "",
+              "certSKI": "",
+              "certSerial": "",
+              "certIssuerDN": "",
+              "certVerified": "NONE",
+              "certNotAfter": "",
+              "certSubjectDN": "",
+              "certPresented": "0",
+              "certRevoked": "0",
+              "certIssuerSerial": "",
+              "certIssuerDNRFC2253": "",
+              "certFingerprintSHA1": ""
+            },
+            "tlsClientRandom": "6ka46fYlLN0KUaOBsYnsBYj1FZVjx3V1hnQSuEReenQ=",
+            "tlsExportedAuthenticator": {
+              "clientFinished": "ef6e990da5910e39c959b35f00b434ff7d249cca5d73746ef5f0b684091dced8",
+              "clientHandshake": "385575539778d1c7f242984144ffe42cc8cfc12e8d333f6c4ae9d7872a4064d0",
+              "serverHandshake": "ee3895febe427c5a2f1d2eccdd8012e86b30a978e9d9e5f9ce3974c086049691",
+              "serverFinished": "2cf093c2e50de8e66d9831923f4c45b8bf5e61d7df0f69e22bde53e60d4b8809"
+            },
+            "tlsClientHelloLength": "1710",
+            "colo": "SIN",
+            "timezone": "Asia/Kolkata",
+            "longitude": "78.45636",
+            "latitude": "17.38405",
+            "requestPriority": "",
+            "postalCode": "500001",
+            "city": "Hyderabad",
+            "tlsVersion": "TLSv1.3",
+            "regionCode": "TG",
+            "asOrganization": "Reliance Jio Infocomm Limited",
+            "tlsClientExtensionsSha1Le": "SsFB2o0cpObx4zHmArBfhViCntk=",
+            "tlsClientExtensionsSha1": "wShHWt+VkSjcIYz9rPPgZ6UCleI=",
+            "clientTcpRtt": 59,
+            "asn": 55836,
+            "edgeRequestKeepAliveStatus": 1
+          },
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "headers": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US",
+            "cache-control": "no-cache",
+            "cf-connecting-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9c3801ba28bc81ce",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "connection": "Upgrade",
+            "host": "api.spoke.so",
+            "origin": "file://",
+            "pragma": "no-cache",
+            "sec-websocket-extensions": "permessage-deflate; client_max_window_bits",
+            "sec-websocket-key": "REDACTED",
+            "sec-websocket-version": "13",
+            "upgrade": "websocket",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+            "x-forwarded-proto": "https",
+            "x-real-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d"
+          },
+          "path": "/ws"
+        },
+        "rayId": "9c3801ba28bc81ce"
+      },
+      "diagnosticsChannelEvents": [],
+      "truncated": false,
+      "scriptName": "spoke-api",
+      "outcome": "ok",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c3801ba28bc81ce",
+      "cpuTimeMs": 32,
+      "wallTimeMs": 5790
+    },
+    "$metadata": {
+      "id": "01KFTMCPWT50M5Z5MJADMCPH2V",
+      "requestId": "9c3801ba28bc81ce",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker-event",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "GET https://api.spoke.so/ws"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cloudflare": {
+        "execution_model": "stateless",
+        "handler_type": "fetch",
+        "ray_id": "9c3801ba28bc81ce",
+        "colo": "SIN",
+        "outcome": "ok",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "asn": 55836,
+        "invocation": {
+          "sequence": {
+            "number": 1
+          }
+        }
+      },
+      "faas": {
+        "invocation_id": "708186a39246c4db8c8f5e54bed4f613",
+        "trigger": "http",
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "server": {
+        "address": "api.spoke.so"
+      },
+      "url": {
+        "full": "https://api.spoke.so/ws",
+        "path": "/ws",
+        "schema": "https"
+      },
+      "http": {
+        "request": {
+          "method": "GET",
+          "header": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US"
+          }
+        }
+      },
+      "network": {
+        "protocol": {
+          "name": "https:"
+        }
+      },
+      "user_agent": {
+        "original": "Mozilla/5.0 (Macintosh\\; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+        "os": {
+          "name": "macOS",
+          "version": "10.15.7"
+        },
+        "browser": {
+          "name": "Electron",
+          "major_version": "35",
+          "version": "35.7.5"
+        },
+        "engine": {
+          "name": "Blink",
+          "version": "134.0.6998.205"
+        },
+        "device": {
+          "vendor": "Apple",
+          "model": "Macintosh"
+        }
+      },
+      "geo": {
+        "timezone": "Asia/Kolkata",
+        "continent": {
+          "code": "AS"
+        },
+        "country": {
+          "code": "IN"
+        },
+        "locality": {
+          "name": "Hyderabad",
+          "region": "Telangana"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "9e764f7fb2d70e8b",
+      "name": "GET",
+      "cpu_time_ms": 32,
+      "wall_time_ms": 5790,
+      "startTime": 1769346584718,
+      "endTime": 1769346590564,
+      "duration": 5845,
+      "durationMS": 5845
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T13:09:44.718Z",
+    "$metadata": {
+      "id": "01KFTMCM4E0000000000000001",
+      "requestId": "708186a39246c4db8c8f5e54bed4f613",
+      "traceId": "0c3d54e6bc1eaa4dffe529c85b0828ff",
+      "spanId": "9e764f7fb2d70e8b",
+      "trigger": "spoke-api",
+      "transactionName": "GET https://api.spoke.so/ws",
+      "startTime": "2026-01-25T13:09:44.718Z",
+      "endTime": "2026-01-25T13:09:50.564Z",
+      "service": "spoke-api",
+      "traceDuration": 5845,
+      "spanName": "GET",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "session",
+      "tag": "close",
+      "traceId": "nfdw9fpgz58",
+      "mode": "dictation",
+      "ts": 1769341905775,
+      "frames": 118,
+      "bytesKB": 412.5,
+      "seqGaps": 0,
+      "firstToLastArrivalMs": 12513
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.775Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTVFFYG9PNT3DFYBG0HW",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "session",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "session"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "ts": 1769341905775
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.775Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTVFFYG9PNT3DFYBG0HV",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection closed: code=1000, reason=\"done\""
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Session: Completed in 14.2s (976ms STT)",
+      "event": "session.complete",
+      "outcome": "success",
+      "mode": "dictation",
+      "trace_id": "nfdw9fpgz58",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "stt_provider": "groq",
+      "worker_boot_ms": 0,
+      "worker_lifetime_ms": 14165,
+      "auth_ms": 0,
+      "ocr_ms": 612,
+      "first_frame_latency_ms": 390,
+      "audio_streaming_ms": 12513,
+      "assemble_ms": 0,
+      "stt_ms": 976,
+      "llm_ms": 0,
+      "total_processing_ms": 976,
+      "overhead_ms": 13189
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.478Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTJ6QAV21HQ0C208G8EY",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Session: Completed in 14.2s (976ms STT)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Session: Completed in 14.2s (976ms STT)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Background] Session analytics:",
+      "trace_id": "nfdw9fpgz58",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "data": {
+        "stt_provider": "groq",
+        "stt_model": "whisper-large-v3",
+        "final_text": "But I know my instinct is right. It's just that we're probably not thinking out of the box. As in like, yeah, we're literally not thinking out of the box.",
+        "word_count": 30
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.478Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTJ6QAV21HQ0C208G8EX",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Background] Session analytics:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Background] Session analytics:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "STT: groq transcribed in 976ms → 154 chars",
+      "event": "session.stt",
+      "outcome": "success",
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "trace_id": "nfdw9fpgz58",
+      "duration_ms": 976,
+      "ttfb_ms": 976,
+      "text_length": 154
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.478Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTJ6QAV21HQ0C208G8EW",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "STT: groq transcribed in 976ms → 154 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "STT: groq transcribed in 976ms → 154 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[STT:Groq] Latency breakdown:",
+      "audio_size_kb": "412.54",
+      "timings": {
+        "form_creation_ms": 0,
+        "fetch_ttfb_ms": 976,
+        "body_read_ms": 0,
+        "total_fetch_ms": 976,
+        "total_ms": 976
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:45.478Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXTJ6QAV21HQ0C208G8EV",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[STT:Groq] Latency breakdown:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[STT:Groq] Latency breakdown:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Audio: 118 frames, 412.5KB over 12.5s",
+      "event": "session.audio",
+      "trace_id": "nfdw9fpgz58",
+      "frames": 118,
+      "bytes_kb": 412.5,
+      "streaming_duration_ms": 12513,
+      "seq_gaps": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:44.502Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXSKPVCTYQGZ8CBE8FHYP",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Audio: 118 frames, 412.5KB over 12.5s",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Audio: 118 frames, 412.5KB over 12.5s"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "multipart/form-data\\; boundary=8151291615823c0a6635603b1adc7162"
+          },
+          "body": {
+            "size": 423392
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/audio/transcriptions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/audio/transcriptions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 10
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "d72f409251c472ba",
+      "parentSpanId": "478fb12c9ff011b6",
+      "name": "fetch",
+      "startTime": 1769341904502,
+      "endTime": 1769341905478,
+      "duration": 976,
+      "durationMS": 976
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:44.502Z",
+    "$metadata": {
+      "id": "01KFTFXSKP000000000000000A",
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "d72f409251c472ba",
+      "trigger": "spoke-api",
+      "parentSpanId": "478fb12c9ff011b6",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/audio/transcriptions",
+      "startTime": "2026-01-25T11:51:44.502Z",
+      "endTime": "2026-01-25T11:51:45.478Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "OCR: Extracted 21 words in 612ms",
+      "event": "session.ocr",
+      "outcome": "success",
+      "trace_id": "nfdw9fpgz58",
+      "duration_ms": 612,
+      "word_count": 21
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:32.310Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD6",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "OCR: Extracted 21 words in 612ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "OCR: Extracted 21 words in 612ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 94008
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 7
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "c34f4dc67512c842",
+      "parentSpanId": "478fb12c9ff011b6",
+      "name": "fetch",
+      "startTime": 1769341891697,
+      "endTime": 1769341892308,
+      "duration": 610,
+      "durationMS": 610
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:31.697Z",
+    "$metadata": {
+      "id": "01KFTFXD3H0000000000000007",
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "c34f4dc67512c842",
+      "trigger": "spoke-api",
+      "parentSpanId": "478fb12c9ff011b6",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/chat/completions",
+      "startTime": "2026-01-25T11:51:31.697Z",
+      "endTime": "2026-01-25T11:51:32.308Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cold_start": false,
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "event": "session.auth",
+      "outcome": "success",
+      "trace_id": "nfdw9fpgz58",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "duration_ms": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:31.376Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD5",
+      "requestId": "9c378f245ce687ae",
+      "traceId": "nfdw9fpgz58",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Auth: JWT verified in 0ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:31.325Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD4",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> - cache <*> <*>"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:31.325Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD3",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> cache (<*> <*>)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "ts": 1769341891313
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:31.313Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae"
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD2",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection from <IPV6>, CF colo: SIN"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true,
+          "cache_status": "HIT",
+          "status_code": 200
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 4
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "cfa73154312fe001",
+      "parentSpanId": "478fb12c9ff011b6",
+      "name": "cache_match",
+      "startTime": 1769341891313,
+      "endTime": 1769341891325,
+      "duration": 12,
+      "durationMS": 12
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:31.313Z",
+    "$metadata": {
+      "id": "01KFTFXCQH0000000000000004",
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "cfa73154312fe001",
+      "trigger": "spoke-api",
+      "parentSpanId": "478fb12c9ff011b6",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T11:51:31.313Z",
+      "endTime": "2026-01-25T11:51:31.325Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:31.259Z",
+    "$workers": {
+      "event": {
+        "request": {
+          "cf": {
+            "requestHeaderNames": {},
+            "isEUCountry": false,
+            "httpProtocol": "HTTP/1.1",
+            "tlsCipher": "AEAD-AES128-GCM-SHA256",
+            "continent": "AS",
+            "clientAcceptEncoding": "gzip, deflate, br",
+            "verifiedBotCategory": "",
+            "country": "IN",
+            "region": "Telangana",
+            "tlsClientCiphersSha1": "Kl1NzpQr5uPyKg4UM2V2PU+p6O8=",
+            "tlsClientAuth": {
+              "certIssuerDNLegacy": "",
+              "certIssuerSKI": "",
+              "certSubjectDNRFC2253": "",
+              "certSubjectDNLegacy": "",
+              "certFingerprintSHA256": "",
+              "certNotBefore": "",
+              "certSKI": "",
+              "certSerial": "",
+              "certIssuerDN": "",
+              "certVerified": "NONE",
+              "certNotAfter": "",
+              "certSubjectDN": "",
+              "certPresented": "0",
+              "certRevoked": "0",
+              "certIssuerSerial": "",
+              "certIssuerDNRFC2253": "",
+              "certFingerprintSHA1": ""
+            },
+            "tlsClientRandom": "kCoWUNS69NrR5iacZGcO7eMnHZKtKYAZhPThFxMeGx8=",
+            "tlsExportedAuthenticator": {
+              "clientFinished": "701f6f58838865b2ee7974972d5b0c6338769c91c04fc02d5b6e379ed3ae45dd",
+              "clientHandshake": "9f60ccf6a9829c66a0f71497f2ee9924d3c6a34c0ed33f02c73f5f7bb73a6294",
+              "serverHandshake": "4425945b73dc8216b66a4bd2e44824ea67a993601bb027bafdd4c346924500a8",
+              "serverFinished": "1def722cf0417cf4880e75d66246b08195100a4580cbfbb5288dadd0b541a0a1"
+            },
+            "tlsClientHelloLength": "1710",
+            "colo": "SIN",
+            "timezone": "Asia/Kolkata",
+            "longitude": "78.45636",
+            "latitude": "17.38405",
+            "requestPriority": "",
+            "postalCode": "500001",
+            "city": "Hyderabad",
+            "tlsVersion": "TLSv1.3",
+            "regionCode": "TG",
+            "asOrganization": "Reliance Jio Infocomm Limited",
+            "tlsClientExtensionsSha1Le": "p1ROkdxW6FCPW3Pws+TwTXYJW8A=",
+            "tlsClientExtensionsSha1": "LSo4taBL+GrgRR2SsjM7bBiWyrk=",
+            "clientTcpRtt": 62,
+            "asn": 55836,
+            "edgeRequestKeepAliveStatus": 1
+          },
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "headers": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US",
+            "cache-control": "no-cache",
+            "cf-connecting-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9c378f245ce687ae",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "connection": "Upgrade",
+            "host": "api.spoke.so",
+            "origin": "file://",
+            "pragma": "no-cache",
+            "sec-websocket-extensions": "permessage-deflate; client_max_window_bits",
+            "sec-websocket-key": "REDACTED",
+            "sec-websocket-version": "13",
+            "upgrade": "websocket",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+            "x-forwarded-proto": "https",
+            "x-real-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d"
+          },
+          "path": "/ws"
+        },
+        "rayId": "9c378f245ce687ae"
+      },
+      "diagnosticsChannelEvents": [],
+      "truncated": false,
+      "scriptName": "spoke-api",
+      "outcome": "ok",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378f245ce687ae",
+      "cpuTimeMs": 36,
+      "wallTimeMs": 14470
+    },
+    "$metadata": {
+      "id": "01KFTFXS7QAHZ2Z0CPTYYT9AD1",
+      "requestId": "9c378f245ce687ae",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker-event",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "GET https://api.spoke.so/ws"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cloudflare": {
+        "execution_model": "stateless",
+        "handler_type": "fetch",
+        "ray_id": "9c378f245ce687ae",
+        "colo": "SIN",
+        "outcome": "ok",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "asn": 55836,
+        "invocation": {
+          "sequence": {
+            "number": 1
+          }
+        }
+      },
+      "faas": {
+        "invocation_id": "64425c795c85e2f5462738b36618e9a7",
+        "trigger": "http",
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "server": {
+        "address": "api.spoke.so"
+      },
+      "url": {
+        "full": "https://api.spoke.so/ws",
+        "path": "/ws",
+        "schema": "https"
+      },
+      "http": {
+        "request": {
+          "method": "GET",
+          "header": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US"
+          }
+        }
+      },
+      "network": {
+        "protocol": {
+          "name": "https:"
+        }
+      },
+      "user_agent": {
+        "original": "Mozilla/5.0 (Macintosh\\; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+        "os": {
+          "name": "macOS",
+          "version": "10.15.7"
+        },
+        "browser": {
+          "name": "Electron",
+          "major_version": "35",
+          "version": "35.7.5"
+        },
+        "engine": {
+          "name": "Blink",
+          "version": "134.0.6998.205"
+        },
+        "device": {
+          "vendor": "Apple",
+          "model": "Macintosh"
+        }
+      },
+      "geo": {
+        "timezone": "Asia/Kolkata",
+        "continent": {
+          "code": "AS"
+        },
+        "country": {
+          "code": "IN"
+        },
+        "locality": {
+          "name": "Hyderabad",
+          "region": "Telangana"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "478fb12c9ff011b6",
+      "name": "GET",
+      "cpu_time_ms": 36,
+      "wall_time_ms": 14470,
+      "startTime": 1769341891259,
+      "endTime": 1769341905775,
+      "duration": 14516,
+      "durationMS": 14516
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:31.259Z",
+    "$metadata": {
+      "id": "01KFTFXCNV0000000000000001",
+      "requestId": "64425c795c85e2f5462738b36618e9a7",
+      "traceId": "611761dd56add7337e03e28157ad7b89",
+      "spanId": "478fb12c9ff011b6",
+      "trigger": "spoke-api",
+      "transactionName": "GET https://api.spoke.so/ws",
+      "startTime": "2026-01-25T11:51:31.259Z",
+      "endTime": "2026-01-25T11:51:45.775Z",
+      "service": "spoke-api",
+      "traceDuration": 14516,
+      "spanName": "GET",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "session",
+      "tag": "close",
+      "traceId": "y0a9hjai78c",
+      "mode": "dictation",
+      "ts": 1769341886648,
+      "frames": 129,
+      "bytesKB": 440.46,
+      "seqGaps": 0,
+      "firstToLastArrivalMs": 11599
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.648Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX85RT43MB0VF3FHW63CV",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "session",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "session"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "ts": 1769341886648
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.648Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX85RT43MB0VF3FHW63CT",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection closed: code=1000, reason=\"done\""
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Session: Completed in 14.8s (353ms STT)",
+      "event": "session.complete",
+      "outcome": "success",
+      "mode": "dictation",
+      "trace_id": "y0a9hjai78c",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "stt_provider": "groq",
+      "worker_boot_ms": 0,
+      "worker_lifetime_ms": 14829,
+      "auth_ms": 0,
+      "ocr_ms": 600,
+      "first_frame_latency_ms": 2877,
+      "audio_streaming_ms": 11599,
+      "assemble_ms": 0,
+      "stt_ms": 353,
+      "llm_ms": 0,
+      "total_processing_ms": 353,
+      "overhead_ms": 14476
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.053Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7K55CST06TFQHP5Z9KX",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Session: Completed in 14.8s (353ms STT)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Session: Completed in 14.8s (353ms STT)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Background] Session analytics:",
+      "trace_id": "y0a9hjai78c",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "data": {
+        "stt_provider": "groq",
+        "stt_model": "whisper-large-v3",
+        "final_text": "Because like, you know, I feel like we're still like leaving a lot of cycles on the table. Like I would set these like 200 cycles on the table just instinctively, you know?",
+        "word_count": 33
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.053Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7K55CST06TFQHP5Z9KW",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Background] Session analytics:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Background] Session analytics:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "STT: groq transcribed in 353ms → 172 chars",
+      "event": "session.stt",
+      "outcome": "success",
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "trace_id": "y0a9hjai78c",
+      "duration_ms": 353,
+      "ttfb_ms": 353,
+      "text_length": 172
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.053Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7K55CST06TFQHP5Z9KV",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "STT: groq transcribed in 353ms → 172 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "STT: groq transcribed in 353ms → 172 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[STT:Groq] Latency breakdown:",
+      "audio_size_kb": "437.54",
+      "timings": {
+        "form_creation_ms": 0,
+        "fetch_ttfb_ms": 353,
+        "body_read_ms": 0,
+        "total_fetch_ms": 353,
+        "total_ms": 353
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:26.053Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7K55CST06TFQHP5Z9KT",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[STT:Groq] Latency breakdown:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[STT:Groq] Latency breakdown:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Audio: 128 frames, 437.5KB over 11.6s",
+      "event": "session.audio",
+      "trace_id": "y0a9hjai78c",
+      "frames": 128,
+      "bytes_kb": 437.5,
+      "streaming_duration_ms": 11582,
+      "seq_gaps": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:25.700Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT7",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Audio: 128 frames, 437.5KB over 11.6s",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Audio: 128 frames, 437.5KB over 11.6s"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "multipart/form-data\\; boundary=3045a1a800ace428a6d3a5e4b6c67e3b"
+          },
+          "body": {
+            "size": 448999
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/audio/transcriptions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/audio/transcriptions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 10
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "967553e38270d621",
+      "parentSpanId": "04536566d338b7f3",
+      "name": "fetch",
+      "startTime": 1769341885700,
+      "endTime": 1769341886053,
+      "duration": 352,
+      "durationMS": 352
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:25.700Z",
+    "$metadata": {
+      "id": "01KFTFX784000000000000000A",
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "967553e38270d621",
+      "trigger": "spoke-api",
+      "parentSpanId": "04536566d338b7f3",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/audio/transcriptions",
+      "startTime": "2026-01-25T11:51:25.700Z",
+      "endTime": "2026-01-25T11:51:26.053Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "OCR: Extracted 20 words in 600ms",
+      "event": "session.ocr",
+      "outcome": "success",
+      "trace_id": "y0a9hjai78c",
+      "duration_ms": 600,
+      "word_count": 20
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:14.701Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT6",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "OCR: Extracted 20 words in 600ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "OCR: Extracted 20 words in 600ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 90804
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 7
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "009ee42698e0ef74",
+      "parentSpanId": "04536566d338b7f3",
+      "name": "fetch",
+      "startTime": 1769341874101,
+      "endTime": 1769341874694,
+      "duration": 593,
+      "durationMS": 593
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:14.101Z",
+    "$metadata": {
+      "id": "01KFTFWVXN0000000000000007",
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "009ee42698e0ef74",
+      "trigger": "spoke-api",
+      "parentSpanId": "04536566d338b7f3",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/chat/completions",
+      "startTime": "2026-01-25T11:51:14.101Z",
+      "endTime": "2026-01-25T11:51:14.694Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cold_start": false,
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "event": "session.auth",
+      "outcome": "success",
+      "trace_id": "y0a9hjai78c",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "duration_ms": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:11.870Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT5",
+      "requestId": "9c378ea6ddb1e60e",
+      "traceId": "y0a9hjai78c",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Auth: JWT verified in 0ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:11.360Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT4",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> - cache <*> <*>"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:11.360Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT3",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> cache (<*> <*>)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "ts": 1769341871224
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:11.224Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e"
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT2",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection from <IPV6>, CF colo: SIN"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true,
+          "cache_status": "HIT",
+          "status_code": 200
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 4
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "e1ae6da8f1c7835c",
+      "parentSpanId": "04536566d338b7f3",
+      "name": "cache_match",
+      "startTime": 1769341871224,
+      "endTime": 1769341871360,
+      "duration": 136,
+      "durationMS": 136
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:11.224Z",
+    "$metadata": {
+      "id": "01KFTFWS3R0000000000000004",
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "e1ae6da8f1c7835c",
+      "trigger": "spoke-api",
+      "parentSpanId": "04536566d338b7f3",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T11:51:11.224Z",
+      "endTime": "2026-01-25T11:51:11.360Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:51:11.189Z",
+    "$workers": {
+      "event": {
+        "request": {
+          "cf": {
+            "requestHeaderNames": {},
+            "isEUCountry": false,
+            "httpProtocol": "HTTP/1.1",
+            "tlsCipher": "AEAD-AES128-GCM-SHA256",
+            "continent": "AS",
+            "clientAcceptEncoding": "gzip, deflate, br",
+            "verifiedBotCategory": "",
+            "country": "IN",
+            "region": "Telangana",
+            "tlsClientCiphersSha1": "tQJ4J5nKzcB8rojp6mWkZo8HEVU=",
+            "tlsClientAuth": {
+              "certIssuerDNLegacy": "",
+              "certIssuerSKI": "",
+              "certSubjectDNRFC2253": "",
+              "certSubjectDNLegacy": "",
+              "certFingerprintSHA256": "",
+              "certNotBefore": "",
+              "certSKI": "",
+              "certSerial": "",
+              "certIssuerDN": "",
+              "certVerified": "NONE",
+              "certNotAfter": "",
+              "certSubjectDN": "",
+              "certPresented": "0",
+              "certRevoked": "0",
+              "certIssuerSerial": "",
+              "certIssuerDNRFC2253": "",
+              "certFingerprintSHA1": ""
+            },
+            "tlsClientRandom": "l6BJjl5DsTkpC7jrZDvcEKdyJJpNiWWwSu+Bkh12suM=",
+            "tlsExportedAuthenticator": {
+              "clientFinished": "4e50d2bb65a4f43a25b882580ee7639bb417c317d05322ccfea499daa2fae052",
+              "clientHandshake": "9ea380b68b6b6787f6d8566b672d6f2f641ccb17fddf3690b2b0c6fa5bc50ca9",
+              "serverHandshake": "2506eb0222685fa8218279e130e84588d5e155c0b752c5d8026d82360eaff7ca",
+              "serverFinished": "8fc122958a256826ac18895ca1728e6a1b2a1c31a46f5bc00c43a03d5aabde4c"
+            },
+            "tlsClientHelloLength": "1710",
+            "colo": "SIN",
+            "timezone": "Asia/Kolkata",
+            "longitude": "78.45636",
+            "latitude": "17.38405",
+            "requestPriority": "",
+            "postalCode": "500001",
+            "city": "Hyderabad",
+            "tlsVersion": "TLSv1.3",
+            "regionCode": "TG",
+            "asOrganization": "Reliance Jio Infocomm Limited",
+            "tlsClientExtensionsSha1Le": "TSuX7ykm4dY+ibTYtFfdDkEap0A=",
+            "tlsClientExtensionsSha1": "xtNjob8uHpHalDAOS2AeaFdT0fc=",
+            "clientTcpRtt": 138,
+            "asn": 55836,
+            "edgeRequestKeepAliveStatus": 1
+          },
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "headers": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US",
+            "cache-control": "no-cache",
+            "cf-connecting-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9c378ea6ddb1e60e",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "connection": "Upgrade",
+            "host": "api.spoke.so",
+            "origin": "file://",
+            "pragma": "no-cache",
+            "sec-websocket-extensions": "permessage-deflate; client_max_window_bits",
+            "sec-websocket-key": "REDACTED",
+            "sec-websocket-version": "13",
+            "upgrade": "websocket",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+            "x-forwarded-proto": "https",
+            "x-real-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d"
+          },
+          "path": "/ws"
+        },
+        "rayId": "9c378ea6ddb1e60e"
+      },
+      "diagnosticsChannelEvents": [],
+      "truncated": false,
+      "scriptName": "spoke-api",
+      "outcome": "ok",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378ea6ddb1e60e",
+      "cpuTimeMs": 25,
+      "wallTimeMs": 15429
+    },
+    "$metadata": {
+      "id": "01KFTFX7JMM0AGPZZS04HBXHT1",
+      "requestId": "9c378ea6ddb1e60e",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker-event",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "GET https://api.spoke.so/ws"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cloudflare": {
+        "execution_model": "stateless",
+        "handler_type": "fetch",
+        "ray_id": "9c378ea6ddb1e60e",
+        "colo": "SIN",
+        "outcome": "ok",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "asn": 55836,
+        "invocation": {
+          "sequence": {
+            "number": 1
+          }
+        }
+      },
+      "faas": {
+        "invocation_id": "7cf51dfd7816adf76a03c357a765101a",
+        "trigger": "http",
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "server": {
+        "address": "api.spoke.so"
+      },
+      "url": {
+        "full": "https://api.spoke.so/ws",
+        "path": "/ws",
+        "schema": "https"
+      },
+      "http": {
+        "request": {
+          "method": "GET",
+          "header": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US"
+          }
+        }
+      },
+      "network": {
+        "protocol": {
+          "name": "https:"
+        }
+      },
+      "user_agent": {
+        "original": "Mozilla/5.0 (Macintosh\\; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+        "os": {
+          "name": "macOS",
+          "version": "10.15.7"
+        },
+        "browser": {
+          "name": "Electron",
+          "major_version": "35",
+          "version": "35.7.5"
+        },
+        "engine": {
+          "name": "Blink",
+          "version": "134.0.6998.205"
+        },
+        "device": {
+          "vendor": "Apple",
+          "model": "Macintosh"
+        }
+      },
+      "geo": {
+        "timezone": "Asia/Kolkata",
+        "continent": {
+          "code": "AS"
+        },
+        "country": {
+          "code": "IN"
+        },
+        "locality": {
+          "name": "Hyderabad",
+          "region": "Telangana"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "04536566d338b7f3",
+      "name": "GET",
+      "cpu_time_ms": 25,
+      "wall_time_ms": 15429,
+      "startTime": 1769341871189,
+      "endTime": 1769341886648,
+      "duration": 15459,
+      "durationMS": 15459
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:51:11.189Z",
+    "$metadata": {
+      "id": "01KFTFWS2N0000000000000001",
+      "requestId": "7cf51dfd7816adf76a03c357a765101a",
+      "traceId": "23f9d46bf6043d2b916af06c50947060",
+      "spanId": "04536566d338b7f3",
+      "trigger": "spoke-api",
+      "transactionName": "GET https://api.spoke.so/ws",
+      "startTime": "2026-01-25T11:51:11.189Z",
+      "endTime": "2026-01-25T11:51:26.648Z",
+      "service": "spoke-api",
+      "traceDuration": 15459,
+      "spanName": "GET",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "session",
+      "tag": "close",
+      "traceId": "3r3addg0z44",
+      "mode": "dictation",
+      "ts": 1769341857387,
+      "frames": 79,
+      "bytesKB": 271.88,
+      "seqGaps": 0,
+      "firstToLastArrivalMs": 8477
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:57.387Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWBKBTQ89GKHG31F313RS",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "session",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "session"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "ts": 1769341857387
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:57.387Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWBKBTQ89GKHG31F313RR",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection closed: code=1000, reason=\"done\""
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Session: Completed in 12.9s (567ms STT + 3095ms LLM)",
+      "event": "session.complete",
+      "outcome": "success",
+      "mode": "dictation",
+      "trace_id": "3r3addg0z44",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "stt_provider": "groq",
+      "worker_boot_ms": 0,
+      "worker_lifetime_ms": 12866,
+      "auth_ms": 0,
+      "ocr_ms": 1088,
+      "first_frame_latency_ms": 384,
+      "audio_streaming_ms": 8477,
+      "assemble_ms": 0,
+      "stt_ms": 567,
+      "llm_ms": 3095,
+      "total_processing_ms": 3662,
+      "overhead_ms": 9204
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:57.324Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWBHCXGEQT7Z8J12K4QPS",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Session: Completed in 12.9s (567ms STT + 3095ms LLM)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Session: Completed in 12.9s (567ms STT + 3095ms LLM)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Background] Session analytics:",
+      "trace_id": "3r3addg0z44",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "data": {
+        "stt_provider": "groq",
+        "stt_model": "whisper-large-v3",
+        "final_text": "And actually, the best way to figure this out is, how do we actually know that we're doing the best job possible, you know?",
+        "word_count": 24
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:57.324Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWBHCXGEQT7Z8J12K4QPR",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Background] Session analytics:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Background] Session analytics:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "LLM: baseten processed in 3095ms → 123 chars",
+      "event": "session.llm",
+      "outcome": "success",
+      "provider": "baseten",
+      "model": "deepseek-ai/DeepSeek-V3.2",
+      "trace_id": "3r3addg0z44",
+      "duration_ms": 3095,
+      "ttfb_ms": 3095,
+      "router_overhead_ms": 0,
+      "text_length": 123
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:57.324Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWBHCXGEQT7Z8J12K4QPQ",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "LLM: baseten processed in 3095ms → 123 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "LLM: baseten processed in 3095ms → 123 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "STT: groq transcribed in 567ms → 123 chars",
+      "event": "session.stt",
+      "outcome": "success",
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "trace_id": "3r3addg0z44",
+      "duration_ms": 567,
+      "ttfb_ms": 566,
+      "text_length": 123
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:54.229Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8N0",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "STT: groq transcribed in 567ms → 123 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "STT: groq transcribed in 567ms → 123 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[STT:Groq] Latency breakdown:",
+      "audio_size_kb": "271.92",
+      "timings": {
+        "form_creation_ms": 0,
+        "fetch_ttfb_ms": 566,
+        "body_read_ms": 1,
+        "total_fetch_ms": 567,
+        "total_ms": 567
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:54.229Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MZ",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[STT:Groq] Latency breakdown:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[STT:Groq] Latency breakdown:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 2939
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/baseten/v1/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/baseten/v1/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 13
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "022730d7be02c3a7",
+      "parentSpanId": "661ba19a45625a6a",
+      "name": "fetch",
+      "startTime": 1769341854229,
+      "endTime": 1769341857324,
+      "duration": 3095,
+      "durationMS": 3095
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:54.229Z",
+    "$metadata": {
+      "id": "01KFTFW8GN000000000000000D",
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "022730d7be02c3a7",
+      "trigger": "spoke-api",
+      "parentSpanId": "661ba19a45625a6a",
+      "transactionName": "fetch /v1/REDACTED/spoke/baseten/v1/chat/completions",
+      "startTime": "2026-01-25T11:50:54.229Z",
+      "endTime": "2026-01-25T11:50:57.324Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Audio: 79 frames, 271.88KB over 8.5s",
+      "event": "session.audio",
+      "trace_id": "3r3addg0z44",
+      "frames": 79,
+      "bytes_kb": 271.88,
+      "streaming_duration_ms": 8477,
+      "seq_gaps": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:53.662Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MY",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Audio: 79 frames, 271.88KB over 8.5s",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Audio: 79 frames, 271.88KB over 8.5s"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "multipart/form-data\\; boundary=5203002b4037cce7cf8126a8f44ce74a"
+          },
+          "body": {
+            "size": 279568
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/audio/transcriptions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/audio/transcriptions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 10
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "67a9d897f827098e",
+      "parentSpanId": "661ba19a45625a6a",
+      "name": "fetch",
+      "startTime": 1769341853662,
+      "endTime": 1769341854228,
+      "duration": 565,
+      "durationMS": 565
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:53.662Z",
+    "$metadata": {
+      "id": "01KFTFW7YY000000000000000A",
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "67a9d897f827098e",
+      "trigger": "spoke-api",
+      "parentSpanId": "661ba19a45625a6a",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/audio/transcriptions",
+      "startTime": "2026-01-25T11:50:53.662Z",
+      "endTime": "2026-01-25T11:50:54.228Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "OCR: Extracted 43 words in 1088ms",
+      "event": "session.ocr",
+      "outcome": "success",
+      "trace_id": "3r3addg0z44",
+      "duration_ms": 1088,
+      "word_count": 43
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:45.870Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MX",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "OCR: Extracted 43 words in 1088ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "OCR: Extracted 43 words in 1088ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 88104
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 7
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "c0dc328e81cf42f5",
+      "parentSpanId": "661ba19a45625a6a",
+      "name": "fetch",
+      "startTime": 1769341844782,
+      "endTime": 1769341845867,
+      "duration": 1084,
+      "durationMS": 1084
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:44.782Z",
+    "$metadata": {
+      "id": "01KFTFVZ9E0000000000000007",
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "c0dc328e81cf42f5",
+      "trigger": "spoke-api",
+      "parentSpanId": "661ba19a45625a6a",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/chat/completions",
+      "startTime": "2026-01-25T11:50:44.782Z",
+      "endTime": "2026-01-25T11:50:45.867Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cold_start": false,
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "event": "session.auth",
+      "outcome": "success",
+      "trace_id": "3r3addg0z44",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "duration_ms": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:44.522Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MW",
+      "requestId": "9c378dff9c07fd7d",
+      "traceId": "3r3addg0z44",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Auth: JWT verified in 0ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Auth: JWT verified in 0ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:44.467Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MV",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> - cache <*> <*>"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:44.467Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MT",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🍪 JWKS from edge cache (fast ~10ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] <*> JWKS <*> <*> cache (<*> <*>)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "ts": 1769341844458
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:44.458Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d"
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MS",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection from <IPV6>, CF colo: SIN"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true,
+          "cache_status": "HIT",
+          "status_code": 200
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 4
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "821a38fc37f0d4e1",
+      "parentSpanId": "661ba19a45625a6a",
+      "name": "cache_match",
+      "startTime": 1769341844458,
+      "endTime": 1769341844467,
+      "duration": 8,
+      "durationMS": 8
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:44.458Z",
+    "$metadata": {
+      "id": "01KFTFVYZA0000000000000004",
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "821a38fc37f0d4e1",
+      "trigger": "spoke-api",
+      "parentSpanId": "661ba19a45625a6a",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T11:50:44.458Z",
+      "endTime": "2026-01-25T11:50:44.467Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:44.424Z",
+    "$workers": {
+      "event": {
+        "request": {
+          "cf": {
+            "requestHeaderNames": {},
+            "isEUCountry": false,
+            "httpProtocol": "HTTP/1.1",
+            "tlsCipher": "AEAD-AES128-GCM-SHA256",
+            "continent": "AS",
+            "clientAcceptEncoding": "gzip, deflate, br",
+            "verifiedBotCategory": "",
+            "country": "IN",
+            "region": "Telangana",
+            "tlsClientCiphersSha1": "r9zmiM7f0F8VRe36Dd6FUtByVTE=",
+            "tlsClientAuth": {
+              "certIssuerDNLegacy": "",
+              "certIssuerSKI": "",
+              "certSubjectDNRFC2253": "",
+              "certSubjectDNLegacy": "",
+              "certFingerprintSHA256": "",
+              "certNotBefore": "",
+              "certSKI": "",
+              "certSerial": "",
+              "certIssuerDN": "",
+              "certVerified": "NONE",
+              "certNotAfter": "",
+              "certSubjectDN": "",
+              "certPresented": "0",
+              "certRevoked": "0",
+              "certIssuerSerial": "",
+              "certIssuerDNRFC2253": "",
+              "certFingerprintSHA1": ""
+            },
+            "tlsClientRandom": "TZ8m/ZeQTKGQP6rB4yLog91dbXojTTPYll1VaPg6CqU=",
+            "tlsExportedAuthenticator": {
+              "clientFinished": "b8991f0ebe884afbc98ce25c65c079831172bcd22e40ed8fbbc06508e50f9dbb",
+              "clientHandshake": "bc8e7b526c00e6a2968ca76ebaf15e614374142f9211ba92ac7192619e86fe61",
+              "serverHandshake": "13ed66654c5abdd6c1c5a42d96d2bd2381cedaebaa066b26012ca2535cecbed9",
+              "serverFinished": "696662f54f8a26eee788621577935a138f9f49faaa5449e71679bd307a341619"
+            },
+            "tlsClientHelloLength": "1710",
+            "colo": "SIN",
+            "timezone": "Asia/Kolkata",
+            "longitude": "78.45636",
+            "latitude": "17.38405",
+            "requestPriority": "",
+            "postalCode": "500001",
+            "city": "Hyderabad",
+            "tlsVersion": "TLSv1.3",
+            "regionCode": "TG",
+            "asOrganization": "Reliance Jio Infocomm Limited",
+            "tlsClientExtensionsSha1Le": "I4yEcgbG/vR5Eaya2NJUggHDedU=",
+            "tlsClientExtensionsSha1": "lXQuAGZwWygl0NY1hyKAwFDVlFk=",
+            "clientTcpRtt": 64,
+            "asn": 55836,
+            "edgeRequestKeepAliveStatus": 1
+          },
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "headers": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US",
+            "cache-control": "no-cache",
+            "cf-connecting-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9c378dff9c07fd7d",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "connection": "Upgrade",
+            "host": "api.spoke.so",
+            "origin": "file://",
+            "pragma": "no-cache",
+            "sec-websocket-extensions": "permessage-deflate; client_max_window_bits",
+            "sec-websocket-key": "REDACTED",
+            "sec-websocket-version": "13",
+            "upgrade": "websocket",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+            "x-forwarded-proto": "https",
+            "x-real-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d"
+          },
+          "path": "/ws"
+        },
+        "rayId": "9c378dff9c07fd7d"
+      },
+      "diagnosticsChannelEvents": [],
+      "truncated": false,
+      "scriptName": "spoke-api",
+      "outcome": "ok",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378dff9c07fd7d",
+      "cpuTimeMs": 24,
+      "wallTimeMs": 12933
+    },
+    "$metadata": {
+      "id": "01KFTFWB8VH7HJSHC71RD9P8MR",
+      "requestId": "9c378dff9c07fd7d",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker-event",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "GET https://api.spoke.so/ws"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cloudflare": {
+        "execution_model": "stateless",
+        "handler_type": "fetch",
+        "ray_id": "9c378dff9c07fd7d",
+        "colo": "SIN",
+        "outcome": "ok",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "asn": 55836,
+        "invocation": {
+          "sequence": {
+            "number": 1
+          }
+        }
+      },
+      "faas": {
+        "invocation_id": "f66fa79e2b48c62eec9a30198fcbe1b2",
+        "trigger": "http",
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "server": {
+        "address": "api.spoke.so"
+      },
+      "url": {
+        "full": "https://api.spoke.so/ws",
+        "path": "/ws",
+        "schema": "https"
+      },
+      "http": {
+        "request": {
+          "method": "GET",
+          "header": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US"
+          }
+        }
+      },
+      "network": {
+        "protocol": {
+          "name": "https:"
+        }
+      },
+      "user_agent": {
+        "original": "Mozilla/5.0 (Macintosh\\; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+        "os": {
+          "name": "macOS",
+          "version": "10.15.7"
+        },
+        "browser": {
+          "name": "Electron",
+          "major_version": "35",
+          "version": "35.7.5"
+        },
+        "engine": {
+          "name": "Blink",
+          "version": "134.0.6998.205"
+        },
+        "device": {
+          "vendor": "Apple",
+          "model": "Macintosh"
+        }
+      },
+      "geo": {
+        "timezone": "Asia/Kolkata",
+        "continent": {
+          "code": "AS"
+        },
+        "country": {
+          "code": "IN"
+        },
+        "locality": {
+          "name": "Hyderabad",
+          "region": "Telangana"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "661ba19a45625a6a",
+      "name": "GET",
+      "cpu_time_ms": 24,
+      "wall_time_ms": 12933,
+      "startTime": 1769341844424,
+      "endTime": 1769341857387,
+      "duration": 12963,
+      "durationMS": 12963
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:44.424Z",
+    "$metadata": {
+      "id": "01KFTFVYY80000000000000001",
+      "requestId": "f66fa79e2b48c62eec9a30198fcbe1b2",
+      "traceId": "db555f0efcf13208bd98d8121f8a438a",
+      "spanId": "661ba19a45625a6a",
+      "trigger": "spoke-api",
+      "transactionName": "GET https://api.spoke.so/ws",
+      "startTime": "2026-01-25T11:50:44.424Z",
+      "endTime": "2026-01-25T11:50:57.387Z",
+      "service": "spoke-api",
+      "traceDuration": 12963,
+      "spanName": "GET",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "session",
+      "tag": "close",
+      "traceId": "h3dbjqtkejt",
+      "mode": "dictation",
+      "ts": 1769341808090,
+      "frames": 106,
+      "bytesKB": 356.25,
+      "seqGaps": 0,
+      "firstToLastArrivalMs": 9807
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:08.090Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTVETVJYTNVKZEY87FD3J",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "session",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "session"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "ts": 1769341808090
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:08.090Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTVETVJYTNVKZEY87FD3H",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection closed: code=1000, reason=\"done\"",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection closed: code=1000, reason=\"done\""
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Session: Completed in 20.3s (579ms STT + 6682ms LLM)",
+      "event": "session.complete",
+      "outcome": "success",
+      "mode": "dictation",
+      "trace_id": "h3dbjqtkejt",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "stt_provider": "groq",
+      "worker_boot_ms": 0,
+      "worker_lifetime_ms": 20299,
+      "auth_ms": 972,
+      "ocr_ms": 1048,
+      "first_frame_latency_ms": 2890,
+      "audio_streaming_ms": 9807,
+      "assemble_ms": 0,
+      "stt_ms": 579,
+      "llm_ms": 6682,
+      "total_processing_ms": 7261,
+      "overhead_ms": 13038
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:08.030Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTVCY8XSWPKWMC8RHFNGP",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Session: Completed in 20.3s (579ms STT + 6682ms LLM)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Session: Completed in 20.3s (579ms STT + 6682ms LLM)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Background] Session analytics:",
+      "trace_id": "h3dbjqtkejt",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "data": {
+        "stt_provider": "groq",
+        "stt_model": "whisper-large-v3",
+        "final_text": "Yeah, I mean, we're still thinking of ways to just shape a couple more cycles off, yeah? But, like, you know, what are we not doing that could be, like, big impact?",
+        "word_count": 32
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:08.030Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTVCY8XSWPKWMC8RHFNGN",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Background] Session analytics:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Background] Session analytics:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "LLM: baseten processed in 6682ms → 164 chars",
+      "event": "session.llm",
+      "outcome": "success",
+      "provider": "baseten",
+      "model": "deepseek-ai/DeepSeek-V3.2",
+      "trace_id": "h3dbjqtkejt",
+      "duration_ms": 6682,
+      "ttfb_ms": 6682,
+      "router_overhead_ms": 0,
+      "text_length": 164
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:08.030Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTVCY8XSWPKWMC8RHFNGM",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "LLM: baseten processed in 6682ms → 164 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "LLM: baseten processed in 6682ms → 164 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "STT: groq transcribed in 579ms → 164 chars",
+      "event": "session.stt",
+      "outcome": "success",
+      "provider": "groq",
+      "model": "whisper-large-v3",
+      "trace_id": "h3dbjqtkejt",
+      "duration_ms": 579,
+      "ttfb_ms": 577,
+      "text_length": 164
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:01.348Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTMW4B455X6AQATSBMM9C",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "STT: groq transcribed in 579ms → 164 chars",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "STT: groq transcribed in 579ms → 164 chars"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[STT:Groq] Latency breakdown:",
+      "audio_size_kb": "356.29",
+      "timings": {
+        "form_creation_ms": 0,
+        "fetch_ttfb_ms": 577,
+        "body_read_ms": 2,
+        "total_fetch_ms": 579,
+        "total_ms": 579
+      }
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:01.348Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTMW4B455X6AQATSBMM9B",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[STT:Groq] Latency breakdown:",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[STT:Groq] Latency breakdown:"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 2606
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/baseten/v1/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/baseten/v1/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 19
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "4da1a8cf4a23164f",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "fetch",
+      "startTime": 1769341801348,
+      "endTime": 1769341808030,
+      "duration": 6682,
+      "durationMS": 6682
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:01.348Z",
+    "$metadata": {
+      "id": "01KFTFTMW4000000000000000K",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "4da1a8cf4a23164f",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "fetch /v1/REDACTED/spoke/baseten/v1/chat/completions",
+      "startTime": "2026-01-25T11:50:01.348Z",
+      "endTime": "2026-01-25T11:50:08.030Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "Audio: 106 frames, 356.25KB over 9.8s",
+      "event": "session.audio",
+      "trace_id": "h3dbjqtkejt",
+      "frames": 106,
+      "bytes_kb": 356.25,
+      "streaming_duration_ms": 9807,
+      "seq_gaps": 0
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:50:00.769Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTMA12N1MW7PS9DS6QQKW",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Audio: 106 frames, 356.25KB over 9.8s",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Audio: 106 frames, 356.25KB over 9.8s"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "multipart/form-data\\; boundary=fea9fcc9084efe1f5c39732ba5a4a63e"
+          },
+          "body": {
+            "size": 365594
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/audio/transcriptions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/audio/transcriptions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 16
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "b23b08d854448567",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "fetch",
+      "startTime": 1769341800769,
+      "endTime": 1769341801345,
+      "duration": 576,
+      "durationMS": 576
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:50:00.769Z",
+    "$metadata": {
+      "id": "01KFTFTMA1000000000000000G",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "b23b08d854448567",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/audio/transcriptions",
+      "startTime": "2026-01-25T11:50:00.769Z",
+      "endTime": "2026-01-25T11:50:01.345Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "OCR: Extracted 9 words in 1048ms",
+      "event": "session.ocr",
+      "outcome": "success",
+      "trace_id": "h3dbjqtkejt",
+      "duration_ms": 1048,
+      "word_count": 9
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:51.669Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAT",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "OCR: Extracted 9 words in 1048ms",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "OCR: Extracted 9 words in 1048ms"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "POST",
+          "header": {
+            "content-type": "application/json"
+          },
+          "body": {
+            "size": 116456
+          }
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://gateway.ai.cloudflare.com/v1/REDACTED/spoke/groq/chat/completions",
+        "scheme": "https",
+        "path": "/v1/REDACTED/spoke/groq/chat/completions"
+      },
+      "server": {
+        "address": "gateway.ai.cloudflare.com"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 13
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "3542ef3479f8e820",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "fetch",
+      "startTime": 1769341790621,
+      "endTime": 1769341791668,
+      "duration": 1047,
+      "durationMS": 1047
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:50.621Z",
+    "$metadata": {
+      "id": "01KFTFTACX000000000000000D",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "3542ef3479f8e820",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "fetch /v1/REDACTED/spoke/groq/chat/completions",
+      "startTime": "2026-01-25T11:49:50.621Z",
+      "endTime": "2026-01-25T11:49:51.668Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cold_start": true,
+      "level": "info",
+      "message": "Auth: JWT verified in 972ms [cold start]",
+      "event": "session.auth",
+      "outcome": "success",
+      "trace_id": "h3dbjqtkejt",
+      "user_id": "e5dce022-0596-4324-8cda-3291019f725a",
+      "duration_ms": 972
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:48.769Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAS",
+      "requestId": "9c378c9d1d3e5fb3",
+      "traceId": "h3dbjqtkejt",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "Auth: JWT verified in 972ms [cold start]",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "Auth: JWT verified in 972ms [cold start]"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:48.766Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAR",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] ✅ JWKS prefetch completed - cache is warm",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] ✅ JWKS prefetch completed - cache is warm"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET",
+          "payload": {
+            "header": {
+              "cache_control": "public, max-age=3600"
+            },
+            "status_code": 200
+          }
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 11
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "724a472aed63a2c4",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "cache_put",
+      "startTime": 1769341788764,
+      "endTime": 1769341788766,
+      "duration": 2,
+      "durationMS": 2
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:48.764Z",
+    "$metadata": {
+      "id": "01KFTFT8JW000000000000000B",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "724a472aed63a2c4",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "cache_put",
+      "startTime": "2026-01-25T11:49:48.764Z",
+      "endTime": "2026-01-25T11:49:48.766Z",
+      "service": "spoke-api",
+      "spanName": "cache_put",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": true
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET",
+          "payload": {
+            "header": {
+              "cache_control": "public, max-age=3600"
+            },
+            "status_code": 200
+          }
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 9
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "eb05d7f8d241a973",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "cache_put",
+      "startTime": 1769341788761,
+      "endTime": 1769341788765,
+      "duration": 4,
+      "durationMS": 4
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:48.761Z",
+    "$metadata": {
+      "id": "01KFTFT8JS0000000000000009",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "eb05d7f8d241a973",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "cache_put",
+      "startTime": "2026-01-25T11:49:48.761Z",
+      "endTime": "2026-01-25T11:49:48.765Z",
+      "service": "spoke-api",
+      "spanName": "cache_put",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:47.806Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAQ",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "GET"
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+        "scheme": "https",
+        "path": "/auth/v1/.well-known/jwks.json"
+      },
+      "server": {
+        "address": "irxhzzbhrlshpvnwzyka.supabase.co"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 8
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "1e1fe59593a1f125",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "fetch",
+      "startTime": 1769341787806,
+      "endTime": 1769341788764,
+      "duration": 957,
+      "durationMS": 957
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:47.806Z",
+    "$metadata": {
+      "id": "01KFTFT7MY0000000000000008",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "1e1fe59593a1f125",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "fetch /auth/v1/.well-known/jwks.json",
+      "startTime": "2026-01-25T11:49:47.806Z",
+      "endTime": "2026-01-25T11:49:48.764Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": false,
+          "cache_status": "STALE",
+          "status_code": 504,
+          "body": {
+            "size": 0
+          }
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 6
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "541d58456364a17f",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "cache_match",
+      "startTime": 1769341787797,
+      "endTime": 1769341787806,
+      "duration": 9,
+      "durationMS": 9
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:47.797Z",
+    "$metadata": {
+      "id": "01KFTFT7MN0000000000000006",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "541d58456364a17f",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T11:49:47.797Z",
+      "endTime": "2026-01-25T11:49:47.806Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:47.795Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAP",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "message": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[Auth] 🏪 JWKS cache miss - fetching from Supabase (~500ms)"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "network": {
+        "protocol": {
+          "name": "http",
+          "version": "HTTP/1.1"
+        }
+      },
+      "http": {
+        "request": {
+          "method": "GET"
+        },
+        "response": {
+          "status_code": 200
+        }
+      },
+      "url": {
+        "full": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+        "scheme": "https",
+        "path": "/auth/v1/.well-known/jwks.json"
+      },
+      "server": {
+        "address": "irxhzzbhrlshpvnwzyka.supabase.co"
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 7
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "36fd77f2d5f5b757",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "fetch",
+      "startTime": 1769341787795,
+      "endTime": 1769341788761,
+      "duration": 965,
+      "durationMS": 965
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:47.795Z",
+    "$metadata": {
+      "id": "01KFTFT7MK0000000000000007",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "36fd77f2d5f5b757",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "fetch /auth/v1/.well-known/jwks.json",
+      "startTime": "2026-01-25T11:49:47.795Z",
+      "endTime": "2026-01-25T11:49:48.761Z",
+      "service": "spoke-api",
+      "spanName": "fetch",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "msg": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "ts": 1769341787731
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:47.731Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "request": {
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "path": "/ws"
+        }
+      },
+      "outcome": "ok",
+      "scriptName": "spoke-api",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3"
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAN",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "[WS] Connection from 2405:201:c012:5128:41f2:6a68:1f0d:574d, CF colo: SIN",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "[WS] Connection from <IPV6>, CF colo: SIN"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "cache": {
+        "response": {
+          "success": false,
+          "cache_status": "STALE",
+          "status_code": 504,
+          "body": {
+            "size": 0
+          }
+        },
+        "request": {
+          "url": "https://irxhzzbhrlshpvnwzyka.supabase.co/auth/v1/.well-known/jwks.json",
+          "method": "GET"
+        }
+      },
+      "scope": {
+        "name": "workers-observability"
+      },
+      "cloudflare": {
+        "colo": "SIN",
+        "script_name": "spoke-api",
+        "script_version": {
+          "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+        },
+        "invocation": {
+          "sequence": {
+            "number": 4
+          }
+        }
+      },
+      "faas": {
+        "invoked_region": "APAC",
+        "name": "spoke-api",
+        "version": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "cloud": {
+        "provider": "cloudflare",
+        "platform": "cloudflare.workers"
+      },
+      "telemetry": {
+        "sdk": {
+          "language": "js",
+          "name": "workers-observability"
+        }
+      },
+      "service": {
+        "name": "spoke-api"
+      },
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "5807433fa561a5a0",
+      "parentSpanId": "f2da103c75c714d6",
+      "name": "cache_match",
+      "startTime": 1769341787731,
+      "endTime": 1769341787795,
+      "duration": 64,
+      "durationMS": 64
+    },
+    "dataset": "otel",
+    "timestamp": "2026-01-25T11:49:47.731Z",
+    "$metadata": {
+      "id": "01KFTFT7JK0000000000000004",
+      "traceId": "54551cd5720b1f859d83bcaee678b761",
+      "spanId": "5807433fa561a5a0",
+      "trigger": "spoke-api",
+      "parentSpanId": "f2da103c75c714d6",
+      "transactionName": "cache_match",
+      "startTime": "2026-01-25T11:49:47.731Z",
+      "endTime": "2026-01-25T11:49:47.795Z",
+      "service": "spoke-api",
+      "spanName": "cache_match",
+      "type": "span",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb"
+    },
+    "links": []
+  },
+  {
+    "source": {
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-01-25T11:49:47.702Z",
+    "$workers": {
+      "event": {
+        "request": {
+          "cf": {
+            "requestHeaderNames": {},
+            "isEUCountry": false,
+            "httpProtocol": "HTTP/1.1",
+            "tlsCipher": "AEAD-AES128-GCM-SHA256",
+            "continent": "AS",
+            "clientAcceptEncoding": "gzip, deflate, br",
+            "verifiedBotCategory": "",
+            "country": "IN",
+            "region": "Telangana",
+            "tlsClientCiphersSha1": "OhMyoweb0e8teRZ/9Ypo8A3hH5I=",
+            "tlsClientAuth": {
+              "certIssuerDNLegacy": "",
+              "certIssuerSKI": "",
+              "certSubjectDNRFC2253": "",
+              "certSubjectDNLegacy": "",
+              "certFingerprintSHA256": "",
+              "certNotBefore": "",
+              "certSKI": "",
+              "certSerial": "",
+              "certIssuerDN": "",
+              "certVerified": "NONE",
+              "certNotAfter": "",
+              "certSubjectDN": "",
+              "certPresented": "0",
+              "certRevoked": "0",
+              "certIssuerSerial": "",
+              "certIssuerDNRFC2253": "",
+              "certFingerprintSHA1": ""
+            },
+            "tlsClientRandom": "yrI/qK4A2KyE/sIL5LWUagJorasBTfnyLxKX58MK3dU=",
+            "tlsExportedAuthenticator": {
+              "clientFinished": "edb9c3dbc21d41399c42953d2980095e81444ed4cdf729d7e6cd452db5b003ec",
+              "clientHandshake": "91b07bbd02d92798cc9fb17fd469365cd7f9ec0370a83d06c06dae595c815835",
+              "serverHandshake": "de82fd42e0e9971bc9822fd97ec818930a1e14b9dcf1113150ab6f27d7409a7d",
+              "serverFinished": "2bbcd588036a9bd4075bde1e550626b2dcf0644f79a14761f892c8cbcfbdb4d2"
+            },
+            "tlsClientHelloLength": "1710",
+            "colo": "SIN",
+            "timezone": "Asia/Kolkata",
+            "longitude": "78.45636",
+            "latitude": "17.38405",
+            "requestPriority": "",
+            "postalCode": "500001",
+            "city": "Hyderabad",
+            "tlsVersion": "TLSv1.3",
+            "regionCode": "TG",
+            "asOrganization": "Reliance Jio Infocomm Limited",
+            "tlsClientExtensionsSha1Le": "B83hTo20vCpYfjGYLaY0steM8M8=",
+            "tlsClientExtensionsSha1": "gt5XtNJoCaldCQMvhVMfkipMKdU=",
+            "clientTcpRtt": 60,
+            "asn": 55836,
+            "edgeRequestKeepAliveStatus": 1
+          },
+          "url": "https://api.spoke.so/ws",
+          "method": "GET",
+          "headers": {
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US",
+            "cache-control": "no-cache",
+            "cf-connecting-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d",
+            "cf-ipcountry": "IN",
+            "cf-ray": "9c378c9d1d3e5fb3",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "connection": "Upgrade",
+            "host": "api.spoke.so",
+            "origin": "file://",
+            "pragma": "no-cache",
+            "sec-websocket-extensions": "permessage-deflate; client_max_window_bits",
+            "sec-websocket-key": "REDACTED",
+            "sec-websocket-version": "13",
+            "upgrade": "websocket",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Spoke/0.4.14 Chrome/134.0.6998.205 Electron/35.7.5 Safari/537.36",
+            "x-forwarded-proto": "https",
+            "x-real-ip": "2405:201:c012:5128:41f2:6a68:1f0d:574d"
+          },
+          "path": "/ws"
+        },
+        "rayId": "9c378c9d1d3e5fb3"
+      },
+      "diagnosticsChannelEvents": [],
+      "truncated": false,
+      "scriptName": "spoke-api",
+      "outcome": "ok",
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "scriptVersion": {
+        "id": "0b299cbd-224a-4ac6-a358-a7382e590f28"
+      },
+      "requestId": "9c378c9d1d3e5fb3",
+      "cpuTimeMs": 26,
+      "wallTimeMs": 20363
+    },
+    "$metadata": {
+      "id": "01KFTFTJAF537G2JMZ0S5E5FAM",
+      "requestId": "9c378c9d1d3e5fb3",
+      "trigger": "GET /ws",
+      "service": "spoke-api",
+      "level": "info",
+      "message": "GET https://api.spoke.so/ws",
+      "account": "b738f434807b8a6fe9031a75c71d4393",
+      "type": "cf-worker-event",
+      "fingerprint": "9d5d745610ed09001f8cb24b32620aeb",
+      "origin": "fetch",
+      "messageTemplate": "GET https://api.spoke.so/ws"
+    },
+    "links": []
+  }
+]

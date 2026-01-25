@@ -26,6 +26,7 @@ import { buildSTTPrompt } from "../services/stt/prompt";
 
 // Logging
 import { logSessionComplete, logSessionError } from "../utils/sessionLogger";
+import { trackSessionLifecycle } from "../utils/analytics";
 import { scheduleQuotaIncrement, scheduleAnalytics } from "../background/tasks";
 
 // Types
@@ -345,7 +346,13 @@ async function handleEndMessage(
   ctx.finalSent = true;
 
   // Background tasks
-  scheduleBackgroundTasks(ctx, sttResult, finalText, ctx.executionCtx);
+  scheduleBackgroundTasks(
+    ctx,
+    sttResult,
+    finalText,
+    ctx.executionCtx,
+    route.requiresLLM ? route.provider : undefined,
+  );
 
   safeClose(ctx.server, 1000, "done");
   ctx.sessionActive = false;
@@ -447,6 +454,7 @@ function scheduleBackgroundTasks(
   sttResult: any,
   finalText: string,
   executionCtx?: ExecutionContext,
+  llmProvider?: string,
 ): void {
   // Calculate word count for quota
   const wordCount = finalText
@@ -498,6 +506,41 @@ function scheduleBackgroundTasks(
     trace_id: ctx.traceId,
     user_id: ctx.userId ?? undefined,
     stt_provider: sttResult.provider,
+  });
+
+  // Analytics Engine lifecycle event (long-term metrics)
+  trackSessionLifecycle(ctx.env.ANALYTICS_ENGINE, {
+    trace_id: ctx.traceId,
+    user_id: ctx.userId ?? undefined,
+    outcome: "success",
+    mode: ctx.session.mode as "dictation" | "edit",
+    stt_provider: sttResult.provider,
+    llm_provider: llmProvider,
+    worker_lifetime_ms: totalProcessingMs,
+    auth_ms: ctx.timing.authDurationMs ?? 0,
+    ocr_ms: ctx.timing.ocrDurationMs ?? 0,
+    first_frame_latency_ms:
+      ctx.timing.firstFrameAt && ctx.timing.wsAcceptAt
+        ? ctx.timing.firstFrameAt - ctx.timing.wsAcceptAt
+        : null,
+    audio_streaming_ms:
+      ctx.timing.firstFrameAt && ctx.timing.lastFrameAt
+        ? ctx.timing.lastFrameAt - ctx.timing.firstFrameAt
+        : null,
+    assemble_ms: ctx.timing.assembleMs ?? 0,
+    stt_ms: ctx.timing.sttDurationMs ?? 0,
+    router_overhead_ms: ctx.timing.routerOverheadMs ?? 0,
+    llm_ms: ctx.timing.llmDurationMs ?? 0,
+    total_processing_ms:
+      (ctx.timing.sttDurationMs ?? 0) + (ctx.timing.llmDurationMs ?? 0),
+    overhead_ms:
+      totalProcessingMs -
+      (ctx.timing.sttDurationMs ?? 0) -
+      (ctx.timing.llmDurationMs ?? 0),
+    audio_frames: ctx.session.frames,
+    audio_bytes_kb: Number((ctx.session.totalBytes / 1024).toFixed(2)),
+    seq_gaps: ctx.session.seqGaps,
+    cold_start: ctx.timing.authWasColdStart ?? false,
   });
 }
 

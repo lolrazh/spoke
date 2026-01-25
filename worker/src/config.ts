@@ -30,25 +30,25 @@ export const SIMPLISMART_EDIT_LLM_DEFAULT_MODEL = "google/gemma-3-27b-it";
 export const SIMPLISMART_LLM_MODEL_UUID =
   "23a8dfd7-f6d4-426c-b637-517c205282c7";
 
-export const LLM_DEFAULT_MODEL = BASETEN_LLM_DEFAULT_MODEL;
+export const LLM_DEFAULT_MODEL = GROQ_LLM_DEFAULT_MODEL;
 export const LLM_DEFAULT_TEMPERATURE = 0.2;
 export const LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const LLM_DEFAULT_STREAM = false;
-export const LLM_DEFAULT_PROVIDER = "baseten" as const;
+export const LLM_DEFAULT_PROVIDER = "groq" as const;
 export const LLM_ROUTER_ENABLED = true;
 export type LLMProvider = "groq" | "baseten" | "cerebras" | "simplismart";
 
-export const EDIT_LLM_DEFAULT_MODEL = BASETEN_EDIT_LLM_DEFAULT_MODEL;
+export const EDIT_LLM_DEFAULT_MODEL = GROQ_EDIT_LLM_DEFAULT_MODEL;
 export const EDIT_LLM_DEFAULT_TEMPERATURE = 0.6;
 export const EDIT_LLM_DEFAULT_TIMEOUT_MS = 25_000;
 export const EDIT_LLM_DEFAULT_STREAM = false;
-export const EDIT_LLM_DEFAULT_PROVIDER = "baseten" as const;
+export const EDIT_LLM_DEFAULT_PROVIDER = "groq" as const;
 
-export const ADVANCED_LLM_DEFAULT_MODEL = BASETEN_ADVANCED_LLM_DEFAULT_MODEL;
+export const ADVANCED_LLM_DEFAULT_MODEL = GROQ_ADVANCED_LLM_DEFAULT_MODEL;
 export const ADVANCED_LLM_DEFAULT_TEMPERATURE = 0.3;
 export const ADVANCED_LLM_DEFAULT_TIMEOUT_MS = 30_000;
 export const ADVANCED_LLM_DEFAULT_STREAM = false;
-export const ADVANCED_LLM_DEFAULT_PROVIDER = "baseten" as const;
+export const ADVANCED_LLM_DEFAULT_PROVIDER = "groq" as const;
 
 // STT (Audio Transcriptions)
 export const GROQ_STT_ENDPOINT =
