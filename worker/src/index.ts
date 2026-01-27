@@ -1,5 +1,12 @@
 import { Hono } from "hono";
 import { wsRoute } from "./handlers/ws";
+import { handlePrepare, handleTranscribe } from "./handlers/http";
+import {
+  corsMiddleware,
+  errorHandler,
+  requestIdMiddleware,
+  authMiddleware,
+} from "./middleware";
 
 type Bindings = {
   GROQ_API_KEY?: string;
@@ -47,10 +54,20 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+// Global middleware (applies to all routes including OPTIONS preflight)
+app.use("*", corsMiddleware);
+app.use("*", errorHandler);
+
 // Health check
 app.get("/", (c) => c.text("ok"));
 
-// WebSocket transcription endpoint
+// WebSocket transcription endpoint (legacy)
 app.get("/ws", wsRoute);
+
+// HTTP transcription endpoints (new)
+// Apply middleware: request ID -> auth -> handler
+app.post("/prepare", requestIdMiddleware, authMiddleware, handlePrepare);
+
+app.post("/transcribe", requestIdMiddleware, authMiddleware, handleTranscribe);
 
 export default app;

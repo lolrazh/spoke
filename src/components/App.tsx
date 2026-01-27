@@ -7,7 +7,7 @@ import React, {
   useLayoutEffect,
 } from "react";
 import Pill from "./Pill";
-import { useTranscription } from "../hooks/useTranscription";
+import { useHttpTranscription as useTranscription } from "../hooks/useHttpTranscription";
 import {
   CONTENT_WIDTH,
   CONTENT_HEIGHT,
@@ -323,7 +323,7 @@ const AppInner: React.FC = () => {
           PERMISSION_NOTIFICATION_MESSAGE,
           PERMISSION_NOTIFICATION_ACTION_ID,
         );
-      } catch { }
+      } catch {}
     },
     [],
   );
@@ -411,13 +411,13 @@ const AppInner: React.FC = () => {
           if (!user) {
             try {
               window.notifications?.send?.("Sign in to dictate");
-            } catch { }
+            } catch {}
             try {
               await window.electron?.showOnboarding?.();
-            } catch { }
+            } catch {}
             return false;
           }
-        } catch { }
+        } catch {}
       }
       const mic = await window.electron?.checkMicrophonePermission?.();
       if (!mic?.granted) {
@@ -449,7 +449,7 @@ const AppInner: React.FC = () => {
         seeded = true;
         setShareTranscriptionsEnabled(stored === "true");
       }
-    } catch { }
+    } catch {}
 
     setShareTranscriptionsLoading(true);
     try {
@@ -467,7 +467,7 @@ const AppInner: React.FC = () => {
             `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
             value ? "true" : "false",
           );
-        } catch { }
+        } catch {}
       }
     } catch {
       if (!seeded) setShareTranscriptionsEnabled(false);
@@ -482,7 +482,7 @@ const AppInner: React.FC = () => {
       if (!userId) {
         try {
           window.notifications?.send?.("Sign in to change this setting");
-        } catch { }
+        } catch {}
         return;
       }
       if (shareTranscriptionsUpdating) return;
@@ -501,12 +501,12 @@ const AppInner: React.FC = () => {
             `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
             enabled ? "true" : "false",
           );
-        } catch { }
+        } catch {}
       } catch {
         setShareTranscriptionsEnabled(previous);
         try {
           window.notifications?.send?.("Unable to update sharing preference");
-        } catch { }
+        } catch {}
       } finally {
         setShareTranscriptionsUpdating(false);
       }
@@ -520,7 +520,7 @@ const AppInner: React.FC = () => {
       try {
         lastFocusTsRef.current =
           typeof performance !== "undefined" ? performance.now() : null;
-      } catch { }
+      } catch {}
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -593,16 +593,16 @@ const AppInner: React.FC = () => {
         if (!user && !skipAuth) {
           try {
             await window.electron?.showOnboarding?.();
-          } catch { }
+          } catch {}
           try {
             latestTransRef.current?.cancel?.();
-          } catch { }
+          } catch {}
           setCurrentUserId(null);
           await loadSharePreference(null);
         } else if (user) {
           try {
             await window.electron?.showFloatingBar?.();
-          } catch { }
+          } catch {}
           setCurrentUserId(user.id ?? null);
           await loadSharePreference(user.id ?? null);
         } else {
@@ -612,7 +612,7 @@ const AppInner: React.FC = () => {
         // Seed previous user for transition detection
         try {
           prevUserIdRef.current = user?.id ?? null;
-        } catch { }
+        } catch {}
         const supabase = await getSupabase();
         if (supabase) {
           const {
@@ -629,7 +629,7 @@ const AppInner: React.FC = () => {
                 typeof document !== "undefined" ? document.hidden : false;
               const msSinceFocus =
                 typeof performance !== "undefined" &&
-                  lastFocusTsRef.current != null
+                lastFocusTsRef.current != null
                   ? performance.now() - lastFocusTsRef.current
                   : null;
               const allow = shouldToastSignIn({
@@ -653,7 +653,7 @@ const AppInner: React.FC = () => {
                 lastToastTsRef.current = now;
                 try {
                   setLastToastTs(now);
-                } catch { }
+                } catch {}
               }
               // Update previous after handling
               prevUserIdRef.current = currentUserId;
@@ -706,7 +706,7 @@ const AppInner: React.FC = () => {
                   try {
                     // Cancel any active or in-flight transcription when signing out
                     latestTransRef.current?.cancel?.();
-                  } catch { }
+                  } catch {}
 
                   // Clear quota cache on sign-out to prevent stale data
                   try {
@@ -714,18 +714,18 @@ const AppInner: React.FC = () => {
                       "../state/quotaCache"
                     );
                     clearQuotaCache();
-                  } catch { }
+                  } catch {}
 
                   try {
                     window.notifications?.send?.("Signed out");
-                  } catch { }
+                  } catch {}
                   setPendingHideAfterCollapse({
                     active: true,
                     message: "Signed out",
                     onAfter: async () => {
                       try {
                         await window.electron?.showOnboarding?.();
-                      } catch { }
+                      } catch {}
                     },
                   });
                 })();
@@ -755,7 +755,7 @@ const AppInner: React.FC = () => {
                   loadSharePreference(null);
                   try {
                     latestTransRef.current?.cancel?.();
-                  } catch { }
+                  } catch {}
 
                   // Clear quota cache on polling-detected sign-out
                   try {
@@ -763,27 +763,27 @@ const AppInner: React.FC = () => {
                       "../state/quotaCache"
                     );
                     clearQuotaCache();
-                  } catch { }
+                  } catch {}
 
                   try {
                     window.notifications?.send?.("Signed out");
-                  } catch { }
+                  } catch {}
                   setPendingHideAfterCollapse({
                     active: true,
                     message: "Signed out",
                     onAfter: async () => {
                       try {
                         await window.electron?.showOnboarding?.();
-                      } catch { }
+                      } catch {}
                     },
                   });
                 }
                 // If error: likely network issue — ignore and retain current UX
-              } catch { }
+              } catch {}
             }, 60000);
-          } catch { }
+          } catch {}
         }
-      } catch { }
+      } catch {}
     })();
     return () => {
       if (unsubscribe) unsubscribe();
@@ -1016,19 +1016,20 @@ const AppInner: React.FC = () => {
           if (scheduled === "cancel") {
             try {
               latestTransRef.current.cancel();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "CANCEL" });
           } else {
             try {
               latestTransRef.current.stop();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "PTT_STOP" });
           }
           clearActiveCapture(token);
         })
         .catch((err) => {
           pushTrace(
-            `Start failed for ${kind} token=${token}: ${err instanceof Error ? err.message : String(err)
+            `Start failed for ${kind} token=${token}: ${
+              err instanceof Error ? err.message : String(err)
             }`,
           );
           clearActiveCapture(token);
@@ -1060,7 +1061,7 @@ const AppInner: React.FC = () => {
         pushTrace("Auto-cancel hold capture after late start");
         try {
           latestTransRef.current.cancel();
-        } catch { }
+        } catch {}
         pillDispatch({ type: "CANCEL" });
         clearActiveCapture(active.token);
       }
@@ -1120,7 +1121,7 @@ const AppInner: React.FC = () => {
         }
         try {
           latestTransRef.current.cancel();
-        } catch { }
+        } catch {}
         pushTrace(`PTT ${kind} gate denied`);
         pillDispatch({ type: "CANCEL" });
         try {
@@ -1133,7 +1134,7 @@ const AppInner: React.FC = () => {
           } else {
             window.notifications?.send?.("Sign in to dictate");
           }
-        } catch { }
+        } catch {}
         clearActiveCapture(tokenId);
         return;
       }
@@ -1366,12 +1367,12 @@ const AppInner: React.FC = () => {
           setTimeout(async () => {
             try {
               await window.electron?.hideFloatingBarIndefinitely?.();
-            } catch { }
+            } catch {}
             // Allow the fade-out in main to complete before showing onboarding
             setTimeout(() => {
               try {
                 onAfter && onAfter();
-              } catch { }
+              } catch {}
               setPendingHideAfterCollapse({ active: false, message: "" });
             }, 180);
           }, 100); // let pill reach IDLE state properly before starting fade-out
@@ -1404,7 +1405,7 @@ const AppInner: React.FC = () => {
           }
           try {
             window.electron?.focusWindow?.();
-          } catch { }
+          } catch {}
           break;
         default:
           logPermissionsDebug("notification:action-unknown", { actionId });
@@ -1418,7 +1419,7 @@ const AppInner: React.FC = () => {
     (message: string, onAfter?: () => void) => {
       try {
         window.notifications?.send?.(message);
-      } catch { }
+      } catch {}
       // Defer actual hide until NOTIFICATION finishes and we return to IDLE
       setPendingHideAfterCollapse({
         active: true,
@@ -1443,7 +1444,7 @@ const AppInner: React.FC = () => {
       setTimeout(() => {
         try {
           window.notifications?.send?.(message);
-        } catch { }
+        } catch {}
       }, 0);
     }
   }, [pendingHideAfterCollapse, pillDispatch]);
@@ -1557,7 +1558,7 @@ const AppInner: React.FC = () => {
         if (!startCuePlayedRef.current) {
           try {
             playToggleOn();
-          } catch { }
+          } catch {}
           startCuePlayedRef.current = true;
         }
         if (doubleTapTimerRef.current) {
@@ -1589,7 +1590,8 @@ const AppInner: React.FC = () => {
           startResult = latestTransRef.current.start();
         } catch (err) {
           pushTrace(
-            `PTT hold start failed synchronously: ${err instanceof Error ? err.message : String(err)
+            `PTT hold start failed synchronously: ${
+              err instanceof Error ? err.message : String(err)
             }`,
           );
           clearActiveCapture(tokenId);
@@ -1688,7 +1690,7 @@ const AppInner: React.FC = () => {
             pushTrace(`PTT double-tap start canceled before activation`);
             try {
               latestTransRef.current.cancel();
-            } catch { }
+            } catch {}
             pillDispatch({ type: "CANCEL" });
             if (pendingTokenId != null) {
               clearActiveCapture(pendingTokenId);
@@ -1702,7 +1704,7 @@ const AppInner: React.FC = () => {
             if (!startCuePlayedRef.current) {
               try {
                 playToggleOn();
-              } catch { }
+              } catch {}
               startCuePlayedRef.current = true;
             }
             pillDispatch({ type: "PTT_START" });
@@ -1721,7 +1723,8 @@ const AppInner: React.FC = () => {
               startResult = latestTransRef.current.start();
             } catch (err) {
               pushTrace(
-                `PTT double-tap start failed synchronously: ${err instanceof Error ? err.message : String(err)
+                `PTT double-tap start failed synchronously: ${
+                  err instanceof Error ? err.message : String(err)
                 }`,
               );
               clearActiveCapture(tokenId);
@@ -1852,7 +1855,7 @@ const AppInner: React.FC = () => {
             }
             try {
               await window.electron?.showFloatingBar?.();
-            } catch { }
+            } catch {}
             return;
           }
 

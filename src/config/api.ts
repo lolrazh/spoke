@@ -1,12 +1,18 @@
 // Centralized API endpoint selection for dev/prod
 
-// In the renderer (Vite), prefer VITE_* env. Fallback to sensible defaults.
-export function getTranscribeUrl(): string {
+/**
+ * Get base API URL for HTTP transcription
+ */
+function getBaseApiUrl(): string {
   try {
     const env =
       (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
     const override = env?.VITE_TRANSCRIBE_URL as string | undefined;
-    if (override && override.trim()) return override.trim();
+    if (override && override.trim()) {
+      // Strip /transcribe suffix if present
+      const url = override.trim();
+      return url.replace(/\/transcribe$/, "");
+    }
 
     const isViteDev = Boolean(env?.DEV);
     const isHttpLocal =
@@ -20,13 +26,27 @@ export function getTranscribeUrl(): string {
           window.localStorage.getItem("sf.localWs") === "1"));
 
     if (isViteDev || isHttpLocal || forceLocal) {
-      return "http://127.0.0.1:8787/transcribe";
+      return "http://127.0.0.1:8787";
     }
 
-    return "https://api.spoke.so/transcribe";
+    return "https://api.spoke.so";
   } catch {
-    return "https://api.spoke.so/transcribe";
+    return "https://api.spoke.so";
   }
+}
+
+/**
+ * Get /prepare endpoint (pre-flight auth + OCR)
+ */
+export function getPrepareUrl(): string {
+  return `${getBaseApiUrl()}/prepare`;
+}
+
+/**
+ * Get /transcribe endpoint (main transcription)
+ */
+export function getTranscribeUrl(): string {
+  return `${getBaseApiUrl()}/transcribe`;
 }
 
 // WebSocket endpoint for real-time transcription
