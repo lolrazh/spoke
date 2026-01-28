@@ -155,6 +155,16 @@ await fetch('/transcribe', { audio, metadata });
    - **Root cause:** `transcribe.ts` still importing deleted `concat()` and `wrapWav()` functions
    - **Fix:** Rewrote `transcribe.ts` to only export `transcribeOpus()`, removed old WAV-based `transcribe()` function
 
+7. **Production build failure (nanoid + stale import)**
+   - **Symptom:** Cloudflare Pages build failed with "Could not resolve nanoid" and "Could not resolve ../../utils/ws.js"
+   - **Root cause:**
+     - `nanoid` package used by HTTP handlers but not added to worker dependencies
+     - OCR module still importing `ws.js` which was renamed to `safe.js` during cleanup
+   - **Fix:**
+     - Added `nanoid: ^5.0.9` to `worker/package.json` dependencies
+     - Updated `src/services/ocr/index.ts` import from `ws.js` to `safe.js`
+     - Verified with `wrangler deploy --dry-run` (build passes)
+
 ## Key Learnings
 
 - **CORS with Electron:** Electron apps typically don't send an Origin header, so CORS middleware must handle `!origin` case explicitly. This is safe because auth middleware still requires valid JWT.
@@ -211,6 +221,7 @@ await fetch('/transcribe', { audio, metadata });
 - ✅ **CORS production-ready** - Whitelist configured for app.spoke.so
 - ✅ **Clean codebase** - All WS remnants removed or marked LEGACY
 - ✅ **Documentation updated** - All comments reflect HTTP architecture
+- ✅ **Production build passing** - Worker deploys successfully to Cloudflare (verified with dry-run)
 - 🔧 **Needs production testing** - Should test CORS with actual Electron app in production
 - 🔧 **Monitor for VAD need** - Watch for Whisper hallucinations on long silences; if they occur, add client-side silence trimming before upload
 
