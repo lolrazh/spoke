@@ -50,7 +50,12 @@ const HistoryItem: React.FC<HistoryItemProps> = ({
       {/* Text - left side with max width */}
       <div className="flex-1 p-3 pr-2">
         <p className="text-xs text-foreground/80 leading-relaxed font-normal">
-          {item.text}
+          {/* Defensive: handle corrupted data where text might be an object */}
+          {typeof item.text === "string"
+            ? item.text
+            : typeof item.text === "object" && item.text !== null
+              ? (item.text as { text?: string }).text || "[Corrupted entry]"
+              : "[Invalid entry]"}
         </p>
       </div>
 

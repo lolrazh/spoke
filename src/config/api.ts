@@ -10,8 +10,9 @@ function getBaseApiUrl(): string {
     const override = env?.VITE_TRANSCRIBE_URL as string | undefined;
     if (override && override.trim()) {
       // Strip /transcribe suffix if present
-      const url = override.trim();
-      return url.replace(/\/transcribe$/, "");
+      const url = override.trim().replace(/\/transcribe$/, "");
+      console.log(`[API] Using override URL: ${url}`);
+      return url;
     }
 
     const isViteDev = Boolean(env?.DEV);
@@ -26,9 +27,13 @@ function getBaseApiUrl(): string {
           window.localStorage.getItem("sf.localWs") === "1"));
 
     if (isViteDev || isHttpLocal || forceLocal) {
+      console.log(
+        `[API] Using local URL (isViteDev=${isViteDev}, isHttpLocal=${isHttpLocal}, forceLocal=${forceLocal})`,
+      );
       return "http://127.0.0.1:8787";
     }
 
+    console.log("[API] Using production URL: https://api.spoke.so");
     return "https://api.spoke.so";
   } catch {
     return "https://api.spoke.so";

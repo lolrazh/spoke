@@ -225,6 +225,20 @@ export function useTranscription(
   const stop = useCallback(async () => {
     if (!recording || !recorderRef.current) return;
 
+    // Comprehensive timing for debugging latency
+    const timing = {
+      stopStarted: Date.now(),
+      postRollDone: 0,
+      recorderStopped: 0,
+      prepareDone: 0,
+      authTokenDone: 0,
+      fetchStarted: 0,
+      fetchDone: 0,
+      responseParsed: 0,
+      historyDone: 0,
+      pasteDone: 0,
+    };
+
     try {
       setProcessing(true);
       setRecording(false);
@@ -232,10 +246,12 @@ export function useTranscription(
 
       // Add post-roll delay to capture end of speech
       await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      timing.postRollDone = Date.now();
 
       // Stop recording and get audio blob
       const audioBlob = await recorderRef.current.stop();
       recorderRef.current = null;
+      timing.recorderStopped = Date.now();
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
 
@@ -245,9 +261,11 @@ export function useTranscription(
         await preparePromiseRef.current;
         preparePromiseRef.current = null;
       }
+      timing.prepareDone = Date.now();
 
       // Upload to /transcribe
       const token = await getAuthToken();
+      timing.authTokenDone = Date.now();
       if (!token) {
         throw new Error("No auth token");
       }
@@ -271,7 +289,7 @@ export function useTranscription(
       );
 
       // Measure upload and response timing
-      const uploadStartTime = Date.now();
+      timing.fetchStarted = Date.now();
       const transcribeRes = await fetch(transcribeUrl, {
         method: "POST",
         headers: {
@@ -279,8 +297,7 @@ export function useTranscription(
         },
         body: formData,
       });
-      const responseHeadersTime = Date.now();
-      const uploadAndProcessingMs = responseHeadersTime - uploadStartTime;
+      timing.fetchDone = Date.now();
 
       if (!transcribeRes.ok) {
         const errorData = await transcribeRes.json().catch(() => ({}));
@@ -288,23 +305,57 @@ export function useTranscription(
       }
 
       const result = await transcribeRes.json();
-      const responseCompleteTime = Date.now();
-      const totalRequestMs = responseCompleteTime - uploadStartTime;
-      const responseParsingMs = responseCompleteTime - responseHeadersTime;
+      timing.responseParsed = Date.now();
+
+      // Log comprehensive timing breakdown
+      const breakdown = {
+        postRoll: timing.postRollDone - timing.stopStarted,
+        recorderStop: timing.recorderStopped - timing.postRollDone,
+        prepareWait: timing.prepareDone - timing.recorderStopped,
+        authToken: timing.authTokenDone - timing.prepareDone,
+        formDataBuild: timing.fetchStarted - timing.authTokenDone,
+        fetch: timing.fetchDone - timing.fetchStarted,
+        responseParse: timing.responseParsed - timing.fetchDone,
+      };
 
       console.log(
-        `[HTTP] Transcription complete: ${result.text.substring(0, 50)}... | ` +
-          `Total: ${totalRequestMs}ms (Upload+Server: ${uploadAndProcessingMs}ms, Response: ${responseParsingMs}ms)`,
+        `[HTTP] ⏱️ TIMING BREAKDOWN:\n` +
+          `  postRoll: ${breakdown.postRoll}ms\n` +
+          `  recorderStop: ${breakdown.recorderStop}ms\n` +
+          `  prepareWait: ${breakdown.prepareWait}ms\n` +
+          `  authToken: ${breakdown.authToken}ms\n` +
+          `  formDataBuild: ${breakdown.formDataBuild}ms\n` +
+          `  fetch (upload+server): ${breakdown.fetch}ms\n` +
+          `  responseParse: ${breakdown.responseParse}ms`,
       );
 
       setText(result.text);
 
-      // Add to history
-      await addTranscription(result.text, mode);
+      // Add to history (fire-and-forget to not block UI)
+      const historyStart = Date.now();
+      addTranscription(result.text, mode)
+        .then(() => {
+          console.log(`[HTTP] History saved in ${Date.now() - historyStart}ms`);
+        })
+        .catch(console.warn);
 
-      // Trigger native paste if not suppressed
+      // Trigger native paste if not suppressed (fire-and-forget to not block UI)
       if (!options.suppressNativePaste) {
-        await (window as any).clipboard?.insertText?.(result.text);
+        const pasteStart = Date.now();
+        ((window as any).clipboard?.insertText?.(result.text) as Promise<void>)
+          ?.then(() => {
+            console.log(
+              `[HTTP] Paste completed in ${Date.now() - pasteStart}ms`,
+            );
+            console.log(
+              `[HTTP] 🏁 TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
+            );
+          })
+          ?.catch(console.warn);
+      } else {
+        console.log(
+          `[HTTP] 🏁 TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
+        );
       }
     } catch (err) {
       console.error("[HTTP] Stop failed:", err);

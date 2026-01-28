@@ -124,7 +124,7 @@ export async function handleTranscribe(c: Context) {
   // Timing metrics (matching WS session metrics)
   const timing = {
     requestStartAt: requestStartTime,
-    authMs: 0, // Already happened in middleware, but we don't track its duration
+    authMs: auth.authMs ?? 0, // JWT verification time from middleware
     ocrMs: 0, // Happened in /prepare
     uploadMs: 0, // Audio upload time (formData parsing)
     sttMs: 0,

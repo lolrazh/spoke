@@ -14,6 +14,7 @@ export type AuthContext = {
   subscriptionActive: boolean;
   wordsUsedThisWeek?: number;
   quotaLimit?: number;
+  authMs?: number; // JWT verification time (ms)
 };
 
 /**
@@ -23,6 +24,7 @@ export type AuthContext = {
  * Returns 401 or 402 on auth failures
  */
 export async function authMiddleware(c: Context, next: () => Promise<void>) {
+  const authStartTime = Date.now();
   const supabaseUrl = c.env.SUPABASE_URL;
 
   if (!supabaseUrl) {
@@ -45,6 +47,10 @@ export async function authMiddleware(c: Context, next: () => Promise<void>) {
 
   // Verify JWT
   const jwtResult = await verifySupabaseJwt(token, supabaseUrl);
+  const authMs = Date.now() - authStartTime;
+
+  // Log auth timing (this runs BEFORE handler timing starts)
+  console.log(`[Auth] JWT verification completed in ${authMs}ms`);
 
   if (!jwtResult.valid) {
     const jwtError = jwtResult as { valid: false; error: string; code: string };
@@ -81,6 +87,7 @@ export async function authMiddleware(c: Context, next: () => Promise<void>) {
     subscriptionActive: jwtResult.subscriptionActive,
     wordsUsedThisWeek: jwtResult.wordsUsedThisWeek,
     quotaLimit: jwtResult.quotaLimit,
+    authMs, // Pass auth timing to handler for logging
   } as AuthContext);
 
   await next();
