@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ConnectionContext } from "../pipeline/types";
-import { createEmptySession } from "../ws/session";
+import { createEmptySession } from "../pipeline/session";
 import { AUTH_TIMEOUT_MS, WS_CLOSE_CODES } from "../auth";
 
 // Mock external dependencies

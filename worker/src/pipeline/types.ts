@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { AudioSession } from "../ws/session";
+import type { AudioSession } from "./session";
 
 /**
  * Runtime configuration from env vars
@@ -86,10 +86,10 @@ export interface TimingMetrics {
 
 /**
  * Connection context passed through the pipeline
- * Replaces the 20+ closure variables in current ws.ts
+ * Used by both HTTP and WebSocket handlers to maintain a consistent interface
  */
 export interface ConnectionContext {
-  // WebSocket
+  // Message channel (WebSocket or HTTP mock)
   server: WebSocket;
   socketClosed: boolean;
 

@@ -29,7 +29,7 @@ import {
   LLM_DEFAULT_TEMPERATURE,
   LLM_DEFAULT_TIMEOUT_MS,
 } from "../../config";
-import { safeJson } from "../../utils/ws";
+import { safeJson } from "../../utils/safe";
 import { safely } from "../../utils/safely";
 
 export async function chatComplete(

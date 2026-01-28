@@ -18,8 +18,8 @@ export type ClientSessionOutcome =
   | "success"
   | "cancelled"
   | "error_timeout"
-  | "error_ws_closed"
-  | "error_ws_failed"
+  | "error_ws_closed" // LEGACY - not used in HTTP mode
+  | "error_ws_failed" // LEGACY - not used in HTTP mode
   | "error_network"
   | "error_audio"
   | "error_auth"
@@ -40,20 +40,22 @@ export interface ClientSessionEvent {
   mode: "dictation" | "edit";
   vad_enabled: boolean;
 
-  // WebSocket state
+  // WebSocket state (LEGACY - kept for backward compatibility with logs)
+  // These fields are not used in HTTP-based transcription
   ws_url: string;
   ws_ready: boolean;
   ws_authenticated: boolean;
   ws_final_state?: number; // WebSocket.readyState at end
 
   // Timing breakdown (all in ms)
+  // Note: Some fields are WS-specific and not populated in HTTP mode
   ptt_down_ms?: number;
-  ws_open_ms?: number;
-  first_frame_out_ms?: number;
-  last_frame_out_ms?: number;
+  ws_open_ms?: number; // LEGACY - WS only
+  first_frame_out_ms?: number; // LEGACY - WS only
+  last_frame_out_ms?: number; // LEGACY - WS only
   stop_invoked_ms?: number;
-  end_sent_ms?: number;
-  end_ack_ms?: number;
+  end_sent_ms?: number; // LEGACY - WS only
+  end_ack_ms?: number; // LEGACY - WS only
   stt_start_ms?: number;
   final_recv_ms?: number;
   paste_start_ms?: number;
@@ -66,9 +68,9 @@ export interface ClientSessionEvent {
   processing_latency_ms?: number; // final_recv - end_sent
 
   // Audio metrics
-  frames_produced: number;
-  frames_forwarded?: number; // Only if VAD enabled
-  bytes_produced: number;
+  frames_produced: number; // LEGACY - WS only (frame-based streaming)
+  frames_forwarded?: number; // LEGACY - WS/VAD only
+  bytes_produced: number; // LEGACY - WS only
 
   // Result
   text_length?: number;
