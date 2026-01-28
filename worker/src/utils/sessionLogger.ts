@@ -13,11 +13,11 @@ type LogLevel = "info" | "warn" | "error" | "debug";
 
 type SessionAuthLog = {
   outcome:
-  | "success"
-  | "quota_exceeded"
-  | "invalid"
-  | "timeout"
-  | "missing_token";
+    | "success"
+    | "quota_exceeded"
+    | "invalid"
+    | "timeout"
+    | "missing_token";
   duration_ms: number;
   cold_start: boolean;
   trace_id: string;
@@ -65,19 +65,20 @@ type SessionLLMLog = {
 
 type SessionCompleteLog = {
   outcome:
-  | "success"
-  | "error_auth"
-  | "error_stt"
-  | "error_llm"
-  | "error_send"
-  | "client_disconnect"
-  | "timeout"
-  | "crash";
+    | "success"
+    | "error_auth"
+    | "error_stt"
+    | "error_llm"
+    | "error_send"
+    | "client_disconnect"
+    | "timeout"
+    | "crash";
   mode: "dictation" | "edit";
   worker_boot_ms: number;
   worker_lifetime_ms: number;
   auth_ms: number;
   ocr_ms: number;
+  upload_ms: number; // HTTP upload time (formData parsing)
   first_frame_latency_ms: number | null;
   audio_streaming_ms: number | null;
   assemble_ms: number;
@@ -299,6 +300,7 @@ export function logSessionComplete(data: SessionCompleteLog): void {
     worker_lifetime_ms,
     auth_ms,
     ocr_ms,
+    upload_ms,
     first_frame_latency_ms,
     audio_streaming_ms,
     assemble_ms,
@@ -319,7 +321,7 @@ export function logSessionComplete(data: SessionCompleteLog): void {
   let message: string;
   if (outcome === "success") {
     const llmText = llm_ms > 0 ? ` + ${llm_ms}ms LLM` : "";
-    message = `Session: Completed in ${(worker_lifetime_ms / 1000).toFixed(1)}s (${stt_ms}ms STT${llmText})`;
+    message = `Session: Completed in ${(worker_lifetime_ms / 1000).toFixed(1)}s (${upload_ms}ms upload + ${stt_ms}ms STT${llmText})`;
   } else {
     const stageText = error_stage ? ` at ${error_stage}` : "";
     message = `Session: Failed${stageText} - ${error_message || outcome}`;
@@ -336,6 +338,7 @@ export function logSessionComplete(data: SessionCompleteLog): void {
       worker_lifetime_ms,
       auth_ms,
       ocr_ms,
+      upload_ms,
       first_frame_latency_ms,
       audio_streaming_ms,
       assemble_ms,

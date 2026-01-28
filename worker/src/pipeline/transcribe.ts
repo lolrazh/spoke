@@ -2,6 +2,7 @@ import { buildSTTPrompt } from "../services/stt/prompt";
 import { logSessionSTT } from "../utils/sessionLogger";
 import type { TranscribeResult } from "./types";
 import type { RuntimeConfig } from "./types";
+import { GROQ_STT_ENDPOINT, SIMPLISMART_STT_ENDPOINT } from "../config";
 
 /**
  * Transcribes Opus/webm audio directly without WAV conversion
@@ -69,11 +70,11 @@ export async function transcribeOpus(
   try {
     const sttStartTime = Date.now();
 
-    // Call STT API (Groq or SimpliSmart)
+    // Call STT API (Groq via Gateway or SimpliSmart direct)
     const endpoint =
       runtime.stt.provider === "simplismart"
-        ? "https://api.simplismart.ai/v1/audio/transcriptions" // TODO: Import from config
-        : "https://api.groq.com/openai/v1/audio/transcriptions"; // TODO: Import from config
+        ? SIMPLISMART_STT_ENDPOINT
+        : GROQ_STT_ENDPOINT;
 
     const res = await fetch(endpoint, {
       method: "POST",

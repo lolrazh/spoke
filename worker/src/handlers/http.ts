@@ -126,6 +126,7 @@ export async function handleTranscribe(c: Context) {
     requestStartAt: requestStartTime,
     authMs: 0, // Already happened in middleware, but we don't track its duration
     ocrMs: 0, // Happened in /prepare
+    uploadMs: 0, // Audio upload time (formData parsing)
     sttMs: 0,
     routerOverheadMs: 0,
     llmMs: 0,
@@ -133,8 +134,11 @@ export async function handleTranscribe(c: Context) {
   };
 
   try {
-    // Parse multipart form data
+    // Parse multipart form data (includes upload time)
+    const uploadStartTime = Date.now();
     const formData = await c.req.formData();
+    timing.uploadMs = Date.now() - uploadStartTime;
+
     const audioFile = formData.get("audio") as File | null;
     const metadataStr = formData.get("metadata") as string | null;
 
@@ -155,7 +159,7 @@ export async function handleTranscribe(c: Context) {
     };
 
     console.log(
-      `[HTTP /transcribe] ${requestId} - Audio: ${audioFile.size} bytes, Mode: ${metadata.mode}`,
+      `[HTTP /transcribe] ${requestId} - Audio: ${audioFile.size} bytes, Mode: ${metadata.mode}, Upload: ${timing.uploadMs}ms`,
     );
 
     // Get runtime config
@@ -216,7 +220,7 @@ export async function handleTranscribe(c: Context) {
 
       timing.totalMs = Date.now() - timing.requestStartAt;
 
-      // Increment quota for free tier users
+      // Increment quota for free tier users (non-blocking)
       scheduleQuotaIncrement(
         {
           subscriptionActive: auth.subscriptionActive,
@@ -227,50 +231,57 @@ export async function handleTranscribe(c: Context) {
         executionCtx,
       );
 
-      // Log session metrics
-      logSessionComplete({
-        outcome: "success",
-        mode: metadata.mode as "dictation" | "edit",
-        worker_boot_ms: 0, // HTTP doesn't track worker boot
-        worker_lifetime_ms: timing.totalMs,
-        auth_ms: timing.authMs,
-        ocr_ms: timing.ocrMs,
-        first_frame_latency_ms: null, // HTTP doesn't stream frames
-        audio_streaming_ms: null,
-        assemble_ms: 0, // No assembly in HTTP (direct Opus upload)
-        stt_ms: timing.sttMs,
-        llm_ms: 0, // Bypassed
-        total_processing_ms: timing.sttMs,
-        overhead_ms: timing.totalMs - timing.sttMs,
-        trace_id: traceId,
-        user_id: auth.userId,
-        stt_provider: transcribeResult.provider,
-      });
+      // Schedule logging and analytics (non-blocking - don't delay response)
+      executionCtx.waitUntil(
+        (async () => {
+          // Log session metrics
+          logSessionComplete({
+            outcome: "success",
+            mode: metadata.mode as "dictation" | "edit",
+            worker_boot_ms: 0, // HTTP doesn't track worker boot
+            worker_lifetime_ms: timing.totalMs,
+            auth_ms: timing.authMs,
+            ocr_ms: timing.ocrMs,
+            upload_ms: timing.uploadMs,
+            first_frame_latency_ms: null, // HTTP doesn't stream frames
+            audio_streaming_ms: null,
+            assemble_ms: 0, // No assembly in HTTP (direct Opus upload)
+            stt_ms: timing.sttMs,
+            llm_ms: 0, // Bypassed
+            total_processing_ms: timing.sttMs,
+            overhead_ms: timing.totalMs - timing.sttMs - timing.uploadMs,
+            trace_id: traceId,
+            user_id: auth.userId,
+            stt_provider: transcribeResult.provider,
+          });
 
-      // Track in Analytics Engine
-      trackSessionLifecycle(env.ANALYTICS_ENGINE, {
-        trace_id: traceId,
-        user_id: auth.userId,
-        outcome: "success",
-        mode: metadata.mode as "dictation" | "edit",
-        stt_provider: transcribeResult.provider,
-        llm_provider: undefined,
-        worker_lifetime_ms: timing.totalMs,
-        auth_ms: timing.authMs,
-        ocr_ms: timing.ocrMs,
-        first_frame_latency_ms: null,
-        audio_streaming_ms: null,
-        assemble_ms: 0,
-        stt_ms: timing.sttMs,
-        router_overhead_ms: timing.routerOverheadMs,
-        llm_ms: 0,
-        total_processing_ms: timing.sttMs,
-        overhead_ms: timing.totalMs - timing.sttMs,
-        audio_frames: 0, // HTTP doesn't track frames
-        audio_bytes_kb: audioFile.size / 1024,
-        seq_gaps: 0, // No sequence tracking in HTTP
-        cold_start: false, // Could add this with CF metadata
-      });
+          // Track in Analytics Engine
+          trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+            trace_id: traceId,
+            user_id: auth.userId,
+            outcome: "success",
+            mode: metadata.mode as "dictation" | "edit",
+            stt_provider: transcribeResult.provider,
+            llm_provider: undefined,
+            worker_lifetime_ms: timing.totalMs,
+            auth_ms: timing.authMs,
+            ocr_ms: timing.ocrMs,
+            upload_ms: timing.uploadMs,
+            first_frame_latency_ms: null,
+            audio_streaming_ms: null,
+            assemble_ms: 0,
+            stt_ms: timing.sttMs,
+            router_overhead_ms: timing.routerOverheadMs,
+            llm_ms: 0,
+            total_processing_ms: timing.sttMs,
+            overhead_ms: timing.totalMs - timing.sttMs - timing.uploadMs,
+            audio_frames: 0, // HTTP doesn't track frames
+            audio_bytes_kb: audioFile.size / 1024,
+            seq_gaps: 0, // No sequence tracking in HTTP
+            cold_start: false, // Could add this with CF metadata
+          });
+        })(),
+      );
 
       return c.json({
         text: finalText,
@@ -402,7 +413,7 @@ export async function handleTranscribe(c: Context) {
       `[HTTP /transcribe] ${requestId} - LLM complete: "${finalText.substring(0, 50)}..." (${timing.llmMs}ms)`,
     );
 
-    // Increment quota for free tier users
+    // Increment quota for free tier users (non-blocking)
     scheduleQuotaIncrement(
       {
         subscriptionActive: auth.subscriptionActive,
@@ -413,50 +424,59 @@ export async function handleTranscribe(c: Context) {
       executionCtx,
     );
 
-    // Log session metrics
-    logSessionComplete({
-      outcome: "success",
-      mode: metadata.mode as "dictation" | "edit",
-      worker_boot_ms: 0,
-      worker_lifetime_ms: timing.totalMs,
-      auth_ms: timing.authMs,
-      ocr_ms: timing.ocrMs,
-      first_frame_latency_ms: null,
-      audio_streaming_ms: null,
-      assemble_ms: 0,
-      stt_ms: timing.sttMs,
-      llm_ms: timing.llmMs,
-      total_processing_ms: timing.sttMs + timing.llmMs,
-      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
-      trace_id: traceId,
-      user_id: auth.userId,
-      stt_provider: transcribeResult.provider,
-    });
+    // Schedule logging and analytics (non-blocking - don't delay response)
+    executionCtx.waitUntil(
+      (async () => {
+        // Log session metrics
+        logSessionComplete({
+          outcome: "success",
+          mode: metadata.mode as "dictation" | "edit",
+          worker_boot_ms: 0,
+          worker_lifetime_ms: timing.totalMs,
+          auth_ms: timing.authMs,
+          ocr_ms: timing.ocrMs,
+          upload_ms: timing.uploadMs,
+          first_frame_latency_ms: null,
+          audio_streaming_ms: null,
+          assemble_ms: 0,
+          stt_ms: timing.sttMs,
+          llm_ms: timing.llmMs,
+          total_processing_ms: timing.sttMs + timing.llmMs,
+          overhead_ms:
+            timing.totalMs - (timing.sttMs + timing.llmMs + timing.uploadMs),
+          trace_id: traceId,
+          user_id: auth.userId,
+          stt_provider: transcribeResult.provider,
+        });
 
-    // Track in Analytics Engine
-    trackSessionLifecycle(env.ANALYTICS_ENGINE, {
-      trace_id: traceId,
-      user_id: auth.userId,
-      outcome: "success",
-      mode: metadata.mode as "dictation" | "edit",
-      stt_provider: transcribeResult.provider,
-      llm_provider: routeDecision.provider,
-      worker_lifetime_ms: timing.totalMs,
-      auth_ms: timing.authMs,
-      ocr_ms: timing.ocrMs,
-      first_frame_latency_ms: null,
-      audio_streaming_ms: null,
-      assemble_ms: 0,
-      stt_ms: timing.sttMs,
-      router_overhead_ms: timing.routerOverheadMs,
-      llm_ms: timing.llmMs,
-      total_processing_ms: timing.sttMs + timing.llmMs,
-      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
-      audio_frames: 0,
-      audio_bytes_kb: audioFile.size / 1024,
-      seq_gaps: 0,
-      cold_start: false,
-    });
+        // Track in Analytics Engine
+        trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+          trace_id: traceId,
+          user_id: auth.userId,
+          outcome: "success",
+          mode: metadata.mode as "dictation" | "edit",
+          stt_provider: transcribeResult.provider,
+          llm_provider: routeDecision.provider,
+          worker_lifetime_ms: timing.totalMs,
+          auth_ms: timing.authMs,
+          ocr_ms: timing.ocrMs,
+          upload_ms: timing.uploadMs,
+          first_frame_latency_ms: null,
+          audio_streaming_ms: null,
+          assemble_ms: 0,
+          stt_ms: timing.sttMs,
+          router_overhead_ms: timing.routerOverheadMs,
+          llm_ms: timing.llmMs,
+          total_processing_ms: timing.sttMs + timing.llmMs,
+          overhead_ms:
+            timing.totalMs - (timing.sttMs + timing.llmMs + timing.uploadMs),
+          audio_frames: 0,
+          audio_bytes_kb: audioFile.size / 1024,
+          seq_gaps: 0,
+          cold_start: false,
+        });
+      })(),
+    );
 
     return c.json({
       text: finalText,
@@ -474,52 +494,61 @@ export async function handleTranscribe(c: Context) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     timing.totalMs = Date.now() - timing.requestStartAt;
 
-    // Log error to session metrics
-    logSessionComplete({
-      outcome: "error_stt", // Could be refined based on error type
-      mode: "dictation" as any, // Fallback if metadata not parsed
-      worker_boot_ms: 0,
-      worker_lifetime_ms: timing.totalMs,
-      auth_ms: timing.authMs,
-      ocr_ms: timing.ocrMs,
-      first_frame_latency_ms: null,
-      audio_streaming_ms: null,
-      assemble_ms: 0,
-      stt_ms: timing.sttMs,
-      llm_ms: timing.llmMs,
-      total_processing_ms: timing.sttMs + timing.llmMs,
-      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
-      trace_id: traceId,
-      user_id: auth.userId,
-      stt_provider: undefined,
-    });
+    // Schedule error logging and analytics (non-blocking - don't delay response)
+    executionCtx.waitUntil(
+      (async () => {
+        // Log error to session metrics
+        logSessionComplete({
+          outcome: "error_stt", // Could be refined based on error type
+          mode: "dictation" as any, // Fallback if metadata not parsed
+          worker_boot_ms: 0,
+          worker_lifetime_ms: timing.totalMs,
+          auth_ms: timing.authMs,
+          ocr_ms: timing.ocrMs,
+          upload_ms: timing.uploadMs,
+          first_frame_latency_ms: null,
+          audio_streaming_ms: null,
+          assemble_ms: 0,
+          stt_ms: timing.sttMs,
+          llm_ms: timing.llmMs,
+          total_processing_ms: timing.sttMs + timing.llmMs,
+          overhead_ms:
+            timing.totalMs - (timing.sttMs + timing.llmMs + timing.uploadMs),
+          trace_id: traceId,
+          user_id: auth.userId,
+          stt_provider: undefined,
+        });
 
-    // Track error in Analytics Engine
-    trackSessionLifecycle(env.ANALYTICS_ENGINE, {
-      trace_id: traceId,
-      user_id: auth.userId,
-      outcome: "error_stt",
-      mode: "dictation",
-      error_stage: "stt",
-      error_message: errorMsg,
-      stt_provider: undefined,
-      llm_provider: undefined,
-      worker_lifetime_ms: timing.totalMs,
-      auth_ms: timing.authMs,
-      ocr_ms: timing.ocrMs,
-      first_frame_latency_ms: null,
-      audio_streaming_ms: null,
-      assemble_ms: 0,
-      stt_ms: timing.sttMs,
-      router_overhead_ms: timing.routerOverheadMs,
-      llm_ms: timing.llmMs,
-      total_processing_ms: timing.sttMs + timing.llmMs,
-      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
-      audio_frames: 0,
-      audio_bytes_kb: 0,
-      seq_gaps: 0,
-      cold_start: false,
-    });
+        // Track error in Analytics Engine
+        trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+          trace_id: traceId,
+          user_id: auth.userId,
+          outcome: "error_stt",
+          mode: "dictation",
+          error_stage: "stt",
+          error_message: errorMsg,
+          stt_provider: undefined,
+          llm_provider: undefined,
+          worker_lifetime_ms: timing.totalMs,
+          auth_ms: timing.authMs,
+          ocr_ms: timing.ocrMs,
+          upload_ms: timing.uploadMs,
+          first_frame_latency_ms: null,
+          audio_streaming_ms: null,
+          assemble_ms: 0,
+          stt_ms: timing.sttMs,
+          router_overhead_ms: timing.routerOverheadMs,
+          llm_ms: timing.llmMs,
+          total_processing_ms: timing.sttMs + timing.llmMs,
+          overhead_ms:
+            timing.totalMs - (timing.sttMs + timing.llmMs + timing.uploadMs),
+          audio_frames: 0,
+          audio_bytes_kb: 0,
+          seq_gaps: 0,
+          cold_start: false,
+        });
+      })(),
+    );
 
     return c.json(
       {

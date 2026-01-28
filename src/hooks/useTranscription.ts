@@ -270,6 +270,8 @@ export function useTranscription(
         }),
       );
 
+      // Measure upload and response timing
+      const uploadStartTime = Date.now();
       const transcribeRes = await fetch(transcribeUrl, {
         method: "POST",
         headers: {
@@ -277,6 +279,8 @@ export function useTranscription(
         },
         body: formData,
       });
+      const responseHeadersTime = Date.now();
+      const uploadAndProcessingMs = responseHeadersTime - uploadStartTime;
 
       if (!transcribeRes.ok) {
         const errorData = await transcribeRes.json().catch(() => ({}));
@@ -284,7 +288,14 @@ export function useTranscription(
       }
 
       const result = await transcribeRes.json();
-      console.log("[HTTP] Transcription complete:", result);
+      const responseCompleteTime = Date.now();
+      const totalRequestMs = responseCompleteTime - uploadStartTime;
+      const responseParsingMs = responseCompleteTime - responseHeadersTime;
+
+      console.log(
+        `[HTTP] Transcription complete: ${result.text.substring(0, 50)}... | ` +
+          `Total: ${totalRequestMs}ms (Upload+Server: ${uploadAndProcessingMs}ms, Response: ${responseParsingMs}ms)`,
+      );
 
       setText(result.text);
 

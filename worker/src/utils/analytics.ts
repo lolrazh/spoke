@@ -41,6 +41,7 @@ export type SessionLifecycleEvent = {
   worker_lifetime_ms: number;
   auth_ms: number;
   ocr_ms: number;
+  upload_ms: number; // HTTP upload time (formData parsing)
   first_frame_latency_ms: number | null;
   audio_streaming_ms: number | null;
   assemble_ms: number;
@@ -119,7 +120,7 @@ export function trackSessionLifecycle(
         event.llm_provider || "", // blob6: LLM provider
         event.error_stage || "", // blob7: error stage (if failed)
       ],
-      // Numeric metrics (aggregatable) - 20 available, using 15
+      // Numeric metrics (aggregatable) - 20 available, using 16
       doubles: [
         event.worker_lifetime_ms, // double1: full worker duration
         event.auth_ms, // double2: JWT verification time
@@ -136,6 +137,7 @@ export function trackSessionLifecycle(
         event.audio_bytes_kb, // double13: audio size
         event.seq_gaps, // double14: dropped frames
         event.cold_start ? 1 : 0, // double15: cold start flag (0/1)
+        event.upload_ms, // double16: HTTP upload time (formData parsing)
       ],
     });
   } catch (error) {
@@ -143,4 +145,3 @@ export function trackSessionLifecycle(
     console.warn("[Analytics] Failed to write session lifecycle:", error);
   }
 }
-
