@@ -67,6 +67,7 @@ export function useHttpTranscription(
     prepareId?: string;
     ocrWords?: string[];
   } | null>(null);
+  const preparePromiseRef = useRef<Promise<void> | null>(null);
 
   // Get auth token from Supabase
   const getAuthToken = async (): Promise<string | null> => {
@@ -139,64 +140,79 @@ export function useHttpTranscription(
         stream = await initStream();
       }
 
-      // Call /prepare (pre-flight)
-      const prepareUrl = getPrepareUrl();
+      // Start BOTH recording and /prepare at the EXACT same time (true parallelization)
+      const recorderPromise = (async () => {
+        const recorder = new AudioRecorder({
+          onAudioLevel: setAudioLevel,
+          onError: (err) => {
+            console.error("[HTTP] Recorder error:", err);
+            setError(err.message);
+            setRecording(false);
+          },
+        });
+        await recorder.start(stream);
+        return recorder;
+      })();
 
-      // Capture screenshot for OCR
-      let screenshot: string | undefined;
-      try {
-        if ((window as any).electron?.takeScreenshot) {
-          const result = await (window as any).electron.takeScreenshot();
-          if (result.success && result.imageBase64) {
-            screenshot = result.imageBase64;
+      const preparePromise = (async () => {
+        try {
+          const prepareUrl = getPrepareUrl();
+
+          // Capture screenshot for OCR
+          let screenshot: string | undefined;
+          try {
+            if ((window as any).electron?.takeScreenshot) {
+              const result = await (window as any).electron.takeScreenshot();
+              if (result.success && result.imageBase64) {
+                screenshot = result.imageBase64;
+              }
+            }
+          } catch (err) {
+            console.warn("[HTTP] Screenshot capture failed:", err);
           }
+
+          const prepareRes = await fetch(prepareUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              screenshot: screenshot || undefined,
+            }),
+          });
+
+          if (!prepareRes.ok) {
+            const errorData = await prepareRes.json().catch(() => ({}));
+
+            if (prepareRes.status === 401) {
+              setAuthError("auth_failed");
+              console.error("[HTTP] Auth failed during prepare");
+              // Don't stop recording yet, let user finish
+            } else if (prepareRes.status === 402) {
+              setAuthError("payment_required");
+              console.error("[HTTP] Quota exceeded during prepare");
+              // Don't stop recording yet, let user finish
+            } else {
+              console.warn("[HTTP] Prepare failed:", errorData.error);
+            }
+            return;
+          }
+
+          const prepareData = await prepareRes.json();
+          prepareDataRef.current = prepareData;
+
+          console.log("[HTTP] Prepare complete:", prepareData);
+        } catch (err) {
+          console.error("[HTTP] Prepare failed:", err);
+          // Don't stop recording, continue without OCR
         }
-      } catch (err) {
-        console.warn("[HTTP] Screenshot capture failed:", err);
-      }
+      })();
 
-      const prepareRes = await fetch(prepareUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          screenshot: screenshot || undefined,
-        }),
-      });
-
-      if (!prepareRes.ok) {
-        const errorData = await prepareRes.json().catch(() => ({}));
-
-        if (prepareRes.status === 401) {
-          setAuthError("auth_failed");
-          throw new Error(errorData.error || "Authentication failed");
-        } else if (prepareRes.status === 402) {
-          setAuthError("payment_required");
-          throw new Error(errorData.error || "Quota exceeded");
-        }
-
-        throw new Error(errorData.error || "Prepare failed");
-      }
-
-      const prepareData = await prepareRes.json();
-      prepareDataRef.current = prepareData;
-
-      console.log("[HTTP] Prepare complete:", prepareData);
-
-      // Start recording with MediaRecorder
-      const recorder = new AudioRecorder({
-        onAudioLevel: setAudioLevel,
-        onError: (err) => {
-          console.error("[HTTP] Recorder error:", err);
-          setError(err.message);
-          setRecording(false);
-        },
-      });
-
-      await recorder.start(stream);
+      // Wait for recorder to be ready, but /prepare continues in background
+      const recorder = await recorderPromise;
       recorderRef.current = recorder;
+      preparePromiseRef.current = preparePromise;
     } catch (err) {
       console.error("[HTTP] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -221,6 +237,13 @@ export function useHttpTranscription(
       recorderRef.current = null;
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
+
+      // Wait for /prepare to finish if still pending
+      if (preparePromiseRef.current) {
+        console.log("[HTTP] Waiting for /prepare to complete...");
+        await preparePromiseRef.current;
+        preparePromiseRef.current = null;
+      }
 
       // Upload to /transcribe
       const token = await getAuthToken();
@@ -282,6 +305,7 @@ export function useHttpTranscription(
     } finally {
       setProcessing(false);
       prepareDataRef.current = null;
+      preparePromiseRef.current = null;
     }
   }, [recording, mode, selection, options.suppressNativePaste]);
 
@@ -296,6 +320,7 @@ export function useHttpTranscription(
     setText("");
     setAudioLevel(0);
     prepareDataRef.current = null;
+    preparePromiseRef.current = null;
   }, []);
 
   // Clear auth error
