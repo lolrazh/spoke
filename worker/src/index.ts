@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { wsRoute } from "./handlers/ws";
 import { handlePrepare, handleTranscribe } from "./handlers/http";
 import {
   corsMiddleware,
@@ -61,10 +60,7 @@ app.use("*", errorHandler);
 // Health check
 app.get("/", (c) => c.text("ok"));
 
-// WebSocket transcription endpoint (legacy)
-app.get("/ws", wsRoute);
-
-// HTTP transcription endpoints (new)
+// HTTP transcription endpoints
 // Apply middleware: request ID -> auth -> handler
 app.post("/prepare", requestIdMiddleware, authMiddleware, handlePrepare);
 

@@ -16,8 +16,16 @@ import { transcribeOpus } from "../pipeline/transcribe";
 import { routeTranscript } from "../pipeline/router";
 import { enhance } from "../pipeline/enhance";
 import { buildSTTPrompt } from "../services/stt/prompt";
+import { scheduleQuotaIncrement } from "../background/tasks";
+import { trackSessionLifecycle } from "../utils/analytics";
+import { logSessionComplete } from "../utils/sessionLogger";
 import type { AuthContext } from "../middleware/auth";
 import type { Bindings } from "../pipeline/types";
+
+// Extend Bindings to include Analytics Engine
+type HttpBindings = Bindings & {
+  ANALYTICS_ENGINE?: AnalyticsEngineDataset;
+};
 
 /**
  * POST /prepare
@@ -105,10 +113,24 @@ export async function handlePrepare(c: Context) {
 export async function handleTranscribe(c: Context) {
   const auth = c.get("auth") as AuthContext;
   const requestId = c.get("requestId") as string;
-  const env = c.env as Bindings;
+  const env = c.env as HttpBindings;
+  const executionCtx = c.executionCtx;
 
   const traceId = `http-${requestId}`;
+  const requestStartTime = Date.now();
+
   console.log(`[HTTP /transcribe] ${requestId} - User: ${auth.userId}`);
+
+  // Timing metrics (matching WS session metrics)
+  const timing = {
+    requestStartAt: requestStartTime,
+    authMs: 0, // Already happened in middleware, but we don't track its duration
+    ocrMs: 0, // Happened in /prepare
+    sttMs: 0,
+    routerOverheadMs: 0,
+    llmMs: 0,
+    totalMs: 0,
+  };
 
   try {
     // Parse multipart form data
@@ -154,9 +176,9 @@ export async function handleTranscribe(c: Context) {
       traceId,
     });
 
-    const sttDuration = Date.now() - sttStartTime;
+    timing.sttMs = Date.now() - sttStartTime;
     console.log(
-      `[HTTP /transcribe] ${requestId} - STT complete: "${transcribeResult.text.substring(0, 50)}..." (${sttDuration}ms)`,
+      `[HTTP /transcribe] ${requestId} - STT complete: "${transcribeResult.text.substring(0, 50)}..." (${timing.sttMs}ms)`,
     );
 
     // Build STT prompt for LLM (vocabulary extraction)
@@ -187,9 +209,71 @@ export async function handleTranscribe(c: Context) {
 
     // Bypass case: return immediately
     if (!routeDecision.requiresLLM) {
-      // TODO: Log to analytics + increment quota
+      const finalText = transcribeResult.text;
+      const wordCount = finalText
+        .split(/\s+/)
+        .filter((w) => w.length > 0).length;
+
+      timing.totalMs = Date.now() - timing.requestStartAt;
+
+      // Increment quota for free tier users
+      scheduleQuotaIncrement(
+        {
+          subscriptionActive: auth.subscriptionActive,
+          userId: auth.userId,
+          env,
+        } as any,
+        wordCount,
+        executionCtx,
+      );
+
+      // Log session metrics
+      logSessionComplete({
+        outcome: "success",
+        mode: metadata.mode as "dictation" | "edit",
+        worker_boot_ms: 0, // HTTP doesn't track worker boot
+        worker_lifetime_ms: timing.totalMs,
+        auth_ms: timing.authMs,
+        ocr_ms: timing.ocrMs,
+        first_frame_latency_ms: null, // HTTP doesn't stream frames
+        audio_streaming_ms: null,
+        assemble_ms: 0, // No assembly in HTTP (direct Opus upload)
+        stt_ms: timing.sttMs,
+        llm_ms: 0, // Bypassed
+        total_processing_ms: timing.sttMs,
+        overhead_ms: timing.totalMs - timing.sttMs,
+        trace_id: traceId,
+        user_id: auth.userId,
+        stt_provider: transcribeResult.provider,
+      });
+
+      // Track in Analytics Engine
+      trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+        trace_id: traceId,
+        user_id: auth.userId,
+        outcome: "success",
+        mode: metadata.mode as "dictation" | "edit",
+        stt_provider: transcribeResult.provider,
+        llm_provider: undefined,
+        worker_lifetime_ms: timing.totalMs,
+        auth_ms: timing.authMs,
+        ocr_ms: timing.ocrMs,
+        first_frame_latency_ms: null,
+        audio_streaming_ms: null,
+        assemble_ms: 0,
+        stt_ms: timing.sttMs,
+        router_overhead_ms: timing.routerOverheadMs,
+        llm_ms: 0,
+        total_processing_ms: timing.sttMs,
+        overhead_ms: timing.totalMs - timing.sttMs,
+        audio_frames: 0, // HTTP doesn't track frames
+        audio_bytes_kb: audioFile.size / 1024,
+        seq_gaps: 0, // No sequence tracking in HTTP
+        cold_start: false, // Could add this with CF metadata
+      });
+
       return c.json({
-        text: transcribeResult.text,
+        text: finalText,
         mode: metadata.mode,
         tier: routeDecision.tier,
         provider: transcribeResult.provider,
@@ -308,15 +392,74 @@ export async function handleTranscribe(c: Context) {
       sttPrompt,
     );
 
-    const llmDuration = Date.now() - llmStartTime;
+    timing.llmMs = Date.now() - llmStartTime;
+    timing.totalMs = Date.now() - timing.requestStartAt;
+
+    const finalText = enhanceResult.text;
+    const wordCount = finalText.split(/\s+/).filter((w) => w.length > 0).length;
+
     console.log(
-      `[HTTP /transcribe] ${requestId} - LLM complete: "${enhanceResult.text.substring(0, 50)}..." (${llmDuration}ms)`,
+      `[HTTP /transcribe] ${requestId} - LLM complete: "${finalText.substring(0, 50)}..." (${timing.llmMs}ms)`,
     );
 
-    // TODO: Log to analytics + increment quota
+    // Increment quota for free tier users
+    scheduleQuotaIncrement(
+      {
+        subscriptionActive: auth.subscriptionActive,
+        userId: auth.userId,
+        env,
+      } as any,
+      wordCount,
+      executionCtx,
+    );
+
+    // Log session metrics
+    logSessionComplete({
+      outcome: "success",
+      mode: metadata.mode as "dictation" | "edit",
+      worker_boot_ms: 0,
+      worker_lifetime_ms: timing.totalMs,
+      auth_ms: timing.authMs,
+      ocr_ms: timing.ocrMs,
+      first_frame_latency_ms: null,
+      audio_streaming_ms: null,
+      assemble_ms: 0,
+      stt_ms: timing.sttMs,
+      llm_ms: timing.llmMs,
+      total_processing_ms: timing.sttMs + timing.llmMs,
+      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
+      trace_id: traceId,
+      user_id: auth.userId,
+      stt_provider: transcribeResult.provider,
+    });
+
+    // Track in Analytics Engine
+    trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+      trace_id: traceId,
+      user_id: auth.userId,
+      outcome: "success",
+      mode: metadata.mode as "dictation" | "edit",
+      stt_provider: transcribeResult.provider,
+      llm_provider: routeDecision.provider,
+      worker_lifetime_ms: timing.totalMs,
+      auth_ms: timing.authMs,
+      ocr_ms: timing.ocrMs,
+      first_frame_latency_ms: null,
+      audio_streaming_ms: null,
+      assemble_ms: 0,
+      stt_ms: timing.sttMs,
+      router_overhead_ms: timing.routerOverheadMs,
+      llm_ms: timing.llmMs,
+      total_processing_ms: timing.sttMs + timing.llmMs,
+      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
+      audio_frames: 0,
+      audio_bytes_kb: audioFile.size / 1024,
+      seq_gaps: 0,
+      cold_start: false,
+    });
 
     return c.json({
-      text: enhanceResult.text,
+      text: finalText,
       mode: metadata.mode,
       tier: routeDecision.tier,
       provider: transcribeResult.provider,
@@ -329,6 +472,55 @@ export async function handleTranscribe(c: Context) {
     console.error(`[HTTP /transcribe] ${requestId} - Error:`, err);
 
     const errorMsg = err instanceof Error ? err.message : String(err);
+    timing.totalMs = Date.now() - timing.requestStartAt;
+
+    // Log error to session metrics
+    logSessionComplete({
+      outcome: "error_stt", // Could be refined based on error type
+      mode: "dictation" as any, // Fallback if metadata not parsed
+      worker_boot_ms: 0,
+      worker_lifetime_ms: timing.totalMs,
+      auth_ms: timing.authMs,
+      ocr_ms: timing.ocrMs,
+      first_frame_latency_ms: null,
+      audio_streaming_ms: null,
+      assemble_ms: 0,
+      stt_ms: timing.sttMs,
+      llm_ms: timing.llmMs,
+      total_processing_ms: timing.sttMs + timing.llmMs,
+      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
+      trace_id: traceId,
+      user_id: auth.userId,
+      stt_provider: undefined,
+    });
+
+    // Track error in Analytics Engine
+    trackSessionLifecycle(env.ANALYTICS_ENGINE, {
+      trace_id: traceId,
+      user_id: auth.userId,
+      outcome: "error_stt",
+      mode: "dictation",
+      error_stage: "stt",
+      error_message: errorMsg,
+      stt_provider: undefined,
+      llm_provider: undefined,
+      worker_lifetime_ms: timing.totalMs,
+      auth_ms: timing.authMs,
+      ocr_ms: timing.ocrMs,
+      first_frame_latency_ms: null,
+      audio_streaming_ms: null,
+      assemble_ms: 0,
+      stt_ms: timing.sttMs,
+      router_overhead_ms: timing.routerOverheadMs,
+      llm_ms: timing.llmMs,
+      total_processing_ms: timing.sttMs + timing.llmMs,
+      overhead_ms: timing.totalMs - (timing.sttMs + timing.llmMs),
+      audio_frames: 0,
+      audio_bytes_kb: 0,
+      seq_gaps: 0,
+      cold_start: false,
+    });
+
     return c.json(
       {
         error: "Transcription failed",
