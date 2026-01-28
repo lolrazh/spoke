@@ -4,7 +4,7 @@ import {
   OCR_DEFAULT_TIMEOUT_MS,
   OCR_MAX_WORDS,
 } from "../../config.js";
-import { safeJson } from "../../utils/ws.js";
+import { safeJson } from "../../utils/safe.js";
 import { OCR_SYSTEM_PROMPT } from "./prompt.js";
 import type { OcrResult } from "./types.js";
 
