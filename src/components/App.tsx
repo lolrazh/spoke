@@ -7,7 +7,7 @@ import React, {
   useLayoutEffect,
 } from "react";
 import Pill from "./Pill";
-import { useHttpTranscription as useTranscription } from "../hooks/useHttpTranscription";
+import { useTranscription } from "../hooks/useTranscription";
 import {
   CONTENT_WIDTH,
   CONTENT_HEIGHT,

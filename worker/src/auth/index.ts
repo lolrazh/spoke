@@ -3,11 +3,11 @@
  *
  * Provides JWT verification for gating transcription access.
  *
- * Usage in WebSocket handler:
- * 1. Client sends { type: 'auth', token: '<supabase_access_token>' }
+ * Usage in HTTP handlers:
+ * 1. Client sends Authorization: Bearer <supabase_access_token> header
  * 2. Worker verifies JWT signature using JWKS
  * 3. Worker reads subscription_active claim from JWT payload
- * 4. Worker responds with { type: 'auth_ok' } or closes connection
+ * 4. Worker returns 401/402 on auth failure or proceeds with request
  *
  * Subscription status is baked into the JWT via Supabase Custom Access Token Hook.
  * No database query is needed per request — the claim is verified cryptographically.

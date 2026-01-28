@@ -1,5 +1,5 @@
 import { verifySupabaseJwt, WS_CLOSE_CODES, AUTH_TIMEOUT_MS } from "../auth";
-import { safeClose } from "../utils/ws";
+import { safeClose } from "../utils/safe";
 import { safely } from "../utils/safely";
 import { logSessionAuth } from "../utils/sessionLogger";
 import type { ConnectionContext } from "./types";

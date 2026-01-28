@@ -12,8 +12,6 @@ export enum ErrorCode {
   // Network (1xxx)
   NETWORK_OFFLINE = 1001,
   NETWORK_TIMEOUT = 1002,
-  WS_CONNECTION_FAILED = 1003,
-  WS_DISCONNECTED = 1004,
 
   // Auth (2xxx)
   AUTH_REQUIRED = 2001,
@@ -48,8 +46,6 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   // Network
   [ErrorCode.NETWORK_OFFLINE]: "No internet connection",
   [ErrorCode.NETWORK_TIMEOUT]: "Connection timed out",
-  [ErrorCode.WS_CONNECTION_FAILED]: "Connection failed",
-  [ErrorCode.WS_DISCONNECTED]: "Connection lost",
 
   // Auth
   [ErrorCode.AUTH_REQUIRED]: "Sign in to dictate",

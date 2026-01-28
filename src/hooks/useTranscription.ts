@@ -1,8 +1,8 @@
 /**
- * HTTP Transcription Hook
+ * Transcription Hook
  *
- * Replaces WebSocket-based useTranscription with HTTP endpoints.
- * Uses MediaRecorder for audio capture and uploads to /transcribe.
+ * Manages audio recording and transcription using HTTP endpoints.
+ * Uses MediaRecorder for audio capture and uploads to /prepare and /transcribe.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -46,7 +46,7 @@ export interface UseTranscriptionOptions {
   shareTranscriptionsInMetrics?: boolean;
 }
 
-export function useHttpTranscription(
+export function useTranscription(
   options: UseTranscriptionOptions = {},
 ): UseTranscriptionReturn {
   const [recording, setRecording] = useState(false);

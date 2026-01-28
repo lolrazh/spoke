@@ -13,25 +13,52 @@ export { requestIdMiddleware } from "./requestId";
 /**
  * CORS middleware for Electron app
  *
- * Allows file:// protocol (Electron) and localhost (dev)
+ * Allows:
+ * - file:// protocol (Electron app)
+ * - localhost/127.0.0.1 (local development)
+ * - Production domains (if needed for future web version)
+ *
+ * Note: Electron apps typically don't send an Origin header, so requests
+ * without an origin are allowed. This is safe because our auth middleware
+ * requires a valid JWT token for all requests.
  */
 export const corsMiddleware = cors({
   origin: (origin) => {
-    // Allow Electron (file://) and dev (localhost:5173)
-    if (
-      !origin ||
-      origin.startsWith("file://") ||
-      origin.includes("localhost") ||
-      origin.includes("127.0.0.1")
-    ) {
-      return origin || "*";
+    // Allow requests without an Origin header (Electron, curl, etc.)
+    if (!origin) {
+      return "*";
     }
+
+    // Allow Electron file:// protocol
+    if (origin.startsWith("file://")) {
+      return origin;
+    }
+
+    // Allow local development
+    if (
+      origin.includes("localhost") ||
+      origin.includes("127.0.0.1") ||
+      origin.includes("0.0.0.0")
+    ) {
+      return origin;
+    }
+
+    // Allow production domains (add as needed)
+    const allowedDomains = ["https://app.spoke.so", "https://spoke.so"];
+
+    if (allowedDomains.some((domain) => origin.startsWith(domain))) {
+      return origin;
+    }
+
+    // Block all other origins
+    console.warn(`[CORS] Blocked origin: ${origin}`);
     return null;
   },
   credentials: true,
   allowMethods: ["GET", "POST", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
   exposeHeaders: ["X-Request-Id"],
+  maxAge: 86400, // Cache preflight for 24 hours
 });
 
 /**
