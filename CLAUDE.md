@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Development Workflow
 - `npm run dev` - Start development with devtools enabled
-- `npm run dev:local` - Development with local WebSocket server (ws://127.0.0.1:8787/ws)
-- `npm run dev:prod` - Development with production WebSocket server (wss://api.spoke.so/ws)
+- `npm run dev:local` - Development with local HTTP server (http://127.0.0.1:8787)
+- `npm run dev:prod` - Development with production HTTP server (https://api.spoke.so)
 - `npm run dev:ws` - Start Cloudflare Worker locally (required for transcription)
 
 ### Testing & Code Quality
@@ -22,8 +22,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run clean` - Clean build artifacts
 
 ### Staging & Production
-- `npm run stage:local:package` - Staging build with local WebSocket
-- `npm run stage:prod:package` - Staging build with production WebSocket
+- `npm run stage:local:package` - Staging build with local HTTP server
+- `npm run stage:prod:package` - Staging build with production HTTP server
 - `npm run publish` - Publish to Cloudflare R2 (requires .env configuration)
 
 ## Architecture Overview
@@ -33,26 +33,25 @@ Spoke is a macOS dictation app built with Electron, React, and TypeScript. The a
 ### Core Components
 1. **Electron Main Process** (`src/main.ts`) - Window management, native integration, authentication
 2. **React Renderer** (`src/components/App.tsx`) - Glassmorphic pill UI with state machine pattern
-3. **Cloudflare Worker** (`worker/src/`) - Real-time transcription service via WebSocket with modular pipeline architecture
+3. **Cloudflare Worker** (`worker/src/`) - HTTP-based transcription service with modular pipeline architecture
 4. **Native Helper** (`native/spoke-helper.c`) - macOS accessibility API integration for text insertion
 
 ### Pill State Machine
 The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PROCESSING" | "NOTIFICATION" | "HOVER_PREVIEW" | "EXPANDED"`
 
 ### Audio Pipeline
-- Real-time audio streaming via WebSocket with binary protocol
-- 16kHz PCM16 audio with 16-byte headers: `[4B sequence][4B payload_size][8B timestamp]`
-- Voice Activity Detection (VAD) using @ricky0123/vad-web
-- Modular pipeline architecture with ConnectionContext pattern:
-  - `worker/src/pipeline/types.ts` - Shared types (ConnectionContext, RuntimeConfig, etc.)
-  - `worker/src/pipeline/auth.ts` - Auth handler (JWT verification, quota checks)
-  - `worker/src/pipeline/audio.ts` - Binary frame accumulation (parses 16-byte headers)
-  - `worker/src/pipeline/transcribe.ts` - STT orchestration (WAV assembly, API calls)
+- HTTP upload-based transcription with two endpoints: `/prepare` (pre-flight) and `/transcribe` (upload)
+- Browser-native MediaRecorder API with Opus/WebM compression (~10x vs PCM16)
+- True parallelization: `/prepare` + recording start simultaneously
+- Modular pipeline architecture:
+  - `worker/src/middleware/` - CORS, auth, request ID middleware
+  - `worker/src/handlers/http.ts` - HTTP request handlers for `/prepare` and `/transcribe`
+  - `worker/src/pipeline/transcribe.ts` - STT orchestration (Opus decoding, API calls)
   - `worker/src/pipeline/router.ts` - Bypass/LLM decision (trigger detection)
   - `worker/src/pipeline/enhance.ts` - LLM enhancement (lazy loaded for 90% bypass case)
   - `worker/src/pipeline/ocr.ts` - OCR extraction (async with executionCtx)
   - `worker/src/background/tasks.ts` - Quota increment, analytics logging
-  - `worker/src/handlers/ws.ts` - Orchestrator (435 lines, down from 1890, -78%)
+  - `src/utils/audioRecorder.ts` - Client-side audio recording utility
 - Groq Whisper-large-v3 model for transcription (STT)
 
 ### Authentication
@@ -63,10 +62,10 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 ## Key Directories
 
 - `src/components/` - React components (App.tsx contains main pill state machine)
-- `src/hooks/` - Custom React hooks (useTranscription.ts for audio processing)
+- `src/hooks/` - Custom React hooks (useTranscription.ts for HTTP-based audio recording and upload)
 - `src/config/` - Configuration constants and API endpoints
-- `src/utils/` - Utility functions (logger, auth signals, VAD helpers)
-- `worker/src/` - Cloudflare Worker for WebSocket transcription
+- `src/utils/` - Utility functions (logger, auth signals, audioRecorder)
+- `worker/src/` - Cloudflare Worker for HTTP-based transcription
 - `native/` - C binary for macOS accessibility integration
 - `docs/` - Comprehensive documentation:
   - `AUTH.md` - Authentication flow and token handling
@@ -82,7 +81,7 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 
 ### Development
 - `SF_DEVTOOLS=1` - Enable development console
-- `VITE_TRANSCRIBE_WS_URL` - WebSocket endpoint (local: ws://127.0.0.1:8787/ws, prod: wss://api.spoke.so/ws)
+- `VITE_TRANSCRIBE_URL` - HTTP endpoint base URL (local: http://127.0.0.1:8787, prod: https://api.spoke.so)
 - `FORCE_ONBOARDING=1` - Force onboarding flow
 - `SKIP_AUTH=1` - Skip authentication for testing
 
@@ -99,7 +98,7 @@ The UI follows a state machine pattern with states: `"IDLE" | "LISTENING" | "PRO
 - **Integration Tests**: End-to-end audio pipeline testing
 - **Native Testing**: Helper binary functionality validation
 - Test files follow `*.test.ts` or `*.test.tsx` naming convention
-- Test setup in `src/test/setup.ts` with fake WebSocket and audio utilities
+- Test setup in `src/test/setup.ts` with mocked MediaRecorder and audio utilities
 
 ## Native Development
 
@@ -108,12 +107,13 @@ The app includes a native C helper for text insertion via macOS Accessibility AP
 - Requires Xcode Command Line Tools for compilation
 - Test utilities: `./test-ax`, `./debug-focus`, `./check-editable`
 
-## WebSocket Protocol
+## HTTP Protocol
 
-Binary protocol optimized for real-time audio streaming:
-- Uses 16-byte headers with sequence, payload size, and timestamp
-- PCM16 audio data payload (little-endian)
-- Handled in `src/hooks/useTranscription.ts` and `worker/src/pipeline/audio.ts`
+Simple REST-based protocol for audio upload and transcription:
+- **POST /prepare**: Pre-flight request with optional screenshot for OCR context
+- **POST /transcribe**: Upload Opus/WebM audio via FormData with metadata
+- True parallelization: `/prepare` starts with recording, completes before `/transcribe`
+- Handled in `src/hooks/useTranscription.ts` (client) and `worker/src/handlers/http.ts` (server)
 
 ## Database (Supabase)
 

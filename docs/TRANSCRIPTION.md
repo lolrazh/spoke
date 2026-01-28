@@ -1,6 +1,6 @@
 # Transcription Pipeline
 
-Spoke's transcription pipeline transforms voice into text through real-time audio streaming, speech recognition, and optional LLM enhancement. The entire flow—from microphone to text insertion—happens in under 2 seconds.
+Spoke's transcription pipeline transforms voice into text through HTTP-based audio upload, speech recognition, and optional LLM enhancement. The entire flow—from microphone to text insertion—happens in under 2 seconds.
 
 **Related:** `docs/DATABASE.md`, `docs/INSTRUMENTATION.md`, `docs/DESIGN.md`
 
@@ -19,35 +19,33 @@ The transcription pipeline is built on six principles:
 
 The system supports two modes: **dictation** (voice → text) and **edit** (voice instruction → rewrite selected text). As of 2025-12-12, context-aware transcription uses on-screen content via OCR to improve proper noun accuracy.
 
-Authentication happens once at WebSocket connection time—JWT claims provide instant entitlement gating (Pro subscription or free tier quota) with zero database queries during transcription. JWKS keys are cached at the edge (two-tier: in-memory + Cache API) for sub-50ms JWT verification.
+Authentication happens on each HTTP request—JWT claims provide instant entitlement gating (Pro subscription or free tier quota) with zero database queries during transcription. JWKS keys are cached at the edge (two-tier: in-memory + Cache API) for sub-50ms JWT verification.
 
 ---
 
 ## Pipeline Flow
 
 <pipeline>
-  <stage name="context" added="2025-12-12">
-    PTT down → Screenshot capture (Electron desktopCapturer, ~293ms, JPEG quality 75)
+  <stage name="prepare" updated="2026-01-28">
+    PTT down → /prepare HTTP request starts in parallel with recording
+    - Screenshot capture (Electron desktopCapturer, ~293ms, JPEG quality 75)
+    - Worker OCR service extracts proper nouns (fire-and-forget, ~800-1200ms)
   </stage>
 
   <stage name="capture">
-    Microphone → getUserMedia() → 48kHz mono stream
+    Microphone → getUserMedia() → MediaRecorder API
+    - Native browser codec (Opus/WebM)
+    - ~10x compression vs PCM16
   </stage>
 
-  <stage name="process">
-    AudioWorklet resamples to 16kHz PCM16, buffers into 100ms frames (1600 samples)
-  </stage>
-
-  <stage name="stream">
-    WebSocket sends binary frames (16-byte headers: sequence, size, timestamp) + context_ocr message
-  </stage>
-
-  <stage name="ocr" added="2025-12-12">
-    Worker OCR service (Groq Llama 4 Scout) extracts proper nouns from screenshot (fire-and-forget, ~800-1200ms)
+  <stage name="upload" updated="2026-01-28">
+    PTT up → Stop recording → Upload to /transcribe
+    - Wait for /prepare to complete
+    - FormData upload with audio blob + metadata
   </stage>
 
   <stage name="transcribe">
-    Cloudflare Worker concatenates PCM, wraps in WAV, calls STT API (Groq/Fireworks/Deepgram) with OCR-enriched vocabulary
+    Cloudflare Worker decodes Opus/WebM, calls STT API (Groq/Fireworks/Deepgram/Simplismart) with OCR-enriched vocabulary
   </stage>
 
   <stage name="enhance" updated="2025-12-25">
@@ -59,7 +57,7 @@ Authentication happens once at WebSocket connection time—JWT claims provide in
   </stage>
 </pipeline>
 
-Each stage is optimized for low latency—audio worklet runs in dedicated thread, WebSocket uses binary protocol, OCR runs fire-and-forget (doesn't block audio), STT/LLM calls happen in parallel where possible.
+Each stage is optimized for low latency—MediaRecorder runs in browser, true parallelization (/prepare + recording), OCR runs fire-and-forget (doesn't block audio), STT/LLM calls happen with smart routing.
 
 ---
 
@@ -68,76 +66,63 @@ Each stage is optimized for low latency—audio worklet runs in dedicated thread
 Spoke uses JWT-based authentication with embedded subscription and quota claims for instant entitlement gating.
 
 <auth_flow>
-  <connection_auth updated="2025-12-20">
+  <http_auth updated="2026-01-28">
     1. App starts → Supabase refreshes JWT (runs custom_access_token_hook in Postgres)
     2. Hook checks subscriptions table, reads quota from profiles table
     3. Hook implements lazy weekly reset (if quota_reset_date < NOW(), resets to 0, every Monday 00:00 UTC)
     4. Hook adds claims to JWT:
        - subscription_active (boolean) - Pro tier status
        - words_used_this_week (number) - Free tier usage (after reset if needed)
-       - quota_limit (number) - Free tier limit (1000 words/week, changed from 2000/month on 2025-12-22)
+       - quota_limit (number) - Free tier limit (1000 words/week)
        - quota_reset_date (timestamp) - Next reset date
     5. App syncs quota from JWT to localStorage on startup (display-only cache)
     6. User presses PTT → App checks local quota first (instant feedback)
-    7. If local quota exceeded → Show notification immediately, skip WebSocket connection
-    8. If local quota OK → Recording starts IMMEDIATELY (parallel auth optimization)
-    
-    **Parallel Auth Flow (2025-12-20):**
-    Recording and auth run in parallel for zero perceived latency:
-    
+    7. If local quota exceeded → Show notification immediately, skip HTTP request
+    8. If local quota OK → Recording starts IMMEDIATELY (true parallelization)
+
+    **True Parallelization Flow (2026-01-28):**
+    /prepare and recording start at the EXACT same time (no sequential dependency):
+
     Thread 1 (Recording - IMMEDIATE):
       - setRecording(true) - frequency bars start moving
-      - Initialize AudioContext and AudioWorklet
-      - Start producing PCM frames
-      - Frames queue in sendQueueRef (client-side buffer)
-    
-    Thread 2 (Auth - BACKGROUND):
-      - Open WebSocket connection
-      - Send 'auth' message with JWT
-      - Worker verifies JWT signature using JWKS (Supabase public key)
-      - Worker extracts claims from verified JWT
-      - Worker checks entitlement (server-authoritative):
+      - Initialize MediaRecorder
+      - Start recording Opus/WebM audio
+      - Capture continues while /prepare runs in background
+
+    Thread 2 (/prepare - PARALLEL):
+      - POST /prepare with JWT in Authorization header
+      - Middleware verifies JWT signature using JWKS (Supabase public key)
+      - Middleware extracts claims from verified JWT
+      - Middleware checks entitlement (server-authoritative):
         * Pro users (subscription_active=true): Instant pass
-        * Free users: Check quota (words_used >= quota_limit → BLOCK)
-      - If auth passes: Worker sends 'auth_ok'
-        * wsReadyRef.current = true
-        * trySendStartMessage() sends 'start' message
-        * flushQueue() sends buffered frames to worker
-        * All future frames sent directly
-      - If auth fails: Worker closes connection with error code (4020 or 4021)
-        * Recording stops
-        * Buffered frames cleared
-        * Error notification shown
-    
+        * Free users: Check quota (words_used >= quota_limit → 402 error)
+      - If auth passes: Start OCR extraction (fire-and-forget)
+      - Return prepareId + OCR words (when complete)
+      - If auth fails: Return 401/402 error
+        * Recording continues (user can finish speaking)
+        * Error shown after PTT release
+
     **Latency Impact:**
-    - Typical case (90%+): Auth completes in 10-50ms (JWKS cached)
-      * User never perceives delay (auth finishes before first word)
-      * ~3-5 frames queued before auth completes
-    - Cold start case (<10%): Auth completes in 500ms (JWKS fetch from Supabase)
-      * User still dictating when auth completes
-      * ~50 frames queued, flush immediately
-      * No perceived latency (auth runs while user speaks)
-    
-    **Previous Architecture (Pre-2025-12-20):**
-    Recording was BLOCKED until auth completed (sequential flow):
-    - PTT → Wait for auth (10-800ms) → Recording starts
-    - User experienced noticeable freeze on cold starts
-    
-    Reference: agent-logs/2025-12-20_2235_parallel-auth-recording.md
-  </connection_auth>
+    - /prepare typically completes in 10-50ms (JWKS cached)
+    - Recording happens immediately (zero perceived latency)
+    - /prepare usually finishes before user releases PTT
+    - On PTT up: Wait for /prepare, then upload to /transcribe
+
+    Reference: agent-logs/2026-01-28_1200_websocket-to-http-migration.md
+  </http_auth>
 
   <two_level_gating>
     Free tier quota is enforced at two levels:
 
     1. **Local (App-side)**: Instant feedback
-       - Checks localStorage quota before opening WebSocket
+       - Checks localStorage quota before starting recording
        - Shows notification immediately if quota exceeded
        - Purpose: Better UX (no frozen frequency bars, instant error)
        - Security: Display-only, NOT authoritative (can be tampered)
 
     2. **Server (Worker-side)**: Authoritative enforcement
-       - Checks JWT claims quota at WebSocket auth time
-       - Closes connection if quota exceeded (code 4021)
+       - Checks JWT claims quota in auth middleware
+       - Returns 402 error if quota exceeded
        - Purpose: Security boundary (untamperable, source of truth)
        - Cannot be bypassed: JWT signed by Supabase, verified by worker
 
@@ -147,24 +132,24 @@ Spoke uses JWT-based authentication with embedded subscription and quota claims 
     Reference: agent-logs/2025-12-04_1640_fix-quota-system.md
   </two_level_gating>
 
-  <close_codes file="worker/src/auth/index.ts">
-    1000: NORMAL_CLOSE - Successful completion
-    4011: AUTH_TIMEOUT - No auth message received within 15s
-    4012: UNAUTHORIZED - Invalid or expired JWT
-    4020: PAYMENT_REQUIRED - Valid user but no active subscription (free tier not implemented for this feature)
-    4021: QUOTA_EXCEEDED - Free tier user exceeded weekly word limit (1000 words/week, resets Monday 00:00 UTC, changed from 2000/month on 2025-12-22)
-  </close_codes>
+  <http_status_codes file="worker/src/middleware/auth.ts">
+    200: OK - Successful request
+    401: UNAUTHORIZED - Invalid or expired JWT
+    402: PAYMENT_REQUIRED / QUOTA_EXCEEDED - Free tier user exceeded weekly word limit (1000 words/week, resets Monday 00:00 UTC)
+    500: INTERNAL_SERVER_ERROR - Worker processing error
+  </http_status_codes>
 
   <architecture_benefits>
-    - **Zero perceived latency (2025-12-20)**: Recording starts instantly, auth runs in background (10-50ms typical, invisible to user)
+    - **Zero perceived latency (2026-01-28)**: Recording starts instantly, /prepare runs in parallel (10-50ms typical, invisible to user)
     - **Zero DB queries during transcription**: All entitlement data in JWT (50x faster auth)
-    - **Instant blocking**: Quota check happens at connection time, before audio streams
+    - **True parallelization**: /prepare and recording start at exact same time (no sequential dependency)
     - **Cryptographically secure**: JWT signature verified via JWKS (Supabase public key)
     - **Edge-cached JWKS**: Two-tier caching (in-memory Map + Cache API) eliminates cold starts
     - **Sub-50ms JWT verification**: JWKS cache reduces cold start rate from 67% to ~5%
     - **Scales infinitely**: Pure CPU work (JWT verification), no database bottleneck
-    - **1-hour propagation**: Subscription/quota changes take up to 1 hour to propagate (when JWT refreshes)
-    - **Automatic refresh + parallel auth**: App calls refreshSession() on startup, auth runs in parallel with recording start (2025-01-15: pre-connect removed to avoid Cloudflare loadShed on idle connections)
+    - **Simpler protocol**: Standard HTTP/REST instead of WebSocket binary framing
+    - **10x compression**: Opus/WebM encoding vs PCM16 raw audio
+    - **No backpressure issues**: Single upload instead of streaming frames
   </architecture_benefits>
 
   <jwks_caching added="2025-12-12" updated="2025-12-17" file="worker/src/auth/supabaseJwt.ts">
@@ -257,11 +242,11 @@ Spoke has two distinct modes that change how the transcription is processed.
 <mode name="dictation">
   <trigger>No text selected when PTT pressed</trigger>
 
-  <flow>
-    1. User speaks into microphone
-    2. Audio streams to worker via WebSocket
-    3. Worker transcribes via STT (Groq/Fireworks/Deepgram)
-    4. Optional: LLM cleans up transcription (punctuation, formatting)
+  <flow updated="2026-01-28">
+    1. User speaks into microphone (MediaRecorder captures Opus/WebM)
+    2. PTT release → Upload audio to worker via HTTP POST /transcribe
+    3. Worker transcribes via STT (Groq/Fireworks/Deepgram/Simplismart)
+    4. Optional: LLM cleans up transcription (smart routing with bypass)
     5. Text inserted at cursor position
   </flow>
 
@@ -349,16 +334,16 @@ Spoke uses on-screen context to improve transcription accuracy for proper nouns,
     2. LLM System Prompt: Fuzzy matching instructions to replace phonetically similar words with exact vocabulary spellings
   </enrichment>
 
-  <websocket>
-    Client sends context_ocr message after start message:
+  <http_flow updated="2026-01-28">
+    Client sends screenshot in /prepare request:
+    POST /prepare
     {
-      "type": "context_ocr",
-      "screenshot": "base64_jpeg_data",
-      "traceId": "..."
+      "screenshot": "base64_jpeg_data"
     }
 
-    Worker processes asynchronously via c.executionCtx.waitUntil() (non-blocking)
-  </websocket>
+    Worker processes asynchronously via executionCtx.waitUntil() (non-blocking)
+    Returns OCR words when available for use in /transcribe
+  </http_flow>
 
   <accuracy_improvement>
     - Proper nouns: "GOLDBEES" ✅ (not "Gold Bees")
@@ -392,51 +377,47 @@ Spoke uses on-screen context to improve transcription accuracy for proper nouns,
 
 ## Audio Capture
 
-<audio_capture file="src/hooks/useTranscription.ts">
+<audio_capture file="src/hooks/useTranscription.ts" updated="2026-01-28">
   <constraints>
     getUserMedia() requests:
-    - sampleRate: 48000 (device native)
+    - sampleRate: 16000 (target for transcription)
     - channelCount: 1 (mono)
-    - echoCancellation: false
+    - echoCancellation: true
     - noiseSuppression: true
-    - autoGainControl: false
+    - autoGainControl: true
   </constraints>
 
   <features>
     - Device-specific targeting (non-default mic support)
     - Real-time device change detection + stream reinitialization
-    - Constraint validation with actual settings logging
+    - Browser-native MediaRecorder API
   </features>
 
-  <worklet file="public/worklets/pcm16-downsampler.worklet.js">
-    <resampling>
-      - 16kHz input: passthrough (direct Float32 → Int16)
-      - 48kHz input: decimate-by-3 (FIR low-pass, 31-tap Hamming window)
-      - Other rates: linear interpolation with anti-aliasing
-    </resampling>
+  <recording file="src/utils/audioRecorder.ts">
+    <encoder>
+      MediaRecorder with Opus/WebM codec:
+      - Automatic codec negotiation with fallback
+      - ~10x compression vs PCM16
+      - Native browser encoding (no custom worklets)
+    </encoder>
 
-    <buffering>
-      Accumulates 1600 samples (100ms at 16kHz), posts as transferable ArrayBuffer.
-      Flush support on stop prevents audio loss (partial frame emission).
-    </buffering>
-  </worklet>
+    <output>
+      Single audio blob on recording stop:
+      - Opus/WebM format
+      - Uploaded via FormData to /transcribe
+      - No chunking or streaming
+    </output>
+  </recording>
 
-  <vad_silence_cutting updated="2025-12-11" file="src/utils/vadStreamGate.ts">
-    **Per-Frame Speech Detection:**
-    VAD evaluates EACH frame independently for speech content (not just session start/end):
+  <removed updated="2026-01-28">
+    **VAD and PCM16 encoding removed:**
+    - No Voice Activity Detection (VAD) needed for single upload
+    - No AudioWorklet for PCM16 encoding
+    - Opus codec handles silence efficiently
+    - Whisper trained on real-world audio with pauses
 
-    - Only frames containing actual speech are forwarded to server (using SPEECH_PROB_END threshold)
-    - Silence frames during pauses → buffered to pre-roll, not sent
-    - Prevents Whisper hallucinations caused by weak/trailing audio
-
-    **SENTENCE_PAUSE_MS:** 700ms → 1500ms (2025-12-11)
-    - Conservative threshold for natural sentence boundaries
-    - Only chunks on true "full stop" pauses, not brief pauses for thought
-
-    **Result:** Chunks contain dense, speech-only audio with minimal silence
-
-    Reference: agent-logs/2025-12-11_2015_vad-silence-cutting-fix.md
-  </vad_silence_cutting>
+    Reference: agent-logs/2026-01-28_1200_websocket-to-http-migration.md
+  </removed>
 </audio_capture>
 
 ---
@@ -493,244 +474,156 @@ For now, single-shot processing is reliable and performant for all dictation len
 
 ---
 
-## WebSocket Protocol
+## HTTP Protocol
 
-<websocket>
-  <connection>
-    <url>getTranscribeWsUrl() - env-specific (ws://127.0.0.1:8787/ws or wss://api.spoke.so/ws)</url>
-    <binary_type>arraybuffer</binary_type>
-    <singleflight added="2025-12-17" file="src/hooks/useTranscription.ts">
-      **Problem:** Multiple callers (preConnect, start, reconnect) could create parallel WebSocket 
-      connections, causing Cloudflare loadShed errors (3x concurrent requests).
-      
-      **Solution:** Singleflight pattern using connectionPromiseRef:
-      - If connection in progress, return existing Promise instead of creating new connection
-      - Promise cleared in .finally() to allow fresh attempts after completion/failure
-      - Prevents stampede: N callers → 1 connection attempt
-      
-      **Implementation:**
+<http updated="2026-01-28">
+  <endpoints>
+    <prepare>POST /prepare - Pre-flight request with screenshot for OCR</prepare>
+    <transcribe>POST /transcribe - Upload audio blob with metadata</transcribe>
+  </endpoints>
+    <flow file="src/hooks/useTranscription.ts" updated="2026-01-28">
+      **True Parallelization Pattern:**
+      /prepare and recording start at the exact same time (no sequential dependency):
+
       ```typescript
-      if (connectionPromiseRef.current) return connectionPromiseRef.current;
-      connectionPromise = (async () => { ... })();
-      connectionPromiseRef.current = connectionPromise.finally(() => {
-        connectionPromiseRef.current = null;
-      });
-      return connectionPromiseRef.current;
+      // Start BOTH at the exact same time
+      const recorderPromise = recorder.start(stream);
+      const preparePromise = fetch('/prepare', { auth, screenshot });
+
+      // Wait for recorder to be ready
+      await recorderPromise;
+
+      // Store prepare promise for later
+      preparePromiseRef.current = preparePromise;
       ```
-    </singleflight>
-    <starting_state added="2025-12-17" file="src/hooks/useTranscription.ts">
-      **Problem:** Double-tap race condition - stop() returns early if recording=false, 
-      but recording only becomes true AFTER auth completes. User taps "stop" during cold 
-      start, but recording starts anyway.
-      
-      **Solution:** startingRef tracks in-flight start attempts:
-      - Set true at start() entry, cleared on success, error, or stop/cancel
-      - stop() checks startingRef and cancels if true
-      - All early returns in start() clear startingRef to prevent stuck state
-    </starting_state>
-    <close_race_fix added="2025-12-22" file="src/hooks/useTranscription.ts">
-      **Problem:** Worker sends `final` message then closes WebSocket (code 1000). Browser event
-      loop can process `close` event before `message` event, causing timeout despite successful
-      transcription.
-      
-      **Solution:** onClose handler distinguishes normal vs abnormal closure:
-      - Code 1000 (normal): Wait 50ms for message handler to process pending `final`
-      - Other codes: Error immediately (preserves existing error handling)
-      
-      **Impact:** Fixes mysterious timeouts on long dictations (40+ seconds) where worker
-      processed successfully but client reported timeout.
-      
-      Reference: agent-logs/2025-12-22_2314_websocket-close-race-condition-fix.md
-      
-      **Early return points that clear startingRef:**
-      - Quota exceeded (line 1177)
-      - Stream open fail (line 1259)
-      - Catch block (line 1524)
-    </starting_state>
-    <reconnection>
-      Exponential backoff: 150ms base, doubles each attempt (max 2s).
-      Circuit breaker: max 10 attempts, then 60s cooldown.
-    </reconnection>
-    <flow_control>
-      Client-side buffering when WebSocket buffer > 512KB.
-      Queue flush with 10ms retry. 20MB total buffer limit.
-    </flow_control>
-  </connection>
 
-  <binary_frame>
-    <header bytes="16">
-      [0:4]   sequence (u32, little-endian) - Frame number for gap detection
-      [4:8]   payload_size (u32, little-endian) - PCM data byte count
-      [8:12]  timestamp_low (u32, little-endian) - Client timestamp (low 32 bits)
-      [12:16] timestamp_high (u32, little-endian) - Client timestamp (high 32 bits)
-    </header>
-    <payload>PCM16 audio data (payload_size bytes)</payload>
-  </binary_frame>
+      On stop:
+      ```typescript
+      // Stop recording
+      const audioBlob = await recorder.stop();
 
-  <messages>
-    <auth>
-      Client sends first (within 15s of connection):
+      // Wait for /prepare to complete
+      await preparePromiseRef.current;
+
+      // Upload to /transcribe
+      await fetch('/transcribe', { audio, metadata });
+      ```
+
+      **Benefits:**
+      - Recording starts immediately (zero perceived latency)
+      - /prepare runs in background while user speaks
+      - /prepare usually completes before PTT release
+      - No WebSocket connection overhead
+      - No frame buffering or backpressure
+    </flow>
+  </endpoints>
+
+    <prepare updated="2026-01-28">
+      POST /prepare
+      Headers:
+        Authorization: Bearer {JWT}
+        Content-Type: application/json
+
+      Body:
       {
-        "type": "auth",
-        "token": "eyJhbG...", // Supabase JWT access token
-        "traceId": "..."      // optional (for correlating auth + session logs)
+        "screenshot": "base64_jpeg_data" // optional, for OCR context
       }
 
-      Server responses:
-      Success: { "type": "auth_ok" }
-      Failure: { "type": "auth_error", "error": "...", "code": 4011|4012|4020|4021 }
-
-      Auth must complete before any other messages. Connection closed if auth fails.
-    </auth>
-
-    <start>
-      Client sends on PTT down:
+      Response (200 OK):
       {
-        "type": "start",
-        "version": 2,
-        "format": "pcm16le",
-        "rate": 16000,
-        "language": "en",
+        "prepareId": "...",
+        "ocrWords": ["word1", "word2", ...] // optional, from OCR
+      }
+
+      Response (401 Unauthorized):
+      { "error": "Invalid or expired token" }
+
+      Response (402 Payment Required):
+      { "error": "Quota exceeded" }
+
+      **Timing:** Completes in ~10-50ms (JWKS cached), OCR runs fire-and-forget
+    </prepare>
+
+    <transcribe updated="2026-01-28">
+      POST /transcribe
+      Headers:
+        Authorization: Bearer {JWT}
+        Content-Type: multipart/form-data
+
+      FormData:
+        - audio: Blob (Opus/WebM audio file)
+        - metadata: JSON string:
+          {
+            "mode": "dictation" | "edit",
+            "ocrWords": [...],
+            "selection": "selected text" | undefined,
+            "identity": "user name" | undefined,
+            "language": "en"
+          }
+
+      Response (200 OK):
+      {
+        "text": "transcribed text...",
+        "wordCount": 42,
         "traceId": "...",
-        "mode": "dictation" | "edit",
-        "selection": { ... }, // edit mode only
-        "shareTranscriptions": boolean,
-        "identity": { "name": "...", "email": "..." } // optional
-      }
-    </start>
-
-    <context_ocr added="2025-12-12">
-      Client sends after start (optional, for context-aware transcription):
-      {
-        "type": "context_ocr",
-        "screenshot": "base64_encoded_jpeg_data",
-        "traceId": "..."
+        "metrics": { ... }
       }
 
-      Worker processes asynchronously (fire-and-forget via executionCtx.waitUntil):
-      - Sends screenshot to OCR service (Groq Llama 4 Scout)
-      - Extracts proper nouns and domain-specific vocabulary
-      - Merges OCR words into STT prompt and LLM system prompt
-      - No acknowledgment message sent (non-blocking)
+      Response (401 Unauthorized):
+      { "error": "Invalid or expired token" }
 
-      Timing: OCR completes in ~800-1200ms, typically before STT for dictations >1s
-    </context_ocr>
+      Response (500 Internal Server Error):
+      { "error": "Transcription failed: ..." }
 
-    <chunk>
-      Client sends during dictation (on natural sentence pause):
-      {
-        "type": "chunk",
-        "chunkIndex": 0,  // Incremental chunk number
-        "audioMs": 10230  // Duration of audio in this chunk (milliseconds)
-      }
-
-      Worker snapshots accumulated audio, starts STT immediately (async).
-      Enables progressive transcription for long dictations.
-    </chunk>
-
-    <end>
-      Client sends on PTT up: { "type": "end" }
-      Triggers final transcription processing.
-      If chunked session: waits for pending chunk STTs, processes remaining audio.
-    </end>
-
-    <status>
-      Server → Client when processing starts:
-      { "type": "status", "state": "processing", "traceId": "...", "serverTs": ... }
-    </status>
-
-    <chunk_result>
-      Server → Client when chunk STT completes:
-      {
-        "type": "chunk_result",
-        "chunkIndex": 0,
-        "text": "...",  // Transcribed text for this chunk
-        "traceId": "..."
-      }
-
-      Allows progressive UI updates during long dictations.
-      Client receives chunk results while still speaking.
-    </chunk_result>
-
-    <llm_status>
-      Server → Client when LLM starts:
-      { "type": "llm_status", "state": "llm_processing", "traceId": "..." }
-    </llm_status>
-
-    <llm_delta>
-      Server → Client during streaming:
-      { "type": "llm_delta", "delta": "...", "traceId": "..." }
-      Allows progressive UI updates while LLM generates.
-    </llm_delta>
-
-    <final>
-      Server → Client with result:
-      {
-        "type": "final",
-        "text": "...",
-        "wordCount": 42,  // Word count for quota tracking (STT output only)
-        "traceId": "...",
-        "dataset": { "sttText": "...", "llmText": "..." }, // if shareTranscriptions
-        "metrics": { "worker": { ... } }
-      }
-
-      wordCount is calculated from finalText (STT output), NOT responseText (LLM output).
-      In edit mode, counts spoken instruction words, not LLM-generated rewrite.
-    </final>
-
-    <error>
-      Server → Client on failure:
-      {
-        "type": "error",
-        "code": 4001 | 4002 | 4003 | 4004,
-        "body": "...",
-        "retryable": boolean
-      }
-      Codes: 4001=STT_API_ERROR, 4002=STT_TIMEOUT, 4003=AUDIO_TOO_LARGE, 4004=AUDIO_PROCESSING_FAILED
-    </error>
-  </messages>
-</websocket>
+      **Notes:**
+      - wordCount calculated from STT output (not LLM output)
+      - In edit mode, counts spoken instruction words
+      - Quota incremented server-side (fire-and-forget)
+    </transcribe>
+  </requests>
+</http>
 
 ---
 
 ## Server-Side Processing
 
-<worker file="worker/src/handlers/ws.ts">
+<worker file="worker/src/handlers/http.ts" updated="2026-01-28">
   <security>
-    - JWT authentication: Verifies Supabase JWT signature using JWKS
-    - Entitlement gating: Checks subscription_active or quota claims at auth time
-    - Rate limit: 5 concurrent connections per IP
-    - Payload limit: 20MB max session size
-    - Connection tracking with automatic cleanup
-    - Auth timeout: 15s to send auth message after connection
+    - JWT authentication: Middleware verifies Supabase JWT signature using JWKS
+    - Entitlement gating: Checks subscription_active or quota claims in middleware
+    - Rate limit: Standard Cloudflare rate limiting
+    - Payload limit: 20MB max audio upload
+    - CORS: Production domain whitelist with Electron app support
   </security>
 
-  <session>
-    Accumulates binary frames and tracks state:
-    - traceId, chunks[], totalBytes, frames, seqGaps
-    - firstArrivalMs, lastArrivalMs
-    - mode ('dictation' | 'edit'), selection
-    - shareTranscriptions, identity { name, email }
-    - Chunked transcription state:
-      - chunkStates: Map<number, ChunkState> - Audio snapshots per chunk
-      - pendingChunkSTT: Set<number> - Ongoing STT operations
-      - currentChunkIndex: number - Next chunk index
-  </session>
+  <prepare_handler>
+    POST /prepare endpoint:
+    1. Auth middleware verifies JWT
+    2. Check quota (Pro users pass, free users checked against limit)
+    3. If screenshot provided: Start OCR extraction (fire-and-forget)
+    4. Return prepareId + OCR words (when available)
+    5. OCR runs asynchronously via executionCtx.waitUntil()
+  </prepare_handler>
 
-  <assembly file="worker/src/audio/codec.ts">
-    On "end" message:
+  <transcribe_handler>
+    POST /transcribe endpoint:
+    1. Auth middleware verifies JWT
+    2. Extract audio blob from FormData
+    3. Parse metadata JSON (mode, ocrWords, selection, identity)
+    4. Decode Opus/WebM audio
+    5. Call STT with OCR-enriched vocabulary
+    6. Optional: LLM enhancement (smart routing)
+    7. Return transcribed text + metrics
+    8. Background: Increment quota, log analytics (fire-and-forget)
+  </transcribe_handler>
 
-    For chunked sessions:
-    1. Wait for all pending chunk STTs (15s timeout)
-    2. Collect chunk results in order (by chunkIndex)
-    3. Process remaining audio (final chunk) if present
-    4. Concatenate: [chunk0, chunk1, ..., remaining].join(' ').trim()
-
-    For non-chunked sessions:
-    1. concat() - Combine PCM chunks into single Uint8Array
-    2. wrapWav() - Add 44-byte WAV header (RIFF/WAVE/fmt/data chunks)
-    3. Pass to STT provider
-  </assembly>
+  <audio_processing file="worker/src/pipeline/transcribe.ts">
+    Audio format handling:
+    1. Receive Opus/WebM blob from FormData
+    2. transcribeOpus() - Decode and send to STT API
+    3. STT provider processes compressed audio directly
+    4. No WAV conversion needed (removed in HTTP migration)
+  </audio_processing>
 
   <quota_tracking>
     After successful transcription (both chunked and non-chunked):
@@ -1198,15 +1091,13 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
   </logging>
 
   <optimization_history>
+    - 2026-01-28: WebSocket → HTTP migration (73% code reduction, eliminated backpressure, 10x compression)
     - 2025-12-25: Smart LLM routing (90% bypass → 0ms LLM latency, 60-100% token reduction)
-    - 2025-12-22: WebSocket close race condition fix (eliminated timeouts on long dictations)
     - 2025-12-22: Wide Events logging migration (40+ noisy logs → 1 wide event per session)
     - 2025-12-11: Sentry purge (400s → 1.5s wall time, 266x improvement)
     - 2025-12-12: JWKS edge caching (cold start rate 67% → 5%)
-    - 2025-12-10: Pre-connect on startup (eliminated 4-5s first-dictation freeze)
-    - 2025-12-06: WebSocket retry logic (handles Cloudflare edge rejections)
 
-    Reference: agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md, agent-logs/2025-12-22_2314_websocket-close-race-condition-fix.md, agent-logs/2025-12-25_1355_smart-llm-routing.md
+    Reference: agent-logs/2026-01-28_1200_websocket-to-http-migration.md, agent-logs/2025-12-25_1355_smart-llm-routing.md, agent-logs/2025-12-11_2330_nuke-instrumentation-complete.md
   </optimization_history>
 </metrics>
 
@@ -1214,18 +1105,19 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
 
 ## Error Handling
 
-<errors>
+<errors updated="2026-01-28">
   <layers>
     <connection>
-      - WebSocket errors → auto-reconnect with exponential backoff
-      - Network interruptions → client-side buffering
-      - Server unavailable → circuit breaker prevents excessive retries
+      - HTTP errors → standard status code handling
+      - Network interruptions → retry with user feedback
+      - Server unavailable → clear error messaging
     </connection>
 
     <audio>
       - Device errors → fallback to default microphone
       - Permission denied → user guidance
       - Stream interruption → auto-reinitialization
+      - MediaRecorder errors → graceful degradation
     </audio>
 
     <processing>
@@ -1235,18 +1127,18 @@ Comprehensive timing instrumentation across client and server, with telemetry vi
     </processing>
   </layers>
 
-  <error_codes>
-    4001: STT_API_ERROR - STT provider failure
-    4002: STT_TIMEOUT - STT request exceeded timeout
-    4003: AUDIO_TOO_LARGE - Session exceeded 20MB limit
-    4004: AUDIO_PROCESSING_FAILED - Audio worklet/processing error
-  </error_codes>
+  <http_status_codes>
+    200: OK - Success
+    401: UNAUTHORIZED - Invalid or expired JWT
+    402: PAYMENT_REQUIRED - Quota exceeded
+    500: INTERNAL_SERVER_ERROR - STT/LLM provider failure
+  </http_status_codes>
 
   <cancellation>
     User can cancel at any stage:
-    - Aborts in-flight STT/LLM requests
-    - Disconnects audio nodes
-    - Closes WebSocket
+    - Stops MediaRecorder
+    - Aborts in-flight HTTP requests
+    - Clears audio state
     - Resets all state
   </cancellation>
 </errors>
@@ -1377,7 +1269,7 @@ localStorage.getItem('sf.quotaLimit');
 
 # 4. Test dictation
 # - Local check happens first (instant notification if exceeded)
-# - Server check happens at WebSocket auth (close code 4021 if exceeded)
+# - Server check happens in HTTP middleware (402 error if exceeded)
 # - Worker logs show JWT claims quota in auth verification
 ```
 
@@ -1388,7 +1280,7 @@ localStorage.getItem('sf.quotaLimit');
 **Fixed**: 2025-12-04 (agent-logs/2025-12-04_1640_fix-quota-system.md)
 
 **Solution Applied:**
-- Added local quota check before WebSocket connection (instant feedback)
+- Added local quota check before starting recording (instant feedback)
 - Clear authError state before each attempt (ensures useEffect re-triggers)
 - Send notification directly + set error state (redundant notification paths)
 - Added "Quota" to error pattern recognition in catch block
@@ -1398,5 +1290,5 @@ localStorage.getItem('sf.quotaLimit');
 
 ---
 
-**Last Updated**: 2025-12-27
-**Pipeline Version**: OCR context-aware transcription, Smart LLM routing with trigger detection (bypass/default/advanced/edit tiers), JWT authentication with JWKS edge caching, single-shot audio processing, quota tracking (1000 words/week), edit mode, multi-provider support (6 LLM providers: Groq, OpenAI, Baseten, Cerebras, OpenRouter, Simplismart; 4 STT providers: Groq, Fireworks, Deepgram, Simplismart), Consolidated Analytics Engine telemetry with wide events logging
+**Last Updated**: 2026-01-28
+**Pipeline Version**: HTTP-based audio upload (migrated from WebSocket), OCR context-aware transcription, Smart LLM routing with trigger detection (bypass/default/advanced/edit tiers), JWT authentication with JWKS edge caching, MediaRecorder API with Opus/WebM compression, quota tracking (1000 words/week), edit mode, multi-provider support (6 LLM providers: Groq, OpenAI, Baseten, Cerebras, OpenRouter, Simplismart; 4 STT providers: Groq, Fireworks, Deepgram, Simplismart), Consolidated Analytics Engine telemetry with wide events logging

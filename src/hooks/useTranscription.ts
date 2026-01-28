@@ -7,8 +7,9 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { SelectionInspectSnapshot } from "../types/shared";
-import type { ClientSessionMode } from "../types/protocol";
 import { getPrepareUrl, getTranscribeUrl } from "../config/api";
+
+type ClientSessionMode = "dictation" | "edit";
 import { AudioRecorder } from "../utils/audioRecorder";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
@@ -263,7 +264,7 @@ export function useTranscription(
         JSON.stringify({
           mode,
           ocrWords: prepareDataRef.current?.ocrWords || [],
-          selection: selection?.text || undefined,
+          selection: selection?.selectedText || undefined,
           identity: identity?.name || undefined,
           language: "en",
         }),
@@ -288,12 +289,7 @@ export function useTranscription(
       setText(result.text);
 
       // Add to history
-      addTranscription({
-        id: result.traceId || Date.now().toString(),
-        text: result.text,
-        timestamp: Date.now(),
-        mode,
-      });
+      await addTranscription(result.text, mode);
 
       // Trigger native paste if not suppressed
       if (!options.suppressNativePaste) {
