@@ -13,8 +13,12 @@ import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import { signOut as supaSignOut, getSupabase } from "../lib/supabaseClient";
-import { subscribeUserIdentity, initUserIdentity } from "../state/userIdentity";
-import { subscribeQuota, type QuotaState } from "../state/quotaCache";
+import {
+  subscribeUserIdentity,
+  initUserIdentity,
+  getUserIdentity,
+} from "../state/userIdentity";
+import { subscribeQuota, getQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 
@@ -158,11 +162,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showInDock, setShowInDock] = useState<boolean>(true);
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state from centralized user identity cache
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
+  // Initialize with cached values to prevent flash of wrong UI on startup
+  const cachedIdentity = getUserIdentity();
+  const [userEmail, setUserEmail] = useState<string | null>(
+    cachedIdentity.email,
+  );
+  const [userName, setUserName] = useState<string | null>(cachedIdentity.name);
   const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
   // Subscription/quota state for tier-based UI
-  const [quotaState, setQuotaState] = useState<QuotaState | null>(null);
+  // Initialize with cached value to prevent flash on startup
+  const cachedQuota = getQuota();
+  const [quotaState, setQuotaState] = useState<QuotaState | null>(cachedQuota);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -818,20 +828,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           </div>
                         </div>
                       ) : (
-                        // If not signed in, do not render login UI here — redirect to onboarding
-                        <div className="p-3">
-                          <div className="text-[12px] text-subtle mb-3">
-                            You are signed out.
+                        // Not signed in - show clean inline sign in UI
+                        <div className="p-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Generic user icon */}
+                            <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center opacity-50">
+                              <SfIcon
+                                name="person.circle"
+                                size={20}
+                                className="text-white/60"
+                              />
+                            </div>
+                            {/* Text */}
+                            <div className="text-left min-w-0">
+                              <div className="text-xs font-medium text-white/70">
+                                Not signed in
+                              </div>
+                            </div>
                           </div>
+                          {/* Sign in button */}
                           <Button
-                            className="w-full onboarding-cta"
+                            variant="secondary"
+                            size="sm"
                             onClick={async () => {
                               try {
                                 await window.electron?.showOnboarding?.();
                               } catch {}
                             }}
+                            className="shrink-0 no-drag"
                           >
-                            Open Onboarding to Sign In
+                            Sign In
                           </Button>
                         </div>
                       )}
