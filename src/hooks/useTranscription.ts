@@ -204,6 +204,22 @@ export function useTranscription(
           prepareDataRef.current = prepareData;
 
           console.log("[HTTP] Prepare complete:", prepareData);
+
+          // Sync quota from /prepare response (server validation)
+          if (prepareData.quotaInfo) {
+            const { updateQuotaFromServer } = await import(
+              "../state/quotaCache"
+            );
+            updateQuotaFromServer({
+              wordsUsed: prepareData.quotaInfo.wordsUsed ?? 0,
+              resetDate: null, // Not provided in /prepare
+              isPro: prepareData.quotaInfo.subscriptionActive ?? false,
+            });
+            console.log(
+              "[HTTP] Quota synced from /prepare:",
+              prepareData.quotaInfo,
+            );
+          }
         } catch (err) {
           console.error("[HTTP] Prepare failed:", err);
           // Don't stop recording, continue without OCR
@@ -330,6 +346,15 @@ export function useTranscription(
       );
 
       setText(result.text);
+
+      // Update local quota cache with word count from server (instant UI update)
+      if (result.wordCount && result.wordCount > 0) {
+        const { incrementQuotaLocal } = await import("../state/quotaCache");
+        incrementQuotaLocal(result.wordCount);
+        console.log(
+          `[HTTP] Quota incremented locally: +${result.wordCount} words`,
+        );
+      }
 
       // Add to history (fire-and-forget to not block UI)
       const historyStart = Date.now();

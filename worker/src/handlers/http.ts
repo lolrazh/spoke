@@ -289,6 +289,7 @@ export async function handleTranscribe(c: Context) {
         tier: routeDecision.tier,
         provider: transcribeResult.provider,
         model: transcribeResult.model,
+        wordCount, // For client-side quota cache sync
         traceId,
       });
     }
@@ -353,10 +354,30 @@ export async function handleTranscribe(c: Context) {
               sttPrompt,
             );
 
+            // Count words from STT output (what user spoke), not LLM output
+            const wordCount = transcribeResult.text
+              .split(/\s+/)
+              .filter((w) => w.length > 0).length;
+
+            // Increment quota for free tier users (non-blocking)
+            executionCtx.waitUntil(
+              (async () => {
+                await scheduleQuotaIncrement(
+                  {
+                    subscriptionActive: auth.subscriptionActive,
+                    userId: auth.userId,
+                    env,
+                  } as any,
+                  wordCount,
+                  executionCtx,
+                );
+              })(),
+            );
+
             // Send LLM complete event
             controller.enqueue(
               encoder.encode(
-                `event: llm_complete\ndata: ${JSON.stringify({ text: enhanceResult.text, tier: routeDecision.tier, traceId })}\n\n`,
+                `event: llm_complete\ndata: ${JSON.stringify({ text: enhanceResult.text, tier: routeDecision.tier, wordCount, traceId })}\n\n`,
               ),
             );
 
@@ -486,6 +507,7 @@ export async function handleTranscribe(c: Context) {
       model: transcribeResult.model,
       llmProvider: routeDecision.provider,
       llmModel: routeDecision.model,
+      wordCount, // For client-side quota cache sync
       traceId,
     });
   } catch (err) {
