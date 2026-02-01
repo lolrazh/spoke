@@ -16,6 +16,19 @@ import { addTranscription } from "../state/transcriptionHistory";
 import { getUserIdentity } from "../state/userIdentity";
 import { POST_ROLL_MS } from "../config/audio";
 
+// Token cache with 50-minute TTL (tokens typically expire in 1 hour)
+const TOKEN_CACHE_TTL_MS = 50 * 60 * 1000;
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
+// Cached reference to the supabase module to avoid repeated dynamic imports
+let supabaseModule: { getAccessToken: () => Promise<string | null> } | null =
+  null;
+
+/** Clear the auth token cache (call on sign-out or auth failure) */
+export function clearAuthTokenCache(): void {
+  cachedToken = null;
+}
+
 export type AuthErrorType =
   | "not_signed_in"
   | "payment_required"
@@ -45,6 +58,7 @@ export interface UseTranscriptionOptions {
   requestLabelPermissionForEnumeration?: boolean;
   suppressNativePaste?: boolean;
   shareTranscriptionsInMetrics?: boolean;
+  shareTranscriptionsEnabled?: boolean;
 }
 
 export function useTranscription(
@@ -70,11 +84,27 @@ export function useTranscription(
   } | null>(null);
   const preparePromiseRef = useRef<Promise<void> | null>(null);
 
-  // Get auth token from Supabase
+  // Get auth token from Supabase (with caching)
   const getAuthToken = async (): Promise<string | null> => {
     try {
-      const { getAccessToken } = await import("../lib/supabaseClient");
-      return await getAccessToken();
+      // Return cached token if still valid
+      if (cachedToken && Date.now() < cachedToken.expiresAt) {
+        return cachedToken.value;
+      }
+
+      // Cache the module import to avoid repeated dynamic imports
+      if (!supabaseModule) {
+        supabaseModule = await import("../lib/supabaseClient");
+      }
+
+      const token = await supabaseModule.getAccessToken();
+      if (token) {
+        cachedToken = {
+          value: token,
+          expiresAt: Date.now() + TOKEN_CACHE_TTL_MS,
+        };
+      }
+      return token;
     } catch (err) {
       console.error("[HTTP] Failed to get access token:", err);
       return null;
@@ -187,6 +217,7 @@ export function useTranscription(
             const errorData = await prepareRes.json().catch(() => ({}));
 
             if (prepareRes.status === 401) {
+              clearAuthTokenCache(); // Token may be revoked
               setAuthError("auth_failed");
               console.error("[HTTP] Auth failed during prepare");
               // Don't stop recording yet, let user finish

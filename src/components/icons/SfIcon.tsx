@@ -1,39 +1,85 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 
 type WeightKey = "bold" | "regular" | "semibold" | string;
 
-const RAW_SVG_SYMBOLS = import.meta.glob<string>(
+// Lazy SVG imports - modules loaded on demand, not at startup
+const SVG_LOADERS = import.meta.glob<string>(
   "../../assets/sf-symbols/**/*.svg",
   {
-    eager: true,
+    eager: false, // Lazy load - returns loader functions
     import: "default",
     query: "?raw",
   },
 );
 
-const svgRegistry: Record<string, string> = Object.entries(
-  RAW_SVG_SYMBOLS,
-).reduce(
-  (acc, [path, svg]) => {
-    const afterRoot = path.substring(
-      path.lastIndexOf("sf-symbols/") + "sf-symbols/".length,
-    );
-    const normalized = afterRoot
-      .replace(/\.svg$/i, "")
-      .split("/")
-      .join(".");
-    acc[normalized] = svg;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+// Build a map from normalized name to loader function
+const svgLoaderRegistry: Record<string, () => Promise<string>> = {};
+for (const [path, loader] of Object.entries(SVG_LOADERS)) {
+  const afterRoot = path.substring(
+    path.lastIndexOf("sf-symbols/") + "sf-symbols/".length,
+  );
+  const normalized = afterRoot
+    .replace(/\.svg$/i, "")
+    .split("/")
+    .join(".");
+  svgLoaderRegistry[normalized] = loader;
+}
 
-function getSvgForName(name: string, weight?: WeightKey | null): string | null {
+// Cache for loaded SVG content - persists across renders
+const svgCache = new Map<string, string>();
+
+// Track in-flight loading promises to avoid duplicate requests
+const loadingPromises = new Map<string, Promise<string | null>>();
+
+async function loadSvgForName(
+  name: string,
+  weight?: WeightKey | null,
+): Promise<string | null> {
   const candidates = weight
     ? [`${name}.${weight}`, `${name}-${weight}`, name]
     : [name];
+
   for (const candidate of candidates) {
-    if (svgRegistry[candidate]) return svgRegistry[candidate];
+    // Return cached SVG if available
+    const cached = svgCache.get(candidate);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Check if there's a loader for this name
+    const loader = svgLoaderRegistry[candidate];
+    if (loader) {
+      // Check if already loading
+      const existing = loadingPromises.get(candidate);
+      if (existing) {
+        return existing;
+      }
+
+      // Start loading and cache the promise
+      const loadPromise = loader().then((svg) => {
+        svgCache.set(candidate, svg);
+        loadingPromises.delete(candidate);
+        return svg;
+      });
+      loadingPromises.set(candidate, loadPromise);
+      return loadPromise;
+    }
+  }
+
+  return null;
+}
+
+// Sync version for initial render - returns cached value or null
+function getCachedSvg(name: string, weight?: WeightKey | null): string | null {
+  const candidates = weight
+    ? [`${name}.${weight}`, `${name}-${weight}`, name]
+    : [name];
+
+  for (const candidate of candidates) {
+    const cached = svgCache.get(candidate);
+    if (cached !== undefined) {
+      return cached;
+    }
   }
   return null;
 }
@@ -106,7 +152,31 @@ const SfIcon: React.FC<SfIconProps> = ({
   className = "",
   title,
 }) => {
-  const rawSvg = useMemo(() => getSvgForName(name, weight), [name, weight]);
+  // Try to get cached SVG synchronously for instant render
+  const [rawSvg, setRawSvg] = useState<string | null>(() =>
+    getCachedSvg(name, weight),
+  );
+
+  // Load SVG if not cached
+  useEffect(() => {
+    // Skip if already loaded
+    if (getCachedSvg(name, weight)) {
+      setRawSvg(getCachedSvg(name, weight));
+      return;
+    }
+
+    let cancelled = false;
+    loadSvgForName(name, weight).then((svg) => {
+      if (!cancelled && svg) {
+        setRawSvg(svg);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [name, weight]);
+
   const normalizedSvg = useMemo(
     () => (rawSvg ? sanitizeSvg(rawSvg, title) : null),
     [rawSvg, title],

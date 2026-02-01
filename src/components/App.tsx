@@ -23,6 +23,13 @@ import {
   usePermissionsController,
 } from "../state/permissionsContext";
 import { initTranscriptionHistory } from "../state/transcriptionHistory";
+import {
+  usePermissionNotifications,
+  PERMISSION_NOTIFICATION_ACTION_ID,
+  PERMISSION_NOTIFICATION_DURATION_MS,
+  PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
+  PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
+} from "../hooks/usePermissionNotifications";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -187,14 +194,6 @@ const pillReducer = (
 
 // Notification timing tokens
 const DEFAULT_NOTIFICATION_DURATION_MS = 2000;
-const PERMISSION_NOTIFICATION_DURATION_MS = 6000;
-const PERMISSION_NOTIFICATION_REPEAT_DELAY_MS =
-  PERMISSION_NOTIFICATION_DURATION_MS + 2000;
-const PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS = 3500;
-
-const PERMISSION_NOTIFICATION_MESSAGE =
-  "Permissions required. Double click to review.";
-const PERMISSION_NOTIFICATION_ACTION_ID = "open-permissions";
 
 const logPermissionsDebug = (...args: unknown[]) => {
   if (typeof window === "undefined") return;
@@ -269,24 +268,23 @@ const AppInner: React.FC = () => {
   );
   const autoPermissionsRef = useRef(false);
   const lastMissingCountRef = useRef<number>(missingPermissions.length);
-  const missingSignatureRef = useRef<string>(
-    missingPermissions.slice().sort().join("|"),
-  );
-  const missingCountRef = useRef<number>(missingPermissions.length);
-  const permissionNotificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Permission notification logic extracted into hook for cleaner callback dependencies
+  const {
+    triggerPermissionNotification,
+    schedulePermissionNotification,
+    clearPermissionNotificationLoop,
+    isNotificationScheduled,
+    missingCountRef,
+    missingSignatureRef,
+  } = usePermissionNotifications({ missingPermissions });
+
   // Track when paste shortcut (Cmd+Ctrl+V) was last pressed for history-on-expand UX
   const lastPasteShortcutTsRef = useRef<number | null>(null);
   // Initial tab for settings panel (computed on expand based on paste timing)
   const [initialSettingsTab, setInitialSettingsTab] = useState<
     "settings" | "history"
   >("settings");
-
-  const clearPermissionNotificationLoop = useCallback(() => {
-    if (permissionNotificationTimerRef.current) {
-      clearTimeout(permissionNotificationTimerRef.current);
-      permissionNotificationTimerRef.current = null;
-    }
-  }, []);
 
   const handleSettingsPanelHeight = useCallback(
     (height: number) => {
@@ -310,58 +308,6 @@ const AppInner: React.FC = () => {
       );
     },
     [permissionsPanelMeasured],
-  );
-
-  const sendPermissionNotification = useCallback(
-    (reason: "detected" | "repeat" | "changed" | "ptt" | "manual") => {
-      logPermissionsDebug("notify:permissions", {
-        reason,
-        missing: missingSignatureRef.current,
-      });
-      try {
-        window.notifications?.send?.(
-          PERMISSION_NOTIFICATION_MESSAGE,
-          PERMISSION_NOTIFICATION_ACTION_ID,
-        );
-      } catch {}
-    },
-    [],
-  );
-
-  const schedulePermissionNotification = useCallback(
-    (delay: number) => {
-      clearPermissionNotificationLoop();
-      permissionNotificationTimerRef.current = setTimeout(
-        () => {
-          permissionNotificationTimerRef.current = null;
-          if (missingCountRef.current > 0) {
-            sendPermissionNotification("repeat");
-            schedulePermissionNotification(
-              PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
-            );
-          }
-        },
-        Math.max(delay, 0),
-      );
-    },
-    [clearPermissionNotificationLoop, sendPermissionNotification],
-  );
-
-  const triggerPermissionNotification = useCallback(
-    (reason: "detected" | "changed" | "ptt" | "manual", delay?: number) => {
-      sendPermissionNotification(reason);
-      schedulePermissionNotification(
-        delay ?? PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
-      );
-    },
-    [schedulePermissionNotification, sendPermissionNotification],
-  );
-
-  useEffect(
-    () => () => {
-      clearPermissionNotificationLoop();
-    },
-    [clearPermissionNotificationLoop],
   );
 
   useEffect(() => {
@@ -933,7 +879,7 @@ const AppInner: React.FC = () => {
       } else if (nextSignature !== previousSignature) {
         logPermissionsDebug("missing:changed", missingPermissions);
         triggerPermissionNotification("changed");
-      } else if (!permissionNotificationTimerRef.current) {
+      } else if (!isNotificationScheduled()) {
         schedulePermissionNotification(PERMISSION_NOTIFICATION_REPEAT_DELAY_MS);
       }
     } else {
