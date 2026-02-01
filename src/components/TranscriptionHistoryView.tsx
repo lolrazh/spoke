@@ -158,11 +158,11 @@ const TranscriptionHistoryView: React.FC = () => {
 
   const hasMore = displayedCount < historyItems.length;
 
-  const handleCopy = (item: HistoryItemData) => {
+  const handleCopy = useCallback((item: HistoryItemData) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(item.text);
     }
-  };
+  }, []);
 
   // Check if an item should skip its entrance animation
   // If it's NOT in the initial batch, we skip animation so it feels like native scrolling

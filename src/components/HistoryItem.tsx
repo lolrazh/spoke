@@ -26,7 +26,7 @@ const formatTime = (timestamp: number): string => {
   return `${displayHours}:${displayMinutes} ${ampm}`;
 };
 
-const HistoryItem: React.FC<HistoryItemProps> = ({
+const HistoryItemInner: React.FC<HistoryItemProps> = ({
   item,
   onCopy,
   skipAnimation = false,
@@ -129,5 +129,16 @@ const HistoryItem: React.FC<HistoryItemProps> = ({
     </motion.div>
   );
 };
+
+// Memoize to prevent re-renders when parent updates but item hasn't changed
+// Custom comparison ignores onCopy callback identity - only item data matters
+const HistoryItem = React.memo(HistoryItemInner, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.text === next.item.text &&
+    prev.item.timestamp === next.item.timestamp &&
+    prev.skipAnimation === next.skipAnimation
+  );
+});
 
 export default HistoryItem;
