@@ -58,6 +58,7 @@ export interface UseTranscriptionOptions {
   requestLabelPermissionForEnumeration?: boolean;
   suppressNativePaste?: boolean;
   shareTranscriptionsInMetrics?: boolean;
+  shareTranscriptionsEnabled?: boolean;
 }
 
 export function useTranscription(

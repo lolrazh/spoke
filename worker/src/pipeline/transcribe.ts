@@ -28,7 +28,7 @@ export async function transcribeOpus(
   // Build STT prompt with context
   const sttPrompt = buildSTTPrompt({
     basePrompt: runtime.stt.prompt,
-    identity,
+    identity: identity ? { name: identity } : undefined,
     ocrWords: ocrWords && ocrWords.length > 0 ? ocrWords : undefined,
   });
 
