@@ -44,7 +44,7 @@ export function usePermissionNotifications({
     typeof setTimeout
   > | null>(null);
   const missingSignatureRef = useRef<string>(
-    [...missingPermissions].sort().join(","),
+    [...missingPermissions].sort().join("|"),
   );
   const missingCountRef = useRef<number>(missingPermissions.length);
 
