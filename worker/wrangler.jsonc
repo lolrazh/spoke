@@ -13,14 +13,19 @@
   ],
   "observability": {
     "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "destinations": ["grafana-logs"],
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
     "traces": {
       "enabled": true,
       "destinations": ["grafana-traces"],
-      "head_sampling_rate": 1.0
-    },
-    "logs": {
-      "enabled": true,
-      "destinations": ["grafana-logs"]
+      "persist": true,
+      "head_sampling_rate": 1
     }
   },
   "routes": [
