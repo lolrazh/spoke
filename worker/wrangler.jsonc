@@ -14,7 +14,13 @@
   "observability": {
     "enabled": true,
     "traces": {
-      "enabled": true
+      "enabled": true,
+      "destinations": ["grafana-traces"],
+      "head_sampling_rate": 1.0
+    },
+    "logs": {
+      "enabled": true,
+      "destinations": ["grafana-logs"]
     }
   },
   "routes": [
