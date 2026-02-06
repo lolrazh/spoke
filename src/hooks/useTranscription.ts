@@ -265,6 +265,11 @@ export function useTranscription(
       console.error("[HTTP] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
       setRecording(false);
+      // Release microphone stream on failure so the mic indicator turns off
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
     }
   }, [recording, initStream]);
 
@@ -417,6 +422,11 @@ export function useTranscription(
       console.error("[HTTP] Stop failed:", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      // Release microphone stream so the OS mic indicator turns off
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
       setProcessing(false);
       prepareDataRef.current = null;
       preparePromiseRef.current = null;
@@ -428,6 +438,11 @@ export function useTranscription(
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;
+    }
+    // Release microphone stream so the OS mic indicator turns off
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
     setRecording(false);
     setProcessing(false);
