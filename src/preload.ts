@@ -187,6 +187,15 @@ contextBridge.exposeInMainWorld("mic", {
   },
 });
 
+// Local STT bridge
+contextBridge.exposeInMainWorld("stt", {
+  transcribeLocal: (pcmBuffer: ArrayBuffer) =>
+    ipcRenderer.invoke("stt:transcribe-local", Buffer.from(pcmBuffer)),
+  getLocalEnabled: () => ipcRenderer.invoke("stt:get-local-enabled"),
+  setLocalEnabled: (val: boolean) =>
+    ipcRenderer.invoke("stt:set-local-enabled", val),
+});
+
 contextBridge.exposeInMainWorld("island", {
   slideTo: (y: number) => ipcRenderer.send("island-slide", y),
 });

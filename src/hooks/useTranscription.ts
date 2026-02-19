@@ -11,6 +11,7 @@ import { getPrepareUrl, getTranscribeUrl } from "../config/api";
 
 type ClientSessionMode = "dictation" | "edit";
 import { AudioRecorder } from "../utils/audioRecorder";
+import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { getUserIdentity } from "../state/userIdentity";
@@ -75,6 +76,7 @@ export function useTranscription(
     null,
   );
   const [audioLevel, setAudioLevel] = useState(0);
+  const [localEnabled, setLocalEnabled] = useState(false);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -141,6 +143,14 @@ export function useTranscription(
       setReady(true);
     }
 
+    // Load local STT preference
+    window.stt
+      ?.getLocalEnabled?.()
+      .then((val) => {
+        setLocalEnabled(val);
+      })
+      .catch(console.debug);
+
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -152,11 +162,15 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording) return;
 
-    const token = await getAuthToken();
-    if (!token) {
-      setAuthError("not_signed_in");
-      setError("Not signed in");
-      return;
+    // In local mode, skip auth check entirely
+    let token: string | null = null;
+    if (!localEnabled) {
+      token = await getAuthToken();
+      if (!token) {
+        setAuthError("not_signed_in");
+        setError("Not signed in");
+        return;
+      }
     }
 
     try {
@@ -185,77 +199,82 @@ export function useTranscription(
         return recorder;
       })();
 
-      const preparePromise = (async () => {
-        try {
-          const prepareUrl = getPrepareUrl();
+      // In local mode, skip /prepare entirely (no OCR, no auth, no quota)
+      const preparePromise = localEnabled
+        ? Promise.resolve()
+        : (async () => {
+            try {
+              const prepareUrl = getPrepareUrl();
 
-          // Capture screenshot for OCR
-          let screenshot: string | undefined;
-          try {
-            if ((window as any).electron?.takeScreenshot) {
-              const result = await (window as any).electron.takeScreenshot();
-              if (result.success && result.imageBase64) {
-                screenshot = result.imageBase64;
+              // Capture screenshot for OCR
+              let screenshot: string | undefined;
+              try {
+                if ((window as any).electron?.takeScreenshot) {
+                  const result = await (
+                    window as any
+                  ).electron.takeScreenshot();
+                  if (result.success && result.imageBase64) {
+                    screenshot = result.imageBase64;
+                  }
+                }
+              } catch (err) {
+                console.warn("[HTTP] Screenshot capture failed:", err);
               }
+
+              const prepareRes = await fetch(prepareUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  screenshot: screenshot || undefined,
+                }),
+              });
+
+              if (!prepareRes.ok) {
+                const errorData = await prepareRes.json().catch(() => ({}));
+
+                if (prepareRes.status === 401) {
+                  clearAuthTokenCache(); // Token may be revoked
+                  setAuthError("auth_failed");
+                  console.error("[HTTP] Auth failed during prepare");
+                  // Don't stop recording yet, let user finish
+                } else if (prepareRes.status === 402) {
+                  setAuthError("payment_required");
+                  console.error("[HTTP] Quota exceeded during prepare");
+                  // Don't stop recording yet, let user finish
+                } else {
+                  console.warn("[HTTP] Prepare failed:", errorData.error);
+                }
+                return;
+              }
+
+              const prepareData = await prepareRes.json();
+              prepareDataRef.current = prepareData;
+
+              console.log("[HTTP] Prepare complete:", prepareData);
+
+              // Sync quota from /prepare response (server validation)
+              if (prepareData.quotaInfo) {
+                const { updateQuotaFromServer } = await import(
+                  "../state/quotaCache"
+                );
+                updateQuotaFromServer({
+                  wordsUsed: prepareData.quotaInfo.wordsUsed ?? 0,
+                  resetDate: null, // Not provided in /prepare
+                  isPro: prepareData.quotaInfo.subscriptionActive ?? false,
+                });
+                console.log(
+                  "[HTTP] Quota synced from /prepare:",
+                  prepareData.quotaInfo,
+                );
+              }
+            } catch (err) {
+              console.error("[HTTP] Prepare failed:", err);
+              // Don't stop recording, continue without OCR
             }
-          } catch (err) {
-            console.warn("[HTTP] Screenshot capture failed:", err);
-          }
-
-          const prepareRes = await fetch(prepareUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              screenshot: screenshot || undefined,
-            }),
-          });
-
-          if (!prepareRes.ok) {
-            const errorData = await prepareRes.json().catch(() => ({}));
-
-            if (prepareRes.status === 401) {
-              clearAuthTokenCache(); // Token may be revoked
-              setAuthError("auth_failed");
-              console.error("[HTTP] Auth failed during prepare");
-              // Don't stop recording yet, let user finish
-            } else if (prepareRes.status === 402) {
-              setAuthError("payment_required");
-              console.error("[HTTP] Quota exceeded during prepare");
-              // Don't stop recording yet, let user finish
-            } else {
-              console.warn("[HTTP] Prepare failed:", errorData.error);
-            }
-            return;
-          }
-
-          const prepareData = await prepareRes.json();
-          prepareDataRef.current = prepareData;
-
-          console.log("[HTTP] Prepare complete:", prepareData);
-
-          // Sync quota from /prepare response (server validation)
-          if (prepareData.quotaInfo) {
-            const { updateQuotaFromServer } = await import(
-              "../state/quotaCache"
-            );
-            updateQuotaFromServer({
-              wordsUsed: prepareData.quotaInfo.wordsUsed ?? 0,
-              resetDate: null, // Not provided in /prepare
-              isPro: prepareData.quotaInfo.subscriptionActive ?? false,
-            });
-            console.log(
-              "[HTTP] Quota synced from /prepare:",
-              prepareData.quotaInfo,
-            );
-          }
-        } catch (err) {
-          console.error("[HTTP] Prepare failed:", err);
-          // Don't stop recording, continue without OCR
-        }
-      })();
+          })();
 
       // Wait for recorder to be ready, but /prepare continues in background
       const recorder = await recorderPromise;
@@ -271,7 +290,7 @@ export function useTranscription(
         streamRef.current = null;
       }
     }
-  }, [recording, initStream]);
+  }, [recording, localEnabled, initStream]);
 
   // Stop recording and upload
   const stop = useCallback(async () => {
@@ -307,6 +326,50 @@ export function useTranscription(
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
 
+      // ===== Local STT path =====
+      if (localEnabled) {
+        console.log("[Local] Decoding audio to PCM16...");
+        const pcm16 = await decodeToPcm16(audioBlob);
+        console.log(`[Local] PCM16: ${pcm16.length} samples`);
+
+        const result = await window.stt.transcribeLocal(pcm16.buffer);
+        console.log(
+          `[Local] Transcription complete: "${result.text.slice(0, 50)}..."`,
+        );
+        if (result.metrics) {
+          const m = result.metrics as Record<string, unknown>;
+          console.log(
+            `[Local] Metrics: inference=${m.inference_ms}ms, ttft=${m.ttft_ms}ms`,
+          );
+        }
+
+        setText(result.text);
+
+        // Add to history (fire-and-forget)
+        addTranscription(result.text, mode).catch(console.warn);
+
+        // Trigger native paste if not suppressed
+        if (!options.suppressNativePaste) {
+          (
+            (window as any).clipboard?.insertText?.(
+              result.text,
+            ) as Promise<void>
+          )
+            ?.then(() => {
+              console.log(
+                `[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
+              );
+            })
+            ?.catch(console.warn);
+        } else {
+          console.log(
+            `[Local] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
+          );
+        }
+        return; // Skip cloud path
+      }
+
+      // ===== Cloud STT path =====
       // Wait for /prepare to finish if still pending
       if (preparePromiseRef.current) {
         console.log("[HTTP] Waiting for /prepare to complete...");
@@ -431,7 +494,7 @@ export function useTranscription(
       prepareDataRef.current = null;
       preparePromiseRef.current = null;
     }
-  }, [recording, mode, selection, options.suppressNativePaste]);
+  }, [recording, localEnabled, mode, selection, options.suppressNativePaste]);
 
   // Cancel recording
   const cancel = useCallback(() => {

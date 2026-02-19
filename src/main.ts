@@ -43,6 +43,8 @@ import type {
   PttTarget,
   SelectionInspectSnapshot,
   DisplayNotchInfo,
+  SttEvent,
+  LocalTranscribeResult,
 } from "./types/shared";
 import {
   buildMicrophoneSubmenu,
@@ -394,6 +396,12 @@ let appPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
+
+// Local STT sidecar state
+let sttPrefsPath: string; // Will be initialized in app.whenReady()
+let localSttEnabled = false;
+let sidecarProcess: ReturnType<typeof spawn> | null = null;
+let sidecarReady = false;
 
 // ============ Manual Update Check (Tray integration) ============
 type UpdateStatus =
@@ -996,6 +1004,208 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   helperSet.add(proc);
   proc.once("exit", () => helperSet.delete(proc));
   return proc;
+}
+
+// ============ Local STT Sidecar ============
+
+function getSidecarPythonPath(): string {
+  return path.join(app.getAppPath(), "local-stt", ".venv", "bin", "python");
+}
+
+function getSidecarScriptPath(): string {
+  return path.join(app.getAppPath(), "local-stt", "sidecar.py");
+}
+
+function spawnSidecar(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const pythonPath = getSidecarPythonPath();
+    const scriptPath = getSidecarScriptPath();
+
+    if (!fs.existsSync(pythonPath)) {
+      reject(
+        new Error(
+          `Local STT python not found at ${pythonPath}. Run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
+        ),
+      );
+      return;
+    }
+
+    console.log("[STT] Spawning sidecar daemon...");
+    const proc = spawn(pythonPath, [scriptPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: false,
+    });
+
+    sidecarProcess = proc;
+    sidecarReady = false;
+
+    // Timeout if model takes too long to load (30s)
+    const timeout = setTimeout(() => {
+      console.error("[STT] Sidecar timed out waiting for ready signal");
+      killSidecar();
+      reject(new Error("Sidecar timed out loading model"));
+    }, 30000);
+
+    let stdoutBuffer = "";
+    const onData = (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type === "ready") {
+            clearTimeout(timeout);
+            sidecarReady = true;
+            console.log("[STT] Sidecar daemon ready");
+            // Remove this listener — ongoing stdout parsing is per-request
+            proc.stdout?.removeListener("data", onData);
+            resolve();
+          }
+        } catch {
+          console.warn("[STT] Non-JSON stdout during init:", line);
+        }
+      }
+    };
+
+    proc.stdout?.on("data", onData);
+
+    proc.stderr?.on("data", (data: Buffer) => {
+      console.log("[STT/stderr]", data.toString().trimEnd());
+    });
+
+    proc.once("exit", (code) => {
+      console.log(`[STT] Sidecar exited with code ${code}`);
+      clearTimeout(timeout);
+      sidecarProcess = null;
+      sidecarReady = false;
+    });
+
+    proc.once("error", (err) => {
+      console.error("[STT] Sidecar spawn error:", err);
+      clearTimeout(timeout);
+      sidecarProcess = null;
+      sidecarReady = false;
+      reject(err);
+    });
+  });
+}
+
+function killSidecar(): void {
+  if (!sidecarProcess) return;
+  console.log("[STT] Killing sidecar daemon...");
+  try {
+    // Send zero-length message to signal graceful exit
+    const zeroBuf = Buffer.alloc(4);
+    zeroBuf.writeUInt32LE(0);
+    sidecarProcess.stdin?.write(zeroBuf);
+  } catch {
+    // ignore write errors
+  }
+  // Force kill after a brief grace period
+  const proc = sidecarProcess;
+  setTimeout(() => {
+    try {
+      if (proc && !proc.killed && proc.pid) {
+        process.kill(proc.pid, "SIGKILL");
+      }
+    } catch {
+      // ignore
+    }
+  }, 2000);
+  sidecarProcess = null;
+  sidecarReady = false;
+}
+
+function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
+  return new Promise((resolve, reject) => {
+    if (!sidecarProcess || !sidecarReady) {
+      reject(new Error("Sidecar not running"));
+      return;
+    }
+
+    const proc = sidecarProcess;
+    let stdoutBuffer = "";
+    let resolved = false;
+
+    const onData = (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString();
+      const lines = stdoutBuffer.split("\n");
+      stdoutBuffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event: SttEvent = JSON.parse(line);
+          if (event.type === "done") {
+            resolved = true;
+            proc.stdout?.removeListener("data", onData);
+            resolve({ text: event.transcript, metrics: event.metrics });
+          }
+          // partials are ignored for now (no streaming UI in local mode)
+        } catch {
+          console.warn("[STT] Non-JSON stdout:", line);
+        }
+      }
+    };
+
+    proc.stdout?.on("data", onData);
+
+    // Timeout after 60s
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        proc.stdout?.removeListener("data", onData);
+        reject(new Error("Local transcription timed out"));
+      }
+    }, 60000);
+
+    proc.once("exit", () => {
+      clearTimeout(timeout);
+      if (!resolved) {
+        proc.stdout?.removeListener("data", onData);
+        reject(new Error("Sidecar exited during transcription"));
+      }
+    });
+
+    // Write length-prefixed PCM to stdin
+    try {
+      const lenBuf = Buffer.alloc(4);
+      lenBuf.writeUInt32LE(pcmBuffer.length);
+      proc.stdin?.write(lenBuf);
+      proc.stdin?.write(pcmBuffer);
+    } catch (err) {
+      clearTimeout(timeout);
+      proc.stdout?.removeListener("data", onData);
+      reject(err);
+    }
+  });
+}
+
+function loadSttPreferences(): { localSttEnabled: boolean } {
+  try {
+    if (fs.existsSync(sttPrefsPath)) {
+      const data = fs.readFileSync(sttPrefsPath, "utf8");
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error("[STTPrefs] Failed to load preferences:", error);
+  }
+  return { localSttEnabled: false };
+}
+
+function saveSttPreferences(prefs: { localSttEnabled: boolean }): void {
+  try {
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+    fs.writeFileSync(sttPrefsPath, JSON.stringify(prefs, null, 2));
+    console.log("[STTPrefs] Saved preferences:", prefs);
+  } catch (error) {
+    console.error("[STTPrefs] Failed to save preferences:", error);
+  }
 }
 
 const DEFAULT_INSPECT_CONTEXT_CHARS = 96;
@@ -2723,6 +2933,7 @@ app.whenReady().then(async () => {
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
   pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
   appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
+  sttPrefsPath = path.join(app.getPath("userData"), "stt-preferences.json");
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -2753,6 +2964,15 @@ app.whenReady().then(async () => {
     } catch (error) {
       logger.main.error("[AppPrefs] Failed to set dock visibility:", error);
     }
+  }
+
+  // Load local STT preferences and pre-spawn sidecar if enabled
+  const sttPrefs = loadSttPreferences();
+  localSttEnabled = sttPrefs.localSttEnabled;
+  if (localSttEnabled) {
+    spawnSidecar().catch((err) => {
+      console.error("[STT] Failed to pre-spawn sidecar:", err);
+    });
   }
 
   const isDev = !app.isPackaged;
@@ -3535,6 +3755,42 @@ app.whenReady().then(async () => {
     return { id: selectedId };
   });
 
+  // ============ Local STT IPC handlers ============
+
+  ipcMain.handle("stt:transcribe-local", async (_event, pcmBuffer: Buffer) => {
+    try {
+      if (!sidecarProcess || !sidecarReady) {
+        await spawnSidecar();
+      }
+      return await transcribeLocal(pcmBuffer);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[STT] transcribe-local failed:", msg);
+      throw err;
+    }
+  });
+
+  ipcMain.handle("stt:get-local-enabled", () => {
+    return localSttEnabled;
+  });
+
+  ipcMain.handle("stt:set-local-enabled", async (_event, val: boolean) => {
+    localSttEnabled = val;
+    saveSttPreferences({ localSttEnabled: val });
+    if (val) {
+      try {
+        if (!sidecarProcess || !sidecarReady) {
+          await spawnSidecar();
+        }
+      } catch (err) {
+        console.error("[STT] Failed to spawn sidecar on toggle:", err);
+        throw err;
+      }
+    } else {
+      killSidecar();
+    }
+  });
+
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {
     console.log(
@@ -4153,6 +4409,9 @@ app.on("before-quit", () => {
   } catch {}
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
+
+  // Clean up local STT sidecar
+  killSidecar();
 
   // Clean up pre-spawned paste helper
   if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {

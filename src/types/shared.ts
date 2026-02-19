@@ -67,6 +67,32 @@ export type ActiveDisplayPayload = {
   storedNotchWidth?: number | null;
 };
 
+// Local STT daemon protocol (JSON lines on stdout)
+export interface SttPartialEvent {
+  type: "partial";
+  text: string;
+}
+
+export interface SttDoneEvent {
+  type: "done";
+  transcript: string;
+  metrics: {
+    model_load_ms: number;
+    audio_duration_ms: number;
+    inference_ms: number;
+    ttft_ms: number | null;
+    word_count: number;
+  };
+}
+
+export type SttEvent = SttPartialEvent | SttDoneEvent;
+
+// IPC result from main → renderer
+export interface LocalTranscribeResult {
+  text: string;
+  metrics?: SttDoneEvent["metrics"];
+}
+
 // Transcription history types
 export type TranscriptionItem = {
   id: string;

@@ -160,6 +160,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [showInDock, setShowInDock] = useState<boolean>(true);
+  const [localSttEnabled, setLocalSttEnabled] = useState<boolean>(false);
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state from centralized user identity cache
   // Initialize with cached values to prevent flash of wrong UI on startup
@@ -219,6 +220,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         const result = await window.electron?.getDockVisible?.();
         if (result && typeof result.visible === "boolean") {
           if (isMounted) setShowInDock(result.visible);
+        }
+      } catch {}
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Initialize local STT preference
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const val = await window.stt?.getLocalEnabled?.();
+        if (typeof val === "boolean" && isMounted) {
+          setLocalSttEnabled(val);
         }
       } catch {}
     })();
@@ -707,6 +726,34 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         icon={
                           <SfIcon
                             name="dock.rectangle"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+
+                      <Toggle
+                        label="Local Transcription"
+                        description="Use on-device Moonshine model instead of cloud"
+                        enabled={localSttEnabled}
+                        onChange={async (enabled) => {
+                          try {
+                            await window.stt?.setLocalEnabled?.(enabled);
+                            setLocalSttEnabled(enabled);
+                          } catch (error) {
+                            console.error(
+                              "[Settings] Failed to toggle local STT:",
+                              error,
+                            );
+                            window.notifications?.send?.(
+                              "Failed to enable local transcription. Check that local-stt/.venv exists.",
+                            );
+                          }
+                        }}
+                        icon={
+                          <SfIcon
+                            name="desktopcomputer"
                             size={16}
                             className="text-primary/70"
                           />

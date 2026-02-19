@@ -180,6 +180,13 @@ declare global {
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (cb: (payload: ActiveDisplayPayload) => void) => void;
+    stt: {
+      transcribeLocal: (
+        pcmBuffer: ArrayBuffer,
+      ) => Promise<{ text: string; metrics?: object }>;
+      getLocalEnabled: () => Promise<boolean>;
+      setLocalEnabled: (val: boolean) => Promise<void>;
+    };
     mic: {
       updateDevices: (
         devices: Array<{ id: string; label: string }>,
