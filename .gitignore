@@ -105,8 +105,7 @@ worker/!.dev.vars.example
 worker/.env*
 worker/!.env.example
 worker/.wrangler/
-# Local STT testing
-local-stt/
+# Local STT (venv + caches ignored via local-stt/.gitignore)
 
 # Sentry Config File
 .env.sentry-build-plugin

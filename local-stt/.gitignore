@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Phase 1 test scripts (not needed in prod)
+test_*.py
+diagnose_*.py
+wav_to_pcm.py
+*.wav
+*.webm
+*.pcm
