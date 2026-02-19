@@ -105,5 +105,8 @@ worker/!.dev.vars.example
 worker/.env*
 worker/!.env.example
 worker/.wrangler/
+# Local STT testing
+local-stt/
+
 # Sentry Config File
 .env.sentry-build-plugin
