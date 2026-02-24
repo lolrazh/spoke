@@ -1,6 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
+weights/
+
+# Rollback backup
+sidecar_hf.py
 
 # Phase 1 test scripts (not needed in prod)
 test_*.py
