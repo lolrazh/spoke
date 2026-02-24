@@ -1,90 +1,36 @@
-# Local STT: Moonshine v2 Streaming Medium
+# Local STT: Moonshine v2 on Apple Silicon
 
 ## Overview
 
-Spoke currently uses Groq's cloud Whisper API for speech-to-text. This document covers our Phase 1 evaluation of **Moonshine v2 Streaming Medium** as a fully local replacement — what we tried, what failed, what worked, and the final architecture.
+Spoke currently uses Groq's cloud Whisper API for speech-to-text. This document covers our journey to a fully local replacement using **Moonshine v2 Streaming Medium** (245M params, 6.65% WER).
 
-**Final choice**: Moonshine Streaming Medium (245M params, 6.65% WER) loaded at FP16 via HuggingFace Transformers on MPS (Apple Silicon GPU), with streaming token output via `TextIteratorStreamer`.
+**Current state**: Phase 2 complete — HF Transformers sidecar integrated into the Electron app, working end-to-end.
+
+**Next step**: Phase 3 — Port inference to MLX for native Apple Silicon performance and a much smaller distribution footprint.
 
 ---
 
-## What We Tried (Chronological)
+## Phase 1: Model Evaluation (Complete)
 
 ### Attempt 1: moonshine-voice SDK (Quantized ONNX) — REJECTED
 
 **Package**: `pip install moonshine-voice` (v0.0.48)
 
-**What it is**: Official Moonshine SDK with native ONNX Runtime inference. Provides `MicTranscriber`, `Transcriber`, `Stream`, and `TranscriptEventListener` classes. Downloads models automatically via `python -m moonshine_voice.download --language en`.
+**What it is**: Official Moonshine SDK with native ONNX Runtime inference. Downloads models automatically. Ships only **quantized** (int8) ONNX models.
 
-**Model downloaded**: `medium-streaming-en/quantized` (~289 MB total)
-- Files: `adapter.ort`, `cross_kv.ort`, `decoder_kv.ort` (139MB), `encoder.ort` (90MB), `frontend.ort` (45MB), `streaming_config.json`, `tokenizer.bin`
-- Path: `~/Library/Caches/moonshine_voice/download.moonshine.ai/model/medium-streaming-en/quantized`
-- Arch enum: `ModelArch.MEDIUM_STREAMING` (value 5)
+**Results on clean WAV**: Excellent. 153ms TTFT, 1700ms total for 10s audio on CPU.
 
-**API usage**:
-```python
-from moonshine_voice import Transcriber, MicTranscriber, TranscriptEventListener, get_model_for_language
+**Results on live mic**: Terrible. Garbled, wrong words, poor accuracy. The quantization degrades quality significantly on real-world mic audio.
 
-model_path, model_arch = get_model_for_language("en")
-# model_path = ~/Library/Caches/moonshine_voice/.../medium-streaming-en/quantized
-# model_arch = ModelArch.MEDIUM_STREAMING (5)
+**Why rejected**: No non-quantized models available via SDK CDN (all paths hardcode `/quantized`).
 
-# IMPORTANT: model_arch must be the enum, NOT the int value.
-# Passing model_arch=5 causes: AttributeError: 'int' object has no attribute 'value'
+### Attempt 2: HuggingFace Transformers (FP16, MPS) — ACCEPTED
 
-transcriber = Transcriber(model_path=str(model_path), model_arch=model_arch)
-```
+**Model**: `UsefulSensors/moonshine-streaming-medium` (1.06 GB safetensors, full precision)
 
-**Results on clean WAV files**: Excellent. Beckett quote transcribed perfectly. 153ms TTFT, 1700ms total for 10s audio on CPU ONNX.
+Loaded at FP16 on MPS (Apple Silicon GPU). Quality was good on live mic audio.
 
-**Results on live mic**: Terrible. Garbled, wrong words, poor accuracy.
-
-**Root cause**: The SDK only ships **quantized** (likely int8) ONNX models. The quantization degrades quality significantly on real-world mic audio (background noise, natural speech patterns, non-studio conditions). We confirmed:
-- No non-quantized models available via the SDK's CDN (`/fp16`, `/fp32`, `/full`, `/unquantized` all return 404)
-- All download URLs in the SDK source hardcode `/quantized` paths
-- The official `python -m moonshine_voice.mic_transcriber` was also mediocre
-
-**Streaming support**: Yes, via `TranscriptEventListener` callbacks:
-- `on_line_started(event)` — new speech segment detected
-- `on_line_text_changed(event)` — partial text update (most frequent)
-- `on_line_completed(event)` — pause detected, segment finalized
-- Works with both `Transcriber.add_audio()` and `MicTranscriber`
-
-**Key gotcha**: `MicTranscriber` uses `sounddevice.InputStream` at 16kHz. Mac mic native rate is 48kHz — PortAudio handles resampling, but this isn't the quality issue (confirmed by testing 16kHz direct vs native-resampled recordings).
-
-### Attempt 2: HuggingFace Transformers (Full Precision) — ACCEPTED
-
-**Package**: `pip install transformers torch torchaudio`
-
-**Model**: `UsefulSensors/moonshine-streaming-medium` on HuggingFace
-- Format: `model.safetensors` (1.06 GB, full precision)
-- Same 245M parameter model, just not quantized
-
-**API usage**:
-```python
-from transformers import MoonshineStreamingForConditionalGeneration, AutoProcessor
-
-MODEL_ID = "UsefulSensors/moonshine-streaming-medium"
-
-processor = AutoProcessor.from_pretrained(MODEL_ID)
-model = MoonshineStreamingForConditionalGeneration.from_pretrained(MODEL_ID)
-model = model.to("mps").to(torch.float16)  # Apple Silicon GPU, half precision
-
-inputs = processor(audio_float32, return_tensors="pt", sampling_rate=16000)
-inputs = inputs.to("mps", torch.float16)
-
-# Prevent hallucination with max_length limit
-token_limit_factor = 6.5 / 16000
-seq_lens = inputs.attention_mask.sum(dim=-1)
-max_length = int((seq_lens * token_limit_factor).max().item())
-
-generated_ids = model.generate(**inputs, max_length=max_length)
-text = processor.decode(generated_ids[0], skip_special_tokens=True)
-```
-
-**Results on live mic**: Much better. User confirmed quality was good.
-
-**Performance (MPS FP16, Apple Silicon)**:
+**Performance**:
 | Metric | Value |
 |---|---|
 | Model load (cold) | ~6.8s |
@@ -92,154 +38,168 @@ text = processor.decode(generated_ids[0], skip_special_tokens=True)
 | Inference (10s audio) | ~430ms |
 | Real-time factor | ~23x faster than real-time |
 
-**Streaming token output**: Yes, via `TextIteratorStreamer`:
-```python
-from threading import Thread
-from transformers import TextIteratorStreamer
-
-streamer = TextIteratorStreamer(processor.tokenizer, skip_special_tokens=True)
-gen_kwargs = {**inputs, "max_length": max_length, "streamer": streamer}
-
-thread = Thread(target=model.generate, kwargs=gen_kwargs)
-thread.start()
-
-transcript = ""
-for token_text in streamer:
-    if token_text:
-        transcript += token_text
-        print(transcript)  # partial result, word by word
-
-thread.join()
-```
-
-Each token arrives ~10-20ms apart. Not true real-time ASR (model needs full audio before generating), but tokens stream out during decoding so the UI can show progressive text.
-
-**Important**: The model auto-downloads on first `from_pretrained()` call (~1.06GB). Cached at `~/.cache/huggingface/hub/models--UsefulSensors--moonshine-streaming-medium/`.
-
 ---
 
-## What We Did NOT Try
+## Phase 2: Electron Integration (Complete)
 
-- **mlx-whisper**: Apple MLX framework with Whisper models. Would be worth evaluating if Moonshine quality is insufficient.
-- **faster-whisper**: CTranslate2-based Whisper. Supports int8/fp16/fp32. Mature ecosystem.
-- **MLX port of Moonshine**: Doesn't exist yet as of Feb 2026. Could be built if needed.
-- **Non-quantized ONNX export**: Could theoretically export the safetensors model to ONNX at FP16 for use with the moonshine-voice SDK's streaming API. Not attempted.
-
----
-
-## Mic Audio Diagnostics
-
-We built `diagnose_mic.py` to investigate the mic quality issue. Key findings:
-
-- **Default device**: MacBook Air Microphone (device index 1)
-- **Native sample rate**: 48000 Hz
-- **16kHz support**: Yes (via PortAudio resampling)
-- **All common rates supported**: 8000, 16000, 22050, 44100, 48000 Hz
-
-The mic audio quality itself was fine — the issue was purely the quantized model's inability to handle real-world audio.
-
----
-
-## File Inventory (`local-stt/`)
-
-All files are gitignored. The directory lives at project root.
-
-| File | Purpose | Status |
-|---|---|---|
-| `.venv/` | Python 3.11 venv | Active |
-| `test_moonshine.py` | Quantized SDK test (mic + file) | Superseded — kept for reference |
-| `test_moonshine_hf.py` | Full-precision HF Transformers test (mic + file) | Working |
-| `test_streaming_hf.py` | Token streaming proof-of-concept | Working |
-| `test_mic_hf.py` | Interactive mic test with streaming output | Working — primary test script |
-| `sidecar.py` | Sidecar for Spoke integration (stdin PCM → stdout JSON) | Working — Phase 2 entry point |
-| `wav_to_pcm.py` | WAV → raw PCM16 converter for testing sidecar | Working |
-| `diagnose_mic.py` | Mic device/sample rate diagnostics | Working |
-
-### Dependencies installed in venv
+Sidecar daemon integrated into Spoke. Users toggle "Local Transcription" in Settings.
 
 ```
-moonshine-voice==0.0.48     # For test audio assets + old SDK reference
-transformers==5.2.0          # Model loading + inference + streaming
-torch==2.10.0                # PyTorch backend (MPS support)
-torchaudio==2.10.0           # Audio resampling
-numpy, sounddevice           # Audio capture + processing
+Cloud:  Renderer → fetch(/transcribe) → Cloudflare Worker → Groq API → text
+Local:  Renderer → IPC (PCM buffer) → Main → Python daemon (stdin/stdout) → text
 ```
 
----
+### Architecture
 
-## Sidecar Protocol
+The Python daemon stays alive between requests (model loaded once, then ~430ms per transcription). The cloud path is completely untouched.
 
-The sidecar (`sidecar.py`) is what Spoke's Electron main process will spawn in Phase 2.
+### Sidecar Protocol
 
-**Input**: Raw PCM16 audio (s16le, 16kHz, mono) on **stdin**
-
-**Output**: JSON lines on **stdout**:
-```jsonl
-{"type":"partial","text":"Ever "}
-{"type":"partial","text":"Ever tried, "}
-{"type":"partial","text":"Ever tried, ever failed, "}
-{"type":"done","transcript":"Ever tried, ever failed, no matter.","metrics":{"model_load_ms":6720,"audio_duration_ms":9963,"inference_ms":427,"ttft_ms":260,"word_count":12}}
-```
-
-**Diagnostics**: Human-readable logs on **stderr**
-
-**Invocation**:
-```bash
-# From Electron main process (conceptual)
-cat audio.pcm | python sidecar.py
-
-# With ffmpeg conversion from WebM
-ffmpeg -i audio.webm -f s16le -ar 16000 -ac 1 - 2>/dev/null | python sidecar.py
-```
-
----
-
-## Phase 2 Integration Plan (Sketch)
+Daemon mode (default): Model loads once, emits `{"type":"ready"}`, then reads length-prefixed PCM16 requests in a loop. Each request: 4 bytes LE uint32 length + that many bytes of raw PCM16 audio.
 
 ```
-Current:  Renderer → HTTP POST /transcribe → Cloudflare Worker → Groq API → text
-New:      Renderer → IPC (PCM audio) → Main → Python sidecar (stdin/stdout) → text
+→ stdin:  [4-byte LE length][PCM16 bytes][4-byte LE length][PCM16 bytes]...
+← stdout: {"type":"ready"}\n
+           {"type":"partial","text":"Ever "}\n
+           {"type":"done","transcript":"...","metrics":{...}}\n
 ```
 
-### Key changes needed
+### Files Changed
 
-| File | Change |
+| File | What |
 |---|---|
-| `src/utils/audioDecoder.ts` | **New** — decode WebM Blob → PCM16 via OfflineAudioContext |
-| `src/preload.ts` | Add `window.electron.transcribeLocal()` IPC bridge |
-| `src/main.ts` | Add `ipcMain.handle('transcribe-local')` — spawn sidecar, pipe audio |
-| `src/hooks/useTranscription.ts` | Add local mode: call `transcribeLocal()` instead of `fetch(/transcribe)` |
-| `src/config/api.ts` | Add `isLocalMode()` flag |
-| `local-stt/sidecar.py` | Already built |
+| `src/types/shared.ts` | STT event types (`SttPartialEvent`, `SttDoneEvent`, `LocalTranscribeResult`) |
+| `src/utils/audioDecoder.ts` | **New** — WebM/Opus Blob → PCM16 Int16Array via OfflineAudioContext |
+| `local-stt/sidecar.py` | Upgraded to daemon mode (was one-shot) |
+| `src/main.ts` | Sidecar spawn/kill, IPC handlers, preference persistence |
+| `src/preload.ts` | `window.stt` context bridge (transcribeLocal, get/setLocalEnabled) |
+| `src/types/electron.d.ts` | `stt` interface on Window |
+| `src/hooks/useTranscription.ts` | Local branch in start()/stop() — skips auth, prepare, cloud fetch |
+| `src/components/SettingsPanel.tsx` | "Local Transcription" toggle in Defaults section |
 
-### What stays the same
-- `App.tsx` state machine (transcription-agnostic)
-- `audioRecorder.ts` (recording pipeline)
-- `worker/` (kept as cloud fallback)
-- Text insertion flow (`insertText()`)
+### What Gets Skipped in Local Mode
 
-### What gets skipped in local mode
 - `/prepare` endpoint (OCR context)
 - `/transcribe` endpoint
 - LLM enhancement (router + enhance)
 - Quota tracking
+- Auth token (no cloud call = no auth needed)
 
-### Cold start mitigation
-Model load is ~6.8s. Options:
-1. **Pre-warm on app launch**: Spawn sidecar process at startup, keep alive
-2. **Lazy load on first use**: Accept 6.8s delay on first dictation only
-3. **Pre-warm on first focus**: Start loading when app gains focus
+---
 
-Pre-warm on app launch is recommended — the sidecar idles at ~300MB RAM.
+## Phase 3: MLX Port (Next)
+
+### Why move off HuggingFace Transformers?
+
+HF Transformers works, but it's a general-purpose framework — not optimized for Apple Silicon.
+
+| | HF Transformers (current) | MLX (target) |
+|---|---|---|
+| Runtime dep | ~400MB (torch) | ~50MB (mlx) |
+| Memory model | PyTorch → MPS bridge | Native unified memory, zero-copy |
+| Cold start | ~6.8s | Faster (mmap weights) |
+| Inference | ~430ms | Should be faster (no bridge overhead) |
+| Distribution bundle | Huge | Much smaller |
+
+MLX is Apple's native ML framework, designed for the unified memory architecture on M chips. Zero-copy GPU access, no memory transfer overhead.
+
+### Why this is feasible
+
+Moonshine's architecture is a standard encoder-decoder transformer:
+- **Encoder**: Conv1d audio frontend → transformer layers with RoPE, GELU activation
+- **Decoder**: transformer layers with RoPE, SiLU activation, cross-attention to encoder
+- **Vocab**: 32k BPE tokenizer
+- **Position encoding**: RoPE (not absolute — simpler)
+
+MLX has all these primitives. And we don't need streaming anymore (confirmed during Phase 1 that batch inference with full audio is better), so the generation loop is dead simple: encode → decode greedily → done.
+
+### Porting plan
+
+**Step 1: Model architecture in MLX** (~200-300 lines)
+
+Rewrite the encoder, decoder, and generation logic using `mlx.nn`. Reference implementations:
+- [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) — similar encoder-decoder ASR in MLX
+- [HF Transformers source for Moonshine](https://github.com/huggingface/transformers/blob/main/src/transformers/models/moonshine/modeling_moonshine.py) — the exact architecture to replicate
+
+Key components:
+- `MoonshineEncoder`: Conv1d → transformer blocks (self-attention + FFN with GELU)
+- `MoonshineDecoder`: transformer blocks (self-attention + cross-attention + FFN with SiLU)
+- `MoonshineForConditionalGeneration`: ties encoder + decoder + LM head + greedy decode loop
+
+**Step 2: Weight conversion script**
+
+Convert the HuggingFace safetensors (PyTorch) → MLX npz format:
+- Load safetensors with `safetensors.torch`
+- Rename keys to match MLX model structure
+- Convert tensors to numpy → save as MLX-compatible npz
+- Keep FP16 precision (the quality we want)
+
+**Step 3: Update sidecar.py**
+
+Replace the HF Transformers inference with MLX:
+```python
+# Before (HF Transformers)
+from transformers import MoonshineStreamingForConditionalGeneration, AutoProcessor
+model = MoonshineStreamingForConditionalGeneration.from_pretrained(MODEL_ID)
+model = model.to("mps").to(torch.float16)
+
+# After (MLX)
+import mlx.core as mx
+from moonshine_mlx import MoonshineModel
+model = MoonshineModel.from_pretrained("weights/")
+```
+
+The sidecar protocol (stdin/stdout JSON lines) stays exactly the same. The Electron integration doesn't change at all.
+
+**Step 4: Benchmark and validate**
+
+- Compare inference speed: MLX vs HF Transformers (target: faster)
+- Compare transcription quality: should be identical (same weights, same precision)
+- Verify cold start improvement
+- Test edge cases: short audio, long audio, silence
+
+### Distribution plan (post-MLX port)
+
+With MLX, the total footprint drops dramatically:
+
+| Component | Size (compressed) |
+|---|---|
+| MLX runtime | ~50MB |
+| Moonshine MLX weights (FP16) | ~500MB |
+| Sidecar script + tokenizer | ~2MB |
+| **Total optional download** | **~550MB** |
+
+Ship as an optional download — app stays lean, model downloads when user first enables local transcription.
+
+### Dependencies after MLX port
+
+```
+mlx>=0.22.0
+numpy>=2.4.0
+```
+
+That's it. No torch, no transformers, no torchaudio.
 
 ---
 
 ## Benchmarks Summary
 
-| Config | Inference (10s) | TTFT | Quality (mic) | Model Size |
+| Config | Inference (10s) | TTFT | Quality (mic) | Runtime Size |
 |---|---|---|---|---|
 | moonshine-voice SDK (int8 ONNX, CPU) | 1,738ms | 151ms | Bad | 289 MB |
-| HF Transformers (FP16, MPS) | 427ms | 260ms | Good | 1.06 GB |
+| HF Transformers (FP16, MPS) | 427ms | 260ms | Good | ~500 MB |
 | Groq Whisper Cloud (current) | ~800-1500ms | N/A | Good | N/A |
+| MLX (FP16, Apple Silicon) | TBD | TBD | Expected: Good | ~50 MB |
 
-The local FP16 model is faster than the current cloud pipeline and runs entirely on-device.
+---
+
+## File Inventory (`local-stt/`)
+
+| File | Purpose | Status |
+|---|---|---|
+| `sidecar.py` | Daemon sidecar for Spoke (stdin PCM → stdout JSON) | Working — Phase 2 production |
+| `requirements.txt` | Minimal deps (torch, transformers, numpy) | Will shrink after MLX port |
+| `.gitignore` | Excludes .venv, test scripts, caches | Active |
+| `.venv/` | Python 3.11 venv (not tracked) | Dev-only |
+| `test_*.py` | Phase 1 test scripts (not tracked) | Reference only |
+| `diagnose_mic.py` | Mic diagnostics (not tracked) | Reference only |
