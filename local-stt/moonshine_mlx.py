@@ -493,7 +493,8 @@ class MoonshineMLX(nn.Module):
 
 def count_params(model: nn.Module) -> int:
     """Count total parameters."""
+    import mlx.utils
     total = 0
-    for k, v in mx.utils.tree_flatten(model.parameters()):
+    for k, v in mlx.utils.tree_flatten(model.parameters()):
         total += v.size
     return total
