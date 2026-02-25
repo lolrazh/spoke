@@ -72,20 +72,21 @@ def transcribe(audio: np.ndarray, model: MoonshineMLX, tokenizer: Tokenizer, loa
 
     transcript = ""
     ttft_ms = None
-    token_ids = []
+    partial_ids = []
 
     def on_token(token_id):
         nonlocal transcript, ttft_ms
-        token_ids.append(token_id)
+        partial_ids.append(token_id)
         if ttft_ms is None:
             ttft_ms = (time.perf_counter() - infer_start) * 1000
-        transcript = tokenizer.decode(token_ids)
+        transcript = tokenizer.decode(partial_ids)
         emit({"type": "partial", "text": transcript})
 
-    model.generate(audio_mx, max_tokens, callback=on_token)
+    # generate() returns repetition-trimmed token list
+    final_ids = model.generate(audio_mx, max_tokens, callback=on_token)
 
-    # Final decode for clean transcript
-    transcript = tokenizer.decode(token_ids) if token_ids else ""
+    # Use trimmed tokens for final transcript (partials are best-effort)
+    transcript = tokenizer.decode(final_ids) if final_ids else ""
     infer_ms = (time.perf_counter() - infer_start) * 1000
 
     metrics = {

@@ -66,17 +66,18 @@ class UnitOffsetLayerNorm(nn.Module):
         return normed * (self.gamma + 1.0)
 
 
-class RMSLayerNorm(nn.Module):
-    """RMSNorm (no mean-centering) with learned weight. Decoder-specific."""
+class DecoderLayerNorm(nn.Module):
+    """Standard LayerNorm without bias (decoder). Matches HF nn.LayerNorm(bias=False)."""
 
     def __init__(self, dims: int):
         super().__init__()
         self.weight = mx.ones((dims,))
 
     def __call__(self, x):
-        # RMSNorm normalizes by root-mean-square only (no mean subtraction).
-        var = mx.mean(x * x, axis=-1, keepdims=True)
-        normed = x * mx.rsqrt(var + 1e-5)
+        mean = mx.mean(x, axis=-1, keepdims=True)
+        centered = x - mean
+        var = mx.mean(centered * centered, axis=-1, keepdims=True)
+        normed = centered * mx.rsqrt(var + 1e-5)
         return normed * self.weight
 
 
@@ -356,9 +357,9 @@ class DecoderLayer(nn.Module):
         self.self_attn = DecoderSelfAttention()
         self.cross_attn = DecoderCrossAttention()
         self.mlp = DecoderMLP()
-        self.input_layernorm = RMSLayerNorm(DECODER_DIM)
-        self.post_attention_layernorm = RMSLayerNorm(DECODER_DIM)
-        self.final_layernorm = RMSLayerNorm(DECODER_DIM)
+        self.input_layernorm = DecoderLayerNorm(DECODER_DIM)
+        self.post_attention_layernorm = DecoderLayerNorm(DECODER_DIM)
+        self.final_layernorm = DecoderLayerNorm(DECODER_DIM)
 
     def __call__(self, x, enc_bridged, rope_cos, rope_sin, self_cache=None, cross_cache=None):
         # Self-attention
@@ -379,7 +380,7 @@ class Decoder(nn.Module):
         self.pos_emb = nn.Embedding(MAX_POS, ENCODER_DIM)
         self.proj = nn.Linear(ENCODER_DIM, DECODER_DIM, bias=False)
         self.layers = [DecoderLayer() for _ in range(DECODER_LAYERS)]
-        self.norm = RMSLayerNorm(DECODER_DIM)
+        self.norm = DecoderLayerNorm(DECODER_DIM)
 
     def bridge(self, encoder_out: mx.array) -> mx.array:
         """Bridge encoder output (768-dim) to decoder space (640-dim)."""
@@ -482,6 +483,18 @@ class MoonshineMLX(nn.Module):
                 break
 
             tokens.append(next_id)
+
+            # Stop on n-gram repetition (trailing hallucination guard)
+            repeated = False
+            for w in range(3, 21):
+                if len(tokens) >= w * 2:
+                    if tokens[-w:] == tokens[-w * 2:-w]:
+                        tokens = tokens[:-w]
+                        repeated = True
+                        break
+            if repeated:
+                break
+
             if callback:
                 callback(next_id)
 
