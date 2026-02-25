@@ -17,6 +17,10 @@ vi.mock("../utils/audioFeedback", () => ({
   playToggleOff: vi.fn(),
 }));
 
+vi.mock("../utils/audioDecoder", () => ({
+  decodeToPcm16: vi.fn(() => Promise.resolve(new Int16Array([1, 2, 3, 4]))),
+}));
+
 vi.mock("../state/transcriptionHistory", () => ({
   addTranscription: vi.fn(),
 }));
@@ -137,10 +141,23 @@ Object.defineProperty(window, "clipboard", {
   writable: true,
 });
 
+Object.defineProperty(window, "stt", {
+  value: {
+    getLocalEnabled: vi.fn(() => Promise.resolve(false)),
+    transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
+  },
+  writable: true,
+});
+
 describe("useTranscription (HTTP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();
+    (window.stt.getLocalEnabled as any).mockResolvedValue(false);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "",
+      metrics: {},
+    });
   });
 
   afterEach(() => {
@@ -303,6 +320,49 @@ describe("useTranscription (HTTP)", () => {
         }),
       }),
     );
+  });
+
+  it("should ignore duplicate stop calls in local mode", async () => {
+    (window.stt.getLocalEnabled as any).mockResolvedValue(true);
+    (window.stt.transcribeLocal as any).mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve({ text: "Local transcription", metrics: {} }),
+            50,
+          ),
+        ),
+    );
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(window.stt.getLocalEnabled).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(result.current.recording).toBe(true);
+
+    await act(async () => {
+      result.current.stop();
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Local transcription");
+    });
+
+    expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("should cancel recording", async () => {

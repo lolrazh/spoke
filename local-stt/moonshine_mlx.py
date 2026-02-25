@@ -67,17 +67,16 @@ class UnitOffsetLayerNorm(nn.Module):
 
 
 class RMSLayerNorm(nn.Module):
-    """Standard LayerNorm without bias (decoder). Uses weight parameter."""
+    """RMSNorm (no mean-centering) with learned weight. Decoder-specific."""
 
     def __init__(self, dims: int):
         super().__init__()
         self.weight = mx.ones((dims,))
 
     def __call__(self, x):
-        mean = mx.mean(x, axis=-1, keepdims=True)
-        centered = x - mean
-        var = mx.mean(centered * centered, axis=-1, keepdims=True)
-        normed = centered * mx.rsqrt(var + 1e-5)
+        # RMSNorm normalizes by root-mean-square only (no mean subtraction).
+        var = mx.mean(x * x, axis=-1, keepdims=True)
+        normed = x * mx.rsqrt(var + 1e-5)
         return normed * self.weight
 
 

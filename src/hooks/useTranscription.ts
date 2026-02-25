@@ -79,6 +79,7 @@ export function useTranscription(
   const [localEnabled, setLocalEnabled] = useState(false);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
+  const stopInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const prepareDataRef = useRef<{
     prepareId?: string;
@@ -160,7 +161,7 @@ export function useTranscription(
 
   // Start recording
   const start = useCallback(async () => {
-    if (recording) return;
+    if (recording || processing || stopInFlightRef.current) return;
 
     // In local mode, skip auth check entirely
     let token: string | null = null;
@@ -290,11 +291,15 @@ export function useTranscription(
         streamRef.current = null;
       }
     }
-  }, [recording, localEnabled, initStream]);
+  }, [recording, processing, localEnabled, initStream]);
 
   // Stop recording and upload
   const stop = useCallback(async () => {
-    if (!recording || !recorderRef.current) return;
+    const recorder = recorderRef.current;
+    if (!recording || !recorder || stopInFlightRef.current) return;
+    stopInFlightRef.current = true;
+    // Clear immediately so duplicate stop calls (same tick / gesture race) no-op.
+    recorderRef.current = null;
 
     // Comprehensive timing for debugging latency
     const timing = {
@@ -320,8 +325,7 @@ export function useTranscription(
       timing.postRollDone = Date.now();
 
       // Stop recording and get audio blob
-      const audioBlob = await recorderRef.current.stop();
-      recorderRef.current = null;
+      const audioBlob = await recorder.stop();
       timing.recorderStopped = Date.now();
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
@@ -350,17 +354,16 @@ export function useTranscription(
 
         // Trigger native paste if not suppressed
         if (!options.suppressNativePaste) {
-          (
-            (window as any).clipboard?.insertText?.(
+          // Await local paste completion so a previous helper invocation cannot
+          // finish during the next dictation and re-insert stale text.
+          try {
+            await ((window as any).clipboard?.insertText?.(
               result.text,
-            ) as Promise<void>
-          )
-            ?.then(() => {
-              console.log(
-                `[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
-              );
-            })
-            ?.catch(console.warn);
+            ) as Promise<void> | undefined);
+          } catch (err) {
+            console.warn(err);
+          }
+          console.log(`[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`);
         } else {
           console.log(
             `[Local] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
@@ -485,6 +488,7 @@ export function useTranscription(
       console.error("[HTTP] Stop failed:", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      stopInFlightRef.current = false;
       // Release microphone stream so the OS mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -498,6 +502,7 @@ export function useTranscription(
 
   // Cancel recording
   const cancel = useCallback(() => {
+    stopInFlightRef.current = false;
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;

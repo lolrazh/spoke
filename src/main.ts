@@ -402,6 +402,7 @@ let sttPrefsPath: string; // Will be initialized in app.whenReady()
 let localSttEnabled = false;
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
+let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
 
 // ============ Manual Update Check (Tray integration) ============
 type UpdateStatus =
@@ -1120,6 +1121,20 @@ function killSidecar(): void {
 }
 
 function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
+  // Sidecar stdout is a shared stream. Serialize requests so "done" events
+  // cannot be consumed by the wrong in-flight caller.
+  const queued = sidecarTranscribeQueue.then(
+    () => transcribeLocalOnce(pcmBuffer),
+    () => transcribeLocalOnce(pcmBuffer),
+  );
+  sidecarTranscribeQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
+
+function transcribeLocalOnce(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
     if (!sidecarProcess || !sidecarReady) {
       reject(new Error("Sidecar not running"));
@@ -1129,6 +1144,7 @@ function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
     const proc = sidecarProcess;
     let stdoutBuffer = "";
     let resolved = false;
+    let timeout: NodeJS.Timeout | null = null;
 
     const onData = (chunk: Buffer) => {
       stdoutBuffer += chunk.toString();
@@ -1141,8 +1157,9 @@ function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
           const event: SttEvent = JSON.parse(line);
           if (event.type === "done") {
             resolved = true;
-            proc.stdout?.removeListener("data", onData);
+            cleanup();
             resolve({ text: event.transcript, metrics: event.metrics });
+            return;
           }
           // partials are ignored for now (no streaming UI in local mode)
         } catch {
@@ -1151,23 +1168,33 @@ function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
       }
     };
 
+    const onExit = () => {
+      if (!resolved) {
+        cleanup();
+        reject(new Error("Sidecar exited during transcription"));
+      }
+    };
+
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+      proc.stdout?.removeListener("data", onData);
+      proc.removeListener("exit", onExit);
+    };
+
     proc.stdout?.on("data", onData);
 
     // Timeout after 60s
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       if (!resolved) {
-        proc.stdout?.removeListener("data", onData);
+        cleanup();
         reject(new Error("Local transcription timed out"));
       }
     }, 60000);
 
-    proc.once("exit", () => {
-      clearTimeout(timeout);
-      if (!resolved) {
-        proc.stdout?.removeListener("data", onData);
-        reject(new Error("Sidecar exited during transcription"));
-      }
-    });
+    proc.once("exit", onExit);
 
     // Write length-prefixed PCM to stdin
     try {
@@ -1176,8 +1203,7 @@ function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
       proc.stdin?.write(lenBuf);
       proc.stdin?.write(pcmBuffer);
     } catch (err) {
-      clearTimeout(timeout);
-      proc.stdout?.removeListener("data", onData);
+      cleanup();
       reject(err);
     }
   });
