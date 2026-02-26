@@ -13,6 +13,7 @@ from pathlib import Path
 
 import mlx.core as mx
 import mlx.nn as nn
+import mlx.utils
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +503,169 @@ class MoonshineMLX(nn.Module):
             token = mx.array([[next_id]])
 
         return tokens
+
+    def beam_search_generate(self, audio: mx.array, max_tokens: int,
+                             beam_width: int = 3, length_penalty: float = 0.6,
+                             callback=None):
+        """
+        Beam search decode. Explores beam_width paths simultaneously,
+        discarding lower-probability paths and keeping the best overall
+        sequence. Fixes greedy hallucinations at subword boundaries.
+
+        Calls callback(token_id) with best active beam's latest token
+        for streaming partials (best-effort; beam reordering may cause
+        partial text to differ from final output).
+
+        Returns list of token IDs (excluding BOS).
+        """
+        BOS, EOS = 1, 2
+
+        def _eval_cache(c):
+            flat = [v for _, v in mlx.utils.tree_flatten(c)]
+            if flat:
+                mx.eval(*flat)
+
+        def _log_softmax(x):
+            max_x = mx.max(x, axis=-1, keepdims=True)
+            shifted = x - max_x
+            return shifted - mx.log(mx.sum(mx.exp(shifted), axis=-1, keepdims=True))
+
+        # --- Encode + bridge (B=1, same as greedy) ---
+        encoder_out = self.encode(audio)
+        mx.eval(encoder_out)
+        enc_bridged = self.decoder.bridge(encoder_out)
+        mx.eval(enc_bridged)
+
+        # --- Prefill BOS (B=1) ---
+        token = mx.array([[BOS]])
+        logits, cache = self.decode_step(token, enc_bridged, 0, None)
+        mx.eval(logits)
+        _eval_cache(cache)
+
+        # --- Initialize beams from top-k of BOS logits ---
+        log_probs = _log_softmax(logits[:, -1, :]).reshape(-1)  # (vocab,)
+
+        # Top-k via argpartition (no mx.topk in MLX)
+        k = beam_width
+        top_idx = mx.argpartition(-log_probs, kth=k - 1)[:k]
+        top_scores = log_probs[top_idx]
+        order = mx.argsort(-top_scores)
+        top_idx = top_idx[order]
+        top_scores = top_scores[order]
+        mx.eval(top_idx, top_scores)
+
+        beam_tokens = [[int(top_idx[i])] for i in range(k)]
+        beam_scores = top_scores  # (beam_width,)
+
+        # --- Expand cache + encoder to beam_width ---
+        enc_bridged = mx.repeat(enc_bridged, beam_width, axis=0)
+        cache = mlx.utils.tree_map(
+            lambda x: mx.repeat(x, beam_width, axis=0), cache
+        )
+        mx.eval(enc_bridged)
+        _eval_cache(cache)
+
+        finished_beams = []  # (penalized_score, token_list)
+
+        if callback:
+            callback(beam_tokens[0][-1])
+
+        for step in range(1, max_tokens):
+            # --- Feed all beams: (beam_width, 1) ---
+            next_tok = mx.array([[bt[-1]] for bt in beam_tokens])
+            logits, cache = self.decode_step(next_tok, enc_bridged, step, cache)
+            mx.eval(logits)
+            _eval_cache(cache)
+
+            log_probs = _log_softmax(logits[:, -1, :])  # (bw, vocab)
+
+            # --- Score all candidates ---
+            candidate_scores = beam_scores[:, None] + log_probs  # (bw, vocab)
+            flat = candidate_scores.reshape(-1)  # (bw * vocab)
+
+            # Grab extra candidates in case some are EOS/repeated
+            n_cand = min(beam_width * 3, int(flat.shape[0]))
+            top_flat_idx = mx.argpartition(-flat, kth=n_cand - 1)[:n_cand]
+            top_flat_scores = flat[top_flat_idx]
+            order = mx.argsort(-top_flat_scores)
+            top_flat_idx = top_flat_idx[order]
+            top_flat_scores = top_flat_scores[order]
+            mx.eval(top_flat_idx, top_flat_scores)
+
+            # --- Select surviving beams ---
+            new_tokens = []
+            new_origins = []
+            new_scores = []
+
+            for ci in range(n_cand):
+                if len(new_tokens) >= beam_width:
+                    break
+                flat_i = int(top_flat_idx[ci])
+                score = float(top_flat_scores[ci])
+                beam_idx = flat_i // VOCAB_SIZE
+                tok_id = flat_i % VOCAB_SIZE
+
+                if tok_id == EOS:
+                    seq = beam_tokens[beam_idx]
+                    pen = score / max(len(seq), 1) ** length_penalty
+                    finished_beams.append((pen, list(seq)))
+                    continue
+
+                # N-gram repetition guard (per beam)
+                candidate_seq = beam_tokens[beam_idx] + [tok_id]
+                repeated = False
+                for w in range(3, 21):
+                    if len(candidate_seq) >= w * 2:
+                        if candidate_seq[-w:] == candidate_seq[-w * 2:-w]:
+                            pen = score / max(len(candidate_seq) - w, 1) ** length_penalty
+                            finished_beams.append((pen, candidate_seq[:-w]))
+                            repeated = True
+                            break
+                if repeated:
+                    continue
+
+                new_tokens.append(candidate_seq)
+                new_origins.append(beam_idx)
+                new_scores.append(score)
+
+            if not new_tokens:
+                break
+
+            # Pad to beam_width if fewer active beams remain
+            while len(new_tokens) < beam_width:
+                new_tokens.append(list(new_tokens[-1]))
+                new_origins.append(new_origins[-1])
+                new_scores.append(-1e9)
+
+            # --- Reindex caches to match surviving beams ---
+            origins = mx.array(new_origins[:beam_width])
+            cache = mlx.utils.tree_map(lambda x: x[origins], cache)
+            _eval_cache(cache)
+
+            beam_tokens = new_tokens[:beam_width]
+            beam_scores = mx.array(new_scores[:beam_width])
+            mx.eval(beam_scores)
+
+            if callback:
+                callback(beam_tokens[0][-1])
+
+            # --- Early exit: best finished beats all active beams ---
+            if finished_beams:
+                best_fin = max(fb[0] for fb in finished_beams)
+                best_act_score = float(mx.max(beam_scores))
+                best_act_pen = best_act_score / max(len(beam_tokens[0]), 1) ** length_penalty
+                if best_fin >= best_act_pen:
+                    break
+
+        # --- Return best overall beam ---
+        for i, bt in enumerate(beam_tokens):
+            s = float(beam_scores[i])
+            pen = s / max(len(bt), 1) ** length_penalty
+            finished_beams.append((pen, bt))
+
+        if finished_beams:
+            return max(finished_beams, key=lambda x: x[0])[1]
+        return []
 
 
 def count_params(model: nn.Module) -> int:

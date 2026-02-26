@@ -83,7 +83,7 @@ def transcribe(audio: np.ndarray, model: MoonshineMLX, tokenizer: Tokenizer, loa
         emit({"type": "partial", "text": transcript})
 
     # generate() returns repetition-trimmed token list
-    final_ids = model.generate(audio_mx, max_tokens, callback=on_token)
+    final_ids = model.beam_search_generate(audio_mx, max_tokens, beam_width=3, callback=on_token)
 
     # Use trimmed tokens for final transcript (partials are best-effort)
     transcript = tokenizer.decode(final_ids) if final_ids else ""
