@@ -79,8 +79,6 @@ export function useTranscription(
   const [mode] = useState<TranscriptionMode>("dictation");
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [preferredProviderId, setPreferredProviderId] =
-    useState<PreferredTranscriptionProviderId>(SPOKE_CLOUD_PROVIDER_ID);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const stopInFlightRef = useRef(false);
@@ -88,6 +86,9 @@ export function useTranscription(
   const prepareDataRef = useRef<PrepareTranscriptionResult | null>(null);
   const preparePromiseRef = useRef<Promise<void> | null>(null);
   const activeProviderIdRef = useRef<string | null>(null);
+  const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
+    SPOKE_CLOUD_PROVIDER_ID,
+  );
 
   // Get auth token from Supabase (with caching)
   const getAuthToken = async (): Promise<string | null> => {
@@ -147,11 +148,10 @@ export function useTranscription(
     }
 
     // Load provider preference
-    window.stt
-      ?.getPreferredProvider?.()
-      .then((providerId) => {
-        setPreferredProviderId(providerId);
-      });
+    window.stt?.getPreferredProvider?.().then((providerId) => {
+      preferredProviderIdRef.current =
+        resolvePreferredTranscriptionProviderId(providerId);
+    });
 
     return () => {
       if (streamRef.current) {
@@ -159,6 +159,15 @@ export function useTranscription(
       }
     };
   }, [initStream, options.autoInitStream]);
+
+  const resolveActiveProviderId = useCallback(async () => {
+    const storedProviderId = await window.stt?.getPreferredProvider?.();
+    const resolvedProviderId = resolvePreferredTranscriptionProviderId(
+      storedProviderId ?? preferredProviderIdRef.current,
+    );
+    preferredProviderIdRef.current = resolvedProviderId;
+    return resolvedProviderId;
+  }, []);
 
   const buildTranscriptionContext = useCallback((): TranscriptionContext => {
     const identity = getUserIdentity();
@@ -192,9 +201,7 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
 
-    const providerId = resolvePreferredTranscriptionProviderId(
-      preferredProviderId,
-    );
+    const providerId = await resolveActiveProviderId();
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -303,9 +310,9 @@ export function useTranscription(
     buildTranscriptionContext,
     captureScreenshotBase64,
     initStream,
-    preferredProviderId,
     processing,
     recording,
+    resolveActiveProviderId,
   ]);
 
   // Stop recording and upload
@@ -318,7 +325,7 @@ export function useTranscription(
 
     const providerId =
       activeProviderIdRef.current ??
-      resolvePreferredTranscriptionProviderId(preferredProviderId);
+      (await resolveActiveProviderId());
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -503,9 +510,9 @@ export function useTranscription(
     }
   }, [
     buildTranscriptionContext,
-    preferredProviderId,
     options.suppressNativePaste,
     recording,
+    resolveActiveProviderId,
   ]);
 
   // Cancel recording
@@ -536,9 +543,10 @@ export function useTranscription(
 
   // Pre-connect (no-op for HTTP, kept for interface compatibility)
   const preConnect = useCallback(async () => {
+    await resolveActiveProviderId();
     // HTTP doesn't need pre-connection
     console.log("[HTTP] Pre-connect called (no-op for HTTP)");
-  }, []);
+  }, [resolveActiveProviderId]);
 
   return {
     recording,

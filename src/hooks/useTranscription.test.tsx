@@ -366,6 +366,35 @@ describe("useTranscription (HTTP)", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("resolves the stored local provider before the first start call", async () => {
+    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Local on first start",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Local on first start");
+    });
+    expect(window.stt.transcribeLocal).toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("should cancel recording", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
