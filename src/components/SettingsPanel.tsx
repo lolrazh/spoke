@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, Variants, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -21,6 +21,15 @@ import {
 import { subscribeQuota, getQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
+import {
+  OPENAI_CLOUD_PROVIDER_ID,
+  type TranscriptionProviderSettingsSnapshot,
+} from "../core/transcription/providerCatalog";
+import {
+  LEGACY_CLOUD_PROVIDER_ID,
+  LOCAL_STT_PROVIDER_ID,
+  type PreferredTranscriptionProviderId,
+} from "../core/transcription/providerPreferences";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -67,12 +76,15 @@ const SelectField: React.FC<{
   label: string;
   description?: string;
   inGroup?: boolean;
-}> = ({ value, onChange, options, label, description, inGroup }) => (
+  icon?: React.ReactNode;
+}> = ({ value, onChange, options, label, description, inGroup, icon }) => (
   <SettingsCard
     title={label}
     description={description}
     icon={
-      <SfIcon name="microphone.fill" size={16} className="text-primary/70" />
+      icon ?? (
+        <SfIcon name="microphone.fill" size={16} className="text-primary/70" />
+      )
     }
     inGroup={inGroup}
   >
@@ -89,6 +101,70 @@ const SelectField: React.FC<{
           ))}
         </SelectContent>
       </Select>
+    </div>
+  </SettingsCard>
+);
+
+const SecretField: React.FC<{
+  label: string;
+  description?: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  onClear: () => void;
+  configured: boolean;
+  saving: boolean;
+  placeholder?: string;
+  inGroup?: boolean;
+}> = ({
+  label,
+  description,
+  value,
+  onChange,
+  onSave,
+  onClear,
+  configured,
+  saving,
+  placeholder,
+  inGroup,
+}) => (
+  <SettingsCard title={label} description={description} inGroup={inGroup}>
+    <div className="ml-2 flex w-full flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="password"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          autoComplete="off"
+          spellCheck={false}
+          className="card-floating h-10 flex-1 rounded-lg border border-white/10 bg-transparent px-3 text-sm text-white/80 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/5"
+          style={{ WebkitAppRegion: "no-drag" }}
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={saving || value.trim().length === 0}
+          onClick={onSave}
+        >
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        {configured && (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={saving}
+            onClick={onClear}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      <div className="text-[10px] text-white/40">
+        {configured
+          ? "Saved locally and encrypted when available."
+          : "No key saved yet."}
+      </div>
     </div>
   </SettingsCard>
 );
@@ -160,7 +236,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [showInDock, setShowInDock] = useState<boolean>(true);
-  const [localSttEnabled, setLocalSttEnabled] = useState<boolean>(false);
+  const [providerSettings, setProviderSettings] =
+    useState<TranscriptionProviderSettingsSnapshot | null>(null);
+  const [openAiApiKeyDraft, setOpenAiApiKeyDraft] = useState("");
+  const [savingProviderKeyId, setSavingProviderKeyId] = useState<string | null>(
+    null,
+  );
   const [appVersion, setAppVersion] = useState<string>("");
   // Auth state from centralized user identity cache
   // Initialize with cached values to prevent flash of wrong UI on startup
@@ -229,21 +310,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
   }, []);
 
-  // Initialize local STT preference
+  const loadProviderSettings = useCallback(async () => {
+    if (window.stt?.getProviderSettings) {
+      return window.stt.getProviderSettings();
+    }
+
+    const providerId =
+      (await window.stt?.getPreferredProvider?.()) ?? LEGACY_CLOUD_PROVIDER_ID;
+    return {
+      preferredProviderId: providerId,
+      providers: [],
+    };
+  }, []);
+
+  // Initialize transcription provider settings
   useEffect(() => {
     let isMounted = true;
 
     (async () => {
       try {
-        const providerId = await window.stt?.getPreferredProvider?.();
-        if (typeof providerId === "string" && isMounted) {
-          setLocalSttEnabled(providerId === "local-stt");
-          return;
-        }
-
-        const val = await window.stt?.getLocalEnabled?.();
-        if (typeof val === "boolean" && isMounted) {
-          setLocalSttEnabled(val);
+        const snapshot = await loadProviderSettings();
+        if (isMounted) {
+          setProviderSettings(snapshot);
         }
       } catch {}
     })();
@@ -251,7 +339,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadProviderSettings]);
 
   // Subscribe to centralized user identity cache
   useEffect(() => {
@@ -333,10 +421,100 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [micDevices],
   );
 
+  const transcriptionProviderOptions = useMemo(() => {
+    const providers =
+      providerSettings?.providers.filter((provider) => provider.selectable) ?? [];
+    if (providers.length > 0) {
+      return providers.map((provider) => ({
+        value: provider.id,
+        label: provider.displayName,
+      }));
+    }
+
+    return [
+      {
+        value: LEGACY_CLOUD_PROVIDER_ID,
+        label: "Spoke Cloud",
+      },
+      {
+        value: LOCAL_STT_PROVIDER_ID,
+        label: "Local Moonshine",
+      },
+    ];
+  }, [providerSettings]);
+
+  const selectedProviderId =
+    providerSettings?.preferredProviderId ?? LEGACY_CLOUD_PROVIDER_ID;
+  const openAiProvider = providerSettings?.providers.find(
+    (provider) => provider.id === OPENAI_CLOUD_PROVIDER_ID,
+  );
+
   const handleMicChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
     if (window.mic?.select) {
       window.mic.select(deviceId);
+    }
+  };
+
+  const handleProviderChange = async (providerId: string) => {
+    try {
+      await window.stt?.setPreferredProvider?.(
+        providerId as PreferredTranscriptionProviderId,
+      );
+      setProviderSettings(await loadProviderSettings());
+    } catch (error) {
+      console.error("[Settings] Failed to switch transcription provider:", error);
+      window.notifications?.send?.(
+        "Failed to switch transcription provider.",
+      );
+    }
+  };
+
+  const handleSaveOpenAiKey = async () => {
+    const apiKey = openAiApiKeyDraft.trim();
+    if (!apiKey) {
+      return;
+    }
+
+    setSavingProviderKeyId(OPENAI_CLOUD_PROVIDER_ID);
+    try {
+      const snapshot = await window.stt?.setProviderApiKey?.(
+        OPENAI_CLOUD_PROVIDER_ID,
+        apiKey,
+      );
+      if (snapshot) {
+        setProviderSettings(snapshot);
+      } else {
+        setProviderSettings(await loadProviderSettings());
+      }
+      setOpenAiApiKeyDraft("");
+      window.notifications?.send?.("Saved OpenAI API key locally.");
+    } catch (error) {
+      console.error("[Settings] Failed to save OpenAI API key:", error);
+      window.notifications?.send?.("Failed to save OpenAI API key.");
+    } finally {
+      setSavingProviderKeyId(null);
+    }
+  };
+
+  const handleClearOpenAiKey = async () => {
+    setSavingProviderKeyId(OPENAI_CLOUD_PROVIDER_ID);
+    try {
+      const snapshot = await window.stt?.clearProviderApiKey?.(
+        OPENAI_CLOUD_PROVIDER_ID,
+      );
+      if (snapshot) {
+        setProviderSettings(snapshot);
+      } else {
+        setProviderSettings(await loadProviderSettings());
+      }
+      setOpenAiApiKeyDraft("");
+      window.notifications?.send?.("Cleared stored OpenAI API key.");
+    } catch (error) {
+      console.error("[Settings] Failed to clear OpenAI API key:", error);
+      window.notifications?.send?.("Failed to clear OpenAI API key.");
+    } finally {
+      setSavingProviderKeyId(null);
     }
   };
 
@@ -696,6 +874,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         inGroup
                       />
 
+                      <SelectField
+                        label="Transcription Provider"
+                        description="Choose between the hosted backend and local Moonshine."
+                        value={selectedProviderId}
+                        onChange={handleProviderChange}
+                        options={transcriptionProviderOptions}
+                        icon={
+                          <SfIcon
+                            name="speaker.wave.3.fill"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+
                       <Toggle
                         label="Show Floating Bar"
                         description="Display the floating dictation bar"
@@ -739,36 +933,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         inGroup
                       />
 
-                      <Toggle
-                        label="Local Transcription"
-                        description="Use on-device Moonshine model instead of cloud"
-                        enabled={localSttEnabled}
-                        onChange={async (enabled) => {
-                          try {
-                            await window.stt?.setPreferredProvider?.(
-                              enabled ? "local-stt" : "legacy-cloud",
-                            );
-                            setLocalSttEnabled(enabled);
-                          } catch (error) {
-                            console.error(
-                              "[Settings] Failed to toggle local STT:",
-                              error,
-                            );
-                            window.notifications?.send?.(
-                              "Failed to enable local transcription. Check that local-stt/.venv exists.",
-                            );
-                          }
-                        }}
-                        icon={
-                          <SfIcon
-                            name="desktopcomputer"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        }
-                        inGroup
-                      />
-
                       {/* Temporarily hidden - can be restored later */}
                       {/* <Toggle
                         label="Improve the Model for Everyone"
@@ -787,6 +951,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         }
                         inGroup
                       /> */}
+                    </div>
+                  </motion.section>
+
+                  <motion.section
+                    variants={sectionVariants}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
+                  >
+                    <SectionSeparator title="Cloud Keys" />
+
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      <SecretField
+                        label={openAiProvider?.apiKeyLabel ?? "OpenAI API Key"}
+                        description="Stored locally for the upcoming direct OpenAI transcription adapter. It is not wired into runtime yet."
+                        value={openAiApiKeyDraft}
+                        onChange={setOpenAiApiKeyDraft}
+                        onSave={handleSaveOpenAiKey}
+                        onClear={handleClearOpenAiKey}
+                        configured={openAiProvider?.apiKeyConfigured ?? false}
+                        saving={savingProviderKeyId === OPENAI_CLOUD_PROVIDER_ID}
+                        placeholder={openAiProvider?.apiKeyPlaceholder ?? "sk-..."}
+                        inGroup
+                      />
                     </div>
                   </motion.section>
 

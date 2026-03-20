@@ -13,6 +13,7 @@ import {
   systemPreferences,
   powerMonitor,
   globalShortcut,
+  safeStorage,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import * as Sentry from "@sentry/electron/main";
@@ -223,6 +224,12 @@ import {
   MAX_UI_SCALE,
 } from "./constants/display";
 import {
+  buildTranscriptionProviderSettingsSnapshot,
+  isApiKeyTranscriptionProviderId,
+  OPENAI_CLOUD_PROVIDER_ID,
+  type ApiKeyTranscriptionProviderId,
+} from "./core/transcription/providerCatalog";
+import {
   getDefaultProviderPreferences,
   isLocalProviderSelected,
   LOCAL_STT_PROVIDER_ID,
@@ -407,8 +414,16 @@ let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
 // Local STT sidecar state
 let sttPrefsPath: string; // Will be initialized in app.whenReady()
+let sttSecretsPath: string; // Will be initialized in app.whenReady()
 let preferredProviderId: PreferredTranscriptionProviderId =
   LEGACY_CLOUD_PROVIDER_ID;
+type StoredProviderSecret = {
+  storage: "safeStorage" | "plainText";
+  value: string;
+};
+let providerSecrets: Partial<
+  Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>
+> = {};
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
@@ -1230,6 +1245,33 @@ function loadSttPreferences() {
   return getDefaultProviderPreferences();
 }
 
+function loadProviderSecrets(): Partial<
+  Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>
+> {
+  try {
+    if (fs.existsSync(sttSecretsPath)) {
+      const data = fs.readFileSync(sttSecretsPath, "utf8");
+      const parsed = JSON.parse(data) as Record<string, StoredProviderSecret>;
+
+      return Object.fromEntries(
+        Object.entries(parsed).filter(([providerId, secret]) => {
+          return (
+            isApiKeyTranscriptionProviderId(providerId) &&
+            secret &&
+            typeof secret === "object" &&
+            typeof secret.storage === "string" &&
+            typeof secret.value === "string"
+          );
+        }),
+      ) as Partial<Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>>;
+    }
+  } catch (error) {
+    console.error("[STTSecrets] Failed to load provider secrets:", error);
+  }
+
+  return {};
+}
+
 function saveSttPreferences(prefs: {
   preferredProviderId: PreferredTranscriptionProviderId;
 }): void {
@@ -1243,6 +1285,67 @@ function saveSttPreferences(prefs: {
   } catch (error) {
     console.error("[STTPrefs] Failed to save preferences:", error);
   }
+}
+
+function saveProviderSecrets(
+  secrets: Partial<Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>>,
+): void {
+  try {
+    const userDataDir = app.getPath("userData");
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+    fs.writeFileSync(sttSecretsPath, JSON.stringify(secrets, null, 2));
+  } catch (error) {
+    console.error("[STTSecrets] Failed to save provider secrets:", error);
+  }
+}
+
+function encodeProviderSecret(apiKey: string): StoredProviderSecret {
+  if (safeStorage.isEncryptionAvailable()) {
+    return {
+      storage: "safeStorage",
+      value: safeStorage.encryptString(apiKey).toString("base64"),
+    };
+  }
+
+  return {
+    storage: "plainText",
+    value: apiKey,
+  };
+}
+
+function decodeProviderSecret(secret: StoredProviderSecret): string {
+  if (secret.storage === "safeStorage") {
+    return safeStorage.decryptString(Buffer.from(secret.value, "base64"));
+  }
+
+  return secret.value;
+}
+
+function hasProviderApiKey(providerId: ApiKeyTranscriptionProviderId): boolean {
+  const secret = providerSecrets[providerId];
+  if (!secret) {
+    return false;
+  }
+
+  try {
+    return decodeProviderSecret(secret).trim().length > 0;
+  } catch (error) {
+    console.error("[STTSecrets] Failed to decode provider secret:", error);
+    return false;
+  }
+}
+
+function getProviderSettingsSnapshot() {
+  const configuredApiKeyProviderIds = (
+    [OPENAI_CLOUD_PROVIDER_ID] as ApiKeyTranscriptionProviderId[]
+  ).filter((providerId) => hasProviderApiKey(providerId));
+
+  return buildTranscriptionProviderSettingsSnapshot({
+    preferredProviderId,
+    configuredApiKeyProviderIds,
+  });
 }
 
 const DEFAULT_INSPECT_CONTEXT_CHARS = 96;
@@ -2971,6 +3074,7 @@ app.whenReady().then(async () => {
   pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
   appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
   sttPrefsPath = path.join(app.getPath("userData"), "stt-preferences.json");
+  sttSecretsPath = path.join(app.getPath("userData"), "stt-provider-secrets.json");
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -3005,6 +3109,7 @@ app.whenReady().then(async () => {
 
   // Load local STT preferences and pre-spawn sidecar if enabled
   const sttPrefs = loadSttPreferences();
+  providerSecrets = loadProviderSecrets();
   preferredProviderId = sttPrefs.preferredProviderId;
   if (isLocalProviderSelected(preferredProviderId)) {
     spawnSidecar().catch((err) => {
@@ -3835,6 +3940,10 @@ app.whenReady().then(async () => {
     return preferredProviderId;
   });
 
+  ipcMain.handle("stt:get-provider-settings", () => {
+    return getProviderSettingsSnapshot();
+  });
+
   ipcMain.handle(
     "stt:set-preferred-provider",
     async (_event, providerId: PreferredTranscriptionProviderId) => {
@@ -3859,6 +3968,45 @@ app.whenReady().then(async () => {
       killSidecar();
     },
   );
+
+  ipcMain.handle(
+    "stt:set-provider-api-key",
+    (_event, payload: { providerId: string; apiKey: string }) => {
+      if (!isApiKeyTranscriptionProviderId(payload.providerId)) {
+        throw new Error(
+          `Provider '${payload.providerId}' does not accept a stored API key.`,
+        );
+      }
+
+      const apiKey = payload.apiKey.trim();
+      if (!apiKey) {
+        throw new Error("API key cannot be empty.");
+      }
+
+      providerSecrets = {
+        ...providerSecrets,
+        [payload.providerId]: encodeProviderSecret(apiKey),
+      };
+      saveProviderSecrets(providerSecrets);
+
+      return getProviderSettingsSnapshot();
+    },
+  );
+
+  ipcMain.handle("stt:clear-provider-api-key", (_event, providerId: string) => {
+    if (!isApiKeyTranscriptionProviderId(providerId)) {
+      throw new Error(
+        `Provider '${providerId}' does not accept a stored API key.`,
+      );
+    }
+
+    const nextSecrets = { ...providerSecrets };
+    delete nextSecrets[providerId];
+    providerSecrets = nextSecrets;
+    saveProviderSecrets(providerSecrets);
+
+    return getProviderSettingsSnapshot();
+  });
 
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {

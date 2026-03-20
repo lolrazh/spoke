@@ -66,8 +66,20 @@ if (!globalThis.window.stt) {
       text: "",
       metrics: {},
     }),
+    getProviderSettings: async () => ({
+      preferredProviderId: "legacy-cloud",
+      providers: [],
+    }),
     getPreferredProvider: async () => "legacy-cloud",
     setPreferredProvider: async (_providerId: string) => {},
+    setProviderApiKey: async (_providerId: string, _apiKey: string) => ({
+      preferredProviderId: "legacy-cloud",
+      providers: [],
+    }),
+    clearProviderApiKey: async (_providerId: string) => ({
+      preferredProviderId: "legacy-cloud",
+      providers: [],
+    }),
     getLocalEnabled: async () => false,
     setLocalEnabled: async (_val: boolean) => {},
   } as any;

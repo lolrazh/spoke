@@ -191,9 +191,14 @@ contextBridge.exposeInMainWorld("mic", {
 contextBridge.exposeInMainWorld("stt", {
   transcribeLocal: (pcmBuffer: ArrayBuffer) =>
     ipcRenderer.invoke("stt:transcribe-local", Buffer.from(pcmBuffer)),
+  getProviderSettings: () => ipcRenderer.invoke("stt:get-provider-settings"),
   getPreferredProvider: () => ipcRenderer.invoke("stt:get-preferred-provider"),
   setPreferredProvider: (providerId: string) =>
     ipcRenderer.invoke("stt:set-preferred-provider", providerId),
+  setProviderApiKey: (providerId: string, apiKey: string) =>
+    ipcRenderer.invoke("stt:set-provider-api-key", { providerId, apiKey }),
+  clearProviderApiKey: (providerId: string) =>
+    ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
   getLocalEnabled: () => ipcRenderer.invoke("stt:get-local-enabled"),
   setLocalEnabled: (val: boolean) =>
     ipcRenderer.invoke("stt:set-local-enabled", val),

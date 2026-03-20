@@ -7,6 +7,10 @@ import type {
   ActiveDisplayPayload,
   TranscriptionItem,
 } from "./shared";
+import type {
+  ApiKeyTranscriptionProviderId,
+  TranscriptionProviderSettingsSnapshot,
+} from "../core/transcription/providerCatalog";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 
 declare global {
@@ -185,10 +189,18 @@ declare global {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
       ) => Promise<{ text: string; metrics?: object }>;
+      getProviderSettings: () => Promise<TranscriptionProviderSettingsSnapshot>;
       getPreferredProvider: () => Promise<PreferredTranscriptionProviderId>;
       setPreferredProvider: (
         providerId: PreferredTranscriptionProviderId,
       ) => Promise<void>;
+      setProviderApiKey: (
+        providerId: ApiKeyTranscriptionProviderId,
+        apiKey: string,
+      ) => Promise<TranscriptionProviderSettingsSnapshot>;
+      clearProviderApiKey: (
+        providerId: ApiKeyTranscriptionProviderId,
+      ) => Promise<TranscriptionProviderSettingsSnapshot>;
       getLocalEnabled: () => Promise<boolean>;
       setLocalEnabled: (val: boolean) => Promise<void>;
     };
