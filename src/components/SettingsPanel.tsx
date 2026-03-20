@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { motion, Variants, AnimatePresence } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
 import {
@@ -12,17 +12,12 @@ import {
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import { signOut as supaSignOut, getSupabase } from "../lib/supabaseClient";
-import {
-  subscribeUserIdentity,
-  initUserIdentity,
-  getUserIdentity,
-} from "../state/userIdentity";
-import { subscribeQuota, getQuota, type QuotaState } from "../state/quotaCache";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import {
   OPENAI_CLOUD_PROVIDER_ID,
+  listTranscriptionProviderCatalog,
+  type TranscriptionProviderSettingsEntry,
   type TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
 import {
@@ -169,6 +164,55 @@ const SecretField: React.FC<{
   </SettingsCard>
 );
 
+const ProviderStatusCard: React.FC<{
+  provider: TranscriptionProviderSettingsEntry;
+  selected: boolean;
+  inGroup?: boolean;
+}> = ({ provider, selected, inGroup }) => {
+  const status =
+    selected
+      ? "success"
+      : provider.requiresApiKey && !provider.apiKeyConfigured
+        ? "warning"
+        : "default";
+
+  let badgeLabel = selected ? "Selected" : provider.kind === "local" ? "Local" : "Cloud";
+  if (provider.status === "coming_soon") {
+    badgeLabel = "Soon";
+  } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
+    badgeLabel = "Needs Key";
+  }
+
+  const descriptionParts = [provider.description];
+  if (provider.status === "coming_soon") {
+    descriptionParts.push("Coming soon.");
+  } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
+    descriptionParts.push("Add its API key below to enable it.");
+  } else if (selected) {
+    descriptionParts.push("Currently active.");
+  }
+
+  return (
+    <SettingsCard
+      title={provider.displayName}
+      description={descriptionParts.join(" ")}
+      icon={
+        <SfIcon
+          name={provider.kind === "local" ? "desktopcomputer" : "cloud.fill"}
+          size={16}
+          className="text-primary/70"
+        />
+      }
+      status={status}
+      inGroup={inGroup}
+    >
+      <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-white/60">
+        {badgeLabel}
+      </div>
+    </SettingsCard>
+  );
+};
+
 // Cleaned out legacy row components; cards are now the single layout primitive
 
 export const SectionSeparator: React.FC<{
@@ -195,8 +239,8 @@ export const SectionSeparator: React.FC<{
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
-  onToggleFloatingBar?: (enabled: boolean) => void;
   onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
+  onToggleFloatingBar?: (enabled: boolean) => void;
   shareTranscriptionsEnabled?: boolean;
   shareTranscriptionsLoading?: boolean;
   shareTranscriptionsUpdating?: boolean;
@@ -208,7 +252,7 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
-  onRequestCollapse: _onRequestCollapse, // Preserved for API compatibility; sign-out flow now handled by auth state machine
+  onRequestCollapse: _onRequestCollapse, // Preserved for compatibility while panel hosts are simplified
   shareTranscriptionsEnabled,
   shareTranscriptionsLoading,
   shareTranscriptionsUpdating,
@@ -243,18 +287,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     null,
   );
   const [appVersion, setAppVersion] = useState<string>("");
-  // Auth state from centralized user identity cache
-  // Initialize with cached values to prevent flash of wrong UI on startup
-  const cachedIdentity = getUserIdentity();
-  const [userEmail, setUserEmail] = useState<string | null>(
-    cachedIdentity.email,
-  );
-  const [userName, setUserName] = useState<string | null>(cachedIdentity.name);
-  const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
-  // Subscription/quota state for tier-based UI
-  // Initialize with cached value to prevent flash on startup
-  const cachedQuota = getQuota();
-  const [quotaState, setQuotaState] = useState<QuotaState | null>(cachedQuota);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -341,33 +373,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
   }, [loadProviderSettings]);
 
-  // Subscribe to centralized user identity cache
-  useEffect(() => {
-    // Initialize user identity (loads from cache immediately, then fetches from DB)
-    initUserIdentity()
-      .then((identity) => {
-        setUserEmail(identity.email);
-        setUserName(identity.name);
-      })
-      .catch((): null => null);
-
-    // Subscribe to identity changes (handles sign-in/sign-out automatically)
-    const unsubscribe = subscribeUserIdentity((identity) => {
-      setUserEmail(identity.email);
-      setUserName(identity.name);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // Subscribe to quota/subscription state for tier-based UI
-  useEffect(() => {
-    const unsubscribe = subscribeQuota((quota) => {
-      setQuotaState(quota);
-    });
-    return unsubscribe;
-  }, []);
-
   // Listen for microphone device updates and selection changes
   useEffect(() => {
     const updateDeviceList = async () => {
@@ -448,6 +453,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const openAiProvider = providerSettings?.providers.find(
     (provider) => provider.id === OPENAI_CLOUD_PROVIDER_ID,
   );
+  const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
+    if (providerSettings?.providers.length) {
+      return providerSettings.providers;
+    }
+
+    return listTranscriptionProviderCatalog().map((provider) => ({
+      ...provider,
+      apiKeyConfigured: false,
+    }));
+  }, [providerSettings]);
 
   const handleMicChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
@@ -546,57 +561,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
-
-  const handleSignOut = async () => {
-    if (isSigningOut) return; // Prevent double-clicks
-    setIsSigningOut(true);
-
-    try {
-      // Sign out and wait for completion
-      // The onAuthStateChange listener in App.tsx will:
-      // 1. Send "Signed out" notification (which transitions pill from EXPANDED → NOTIFICATION)
-      // 2. Set pendingHideAfterCollapse to show onboarding after notification
-      await supaSignOut();
-
-      // Note: We don't call onRequestCollapse() here because the NOTIFY event
-      // from the auth state change handler will transition the pill out of EXPANDED state.
-      // The pendingHideAfterCollapse logic then handles hiding and showing onboarding.
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error("Failed to sign out:", msg);
-      setIsSigningOut(false); // Reset on error so user can retry
-    }
-    // Don't reset isSigningOut on success - component will unmount anyway
-  };
-
-  const handleManageSubscription = async () => {
-    // Open browser immediately - website handles the redirect
-    // This provides instant feedback rather than waiting for API response in the app
-    try {
-      const supabase = await getSupabase();
-      if (!supabase) {
-        console.error("[Settings] Supabase client not available");
-        return;
-      }
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        console.error("[Settings] No session found for billing portal");
-        return;
-      }
-
-      // Open the redirect page with token in hash fragment (not sent to server logs)
-      // The website page will read the token, call the API, and redirect to Dodo
-      const portalUrl = `https://www.spoke.so/billing/portal#token=${session.access_token}`;
-      window.electron?.openExternal(portalUrl);
-    } catch (error) {
-      console.error("[Settings] Error opening billing portal:", error);
-    }
-  };
-
-  // Remove login handling from Settings Panel: onboarding is the sole login surface
 
   // Ensure interactive cursor and events work in embedded (expanded) mode
   useEffect(() => {
@@ -815,47 +779,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   variants={containerVariants}
                   className="flex flex-col"
                 >
-                  {/* Section 0: Usage (only shown for free users) */}
-                  {quotaState && !quotaState.isPro && userEmail && (
-                    <motion.section
-                      variants={sectionVariants}
-                      className="space-y-2"
-                      style={{ marginTop: "var(--panel-section-offset)" }}
-                    >
-                      <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background p-4">
-                        {/* Header row with title and word count */}
-                        <div className="flex items-baseline justify-between mb-3">
-                          <div className="flex items-end gap-1">
-                            <span className="text-xs font-medium text-white/90 leading-none">
-                              Usage
-                            </span>
-                            <span className="text-[9px] text-white/30 font-normal leading-none">
-                              Resets Monday
-                            </span>
-                          </div>
-                          <span className="text-[11px] text-white/50 tabular-nums">
-                            {quotaState.wordsUsed.toLocaleString()} /{" "}
-                            {quotaState.limit.toLocaleString()}
-                          </span>
-                        </div>
-                        {/* Progress bar */}
-                        <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-white/70 rounded-full transition-all duration-300"
-                            style={{
-                              width: `${Math.min(100, (quotaState.wordsUsed / quotaState.limit) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                        {quotaState.wordsUsed >= quotaState.limit && (
-                          <div className="text-[10px] text-white/40 mt-2.5">
-                            Quota reached. Upgrade for unlimited dictation.
-                          </div>
-                        )}
-                      </div>
-                    </motion.section>
-                  )}
-
                   {/* Section 1: Defaults */}
                   <motion.section
                     variants={sectionVariants}
@@ -876,7 +799,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
                       <SelectField
                         label="Transcription Provider"
-                        description="Choose between the hosted backend and local Moonshine."
+                        description="Choose where dictation audio gets transcribed."
                         value={selectedProviderId}
                         onChange={handleProviderChange}
                         options={transcriptionProviderOptions}
@@ -959,12 +882,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="Cloud Keys" />
+                    <SectionSeparator title="Providers" />
+
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      {providerEntries.map((provider) => (
+                        <ProviderStatusCard
+                          key={provider.id}
+                          provider={provider}
+                          selected={provider.id === selectedProviderId}
+                          inGroup
+                        />
+                      ))}
+                    </div>
+                  </motion.section>
+
+                  <motion.section
+                    variants={sectionVariants}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
+                  >
+                    <SectionSeparator title="API Keys" />
 
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <SecretField
                         label={openAiProvider?.apiKeyLabel ?? "OpenAI API Key"}
-                        description="Stored locally for direct OpenAI transcription. Save a key to unlock OpenAI Direct in the provider selector."
+                        description="Stored locally for direct OpenAI transcription."
                         value={openAiApiKeyDraft}
                         onChange={setOpenAiApiKeyDraft}
                         onSave={handleSaveOpenAiKey}
@@ -974,135 +916,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         placeholder={openAiProvider?.apiKeyPlaceholder ?? "sk-..."}
                         inGroup
                       />
-                    </div>
-                  </motion.section>
-
-                  {/* Section 3: Account */}
-                  <motion.section
-                    variants={sectionVariants}
-                    className="space-y-4"
-                    style={{ marginTop: "var(--panel-section-offset)" }}
-                  >
-                    <SectionSeparator title="Account" />
-                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
-                      {userEmail ? (
-                        <div
-                          className={`relative overflow-hidden ${quotaState?.isPro ? "shimmer" : ""}`}
-                        >
-                          <div className="p-3 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              {/* Avatar with optional PRO badge */}
-                              <div className="relative shrink-0">
-                                <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center">
-                                  <span className="text-[11px] font-semibold tracking-wide">
-                                    {(userName || userEmail || "")
-                                      .slice(0, 1)
-                                      .toUpperCase()}
-                                  </span>
-                                </div>
-                                {/* PRO badge - only shown for Pro users */}
-                                {quotaState?.isPro && (
-                                  <div
-                                    className="absolute -top-1 -right-1.5 text-white/90 text-[6px] font-bold px-1.5 py-0.5 rounded leading-none border border-white/10"
-                                    style={{
-                                      background:
-                                        "linear-gradient(135deg, rgba(60, 60, 60, 0.9) 0%, rgba(40, 40, 40, 0.95) 100%)",
-                                      boxShadow:
-                                        "0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06)",
-                                    }}
-                                  >
-                                    PRO
-                                  </div>
-                                )}
-                              </div>
-                              {/* Name */}
-                              <div className="text-left min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs font-medium text-white truncate">
-                                    {userName || userEmail}
-                                  </span>
-                                </div>
-                                {userEmail && (
-                                  <div className="text-[10px] text-subtle mt-0.5 truncate">
-                                    {userEmail}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {/* Buttons - Manage for Pro, Upgrade for Free */}
-                            <div className="flex items-center gap-2 shrink-0 no-drag">
-                              {quotaState?.isPro ? (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={handleManageSubscription}
-                                >
-                                  Manage
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() =>
-                                    window.electron?.openExternal?.(
-                                      "https://spoke.so/pricing",
-                                    )
-                                  }
-                                  className="relative overflow-hidden shimmer-fast"
-                                >
-                                  Upgrade
-                                </Button>
-                              )}
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={handleSignOut}
-                                disabled={isSigningOut}
-                                className="!w-9 !px-0 flex items-center justify-center"
-                              >
-                                <SfIcon
-                                  name="rectangle.portrait.and.arrow.right"
-                                  size={16}
-                                  className="text-white/60"
-                                />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        // Not signed in - show clean inline sign in UI
-                        <div className="p-3 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            {/* Generic user icon */}
-                            <div className="w-8 h-8 rounded-[var(--radius-md)] card-floating flex items-center justify-center opacity-50">
-                              <SfIcon
-                                name="person.circle"
-                                size={20}
-                                className="text-white/60"
-                              />
-                            </div>
-                            {/* Text */}
-                            <div className="text-left min-w-0">
-                              <div className="text-xs font-medium text-white/70">
-                                Not signed in
-                              </div>
-                            </div>
-                          </div>
-                          {/* Sign in button */}
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                await window.electron?.showOnboarding?.();
-                              } catch {}
-                            }}
-                            className="shrink-0 no-drag"
-                          >
-                            Sign In
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </motion.section>
                 </motion.div>

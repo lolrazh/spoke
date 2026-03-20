@@ -621,6 +621,7 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - **Auth signals system** - Cross-window coordination via localStorage (`sf.auth.*` keys) prevents duplicate sign-in toasts.
 - Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
 - Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
+- Settings is no longer treated as an auth/account surface on the refactor line; provider selection and local API-key storage now live there instead.
 - Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
 - Added light auth polling (60s) to detect server-side deletions.
 - Poll ignores network errors; only treats "no error + no user" as sign-out.
@@ -630,7 +631,9 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - **Smooth transitions** - `smoothShow()` and `smoothHide()` functions provide fade in/out for pill window.
 - **Pre-created pill** - `preparePill()` is called during onboarding to pre-create the pill window for instant reveal.
 
-### Sign-Out Flow (Fixed December 2025)
+### Historical Sign-Out Flow (Fixed December 2025)
+
+This flow still exists in the app state machine, but the refactor line no longer exposes sign-out from `SettingsPanel`. Authentication remains onboarding-driven while settings focus on transcription providers and local credentials.
 
 The sign-out flow underwent critical reliability fixes:
 
@@ -665,17 +668,14 @@ supabase.auth.onAuthStateChange((event) => {
 ```
 
 **Current Flow:**
-1. User clicks "Sign Out" button in SettingsPanel
-2. Button disables, shows "Signing out..." loading state
-3. `await supaSignOut()` completes
-4. `onAuthStateChange` fires with SIGNED_OUT event
-5. Handler dispatches "Signed out" notification
-6. Pill state machine transitions: EXPANDED → NOTIFICATION
-7. Notification displays for 2 seconds
-8. App shows onboarding window, routes PTT to onboarding
+1. A sign-out action calls `supaSignOut()`
+2. `onAuthStateChange` fires with SIGNED_OUT event
+3. Handler dispatches "Signed out" notification
+4. Pill state machine transitions: EXPANDED → NOTIFICATION
+5. Notification displays for 2 seconds
+6. App shows onboarding window, routes PTT to onboarding
 
 **Files Affected:**
-- `src/components/SettingsPanel.tsx` - Async sign-out with loading state
 - `src/components/App.tsx` - State machine handles NOTIFY in EXPANDED state, deferred Supabase calls
 - `src/state/userIdentity.ts` - Deferred refreshIdentity() in auth listener
 

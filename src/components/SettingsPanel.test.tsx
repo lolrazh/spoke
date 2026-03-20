@@ -4,11 +4,6 @@ import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
 
-vi.mock("../lib/supabaseClient", () => ({
-  getCurrentUser: vi.fn(async () => null),
-  signOut: vi.fn(async () => {}),
-}));
-
 function render(ui: React.ReactElement) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -91,6 +86,25 @@ describe("components/SettingsPanel", () => {
 
     expect(navigator.mediaDevices.enumerateDevices).toHaveBeenCalled();
     expect(window.mic.getSelected).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("renders provider controls without hosted account or quota sections", async () => {
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(React.createElement(SettingsPanel));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("Providers");
+    expect(text).toContain("API Keys");
+    expect(text).toContain("OpenAI API Key");
+    expect(text).not.toContain("Account");
+    expect(text).not.toContain("Usage");
+    expect(text).not.toContain("Sign In");
+
     unmount();
   });
 });
