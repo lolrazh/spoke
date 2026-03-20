@@ -1,7 +1,7 @@
 import type { PreferredTranscriptionProviderId } from "./providerPreferences";
 import {
-  LEGACY_CLOUD_PROVIDER_ID,
   LOCAL_STT_PROVIDER_ID,
+  SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
 export const OPENAI_CLOUD_PROVIDER_ID = "openai-cloud";
@@ -36,7 +36,7 @@ export interface TranscriptionProviderSettingsSnapshot {
 
 const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   {
-    id: LEGACY_CLOUD_PROVIDER_ID,
+    id: SPOKE_CLOUD_PROVIDER_ID,
     displayName: "Spoke Cloud",
     description: "Hosted transcription through the existing Spoke backend.",
     kind: "cloud",
@@ -91,7 +91,7 @@ export function isSelectableTranscriptionProviderId(
 ): providerId is PreferredTranscriptionProviderId {
   return (
     providerId === LOCAL_STT_PROVIDER_ID ||
-    providerId === LEGACY_CLOUD_PROVIDER_ID
+    providerId === SPOKE_CLOUD_PROVIDER_ID
   );
 }
 

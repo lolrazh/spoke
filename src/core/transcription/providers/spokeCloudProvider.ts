@@ -1,6 +1,6 @@
 import { getPrepareUrl, getTranscribeUrl } from "../../../config/api";
 import type { TranscriptionProvider } from "../providerContracts";
-import { LEGACY_CLOUD_PROVIDER_ID } from "../providerPreferences";
+import { SPOKE_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
 
 const DEFAULT_QUOTA_LIMIT = 1000;
@@ -37,9 +37,9 @@ function requireAuthToken(authToken?: string | null): string {
   return authToken;
 }
 
-export const legacyCloudProvider: TranscriptionProvider = {
+export const spokeCloudProvider: TranscriptionProvider = {
   descriptor: {
-    id: LEGACY_CLOUD_PROVIDER_ID,
+    id: SPOKE_CLOUD_PROVIDER_ID,
     displayName: "Spoke Cloud",
     kind: "cloud",
     requiresAuthToken: true,

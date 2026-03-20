@@ -14,9 +14,9 @@ import type {
   TranscriptionMode,
 } from "../core/transcription/sessionTypes";
 import {
-  LEGACY_CLOUD_PROVIDER_ID,
   defaultTranscriptionSessionOrchestrator,
   resolvePreferredTranscriptionProviderId,
+  SPOKE_CLOUD_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { AudioRecorder } from "../utils/audioRecorder";
@@ -80,7 +80,7 @@ export function useTranscription(
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [preferredProviderId, setPreferredProviderId] =
-    useState<PreferredTranscriptionProviderId>(LEGACY_CLOUD_PROVIDER_ID);
+    useState<PreferredTranscriptionProviderId>(SPOKE_CLOUD_PROVIDER_ID);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const stopInFlightRef = useRef(false);
@@ -151,16 +151,6 @@ export function useTranscription(
       ?.getPreferredProvider?.()
       .then((providerId) => {
         setPreferredProviderId(providerId);
-      })
-      .catch(async () => {
-        try {
-          const localEnabled = await window.stt?.getLocalEnabled?.();
-          setPreferredProviderId(
-            localEnabled ? "local-stt" : LEGACY_CLOUD_PROVIDER_ID,
-          );
-        } catch (error) {
-          console.debug(error);
-        }
       });
 
     return () => {

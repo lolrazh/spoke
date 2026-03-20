@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TranscriptionSessionError } from "../sessionErrors";
-import { legacyCloudProvider } from "./legacyCloudProvider";
+import { spokeCloudProvider } from "./spokeCloudProvider";
 
 vi.mock("../../../config/api", () => ({
   getPrepareUrl: () => "http://test/prepare",
@@ -10,7 +10,7 @@ vi.mock("../../../config/api", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-describe("legacyCloudProvider", () => {
+describe("spokeCloudProvider", () => {
   beforeEach(() => {
     mockFetch.mockReset();
   });
@@ -22,7 +22,7 @@ describe("legacyCloudProvider", () => {
       json: () => Promise.resolve({ error: "Unauthorized" }),
     });
 
-    const result = await legacyCloudProvider.prepare({
+    const result = await spokeCloudProvider.prepare({
       authToken: "test-token",
       screenshotBase64: "base64-image",
       context: { mode: "dictation" },
@@ -53,7 +53,7 @@ describe("legacyCloudProvider", () => {
         }),
     });
 
-    const result = await legacyCloudProvider.prepare({
+    const result = await spokeCloudProvider.prepare({
       authToken: "test-token",
       context: { mode: "dictation" },
     });
@@ -80,7 +80,7 @@ describe("legacyCloudProvider", () => {
     });
 
     const audioBlob = new Blob(["audio"], { type: "audio/webm" });
-    const result = await legacyCloudProvider.transcribe({
+    const result = await spokeCloudProvider.transcribe({
       authToken: "test-token",
       audioBlob,
       context: {
@@ -129,7 +129,7 @@ describe("legacyCloudProvider", () => {
     });
 
     await expect(
-      legacyCloudProvider.transcribe({
+      spokeCloudProvider.transcribe({
         authToken: "test-token",
         audioBlob: new Blob(["audio"], { type: "audio/webm" }),
         context: { mode: "dictation" },

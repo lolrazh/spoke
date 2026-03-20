@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   getDefaultProviderPreferences,
   isLocalProviderSelected,
-  LEGACY_CLOUD_PROVIDER_ID,
   LOCAL_STT_PROVIDER_ID,
   normalizeProviderPreferences,
+  SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
 describe("providerPreferences", () => {
-  it("defaults to the legacy cloud provider", () => {
+  it("defaults to the Spoke cloud provider", () => {
     expect(getDefaultProviderPreferences()).toEqual({
-      preferredProviderId: LEGACY_CLOUD_PROVIDER_ID,
+      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
     });
   });
 
@@ -24,18 +24,8 @@ describe("providerPreferences", () => {
     });
   });
 
-  it("migrates legacy localSttEnabled preferences", () => {
-    expect(
-      normalizeProviderPreferences({
-        localSttEnabled: true,
-      }),
-    ).toEqual({
-      preferredProviderId: LOCAL_STT_PROVIDER_ID,
-    });
-  });
-
   it("identifies whether the local provider is selected", () => {
     expect(isLocalProviderSelected(LOCAL_STT_PROVIDER_ID)).toBe(true);
-    expect(isLocalProviderSelected(LEGACY_CLOUD_PROVIDER_ID)).toBe(false);
+    expect(isLocalProviderSelected(SPOKE_CLOUD_PROVIDER_ID)).toBe(false);
   });
 });

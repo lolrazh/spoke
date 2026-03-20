@@ -26,8 +26,8 @@ import {
   type TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
 import {
-  LEGACY_CLOUD_PROVIDER_ID,
   LOCAL_STT_PROVIDER_ID,
+  SPOKE_CLOUD_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
 } from "../core/transcription/providerPreferences";
 
@@ -316,7 +316,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
 
     const providerId =
-      (await window.stt?.getPreferredProvider?.()) ?? LEGACY_CLOUD_PROVIDER_ID;
+      (await window.stt?.getPreferredProvider?.()) ?? SPOKE_CLOUD_PROVIDER_ID;
     return {
       preferredProviderId: providerId,
       providers: [],
@@ -433,7 +433,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
     return [
       {
-        value: LEGACY_CLOUD_PROVIDER_ID,
+        value: SPOKE_CLOUD_PROVIDER_ID,
         label: "Spoke Cloud",
       },
       {
@@ -444,7 +444,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [providerSettings]);
 
   const selectedProviderId =
-    providerSettings?.preferredProviderId ?? LEGACY_CLOUD_PROVIDER_ID;
+    providerSettings?.preferredProviderId ?? SPOKE_CLOUD_PROVIDER_ID;
   const openAiProvider = providerSettings?.providers.find(
     (provider) => provider.id === OPENAI_CLOUD_PROVIDER_ID,
   );

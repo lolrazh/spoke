@@ -235,7 +235,7 @@ import {
   LOCAL_STT_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
   normalizeProviderPreferences,
-  LEGACY_CLOUD_PROVIDER_ID,
+  SPOKE_CLOUD_PROVIDER_ID,
 } from "./core/transcription/providerPreferences";
 import { logger } from "./utils/logger";
 
@@ -416,7 +416,7 @@ let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 let sttPrefsPath: string; // Will be initialized in app.whenReady()
 let sttSecretsPath: string; // Will be initialized in app.whenReady()
 let preferredProviderId: PreferredTranscriptionProviderId =
-  LEGACY_CLOUD_PROVIDER_ID;
+  SPOKE_CLOUD_PROVIDER_ID;
 type StoredProviderSecret = {
   storage: "safeStorage" | "plainText";
   value: string;
@@ -3912,30 +3912,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("stt:get-local-enabled", () => {
-    return isLocalProviderSelected(preferredProviderId);
-  });
-
-  ipcMain.handle("stt:set-local-enabled", async (_event, val: boolean) => {
-    const nextProviderId = val
-      ? LOCAL_STT_PROVIDER_ID
-      : LEGACY_CLOUD_PROVIDER_ID;
-    preferredProviderId = nextProviderId;
-    saveSttPreferences({ preferredProviderId: nextProviderId });
-    if (isLocalProviderSelected(nextProviderId)) {
-      try {
-        if (!sidecarProcess || !sidecarReady) {
-          await spawnSidecar();
-        }
-      } catch (err) {
-        console.error("[STT] Failed to spawn sidecar on toggle:", err);
-        throw err;
-      }
-    } else {
-      killSidecar();
-    }
-  });
-
   ipcMain.handle("stt:get-preferred-provider", () => {
     return preferredProviderId;
   });
@@ -3950,7 +3926,7 @@ app.whenReady().then(async () => {
       preferredProviderId =
         providerId === LOCAL_STT_PROVIDER_ID
           ? LOCAL_STT_PROVIDER_ID
-          : LEGACY_CLOUD_PROVIDER_ID;
+          : SPOKE_CLOUD_PROVIDER_ID;
       saveSttPreferences({ preferredProviderId });
 
       if (isLocalProviderSelected(preferredProviderId)) {

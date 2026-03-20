@@ -7,14 +7,14 @@ import {
   OPENAI_CLOUD_PROVIDER_ID,
 } from "./providerCatalog";
 import {
-  LEGACY_CLOUD_PROVIDER_ID,
   LOCAL_STT_PROVIDER_ID,
+  SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
 describe("providerCatalog", () => {
   it("lists the current provider catalog", () => {
     expect(listTranscriptionProviderCatalog().map((provider) => provider.id)).toEqual([
-      LEGACY_CLOUD_PROVIDER_ID,
+      SPOKE_CLOUD_PROVIDER_ID,
       LOCAL_STT_PROVIDER_ID,
       OPENAI_CLOUD_PROVIDER_ID,
     ]);
@@ -23,11 +23,11 @@ describe("providerCatalog", () => {
   it("builds a settings snapshot with api-key configuration state", () => {
     expect(
       buildTranscriptionProviderSettingsSnapshot({
-        preferredProviderId: LEGACY_CLOUD_PROVIDER_ID,
+        preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
         configuredApiKeyProviderIds: [OPENAI_CLOUD_PROVIDER_ID],
       }),
     ).toEqual({
-      preferredProviderId: LEGACY_CLOUD_PROVIDER_ID,
+      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
       providers: expect.arrayContaining([
         expect.objectContaining({
           id: OPENAI_CLOUD_PROVIDER_ID,
@@ -39,7 +39,7 @@ describe("providerCatalog", () => {
   });
 
   it("checks selectable and api-key-backed provider ids", () => {
-    expect(isSelectableTranscriptionProviderId(LEGACY_CLOUD_PROVIDER_ID)).toBe(
+    expect(isSelectableTranscriptionProviderId(SPOKE_CLOUD_PROVIDER_ID)).toBe(
       true,
     );
     expect(isSelectableTranscriptionProviderId(LOCAL_STT_PROVIDER_ID)).toBe(

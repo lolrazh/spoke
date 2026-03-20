@@ -67,21 +67,19 @@ if (!globalThis.window.stt) {
       metrics: {},
     }),
     getProviderSettings: async () => ({
-      preferredProviderId: "legacy-cloud",
+      preferredProviderId: "spoke-cloud",
       providers: [],
     }),
-    getPreferredProvider: async () => "legacy-cloud",
+    getPreferredProvider: async () => "spoke-cloud",
     setPreferredProvider: async (_providerId: string) => {},
     setProviderApiKey: async (_providerId: string, _apiKey: string) => ({
-      preferredProviderId: "legacy-cloud",
+      preferredProviderId: "spoke-cloud",
       providers: [],
     }),
     clearProviderApiKey: async (_providerId: string) => ({
-      preferredProviderId: "legacy-cloud",
+      preferredProviderId: "spoke-cloud",
       providers: [],
     }),
-    getLocalEnabled: async () => false,
-    setLocalEnabled: async (_val: boolean) => {},
   } as any;
 }
 

@@ -201,8 +201,6 @@ declare global {
       clearProviderApiKey: (
         providerId: ApiKeyTranscriptionProviderId,
       ) => Promise<TranscriptionProviderSettingsSnapshot>;
-      getLocalEnabled: () => Promise<boolean>;
-      setLocalEnabled: (val: boolean) => Promise<void>;
     };
     mic: {
       updateDevices: (
