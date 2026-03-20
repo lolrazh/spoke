@@ -7,9 +7,11 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { SelectionInspectSnapshot } from "../types/shared";
+import type {
+  AuthErrorType as SessionAuthErrorType,
+  TranscriptionMode,
+} from "../core/transcription/sessionTypes";
 import { getPrepareUrl, getTranscribeUrl } from "../config/api";
-
-type ClientSessionMode = "dictation" | "edit";
 import { AudioRecorder } from "../utils/audioRecorder";
 import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
@@ -30,11 +32,7 @@ export function clearAuthTokenCache(): void {
   cachedToken = null;
 }
 
-export type AuthErrorType =
-  | "not_signed_in"
-  | "payment_required"
-  | "auth_failed"
-  | null;
+export type AuthErrorType = SessionAuthErrorType;
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -43,7 +41,7 @@ export interface UseTranscriptionReturn {
   text: string;
   error: string | null;
   authError: AuthErrorType;
-  mode: ClientSessionMode;
+  mode: TranscriptionMode;
   selection: SelectionInspectSnapshot | null;
   audioLevel: number;
   start: () => void;
@@ -71,7 +69,7 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<AuthErrorType>(null);
-  const [mode, setMode] = useState<ClientSessionMode>("dictation");
+  const [mode, setMode] = useState<TranscriptionMode>("dictation");
   const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(
     null,
   );
