@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -33,6 +33,21 @@ import {
   type PermissionProvider,
 } from "../hooks/usePermissions";
 import { updateIdentityLocal } from "../state/userIdentity";
+import {
+  preferredTranscriptionProviderRequiresAuth,
+  SPOKE_CLOUD_PROVIDER_ID,
+} from "../core/transcription/defaultSessionOrchestrator";
+import {
+  listTranscriptionProviderCatalog,
+  type TranscriptionProviderSettingsEntry,
+  type TranscriptionProviderSettingsSnapshot,
+} from "../core/transcription/providerCatalog";
+import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import {
+  buildOnboardingSteps,
+  isOnboardingStep,
+  type OnboardingStep,
+} from "./onboardingFlow";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
@@ -89,20 +104,6 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
       if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
     },
   };
-
-type OnboardingStep =
-  | "auth"
-  | "name-verification"
-  | "permissions"
-  | "mic-check"
-  | "hotkey-info"
-  | "hotkey-test"
-  | "hands-free-test"
-  | "edit-test"
-  | "meta-directives"
-  | "cancel-info"
-  | "settings-info"
-  | "complete";
 
 type AccountSummary = {
   id: string;
@@ -174,6 +175,8 @@ const Onboarding: React.FC = () => {
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
+  const [providerSettings, setProviderSettings] =
+    useState<TranscriptionProviderSettingsSnapshot | null>(null);
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
@@ -243,6 +246,43 @@ const Onboarding: React.FC = () => {
     Array<{ id: string; label: string }>
   >([{ id: "default", label: "System Default" }]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
+  const loadProviderSettings = useCallback(async () => {
+    if (window.stt?.getProviderSettings) {
+      return window.stt.getProviderSettings();
+    }
+
+    return {
+      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
+      providers: listTranscriptionProviderCatalog().map((provider) => ({
+        ...provider,
+        selectable: provider.requiresApiKey ? false : provider.selectable,
+        apiKeyConfigured: false,
+      })),
+    };
+  }, []);
+  const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
+    if (providerSettings?.providers.length) {
+      return providerSettings.providers;
+    }
+
+    return listTranscriptionProviderCatalog().map((provider) => ({
+      ...provider,
+      selectable: provider.requiresApiKey ? false : provider.selectable,
+      apiKeyConfigured: false,
+    }));
+  }, [providerSettings]);
+  const selectableProviderEntries = useMemo(
+    () => providerEntries.filter((provider) => provider.selectable),
+    [providerEntries],
+  );
+  const selectedProviderId =
+    providerSettings?.preferredProviderId ?? SPOKE_CLOUD_PROVIDER_ID;
+  const selectedProviderEntry =
+    providerEntries.find((provider) => provider.id === selectedProviderId) ??
+    null;
+  const selectedProviderRequiresAuth = preferredTranscriptionProviderRequiresAuth(
+    selectedProviderId,
+  );
 
   // Background music during onboarding
   const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -341,6 +381,22 @@ const Onboarding: React.FC = () => {
       cleanupReady && cleanupReady();
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadProviderSettings()
+      .then((snapshot) => {
+        if (isMounted) {
+          setProviderSettings(snapshot);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadProviderSettings]);
 
   // ***CRITICAL*** Initialize session sync in Onboarding window!
   // Without this, sessions authenticated in onboarding are never saved to electron-store.
@@ -642,20 +698,10 @@ const Onboarding: React.FC = () => {
   }, []);
 
   // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => [
-    "auth",
-    "name-verification",
-    "permissions",
-    "mic-check",
-    "hotkey-info",
-    "hotkey-test",
-    "hands-free-test",
-    "edit-test",
-    "cancel-info",
-    "meta-directives",
-    "settings-info",
-    "complete",
-  ];
+  const getSteps = (): OnboardingStep[] =>
+    buildOnboardingSteps({
+      requiresAuth: selectedProviderRequiresAuth,
+    });
 
   // Permission aggregates
   const allPermissionsGranted =
@@ -668,69 +714,84 @@ const Onboarding: React.FC = () => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
     (async () => {
       await getSupabase(); // Initialize Supabase client (waits for session injection)
+      const snapshot = await loadProviderSettings();
+      if (isMountedRef.current) {
+        setProviderSettings(snapshot);
+      }
       const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
+      const providerNeedsAuth =
+        !skipAuth &&
+        preferredTranscriptionProviderRequiresAuth(
+          snapshot.preferredProviderId,
+        );
       const user = await getCurrentUser();
 
       if (forceOnboarding) {
         await refreshAccountSummary();
-        setCurrentStep("permissions");
+        setCurrentStep(providerNeedsAuth && user ? "name-verification" : "auth");
         return;
       }
 
-      if (!user && !skipAuth) {
+      if (!user && providerNeedsAuth) {
         if (isMountedRef.current) setSignedInAccount(null);
         return; // stay on auth step until the user signs in
       }
 
-      try {
-        // Ensure a profile row exists for returning users (or first login on this device)
+      if (user && providerNeedsAuth) {
         try {
-          await ensureProfileRow();
-        } catch {}
-        const profile = await getProfile();
-        const account = deriveAccountSummary(profile, user);
-        if (isMountedRef.current) setSignedInAccount(account);
-        if (profile?.onboarding_done) {
+        // Ensure a profile row exists for returning users (or first login on this device)
           try {
-            await window.electron?.setPttTarget?.("main");
-          } catch (e) {
-            console.warn("[Onboarding] setPttTarget failed:", e);
-          }
-          // (Removed) auth:set-signed-in — Supabase session is the source of truth
-          await window.electron?.onboardingComplete();
-          try {
-            window.notifications?.send?.("You've been signed in.");
+            await ensureProfileRow();
           } catch {}
-          return;
-        } else {
-          // Sync local flag with DB - if onboarding not done in DB, reset local flag
-          // This ensures restart mid-onboarding opens onboarding window (not main)
-          try {
-            await window.electron?.resetOnboardingFlag?.();
-          } catch (error) {
-            console.warn("[Onboarding] Failed to reset local flag:", error);
+          const profile = await getProfile();
+          const account = deriveAccountSummary(profile, user);
+          if (isMountedRef.current) setSignedInAccount(account);
+          if (profile?.onboarding_done) {
+            try {
+              await window.electron?.setPttTarget?.("main");
+            } catch (e) {
+              console.warn("[Onboarding] setPttTarget failed:", e);
+            }
+            // (Removed) auth:set-signed-in — Supabase session is the source of truth
+            await window.electron?.onboardingComplete();
+            try {
+              window.notifications?.send?.("You've been signed in.");
+            } catch {}
+            return;
+          } else {
+            // Sync local flag with DB - if onboarding not done in DB, reset local flag
+            // This ensures restart mid-onboarding opens onboarding window (not main)
+            try {
+              await window.electron?.resetOnboardingFlag?.();
+            } catch (error) {
+              console.warn("[Onboarding] Failed to reset local flag:", error);
+            }
           }
+        } catch (error) {
+          if (isMountedRef.current) setSignedInAccount(null);
         }
-      } catch (error) {
-        if (isMountedRef.current) setSignedInAccount(null);
+      } else if (user) {
+        await refreshAccountSummary();
       }
 
       // Check if there's a saved onboarding step (from mid-onboarding restart)
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
-        if (savedStep) {
-          setCurrentStep(savedStep as OnboardingStep);
+        const steps = buildOnboardingSteps({
+          requiresAuth: providerNeedsAuth,
+        });
+        if (savedStep && isOnboardingStep(savedStep) && steps.includes(savedStep)) {
+          setCurrentStep(savedStep);
           return;
         }
       } catch {
         // Ignore errors - continue with default step
       }
 
-      // New users go to name verification first
-      setCurrentStep("name-verification");
+      setCurrentStep(providerNeedsAuth && user ? "name-verification" : "auth");
     })();
-  }, [introOnly]);
+  }, [introOnly, loadProviderSettings]);
 
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
@@ -829,6 +890,24 @@ const Onboarding: React.FC = () => {
 
   const handleGoogle = async () => {
     await startGoogleOAuth();
+  };
+
+  const handleProviderChange = async (providerId: string) => {
+    try {
+      await window.stt?.setPreferredProvider?.(
+        providerId as PreferredTranscriptionProviderId,
+      );
+      const snapshot = await loadProviderSettings();
+      if (isMountedRef.current) {
+        setProviderSettings(snapshot);
+      }
+      setAuthError(null);
+    } catch (error) {
+      console.error("[Onboarding] Failed to switch transcription provider:", error);
+      window.notifications?.send?.(
+        "Failed to switch transcription provider.",
+      );
+    }
   };
 
   const handleEmailStart = async () => {
@@ -1311,9 +1390,7 @@ const Onboarding: React.FC = () => {
   };
 
   const showNavControls =
-    !showIntro &&
-    currentStep !== "complete" &&
-    (currentStep !== "auth" || Boolean(signedInAccount));
+    !showIntro && currentStep !== "complete";
 
   // --- Dictation test wiring for test steps ---
   useEffect(() => {
@@ -1514,18 +1591,73 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                      {signedInAccount
-                        ? "You're Signed In"
-                        : "Let's Get You Signed In"}
+                      Choose Your Transcription Provider
                     </h1>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      {signedInAccount
-                        ? "You can switch to a different account anytime."
-                        : "Choose your sign-in method"}
+                      {selectedProviderRequiresAuth
+                        ? "Spoke Cloud needs your account. Local and direct providers can be used without signing in."
+                        : "This provider can be used without a Spoke account. You can always change it later in Settings."}
                     </p>
                   </div>
+                  <motion.div
+                    className="onboarding-section mx-auto w-full max-w-[22rem] space-y-3 text-left"
+                    variants={authViewVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                  >
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
+                        Transcription Provider
+                      </div>
+                      <Select
+                        value={selectedProviderId}
+                        onValueChange={handleProviderChange}
+                      >
+                        <SelectTrigger className="w-full card-floating border-white/10 bg-white/5">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectableProviderEntries.map((provider) => (
+                            <SelectItem key={provider.id} value={provider.id}>
+                              {provider.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {selectedProviderEntry && (
+                      <div
+                        className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
+                          selectedProviderRequiresAuth
+                            ? "opacity-95"
+                            : "border-emerald-400/30 bg-emerald-500/5"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white">
+                            {selectedProviderEntry.displayName}
+                          </p>
+                          <p className="mt-1 text-xs text-subtle leading-relaxed">
+                            {selectedProviderEntry.description}
+                          </p>
+                        </div>
+                        <div className="text-white/70">
+                          <SfIcon
+                            name={
+                              selectedProviderRequiresAuth
+                                ? "person.crop.circle.badge.checkmark"
+                                : "checkmark.seal.fill"
+                            }
+                            size={22}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
                   <AnimatePresence mode="wait">
-                    {signedInAccount ? (
+                    {selectedProviderRequiresAuth && signedInAccount ? (
                       <motion.div
                         key="auth-summary"
                         variants={authViewVariants}
@@ -1581,7 +1713,7 @@ const Onboarding: React.FC = () => {
                           </div>
                         )}
                       </motion.div>
-                    ) : (
+                    ) : selectedProviderRequiresAuth ? (
                       <motion.div
                         key="auth-form"
                         variants={authViewVariants}
@@ -1607,6 +1739,31 @@ const Onboarding: React.FC = () => {
                             {authError}
                           </div>
                         )}
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="provider-ready"
+                        variants={authViewVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="onboarding-section mx-auto w-full max-w-[22rem] space-y-3 text-left"
+                      >
+                        <div className="onboarding-permission-row flex items-center justify-between gap-3 p-3 border-emerald-400/30 bg-emerald-500/5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">
+                              No Spoke account required
+                            </p>
+                            <p className="mt-1 text-xs text-subtle leading-relaxed">
+                              {selectedProviderEntry?.requiresApiKey
+                                ? "Your saved API key will be used directly once onboarding is complete."
+                                : "Grant permissions and you can start dictating on this Mac immediately."}
+                            </p>
+                          </div>
+                          <div className="text-emerald-200">
+                            <SfIcon name="checkmark.seal.fill" size={22} />
+                          </div>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -2413,6 +2570,7 @@ const Onboarding: React.FC = () => {
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
                   (currentStep === "auth" &&
+                    selectedProviderRequiresAuth &&
                     (!signedInAccount ||
                       !sessionValid ||
                       authLoading ||

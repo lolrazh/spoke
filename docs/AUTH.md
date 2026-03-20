@@ -54,7 +54,7 @@ Spoke uses a **hybrid authentication system** that combines Supabase OAuth with 
 ### Complete OAuth Flow
 
 ```
-1. User clicks "Continue with Google" in IntroExperience (or Onboarding)
+1. User chooses `Spoke Cloud` in onboarding and clicks "Continue with Google" (or starts OAuth from IntroExperience)
 2. App requests redirect URL from main process
 3. Main process returns environment-appropriate callback URL
 4. Supabase client generates OAuth URL with callback
@@ -68,16 +68,16 @@ Spoke uses a **hybrid authentication system** that combines Supabase OAuth with 
 10. App receives deep link with auth data
 11. Onboarding handles callback (even if IntroExperience initiated it)
 12. App validates and processes auth tokens
-13. IntroExperience fades out, name-verification step appears
-14. User confirms/edits display name
-15. Onboarding continues with permissions flow
+13. IntroExperience fades out and onboarding resumes on the provider/auth flow
+14. If `Spoke Cloud` is selected, name-verification appears after sign-in
+15. If a local or direct-key provider is selected, onboarding continues without a sign-in requirement
 ```
 
 ### Step-by-Step Process
 
 #### 1. **Auth Initiation** (`IntroExperience.tsx` or `Onboarding.tsx`)
 
-OAuth can be initiated from IntroExperience (first screen) or Onboarding:
+OAuth can be initiated from IntroExperience (first screen) or from the onboarding provider step when `Spoke Cloud` is the selected transcription provider:
 
 ```typescript
 // IntroExperience.tsx - Primary entry point
@@ -618,9 +618,10 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 ### Behavior Changes
 - **IntroExperience OAuth entry point** - Users can now start Google OAuth from the first intro screen instead of navigating to a separate auth step.
 - **Name verification step** - After auth callback, users confirm/edit their display name before continuing to permissions.
+- **Provider-first onboarding** - Onboarding now starts by choosing a transcription provider; `Spoke Cloud` shows the auth UI, while local or direct-key providers continue without sign-in.
 - **Auth signals system** - Cross-window coordination via localStorage (`sf.auth.*` keys) prevents duplicate sign-in toasts.
 - Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
-- Dictation is gated client-side by signed-in state and microphone permission; clicking the pill while signed out opens onboarding instead of starting capture.
+- Dictation is gated client-side by the selected provider plus microphone permission; clicking the pill while signed out only opens onboarding when the active provider still requires auth.
 - Settings is no longer treated as an auth/account surface on the refactor line; provider selection and local API-key storage now live there instead.
 - Sign-out flow explicitly hides the floating bar, cancels any active transcription, and routes PTT to onboarding.
 - Added light auth polling (60s) to detect server-side deletions.

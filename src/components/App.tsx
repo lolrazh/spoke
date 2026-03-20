@@ -30,6 +30,7 @@ import {
   PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
   PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
 } from "../hooks/usePermissionNotifications";
+import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 
 // Pill State Machine Types
 export type PillStateType =
@@ -347,10 +348,17 @@ const AppInner: React.FC = () => {
     };
   }, []);
 
+  const preferredProviderRequiresAuth = useCallback(async () => {
+    const providerId = await window.stt?.getPreferredProvider?.();
+    return preferredTranscriptionProviderRequiresAuth(providerId);
+  }, []);
+
   const canProceedWithStart = useCallback(async (): Promise<boolean> => {
     try {
       const skipAuth = !!window.devFlags?.skipAuth;
-      if (!skipAuth) {
+      const providerNeedsAuth =
+        !skipAuth && (await preferredProviderRequiresAuth());
+      if (providerNeedsAuth) {
         try {
           const { getCurrentUser } = await import("../lib/supabaseClient");
           const user = await getCurrentUser();
@@ -377,7 +385,7 @@ const AppInner: React.FC = () => {
       // Fall through and attempt to start; downstream flows will surface errors.
     }
     return true;
-  }, [triggerPermissionNotification]);
+  }, [preferredProviderRequiresAuth, triggerPermissionNotification]);
 
   const loadSharePreference = useCallback(async (userId: string | null) => {
     if (!userId) {
@@ -481,10 +489,12 @@ const AppInner: React.FC = () => {
           "../lib/supabaseClient"
         );
         const skipAuth = !!window.devFlags?.skipAuth;
+        const providerNeedsAuth =
+          !skipAuth && (await preferredProviderRequiresAuth());
 
         // Refresh session on app startup to get fresh JWT with latest subscription claims
         // This ensures users who just paid can dictate immediately after restarting the app
-        if (!skipAuth) {
+        if (providerNeedsAuth) {
           const supabase = await getSupabase();
           if (supabase) {
             try {
@@ -536,7 +546,7 @@ const AppInner: React.FC = () => {
         }
 
         const user = skipAuth ? { id: "dev" } : await getCurrentUser();
-        if (!user && !skipAuth) {
+        if (!user && providerNeedsAuth) {
           try {
             await window.electron?.showOnboarding?.();
           } catch {}
@@ -649,6 +659,9 @@ const AppInner: React.FC = () => {
               // Defer the async work to avoid blocking/breaking the auth listener
               setTimeout(() => {
                 (async () => {
+                  const providerStillNeedsAuth =
+                    await preferredProviderRequiresAuth();
+
                   try {
                     // Cancel any active or in-flight transcription when signing out
                     latestTransRef.current?.cancel?.();
@@ -662,18 +675,20 @@ const AppInner: React.FC = () => {
                     clearQuotaCache();
                   } catch {}
 
-                  try {
-                    window.notifications?.send?.("Signed out");
-                  } catch {}
-                  setPendingHideAfterCollapse({
-                    active: true,
-                    message: "Signed out",
-                    onAfter: async () => {
-                      try {
-                        await window.electron?.showOnboarding?.();
-                      } catch {}
-                    },
-                  });
+                  if (providerStillNeedsAuth) {
+                    try {
+                      window.notifications?.send?.("Signed out");
+                    } catch {}
+                    setPendingHideAfterCollapse({
+                      active: true,
+                      message: "Signed out",
+                      onAfter: async () => {
+                        try {
+                          await window.electron?.showOnboarding?.();
+                        } catch {}
+                      },
+                    });
+                  }
                 })();
               }, 0);
               prevUserIdRef.current = null;
@@ -693,6 +708,8 @@ const AppInner: React.FC = () => {
                 const { data, error } = await supabase.auth.getUser();
                 // Only treat as signed-out when there is NO error and NO user
                 if (!error && !data?.user) {
+                  const providerStillNeedsAuth =
+                    await preferredProviderRequiresAuth();
                   // Guard: only toast sign-out on a real transition from a prior user
                   if (prevUserIdRef.current == null) return;
                   // Update prevUserIdRef immediately to prevent duplicate triggers
@@ -711,18 +728,20 @@ const AppInner: React.FC = () => {
                     clearQuotaCache();
                   } catch {}
 
-                  try {
-                    window.notifications?.send?.("Signed out");
-                  } catch {}
-                  setPendingHideAfterCollapse({
-                    active: true,
-                    message: "Signed out",
-                    onAfter: async () => {
-                      try {
-                        await window.electron?.showOnboarding?.();
-                      } catch {}
-                    },
-                  });
+                  if (providerStillNeedsAuth) {
+                    try {
+                      window.notifications?.send?.("Signed out");
+                    } catch {}
+                    setPendingHideAfterCollapse({
+                      active: true,
+                      message: "Signed out",
+                      onAfter: async () => {
+                        try {
+                          await window.electron?.showOnboarding?.();
+                        } catch {}
+                      },
+                    });
+                  }
                 }
                 // If error: likely network issue — ignore and retain current UX
               } catch {}
@@ -735,7 +754,7 @@ const AppInner: React.FC = () => {
       if (unsubscribe) unsubscribe();
       if (pollId) clearInterval(pollId);
     };
-  }, [loadSharePreference]);
+  }, [loadSharePreference, preferredProviderRequiresAuth]);
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
