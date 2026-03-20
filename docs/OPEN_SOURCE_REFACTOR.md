@@ -2,13 +2,13 @@
 
 ## Status
 
-This document is the execution plan for converting Spoke from a hosted, auth-gated product into a **local-first, open-source desktop app** with **optional cloud providers**.
+This document is the execution plan for converting Spoke from a hosted, auth-gated product into a **local-first, open-source desktop app** with **local inference and BYO cloud providers**.
 
 It is intentionally opinionated:
 
 - Keep **Electron** for the refactor.
 - Make **local inference** the first-class path.
-- Treat **cloud STT/LLM** as optional adapters.
+- Treat **cloud STT/LLM** as first-class BYO provider adapters, not product-owned infrastructure requirements.
 - Remove **Supabase, Dodo, quota, and worker coupling** from the core UX.
 - Re-evaluate **Tauri** only after the architecture is clean.
 
@@ -26,7 +26,7 @@ The target app is:
 - **No required account**
 - **No required hosted backend**
 - **Local dictation/edit/history by default**
-- **Optional cloud providers via user-supplied API keys**
+- **Cloud providers available through user-supplied API keys**
 - **Open-source friendly** in both runtime model and repo structure
 
 ### Shell Direction
@@ -83,6 +83,18 @@ The current hot path also assumes hosted services:
 - worker `/prepare` and `/transcribe`
 - website billing portal
 
+### Bloat Assessment
+
+There is a lot of bloat in the current codebase, but it falls into two different categories:
+
+- **Architectural bloat**: oversized files, mixed responsibilities, duplicated flow logic, renderer code directly coupled to auth and worker behavior
+- **Legacy product bloat**: auth, quota, payments, worker transport, hosted onboarding, session sync, billing UI
+
+These should not be attacked the same way:
+
+- Architectural bloat should be reduced early because it blocks the refactor.
+- Legacy product bloat should be removed in phases after provider seams exist.
+
 ---
 
 ## Refactor Principles
@@ -108,6 +120,35 @@ The current hot path also assumes hosted services:
 7. **Keep PRs bite-sized**
    Every step below should be implementable as a focused, reviewable change.
 
+## Bloat Strategy
+
+### Reduce Immediately
+
+Reduce this bloat during Phase 1 and Phase 2 because it enables the new architecture:
+
+- giant files with multiple responsibilities
+- provider logic embedded directly in hooks and components
+- main-process code that mixes tray, windows, updater, sidecar lifecycle, permissions, and IPC in one file
+- duplicated local/cloud control flow
+
+### Remove Later
+
+Remove this bloat after local and BYO cloud providers are standing on their own:
+
+- Supabase auth/session bootstrap
+- quota cache and entitlement logic
+- Dodo billing and upgrade flows
+- worker-specific HTTP transport assumptions
+- hosted onboarding and account-state UX
+
+### Avoid
+
+Do not do broad, aesthetic cleanup before the seams exist:
+
+- random dead-code hunts across the whole repo
+- sweeping file moves before contracts are introduced
+- UI-only cleanup that leaves provider and auth coupling intact
+
 ---
 
 ## Target V1 Scope
@@ -119,7 +160,8 @@ The current hot path also assumes hosted services:
 - Edit mode using current selection
 - Local transcription history
 - Local STT install/download management
-- Optional cloud STT/LLM via BYO API keys
+- BYO cloud STT/LLM via user API keys
+- Local API key storage and provider validation
 - Native paste via helper
 - Tray, shortcut, floating bar, updater
 - Basic provider diagnostics and settings
@@ -141,7 +183,7 @@ The current hot path also assumes hosted services:
 Defer these until the local-first architecture is stable:
 
 - OCR screen context in v1, unless it can be cleanly reintroduced as a separate provider capability
-- Hosted Spoke cloud as a default option
+- Hosted Spoke-managed cloud as a default option
 - Any multi-user or team telemetry features
 
 ---
@@ -156,7 +198,7 @@ Renderer UI
     -> Provider Registry
       -> Local STT Provider (MLX sidecar)
       -> Cloud STT Provider(s)
-    -> Optional LLM Provider
+    -> Selected LLM Provider
     -> Native Insert Service
     -> Local History Store
 ```
@@ -319,10 +361,8 @@ Make a few high-leverage decisions before coding the extraction.
 - Confirm the target release is **macOS-only**.
 - Confirm the initial open-source release has **no required login**.
 - Confirm the first supported local STT path is **MLX + Moonshine**.
-- Decide whether v1 includes:
-  - local-only
-  - local + BYO cloud keys
-  - local + BYO cloud keys + optional hosted Spoke provider
+- Confirm that v1 includes **local + BYO cloud keys** as first-class functionality.
+- Decide whether v1 also includes an optional hosted Spoke provider later.
 - Decide whether OCR is:
   - deferred
   - local-only
@@ -351,6 +391,7 @@ Separate orchestration from transport/auth/billing without breaking the current 
 - Introduce `TranscriptionProvider`, `LlmProvider`, `SessionOrchestrator`, and `ProviderCapability`.
 - Move reusable routing/prompt logic out of worker-shaped code and into `src/core`.
 - Refactor `src/hooks/useTranscription.ts` to call provider adapters instead of embedding local/cloud branches directly.
+- Start splitting oversized files by responsibility wherever seams are introduced, especially `src/main.ts`, `src/components/App.tsx`, and `src/components/Onboarding.tsx`.
 - Add generic session errors:
   - `provider_not_configured`
   - `provider_unavailable`
@@ -374,6 +415,7 @@ Separate orchestration from transport/auth/billing without breaking the current 
 - `useTranscription` no longer owns provider branching logic
 - session flow can switch providers through contracts
 - existing local/cloud behavior still works in development
+- at least the first layer of architectural bloat is reduced rather than carried forward into the new design
 
 ---
 
@@ -432,11 +474,11 @@ Turn the current dev-only MLX path into a clean, installable feature.
 
 ---
 
-## Phase 3: Add Optional Cloud Providers
+## Phase 3: Add BYO Cloud Providers
 
 ### Goal
 
-Make cloud usage optional and independent of any Spoke-managed auth system.
+Make cloud usage a first-class capability that is independent of any Spoke-managed auth system.
 
 ### Tasks
 
@@ -458,6 +500,7 @@ Make cloud usage optional and independent of any Spoke-managed auth system.
 - user can dictate without signing in
 - user can choose `Local`, `Cloud`, or `Auto`
 - cloud usage requires only provider config, not app auth
+- local and cloud providers coexist cleanly under the same session orchestration model
 
 ---
 
@@ -555,16 +598,17 @@ These are the recommended first implementation tickets.
 5. Wrap the current worker path behind `LegacyCloudProvider`.
 6. Refactor `useTranscription` to use an orchestrator.
 7. Split local sidecar lifecycle out of `src/main.ts`.
-8. Add `runtimePaths.ts` for installable local model assets.
-9. Add a model manifest and checksum validation.
-10. Add model install status IPC.
-11. Add settings UI for install/remove/health.
-12. Add Keychain-backed secret storage for cloud provider keys.
-13. Add a cloud provider config screen.
-14. Rewrite onboarding around permissions + provider selection.
-15. Remove quota and account UI from settings.
-16. Remove auth/bootstrap logic from `App.tsx`.
-17. Delete or archive legacy hosted docs and code.
+8. Split the first responsibility slices out of `src/components/App.tsx` and `src/components/Onboarding.tsx`.
+9. Add `runtimePaths.ts` for installable local model assets.
+10. Add a model manifest and checksum validation.
+11. Add model install status IPC.
+12. Add settings UI for install/remove/health.
+13. Add Keychain-backed secret storage for cloud provider keys.
+14. Add a cloud provider config screen.
+15. Rewrite onboarding around permissions + provider selection.
+16. Remove quota and account UI from settings.
+17. Remove auth/bootstrap logic from `App.tsx`.
+18. Delete or archive legacy hosted docs and code.
 
 ---
 
@@ -591,7 +635,7 @@ These are the recommended first implementation tickets.
 | `local-stt/moonshine_mlx.py` | Keep, validate, benchmark | local provider runtime | 2 |
 | `local-stt/weights/` | Keep out of git, move to runtime install assets | app data install path | 2 |
 | `docs/LOCAL_STT.md` | Rewrite for packaged local runtime reality | updated local runtime doc | 2 |
-| `docs/TRANSCRIPTION.md` | Rewrite around local-first + optional cloud providers | updated transcription doc | 5 |
+| `docs/TRANSCRIPTION.md` | Rewrite around local-first + BYO cloud providers | updated transcription doc | 5 |
 | `docs/AUTH.md` | Archive/remove | none | 5 |
 | `docs/PAYMENTS.md` | Archive/remove | none | 5 |
 | `docs/DATABASE.md` | Archive/remove | none | 5 |
@@ -644,5 +688,6 @@ The first concrete coding move should be:
 1. add provider/session contracts
 2. extract session orchestration out of `useTranscription`
 3. wrap the current local and current hosted flows behind adapters
+4. start splitting the biggest files only where those new seams naturally land
 
 That creates the seam the rest of the migration depends on.
