@@ -1,17 +1,22 @@
 /**
  * Transcription Hook
  *
- * Manages audio recording and transcription using HTTP endpoints.
- * Uses MediaRecorder for audio capture and uploads to /prepare and /transcribe.
+ * Manages audio recording and transcription using provider-backed adapters.
+ * Uses MediaRecorder for audio capture and delegates transport to providers.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { SelectionInspectSnapshot } from "../types/shared";
 import type {
   AuthErrorType as SessionAuthErrorType,
+  PrepareTranscriptionResult,
+  TranscriptionContext,
   TranscriptionMode,
 } from "../core/transcription/sessionTypes";
-import { getPrepareUrl, getTranscribeUrl } from "../config/api";
+import {
+  defaultTranscriptionSessionOrchestrator,
+  resolvePreferredTranscriptionProviderId,
+} from "../core/transcription/defaultSessionOrchestrator";
 import { AudioRecorder } from "../utils/audioRecorder";
 import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
@@ -69,21 +74,17 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<AuthErrorType>(null);
-  const [mode, setMode] = useState<TranscriptionMode>("dictation");
-  const [selection, setSelection] = useState<SelectionInspectSnapshot | null>(
-    null,
-  );
+  const [mode] = useState<TranscriptionMode>("dictation");
+  const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [localEnabled, setLocalEnabled] = useState(false);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const stopInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
-  const prepareDataRef = useRef<{
-    prepareId?: string;
-    ocrWords?: string[];
-  } | null>(null);
+  const prepareDataRef = useRef<PrepareTranscriptionResult | null>(null);
   const preparePromiseRef = useRef<Promise<void> | null>(null);
+  const activeProviderIdRef = useRef<string | null>(null);
 
   // Get auth token from Supabase (with caching)
   const getAuthToken = async (): Promise<string | null> => {
@@ -157,13 +158,44 @@ export function useTranscription(
     };
   }, [initStream, options.autoInitStream]);
 
+  const buildTranscriptionContext = useCallback((): TranscriptionContext => {
+    const identity = getUserIdentity();
+    return {
+      mode,
+      language: "en",
+      identityName: identity?.name || undefined,
+      selectionText: selection?.selectedText || undefined,
+    };
+  }, [mode, selection]);
+
+  const captureScreenshotBase64 = useCallback(async () => {
+    try {
+      const takeScreenshot = window.electron?.takeScreenshot;
+      if (!takeScreenshot) {
+        return undefined;
+      }
+
+      const result = await takeScreenshot();
+      if (result.success && result.imageBase64) {
+        return result.imageBase64;
+      }
+    } catch (err) {
+      console.warn("[HTTP] Screenshot capture failed:", err);
+    }
+
+    return undefined;
+  }, []);
+
   // Start recording
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
 
-    // In local mode, skip auth check entirely
+    const providerId = resolvePreferredTranscriptionProviderId(localEnabled);
+    const provider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+
     let token: string | null = null;
-    if (!localEnabled) {
+    if (provider.descriptor.requiresAuthToken) {
       token = await getAuthToken();
       if (!token) {
         setAuthError("not_signed_in");
@@ -177,6 +209,7 @@ export function useTranscription(
       setError(null);
       setAuthError(null);
       setRecording(true);
+      activeProviderIdRef.current = providerId;
 
       // Get stream if not already initialized
       let stream = streamRef.current;
@@ -198,82 +231,54 @@ export function useTranscription(
         return recorder;
       })();
 
-      // In local mode, skip /prepare entirely (no OCR, no auth, no quota)
-      const preparePromise = localEnabled
-        ? Promise.resolve()
-        : (async () => {
-            try {
-              const prepareUrl = getPrepareUrl();
+      const preparePromise = (async () => {
+        try {
+          const prepareResult =
+            await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
+              authToken: token,
+              screenshotBase64: provider.prepare
+                ? await captureScreenshotBase64()
+                : undefined,
+              context: buildTranscriptionContext(),
+            });
 
-              // Capture screenshot for OCR
-              let screenshot: string | undefined;
-              try {
-                if ((window as any).electron?.takeScreenshot) {
-                  const result = await (
-                    window as any
-                  ).electron.takeScreenshot();
-                  if (result.success && result.imageBase64) {
-                    screenshot = result.imageBase64;
-                  }
-                }
-              } catch (err) {
-                console.warn("[HTTP] Screenshot capture failed:", err);
-              }
+          prepareDataRef.current = prepareResult;
 
-              const prepareRes = await fetch(prepareUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  screenshot: screenshot || undefined,
-                }),
-              });
+          if (prepareResult?.authError === "auth_failed") {
+            clearAuthTokenCache();
+            setAuthError("auth_failed");
+            console.error("[HTTP] Auth failed during prepare");
+            return;
+          }
 
-              if (!prepareRes.ok) {
-                const errorData = await prepareRes.json().catch(() => ({}));
+          if (prepareResult?.authError === "payment_required") {
+            setAuthError("payment_required");
+            console.error("[HTTP] Quota exceeded during prepare");
+            return;
+          }
 
-                if (prepareRes.status === 401) {
-                  clearAuthTokenCache(); // Token may be revoked
-                  setAuthError("auth_failed");
-                  console.error("[HTTP] Auth failed during prepare");
-                  // Don't stop recording yet, let user finish
-                } else if (prepareRes.status === 402) {
-                  setAuthError("payment_required");
-                  console.error("[HTTP] Quota exceeded during prepare");
-                  // Don't stop recording yet, let user finish
-                } else {
-                  console.warn("[HTTP] Prepare failed:", errorData.error);
-                }
-                return;
-              }
+          if (prepareResult) {
+            console.log("[HTTP] Prepare complete:", prepareResult);
+          }
 
-              const prepareData = await prepareRes.json();
-              prepareDataRef.current = prepareData;
-
-              console.log("[HTTP] Prepare complete:", prepareData);
-
-              // Sync quota from /prepare response (server validation)
-              if (prepareData.quotaInfo) {
-                const { updateQuotaFromServer } = await import(
-                  "../state/quotaCache"
-                );
-                updateQuotaFromServer({
-                  wordsUsed: prepareData.quotaInfo.wordsUsed ?? 0,
-                  resetDate: null, // Not provided in /prepare
-                  isPro: prepareData.quotaInfo.subscriptionActive ?? false,
-                });
-                console.log(
-                  "[HTTP] Quota synced from /prepare:",
-                  prepareData.quotaInfo,
-                );
-              }
-            } catch (err) {
-              console.error("[HTTP] Prepare failed:", err);
-              // Don't stop recording, continue without OCR
-            }
-          })();
+          // Sync quota from /prepare response (server validation)
+          if (prepareResult?.quotaInfo) {
+            const { updateQuotaFromServer } = await import("../state/quotaCache");
+            updateQuotaFromServer({
+              wordsUsed: prepareResult.quotaInfo.wordsUsed ?? 0,
+              resetDate: null, // Not provided in /prepare
+              isPro: prepareResult.quotaInfo.subscriptionActive ?? false,
+            });
+            console.log(
+              "[HTTP] Quota synced from /prepare:",
+              prepareResult.quotaInfo,
+            );
+          }
+        } catch (err) {
+          console.error("[HTTP] Prepare failed:", err);
+          // Don't stop recording, continue without OCR
+        }
+      })();
 
       // Wait for recorder to be ready, but /prepare continues in background
       const recorder = await recorderPromise;
@@ -283,13 +288,21 @@ export function useTranscription(
       console.error("[HTTP] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
       setRecording(false);
+      activeProviderIdRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
     }
-  }, [recording, processing, localEnabled, initStream]);
+  }, [
+    buildTranscriptionContext,
+    captureScreenshotBase64,
+    initStream,
+    localEnabled,
+    processing,
+    recording,
+  ]);
 
   // Stop recording and upload
   const stop = useCallback(async () => {
@@ -298,6 +311,12 @@ export function useTranscription(
     stopInFlightRef.current = true;
     // Clear immediately so duplicate stop calls (same tick / gesture race) no-op.
     recorderRef.current = null;
+
+    const providerId =
+      activeProviderIdRef.current ??
+      resolvePreferredTranscriptionProviderId(localEnabled);
+    const provider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
     // Comprehensive timing for debugging latency
     const timing = {
@@ -328,13 +347,19 @@ export function useTranscription(
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
 
+      const context = buildTranscriptionContext();
+
       // ===== Local STT path =====
-      if (localEnabled) {
+      if (provider.descriptor.kind === "local") {
         console.log("[Local] Decoding audio to PCM16...");
         const pcm16 = await decodeToPcm16(audioBlob);
         console.log(`[Local] PCM16: ${pcm16.length} samples`);
 
-        const result = await window.stt.transcribeLocal(pcm16.buffer);
+        const result =
+          await defaultTranscriptionSessionOrchestrator.transcribe(providerId, {
+            pcm16,
+            context,
+          });
         console.log(
           `[Local] Transcription complete: "${result.text.slice(0, 50)}..."`,
         );
@@ -352,12 +377,11 @@ export function useTranscription(
 
         // Trigger native paste if not suppressed
         if (!options.suppressNativePaste) {
+          const insertText = window.clipboard?.insertText;
           // Await local paste completion so a previous helper invocation cannot
           // finish during the next dictation and re-insert stale text.
           try {
-            await ((window as any).clipboard?.insertText?.(
-              result.text,
-            ) as Promise<void> | undefined);
+            await insertText?.(result.text);
           } catch (err) {
             console.warn(err);
           }
@@ -386,41 +410,16 @@ export function useTranscription(
         throw new Error("No auth token");
       }
 
-      const transcribeUrl = getTranscribeUrl();
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "audio.webm");
-
-      // Get user identity for STT prompt
-      const identity = getUserIdentity();
-
-      formData.append(
-        "metadata",
-        JSON.stringify({
-          mode,
-          ocrWords: prepareDataRef.current?.ocrWords || [],
-          selection: selection?.selectedText || undefined,
-          identity: identity?.name || undefined,
-          language: "en",
-        }),
-      );
-
       // Measure upload and response timing
       timing.fetchStarted = Date.now();
-      const transcribeRes = await fetch(transcribeUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      const result =
+        await defaultTranscriptionSessionOrchestrator.transcribe(providerId, {
+          authToken: token,
+          audioBlob,
+          context,
+          prepareResult: prepareDataRef.current,
+        });
       timing.fetchDone = Date.now();
-
-      if (!transcribeRes.ok) {
-        const errorData = await transcribeRes.json().catch(() => ({}));
-        throw new Error(errorData.error || "Transcription failed");
-      }
-
-      const result = await transcribeRes.json();
       timing.responseParsed = Date.now();
 
       // Log comprehensive timing breakdown
@@ -466,8 +465,9 @@ export function useTranscription(
 
       // Trigger native paste if not suppressed (fire-and-forget to not block UI)
       if (!options.suppressNativePaste) {
+        const insertText = window.clipboard?.insertText;
         const pasteStart = Date.now();
-        ((window as any).clipboard?.insertText?.(result.text) as Promise<void>)
+        insertText?.(result.text)
           ?.then(() => {
             console.log(
               `[HTTP] Paste completed in ${Date.now() - pasteStart}ms`,
@@ -487,6 +487,7 @@ export function useTranscription(
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       stopInFlightRef.current = false;
+      activeProviderIdRef.current = null;
       // Release microphone stream so the OS mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -496,7 +497,12 @@ export function useTranscription(
       prepareDataRef.current = null;
       preparePromiseRef.current = null;
     }
-  }, [recording, localEnabled, mode, selection, options.suppressNativePaste]);
+  }, [
+    buildTranscriptionContext,
+    localEnabled,
+    options.suppressNativePaste,
+    recording,
+  ]);
 
   // Cancel recording
   const cancel = useCallback(() => {
@@ -514,6 +520,7 @@ export function useTranscription(
     setProcessing(false);
     setText("");
     setAudioLevel(0);
+    activeProviderIdRef.current = null;
     prepareDataRef.current = null;
     preparePromiseRef.current = null;
   }, []);
