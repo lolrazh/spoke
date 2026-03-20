@@ -14,9 +14,11 @@ import type {
   TranscriptionMode,
 } from "../core/transcription/sessionTypes";
 import {
+  LEGACY_CLOUD_PROVIDER_ID,
   defaultTranscriptionSessionOrchestrator,
   resolvePreferredTranscriptionProviderId,
 } from "../core/transcription/defaultSessionOrchestrator";
+import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { AudioRecorder } from "../utils/audioRecorder";
 import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
@@ -77,7 +79,8 @@ export function useTranscription(
   const [mode] = useState<TranscriptionMode>("dictation");
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
-  const [localEnabled, setLocalEnabled] = useState(false);
+  const [preferredProviderId, setPreferredProviderId] =
+    useState<PreferredTranscriptionProviderId>(LEGACY_CLOUD_PROVIDER_ID);
 
   const recorderRef = useRef<AudioRecorder | null>(null);
   const stopInFlightRef = useRef(false);
@@ -143,13 +146,22 @@ export function useTranscription(
       setReady(true);
     }
 
-    // Load local STT preference
+    // Load provider preference
     window.stt
-      ?.getLocalEnabled?.()
-      .then((val) => {
-        setLocalEnabled(val);
+      ?.getPreferredProvider?.()
+      .then((providerId) => {
+        setPreferredProviderId(providerId);
       })
-      .catch(console.debug);
+      .catch(async () => {
+        try {
+          const localEnabled = await window.stt?.getLocalEnabled?.();
+          setPreferredProviderId(
+            localEnabled ? "local-stt" : LEGACY_CLOUD_PROVIDER_ID,
+          );
+        } catch (error) {
+          console.debug(error);
+        }
+      });
 
     return () => {
       if (streamRef.current) {
@@ -190,7 +202,9 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
 
-    const providerId = resolvePreferredTranscriptionProviderId(localEnabled);
+    const providerId = resolvePreferredTranscriptionProviderId(
+      preferredProviderId,
+    );
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -299,7 +313,7 @@ export function useTranscription(
     buildTranscriptionContext,
     captureScreenshotBase64,
     initStream,
-    localEnabled,
+    preferredProviderId,
     processing,
     recording,
   ]);
@@ -314,7 +328,7 @@ export function useTranscription(
 
     const providerId =
       activeProviderIdRef.current ??
-      resolvePreferredTranscriptionProviderId(localEnabled);
+      resolvePreferredTranscriptionProviderId(preferredProviderId);
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -499,7 +513,7 @@ export function useTranscription(
     }
   }, [
     buildTranscriptionContext,
-    localEnabled,
+    preferredProviderId,
     options.suppressNativePaste,
     recording,
   ]);

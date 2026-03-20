@@ -143,6 +143,8 @@ Object.defineProperty(window, "clipboard", {
 
 Object.defineProperty(window, "stt", {
   value: {
+    getPreferredProvider: vi.fn(() => Promise.resolve("legacy-cloud")),
+    setPreferredProvider: vi.fn(() => Promise.resolve()),
     getLocalEnabled: vi.fn(() => Promise.resolve(false)),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
   },
@@ -153,6 +155,7 @@ describe("useTranscription (HTTP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();
+    (window.stt.getPreferredProvider as any).mockResolvedValue("legacy-cloud");
     (window.stt.getLocalEnabled as any).mockResolvedValue(false);
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
@@ -323,6 +326,7 @@ describe("useTranscription (HTTP)", () => {
   });
 
   it("should ignore duplicate stop calls in local mode", async () => {
+    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.getLocalEnabled as any).mockResolvedValue(true);
     (window.stt.transcribeLocal as any).mockImplementation(
       () =>
@@ -341,7 +345,7 @@ describe("useTranscription (HTTP)", () => {
     });
 
     await waitFor(() => {
-      expect(window.stt.getLocalEnabled).toHaveBeenCalled();
+      expect(window.stt.getPreferredProvider).toHaveBeenCalled();
     });
 
     await act(async () => {

@@ -57,6 +57,22 @@ if (!globalThis.window.clipboard) {
   } as any;
 }
 
+// STT bridge shim
+// @ts-ignore
+if (!globalThis.window.stt) {
+  // @ts-ignore
+  globalThis.window.stt = {
+    transcribeLocal: async (_pcmBuffer: ArrayBuffer) => ({
+      text: "",
+      metrics: {},
+    }),
+    getPreferredProvider: async () => "legacy-cloud",
+    setPreferredProvider: async (_providerId: string) => {},
+    getLocalEnabled: async () => false,
+    setLocalEnabled: async (_val: boolean) => {},
+  } as any;
+}
+
 // Mic bridge shim used by utils/components
 // @ts-ignore
 if (!globalThis.window.mic) {

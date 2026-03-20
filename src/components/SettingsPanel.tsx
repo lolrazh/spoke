@@ -235,6 +235,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
     (async () => {
       try {
+        const providerId = await window.stt?.getPreferredProvider?.();
+        if (typeof providerId === "string" && isMounted) {
+          setLocalSttEnabled(providerId === "local-stt");
+          return;
+        }
+
         const val = await window.stt?.getLocalEnabled?.();
         if (typeof val === "boolean" && isMounted) {
           setLocalSttEnabled(val);
@@ -739,7 +745,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         enabled={localSttEnabled}
                         onChange={async (enabled) => {
                           try {
-                            await window.stt?.setLocalEnabled?.(enabled);
+                            await window.stt?.setPreferredProvider?.(
+                              enabled ? "local-stt" : "legacy-cloud",
+                            );
                             setLocalSttEnabled(enabled);
                           } catch (error) {
                             console.error(

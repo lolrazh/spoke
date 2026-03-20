@@ -7,6 +7,7 @@ import type {
   ActiveDisplayPayload,
   TranscriptionItem,
 } from "./shared";
+import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 
 declare global {
   interface Window {
@@ -184,6 +185,10 @@ declare global {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
       ) => Promise<{ text: string; metrics?: object }>;
+      getPreferredProvider: () => Promise<PreferredTranscriptionProviderId>;
+      setPreferredProvider: (
+        providerId: PreferredTranscriptionProviderId,
+      ) => Promise<void>;
       getLocalEnabled: () => Promise<boolean>;
       setLocalEnabled: (val: boolean) => Promise<void>;
     };

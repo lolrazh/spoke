@@ -222,6 +222,14 @@ import {
   MIN_UI_SCALE,
   MAX_UI_SCALE,
 } from "./constants/display";
+import {
+  getDefaultProviderPreferences,
+  isLocalProviderSelected,
+  LOCAL_STT_PROVIDER_ID,
+  type PreferredTranscriptionProviderId,
+  normalizeProviderPreferences,
+  LEGACY_CLOUD_PROVIDER_ID,
+} from "./core/transcription/providerPreferences";
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
@@ -399,7 +407,8 @@ let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
 // Local STT sidecar state
 let sttPrefsPath: string; // Will be initialized in app.whenReady()
-let localSttEnabled = false;
+let preferredProviderId: PreferredTranscriptionProviderId =
+  LEGACY_CLOUD_PROVIDER_ID;
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
@@ -1209,19 +1218,21 @@ function transcribeLocalOnce(pcmBuffer: Buffer): Promise<LocalTranscribeResult> 
   });
 }
 
-function loadSttPreferences(): { localSttEnabled: boolean } {
+function loadSttPreferences() {
   try {
     if (fs.existsSync(sttPrefsPath)) {
       const data = fs.readFileSync(sttPrefsPath, "utf8");
-      return JSON.parse(data);
+      return normalizeProviderPreferences(JSON.parse(data));
     }
   } catch (error) {
     console.error("[STTPrefs] Failed to load preferences:", error);
   }
-  return { localSttEnabled: false };
+  return getDefaultProviderPreferences();
 }
 
-function saveSttPreferences(prefs: { localSttEnabled: boolean }): void {
+function saveSttPreferences(prefs: {
+  preferredProviderId: PreferredTranscriptionProviderId;
+}): void {
   try {
     const userDataDir = app.getPath("userData");
     if (!fs.existsSync(userDataDir)) {
@@ -2994,8 +3005,8 @@ app.whenReady().then(async () => {
 
   // Load local STT preferences and pre-spawn sidecar if enabled
   const sttPrefs = loadSttPreferences();
-  localSttEnabled = sttPrefs.localSttEnabled;
-  if (localSttEnabled) {
+  preferredProviderId = sttPrefs.preferredProviderId;
+  if (isLocalProviderSelected(preferredProviderId)) {
     spawnSidecar().catch((err) => {
       console.error("[STT] Failed to pre-spawn sidecar:", err);
     });
@@ -3797,13 +3808,16 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("stt:get-local-enabled", () => {
-    return localSttEnabled;
+    return isLocalProviderSelected(preferredProviderId);
   });
 
   ipcMain.handle("stt:set-local-enabled", async (_event, val: boolean) => {
-    localSttEnabled = val;
-    saveSttPreferences({ localSttEnabled: val });
-    if (val) {
+    const nextProviderId = val
+      ? LOCAL_STT_PROVIDER_ID
+      : LEGACY_CLOUD_PROVIDER_ID;
+    preferredProviderId = nextProviderId;
+    saveSttPreferences({ preferredProviderId: nextProviderId });
+    if (isLocalProviderSelected(nextProviderId)) {
       try {
         if (!sidecarProcess || !sidecarReady) {
           await spawnSidecar();
@@ -3816,6 +3830,35 @@ app.whenReady().then(async () => {
       killSidecar();
     }
   });
+
+  ipcMain.handle("stt:get-preferred-provider", () => {
+    return preferredProviderId;
+  });
+
+  ipcMain.handle(
+    "stt:set-preferred-provider",
+    async (_event, providerId: PreferredTranscriptionProviderId) => {
+      preferredProviderId =
+        providerId === LOCAL_STT_PROVIDER_ID
+          ? LOCAL_STT_PROVIDER_ID
+          : LEGACY_CLOUD_PROVIDER_ID;
+      saveSttPreferences({ preferredProviderId });
+
+      if (isLocalProviderSelected(preferredProviderId)) {
+        try {
+          if (!sidecarProcess || !sidecarReady) {
+            await spawnSidecar();
+          }
+        } catch (err) {
+          console.error("[STT] Failed to spawn sidecar on provider switch:", err);
+          throw err;
+        }
+        return;
+      }
+
+      killSidecar();
+    },
+  );
 
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {

@@ -1,5 +1,6 @@
 import { getPrepareUrl, getTranscribeUrl } from "../../../config/api";
 import type { TranscriptionProvider } from "../providerContracts";
+import { LEGACY_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
 
 const DEFAULT_QUOTA_LIMIT = 1000;
@@ -19,8 +20,6 @@ type LegacyTranscribeResponse = {
   wordCount?: number;
   metrics?: Record<string, unknown>;
 };
-
-export const LEGACY_CLOUD_PROVIDER_ID = "legacy-cloud";
 
 async function parseJsonSafely<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;

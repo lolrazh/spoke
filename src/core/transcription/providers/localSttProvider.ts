@@ -1,7 +1,6 @@
 import type { TranscriptionProvider } from "../providerContracts";
+import { LOCAL_STT_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
-
-export const LOCAL_STT_PROVIDER_ID = "local-stt";
 
 export const localSttProvider: TranscriptionProvider = {
   descriptor: {
