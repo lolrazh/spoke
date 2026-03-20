@@ -619,6 +619,7 @@ The auth system underwent major cleanup to resolve "invalid callback URL" errors
 - **IntroExperience OAuth entry point** - Users can now start Google OAuth from the first intro screen instead of navigating to a separate auth step.
 - **Name verification step** - After auth callback, users confirm/edit their display name before continuing to permissions.
 - **Provider-first onboarding** - Onboarding now starts by choosing a transcription provider; `Spoke Cloud` shows the auth UI, while local or direct-key providers continue without sign-in.
+- **Lazy auth runtime boot** - Supabase/session-sync initialization now happens when the active provider actually requires auth, instead of always running on startup.
 - **Auth signals system** - Cross-window coordination via localStorage (`sf.auth.*` keys) prevents duplicate sign-in toasts.
 - Scoped `renderer-ready` to the sending window; onboarding no longer causes the pill window to reappear.
 - Dictation is gated client-side by the selected provider plus microphone permission; clicking the pill while signed out only opens onboarding when the active provider still requires auth.

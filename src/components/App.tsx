@@ -315,28 +315,42 @@ const AppInner: React.FC = () => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  // Initialize transcription history and quota cache on app start
+  // Initialize always-on client state on app start
   useEffect(() => {
     initTranscriptionHistory().catch(() => {
       // Ignore initialization errors; app can function without history
     });
-    // Initialize quota cache (starts 5-min sync timer, hydrates from localStorage)
-    import("../state/quotaCache")
-      .then(({ initQuotaCache }) => {
-        initQuotaCache();
+    const skipAuth = !!window.devFlags?.skipAuth;
+    if (skipAuth) {
+      return;
+    }
+
+    preferredProviderRequiresAuth()
+      .then((providerNeedsAuth) => {
+        if (!providerNeedsAuth) {
+          return;
+        }
+
+        import("../state/quotaCache")
+          .then(({ initQuotaCache }) => {
+            initQuotaCache();
+          })
+          .catch(() => {
+            // Ignore initialization errors; quota will fall back to server checks
+          });
+
+        import("../lib/sessionSync")
+          .then(({ initializeSessionSync }) => {
+            initializeSessionSync();
+          })
+          .catch((error) => {
+            console.error("[App] Failed to initialize session sync:", error);
+          });
       })
       .catch(() => {
-        // Ignore initialization errors; quota will fall back to server checks
+        // Ignore provider lookup failures and keep the local path running.
       });
-    // Initialize Supabase session sync for reliable auth persistence
-    import("../lib/sessionSync")
-      .then(({ initializeSessionSync }) => {
-        initializeSessionSync();
-      })
-      .catch((error) => {
-        console.error("[App] Failed to initialize session sync:", error);
-      });
-  }, []);
+  }, [preferredProviderRequiresAuth]);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
   useEffect(() => {

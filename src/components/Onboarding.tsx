@@ -398,22 +398,16 @@ const Onboarding: React.FC = () => {
     };
   }, [loadProviderSettings]);
 
-  // ***CRITICAL*** Initialize session sync in Onboarding window!
-  // Without this, sessions authenticated in onboarding are never saved to electron-store.
-  // Previously, sessionSync was only initialized in App.tsx (main window).
-  useEffect(() => {
-    import("../lib/sessionSync")
-      .then(({ initializeSessionSync }) => {
-        initializeSessionSync().catch((error) => {
-          console.warn(
-            "[Onboarding] Failed to initialize session sync:",
-            error,
-          );
-        });
-      })
-      .catch((error) => {
-        console.error("[Onboarding] Failed to import sessionSync:", error);
-      });
+  const ensureAuthRuntimeReady = useCallback(async () => {
+    try {
+      const [{ initializeSessionSync }] = await Promise.all([
+        import("../lib/sessionSync"),
+        getSupabase(),
+      ]);
+      await initializeSessionSync();
+    } catch (error) {
+      console.warn("[Onboarding] Failed to prepare auth runtime:", error);
+    }
   }, []);
 
   // Setup onboarding background music (autoplay + loop)
@@ -713,7 +707,6 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     if (introOnly) return; // In intro-only mode, don't drive step state or auth
     (async () => {
-      await getSupabase(); // Initialize Supabase client (waits for session injection)
       const snapshot = await loadProviderSettings();
       if (isMountedRef.current) {
         setProviderSettings(snapshot);
@@ -725,6 +718,9 @@ const Onboarding: React.FC = () => {
         preferredTranscriptionProviderRequiresAuth(
           snapshot.preferredProviderId,
         );
+      if (providerNeedsAuth) {
+        await ensureAuthRuntimeReady();
+      }
       const user = await getCurrentUser();
 
       if (forceOnboarding) {
@@ -791,12 +787,10 @@ const Onboarding: React.FC = () => {
 
       setCurrentStep(providerNeedsAuth && user ? "name-verification" : "auth");
     })();
-  }, [introOnly, loadProviderSettings]);
+  }, [ensureAuthRuntimeReady, introOnly, loadProviderSettings]);
 
   // Auth callback listener (always active, even during intro)
   useEffect(() => {
-    // Initialize Supabase in background (don't block callback registration)
-    getSupabase().catch((): void => undefined);
     const off = window.auth?.onCallback?.(async ({ url }) => {
       devFlags.methods.devLog("[Auth] onCallback URL:", url);
       setAuthLoading(true);
@@ -869,6 +863,7 @@ const Onboarding: React.FC = () => {
     try {
       setAuthLoading(true);
       setAuthError(null);
+      await ensureAuthRuntimeReady();
       const url = await getGoogleOAuthUrl();
       if (!url) {
         setAuthError(
