@@ -4,10 +4,10 @@ import {
   isApiKeyTranscriptionProviderId,
   isSelectableTranscriptionProviderId,
   listTranscriptionProviderCatalog,
-  OPENAI_CLOUD_PROVIDER_ID,
 } from "./providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
+  OPENAI_CLOUD_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
@@ -32,6 +32,7 @@ describe("providerCatalog", () => {
         expect.objectContaining({
           id: OPENAI_CLOUD_PROVIDER_ID,
           apiKeyConfigured: true,
+          selectable: true,
           requiresApiKey: true,
         }),
       ]),
@@ -46,7 +47,7 @@ describe("providerCatalog", () => {
       true,
     );
     expect(isSelectableTranscriptionProviderId(OPENAI_CLOUD_PROVIDER_ID)).toBe(
-      false,
+      true,
     );
     expect(isApiKeyTranscriptionProviderId(OPENAI_CLOUD_PROVIDER_ID)).toBe(
       true,

@@ -1,10 +1,10 @@
 import type { PreferredTranscriptionProviderId } from "./providerPreferences";
 import {
   LOCAL_STT_PROVIDER_ID,
+  OPENAI_CLOUD_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
-
-export const OPENAI_CLOUD_PROVIDER_ID = "openai-cloud";
+export { OPENAI_CLOUD_PROVIDER_ID } from "./providerPreferences";
 
 export type ApiKeyTranscriptionProviderId = typeof OPENAI_CLOUD_PROVIDER_ID;
 
@@ -58,9 +58,9 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
     displayName: "OpenAI Direct",
     description: "Direct cloud transcription with your own OpenAI API key.",
     kind: "cloud",
-    selectable: false,
+    selectable: true,
     requiresApiKey: true,
-    status: "coming_soon",
+    status: "ready",
     apiKeyLabel: "OpenAI API Key",
     apiKeyPlaceholder: "sk-...",
   },
@@ -80,6 +80,9 @@ export function buildTranscriptionProviderSettingsSnapshot(input: {
     preferredProviderId: input.preferredProviderId,
     providers: TRANSCRIPTION_PROVIDER_CATALOG.map((provider) => ({
       ...provider,
+      selectable:
+        provider.selectable &&
+        (!provider.requiresApiKey || configuredProviderIds.has(provider.id)),
       apiKeyConfigured:
         provider.requiresApiKey && configuredProviderIds.has(provider.id),
     })),
@@ -91,7 +94,8 @@ export function isSelectableTranscriptionProviderId(
 ): providerId is PreferredTranscriptionProviderId {
   return (
     providerId === LOCAL_STT_PROVIDER_ID ||
-    providerId === SPOKE_CLOUD_PROVIDER_ID
+    providerId === SPOKE_CLOUD_PROVIDER_ID ||
+    providerId === OPENAI_CLOUD_PROVIDER_ID
   );
 }
 

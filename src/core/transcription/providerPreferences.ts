@@ -1,9 +1,11 @@
 export const LOCAL_STT_PROVIDER_ID = "local-stt";
 export const SPOKE_CLOUD_PROVIDER_ID = "spoke-cloud";
+export const OPENAI_CLOUD_PROVIDER_ID = "openai-cloud";
 
 export type PreferredTranscriptionProviderId =
   | typeof LOCAL_STT_PROVIDER_ID
-  | typeof SPOKE_CLOUD_PROVIDER_ID;
+  | typeof SPOKE_CLOUD_PROVIDER_ID
+  | typeof OPENAI_CLOUD_PROVIDER_ID;
 
 export interface TranscriptionProviderPreferences {
   preferredProviderId: PreferredTranscriptionProviderId;
@@ -32,6 +34,12 @@ export function normalizeProviderPreferences(
     if (prefs.preferredProviderId === SPOKE_CLOUD_PROVIDER_ID) {
       return {
         preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
+      };
+    }
+
+    if (prefs.preferredProviderId === OPENAI_CLOUD_PROVIDER_ID) {
+      return {
+        preferredProviderId: OPENAI_CLOUD_PROVIDER_ID,
       };
     }
   }

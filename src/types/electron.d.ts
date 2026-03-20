@@ -12,6 +12,10 @@ import type {
   TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import type {
+  TranscriptionContext,
+  TranscriptionResult,
+} from "../core/transcription/sessionTypes";
 
 declare global {
   interface Window {
@@ -189,6 +193,14 @@ declare global {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
       ) => Promise<{ text: string; metrics?: object }>;
+      transcribeApiKeyProvider: (
+        providerId: ApiKeyTranscriptionProviderId,
+        payload: {
+          audioBuffer: ArrayBuffer;
+          mimeType?: string;
+          context: TranscriptionContext;
+        },
+      ) => Promise<TranscriptionResult>;
       getProviderSettings: () => Promise<TranscriptionProviderSettingsSnapshot>;
       getPreferredProvider: () => Promise<PreferredTranscriptionProviderId>;
       setPreferredProvider: (

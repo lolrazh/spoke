@@ -191,6 +191,20 @@ contextBridge.exposeInMainWorld("mic", {
 contextBridge.exposeInMainWorld("stt", {
   transcribeLocal: (pcmBuffer: ArrayBuffer) =>
     ipcRenderer.invoke("stt:transcribe-local", Buffer.from(pcmBuffer)),
+  transcribeApiKeyProvider: (
+    providerId: string,
+    payload: {
+      audioBuffer: ArrayBuffer;
+      mimeType?: string;
+      context: unknown;
+    },
+  ) =>
+    ipcRenderer.invoke("stt:transcribe-api-key-provider", {
+      providerId,
+      audioBuffer: Buffer.from(payload.audioBuffer),
+      mimeType: payload.mimeType,
+      context: payload.context,
+    }),
   getProviderSettings: () => ipcRenderer.invoke("stt:get-provider-settings"),
   getPreferredProvider: () => ipcRenderer.invoke("stt:get-preferred-provider"),
   setPreferredProvider: (providerId: string) =>

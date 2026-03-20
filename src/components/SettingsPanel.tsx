@@ -964,7 +964,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <SecretField
                         label={openAiProvider?.apiKeyLabel ?? "OpenAI API Key"}
-                        description="Stored locally for the upcoming direct OpenAI transcription adapter. It is not wired into runtime yet."
+                        description="Stored locally for direct OpenAI transcription. Save a key to unlock OpenAI Direct in the provider selector."
                         value={openAiApiKeyDraft}
                         onChange={setOpenAiApiKeyDraft}
                         onSave={handleSaveOpenAiKey}

@@ -66,6 +66,10 @@ if (!globalThis.window.stt) {
       text: "",
       metrics: {},
     }),
+    transcribeApiKeyProvider: async (_providerId: string, _payload: unknown) => ({
+      text: "",
+      metrics: {},
+    }),
     getProviderSettings: async () => ({
       preferredProviderId: "spoke-cloud",
       providers: [],

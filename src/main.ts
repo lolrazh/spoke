@@ -226,6 +226,7 @@ import {
 import {
   buildTranscriptionProviderSettingsSnapshot,
   isApiKeyTranscriptionProviderId,
+  isSelectableTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
   type ApiKeyTranscriptionProviderId,
 } from "./core/transcription/providerCatalog";
@@ -237,6 +238,10 @@ import {
   normalizeProviderPreferences,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./core/transcription/providerPreferences";
+import type {
+  TranscriptionContext,
+  TranscriptionResult,
+} from "./core/transcription/sessionTypes";
 import { logger } from "./utils/logger";
 
 // Initialize Sentry as early as possible in the main process
@@ -1337,6 +1342,20 @@ function hasProviderApiKey(providerId: ApiKeyTranscriptionProviderId): boolean {
   }
 }
 
+function getRequiredProviderApiKey(providerId: ApiKeyTranscriptionProviderId) {
+  const secret = providerSecrets[providerId];
+  if (!secret) {
+    throw new Error(`No API key configured for provider '${providerId}'.`);
+  }
+
+  const apiKey = decodeProviderSecret(secret).trim();
+  if (!apiKey) {
+    throw new Error(`No API key configured for provider '${providerId}'.`);
+  }
+
+  return apiKey;
+}
+
 function getProviderSettingsSnapshot() {
   const configuredApiKeyProviderIds = (
     [OPENAI_CLOUD_PROVIDER_ID] as ApiKeyTranscriptionProviderId[]
@@ -1346,6 +1365,65 @@ function getProviderSettingsSnapshot() {
     preferredProviderId,
     configuredApiKeyProviderIds,
   });
+}
+
+const OPENAI_TRANSCRIPTION_API_URL =
+  "https://api.openai.com/v1/audio/transcriptions";
+const OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
+const OPENAI_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+type OpenAiTranscriptionResponse = {
+  text?: string;
+  usage?: Record<string, unknown>;
+  error?: {
+    message?: string;
+  };
+};
+
+async function transcribeWithOpenAi(
+  audioBuffer: Buffer,
+  mimeType: string | undefined,
+  context: TranscriptionContext,
+): Promise<TranscriptionResult> {
+  if (audioBuffer.byteLength > OPENAI_MAX_AUDIO_BYTES) {
+    throw new Error("OpenAI Direct supports audio files up to 25 MiB.");
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([audioBuffer], { type: mimeType || "audio/webm" }),
+    "audio.webm",
+  );
+  formData.append("model", OPENAI_TRANSCRIPTION_MODEL);
+  formData.append("response_format", "json");
+
+  if (context.language) {
+    formData.append("language", context.language);
+  }
+
+  const response = await fetch(OPENAI_TRANSCRIPTION_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getRequiredProviderApiKey(OPENAI_CLOUD_PROVIDER_ID)}`,
+    },
+    body: formData,
+  });
+
+  const result =
+    (await response.json().catch(() => ({}))) as OpenAiTranscriptionResponse;
+
+  if (!response.ok) {
+    throw new Error(result.error?.message || "OpenAI transcription failed.");
+  }
+
+  return {
+    text: result.text ?? "",
+    metrics: {
+      model: OPENAI_TRANSCRIPTION_MODEL,
+      usage: result.usage,
+    },
+  };
 }
 
 const DEFAULT_INSPECT_CONTEXT_CHARS = 96;
@@ -3923,10 +4001,18 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "stt:set-preferred-provider",
     async (_event, providerId: PreferredTranscriptionProviderId) => {
-      preferredProviderId =
-        providerId === LOCAL_STT_PROVIDER_ID
-          ? LOCAL_STT_PROVIDER_ID
-          : SPOKE_CLOUD_PROVIDER_ID;
+      if (!isSelectableTranscriptionProviderId(providerId)) {
+        throw new Error(`Unknown transcription provider '${providerId}'.`);
+      }
+
+      if (
+        providerId === OPENAI_CLOUD_PROVIDER_ID &&
+        !hasProviderApiKey(OPENAI_CLOUD_PROVIDER_ID)
+      ) {
+        throw new Error("Save an OpenAI API key before selecting OpenAI Direct.");
+      }
+
+      preferredProviderId = providerId;
       saveSttPreferences({ preferredProviderId });
 
       if (isLocalProviderSelected(preferredProviderId)) {
@@ -3942,6 +4028,37 @@ app.whenReady().then(async () => {
       }
 
       killSidecar();
+    },
+  );
+
+  ipcMain.handle(
+    "stt:transcribe-api-key-provider",
+    async (
+      _event,
+      payload: {
+        providerId: string;
+        audioBuffer: Buffer;
+        mimeType?: string;
+        context: TranscriptionContext;
+      },
+    ) => {
+      if (!isApiKeyTranscriptionProviderId(payload.providerId)) {
+        throw new Error(
+          `Provider '${payload.providerId}' does not support direct API-key transcription.`,
+        );
+      }
+
+      if (payload.providerId === OPENAI_CLOUD_PROVIDER_ID) {
+        return transcribeWithOpenAi(
+          payload.audioBuffer,
+          payload.mimeType,
+          payload.context,
+        );
+      }
+
+      throw new Error(
+        `Provider '${payload.providerId}' does not have a transcription handler.`,
+      );
     },
   );
 
@@ -3973,6 +4090,12 @@ app.whenReady().then(async () => {
     if (!isApiKeyTranscriptionProviderId(providerId)) {
       throw new Error(
         `Provider '${providerId}' does not accept a stored API key.`,
+      );
+    }
+
+    if (preferredProviderId === providerId) {
+      throw new Error(
+        "Switch transcription providers before clearing the active provider's API key.",
       );
     }
 
