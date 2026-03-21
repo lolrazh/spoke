@@ -15,6 +15,7 @@ import {
   OPENAI_CLOUD_PROVIDER_ID,
   type ApiKeyTranscriptionProviderId,
 } from "../core/transcription/providerCatalog";
+import { getModelInstallState } from "./modelManager";
 import {
   getDefaultProviderPreferences,
   isLocalProviderSelected,
@@ -226,6 +227,7 @@ export function getProviderSettingsSnapshot() {
   return buildTranscriptionProviderSettingsSnapshot({
     preferredProviderId,
     configuredApiKeyProviderIds,
+    localModelInstalled: getModelInstallState() === "ready",
   });
 }
 

@@ -2537,7 +2537,7 @@ app.whenReady().then(async () => {
     try {
       if (getModelInstallState() !== "ready") {
         throw new Error(
-          "Local STT model is not installed. Install it from Settings.",
+          "Local model not installed. Open Settings to install it.",
         );
       }
       if (!isSidecarRunning()) {

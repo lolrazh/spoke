@@ -27,6 +27,7 @@ export interface TranscriptionProviderCatalogEntry {
 export interface TranscriptionProviderSettingsEntry
   extends TranscriptionProviderCatalogEntry {
   apiKeyConfigured: boolean;
+  modelInstalled?: boolean;
 }
 
 export interface TranscriptionProviderSettingsSnapshot {
@@ -47,7 +48,8 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   {
     id: LOCAL_STT_PROVIDER_ID,
     displayName: "Local Moonshine",
-    description: "On-device transcription through the bundled Moonshine sidecar.",
+    description:
+      "On-device transcription through the bundled Moonshine sidecar.",
     kind: "local",
     selectable: true,
     requiresApiKey: false,
@@ -73,8 +75,11 @@ export function listTranscriptionProviderCatalog(): TranscriptionProviderCatalog
 export function buildTranscriptionProviderSettingsSnapshot(input: {
   preferredProviderId: PreferredTranscriptionProviderId;
   configuredApiKeyProviderIds?: ApiKeyTranscriptionProviderId[];
+  localModelInstalled?: boolean;
 }): TranscriptionProviderSettingsSnapshot {
-  const configuredProviderIds = new Set(input.configuredApiKeyProviderIds ?? []);
+  const configuredProviderIds = new Set(
+    input.configuredApiKeyProviderIds ?? [],
+  );
 
   return {
     preferredProviderId: input.preferredProviderId,
@@ -85,6 +90,10 @@ export function buildTranscriptionProviderSettingsSnapshot(input: {
         (!provider.requiresApiKey || configuredProviderIds.has(provider.id)),
       apiKeyConfigured:
         provider.requiresApiKey && configuredProviderIds.has(provider.id),
+      modelInstalled:
+        provider.id === LOCAL_STT_PROVIDER_ID
+          ? (input.localModelInstalled ?? false)
+          : undefined,
     })),
   };
 }

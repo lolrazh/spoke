@@ -169,11 +169,18 @@ const ProviderStatusCard: React.FC<{
   selected: boolean;
   inGroup?: boolean;
 }> = ({ provider, selected, inGroup }) => {
+  const needsModel =
+    provider.id === "local-stt" &&
+    provider.modelInstalled === false &&
+    !selected;
+
   const status = selected
     ? "success"
     : provider.requiresApiKey && !provider.apiKeyConfigured
       ? "warning"
-      : "default";
+      : needsModel
+        ? "warning"
+        : "default";
 
   let badgeLabel = selected
     ? "Selected"
@@ -184,6 +191,8 @@ const ProviderStatusCard: React.FC<{
     badgeLabel = "Soon";
   } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
     badgeLabel = "Needs Key";
+  } else if (needsModel) {
+    badgeLabel = "Needs Model";
   }
 
   const descriptionParts = [provider.description];
@@ -191,6 +200,8 @@ const ProviderStatusCard: React.FC<{
     descriptionParts.push("Coming soon.");
   } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
     descriptionParts.push("Add its API key below to enable it.");
+  } else if (needsModel) {
+    descriptionParts.push("Install the model below to enable it.");
   } else if (selected) {
     descriptionParts.push("Currently active.");
   }
