@@ -130,6 +130,7 @@ import {
   saveAppPreferences,
 } from "./main/preferences";
 import { smoothShow, smoothHide } from "./main/windowAnimation";
+import { getIconPath, getTrayIconPath } from "./main/iconPaths";
 import {
   initUpdateController,
   manualCheckForUpdates,
@@ -903,64 +904,6 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
     ];
   }
 }
-
-// FUCK IT - USE PNG FOR EVERYTHING! It works better at runtime
-// Try multiple possible locations for the icon
-const getIconPath = () => {
-  const possiblePaths = [
-    path.join(__dirname, "assets", "icon.png"), // Vite build location
-    path.join(__dirname, "..", "assets", "icon.png"), // Alternative location
-    path.join(process.resourcesPath, "icon.png"), // extraResource location
-    path.join(__dirname, "..", "..", "public", "assets", "icon.png"), // Source location
-  ];
-
-  for (const iconPath of possiblePaths) {
-    try {
-      if (fs.existsSync(iconPath)) {
-        console.log(`[Main Process] Found icon at: ${iconPath}`);
-        return iconPath;
-      }
-    } catch (error) {
-      // Continue to next path
-    }
-  }
-
-  console.warn("[Main Process] No icon found in any expected location");
-  return possiblePaths[0]; // fallback
-};
-
-const getTrayIconPath = () => {
-  const possiblePaths = [
-    path.join(__dirname, "assets", "TrayTemplate.png"), // Vite build location (base 16x16)
-    path.join(__dirname, "..", "assets", "TrayTemplate.png"), // Alternative location
-    path.join(process.resourcesPath, "TrayTemplate.png"), // extraResource location
-    path.join(__dirname, "..", "..", "public", "assets", "TrayTemplate.png"), // Source location
-  ];
-
-  for (const trayPath of possiblePaths) {
-    try {
-      if (fs.existsSync(trayPath)) {
-        console.log(`[Main Process] Found tray icon at: ${trayPath}`);
-
-        // Also check if @2x version exists in the same directory for high-DPI
-        const trayDir = path.dirname(trayPath);
-        const tray2xPath = path.join(trayDir, "TrayTemplate@2x.png");
-        if (fs.existsSync(tray2xPath)) {
-          console.log(
-            `[Main Process] Found high-DPI tray icon at: ${tray2xPath}`,
-          );
-        }
-
-        return trayPath;
-      }
-    } catch (error) {
-      // Continue to next path
-    }
-  }
-
-  console.warn("[Main Process] No tray icon found in any expected location");
-  return possiblePaths[0]; // fallback
-};
 
 // (Removed) Silent background check for app location
 
