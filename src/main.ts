@@ -65,8 +65,6 @@ import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
 
-
-
 // Add command line switches for WebGPU (currently disabled)
 // app.commandLine.appendSwitch('enable-unsafe-webgpu');
 // app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -432,7 +430,9 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
     const notchPayload = notch ? cloneDisplayNotchInfo(notch) : null;
     if (!notchPayload) {
       const knownIds =
-        getNotchReport()?.screens.map((s) => s.id).join(", ") ?? "none";
+        getNotchReport()
+          ?.screens.map((s) => s.id)
+          .join(", ") ?? "none";
       const scaleStr = Number.isFinite(scale)
         ? scale.toFixed(3)
         : String(scale);
@@ -461,8 +461,6 @@ function emitActiveDisplayInfo(display: Electron.Display, scale: number): void {
     logger.main.warn("emitActiveDisplayInfo failed", e);
   }
 }
-
-
 
 // After refreshing notch info, also update the renderer with new display data
 async function refreshNotchInfoAndEmit(reason: string): Promise<void> {
@@ -610,7 +608,6 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
   return proc;
 }
 
-
 async function startHelperIfIMGranted(): Promise<void> {
   try {
     const helperPath = getHelperPath();
@@ -649,15 +646,10 @@ async function startHelperIfIMGranted(): Promise<void> {
   }
 }
 
-}
-
-
-
 // Removed: noisy bounds logging
 // function logBounds(tag: string) { ... }
 
 // Microphone preference management functions
-
 
 function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
   if (!mainWindow) {
@@ -1213,8 +1205,10 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = getSelectedMicId();
 
-  const micSubmenu = buildMicrophoneSubmenu(getMicDevices(), selectedMicId, (id) =>
-    selectMicDevice(id),
+  const micSubmenu = buildMicrophoneSubmenu(
+    getMicDevices(),
+    selectedMicId,
+    (id) => selectMicDevice(id),
   );
 
   const updateItems: Electron.MenuItemConstructorOptions[] = [];
@@ -1310,8 +1304,10 @@ function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   );
   const selectedMicId = getSelectedMicId();
 
-  const micSubmenu = buildMicrophoneSubmenu(getMicDevices(), selectedMicId, (id) =>
-    selectMicDevice(id),
+  const micSubmenu = buildMicrophoneSubmenu(
+    getMicDevices(),
+    selectedMicId,
+    (id) => selectMicDevice(id),
   );
 
   return [
