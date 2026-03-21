@@ -31,13 +31,12 @@ import {
 } from "../hooks/usePermissionNotifications";
 import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 import { usePillMachine } from "../state/pillStateMachine";
+import { useSharePreference } from "../hooks/useSharePreference";
 export type {
   PillStateType,
   PillEvent,
   PillMachineState,
 } from "../state/pillStateMachine";
-
-const SHARE_PREF_STORAGE_PREFIX = "sf.shareTranscriptions.";
 
 // Notification timing tokens
 const DEFAULT_NOTIFICATION_DURATION_MS = 2000;
@@ -84,12 +83,13 @@ const AppInner: React.FC = () => {
   const lastFocusTsRef = useRef<number | null>(
     typeof performance !== "undefined" ? performance.now() : null,
   );
-  const [shareTranscriptionsEnabled, setShareTranscriptionsEnabled] =
-    useState<boolean>(false);
-  const [shareTranscriptionsLoading, setShareTranscriptionsLoading] =
-    useState<boolean>(true);
-  const [shareTranscriptionsUpdating, setShareTranscriptionsUpdating] =
-    useState<boolean>(false);
+  const {
+    shareTranscriptionsEnabled,
+    shareTranscriptionsLoading,
+    shareTranscriptionsUpdating,
+    loadSharePreference,
+    handleSharePreferenceToggle,
+  } = useSharePreference();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
@@ -236,87 +236,6 @@ const AppInner: React.FC = () => {
     }
     return true;
   }, [preferredProviderRequiresAuth, triggerPermissionNotification]);
-
-  const loadSharePreference = useCallback(async (userId: string | null) => {
-    if (!userId) {
-      setShareTranscriptionsEnabled(false);
-      setShareTranscriptionsLoading(false);
-      return;
-    }
-
-    let seeded = false;
-    try {
-      const stored = localStorage.getItem(
-        `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
-      );
-      if (stored != null) {
-        seeded = true;
-        setShareTranscriptionsEnabled(stored === "true");
-      }
-    } catch {}
-
-    setShareTranscriptionsLoading(true);
-    try {
-      const { getShareTranscriptionsPreference } = await import(
-        "../lib/supabaseClient"
-      );
-      const pref = await getShareTranscriptionsPreference();
-      if (pref === null) {
-        if (!seeded) setShareTranscriptionsEnabled(false);
-      } else {
-        const value = pref === true;
-        setShareTranscriptionsEnabled(value);
-        try {
-          localStorage.setItem(
-            `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
-            value ? "true" : "false",
-          );
-        } catch {}
-      }
-    } catch {
-      if (!seeded) setShareTranscriptionsEnabled(false);
-    } finally {
-      setShareTranscriptionsLoading(false);
-    }
-  }, []);
-
-  const handleSharePreferenceToggle = useCallback(
-    async (enabled: boolean) => {
-      const userId = currentUserIdRef.current;
-      if (!userId) {
-        try {
-          window.notifications?.send?.("Sign in to change this setting");
-        } catch {}
-        return;
-      }
-      if (shareTranscriptionsUpdating) return;
-      if (enabled === shareTranscriptionsEnabled) return;
-      const previous = shareTranscriptionsEnabled;
-      setShareTranscriptionsEnabled(enabled);
-      setShareTranscriptionsUpdating(true);
-      try {
-        const { setShareTranscriptionsPreference } = await import(
-          "../lib/supabaseClient"
-        );
-        const ok = await setShareTranscriptionsPreference(enabled);
-        if (!ok) throw new Error("update failed");
-        try {
-          localStorage.setItem(
-            `${SHARE_PREF_STORAGE_PREFIX}${userId}`,
-            enabled ? "true" : "false",
-          );
-        } catch {}
-      } catch {
-        setShareTranscriptionsEnabled(previous);
-        try {
-          window.notifications?.send?.("Unable to update sharing preference");
-        } catch {}
-      } finally {
-        setShareTranscriptionsUpdating(false);
-      }
-    },
-    [shareTranscriptionsEnabled, shareTranscriptionsUpdating],
-  );
 
   // Track focus to guard Mission Control/Spaces focus resumes
   useEffect(() => {
