@@ -13,7 +13,6 @@ import {
   systemPreferences,
   powerMonitor,
   globalShortcut,
-  safeStorage,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import * as Sentry from "@sentry/electron/main";
@@ -224,25 +223,29 @@ import {
   MAX_UI_SCALE,
 } from "./constants/display";
 import {
-  buildTranscriptionProviderSettingsSnapshot,
   isApiKeyTranscriptionProviderId,
   isSelectableTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
-  type ApiKeyTranscriptionProviderId,
 } from "./core/transcription/providerCatalog";
 import {
-  getDefaultProviderPreferences,
   isLocalProviderSelected,
   LOCAL_STT_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
-  normalizeProviderPreferences,
-  SPOKE_CLOUD_PROVIDER_ID,
 } from "./core/transcription/providerPreferences";
-import type {
-  TranscriptionContext,
-  TranscriptionResult,
-} from "./core/transcription/sessionTypes";
+import type { TranscriptionContext } from "./core/transcription/sessionTypes";
 import { logger } from "./utils/logger";
+import {
+  initProviderStore,
+  getPreferredProviderId,
+  setPreferredProviderId,
+  isPreferredProviderLocal,
+  hasProviderApiKey,
+  getRequiredProviderApiKey,
+  setProviderApiKey,
+  clearProviderApiKey,
+  getProviderSettingsSnapshot,
+  transcribeWithOpenAi,
+} from "./main/providerStore";
 
 // Initialize Sentry as early as possible in the main process
 // Vite injects env at build time; provide a typed fallback for the main process
@@ -417,18 +420,7 @@ let appPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
-// Local STT sidecar state
-let sttPrefsPath: string; // Will be initialized in app.whenReady()
-let sttSecretsPath: string; // Will be initialized in app.whenReady()
-let preferredProviderId: PreferredTranscriptionProviderId =
-  SPOKE_CLOUD_PROVIDER_ID;
-type StoredProviderSecret = {
-  storage: "safeStorage" | "plainText";
-  value: string;
-};
-let providerSecrets: Partial<
-  Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>
-> = {};
+// Local STT sidecar state (provider preferences/secrets now in src/main/providerStore.ts)
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
@@ -1163,7 +1155,9 @@ function transcribeLocal(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
   return queued;
 }
 
-function transcribeLocalOnce(pcmBuffer: Buffer): Promise<LocalTranscribeResult> {
+function transcribeLocalOnce(
+  pcmBuffer: Buffer,
+): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
     if (!sidecarProcess || !sidecarReady) {
       reject(new Error("Sidecar not running"));
@@ -1238,193 +1232,7 @@ function transcribeLocalOnce(pcmBuffer: Buffer): Promise<LocalTranscribeResult> 
   });
 }
 
-function loadSttPreferences() {
-  try {
-    if (fs.existsSync(sttPrefsPath)) {
-      const data = fs.readFileSync(sttPrefsPath, "utf8");
-      return normalizeProviderPreferences(JSON.parse(data));
-    }
-  } catch (error) {
-    console.error("[STTPrefs] Failed to load preferences:", error);
-  }
-  return getDefaultProviderPreferences();
-}
-
-function loadProviderSecrets(): Partial<
-  Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>
-> {
-  try {
-    if (fs.existsSync(sttSecretsPath)) {
-      const data = fs.readFileSync(sttSecretsPath, "utf8");
-      const parsed = JSON.parse(data) as Record<string, StoredProviderSecret>;
-
-      return Object.fromEntries(
-        Object.entries(parsed).filter(([providerId, secret]) => {
-          return (
-            isApiKeyTranscriptionProviderId(providerId) &&
-            secret &&
-            typeof secret === "object" &&
-            typeof secret.storage === "string" &&
-            typeof secret.value === "string"
-          );
-        }),
-      ) as Partial<Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>>;
-    }
-  } catch (error) {
-    console.error("[STTSecrets] Failed to load provider secrets:", error);
-  }
-
-  return {};
-}
-
-function saveSttPreferences(prefs: {
-  preferredProviderId: PreferredTranscriptionProviderId;
-}): void {
-  try {
-    const userDataDir = app.getPath("userData");
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-    fs.writeFileSync(sttPrefsPath, JSON.stringify(prefs, null, 2));
-    console.log("[STTPrefs] Saved preferences:", prefs);
-  } catch (error) {
-    console.error("[STTPrefs] Failed to save preferences:", error);
-  }
-}
-
-function saveProviderSecrets(
-  secrets: Partial<Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>>,
-): void {
-  try {
-    const userDataDir = app.getPath("userData");
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-    fs.writeFileSync(sttSecretsPath, JSON.stringify(secrets, null, 2));
-  } catch (error) {
-    console.error("[STTSecrets] Failed to save provider secrets:", error);
-  }
-}
-
-function encodeProviderSecret(apiKey: string): StoredProviderSecret {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      storage: "safeStorage",
-      value: safeStorage.encryptString(apiKey).toString("base64"),
-    };
-  }
-
-  return {
-    storage: "plainText",
-    value: apiKey,
-  };
-}
-
-function decodeProviderSecret(secret: StoredProviderSecret): string {
-  if (secret.storage === "safeStorage") {
-    return safeStorage.decryptString(Buffer.from(secret.value, "base64"));
-  }
-
-  return secret.value;
-}
-
-function hasProviderApiKey(providerId: ApiKeyTranscriptionProviderId): boolean {
-  const secret = providerSecrets[providerId];
-  if (!secret) {
-    return false;
-  }
-
-  try {
-    return decodeProviderSecret(secret).trim().length > 0;
-  } catch (error) {
-    console.error("[STTSecrets] Failed to decode provider secret:", error);
-    return false;
-  }
-}
-
-function getRequiredProviderApiKey(providerId: ApiKeyTranscriptionProviderId) {
-  const secret = providerSecrets[providerId];
-  if (!secret) {
-    throw new Error(`No API key configured for provider '${providerId}'.`);
-  }
-
-  const apiKey = decodeProviderSecret(secret).trim();
-  if (!apiKey) {
-    throw new Error(`No API key configured for provider '${providerId}'.`);
-  }
-
-  return apiKey;
-}
-
-function getProviderSettingsSnapshot() {
-  const configuredApiKeyProviderIds = (
-    [OPENAI_CLOUD_PROVIDER_ID] as ApiKeyTranscriptionProviderId[]
-  ).filter((providerId) => hasProviderApiKey(providerId));
-
-  return buildTranscriptionProviderSettingsSnapshot({
-    preferredProviderId,
-    configuredApiKeyProviderIds,
-  });
-}
-
-const OPENAI_TRANSCRIPTION_API_URL =
-  "https://api.openai.com/v1/audio/transcriptions";
-const OPENAI_TRANSCRIPTION_MODEL = "gpt-4o-transcribe";
-const OPENAI_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-
-type OpenAiTranscriptionResponse = {
-  text?: string;
-  usage?: Record<string, unknown>;
-  error?: {
-    message?: string;
-  };
-};
-
-async function transcribeWithOpenAi(
-  audioBuffer: Buffer,
-  mimeType: string | undefined,
-  context: TranscriptionContext,
-): Promise<TranscriptionResult> {
-  if (audioBuffer.byteLength > OPENAI_MAX_AUDIO_BYTES) {
-    throw new Error("OpenAI Direct supports audio files up to 25 MiB.");
-  }
-
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([audioBuffer], { type: mimeType || "audio/webm" }),
-    "audio.webm",
-  );
-  formData.append("model", OPENAI_TRANSCRIPTION_MODEL);
-  formData.append("response_format", "json");
-
-  if (context.language) {
-    formData.append("language", context.language);
-  }
-
-  const response = await fetch(OPENAI_TRANSCRIPTION_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getRequiredProviderApiKey(OPENAI_CLOUD_PROVIDER_ID)}`,
-    },
-    body: formData,
-  });
-
-  const result =
-    (await response.json().catch(() => ({}))) as OpenAiTranscriptionResponse;
-
-  if (!response.ok) {
-    throw new Error(result.error?.message || "OpenAI transcription failed.");
-  }
-
-  return {
-    text: result.text ?? "",
-    metrics: {
-      model: OPENAI_TRANSCRIPTION_MODEL,
-      usage: result.usage,
-    },
-  };
-}
+// Provider preferences, secrets, and OpenAI transcription moved to src/main/providerStore.ts
 
 const DEFAULT_INSPECT_CONTEXT_CHARS = 96;
 const INSPECT_SELECTION_TIMEOUT_MS = 1500;
@@ -3151,8 +2959,9 @@ app.whenReady().then(async () => {
   micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
   pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
   appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  sttPrefsPath = path.join(app.getPath("userData"), "stt-preferences.json");
-  sttSecretsPath = path.join(app.getPath("userData"), "stt-provider-secrets.json");
+  // Initialize provider store (preferences + secrets)
+  initProviderStore(app.getPath("userData"));
+
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
   try {
@@ -3185,11 +2994,8 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Load local STT preferences and pre-spawn sidecar if enabled
-  const sttPrefs = loadSttPreferences();
-  providerSecrets = loadProviderSecrets();
-  preferredProviderId = sttPrefs.preferredProviderId;
-  if (isLocalProviderSelected(preferredProviderId)) {
+  // Pre-spawn sidecar if local provider is selected
+  if (isPreferredProviderLocal()) {
     spawnSidecar().catch((err) => {
       console.error("[STT] Failed to pre-spawn sidecar:", err);
     });
@@ -3991,7 +3797,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("stt:get-preferred-provider", () => {
-    return preferredProviderId;
+    return getPreferredProviderId();
   });
 
   ipcMain.handle("stt:get-provider-settings", () => {
@@ -4009,19 +3815,23 @@ app.whenReady().then(async () => {
         providerId === OPENAI_CLOUD_PROVIDER_ID &&
         !hasProviderApiKey(OPENAI_CLOUD_PROVIDER_ID)
       ) {
-        throw new Error("Save an OpenAI API key before selecting OpenAI Direct.");
+        throw new Error(
+          "Save an OpenAI API key before selecting OpenAI Direct.",
+        );
       }
 
-      preferredProviderId = providerId;
-      saveSttPreferences({ preferredProviderId });
+      setPreferredProviderId(providerId);
 
-      if (isLocalProviderSelected(preferredProviderId)) {
+      if (isPreferredProviderLocal()) {
         try {
           if (!sidecarProcess || !sidecarReady) {
             await spawnSidecar();
           }
         } catch (err) {
-          console.error("[STT] Failed to spawn sidecar on provider switch:", err);
+          console.error(
+            "[STT] Failed to spawn sidecar on provider switch:",
+            err,
+          );
           throw err;
         }
         return;
@@ -4076,11 +3886,7 @@ app.whenReady().then(async () => {
         throw new Error("API key cannot be empty.");
       }
 
-      providerSecrets = {
-        ...providerSecrets,
-        [payload.providerId]: encodeProviderSecret(apiKey),
-      };
-      saveProviderSecrets(providerSecrets);
+      setProviderApiKey(payload.providerId, apiKey);
 
       return getProviderSettingsSnapshot();
     },
@@ -4093,16 +3899,13 @@ app.whenReady().then(async () => {
       );
     }
 
-    if (preferredProviderId === providerId) {
+    if (getPreferredProviderId() === providerId) {
       throw new Error(
         "Switch transcription providers before clearing the active provider's API key.",
       );
     }
 
-    const nextSecrets = { ...providerSecrets };
-    delete nextSecrets[providerId];
-    providerSecrets = nextSecrets;
-    saveProviderSecrets(providerSecrets);
+    clearProviderApiKey(providerId);
 
     return getProviderSettingsSnapshot();
   });
