@@ -4,7 +4,6 @@ import {
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
   DEEPGRAM_CLOUD_PROVIDER_ID,
-  SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 export {
   OPENAI_CLOUD_PROVIDER_ID,
@@ -45,15 +44,6 @@ export interface TranscriptionProviderSettingsSnapshot {
 }
 
 const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
-  {
-    id: SPOKE_CLOUD_PROVIDER_ID,
-    displayName: "Spoke Cloud",
-    description: "Hosted transcription through the existing Spoke backend.",
-    kind: "cloud",
-    selectable: true,
-    requiresApiKey: false,
-    status: "ready",
-  },
   {
     id: LOCAL_STT_PROVIDER_ID,
     displayName: "Local Moonshine",
@@ -134,7 +124,6 @@ export function isSelectableTranscriptionProviderId(
 ): providerId is PreferredTranscriptionProviderId {
   return (
     providerId === LOCAL_STT_PROVIDER_ID ||
-    providerId === SPOKE_CLOUD_PROVIDER_ID ||
     providerId === OPENAI_CLOUD_PROVIDER_ID ||
     providerId === GROQ_CLOUD_PROVIDER_ID ||
     providerId === DEEPGRAM_CLOUD_PROVIDER_ID

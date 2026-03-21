@@ -18,7 +18,6 @@ import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import { type TranscriptionProviderSettingsEntry } from "../core/transcription/providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
-  SPOKE_CLOUD_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
 } from "../core/transcription/providerPreferences";
 import { useProviderSelection } from "../hooks/useProviderSelection";
@@ -419,10 +418,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             value: p.id,
             label: p.displayName,
           }))
-        : [
-            { value: SPOKE_CLOUD_PROVIDER_ID, label: "Spoke Cloud" },
-            { value: LOCAL_STT_PROVIDER_ID, label: "Local Moonshine" },
-          ],
+        : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local Moonshine" }],
     [selectableProviderEntries],
   );
 

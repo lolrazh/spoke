@@ -8,17 +8,17 @@ describe("useProviderSelection", () => {
     (window as any).stt = {
       ...window.stt,
       getProviderSettings: async () => ({
-        preferredProviderId: "spoke-cloud",
+        preferredProviderId: "local-stt",
         providers: [],
       }),
     };
   });
 
-  it("returns spoke-cloud as default provider when providers list is empty", async () => {
+  it("returns local-stt as default provider when providers list is empty", async () => {
     const { result } = renderHook(() => useProviderSelection());
 
     await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe("spoke-cloud");
+      expect(result.current.selectedProviderId).toBe("local-stt");
     });
 
     // Should still produce selectable entries from the fallback catalog
@@ -38,12 +38,12 @@ describe("useProviderSelection", () => {
           apiKeyConfigured: false,
         },
         {
-          id: "spoke-cloud",
-          displayName: "Spoke Cloud",
+          id: "openai-cloud",
+          displayName: "OpenAI Direct",
           kind: "cloud",
           selectable: true,
-          requiresApiKey: false,
-          apiKeyConfigured: false,
+          requiresApiKey: true,
+          apiKeyConfigured: true,
         },
       ],
     });
@@ -58,7 +58,7 @@ describe("useProviderSelection", () => {
     expect(result.current.selectedProviderEntry?.id).toBe("local-stt");
   });
 
-  it("computes selectedProviderRequiresAuth correctly for local provider", async () => {
+  it("filters non-selectable providers from selectableProviderEntries", async () => {
     (window as any).stt.getProviderSettings = async () => ({
       preferredProviderId: "local-stt",
       providers: [
@@ -66,31 +66,6 @@ describe("useProviderSelection", () => {
           id: "local-stt",
           displayName: "Local STT",
           kind: "local",
-          selectable: true,
-          requiresApiKey: false,
-          apiKeyConfigured: false,
-        },
-      ],
-    });
-
-    const { result } = renderHook(() => useProviderSelection());
-
-    await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe("local-stt");
-    });
-
-    // Local provider should not require auth
-    expect(result.current.selectedProviderRequiresAuth).toBe(false);
-  });
-
-  it("filters non-selectable providers from selectableProviderEntries", async () => {
-    (window as any).stt.getProviderSettings = async () => ({
-      preferredProviderId: "spoke-cloud",
-      providers: [
-        {
-          id: "spoke-cloud",
-          displayName: "Spoke Cloud",
-          kind: "cloud",
           selectable: true,
           requiresApiKey: false,
           apiKeyConfigured: false,
@@ -114,6 +89,6 @@ describe("useProviderSelection", () => {
 
     // Only selectable ones
     expect(result.current.selectableProviderEntries).toHaveLength(1);
-    expect(result.current.selectableProviderEntries[0].id).toBe("spoke-cloud");
+    expect(result.current.selectableProviderEntries[0].id).toBe("local-stt");
   });
 });

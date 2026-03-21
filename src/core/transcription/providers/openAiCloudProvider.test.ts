@@ -9,12 +9,13 @@ describe("openAiCloudProvider", () => {
       value: {
         getProviderSettings: vi.fn(() =>
           Promise.resolve({
-            preferredProviderId: "spoke-cloud",
+            preferredProviderId: "local-stt",
             providers: [
               {
                 id: OPENAI_CLOUD_PROVIDER_ID,
                 displayName: "OpenAI Direct",
-                description: "Direct cloud transcription with your own OpenAI API key.",
+                description:
+                  "Direct cloud transcription with your own OpenAI API key.",
                 kind: "cloud",
                 selectable: true,
                 requiresApiKey: true,

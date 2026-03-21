@@ -10,7 +10,6 @@ export interface TranscriptionProviderDescriptor {
   id: string;
   displayName: string;
   kind: TranscriptionProviderKind;
-  requiresAuthToken: boolean;
   requiresApiKey: boolean;
 }
 
@@ -28,7 +27,5 @@ export interface TranscriptionProvider {
   prepare?: (
     input: PrepareTranscriptionInput,
   ) => Promise<PrepareTranscriptionResult>;
-  transcribe: (
-    input: TranscribeAudioInput,
-  ) => Promise<TranscriptionResult>;
+  transcribe: (input: TranscribeAudioInput) => Promise<TranscriptionResult>;
 }

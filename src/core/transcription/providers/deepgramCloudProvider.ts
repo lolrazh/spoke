@@ -7,7 +7,6 @@ export const deepgramCloudProvider: TranscriptionProvider = {
     id: DEEPGRAM_CLOUD_PROVIDER_ID,
     displayName: "Deepgram",
     kind: "cloud",
-    requiresAuthToken: false,
     requiresApiKey: true,
   },
   getAvailability: async () => {

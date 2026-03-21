@@ -7,7 +7,6 @@ export const openAiCloudProvider: TranscriptionProvider = {
     id: OPENAI_CLOUD_PROVIDER_ID,
     displayName: "OpenAI Direct",
     kind: "cloud",
-    requiresAuthToken: false,
     requiresApiKey: true,
   },
   getAvailability: async () => {

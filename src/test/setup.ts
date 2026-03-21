@@ -66,17 +66,17 @@ if (!globalThis.window.stt) {
     transcribeLocal: vi.fn(async () => ({ text: "", metrics: {} })),
     transcribeApiKeyProvider: vi.fn(async () => ({ text: "", metrics: {} })),
     getProviderSettings: vi.fn(async () => ({
-      preferredProviderId: "spoke-cloud",
+      preferredProviderId: "local-stt",
       providers: [],
     })),
-    getPreferredProvider: vi.fn(async () => "spoke-cloud"),
+    getPreferredProvider: vi.fn(async () => "local-stt"),
     setPreferredProvider: vi.fn(async () => {}),
     setProviderApiKey: vi.fn(async () => ({
-      preferredProviderId: "spoke-cloud",
+      preferredProviderId: "local-stt",
       providers: [],
     })),
     clearProviderApiKey: vi.fn(async () => ({
-      preferredProviderId: "spoke-cloud",
+      preferredProviderId: "local-stt",
       providers: [],
     })),
     getModelStatus: vi.fn(async () => ({

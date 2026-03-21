@@ -143,7 +143,7 @@ Object.defineProperty(window, "clipboard", {
 
 Object.defineProperty(window, "stt", {
   value: {
-    getPreferredProvider: vi.fn(() => Promise.resolve("spoke-cloud")),
+    getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
     setPreferredProvider: vi.fn(() => Promise.resolve()),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
   },
@@ -155,7 +155,7 @@ describe("useTranscription (HTTP)", () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
     clearAuthTokenCache();
-    (window.stt.getPreferredProvider as any).mockResolvedValue("spoke-cloud");
+    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
       metrics: {},
@@ -177,151 +177,6 @@ describe("useTranscription (HTTP)", () => {
     expect(result.current.processing).toBe(false);
     expect(result.current.text).toBe("");
     expect(result.current.error).toBe(null);
-  });
-
-  it("should start recording and call /prepare", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          prepareId: "test-prepare-id",
-          ocrWords: ["test", "words"],
-          quotaInfo: { wordsUsed: 0, quotaLimit: 1000 },
-        }),
-    });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    expect(result.current.recording).toBe(true);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://test/prepare",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          Authorization: "Bearer fake-test-token",
-        }),
-      }),
-    );
-  });
-
-  it("should handle auth errors on /prepare", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      json: () => Promise.resolve({ error: "Unauthorized" }),
-    });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    await waitFor(() => {
-      expect(result.current.authError).toBe("auth_failed");
-    });
-  });
-
-  it("should handle quota exceeded on /prepare", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 402,
-      json: () =>
-        Promise.resolve({
-          error: "Quota exceeded",
-          code: "quota_exceeded",
-        }),
-    });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    await waitFor(() => {
-      expect(result.current.authError).toBe("payment_required");
-    });
-  });
-
-  it("should stop recording and upload to /transcribe", async () => {
-    // Mock /prepare
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          prepareId: "test-id",
-          ocrWords: [],
-          quotaInfo: { wordsUsed: 0, quotaLimit: 1000 },
-        }),
-    });
-
-    // Mock /transcribe
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          text: "Test transcription",
-          mode: "dictation",
-          tier: "bypass",
-          traceId: "test-trace",
-        }),
-    });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    // Start recording
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    expect(result.current.recording).toBe(true);
-
-    // Stop recording
-    await act(async () => {
-      result.current.stop();
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
-
-    await waitFor(() => {
-      expect(result.current.text).toBe("Test transcription");
-    });
-
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    expect(mockFetch).toHaveBeenLastCalledWith(
-      "http://test/transcribe",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer fake-test-token",
-        }),
-      }),
-    );
   });
 
   it("should ignore duplicate stop calls in local mode", async () => {
@@ -402,11 +257,6 @@ describe("useTranscription (HTTP)", () => {
   });
 
   it("should cancel recording", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ prepareId: "test", ocrWords: [] }),
-    });
-
     const { result } = renderHook(() => useTranscription());
 
     await waitFor(() => {
@@ -426,85 +276,5 @@ describe("useTranscription (HTTP)", () => {
 
     expect(result.current.recording).toBe(false);
     expect(result.current.text).toBe("");
-  });
-
-  it("should clear auth errors", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-      json: () => Promise.resolve({ error: "Unauthorized" }),
-    });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    await waitFor(() => {
-      expect(result.current.authError).toBe("auth_failed");
-    });
-
-    await act(async () => {
-      result.current.clearAuthError();
-    });
-
-    expect(result.current.authError).toBe(null);
-  });
-
-  it("should handle /transcribe errors", async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ prepareId: "test", ocrWords: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: () => Promise.resolve({ error: "Server error" }),
-      });
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-
-    await act(async () => {
-      result.current.stop();
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toBe("Server error");
-    });
-  });
-
-  it("should handle missing auth token", async () => {
-    const { getAccessToken } = await import("../lib/supabaseClient");
-    vi.mocked(getAccessToken).mockResolvedValueOnce(null);
-
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await act(async () => {
-      result.current.start();
-    });
-
-    expect(result.current.authError).toBe("not_signed_in");
-    expect(result.current.recording).toBe(false);
   });
 });

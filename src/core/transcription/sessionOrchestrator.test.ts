@@ -8,7 +8,6 @@ const localProvider: TranscriptionProvider = {
     id: "local",
     displayName: "Local",
     kind: "local",
-    requiresAuthToken: false,
     requiresApiKey: false,
   },
   transcribe: async () => ({ text: "local transcript" }),
@@ -19,7 +18,6 @@ const cloudProvider: TranscriptionProvider = {
     id: "cloud",
     displayName: "Cloud",
     kind: "cloud",
-    requiresAuthToken: true,
     requiresApiKey: true,
   },
   prepare: async () => ({

@@ -29,7 +29,6 @@ import {
   PERMISSION_NOTIFICATION_REPEAT_DELAY_MS,
   PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
 } from "../hooks/usePermissionNotifications";
-import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 import { usePillMachine } from "../state/pillStateMachine";
 import { useSharePreference } from "../hooks/useSharePreference";
 export type {
@@ -198,31 +197,8 @@ const AppInner: React.FC = () => {
     };
   }, []);
 
-  const preferredProviderRequiresAuth = useCallback(async () => {
-    const providerId = await window.stt?.getPreferredProvider?.();
-    return preferredTranscriptionProviderRequiresAuth(providerId);
-  }, []);
-
   const canProceedWithStart = useCallback(async (): Promise<boolean> => {
     try {
-      const skipAuth = !!window.devFlags?.skipAuth;
-      const providerNeedsAuth =
-        !skipAuth && (await preferredProviderRequiresAuth());
-      if (providerNeedsAuth) {
-        try {
-          const { getCurrentUser } = await import("../lib/supabaseClient");
-          const user = await getCurrentUser();
-          if (!user) {
-            try {
-              window.notifications?.send?.("Sign in to dictate");
-            } catch {}
-            try {
-              await window.electron?.showOnboarding?.();
-            } catch {}
-            return false;
-          }
-        } catch {}
-      }
       const mic = await window.electron?.checkMicrophonePermission?.();
       if (!mic?.granted) {
         triggerPermissionNotification(
@@ -235,7 +211,7 @@ const AppInner: React.FC = () => {
       // Fall through and attempt to start; downstream flows will surface errors.
     }
     return true;
-  }, [preferredProviderRequiresAuth, triggerPermissionNotification]);
+  }, [triggerPermissionNotification]);
 
   // Track focus to guard Mission Control/Spaces focus resumes
   useEffect(() => {

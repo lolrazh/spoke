@@ -7,7 +7,6 @@ export const localSttProvider: TranscriptionProvider = {
     id: LOCAL_STT_PROVIDER_ID,
     displayName: "Local STT",
     kind: "local",
-    requiresAuthToken: false,
     requiresApiKey: false,
   },
   getAvailability: () => {

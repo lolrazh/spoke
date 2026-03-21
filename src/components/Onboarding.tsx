@@ -34,7 +34,6 @@ import {
   useOnboardingAuth,
   type AccountSummary,
 } from "../hooks/useOnboardingAuth";
-import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import {
   buildOnboardingSteps,
@@ -143,7 +142,6 @@ const Onboarding: React.FC = () => {
     selectableProviderEntries,
     selectedProviderId,
     selectedProviderEntry,
-    selectedProviderRequiresAuth,
   } = useProviderSelection();
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const {
@@ -571,7 +569,7 @@ const Onboarding: React.FC = () => {
   // Helper to get the current steps array
   const getSteps = (): OnboardingStep[] =>
     buildOnboardingSteps({
-      requiresAuth: selectedProviderRequiresAuth,
+      requiresAuth: false,
     });
 
   // Permission aggregates
@@ -588,65 +586,16 @@ const Onboarding: React.FC = () => {
       if (isMountedRef.current) {
         setProviderSettings(snapshot);
       }
-      const skipAuth = !!window.devFlags?.skipAuth;
       const forceOnboarding = !!window.devFlags?.forceOnboarding;
-      const providerNeedsAuth =
-        !skipAuth &&
-        preferredTranscriptionProviderRequiresAuth(
-          snapshot.preferredProviderId,
-        );
-      if (providerNeedsAuth) {
-        await ensureAuthRuntimeReady();
-      }
       const user = await getCurrentUser();
 
       if (forceOnboarding) {
         await refreshAccountSummary();
-        setCurrentStep(
-          providerNeedsAuth && user ? "name-verification" : "auth",
-        );
+        setCurrentStep("auth");
         return;
       }
 
-      if (!user && providerNeedsAuth) {
-        if (isMountedRef.current) setSignedInAccount(null);
-        return; // stay on auth step until the user signs in
-      }
-
-      if (user && providerNeedsAuth) {
-        try {
-          // Ensure a profile row exists for returning users (or first login on this device)
-          try {
-            await ensureProfileRow();
-          } catch {}
-          const profile = await getProfile();
-          const account = deriveAccountSummary(profile, user);
-          if (isMountedRef.current) setSignedInAccount(account);
-          if (profile?.onboarding_done) {
-            try {
-              await window.electron?.setPttTarget?.("main");
-            } catch (e) {
-              console.warn("[Onboarding] setPttTarget failed:", e);
-            }
-            // (Removed) auth:set-signed-in — Supabase session is the source of truth
-            await window.electron?.onboardingComplete();
-            try {
-              window.notifications?.send?.("You've been signed in.");
-            } catch {}
-            return;
-          } else {
-            // Sync local flag with DB - if onboarding not done in DB, reset local flag
-            // This ensures restart mid-onboarding opens onboarding window (not main)
-            try {
-              await window.electron?.resetOnboardingFlag?.();
-            } catch (error) {
-              console.warn("[Onboarding] Failed to reset local flag:", error);
-            }
-          }
-        } catch (error) {
-          if (isMountedRef.current) setSignedInAccount(null);
-        }
-      } else if (user) {
+      if (user) {
         await refreshAccountSummary();
       }
 
@@ -654,7 +603,7 @@ const Onboarding: React.FC = () => {
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
         const steps = buildOnboardingSteps({
-          requiresAuth: providerNeedsAuth,
+          requiresAuth: false,
         });
         if (
           savedStep &&
@@ -668,7 +617,7 @@ const Onboarding: React.FC = () => {
         // Ignore errors - continue with default step
       }
 
-      setCurrentStep(providerNeedsAuth && user ? "name-verification" : "auth");
+      setCurrentStep("auth");
     })();
   }, [ensureAuthRuntimeReady, introOnly, loadProviderSettings]);
 
@@ -1276,7 +1225,7 @@ const Onboarding: React.FC = () => {
                       Choose Your Transcription Provider
                     </h1>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      {selectedProviderRequiresAuth
+                      {false /* no provider requires auth */
                         ? "Spoke Cloud needs your account. Local and direct providers can be used without signing in."
                         : "This provider can be used without a Spoke account. You can always change it later in Settings."}
                     </p>
@@ -1312,7 +1261,7 @@ const Onboarding: React.FC = () => {
                     {selectedProviderEntry && (
                       <div
                         className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
-                          selectedProviderRequiresAuth
+                          false /* no provider requires auth */
                             ? "opacity-95"
                             : "border-emerald-400/30 bg-emerald-500/5"
                         }`}
@@ -1328,7 +1277,7 @@ const Onboarding: React.FC = () => {
                         <div className="text-white/70">
                           <SfIcon
                             name={
-                              selectedProviderRequiresAuth
+                              false /* no provider requires auth */
                                 ? "person.crop.circle.badge.checkmark"
                                 : "checkmark.seal.fill"
                             }
@@ -1339,7 +1288,8 @@ const Onboarding: React.FC = () => {
                     )}
                   </motion.div>
                   <AnimatePresence mode="wait">
-                    {selectedProviderRequiresAuth && signedInAccount ? (
+                    {false /* no provider requires auth */ &&
+                    signedInAccount ? (
                       <motion.div
                         key="auth-summary"
                         variants={authViewVariants}
@@ -1395,7 +1345,7 @@ const Onboarding: React.FC = () => {
                           </div>
                         )}
                       </motion.div>
-                    ) : selectedProviderRequiresAuth ? (
+                    ) : false /* no provider requires auth */ ? (
                       <motion.div
                         key="auth-form"
                         variants={authViewVariants}
@@ -2252,7 +2202,7 @@ const Onboarding: React.FC = () => {
                 disabled={
                   (currentStep === "permissions" && !allPermissionsGranted) ||
                   (currentStep === "auth" &&
-                    selectedProviderRequiresAuth &&
+                    false /* no provider requires auth */ &&
                     (!signedInAccount ||
                       !sessionValid ||
                       authLoading ||

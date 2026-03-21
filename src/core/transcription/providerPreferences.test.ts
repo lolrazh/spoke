@@ -5,7 +5,6 @@ import {
   LOCAL_STT_PROVIDER_ID,
   normalizeProviderPreferences,
   OPENAI_CLOUD_PROVIDER_ID,
-  SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
 describe("providerPreferences", () => {
@@ -27,6 +26,6 @@ describe("providerPreferences", () => {
 
   it("identifies whether the local provider is selected", () => {
     expect(isLocalProviderSelected(LOCAL_STT_PROVIDER_ID)).toBe(true);
-    expect(isLocalProviderSelected(SPOKE_CLOUD_PROVIDER_ID)).toBe(false);
+    expect(isLocalProviderSelected(OPENAI_CLOUD_PROVIDER_ID)).toBe(false);
   });
 });

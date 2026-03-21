@@ -1,12 +1,10 @@
 export const LOCAL_STT_PROVIDER_ID = "local-stt";
-export const SPOKE_CLOUD_PROVIDER_ID = "spoke-cloud";
 export const OPENAI_CLOUD_PROVIDER_ID = "openai-cloud";
 export const GROQ_CLOUD_PROVIDER_ID = "groq-cloud";
 export const DEEPGRAM_CLOUD_PROVIDER_ID = "deepgram-cloud";
 
 export type PreferredTranscriptionProviderId =
   | typeof LOCAL_STT_PROVIDER_ID
-  | typeof SPOKE_CLOUD_PROVIDER_ID
   | typeof OPENAI_CLOUD_PROVIDER_ID
   | typeof GROQ_CLOUD_PROVIDER_ID
   | typeof DEEPGRAM_CLOUD_PROVIDER_ID;
@@ -32,12 +30,6 @@ export function normalizeProviderPreferences(
     if (prefs.preferredProviderId === LOCAL_STT_PROVIDER_ID) {
       return {
         preferredProviderId: LOCAL_STT_PROVIDER_ID,
-      };
-    }
-
-    if (prefs.preferredProviderId === SPOKE_CLOUD_PROVIDER_ID) {
-      return {
-        preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
       };
     }
 

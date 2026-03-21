@@ -205,16 +205,6 @@ export function useTranscription(
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
-    let token: string | null = null;
-    if (provider.descriptor.requiresAuthToken) {
-      token = await getAuthToken();
-      if (!token) {
-        setAuthError("not_signed_in");
-        setError("Not signed in");
-        return;
-      }
-    }
-
     try {
       setText("");
       setError(null);
@@ -246,7 +236,6 @@ export function useTranscription(
         try {
           const prepareResult =
             await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
-              authToken: token,
               screenshotBase64: provider.prepare
                 ? await captureScreenshotBase64()
                 : undefined,

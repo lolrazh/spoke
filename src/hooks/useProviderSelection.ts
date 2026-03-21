@@ -7,10 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  preferredTranscriptionProviderRequiresAuth,
-  LOCAL_STT_PROVIDER_ID,
-} from "../core/transcription/defaultSessionOrchestrator";
+import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/defaultSessionOrchestrator";
 import {
   listTranscriptionProviderCatalog,
   type TranscriptionProviderSettingsEntry,
@@ -76,9 +73,6 @@ export function useProviderSelection() {
     providerEntries.find((provider) => provider.id === selectedProviderId) ??
     null;
 
-  const selectedProviderRequiresAuth =
-    preferredTranscriptionProviderRequiresAuth(selectedProviderId);
-
   return {
     providerSettings,
     setProviderSettings,
@@ -87,6 +81,5 @@ export function useProviderSelection() {
     selectableProviderEntries,
     selectedProviderId,
     selectedProviderEntry,
-    selectedProviderRequiresAuth,
   };
 }

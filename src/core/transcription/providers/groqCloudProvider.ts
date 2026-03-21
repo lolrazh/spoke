@@ -7,7 +7,6 @@ export const groqCloudProvider: TranscriptionProvider = {
     id: GROQ_CLOUD_PROVIDER_ID,
     displayName: "Groq",
     kind: "cloud",
-    requiresAuthToken: false,
     requiresApiKey: true,
   },
   getAvailability: async () => {
