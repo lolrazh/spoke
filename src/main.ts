@@ -132,6 +132,14 @@ import {
 import { smoothShow, smoothHide } from "./main/windowAnimation";
 import { getIconPath, getTrayIconPath } from "./main/iconPaths";
 import {
+  clearHideTimer,
+  hideFloatingBarWithTimer,
+  isFloatingBarEnabled,
+  setFloatingBarEnabled,
+  getHideEndTime,
+  isHideTimerActive,
+} from "./main/floatingBar";
+import {
   preSpawnPasteHelper,
   getPreSpawnedHelper,
   pasteViaDaemon,
@@ -322,11 +330,7 @@ let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
 
-// Floating bar hide timer management
-let hideTimer: NodeJS.Timeout | null = null;
-let hideEndTime: number | null = null;
-// Preference-level flag to reflect user's intent (Settings toggle)
-let floatingBarEnabled = true;
+// Floating bar state moved to src/main/floatingBar.ts
 // Dock operation in progress (prevents blur from collapsing during dock show/hide)
 let dockOperationInProgress = false;
 
@@ -716,59 +720,6 @@ function broadcastMicSelection(): void {
   });
 }
 
-function clearHideTimer(): void {
-  if (hideTimer) {
-    clearTimeout(hideTimer);
-    hideTimer = null;
-    hideEndTime = null;
-    console.log("[Hide Timer] Timer cleared");
-  }
-}
-
-function hideFloatingBarWithTimer(minutes: number | null): void {
-  console.log(
-    `[Hide Timer] Hiding floating bar for ${minutes ? minutes + " minutes" : "indefinitely"}`,
-  );
-
-  // Clear any existing timer
-  clearHideTimer();
-
-  // Hide the window
-  if (mainWindow) {
-    smoothHide(mainWindow);
-
-    // Set up timer if duration is specified
-    if (minutes !== null) {
-      hideEndTime = Date.now() + minutes * 60 * 1000;
-      hideTimer = setTimeout(
-        () => {
-          console.log("[Hide Timer] Timer expired, showing floating bar");
-          if (mainWindow) {
-            smoothShow(mainWindow);
-            mainWindow?.webContents.send(
-              "notify",
-              "Floating bar shown automatically",
-            );
-          }
-          clearHideTimer();
-        },
-        minutes * 60 * 1000,
-      );
-
-      mainWindow?.webContents.send(
-        "notify",
-        `Floating Bar Hidden for ${minutes} minutes. Use the Tray Menu to show early.`,
-      );
-    } else {
-      // Treat indefinite hide as preference OFF
-      floatingBarEnabled = false;
-      mainWindow?.webContents.send(
-        "notify",
-        "Floating Bar Hidden Indefinitely. Use the Tray Menu to show again.",
-      );
-    }
-  }
-}
 
 function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
   if (!mainWindow) {
@@ -787,21 +738,21 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
             label: "For 5 minutes",
             click: () => {
               console.log("[Menu] Hide floating bar for 5 minutes");
-              hideFloatingBarWithTimer(5);
+              hideFloatingBarWithTimer(mainWindow, 5);
             },
           },
           {
             label: "For 30 minutes",
             click: () => {
               console.log("[Menu] Hide floating bar for 30 minutes");
-              hideFloatingBarWithTimer(30);
+              hideFloatingBarWithTimer(mainWindow, 30);
             },
           },
           {
             label: "For 1 hour",
             click: () => {
               console.log("[Menu] Hide floating bar for 1 hour");
-              hideFloatingBarWithTimer(60);
+              hideFloatingBarWithTimer(mainWindow, 60);
             },
           },
           { type: "separator" },
@@ -809,7 +760,7 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
             label: "Indefinitely",
             click: () => {
               console.log("[Menu] Hide floating bar indefinitely");
-              hideFloatingBarWithTimer(null);
+              hideFloatingBarWithTimer(mainWindow, null);
             },
           },
         ],
@@ -820,8 +771,8 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
     let label = "Show Floating Bar";
 
     // If there's an active timer, show remaining time
-    if (hideTimer && hideEndTime) {
-      const remainingMs = hideEndTime - Date.now();
+    if (isHideTimerActive() && getHideEndTime()) {
+      const remainingMs = getHideEndTime()! - Date.now();
       const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
       if (remainingMinutes > 0) {
         label = `Show Floating Bar (${remainingMinutes}m remaining)`;
@@ -838,7 +789,7 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
             smoothShow(mainWindow);
             console.log("[Menu] Floating bar shown");
           }
-          floatingBarEnabled = true;
+          setFloatingBarEnabled(true);
         },
       },
     ];
@@ -2408,7 +2359,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("floating-bar:get-enabled", () => {
-    return { enabled: floatingBarEnabled };
+    return { enabled: isFloatingBarEnabled() };
   });
 
   // Hide indefinitely without emitting an additional notification (renderer handles UX)
@@ -2418,7 +2369,7 @@ app.whenReady().then(async () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         smoothHide(mainWindow);
       }
-      floatingBarEnabled = false;
+      setFloatingBarEnabled(false);
       rebuildTrayMenu(); // Update tray menu to reflect new state
       return { ok: true };
     } catch (e) {
@@ -2432,7 +2383,7 @@ app.whenReady().then(async () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         smoothShow(mainWindow);
       }
-      floatingBarEnabled = true;
+      setFloatingBarEnabled(true);
       rebuildTrayMenu(); // Update tray menu to reflect new state
       return { ok: true };
     } catch (e) {
