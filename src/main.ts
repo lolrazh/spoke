@@ -95,6 +95,9 @@ import {
   transcribeWithGroq,
   transcribeWithDeepgram,
 } from "./main/providerStore";
+import { enhance } from "./main/enhanceService";
+import { extractOcrWords } from "./main/ocrService";
+import { resolveEnhancementProvider } from "./main/llmService";
 import {
   spawnSidecar,
   killSidecar,
@@ -2316,6 +2319,35 @@ app.whenReady().then(async () => {
   ipcMain.handle("stt:remove-model", async () => {
     killSidecar();
     await removeModel();
+  });
+
+  // ============ Enhancement + OCR IPC handlers ============
+
+  ipcMain.handle(
+    "stt:enhance",
+    async (
+      _event,
+      payload: {
+        text: string;
+        vocabulary?: string[];
+        mode?: "dictation" | "edit";
+        selectionText?: string;
+      },
+    ) => {
+      return enhance(payload.text, {
+        vocabulary: payload.vocabulary,
+        mode: payload.mode,
+        selectionText: payload.selectionText,
+      });
+    },
+  );
+
+  ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
+    const providerId = resolveEnhancementProvider(getPreferredProviderId());
+    if (!providerId) {
+      return { words: [] };
+    }
+    return extractOcrWords(imageBase64, providerId);
   });
 
   ipcMain.handle("stt:transcribe-local", async (_event, pcmBuffer: Buffer) => {

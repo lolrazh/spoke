@@ -91,6 +91,11 @@ if (!globalThis.window.stt) {
     installModel: vi.fn(async () => {}),
     removeModel: vi.fn(async () => {}),
     onModelProgress: vi.fn(() => () => {}),
+    enhance: vi.fn(async (payload: any) => ({
+      text: payload.text,
+      bypassed: true,
+    })),
+    extractOcr: vi.fn(async () => ({ words: [] })),
   } as any;
 }
 

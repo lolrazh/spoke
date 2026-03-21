@@ -211,6 +211,19 @@ declare global {
           totalBytes: number;
         }) => void,
       ) => () => void;
+      enhance: (payload: {
+        text: string;
+        vocabulary?: string[];
+        mode?: "dictation" | "edit";
+        selectionText?: string;
+      }) => Promise<{
+        text: string;
+        bypassed: boolean;
+        tier?: string;
+        provider?: string;
+        model?: string;
+      }>;
+      extractOcr: (imageBase64: string) => Promise<{ words: string[] }>;
     };
     mic: {
       updateDevices: (

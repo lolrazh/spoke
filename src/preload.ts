@@ -185,6 +185,14 @@ contextBridge.exposeInMainWorld("stt", {
       ipcRenderer.removeListener("stt:model-download-progress", handler);
     };
   },
+  enhance: (payload: {
+    text: string;
+    vocabulary?: string[];
+    mode?: "dictation" | "edit";
+    selectionText?: string;
+  }) => ipcRenderer.invoke("stt:enhance", payload),
+  extractOcr: (imageBase64: string) =>
+    ipcRenderer.invoke("stt:extract-ocr", imageBase64),
 });
 
 contextBridge.exposeInMainWorld("island", {
