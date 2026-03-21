@@ -7,26 +7,15 @@
  */
 
 import * as fs from "fs";
-import * as path from "path";
-import { app } from "electron";
 import { spawn } from "child_process";
 import type { SttEvent, LocalTranscribeResult } from "../types/shared";
+import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
 
 // ── Internal state ─────────────────────────────────────────────────────
 
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
-
-// ── Path resolution ────────────────────────────────────────────────────
-
-function getSidecarPythonPath(): string {
-  return path.join(app.getAppPath(), "local-stt", ".venv", "bin", "python");
-}
-
-function getSidecarScriptPath(): string {
-  return path.join(app.getAppPath(), "local-stt", "sidecar.py");
-}
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -36,20 +25,22 @@ export function isSidecarRunning(): boolean {
 
 export function spawnSidecar(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const pythonPath = getSidecarPythonPath();
-    const scriptPath = getSidecarScriptPath();
+    const binaryPath = getSidecarBinaryPath();
+    const args = getSidecarArgs();
 
-    if (!fs.existsSync(pythonPath)) {
+    if (!fs.existsSync(binaryPath)) {
       reject(
         new Error(
-          `Local STT python not found at ${pythonPath}. Run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
+          `Local STT binary not found at ${binaryPath}. In dev, run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
         ),
       );
       return;
     }
 
-    console.log("[STT] Spawning sidecar daemon...");
-    const proc = spawn(pythonPath, [scriptPath], {
+    console.log(
+      `[STT] Spawning sidecar daemon: ${binaryPath} ${args.join(" ")}`,
+    );
+    const proc = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
       detached: false,
     });
