@@ -317,8 +317,7 @@ export async function installModel(): Promise<void> {
     modelStatus.state === "downloading" ||
     modelStatus.state === "installing"
   ) {
-    console.log("[ModelManager] Install already in progress, ignoring");
-    return;
+    throw new Error("Install already in progress");
   }
 
   const tmpDir = getTmpDir();
@@ -456,6 +455,14 @@ export async function installModel(): Promise<void> {
 // ── Remove ────────────────────────────────────────────────────────────
 
 export async function removeModel(): Promise<void> {
+  // Guard against removal during active download/install
+  if (
+    modelStatus.state === "downloading" ||
+    modelStatus.state === "installing"
+  ) {
+    throw new Error("Cannot remove model while install is in progress");
+  }
+
   const weightsDir = getWeightsDir();
 
   try {
