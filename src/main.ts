@@ -21,8 +21,6 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { spawn, execSync } from "child_process";
-import http from "node:http";
-
 import fs from "node:fs";
 
 import {
@@ -54,13 +52,6 @@ import {
   deleteTranscription,
   clearTranscriptions,
 } from "./lib/transcriptionStorage";
-import {
-  getAllSessionData,
-  setSessionItem,
-  getSessionItem,
-  removeSessionItem,
-  clearAllSessionData,
-} from "./lib/sessionStorage";
 import { captureScreenshot, testScreenshotCapture } from "./utils/screenshot";
 
 // Types moved to ./types/shared
@@ -257,58 +248,18 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
-// Buffer deep links received before windows are ready
-let pendingAuthUrls: string[] = [];
-let devAuthServerUrl: string | null = null;
-let devAuthServer: http.Server | null = null;
-// Duplicate callback prevention - track processed auth URLs
-const processedAuthUrls = new Set<string>();
-
-// Helper function to send auth callback with duplicate prevention
-function sendAuthCallback(url: string) {
-  // Extract the significant parts for deduplication (ignore minor differences)
-  const parsed = new URL(url);
-  const dedupeKey = `${parsed.protocol}//${parsed.hostname}${parsed.pathname}?${parsed.searchParams.toString()}`;
-
-  if (processedAuthUrls.has(dedupeKey)) {
-    console.log(
-      `[Auth] Ignoring duplicate callback: ${url.substring(0, 50)}...`,
-    );
-    return false;
-  }
-
-  processedAuthUrls.add(dedupeKey);
-  console.log(`[Auth] Processing new callback: ${url.substring(0, 50)}...`);
-
-  const targetWindow = onboardingWindow || mainWindow;
-  if (targetWindow && !targetWindow.isDestroyed()) {
-    targetWindow.webContents.send("auth:callback", { url });
-    if (!targetWindow.isVisible()) targetWindow.show();
-    targetWindow.focus();
-    return true;
-  } else {
-    pendingAuthUrls.push(url);
-    return false;
-  }
-}
 
 // Ensure single instance so deep links route to the running app
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on("second-instance", (_event, argv) => {
-    try {
-      const maybeUrl = argv.find(
-        (a) =>
-          typeof a === "string" &&
-          (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
-      );
-      if (maybeUrl) {
-        sendAuthCallback(maybeUrl);
-      }
-    } catch (e) {
-      console.error("[Auth] second-instance handler error:", e);
+  app.on("second-instance", () => {
+    // Focus existing window when a second instance is launched
+    const targetWindow = mainWindow || onboardingWindow;
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      if (!targetWindow.isVisible()) targetWindow.show();
+      targetWindow.focus();
     }
   });
 }
@@ -1165,48 +1116,6 @@ function createOnboardingWindow() {
   onboardingWindow.on("closed", () => {
     onboardingWindow = null;
   });
-
-  // Enhanced flush pending function with retry capability
-  const flushPending = () => {
-    try {
-      if (
-        pendingAuthUrls.length > 0 &&
-        onboardingWindow &&
-        !onboardingWindow.isDestroyed()
-      ) {
-        console.log(
-          `[Auth] Flushing ${pendingAuthUrls.length} pending auth URLs`,
-        );
-        const urlsToProcess = [...pendingAuthUrls];
-        pendingAuthUrls = [];
-
-        for (const url of urlsToProcess) {
-          if (onboardingWindow.webContents.isLoading()) {
-            // Re-add to pending if still loading
-            console.log(
-              `[Auth] Window still loading, re-adding URL to pending`,
-            );
-            pendingAuthUrls.push(url);
-          } else {
-            sendAuthCallback(url);
-          }
-        }
-
-        // Schedule retry if there are still pending URLs
-        if (pendingAuthUrls.length > 0) {
-          console.log(
-            `[Auth] ${pendingAuthUrls.length} URLs still pending, scheduling retry in 1 second`,
-          );
-          setTimeout(flushPending, 1000); // Retry after 1 second
-        }
-      }
-    } catch (e) {
-      console.error("[Auth] Failed to flush pending auth URLs:", e);
-    }
-  };
-  onboardingWindow.webContents.once("did-finish-load", () => {
-    setTimeout(flushPending, 0);
-  });
 }
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
@@ -1603,74 +1512,6 @@ async function pasteLastTranscript() {
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
-  try {
-    // Register custom protocol for OAuth/magic link callbacks
-    const isDev = !app.isPackaged;
-    if (isDev) {
-      // Always register with explicit exe and app path in dev
-      const exe = process.execPath;
-      const appPath = path.resolve(process.argv[1] || "");
-      const ok = app.setAsDefaultProtocolClient("spoke-dev", exe, [appPath]);
-      console.log(`[Auth] Registered dev protocol handler (spoke-dev): ${ok}`);
-      console.log(
-        `[Auth] isDefaultProtocolClient(dev):`,
-        app.isDefaultProtocolClient("spoke-dev"),
-      );
-    } else {
-      const ok = app.setAsDefaultProtocolClient("spoke");
-      console.log(`[Auth] Registered prod protocol handler (spoke): ${ok}`);
-      console.log(
-        `[Auth] isDefaultProtocolClient(prod):`,
-        app.isDefaultProtocolClient("spoke"),
-      );
-    }
-  } catch (e) {
-    console.error("[Auth] Failed to register protocol client:", e);
-  }
-
-  // In dev, start a tiny local HTTP server to receive auth callbacks as a fallback
-  try {
-    const isDev = !app.isPackaged;
-    if (isDev) {
-      const host = "127.0.0.1";
-      const port = 43112;
-      const server = http.createServer((req, res) => {
-        const url = `http://${host}:${port}${req.url || ""}`;
-        try {
-          sendAuthCallback(url);
-        } catch (err) {
-          console.error("[Auth] dev server callback error:", err);
-        }
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(
-          "<html><body><p>Authentication complete. You can close this window.</p></body></html>",
-        );
-      });
-      server.listen(port, host, () => {
-        devAuthServerUrl = `http://${host}:${port}/auth/callback`;
-        devAuthServer = server;
-        console.log("[Auth] Dev auth server listening:", devAuthServerUrl);
-      });
-    }
-  } catch (e) {
-    console.error("[Auth] Failed to start dev auth server:", e);
-  }
-
-  // Handle protocol URL passed at first launch (Windows/Linux)
-  try {
-    const firstUrl = process.argv.find(
-      (a) =>
-        typeof a === "string" &&
-        (a.startsWith("spoke://") || a.startsWith("spoke-dev://")),
-    );
-    if (firstUrl) {
-      sendAuthCallback(firstUrl);
-    }
-  } catch (e) {
-    console.error("[Auth] initial argv scan error:", e);
-  }
-
   // Initialize preferences and provider store
   initPreferences(app.getPath("userData"));
   initProviderStore(app.getPath("userData"));
@@ -1785,14 +1626,10 @@ app.whenReady().then(async () => {
         : []),
       "https://huggingface.co",
       "https://cdn.jsdelivr.net",
-      "https://*.supabase.co",
-      "https://*.supabase.in",
       // Sentry endpoints for error reporting
       "https://*.sentry.io",
       "https://*.ingest.sentry.io",
       "https://*.ingest.us.sentry.io",
-      "wss://*.supabase.co",
-      "wss://*.supabase.in",
       "blob:",
       "data:",
     ].join(" ");
@@ -1945,35 +1782,6 @@ app.whenReady().then(async () => {
       console.error("[IPC] open-external failed:", err);
       return { ok: false, error: err?.message || String(err) };
     }
-  });
-
-  // Provide renderer with correct redirect URL (one per env)
-  ipcMain.handle("auth:get-redirect-url", async () => {
-    const isDev = !app.isPackaged;
-    if (isDev) {
-      // Wait for HTTP server to be ready - no fallback to custom scheme
-      if (devAuthServerUrl) {
-        return { url: devAuthServerUrl };
-      }
-
-      // Wait for server to be ready with timeout
-      const timeout = 10000; // 10 seconds timeout
-      const startTime = Date.now();
-
-      while (!devAuthServerUrl && Date.now() - startTime < timeout) {
-        await new Promise((resolve) => setTimeout(resolve, 100)); // Check every 100ms
-      }
-
-      if (devAuthServerUrl) {
-        return { url: devAuthServerUrl };
-      } else {
-        console.error("[Auth] HTTP server failed to start within timeout");
-        return { error: "Development auth server failed to start" };
-      }
-    }
-    // In production, use the API site to complete OAuth, then deep-link to the app
-    // This improves UX when the provider opens an external browser
-    return { url: "https://auth.spoke.so/auth/callback" };
   });
 
   ipcMain.handle("ptt:set-target", (_event, target: PttTarget) => {
@@ -2419,33 +2227,6 @@ app.whenReady().then(async () => {
     return { ok: true };
   });
 
-  // Supabase session persistence handlers (for reliable auth across restarts)
-  ipcMain.handle("session:get-all", () => {
-    return getAllSessionData();
-  });
-
-  ipcMain.handle(
-    "session:set",
-    (_event, payload: { key: string; value: string }) => {
-      setSessionItem(payload.key, payload.value);
-      return { ok: true };
-    },
-  );
-
-  ipcMain.handle("session:get", (_event, payload: { key: string }) => {
-    return getSessionItem(payload.key);
-  });
-
-  ipcMain.handle("session:remove", (_event, payload: { key: string }) => {
-    removeSessionItem(payload.key);
-    return { ok: true };
-  });
-
-  ipcMain.handle("session:clear-all", () => {
-    clearAllSessionData();
-    return { ok: true };
-  });
-
   // Removed legacy dynamic window resize handler (renderer now animates within fixed envelope)
 
   // Handle dynamic click-through control
@@ -2852,66 +2633,10 @@ app.whenReady().then(async () => {
   }
 });
 
-// Ensure local dev auth server is closed on quit to avoid EADDRINUSE on restart
 app.on("before-quit", () => {
-  try {
-    devAuthServer?.close();
-  } catch {}
-
   // Unregister all global shortcuts
   globalShortcut.unregisterAll();
   console.log("[GlobalShortcut] All shortcuts unregistered");
-});
-
-// Handle deep links like spoke://auth/callback?code=...
-app.on("open-url", (event, url) => {
-  event.preventDefault();
-  console.log(`[Auth] Deep link received: ${url}`);
-  console.log(`[Auth] App packaged: ${app.isPackaged}`);
-  console.log(`[Auth] Onboarding window exists: ${!!onboardingWindow}`);
-  console.log(`[Auth] Main window exists: ${!!mainWindow}`);
-
-  try {
-    const targetWindow = onboardingWindow || mainWindow;
-    if (targetWindow && !targetWindow.isDestroyed()) {
-      console.log(
-        `[Auth] Target window ready: ${!targetWindow.webContents.isLoading()}`,
-      );
-      console.log(`[Auth] Window visible: ${targetWindow.isVisible()}`);
-
-      // Check if window content is loaded before sending auth callback
-      if (targetWindow.webContents.isLoading()) {
-        console.log(
-          `[Auth] Window still loading, waiting for did-finish-load event`,
-        );
-        // Wait for content to finish loading
-        targetWindow.webContents.once("did-finish-load", () => {
-          console.log(`[Auth] Window finished loading, sending auth callback`);
-          sendAuthCallback(url);
-        });
-      } else {
-        console.log(`[Auth] Window ready, sending auth callback immediately`);
-        sendAuthCallback(url);
-      }
-
-      // Ensure window is visible and focused for auth flow
-      if (!targetWindow.isVisible()) {
-        console.log(`[Auth] Showing hidden window`);
-        targetWindow.show();
-      }
-      targetWindow.focus();
-    } else {
-      console.log(
-        `[Auth] No ready window, adding to pending (${pendingAuthUrls.length + 1} total)`,
-      );
-      pendingAuthUrls.push(url);
-    }
-  } catch (err) {
-    console.error("[Auth] Deep link handler error:", err);
-    // Fallback: add to pending URLs if direct send fails
-    console.log(`[Auth] Adding to pending URLs as fallback`);
-    pendingAuthUrls.push(url);
-  }
 });
 
 app.on("window-all-closed", () => {

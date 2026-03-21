@@ -8,52 +8,8 @@ import type {
   TranscriptionItem,
 } from "./types/shared";
 
-// ============================================================================
-// CRITICAL: Pre-inject Supabase session (MUST run before any renderer code)
-// ============================================================================
-// Electron's localStorage is unreliable with file:// URLs in packaged builds.
-// We store Supabase session in electron-store and inject it here.
-//
-// IMPORTANT: We expose a "waitForSessionReady" function so the renderer can WAIT
-// for session injection to complete before initializing Supabase.
-// This prevents the race condition where Supabase reads empty localStorage.
-//
-// NOTE: We use a function that returns a promise, NOT a bare promise, because
-// contextBridge can only serialize promises returned from functions.
-// ============================================================================
-
-let sessionReadyResolve: () => void;
-const sessionReadyPromise = new Promise<void>((resolve) => {
-  sessionReadyResolve = resolve;
-});
-
-(async () => {
-  try {
-    const sessionData = (await ipcRenderer.invoke("session:get-all")) as Record<
-      string,
-      string
-    >;
-    for (const [key, value] of Object.entries(sessionData)) {
-      localStorage.setItem(key, value);
-    }
-  } catch (error) {
-    console.error("[Preload] Failed to inject session:", error);
-  } finally {
-    // Always resolve - even on error, so the app doesn't hang
-    sessionReadyResolve();
-  }
-})();
-
-// Expose a FUNCTION that returns the promise - bare promises don't serialize!
-contextBridge.exposeInMainWorld(
-  "waitForSessionReady",
-  () => sessionReadyPromise,
-);
-
-// Expose dev flags so renderer can bypass auth/onboarding in development
+// Expose dev flags so renderer can bypass onboarding in development
 contextBridge.exposeInMainWorld("devFlags", {
-  skipAuth:
-    process.env.SKIP_AUTH === "1" || process.env.SKIP_AUTH === "true" || false,
   skipOnboarding:
     process.env.SKIP_ONBOARDING === "1" ||
     process.env.SKIP_ONBOARDING === "true" ||
@@ -304,10 +260,8 @@ contextBridge.exposeInMainWorld("electron", {
     visible: boolean,
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("dock:set-visible", { visible }),
-  // Generic external URL opener for OAuth links
+  // Generic external URL opener
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
-  // Return the active redirect URL the renderer should use
-  getAuthRedirectUrl: () => ipcRenderer.invoke("auth:get-redirect-url"),
   // Renderer lifecycle
   rendererReady: () => ipcRenderer.send("renderer-ready"),
   // Screenshot capture (Phase 1 OCR)
@@ -340,31 +294,7 @@ contextBridge.exposeInMainWorld("transcriptions", {
     ipcRenderer.invoke("transcriptions:clear"),
 });
 
-// Session storage bridge (for Supabase session sync)
-contextBridge.exposeInMainWorld("supabaseSession", {
-  setItem: (key: string, value: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("session:set", { key, value }),
-  getItem: (key: string): Promise<string | null> =>
-    ipcRenderer.invoke("session:get", { key }),
-  removeItem: (key: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("session:remove", { key }),
-  clearAll: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("session:clear-all"),
-});
-
 // (Removed) dev-only Sentry verification hooks
-
-// Auth bridge: receive deep link callback URLs
-contextBridge.exposeInMainWorld("auth", {
-  onCallback: (cb: (payload: { url: string }) => void) => {
-    const listener = (
-      _e: Electron.IpcRendererEvent,
-      payload: { url: string },
-    ) => cb(payload);
-    ipcRenderer.on("auth:callback", listener);
-    return () => ipcRenderer.removeListener("auth:callback", listener);
-  },
-});
 
 // Event bridge for active display updates
 contextBridge.exposeInMainWorld(

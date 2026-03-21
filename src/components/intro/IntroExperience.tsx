@@ -2,11 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
-import {
-  getSupabase,
-  getGoogleOAuthUrl,
-  getCurrentUser,
-} from "../../lib/supabaseClient";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -41,8 +36,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true); // Start with loading state
   const isMountedRef = useRef(true);
 
   // Match onboarding page transition spring
@@ -53,30 +46,11 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
     mass: 0.45,
   };
 
-  // Initialize Supabase client early so PKCE flow works correctly
-  // AND check if user is already signed in (from persisted session)
   useEffect(() => {
-    (async () => {
-      await getSupabase(); // Initialize singleton client (waits for session injection)
-
-      // If user is already signed in (session restored), skip the intro!
-      const user = await getCurrentUser();
-      if (user) {
-        // Call onFinish directly - don't use setVisible(false) because
-        // AnimatePresence won't fire onExitComplete if nothing was ever rendered
-        // (checkingAuth was true, so nothing rendered, so no exit animation)
-        onFinish();
-      } else {
-        // User is NOT signed in - show the intro
-        if (isMountedRef.current) {
-          setCheckingAuth(false);
-        }
-      }
-    })();
     return () => {
       isMountedRef.current = false;
     };
-  }, [onFinish]);
+  }, []);
 
   // Animation stages
   useEffect(() => {
@@ -95,25 +69,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
       clearTimeout(t2);
     };
   }, [reduced]);
-
-  const handleGoogleLogin = async () => {
-    try {
-      setAuthError(null);
-
-      const url = await getGoogleOAuthUrl();
-      if (!url) {
-        setAuthError(
-          "Authentication setup failed. Please ensure Spoke is properly configured and try again.",
-        );
-        return;
-      }
-
-      await window.electron?.openExternal(url);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setAuthError(msg || "Could not start Google sign-in");
-    }
-  };
 
   const handleSkip = () => {
     try {
@@ -141,7 +96,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
-      {visible && !checkingAuth && (
+      {visible && (
         <motion.div
           className="sf-intro-overlay"
           initial={{ opacity: 0, y: 16 }}
@@ -197,20 +152,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
               }}
               className="space-y-2"
             >
-              <Button
-                onClick={handleGoogleLogin}
-                className="btn-primary shimmer"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-primary font-medium text-lg">G</span>
-                  <span>Continue with Google</span>
-                </div>
+              <Button onClick={handleSkip} className="btn-primary shimmer">
+                <span>Get Started</span>
               </Button>
-              {authError && (
-                <div className="text-[12px] text-red-300 text-center">
-                  {authError}
-                </div>
-              )}
             </motion.div>
           </div>
         </motion.div>

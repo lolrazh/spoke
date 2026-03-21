@@ -1,6 +1,4 @@
 export type OnboardingStep =
-  | "auth"
-  | "name-verification"
   | "permissions"
   | "mic-check"
   | "hotkey-info"
@@ -12,7 +10,7 @@ export type OnboardingStep =
   | "settings-info"
   | "complete";
 
-const SHARED_ONBOARDING_STEPS: OnboardingStep[] = [
+const ALL_ONBOARDING_STEPS: OnboardingStep[] = [
   "permissions",
   "mic-check",
   "hotkey-info",
@@ -25,20 +23,8 @@ const SHARED_ONBOARDING_STEPS: OnboardingStep[] = [
   "complete",
 ];
 
-const ALL_ONBOARDING_STEPS: OnboardingStep[] = [
-  "auth",
-  "name-verification",
-  ...SHARED_ONBOARDING_STEPS,
-];
-
-export function buildOnboardingSteps(input: {
-  requiresAuth: boolean;
-}): OnboardingStep[] {
-  if (input.requiresAuth) {
-    return ["auth", "name-verification", ...SHARED_ONBOARDING_STEPS];
-  }
-
-  return ["auth", ...SHARED_ONBOARDING_STEPS];
+export function buildOnboardingSteps(): OnboardingStep[] {
+  return ALL_ONBOARDING_STEPS;
 }
 
 export function isOnboardingStep(value: string): value is OnboardingStep {

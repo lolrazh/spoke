@@ -15,8 +15,6 @@ import {
 } from "../constants/window";
 import { TOKENS } from "../config/uiTokens";
 import { playToggleOn } from "../utils/audioFeedback";
-import { getSignals, setLastToastTs } from "../utils/authSignals";
-import { shouldToastSignIn } from "../utils/shouldToastSignIn";
 import {
   PermissionsProvider,
   usePermissionsController,
@@ -77,11 +75,6 @@ const AppInner: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
-  const prevUserIdRef = useRef<string | null>(null);
-  const lastToastTsRef = useRef<number | null>(null);
-  const lastFocusTsRef = useRef<number | null>(
-    typeof performance !== "undefined" ? performance.now() : null,
-  );
   const {
     shareTranscriptionsEnabled,
     shareTranscriptionsLoading,
@@ -89,7 +82,6 @@ const AppInner: React.FC = () => {
     loadSharePreference,
     handleSharePreferenceToggle,
   } = useSharePreference();
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
     useState(CONTENT_HEIGHT);
@@ -97,7 +89,6 @@ const AppInner: React.FC = () => {
     useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
     useState(PERMISSIONS_CONTENT_HEIGHT);
-  const currentUserIdRef = useRef<string | null>(null);
   const { missingPermissions } = usePermissionsController();
   const [panelView, setPanelView] = useState<"settings" | "permissions">(
     "settings",
@@ -146,46 +137,13 @@ const AppInner: React.FC = () => {
     [permissionsPanelMeasured],
   );
 
-  useEffect(() => {
-    currentUserIdRef.current = currentUserId;
-  }, [currentUserId]);
-
   // Initialize always-on client state on app start
   useEffect(() => {
     initTranscriptionHistory().catch(() => {
       // Ignore initialization errors; app can function without history
     });
-    const skipAuth = !!window.devFlags?.skipAuth;
-    if (skipAuth) {
-      return;
-    }
-
-    preferredProviderRequiresAuth()
-      .then((providerNeedsAuth) => {
-        if (!providerNeedsAuth) {
-          return;
-        }
-
-        import("../state/quotaCache")
-          .then(({ initQuotaCache }) => {
-            initQuotaCache();
-          })
-          .catch(() => {
-            // Ignore initialization errors; quota will fall back to server checks
-          });
-
-        import("../lib/sessionSync")
-          .then(({ initializeSessionSync }) => {
-            initializeSessionSync();
-          })
-          .catch((error) => {
-            console.error("[App] Failed to initialize session sync:", error);
-          });
-      })
-      .catch(() => {
-        // Ignore provider lookup failures and keep the local path running.
-      });
-  }, [preferredProviderRequiresAuth]);
+    loadSharePreference();
+  }, [loadSharePreference]);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
   useEffect(() => {
@@ -213,293 +171,6 @@ const AppInner: React.FC = () => {
     return true;
   }, [triggerPermissionNotification]);
 
-  // Track focus to guard Mission Control/Spaces focus resumes
-  useEffect(() => {
-    const onFocus = () => {
-      try {
-        lastFocusTsRef.current =
-          typeof performance !== "undefined" ? performance.now() : null;
-      } catch {}
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
-  // Ensure pill is not shown when signed out; route to onboarding instead
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let pollId: number | undefined;
-    (async () => {
-      try {
-        const { getSupabase, getCurrentUser } = await import(
-          "../lib/supabaseClient"
-        );
-        const skipAuth = !!window.devFlags?.skipAuth;
-        const providerNeedsAuth =
-          !skipAuth && (await preferredProviderRequiresAuth());
-
-        // Refresh session on app startup to get fresh JWT with latest subscription claims
-        // This ensures users who just paid can dictate immediately after restarting the app
-        if (providerNeedsAuth) {
-          const supabase = await getSupabase();
-          if (supabase) {
-            try {
-              const { data } = await supabase.auth.refreshSession();
-              console.log(
-                "[App] Session refreshed on startup - JWT claims updated",
-              );
-
-              // Sync local quota/subscription cache with fresh server data
-              if (data?.session?.access_token) {
-                try {
-                  // Decode JWT payload to get custom claims
-                  const payloadBase64 = data.session.access_token.split(".")[1];
-                  const payloadJson = atob(payloadBase64);
-                  const payload = JSON.parse(payloadJson);
-
-                  // Extract subscription status (Pro vs Free)
-                  const isPro = payload.subscription_active === true;
-
-                  // Update local cache with quota and subscription status
-                  const { updateQuotaFromServer } = await import(
-                    "../state/quotaCache"
-                  );
-                  updateQuotaFromServer({
-                    wordsUsed:
-                      typeof payload.words_used_this_week === "number"
-                        ? payload.words_used_this_week
-                        : 0,
-                    resetDate: payload.quota_reset_date || null,
-                    isPro,
-                  });
-                  console.log("[App] Subscription & quota synced from JWT:", {
-                    isPro,
-                    wordsUsed: payload.words_used_this_week,
-                    resetDate: payload.quota_reset_date,
-                  });
-                } catch (e) {
-                  console.warn("[App] Failed to sync quota from JWT:", e);
-                }
-              }
-            } catch (error) {
-              console.warn(
-                "[App] Failed to refresh session on startup:",
-                error,
-              );
-              // Continue anyway - getCurrentUser will return cached session
-            }
-          }
-        }
-
-        const user = skipAuth ? { id: "dev" } : await getCurrentUser();
-        if (!user && providerNeedsAuth) {
-          try {
-            await window.electron?.showOnboarding?.();
-          } catch {}
-          try {
-            latestTransRef.current?.cancel?.();
-          } catch {}
-          setCurrentUserId(null);
-          await loadSharePreference(null);
-        } else if (user) {
-          try {
-            await window.electron?.showFloatingBar?.();
-          } catch {}
-          setCurrentUserId(user.id ?? null);
-          await loadSharePreference(user.id ?? null);
-        } else {
-          setCurrentUserId(null);
-          await loadSharePreference(null);
-        }
-        // Seed previous user for transition detection
-        try {
-          prevUserIdRef.current = user?.id ?? null;
-        } catch {}
-        const supabase = await getSupabase();
-        if (supabase) {
-          const {
-            data: { subscription },
-          } = supabase.auth.onAuthStateChange((event, session) => {
-            // IMPORTANT: Avoid calling Supabase operations directly in this callback.
-            // Doing so can break the auth listener. Defer with setTimeout(fn, 0).
-            // See: https://supabase.com/docs/client/auth-onauthstatechange
-            if (event === "SIGNED_IN" && session?.user) {
-              const currentUserId = session.user.id ?? null;
-              const now = Date.now();
-              const signals = getSignals();
-              const docHidden =
-                typeof document !== "undefined" ? document.hidden : false;
-              const msSinceFocus =
-                typeof performance !== "undefined" &&
-                lastFocusTsRef.current != null
-                  ? performance.now() - lastFocusTsRef.current
-                  : null;
-              const allow = shouldToastSignIn({
-                event: "SIGNED_IN",
-                prevUserId: prevUserIdRef.current,
-                currentUserId,
-                now,
-                lastToastTs: lastToastTsRef.current,
-                authIntentTs: signals.authIntentTs,
-                authCallbackTs: signals.authCallbackTs,
-                onboardingTs: signals.onboardingTs,
-                documentHidden: docHidden,
-                msSinceFocus,
-                // Be a bit more conservative around focus churn (Mission Control, Spaces)
-                focusGuardMs: 1200,
-              });
-              // Let onboarding-complete handle showing the pill and the sign-in toast.
-              // Avoid triggering show here to prevent flicker on focus/Spaces.
-              if (allow) {
-                // Update last-toast timestamp to suppress any late duplicate triggers.
-                lastToastTsRef.current = now;
-                try {
-                  setLastToastTs(now);
-                } catch {}
-              }
-              // Update previous after handling
-              prevUserIdRef.current = currentUserId;
-              setCurrentUserId(currentUserId);
-              // Defer Supabase call to avoid breaking the auth listener
-              setTimeout(() => loadSharePreference(currentUserId), 0);
-
-              // Sync quota/subscription from JWT on sign-in
-              // This ensures switching accounts shows the correct tier immediately
-              setTimeout(async () => {
-                try {
-                  if (session?.access_token) {
-                    const payloadBase64 = session.access_token.split(".")[1];
-                    const payloadJson = atob(payloadBase64);
-                    const payload = JSON.parse(payloadJson);
-                    const isPro = payload.subscription_active === true;
-                    const { updateQuotaFromServer } = await import(
-                      "../state/quotaCache"
-                    );
-                    updateQuotaFromServer({
-                      wordsUsed:
-                        typeof payload.words_used_this_week === "number"
-                          ? payload.words_used_this_week
-                          : 0,
-                      resetDate: payload.quota_reset_date || null,
-                      isPro,
-                    });
-                  }
-                } catch (e) {
-                  console.warn(
-                    "[App] Failed to sync quota from JWT on sign-in:",
-                    e,
-                  );
-                }
-              }, 0);
-              return;
-            }
-            if (!session?.user && !skipAuth) {
-              // Guard: avoid playing signed-out sequence on cold start (no previous user)
-              if (prevUserIdRef.current == null) {
-                prevUserIdRef.current = null;
-                setCurrentUserId(null);
-                // Defer to avoid breaking auth listener
-                setTimeout(() => loadSharePreference(null), 0);
-                return;
-              }
-              // Defer the async work to avoid blocking/breaking the auth listener
-              setTimeout(() => {
-                (async () => {
-                  const providerStillNeedsAuth =
-                    await preferredProviderRequiresAuth();
-
-                  try {
-                    // Cancel any active or in-flight transcription when signing out
-                    latestTransRef.current?.cancel?.();
-                  } catch {}
-
-                  // Clear quota cache on sign-out to prevent stale data
-                  try {
-                    const { clearQuotaCache } = await import(
-                      "../state/quotaCache"
-                    );
-                    clearQuotaCache();
-                  } catch {}
-
-                  if (providerStillNeedsAuth) {
-                    try {
-                      window.notifications?.send?.("Signed out");
-                    } catch {}
-                    setPendingHideAfterCollapse({
-                      active: true,
-                      message: "Signed out",
-                      onAfter: async () => {
-                        try {
-                          await window.electron?.showOnboarding?.();
-                        } catch {}
-                      },
-                    });
-                  }
-                })();
-              }, 0);
-              prevUserIdRef.current = null;
-              setCurrentUserId(null);
-              // Defer to avoid breaking auth listener
-              setTimeout(() => loadSharePreference(null), 0);
-            }
-          });
-          unsubscribe = () => subscription.unsubscribe();
-
-          // Light polling to detect server-side deletions or expired sessions
-          try {
-            pollId = window.setInterval(async () => {
-              if (skipAuth) return;
-              try {
-                if (!supabase) return; // No client available; skip this tick
-                const { data, error } = await supabase.auth.getUser();
-                // Only treat as signed-out when there is NO error and NO user
-                if (!error && !data?.user) {
-                  const providerStillNeedsAuth =
-                    await preferredProviderRequiresAuth();
-                  // Guard: only toast sign-out on a real transition from a prior user
-                  if (prevUserIdRef.current == null) return;
-                  // Update prevUserIdRef immediately to prevent duplicate triggers
-                  prevUserIdRef.current = null;
-                  setCurrentUserId(null);
-                  loadSharePreference(null);
-                  try {
-                    latestTransRef.current?.cancel?.();
-                  } catch {}
-
-                  // Clear quota cache on polling-detected sign-out
-                  try {
-                    const { clearQuotaCache } = await import(
-                      "../state/quotaCache"
-                    );
-                    clearQuotaCache();
-                  } catch {}
-
-                  if (providerStillNeedsAuth) {
-                    try {
-                      window.notifications?.send?.("Signed out");
-                    } catch {}
-                    setPendingHideAfterCollapse({
-                      active: true,
-                      message: "Signed out",
-                      onAfter: async () => {
-                        try {
-                          await window.electron?.showOnboarding?.();
-                        } catch {}
-                      },
-                    });
-                  }
-                }
-                // If error: likely network issue — ignore and retain current UX
-              } catch {}
-            }, 60000);
-          } catch {}
-        }
-      } catch {}
-    })();
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (pollId) clearInterval(pollId);
-    };
-  }, [loadSharePreference, preferredProviderRequiresAuth]);
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
@@ -923,15 +594,6 @@ const AppInner: React.FC = () => {
     window.addEventListener("focus", handleWindowShow);
     return () => window.removeEventListener("focus", handleWindowShow);
   }, [pillState]);
-
-  // Show notification for auth errors (subscription required, not signed in, etc.)
-  useEffect(() => {
-    if (trans.authError && trans.error) {
-      // Always dispatch NOTIFY when auth error occurs
-      // This will work from any state (IDLE, LISTENING, etc.)
-      pillDispatch({ type: "NOTIFY", msg: trans.error });
-    }
-  }, [trans.authError, trans.error, pillDispatch]);
 
   // Listen for expand pill requests from main process
   useEffect(() => {

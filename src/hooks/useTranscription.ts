@@ -8,7 +8,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { SelectionInspectSnapshot } from "../types/shared";
 import type {
-  AuthErrorType as SessionAuthErrorType,
   PrepareTranscriptionResult,
   TranscriptionContext,
   TranscriptionMode,
@@ -23,23 +22,7 @@ import { AudioRecorder } from "../utils/audioRecorder";
 import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
-import { getUserIdentity } from "../state/userIdentity";
 import { POST_ROLL_MS } from "../config/audio";
-
-// Token cache with 50-minute TTL (tokens typically expire in 1 hour)
-const TOKEN_CACHE_TTL_MS = 50 * 60 * 1000;
-let cachedToken: { value: string; expiresAt: number } | null = null;
-
-// Cached reference to the supabase module to avoid repeated dynamic imports
-let supabaseModule: { getAccessToken: () => Promise<string | null> } | null =
-  null;
-
-/** Clear the auth token cache (call on sign-out or auth failure) */
-export function clearAuthTokenCache(): void {
-  cachedToken = null;
-}
-
-export type AuthErrorType = SessionAuthErrorType;
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -47,14 +30,12 @@ export interface UseTranscriptionReturn {
   ready: boolean;
   text: string;
   error: string | null;
-  authError: AuthErrorType;
   mode: TranscriptionMode;
   selection: SelectionInspectSnapshot | null;
   audioLevel: number;
   start: () => void;
   stop: () => void;
   cancel: () => void;
-  clearAuthError: () => void;
   preConnect: () => Promise<void>;
 }
 
@@ -75,7 +56,6 @@ export function useTranscription(
   const [ready, setReady] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [authError, setAuthError] = useState<AuthErrorType>(null);
   const [mode] = useState<TranscriptionMode>("dictation");
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -89,33 +69,6 @@ export function useTranscription(
   const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
     LOCAL_STT_PROVIDER_ID,
   );
-
-  // Get auth token from Supabase (with caching)
-  const getAuthToken = async (): Promise<string | null> => {
-    try {
-      // Return cached token if still valid
-      if (cachedToken && Date.now() < cachedToken.expiresAt) {
-        return cachedToken.value;
-      }
-
-      // Cache the module import to avoid repeated dynamic imports
-      if (!supabaseModule) {
-        supabaseModule = await import("../lib/supabaseClient");
-      }
-
-      const token = await supabaseModule.getAccessToken();
-      if (token) {
-        cachedToken = {
-          value: token,
-          expiresAt: Date.now() + TOKEN_CACHE_TTL_MS,
-        };
-      }
-      return token;
-    } catch (err) {
-      console.error("[HTTP] Failed to get access token:", err);
-      return null;
-    }
-  };
 
   // Initialize microphone stream
   const initStream = useCallback(async () => {
@@ -170,11 +123,9 @@ export function useTranscription(
   }, []);
 
   const buildTranscriptionContext = useCallback((): TranscriptionContext => {
-    const identity = getUserIdentity();
     return {
       mode,
       language: "en",
-      identityName: identity?.name || undefined,
       selectionText: selection?.selectedText || undefined,
     };
   }, [mode, selection]);
@@ -208,7 +159,6 @@ export function useTranscription(
     try {
       setText("");
       setError(null);
-      setAuthError(null);
       setRecording(true);
       activeProviderIdRef.current = providerId;
 
@@ -244,37 +194,8 @@ export function useTranscription(
 
           prepareDataRef.current = prepareResult;
 
-          if (prepareResult?.authError === "auth_failed") {
-            clearAuthTokenCache();
-            setAuthError("auth_failed");
-            console.error("[HTTP] Auth failed during prepare");
-            return;
-          }
-
-          if (prepareResult?.authError === "payment_required") {
-            setAuthError("payment_required");
-            console.error("[HTTP] Quota exceeded during prepare");
-            return;
-          }
-
           if (prepareResult) {
             console.log("[HTTP] Prepare complete:", prepareResult);
-          }
-
-          // Sync quota from /prepare response (server validation)
-          if (prepareResult?.quotaInfo) {
-            const { updateQuotaFromServer } = await import(
-              "../state/quotaCache"
-            );
-            updateQuotaFromServer({
-              wordsUsed: prepareResult.quotaInfo.wordsUsed ?? 0,
-              resetDate: null, // Not provided in /prepare
-              isPro: prepareResult.quotaInfo.subscriptionActive ?? false,
-            });
-            console.log(
-              "[HTTP] Quota synced from /prepare:",
-              prepareResult.quotaInfo,
-            );
           }
         } catch (err) {
           console.error("[HTTP] Prepare failed:", err);
@@ -409,18 +330,13 @@ export function useTranscription(
       timing.prepareDone = Date.now();
 
       // Upload to /transcribe
-      const token = await getAuthToken();
       timing.authTokenDone = Date.now();
-      if (!token) {
-        throw new Error("No auth token");
-      }
 
       // Measure upload and response timing
       timing.fetchStarted = Date.now();
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
-          authToken: token,
           audioBlob,
           context,
           prepareResult: prepareDataRef.current,
@@ -452,15 +368,6 @@ export function useTranscription(
       );
 
       setText(result.text);
-
-      // Update local quota cache with word count from server (instant UI update)
-      if (result.wordCount && result.wordCount > 0) {
-        const { incrementQuotaLocal } = await import("../state/quotaCache");
-        incrementQuotaLocal(result.wordCount);
-        console.log(
-          `[HTTP] Quota incremented locally: +${result.wordCount} words`,
-        );
-      }
 
       // Add to history (fire-and-forget to not block UI)
       const historyStart = Date.now();
@@ -532,11 +439,6 @@ export function useTranscription(
     preparePromiseRef.current = null;
   }, []);
 
-  // Clear auth error
-  const clearAuthError = useCallback(() => {
-    setAuthError(null);
-  }, []);
-
   // Pre-connect (no-op for HTTP, kept for interface compatibility)
   const preConnect = useCallback(async () => {
     await resolveActiveProviderId();
@@ -550,14 +452,12 @@ export function useTranscription(
     ready,
     text,
     error,
-    authError,
     mode,
     selection,
     audioLevel,
     start,
     stop,
     cancel,
-    clearAuthError,
     preConnect,
   };
 }

@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
-import { markOnboardingEvent } from "../utils/authSignals";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
-import { Avatar } from "./ui/avatar";
 import {
   Select,
   SelectTrigger,
@@ -17,23 +15,10 @@ import {
 import SfIcon from "./icons/SfIcon";
 import TricksComponent from "./meta/MetaDirectivesComponent";
 import {
-  handleAuthCallbackUrl,
-  getCurrentUser,
-  getProfile,
-  markOnboardingDone,
-  ensureProfileRow,
-  updateDisplayName,
-} from "../lib/supabaseClient";
-import {
   usePermissions,
   type PermissionProvider,
 } from "../hooks/usePermissions";
-import { updateIdentityLocal } from "../state/userIdentity";
 import { useProviderSelection } from "../hooks/useProviderSelection";
-import {
-  useOnboardingAuth,
-  type AccountSummary,
-} from "../hooks/useOnboardingAuth";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import {
   buildOnboardingSteps,
@@ -66,11 +51,6 @@ const devFlags = {
     },
   },
 };
-
-const AUTH_EASE_VISIBLE: [number, number, number, number] = [
-  0.25, 0.8, 0.25, 1,
-];
-const AUTH_EASE_EXIT: [number, number, number, number] = [0.4, 0, 0.2, 1];
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -135,7 +115,7 @@ const Onboarding: React.FC = () => {
   const introOnly =
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
   const {
     setProviderSettings,
     loadProviderSettings,
@@ -144,33 +124,6 @@ const Onboarding: React.FC = () => {
     selectedProviderEntry,
   } = useProviderSelection();
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
-  const {
-    authEmail,
-    setAuthEmail,
-    authEmailRequested,
-    authLoading,
-    authError,
-    setAuthError,
-    signedInAccount,
-    setSignedInAccount,
-    isSwitchingAccount,
-    sessionValid,
-    setSessionValid,
-    switchAccountIntentRef,
-    ensureAuthRuntimeReady,
-    refreshAccountSummary,
-    startGoogleOAuth,
-    handleProviderChange,
-    handleEmailStart,
-    handleSwitchAccount,
-  } = useOnboardingAuth({
-    loadProviderSettings,
-    setProviderSettings,
-    isMountedRef,
-  });
-  void authEmailRequested; // Magic link flow preserved but hidden from UI
-  // Name verification state
-  const [editableName, setEditableName] = useState<string>("");
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -226,18 +179,6 @@ const Onboarding: React.FC = () => {
   const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
   const targetMusicVolumeRef = useRef<number>(0.28);
   const fadeRafRef = useRef<number | null>(null);
-
-  // Record onboarding visibility for auth intent correlation
-  useEffect(() => {
-    try {
-      markOnboardingEvent();
-    } catch {}
-    return () => {
-      try {
-        markOnboardingEvent();
-      } catch {}
-    };
-  }, []);
 
   // Reusable volume fade helper
   const fadeVolumeTo = (to: number, durationMs = 600) =>
@@ -369,7 +310,6 @@ const Onboarding: React.FC = () => {
   // Save current step for mid-onboarding restart recovery
   useEffect(() => {
     if (introOnly) return; // Don't save in intro-only mode
-    if (currentStep === "auth") return; // Don't save auth step (default)
     if (currentStep === "complete") return; // Don't save complete step
 
     window.electron?.setOnboardingStep?.(currentStep).catch((error) => {
@@ -567,10 +507,7 @@ const Onboarding: React.FC = () => {
   }, []);
 
   // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] =>
-    buildOnboardingSteps({
-      requiresAuth: false,
-    });
+  const getSteps = (): OnboardingStep[] => buildOnboardingSteps();
 
   // Permission aggregates
   const allPermissionsGranted =
@@ -578,33 +515,19 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.screenRecording;
 
-  // Initial auth check
+  // Initialize provider settings and restore saved step
   useEffect(() => {
-    if (introOnly) return; // In intro-only mode, don't drive step state or auth
+    if (introOnly) return;
     (async () => {
       const snapshot = await loadProviderSettings();
       if (isMountedRef.current) {
         setProviderSettings(snapshot);
       }
-      const forceOnboarding = !!window.devFlags?.forceOnboarding;
-      const user = await getCurrentUser();
-
-      if (forceOnboarding) {
-        await refreshAccountSummary();
-        setCurrentStep("auth");
-        return;
-      }
-
-      if (user) {
-        await refreshAccountSummary();
-      }
 
       // Check if there's a saved onboarding step (from mid-onboarding restart)
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
-        const steps = buildOnboardingSteps({
-          requiresAuth: false,
-        });
+        const steps = buildOnboardingSteps();
         if (
           savedStep &&
           isOnboardingStep(savedStep) &&
@@ -617,115 +540,32 @@ const Onboarding: React.FC = () => {
         // Ignore errors - continue with default step
       }
 
-      setCurrentStep("auth");
+      setCurrentStep("permissions");
     })();
-  }, [ensureAuthRuntimeReady, introOnly, loadProviderSettings]);
+  }, [introOnly, loadProviderSettings]);
 
-  // Auth callback listener (always active, even during intro)
-  useEffect(() => {
-    const off = window.auth?.onCallback?.(async ({ url }) => {
-      devFlags.methods.devLog("[Auth] onCallback URL:", url);
-      setAuthLoading(true);
-      setAuthError(null);
-      const res = await handleAuthCallbackUrl(url);
-      setAuthLoading(false);
-      if (!res.ok) {
-        setAuthError(res.error || "Login failed");
-        switchAccountIntentRef.current = false;
-        // Hide intro so user can see the error and retry
-        setShowIntro(false);
-        return;
-      }
-      const forceOnboarding = !!window.devFlags?.forceOnboarding;
+  const handleProviderChange = useCallback(
+    async (providerId: string) => {
       try {
-        // Ensure a profile row exists as soon as login completes
-        try {
-          await ensureProfileRow();
-        } catch {}
-        const profile = await getProfile();
-        const currentUser = await getCurrentUser();
-        if (isMountedRef.current)
-          setSignedInAccount(deriveAccountSummary(profile, currentUser));
-        if (!forceOnboarding && profile?.onboarding_done) {
-          try {
-            await window.electron?.setPttTarget?.("main");
-          } catch (e) {
-            console.warn("[Onboarding] setPttTarget failed:", e);
-          }
-          // (Removed) auth:set-signed-in — Supabase session is the source of truth
-          await window.electron?.onboardingComplete();
-          // Show a consistent post sign-in toast once the pill/main window is up
-          try {
-            window.notifications?.send?.("You've been signed in.");
-          } catch {}
-          switchAccountIntentRef.current = false;
-          return;
-        } else if (!profile?.onboarding_done) {
-          // Sync local flag with DB - if onboarding not done in DB, reset local flag
-          try {
-            await window.electron?.resetOnboardingFlag?.();
-          } catch (error) {
-            console.warn("[Onboarding] Failed to reset local flag:", error);
-          }
+        await window.stt?.setPreferredProvider?.(
+          providerId as PreferredTranscriptionProviderId,
+        );
+        const snapshot = await loadProviderSettings();
+        if (isMountedRef.current) {
+          setProviderSettings(snapshot);
         }
-      } catch {}
-      if (switchAccountIntentRef.current && !forceOnboarding) {
-        switchAccountIntentRef.current = false;
-        return;
+      } catch (error) {
+        console.error(
+          "[Onboarding] Failed to switch transcription provider:",
+          error,
+        );
+        window.notifications?.send?.(
+          "Failed to switch transcription provider.",
+        );
       }
-      switchAccountIntentRef.current = false;
-      // Hide intro if it's showing
-      setShowIntro(false);
-      // New users go to name verification first
-      setCurrentStep("name-verification");
-    });
-    return () => {
-      off && off();
-    };
-  }, []); // Always register callback, even during intro
-
-  // Populate editable name when account is loaded
-  useEffect(() => {
-    if (signedInAccount?.displayName && !editableName) {
-      setEditableName(signedInAccount.displayName);
-    }
-  }, [signedInAccount, editableName]);
-
-  const handleGoogle = async () => {
-    await startGoogleOAuth();
-  };
-
-  const handleNameVerificationContinue = () => {
-    const trimmedName = editableName.trim();
-    if (!trimmedName) {
-      // Don't advance if name is empty
-      return;
-    }
-
-    // IMMEDIATELY update client-side cache and notify all subscribers (synchronous)
-    // This ensures settings panel, pill, etc. show the new name instantly
-    updateIdentityLocal({ name: trimmedName });
-
-    // Fire off the database update in the background (non-blocking)
-    updateDisplayName(trimmedName)
-      .then((result) => {
-        if (result.ok) {
-          // Refresh account summary with updated name
-          refreshAccountSummary().catch(() => {
-            // Ignore refresh errors - not critical
-          });
-        } else {
-          // Log error but don't block user
-          console.warn("[Onboarding] Name update failed:", result.error);
-        }
-      })
-      .catch((error) => {
-        console.warn("[Onboarding] Name update error:", error);
-      });
-
-    // Immediately advance to permissions step
-    setCurrentStep("permissions");
-  };
+    },
+    [loadProviderSettings, setProviderSettings],
+  );
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
@@ -764,12 +604,6 @@ const Onboarding: React.FC = () => {
 
   // Navigation functions
   const nextStep = () => {
-    // Handle name verification step - save in background before advancing
-    if (currentStep === "name-verification") {
-      handleNameVerificationContinue();
-      return; // handleNameVerificationContinue handles navigation
-    }
-
     const steps = getSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
@@ -965,9 +799,6 @@ const Onboarding: React.FC = () => {
     try {
       // Route PTT to main app after onboarding
       window.electron?.setPttTarget?.("main");
-      try {
-        await markOnboardingDone();
-      } catch {}
       await window.electron?.onboardingComplete();
     } catch (error) {
       if (isDevelopment) console.error("Error completing onboarding:", error);
@@ -997,28 +828,6 @@ const Onboarding: React.FC = () => {
     hidden: { opacity: 0, y: 16 },
     visible: { opacity: 1, y: 0, transition: spring },
     exit: { opacity: 0, y: -16, transition: spring },
-  };
-
-  const authViewVariants: Variants = {
-    hidden: { opacity: 0, y: 18, filter: "blur(12px)" },
-    visible: {
-      opacity: 1,
-      y: 0,
-      filter: "blur(0px)",
-      transition: {
-        duration: devFlags.fastAnimations ? 0.22 : 0.36,
-        ease: AUTH_EASE_VISIBLE,
-      },
-    },
-    exit: {
-      opacity: 0,
-      y: -12,
-      filter: "blur(8px)",
-      transition: {
-        duration: devFlags.fastAnimations ? 0.18 : 0.3,
-        ease: AUTH_EASE_EXIT,
-      },
-    },
   };
 
   const showNavControls = !showIntro && currentStep !== "complete";
@@ -1176,10 +985,7 @@ const Onboarding: React.FC = () => {
       )}
 
       {/* Speaker toggle - show before mic-check only */}
-      {(showIntro ||
-        currentStep === "auth" ||
-        currentStep === "name-verification" ||
-        currentStep === "permissions") && (
+      {(showIntro || currentStep === "permissions") && (
         <AnimatePresence initial={false}>
           {(showIntro ? introControlsReady : true) && (
             <motion.button
@@ -1210,198 +1016,6 @@ const Onboarding: React.FC = () => {
         <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
           {!showIntro && (
             <AnimatePresence mode="wait">
-              {/* Auth Step */}
-              {currentStep === "auth" && (
-                <motion.div
-                  key="auth"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center space-y-4"
-                >
-                  <div className="heading-stack">
-                    <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                      Choose Your Transcription Provider
-                    </h1>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      {false /* no provider requires auth */
-                        ? "Spoke Cloud needs your account. Local and direct providers can be used without signing in."
-                        : "This provider can be used without a Spoke account. You can always change it later in Settings."}
-                    </p>
-                  </div>
-                  <motion.div
-                    className="onboarding-section mx-auto w-full max-w-[22rem] space-y-3 text-left"
-                    variants={authViewVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                  >
-                    <div className="space-y-2">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/45">
-                        Transcription Provider
-                      </div>
-                      <Select
-                        value={selectedProviderId}
-                        onValueChange={handleProviderChange}
-                      >
-                        <SelectTrigger className="w-full card-floating border-white/10 bg-white/5">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {selectableProviderEntries.map((provider) => (
-                            <SelectItem key={provider.id} value={provider.id}>
-                              {provider.displayName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {selectedProviderEntry && (
-                      <div
-                        className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
-                          false /* no provider requires auth */
-                            ? "opacity-95"
-                            : "border-emerald-400/30 bg-emerald-500/5"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white">
-                            {selectedProviderEntry.displayName}
-                          </p>
-                          <p className="mt-1 text-xs text-subtle leading-relaxed">
-                            {selectedProviderEntry.description}
-                          </p>
-                        </div>
-                        <div className="text-white/70">
-                          <SfIcon
-                            name={
-                              false /* no provider requires auth */
-                                ? "person.crop.circle.badge.checkmark"
-                                : "checkmark.seal.fill"
-                            }
-                            size={22}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                  <AnimatePresence mode="wait">
-                    {false /* no provider requires auth */ &&
-                    signedInAccount ? (
-                      <motion.div
-                        key="auth-summary"
-                        variants={authViewVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
-                        className="onboarding-section mx-auto w-full max-w-[19rem] space-y-3 text-left"
-                      >
-                        <div
-                          className={`onboarding-permission-row flex items-center justify-between gap-3 p-3 ${
-                            sessionValid ? "opacity-100" : "opacity-60"
-                          }`}
-                          aria-live="polite"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <Avatar
-                              src={signedInAccount.avatarUrl ?? undefined}
-                              fallbackLabel={signedInAccount.displayName}
-                              alt={`Profile image for ${signedInAccount.displayName}`}
-                              size="sm"
-                              shape="rounded"
-                              className="card-floating border border-white/10 rounded-[var(--radius-md)]"
-                            />
-                            <div className="min-w-0 space-y-[2px]">
-                              <p className="text-sm font-semibold text-white truncate">
-                                {signedInAccount.displayName}
-                              </p>
-                              {signedInAccount.email && (
-                                <p className="text-xs text-subtle truncate">
-                                  {signedInAccount.email}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-white/70">
-                            <SfIcon name="checkmark.seal.fill" size={22} />
-                          </div>
-                        </div>
-                        <div className="w-full">
-                          <Button
-                            variant="secondary"
-                            type="button"
-                            onClick={handleSwitchAccount}
-                            disabled={authLoading}
-                            className="w-full justify-center"
-                          >
-                            {authLoading ? "Opening Google…" : "Switch Account"}
-                          </Button>
-                        </div>
-                        {authError && (
-                          <div className="text-[12px] text-red-300">
-                            {authError}
-                          </div>
-                        )}
-                      </motion.div>
-                    ) : false /* no provider requires auth */ ? (
-                      <motion.div
-                        key="auth-form"
-                        variants={authViewVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
-                        className="onboarding-section mx-auto w-full max-w-[19rem] space-y-4 text-left"
-                      >
-                        <Button
-                          className="w-full onboarding-cta"
-                          disabled={authLoading}
-                          onClick={handleGoogle}
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <span className="text-primary font-medium text-lg">
-                              G
-                            </span>
-                            <span>Continue with Google</span>
-                          </div>
-                        </Button>
-                        {authError && (
-                          <div className="text-[12px] text-red-300">
-                            {authError}
-                          </div>
-                        )}
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="provider-ready"
-                        variants={authViewVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
-                        className="onboarding-section mx-auto w-full max-w-[22rem] space-y-3 text-left"
-                      >
-                        <div className="onboarding-permission-row flex items-center justify-between gap-3 p-3 border-emerald-400/30 bg-emerald-500/5">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-white">
-                              No Spoke account required
-                            </p>
-                            <p className="mt-1 text-xs text-subtle leading-relaxed">
-                              {selectedProviderEntry?.requiresApiKey
-                                ? "Your saved API key will be used directly once onboarding is complete."
-                                : "Grant permissions and you can start dictating on this Mac immediately."}
-                            </p>
-                          </div>
-                          <div className="text-emerald-200">
-                            <SfIcon name="checkmark.seal.fill" size={22} />
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              )}
-
               {/* Hotkey Info Step */}
               {currentStep === "hotkey-info" && (
                 <motion.div
@@ -1445,42 +1059,6 @@ const Onboarding: React.FC = () => {
                 </motion.div>
               )}
               {/* Legacy welcome step removed (block fully deleted) */}
-
-              {/* Name Verification Step */}
-              {currentStep === "name-verification" && (
-                <motion.div
-                  key="name-verification"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center"
-                >
-                  <div className="heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Is This Your Full Name?
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      This is for Spoke to spell your name right.
-                    </p>
-                  </div>
-
-                  <div className="onboarding-section mx-auto w-full max-w-[28rem]">
-                    <input
-                      type="text"
-                      value={editableName}
-                      onChange={(e) => setEditableName(e.target.value)}
-                      placeholder="Your full name"
-                      className="w-full onboarding-textarea px-4 py-3 text-base outline-none text-center"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && editableName.trim()) {
-                          handleNameVerificationContinue();
-                        }
-                      }}
-                    />
-                  </div>
-                </motion.div>
-              )}
 
               {/* Combined Permissions Step */}
               {currentStep === "permissions" && (
@@ -2200,14 +1778,7 @@ const Onboarding: React.FC = () => {
                   nextStep();
                 }}
                 disabled={
-                  (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "auth" &&
-                    false /* no provider requires auth */ &&
-                    (!signedInAccount ||
-                      !sessionValid ||
-                      authLoading ||
-                      isSwitchingAccount)) ||
-                  (currentStep === "name-verification" && !editableName.trim())
+                  currentStep === "permissions" && !allPermissionsGranted
                 }
               >
                 Next

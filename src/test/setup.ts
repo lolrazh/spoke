@@ -119,7 +119,6 @@ if (!globalThis.window.mic) {
 if (!globalThis.window.devFlags) {
   // @ts-ignore
   globalThis.window.devFlags = {
-    skipAuth: false,
     skipOnboarding: false,
     forceOnboarding: false,
     devConsoleLogs: false,

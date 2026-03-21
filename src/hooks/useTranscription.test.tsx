@@ -1,18 +1,13 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useTranscription, clearAuthTokenCache } from "./useTranscription";
+import { useTranscription } from "./useTranscription";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 // Mock APIs
-vi.mock("../config/api", () => ({
-  getPrepareUrl: () => "http://test/prepare",
-  getTranscribeUrl: () => "http://test/transcribe",
-}));
-
 vi.mock("../utils/audioFeedback", () => ({
   playToggleOff: vi.fn(),
 }));
@@ -23,15 +18,6 @@ vi.mock("../utils/audioDecoder", () => ({
 
 vi.mock("../state/transcriptionHistory", () => ({
   addTranscription: vi.fn(),
-}));
-
-vi.mock("../state/userIdentity", () => ({
-  getUserIdentity: () => ({ name: "Test User" }),
-}));
-
-// Mock Supabase auth
-vi.mock("../lib/supabaseClient", () => ({
-  getAccessToken: vi.fn(() => Promise.resolve("fake-test-token")),
 }));
 
 // Mock MediaRecorder
@@ -154,7 +140,6 @@ describe("useTranscription (HTTP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();
-    clearAuthTokenCache();
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
