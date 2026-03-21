@@ -140,6 +140,15 @@ import {
   isHideTimerActive,
 } from "./main/floatingBar";
 import {
+  initMicManager,
+  getMicDevices,
+  getMicPreferences,
+  getSelectedMicId,
+  updateMicDevices,
+  selectMicDevice,
+  broadcastMicSelection,
+} from "./main/micManager";
+import {
   preSpawnPasteHelper,
   getPreSpawnedHelper,
   pasteViaDaemon,
@@ -308,10 +317,7 @@ const FORCE_ONBOARDING =
   process.env.FORCE_ONBOARDING === "true";
 
 // Microphone management state
-let micDevices: MicDevice[] = [
-  { id: "default", label: "System Default" }, // Always available fallback
-];
-let micPreferences: MicPreferences = {};
+// Mic device state moved to src/main/micManager.ts
 // Pill preferences (notch width, etc.)
 let pillPreferences: import("./types/shared").PillPreferences = {};
 // Optical adjustment for notch width (pixels to subtract for better visual alignment)
@@ -662,63 +668,6 @@ async function startHelperIfIMGranted(): Promise<void> {
 // function logBounds(tag: string) { ... }
 
 // Microphone preference management functions
-function updateMicDevices(devices: MicDevice[]): void {
-  console.log("[MicMgmt] Updating device list:", devices);
-
-  // Always ensure "System Default" is first, then add other devices
-  const defaultDevice = { id: "default", label: "System Default" };
-  const otherDevices = devices.filter((d) => d.id !== "default");
-  micDevices = [defaultDevice, ...otherDevices];
-
-  console.log("[MicMgmt] Final device list with default:", micDevices);
-
-  // Validate current selection still exists
-  if (
-    micPreferences.selectedMicId &&
-    !micDevices.find((d) => d.id === micPreferences.selectedMicId)
-  ) {
-    console.log(
-      "[MicMgmt] Selected device no longer available, resetting to default",
-    );
-    micPreferences.selectedMicId = "default";
-    saveMicPreferences(micPreferences);
-  }
-
-  // Rebuild tray menu with new devices
-  rebuildTrayMenu();
-
-  // Notify renderers of selection change
-  broadcastMicSelection();
-}
-
-function selectMicDevice(deviceId: string): void {
-  console.log("[MicMgmt] Selecting device:", deviceId);
-
-  // Validate device exists
-  if (deviceId !== "default" && !micDevices.find((d) => d.id === deviceId)) {
-    console.error("[MicMgmt] Device not found:", deviceId);
-    return;
-  }
-
-  micPreferences.selectedMicId = deviceId;
-  saveMicPreferences(micPreferences);
-
-  // Rebuild tray menu to update checkmarks
-  rebuildTrayMenu();
-
-  // Notify renderers
-  broadcastMicSelection();
-}
-
-function broadcastMicSelection(): void {
-  const selectedId = micPreferences.selectedMicId || "default";
-  console.log("[MicMgmt] Broadcasting selection:", selectedId);
-
-  // Send to all renderer windows
-  BrowserWindow.getAllWindows().forEach((window) => {
-    window.webContents.send("mic:selected-changed", { id: selectedId });
-  });
-}
 
 
 function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
@@ -1270,12 +1219,12 @@ function createOnboardingWindow() {
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   console.log(
     "[Tray Menu] Building tray menu with",
-    micDevices.length,
+    getMicDevices().length,
     "devices",
   );
-  const selectedMicId = micPreferences.selectedMicId || "default";
+  const selectedMicId = getSelectedMicId();
 
-  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) =>
+  const micSubmenu = buildMicrophoneSubmenu(getMicDevices(), selectedMicId, (id) =>
     selectMicDevice(id),
   );
 
@@ -1367,12 +1316,12 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 function buildPillContextMenu(): Electron.MenuItemConstructorOptions[] {
   console.log(
     "[Pill Menu] Building pill context menu with",
-    micDevices.length,
+    getMicDevices().length,
     "devices",
   );
-  const selectedMicId = micPreferences.selectedMicId || "default";
+  const selectedMicId = getSelectedMicId();
 
-  const micSubmenu = buildMicrophoneSubmenu(micDevices, selectedMicId, (id) =>
+  const micSubmenu = buildMicrophoneSubmenu(getMicDevices(), selectedMicId, (id) =>
     selectMicDevice(id),
   );
 
@@ -1927,10 +1876,10 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Initialize microphone preferences
-  console.log("[Main Process] Initializing microphone preferences...");
-  micPreferences = loadMicPreferences();
-  console.log("[Main Process] Microphone preferences loaded:", micPreferences);
+  // Initialize microphone manager
+  const micPrefs = loadMicPreferences();
+  console.log("[Main Process] Microphone preferences loaded:", micPrefs);
+  initMicManager(micPrefs, () => rebuildTrayMenu());
 
   // Silent background check for app location will be triggered after onboarding completes
 
@@ -2558,7 +2507,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("mic:get-selected", () => {
-    const selectedId = micPreferences.selectedMicId || "default";
+    const selectedId = getSelectedMicId();
     return { id: selectedId };
   });
 
