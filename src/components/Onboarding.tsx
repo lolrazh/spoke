@@ -17,15 +17,11 @@ import {
 import SfIcon from "./icons/SfIcon";
 import TricksComponent from "./meta/MetaDirectivesComponent";
 import {
-  getSupabase,
-  getGoogleOAuthUrl,
-  startEmailOtp,
   handleAuthCallbackUrl,
   getCurrentUser,
   getProfile,
   markOnboardingDone,
   ensureProfileRow,
-  signOut,
   updateDisplayName,
 } from "../lib/supabaseClient";
 import {
@@ -34,6 +30,10 @@ import {
 } from "../hooks/usePermissions";
 import { updateIdentityLocal } from "../state/userIdentity";
 import { useProviderSelection } from "../hooks/useProviderSelection";
+import {
+  useOnboardingAuth,
+  type AccountSummary,
+} from "../hooks/useOnboardingAuth";
 import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import {
@@ -98,37 +98,6 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
     },
   };
 
-type AccountSummary = {
-  id: string;
-  displayName: string;
-  email: string | null;
-  avatarUrl: string | null;
-};
-
-const deriveAccountSummary = (
-  profile: Awaited<ReturnType<typeof getProfile>>,
-  user: Awaited<ReturnType<typeof getCurrentUser>>,
-): AccountSummary | null => {
-  if (!user) return null;
-  const metadata = (user.user_metadata ?? {}) as {
-    name?: string;
-    avatar_url?: string;
-  };
-  const email = profile?.email ?? user.email ?? null;
-  const displayName =
-    profile?.display_name ??
-    metadata.name ??
-    (email ? email.split("@")[0] : null) ??
-    "Spoke user";
-
-  return {
-    id: profile?.id ?? user.id,
-    displayName,
-    email,
-    avatarUrl: profile?.avatar_url ?? metadata.avatar_url ?? null,
-  };
-};
-
 // TapRipple component for settings demo
 const TapRipple: React.FC<{
   delay: number; // delay in seconds within the 3s loop
@@ -177,16 +146,31 @@ const Onboarding: React.FC = () => {
     selectedProviderRequiresAuth,
   } = useProviderSelection();
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authEmailRequested, setAuthEmailRequested] = useState(false);
+  const {
+    authEmail,
+    setAuthEmail,
+    authEmailRequested,
+    authLoading,
+    authError,
+    setAuthError,
+    signedInAccount,
+    setSignedInAccount,
+    isSwitchingAccount,
+    sessionValid,
+    setSessionValid,
+    switchAccountIntentRef,
+    ensureAuthRuntimeReady,
+    refreshAccountSummary,
+    startGoogleOAuth,
+    handleProviderChange,
+    handleEmailStart,
+    handleSwitchAccount,
+  } = useOnboardingAuth({
+    loadProviderSettings,
+    setProviderSettings,
+    isMountedRef,
+  });
   void authEmailRequested; // Magic link flow preserved but hidden from UI
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [signedInAccount, setSignedInAccount] = useState<AccountSummary | null>(
-    null,
-  );
-  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
-  const [sessionValid, setSessionValid] = useState(false);
   // Name verification state
   const [editableName, setEditableName] = useState<string>("");
   // Permissions via shared hook (deduplicated across surfaces)
@@ -229,7 +213,6 @@ const Onboarding: React.FC = () => {
   const [testTextTap, setTestTextTap] = useState("");
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
-  const switchAccountIntentRef = useRef(false);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
@@ -338,18 +321,6 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
-  const ensureAuthRuntimeReady = useCallback(async () => {
-    try {
-      const [{ initializeSessionSync }] = await Promise.all([
-        import("../lib/sessionSync"),
-        getSupabase(),
-      ]);
-      await initializeSessionSync();
-    } catch (error) {
-      console.warn("[Onboarding] Failed to prepare auth runtime:", error);
-    }
-  }, []);
-
   // Setup onboarding background music (autoplay + loop)
   useEffect(() => {
     const audio = new Audio(onboardingMusicUrl);
@@ -438,40 +409,6 @@ const Onboarding: React.FC = () => {
       })();
     }
   };
-
-  const refreshAccountSummary = async () => {
-    try {
-      const user = await getCurrentUser();
-      if (!user) {
-        if (isMountedRef.current) setSignedInAccount(null);
-        return null;
-      }
-      const profile = await getProfile();
-      const account = deriveAccountSummary(profile, user);
-      if (isMountedRef.current) setSignedInAccount(account);
-      return account;
-    } catch (error) {
-      if (isMountedRef.current) setSignedInAccount(null);
-      return null;
-    }
-  };
-
-  useEffect(() => {
-    if (!signedInAccount) {
-      setAuthLoading(false);
-      setIsSwitchingAccount(false);
-      setSessionValid(false);
-      switchAccountIntentRef.current = false;
-      return;
-    }
-    switchAccountIntentRef.current = false;
-    setSessionValid(true);
-    setAuthLoading(false);
-    setAuthError(null);
-    setAuthEmail(signedInAccount.email ?? "");
-    setAuthEmailRequested(false);
-    setIsSwitchingAccount(false);
-  }, [signedInAccount]);
 
   // Speaker icon with fixed box and crossfade to avoid jumps
   const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
@@ -805,103 +742,8 @@ const Onboarding: React.FC = () => {
     }
   }, [signedInAccount, editableName]);
 
-  const startGoogleOAuth = async () => {
-    try {
-      setAuthLoading(true);
-      setAuthError(null);
-      await ensureAuthRuntimeReady();
-      const url = await getGoogleOAuthUrl();
-      if (!url) {
-        setAuthError(
-          "Authentication setup failed. Please ensure Spoke is properly configured and try again.",
-        );
-        setAuthLoading(false);
-        return false;
-      }
-      await window.electron?.openExternal(url);
-      setAuthLoading(false);
-      return true;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setAuthError(msg || "Could not start Google sign-in");
-      setAuthLoading(false);
-      return false;
-    }
-  };
-
   const handleGoogle = async () => {
     await startGoogleOAuth();
-  };
-
-  const handleProviderChange = async (providerId: string) => {
-    try {
-      await window.stt?.setPreferredProvider?.(
-        providerId as PreferredTranscriptionProviderId,
-      );
-      const snapshot = await loadProviderSettings();
-      if (isMountedRef.current) {
-        setProviderSettings(snapshot);
-      }
-      setAuthError(null);
-    } catch (error) {
-      console.error(
-        "[Onboarding] Failed to switch transcription provider:",
-        error,
-      );
-      window.notifications?.send?.("Failed to switch transcription provider.");
-    }
-  };
-
-  const handleEmailStart = async () => {
-    setAuthLoading(true);
-    setAuthError(null);
-    const res = await startEmailOtp(authEmail.trim());
-    setAuthLoading(false);
-    if (!res.ok) {
-      setAuthError(res.error || "Failed to send Magic Link");
-      return;
-    }
-    setAuthEmailRequested(true);
-  };
-
-  // Allow pressing Enter in the email field to submit
-  const handleEmailSubmit: React.FormEventHandler<HTMLFormElement> = async (
-    e,
-  ) => {
-    e.preventDefault();
-    if (authLoading) return;
-    if (!authEmail || !authEmail.trim()) return;
-    await handleEmailStart();
-  };
-  void handleEmailSubmit;
-
-  const handleSwitchAccount = async () => {
-    if (authLoading || isSwitchingAccount) return;
-    switchAccountIntentRef.current = true;
-    setIsSwitchingAccount(true);
-    setAuthError(null);
-    setAuthLoading(true);
-    try {
-      await signOut();
-    } catch (error) {
-      if (isMountedRef.current) {
-        const msg = error instanceof Error ? error.message : String(error);
-        setAuthError(msg || "Could not switch account");
-      }
-    }
-    if (isMountedRef.current) {
-      setSessionValid(false);
-    }
-    const started = await startGoogleOAuth();
-    if (isMountedRef.current) {
-      if (!started) {
-        setIsSwitchingAccount(false);
-        setAuthLoading(false);
-        switchAccountIntentRef.current = false;
-      } else {
-        setIsSwitchingAccount(false);
-      }
-    }
   };
 
   const handleNameVerificationContinue = () => {
