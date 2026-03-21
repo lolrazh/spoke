@@ -121,6 +121,15 @@ import {
   cloneDisplayNotchInfo,
 } from "./main/notchReporter";
 import {
+  initPreferences,
+  loadMicPreferences,
+  saveMicPreferences,
+  loadPillPreferences,
+  savePillPreferences,
+  loadAppPreferences,
+  saveAppPreferences,
+} from "./main/preferences";
+import {
   initUpdateController,
   manualCheckForUpdates,
   scheduleUpdateCheck,
@@ -291,15 +300,12 @@ let micDevices: MicDevice[] = [
   { id: "default", label: "System Default" }, // Always available fallback
 ];
 let micPreferences: MicPreferences = {};
-let micPrefsPath: string; // Will be initialized in app.whenReady()
 // Pill preferences (notch width, etc.)
 let pillPreferences: import("./types/shared").PillPreferences = {};
-let pillPrefsPath: string; // Will be initialized in app.whenReady()
 // Optical adjustment for notch width (pixels to subtract for better visual alignment)
 const NOTCH_WIDTH_OPTICAL_ADJUSTMENT = 2;
 // App preferences (dock visibility, etc.)
 let appPreferences: import("./types/shared").AppPreferences = {};
-let appPrefsPath: string; // Will be initialized in app.whenReady()
 // Onboarding persistence (local flag)
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
@@ -710,105 +716,6 @@ function preSpawnPasteHelper() {
 // function logBounds(tag: string) { ... }
 
 // Microphone preference management functions
-function loadMicPreferences(): MicPreferences {
-  try {
-    if (fs.existsSync(micPrefsPath)) {
-      const data = fs.readFileSync(micPrefsPath, "utf8");
-      const prefs = JSON.parse(data);
-      console.log("[MicPrefs] Loaded preferences:", prefs);
-      return prefs;
-    }
-  } catch (error) {
-    console.error("[MicPrefs] Failed to load preferences:", error);
-  }
-
-  const defaultPrefs = { selectedMicId: "default" };
-  console.log("[MicPrefs] Using default preferences:", defaultPrefs);
-  return defaultPrefs;
-}
-
-function saveMicPreferences(prefs: MicPreferences): void {
-  try {
-    // Ensure userData directory exists
-    const userDataDir = app.getPath("userData");
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-
-    fs.writeFileSync(micPrefsPath, JSON.stringify(prefs, null, 2));
-    console.log("[MicPrefs] Saved preferences:", prefs);
-  } catch (error) {
-    console.error("[MicPrefs] Failed to save preferences:", error);
-  }
-}
-
-// Pill preference management functions
-function loadPillPreferences(): import("./types/shared").PillPreferences {
-  try {
-    if (fs.existsSync(pillPrefsPath)) {
-      const data = fs.readFileSync(pillPrefsPath, "utf8");
-      const prefs = JSON.parse(data);
-      logger.main.info("[PillPrefs] Loaded preferences:", prefs);
-      return prefs;
-    }
-  } catch (error) {
-    logger.main.error("[PillPrefs] Failed to load preferences:", error);
-  }
-
-  logger.main.info("[PillPrefs] No stored preferences found");
-  return {};
-}
-
-function savePillPreferences(
-  prefs: import("./types/shared").PillPreferences,
-): void {
-  try {
-    // Ensure userData directory exists
-    const userDataDir = app.getPath("userData");
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-
-    fs.writeFileSync(pillPrefsPath, JSON.stringify(prefs, null, 2));
-    logger.main.info("[PillPrefs] Saved preferences:", prefs);
-  } catch (error) {
-    logger.main.error("[PillPrefs] Failed to save preferences:", error);
-  }
-}
-
-function loadAppPreferences(): import("./types/shared").AppPreferences {
-  try {
-    if (fs.existsSync(appPrefsPath)) {
-      const data = fs.readFileSync(appPrefsPath, "utf8");
-      const prefs = JSON.parse(data);
-      logger.main.info("[AppPrefs] Loaded preferences:", prefs);
-      return prefs;
-    }
-  } catch (error) {
-    logger.main.error("[AppPrefs] Failed to load preferences:", error);
-  }
-
-  logger.main.info("[AppPrefs] No stored preferences found");
-  return {};
-}
-
-function saveAppPreferences(
-  prefs: import("./types/shared").AppPreferences,
-): void {
-  try {
-    // Ensure userData directory exists
-    const userDataDir = app.getPath("userData");
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-
-    fs.writeFileSync(appPrefsPath, JSON.stringify(prefs, null, 2));
-    logger.main.info("[AppPrefs] Saved preferences:", prefs);
-  } catch (error) {
-    logger.main.error("[AppPrefs] Failed to save preferences:", error);
-  }
-}
-
 function updateMicDevices(devices: MicDevice[]): void {
   console.log("[MicMgmt] Updating device list:", devices);
 
@@ -2096,11 +2003,8 @@ app.whenReady().then(async () => {
     console.error("[Auth] initial argv scan error:", e);
   }
 
-  // Initialize paths after app is ready to avoid keychain dialog
-  micPrefsPath = path.join(app.getPath("userData"), "mic-preferences.json");
-  pillPrefsPath = path.join(app.getPath("userData"), "pill-preferences.json");
-  appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
-  // Initialize provider store (preferences + secrets)
+  // Initialize preferences and provider store
+  initPreferences(app.getPath("userData"));
   initProviderStore(app.getPath("userData"));
   // Initialize update controller with notification and tray callbacks
   initUpdateController({
