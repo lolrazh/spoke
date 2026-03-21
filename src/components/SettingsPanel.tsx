@@ -15,10 +15,7 @@ import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import {
-  OPENAI_CLOUD_PROVIDER_ID,
-  type TranscriptionProviderSettingsEntry,
-} from "../core/transcription/providerCatalog";
+import { type TranscriptionProviderSettingsEntry } from "../core/transcription/providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
@@ -302,7 +299,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     selectableProviderEntries,
     selectedProviderId,
   } = useProviderSelection();
-  const [openAiApiKeyDraft, setOpenAiApiKeyDraft] = useState("");
+  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
   const [savingProviderKeyId, setSavingProviderKeyId] = useState<string | null>(
     null,
   );
@@ -429,9 +426,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [selectableProviderEntries],
   );
 
-  const openAiProvider = providerSettings?.providers.find(
-    (provider) => provider.id === OPENAI_CLOUD_PROVIDER_ID,
-  );
+  const apiKeyProviders = providerEntries.filter((p) => p.requiresApiKey);
 
   const handleMicChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
@@ -455,16 +450,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
-  const handleSaveOpenAiKey = async () => {
-    const apiKey = openAiApiKeyDraft.trim();
+  const handleSaveApiKey = async (providerId: string, displayName: string) => {
+    const apiKey = (apiKeyDrafts[providerId] ?? "").trim();
     if (!apiKey) {
       return;
     }
 
-    setSavingProviderKeyId(OPENAI_CLOUD_PROVIDER_ID);
+    setSavingProviderKeyId(providerId);
     try {
       const snapshot = await window.stt?.setProviderApiKey?.(
-        OPENAI_CLOUD_PROVIDER_ID,
+        providerId,
         apiKey,
       );
       if (snapshot) {
@@ -472,32 +467,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       } else {
         setProviderSettings(await loadProviderSettings());
       }
-      setOpenAiApiKeyDraft("");
-      window.notifications?.send?.("Saved OpenAI API key locally.");
+      setApiKeyDrafts((prev) => ({ ...prev, [providerId]: "" }));
+      window.notifications?.send?.(`Saved ${displayName} API key locally.`);
     } catch (error) {
-      console.error("[Settings] Failed to save OpenAI API key:", error);
-      window.notifications?.send?.("Failed to save OpenAI API key.");
+      console.error(`[Settings] Failed to save ${displayName} API key:`, error);
+      window.notifications?.send?.(`Failed to save ${displayName} API key.`);
     } finally {
       setSavingProviderKeyId(null);
     }
   };
 
-  const handleClearOpenAiKey = async () => {
-    setSavingProviderKeyId(OPENAI_CLOUD_PROVIDER_ID);
+  const handleClearApiKey = async (providerId: string, displayName: string) => {
+    setSavingProviderKeyId(providerId);
     try {
-      const snapshot = await window.stt?.clearProviderApiKey?.(
-        OPENAI_CLOUD_PROVIDER_ID,
-      );
+      const snapshot = await window.stt?.clearProviderApiKey?.(providerId);
       if (snapshot) {
         setProviderSettings(snapshot);
       } else {
         setProviderSettings(await loadProviderSettings());
       }
-      setOpenAiApiKeyDraft("");
-      window.notifications?.send?.("Cleared stored OpenAI API key.");
+      setApiKeyDrafts((prev) => ({ ...prev, [providerId]: "" }));
+      window.notifications?.send?.(`Cleared stored ${displayName} API key.`);
     } catch (error) {
-      console.error("[Settings] Failed to clear OpenAI API key:", error);
-      window.notifications?.send?.("Failed to clear OpenAI API key.");
+      console.error(
+        `[Settings] Failed to clear ${displayName} API key:`,
+        error,
+      );
+      window.notifications?.send?.(`Failed to clear ${displayName} API key.`);
     } finally {
       setSavingProviderKeyId(null);
     }
@@ -877,22 +873,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <SectionSeparator title="API Keys" />
 
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <SecretField
-                        label={openAiProvider?.apiKeyLabel ?? "OpenAI API Key"}
-                        description="Stored locally for direct OpenAI transcription."
-                        value={openAiApiKeyDraft}
-                        onChange={setOpenAiApiKeyDraft}
-                        onSave={handleSaveOpenAiKey}
-                        onClear={handleClearOpenAiKey}
-                        configured={openAiProvider?.apiKeyConfigured ?? false}
-                        saving={
-                          savingProviderKeyId === OPENAI_CLOUD_PROVIDER_ID
-                        }
-                        placeholder={
-                          openAiProvider?.apiKeyPlaceholder ?? "sk-..."
-                        }
-                        inGroup
-                      />
+                      {apiKeyProviders.map((provider) => (
+                        <SecretField
+                          key={provider.id}
+                          label={
+                            provider.apiKeyLabel ??
+                            `${provider.displayName} API Key`
+                          }
+                          description={`Stored locally for ${provider.displayName} transcription.`}
+                          value={apiKeyDrafts[provider.id] ?? ""}
+                          onChange={(v) =>
+                            setApiKeyDrafts((prev) => ({
+                              ...prev,
+                              [provider.id]: v,
+                            }))
+                          }
+                          onSave={() =>
+                            handleSaveApiKey(provider.id, provider.displayName)
+                          }
+                          onClear={() =>
+                            handleClearApiKey(provider.id, provider.displayName)
+                          }
+                          configured={provider.apiKeyConfigured}
+                          saving={savingProviderKeyId === provider.id}
+                          placeholder={provider.apiKeyPlaceholder ?? ""}
+                          inGroup
+                        />
+                      ))}
                     </div>
                   </motion.section>
                 </motion.div>
