@@ -129,6 +129,7 @@ import {
   loadAppPreferences,
   saveAppPreferences,
 } from "./main/preferences";
+import { smoothShow, smoothHide } from "./main/windowAnimation";
 import {
   initUpdateController,
   manualCheckForUpdates,
@@ -964,52 +965,6 @@ const getTrayIconPath = () => {
 // (Removed) Silent background check for app location
 
 const iconPath = getIconPath();
-
-const smoothShow = (win: BrowserWindow | null, fadeMs = 140) => {
-  if (!win || win.isDestroyed()) return;
-  try {
-    win.setOpacity(0);
-    // Show immediately at 0 opacity to avoid any pre-paint flash
-    win.show();
-    // Small timeout to ensure first styled frame is committed
-    setTimeout(
-      () => {
-        if (!win || win.isDestroyed()) return;
-        win.setOpacity(1);
-      },
-      Math.max(50, Math.min(fadeMs, 300)),
-    );
-  } catch (e) {
-    try {
-      win?.show();
-    } catch {}
-  }
-};
-
-const smoothHide = (win: BrowserWindow | null, fadeMs = 140) => {
-  if (!win || win.isDestroyed()) return;
-  try {
-    // Start fade-out by dropping opacity to 0, then hide.
-    win.setOpacity(1);
-    setTimeout(() => {
-      try {
-        win.setOpacity(0);
-      } catch {}
-      setTimeout(
-        () => {
-          try {
-            win.hide();
-          } catch {}
-        },
-        Math.max(50, Math.min(fadeMs, 300)),
-      );
-    }, 0);
-  } catch (e) {
-    try {
-      win?.hide();
-    } catch {}
-  }
-};
 
 const createWindow = () => {
   // Create the browser window.
