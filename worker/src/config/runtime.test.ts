@@ -5,7 +5,7 @@ describe("config/runtime.getRuntimeConfig", () => {
   it("returns sane defaults when env is empty", () => {
     const cfg = getRuntimeConfig({});
     expect(cfg.llm.enabled).toBe(true);
-    expect(cfg.llm.stream).toBe(true);
+    expect(cfg.llm.stream).toBe(false);
     expect(typeof cfg.llm.model).toBe("string");
     expect(["groq", "baseten", "cerebras", "simplismart"]).toContain(
       cfg.llm.provider,

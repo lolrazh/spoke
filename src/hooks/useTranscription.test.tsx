@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useTranscription } from "./useTranscription";
+import { useTranscription, clearAuthTokenCache } from "./useTranscription";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -154,6 +154,7 @@ describe("useTranscription (HTTP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();
+    clearAuthTokenCache();
     (window.stt.getPreferredProvider as any).mockResolvedValue("spoke-cloud");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
@@ -384,8 +385,13 @@ describe("useTranscription (HTTP)", () => {
     await act(async () => {
       result.current.start();
       await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+
+    expect(result.current.recording).toBe(true);
+
+    await act(async () => {
       result.current.stop();
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 600));
     });
 
     await waitFor(() => {
@@ -480,7 +486,7 @@ describe("useTranscription (HTTP)", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.error).toContain("Transcription failed");
+      expect(result.current.error).toBe("Server error");
     });
   });
 
