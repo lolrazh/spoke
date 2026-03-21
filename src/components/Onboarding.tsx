@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -33,15 +33,8 @@ import {
   type PermissionProvider,
 } from "../hooks/usePermissions";
 import { updateIdentityLocal } from "../state/userIdentity";
-import {
-  preferredTranscriptionProviderRequiresAuth,
-  SPOKE_CLOUD_PROVIDER_ID,
-} from "../core/transcription/defaultSessionOrchestrator";
-import {
-  listTranscriptionProviderCatalog,
-  type TranscriptionProviderSettingsEntry,
-  type TranscriptionProviderSettingsSnapshot,
-} from "../core/transcription/providerCatalog";
+import { useProviderSelection } from "../hooks/useProviderSelection";
+import { preferredTranscriptionProviderRequiresAuth } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import {
   buildOnboardingSteps,
@@ -175,8 +168,16 @@ const Onboarding: React.FC = () => {
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
-  const [providerSettings, setProviderSettings] =
-    useState<TranscriptionProviderSettingsSnapshot | null>(null);
+  const {
+    providerSettings,
+    setProviderSettings,
+    loadProviderSettings,
+    providerEntries,
+    selectableProviderEntries,
+    selectedProviderId,
+    selectedProviderEntry,
+    selectedProviderRequiresAuth,
+  } = useProviderSelection();
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authEmailRequested, setAuthEmailRequested] = useState(false);
@@ -246,44 +247,6 @@ const Onboarding: React.FC = () => {
     Array<{ id: string; label: string }>
   >([{ id: "default", label: "System Default" }]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
-  const loadProviderSettings = useCallback(async () => {
-    if (window.stt?.getProviderSettings) {
-      return window.stt.getProviderSettings();
-    }
-
-    return {
-      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
-      providers: listTranscriptionProviderCatalog().map((provider) => ({
-        ...provider,
-        selectable: provider.requiresApiKey ? false : provider.selectable,
-        apiKeyConfigured: false,
-      })),
-    };
-  }, []);
-  const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
-    if (providerSettings?.providers.length) {
-      return providerSettings.providers;
-    }
-
-    return listTranscriptionProviderCatalog().map((provider) => ({
-      ...provider,
-      selectable: provider.requiresApiKey ? false : provider.selectable,
-      apiKeyConfigured: false,
-    }));
-  }, [providerSettings]);
-  const selectableProviderEntries = useMemo(
-    () => providerEntries.filter((provider) => provider.selectable),
-    [providerEntries],
-  );
-  const selectedProviderId =
-    providerSettings?.preferredProviderId ?? SPOKE_CLOUD_PROVIDER_ID;
-  const selectedProviderEntry =
-    providerEntries.find((provider) => provider.id === selectedProviderId) ??
-    null;
-  const selectedProviderRequiresAuth = preferredTranscriptionProviderRequiresAuth(
-    selectedProviderId,
-  );
-
   // Background music during onboarding
   const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
   const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
@@ -381,22 +344,6 @@ const Onboarding: React.FC = () => {
       cleanupReady && cleanupReady();
     };
   }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    loadProviderSettings()
-      .then((snapshot) => {
-        if (isMounted) {
-          setProviderSettings(snapshot);
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      isMounted = false;
-    };
-  }, [loadProviderSettings]);
 
   const ensureAuthRuntimeReady = useCallback(async () => {
     try {
@@ -725,7 +672,9 @@ const Onboarding: React.FC = () => {
 
       if (forceOnboarding) {
         await refreshAccountSummary();
-        setCurrentStep(providerNeedsAuth && user ? "name-verification" : "auth");
+        setCurrentStep(
+          providerNeedsAuth && user ? "name-verification" : "auth",
+        );
         return;
       }
 
@@ -736,7 +685,7 @@ const Onboarding: React.FC = () => {
 
       if (user && providerNeedsAuth) {
         try {
-        // Ensure a profile row exists for returning users (or first login on this device)
+          // Ensure a profile row exists for returning users (or first login on this device)
           try {
             await ensureProfileRow();
           } catch {}
@@ -777,7 +726,11 @@ const Onboarding: React.FC = () => {
         const steps = buildOnboardingSteps({
           requiresAuth: providerNeedsAuth,
         });
-        if (savedStep && isOnboardingStep(savedStep) && steps.includes(savedStep)) {
+        if (
+          savedStep &&
+          isOnboardingStep(savedStep) &&
+          steps.includes(savedStep)
+        ) {
           setCurrentStep(savedStep);
           return;
         }
@@ -898,10 +851,11 @@ const Onboarding: React.FC = () => {
       }
       setAuthError(null);
     } catch (error) {
-      console.error("[Onboarding] Failed to switch transcription provider:", error);
-      window.notifications?.send?.(
-        "Failed to switch transcription provider.",
+      console.error(
+        "[Onboarding] Failed to switch transcription provider:",
+        error,
       );
+      window.notifications?.send?.("Failed to switch transcription provider.");
     }
   };
 
@@ -1384,8 +1338,7 @@ const Onboarding: React.FC = () => {
     },
   };
 
-  const showNavControls =
-    !showIntro && currentStep !== "complete";
+  const showNavControls = !showIntro && currentStep !== "complete";
 
   // --- Dictation test wiring for test steps ---
   useEffect(() => {
