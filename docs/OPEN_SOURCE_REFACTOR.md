@@ -2,6 +2,17 @@
 
 ## Status
 
+**Phase 0**: Complete. Product direction and architecture decisions approved.
+
+**Phase 1**: Complete. Core seams extracted, provider contracts in place, monoliths decomposed.
+- `src/core/transcription/` — orchestrator, provider contracts, catalog, preferences, session types
+- `src/main/` — 13 service modules extracted from main.ts (5,084 → 3,254 lines, -36%)
+- `src/hooks/` — 5 reusable hooks extracted from renderer monoliths
+- `src/state/pillStateMachine.ts` — UI state machine with 21 unit tests
+- 206 tests passing across 31 test files
+
+**Phase 2**: Not started. Local MLX runtime productization.
+
 This document is the execution plan for converting Spoke from a hosted, auth-gated product into a **local-first, open-source desktop app** with **local inference and BYO cloud providers**.
 
 It is intentionally opinionated:
