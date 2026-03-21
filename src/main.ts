@@ -244,7 +244,6 @@ const pasteHelpers = new Set<ChildProcess>();
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
-// Paste daemon state moved to src/main/pasteDaemon.ts
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
@@ -316,8 +315,6 @@ const FORCE_ONBOARDING =
   process.env.FORCE_ONBOARDING === "1" ||
   process.env.FORCE_ONBOARDING === "true";
 
-// Microphone management state
-// Mic device state moved to src/main/micManager.ts
 // Pill preferences (notch width, etc.)
 let pillPreferences: import("./types/shared").PillPreferences = {};
 // Optical adjustment for notch width (pixels to subtract for better visual alignment)
@@ -328,19 +325,11 @@ let appPreferences: import("./types/shared").AppPreferences = {};
 let onboardingPrefsPath: string; // Will be initialized in app.whenReady()
 let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
-// Local STT sidecar lifecycle now in src/main/sidecarEngine.ts
-
-
-// Update controller moved to src/main/updateController.ts
-
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
 
-// Floating bar state moved to src/main/floatingBar.ts
 // Dock operation in progress (prevents blur from collapsing during dock show/hide)
 let dockOperationInProgress = false;
-
-// Notch report state moved to src/main/notchReporter.ts
 
 // === Active display tracking for continuous follow ===
 let activeDisplayId: number | null = null;
