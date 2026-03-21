@@ -167,7 +167,7 @@ export function useTranscription(
         stream = await initStream();
       }
 
-      // Start BOTH recording and /prepare at the EXACT same time (true parallelization)
+      // Start both recording and OCR extraction in parallel
       const recorderPromise = (async () => {
         const recorder = new AudioRecorder({
           onAudioLevel: setAudioLevel,

@@ -23,8 +23,17 @@
 - Added Groq Direct and Deepgram as BYO cloud STT providers
 - Dynamic API key UI renders SecretField per `requiresApiKey` provider
 - Default provider changed from spoke-cloud to local-stt (auth-free startup)
-- 5 providers total: Local Moonshine, Spoke Cloud, OpenAI Direct, Groq, Deepgram
 - App launches without sign-in when using local or BYO providers
+
+**Phase 4**: Complete. Removed Spoke Cloud, auth/billing, and migrated full pipeline.
+- Removed Spoke Cloud provider and all `requiresAuthToken` infrastructure
+- Stripped Supabase, quota, billing, session sync (~2,000+ lines deleted)
+- Ported enhancement pipeline to `src/core/enhancement/` (triggers, routing, prompts, edit mode)
+- Added LLM service (OpenAI/Groq chat completions) and OCR service (vision API) to main process
+- Full transcription flow: screenshot → OCR → STT → trigger detection → LLM enhancement → paste
+- Deleted Cloudflare Worker (`worker/` directory)
+- 4 providers: Local Moonshine, OpenAI Direct, Groq, Deepgram
+- 289 tests passing across 34 test files
 
 This document is the execution plan for converting Spoke from a hosted, auth-gated product into a **local-first, open-source desktop app** with **local inference and BYO cloud providers**.
 
