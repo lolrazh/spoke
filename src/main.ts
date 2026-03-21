@@ -132,6 +132,13 @@ import {
 import { smoothShow, smoothHide } from "./main/windowAnimation";
 import { getIconPath, getTrayIconPath } from "./main/iconPaths";
 import {
+  preSpawnPasteHelper,
+  getPreSpawnedHelper,
+  pasteViaDaemon,
+  killPasteDaemon,
+  respawnPasteDaemon,
+} from "./main/pasteDaemon";
+import {
   initUpdateController,
   manualCheckForUpdates,
   scheduleUpdateCheck,
@@ -220,12 +227,7 @@ const pasteHelpers = new Set<ChildProcess>();
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
   null;
 let fnRestartTimeout: NodeJS.Timeout | null = null;
-let preSpawnedPasteHelper:
-  | import("child_process").ChildProcessWithoutNullStreams
-  | null = null;
-// Track readiness of the pre-spawned paste helper (daemon)
-let preSpawnReady: Promise<void> | null = null;
-let resolvePreSpawnReady: (() => void) | null = null;
+// Paste daemon state moved to src/main/pasteDaemon.ts
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
@@ -650,69 +652,7 @@ async function startHelperIfIMGranted(): Promise<void> {
 
 }
 
-function preSpawnPasteHelper() {
-  // Clean up any existing pre-spawned helper
-  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-    try {
-      preSpawnedPasteHelper.kill();
-    } catch (e) {
-      // ignore
-    }
-    preSpawnedPasteHelper = null;
-    preSpawnReady = null;
-    resolvePreSpawnReady = null;
-  }
 
-  const helperPath = getHelperPath();
-  if (!fs.existsSync(helperPath)) {
-    console.error(
-      `[PreSpawn] Paste helper binary not found at path: ${helperPath}`,
-    );
-    return;
-  }
-
-  console.log(`[PreSpawn] Starting paste helper daemon for dictation`);
-
-  // Spawn the helper in daemon mode - it will wait for paste commands via stdin
-  preSpawnedPasteHelper = spawn(helperPath, ["--mode=paste-daemon"], {
-    stdio: "pipe",
-    detached: false,
-  });
-
-  // Initialize readiness promise and resolve when daemon prints ready token
-  preSpawnReady = new Promise<void>((resolve) => {
-    resolvePreSpawnReady = resolve;
-  });
-
-  try {
-    preSpawnedPasteHelper.stdout.setEncoding("utf8");
-    const onData = (data: string | Buffer) => {
-      const out = data.toString().trim();
-      // Daemon emits this once ready to accept commands
-      if (out.includes("paste-daemon-ready") && resolvePreSpawnReady) {
-        resolvePreSpawnReady();
-        resolvePreSpawnReady = null;
-      }
-    };
-    preSpawnedPasteHelper.stdout.on("data", onData);
-    // Ensure listener is cleaned up on exit
-    preSpawnedPasteHelper.once("exit", () => {
-      try {
-        preSpawnedPasteHelper?.stdout?.off("data", onData as any);
-      } catch {}
-    });
-  } catch {}
-
-  pasteHelpers.add(preSpawnedPasteHelper);
-  preSpawnedPasteHelper.once("exit", () => {
-    if (preSpawnedPasteHelper) {
-      pasteHelpers.delete(preSpawnedPasteHelper);
-      preSpawnedPasteHelper = null;
-      preSpawnReady = null;
-      resolvePreSpawnReady = null;
-    }
-  });
-}
 
 // Removed: noisy bounds logging
 // function logBounds(tag: string) { ... }
@@ -1655,44 +1595,9 @@ ipcMain.handle(
         return { success: false, error: "Paste helper binary not found." };
       }
 
-      // Use pre-spawned helper if available, otherwise fallback to direct spawn
-      if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-        console.log(`[PasteHelper] Using pre-spawned paste helper`);
-        // Ensure the daemon is ready before sending commands (short timeout)
-        try {
-          if (preSpawnReady) {
-            await Promise.race([
-              preSpawnReady,
-              new Promise<void>((resolve) => setTimeout(resolve, 300)),
-            ]);
-          }
-        } catch {}
-        // Send paste command to daemon
-        preSpawnedPasteHelper.stdin?.write("paste\n");
-
-        // Wait for paste completion
-        await new Promise<void>((resolve) => {
-          const onData = (data: Buffer) => {
-            const output = data.toString().trim();
-            if (output === "paste-done") {
-              preSpawnedPasteHelper?.stdout?.off("data", onData);
-              console.log(`[PasteHelper] Pre-spawned helper completed paste`);
-              resolve();
-            }
-          };
-          preSpawnedPasteHelper?.stdout?.on("data", onData);
-
-          // Fallback timeout
-          setTimeout(() => {
-            preSpawnedPasteHelper?.stdout?.off("data", onData);
-            console.log(
-              `[PasteHelper] Pre-spawned helper timeout, assuming success`,
-            );
-            resolve();
-          }, 1000);
-        });
-      } else {
-        // Fallback: spawn new helper if pre-spawn failed
+      // Use pre-spawned daemon if available, otherwise fallback to direct spawn
+      const pastedViaDaemon = await pasteViaDaemon();
+      if (!pastedViaDaemon) {
         console.log(
           `[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`,
         );
@@ -1775,46 +1680,14 @@ async function pasteLastTranscript() {
       return;
     }
 
-    // Use pre-spawned helper if available
-    if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-      console.log("[PasteShortcut] Using pre-spawned paste helper");
-
-      // Send paste command to daemon
-      preSpawnedPasteHelper.stdin?.write("paste\n");
-
-      // Wait for paste completion
-      await new Promise<void>((resolve) => {
-        const onData = (data: Buffer) => {
-          const output = data.toString().trim();
-          if (output === "paste-done") {
-            preSpawnedPasteHelper?.stdout?.off("data", onData);
-            console.log("[PasteShortcut] Paste completed");
-            resolve();
-          }
-        };
-        preSpawnedPasteHelper?.stdout?.on("data", onData);
-
-        // Fallback timeout
-        setTimeout(() => {
-          preSpawnedPasteHelper?.stdout?.off("data", onData);
-          console.log("[PasteShortcut] Paste timeout, assuming success");
-          resolve();
-        }, 1000);
-      });
-    } else {
-      // Fallback: spawn new helper
+    // Use pre-spawned daemon or fallback to direct spawn
+    const pastedViaDaemon = await pasteViaDaemon();
+    if (!pastedViaDaemon) {
       console.log("[PasteShortcut] Using direct spawn");
       const proc = spawnHelper(helperPath, ["--mode=paste"], false);
-
       await new Promise<void>((resolve) => {
-        proc.on("close", () => {
-          console.log("[PasteShortcut] Paste completed");
-          resolve();
-        });
-        proc.on("error", (error) => {
-          console.error("[PasteShortcut] Error:", error);
-          resolve();
-        });
+        proc.on("close", () => resolve());
+        proc.on("error", () => resolve());
       });
     }
 
@@ -2964,17 +2837,8 @@ app.whenReady().then(async () => {
     async (_event, type: "accessibility" | "microphone") => {
       try {
         if (type === "accessibility") {
-          // If paste daemon exists, respawn to pick up AX trust
-          try {
-            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-              preSpawnedPasteHelper.stdin?.write("exit\n");
-            }
-          } catch {}
-          preSpawnedPasteHelper = null;
-          preSpawnReady = null;
-          resolvePreSpawnReady = null;
-          // Eagerly pre-spawn again so paste is ready post-grant
-          preSpawnPasteHelper();
+          // Respawn paste daemon to pick up AX trust
+          respawnPasteDaemon();
           return { ok: true };
         }
         if (type === "microphone") {
@@ -3173,16 +3037,7 @@ app.on("before-quit", () => {
   killSidecar();
 
   // Clean up pre-spawned paste helper
-  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-    try {
-      preSpawnedPasteHelper.stdin?.write("exit\n");
-      if (preSpawnedPasteHelper.pid)
-        process.kill(preSpawnedPasteHelper.pid, "SIGKILL");
-    } catch (e) {
-      // ignore
-    }
-    preSpawnedPasteHelper = null;
-  }
+  killPasteDaemon();
 
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
@@ -3221,15 +3076,7 @@ app.on("will-quit", () => {
   }
 
   // Clean up pre-spawned paste helper
-  if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-    try {
-      preSpawnedPasteHelper.stdin?.write("exit\n");
-      preSpawnedPasteHelper.kill("SIGKILL");
-    } catch (e) {
-      // ignore
-    }
-    preSpawnedPasteHelper = null;
-  }
+  killPasteDaemon();
 
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {
@@ -3339,14 +3186,7 @@ function startFnListener() {
             mirrorWindow.webContents.send("ptt-down");
         } else if (trimmedLine === "optR-up") {
           // End of PTT press-and-hold
-          try {
-            if (preSpawnedPasteHelper && !preSpawnedPasteHelper.killed) {
-              preSpawnedPasteHelper.stdin?.write("exit\n");
-            }
-          } catch {}
-          preSpawnedPasteHelper = null;
-          preSpawnReady = null;
-          resolvePreSpawnReady = null;
+          killPasteDaemon();
           targetWindow?.webContents.send("ptt-up");
           if (
             pttTarget === "main" &&
