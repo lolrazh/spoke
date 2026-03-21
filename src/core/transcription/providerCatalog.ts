@@ -2,11 +2,17 @@ import type { PreferredTranscriptionProviderId } from "./providerPreferences";
 import {
   LOCAL_STT_PROVIDER_ID,
   OPENAI_CLOUD_PROVIDER_ID,
+  GROQ_CLOUD_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
-export { OPENAI_CLOUD_PROVIDER_ID } from "./providerPreferences";
+export {
+  OPENAI_CLOUD_PROVIDER_ID,
+  GROQ_CLOUD_PROVIDER_ID,
+} from "./providerPreferences";
 
-export type ApiKeyTranscriptionProviderId = typeof OPENAI_CLOUD_PROVIDER_ID;
+export type ApiKeyTranscriptionProviderId =
+  | typeof OPENAI_CLOUD_PROVIDER_ID
+  | typeof GROQ_CLOUD_PROVIDER_ID;
 
 export type CatalogTranscriptionProviderId =
   | PreferredTranscriptionProviderId
@@ -66,6 +72,17 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
     apiKeyLabel: "OpenAI API Key",
     apiKeyPlaceholder: "sk-...",
   },
+  {
+    id: GROQ_CLOUD_PROVIDER_ID,
+    displayName: "Groq",
+    description: "Fast cloud transcription with your own Groq API key.",
+    kind: "cloud",
+    selectable: true,
+    requiresApiKey: true,
+    status: "ready",
+    apiKeyLabel: "Groq API Key",
+    apiKeyPlaceholder: "gsk_...",
+  },
 ];
 
 export function listTranscriptionProviderCatalog(): TranscriptionProviderCatalogEntry[] {
@@ -104,12 +121,16 @@ export function isSelectableTranscriptionProviderId(
   return (
     providerId === LOCAL_STT_PROVIDER_ID ||
     providerId === SPOKE_CLOUD_PROVIDER_ID ||
-    providerId === OPENAI_CLOUD_PROVIDER_ID
+    providerId === OPENAI_CLOUD_PROVIDER_ID ||
+    providerId === GROQ_CLOUD_PROVIDER_ID
   );
 }
 
 export function isApiKeyTranscriptionProviderId(
   providerId: string,
 ): providerId is ApiKeyTranscriptionProviderId {
-  return providerId === OPENAI_CLOUD_PROVIDER_ID;
+  return (
+    providerId === OPENAI_CLOUD_PROVIDER_ID ||
+    providerId === GROQ_CLOUD_PROVIDER_ID
+  );
 }

@@ -13,6 +13,7 @@ import {
   buildTranscriptionProviderSettingsSnapshot,
   isApiKeyTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
+  GROQ_CLOUD_PROVIDER_ID,
   type ApiKeyTranscriptionProviderId,
 } from "../core/transcription/providerCatalog";
 import { getModelInstallState } from "./modelManager";
@@ -221,7 +222,10 @@ export function clearProviderApiKey(
 
 export function getProviderSettingsSnapshot() {
   const configuredApiKeyProviderIds = (
-    [OPENAI_CLOUD_PROVIDER_ID] as ApiKeyTranscriptionProviderId[]
+    [
+      OPENAI_CLOUD_PROVIDER_ID,
+      GROQ_CLOUD_PROVIDER_ID,
+    ] as ApiKeyTranscriptionProviderId[]
   ).filter((id) => hasProviderApiKey(id));
 
   return buildTranscriptionProviderSettingsSnapshot({
@@ -289,6 +293,66 @@ export async function transcribeWithOpenAi(
     metrics: {
       model: OPENAI_TRANSCRIPTION_MODEL,
       usage: result.usage,
+    },
+  };
+}
+
+// ── Groq Direct Transcription ─────────────────────────────────────────
+
+const GROQ_TRANSCRIPTION_API_URL =
+  "https://api.groq.com/openai/v1/audio/transcriptions";
+const GROQ_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
+const GROQ_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+type GroqTranscriptionResponse = {
+  text?: string;
+  error?: {
+    message?: string;
+  };
+};
+
+export async function transcribeWithGroq(
+  audioBuffer: Buffer,
+  mimeType: string | undefined,
+  context: TranscriptionContext,
+): Promise<TranscriptionResult> {
+  if (audioBuffer.byteLength > GROQ_MAX_AUDIO_BYTES) {
+    throw new Error("Groq supports audio files up to 25 MiB.");
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([audioBuffer], { type: mimeType || "audio/webm" }),
+    "audio.webm",
+  );
+  formData.append("model", GROQ_TRANSCRIPTION_MODEL);
+  formData.append("response_format", "json");
+
+  if (context.language) {
+    formData.append("language", context.language);
+  }
+
+  const response = await fetch(GROQ_TRANSCRIPTION_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getRequiredProviderApiKey(GROQ_CLOUD_PROVIDER_ID)}`,
+    },
+    body: formData,
+  });
+
+  const result = (await response
+    .json()
+    .catch(() => ({}))) as GroqTranscriptionResponse;
+
+  if (!response.ok) {
+    throw new Error(result.error?.message || "Groq transcription failed.");
+  }
+
+  return {
+    text: result.text ?? "",
+    metrics: {
+      model: GROQ_TRANSCRIPTION_MODEL,
     },
   };
 }

@@ -80,6 +80,7 @@ import {
   isApiKeyTranscriptionProviderId,
   isSelectableTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
+  GROQ_CLOUD_PROVIDER_ID,
 } from "./core/transcription/providerCatalog";
 import {
   isLocalProviderSelected,
@@ -99,6 +100,7 @@ import {
   clearProviderApiKey,
   getProviderSettingsSnapshot,
   transcribeWithOpenAi,
+  transcribeWithGroq,
 } from "./main/providerStore";
 import {
   spawnSidecar,
@@ -2567,12 +2569,10 @@ app.whenReady().then(async () => {
       }
 
       if (
-        providerId === OPENAI_CLOUD_PROVIDER_ID &&
-        !hasProviderApiKey(OPENAI_CLOUD_PROVIDER_ID)
+        isApiKeyTranscriptionProviderId(providerId) &&
+        !hasProviderApiKey(providerId)
       ) {
-        throw new Error(
-          "Save an OpenAI API key before selecting OpenAI Direct.",
-        );
+        throw new Error(`Save an API key before selecting this provider.`);
       }
 
       setPreferredProviderId(providerId);
@@ -2622,6 +2622,14 @@ app.whenReady().then(async () => {
 
       if (payload.providerId === OPENAI_CLOUD_PROVIDER_ID) {
         return transcribeWithOpenAi(
+          payload.audioBuffer,
+          payload.mimeType,
+          payload.context,
+        );
+      }
+
+      if (payload.providerId === GROQ_CLOUD_PROVIDER_ID) {
+        return transcribeWithGroq(
           payload.audioBuffer,
           payload.mimeType,
           payload.context,
