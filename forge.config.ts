@@ -54,6 +54,7 @@ const config: ForgeConfig = {
       "./public/assets/Assets.car",
       "./native/bin/Spoke Helper.app",
       "./native/bin/notch-reporter",
+      "./local-stt/dist/spoke-stt",
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
@@ -67,6 +68,7 @@ const config: ForgeConfig = {
         "Contents/Resources/Spoke Helper.app",
         "Contents/Resources/Spoke Helper.app/Contents/MacOS/Spoke Helper",
         "Contents/Resources/notch-reporter",
+        "Contents/Resources/spoke-stt",
       ],
       optionsForFile: (filePath) => {
         // Base options applied to all files
@@ -75,6 +77,13 @@ const config: ForgeConfig = {
           signatureFlags: "runtime" as const,
           entitlements: "./build/entitlements/main.plist",
         } as const;
+        // Apply sidecar entitlements (MLX JIT + unsigned memory for inference)
+        if (filePath.endsWith("/spoke-stt")) {
+          return {
+            ...base,
+            entitlements: "./build/entitlements/sidecar.plist",
+          };
+        }
         // Apply minimal entitlements on notch-reporter (only needs display APIs)
         if (filePath.endsWith("/notch-reporter")) {
           return {
