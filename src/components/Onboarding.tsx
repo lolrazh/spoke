@@ -3,7 +3,7 @@ import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { markOnboardingEvent } from "../utils/authSignals";
-import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
+import { useMicVisualizer } from "../hooks/useMicVisualizer";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import { Avatar } from "./ui/avatar";
@@ -234,19 +234,15 @@ const Onboarding: React.FC = () => {
   const switchAccountIntentRef = useRef(false);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Mic-check visualizer state
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-  const [barValues, setBarValues] = useState<number[]>(
-    Array.from({ length: 24 }, () => 0),
-  );
-  const [speakingDetected, setSpeakingDetected] = useState(false);
-  const [micDevices, setMicDevices] = useState<
-    Array<{ id: string; label: string }>
-  >([{ id: "default", label: "System Default" }]);
-  const [selectedMicId, setSelectedMicId] = useState<string>("default");
+  // Mic-check visualizer (Web Audio API capture + frequency analysis)
+  const {
+    barValues,
+    speakingDetected,
+    micDevices,
+    setMicDevices,
+    selectedMicId,
+    setSelectedMicId,
+  } = useMicVisualizer({ active: currentStep === "mic-check" });
   // Background music during onboarding
   const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
   const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
@@ -1049,107 +1045,6 @@ const Onboarding: React.FC = () => {
       } catch {}
     }
   }, [currentStep]);
-
-  // --- Mic-check visualizer lifecycle ---
-  const stopMic = () => {
-    try {
-      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
-    } catch {}
-    rafIdRef.current = null;
-    try {
-      analyserRef.current?.disconnect();
-    } catch {}
-    analyserRef.current = null;
-    try {
-      audioCtxRef.current?.close();
-    } catch {}
-    audioCtxRef.current = null;
-    try {
-      micStreamRef.current?.getTracks()?.forEach((t) => t.stop());
-    } catch {}
-    micStreamRef.current = null;
-  };
-
-  const startMic = async () => {
-    try {
-      // Ensure any previous session is closed
-      stopMic();
-      const constraints: MediaStreamConstraints = {
-        video: false,
-        audio:
-          selectedMicId && selectedMicId !== "default"
-            ? {
-                deviceId: { exact: selectedMicId },
-                ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
-              }
-            : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      micStreamRef.current = stream;
-      // Prefer a typed fallback for WebKit without using non-null assertions
-      const Ctor = window.AudioContext ?? window.webkitAudioContext;
-      if (!Ctor) throw new Error("Web Audio API not supported");
-      const ctx = new Ctor();
-      audioCtxRef.current = ctx;
-      const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512; // fine-grained but light
-      analyser.smoothingTimeConstant = 0.85;
-      src.connect(analyser);
-      analyserRef.current = analyser;
-
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-      const NUM_BARS = 24;
-
-      const tick = () => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(freqData);
-        // Group bins into NUM_BARS buckets
-        const buckets: number[] = new Array(NUM_BARS).fill(0);
-        const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
-        let energy = 0;
-        for (let i = 0; i < NUM_BARS; i++) {
-          let sum = 0;
-          const start = i * binsPerBar;
-          const end = Math.min(freqData.length, start + binsPerBar);
-          for (let j = start; j < end; j++) sum += freqData[j];
-          const avg = sum / (end - start || 1);
-          buckets[i] = avg / 255; // normalize 0..1
-          energy += avg;
-        }
-        const avgEnergy = energy / freqData.length;
-        setSpeakingDetected((prev) => (avgEnergy > 14 ? true : prev));
-        setBarValues(buckets);
-        rafIdRef.current = requestAnimationFrame(tick);
-      };
-      rafIdRef.current = requestAnimationFrame(tick);
-    } catch (e) {
-      // If mic unavailable, keep UI but don't block progression
-      setSpeakingDetected(false);
-      try {
-        if (isDevelopment) console.error("[Onboarding] startMic failed:", e);
-      } catch {}
-    }
-  };
-
-  useEffect(() => {
-    if (currentStep === "mic-check") {
-      startMic();
-      return () => stopMic();
-    }
-    // Stop when leaving mic-check
-    stopMic();
-  }, [currentStep]);
-
-  // Restart capture when device changes
-  useEffect(() => {
-    if (currentStep !== "mic-check") return;
-    startMic();
-    try {
-      // Persist selection to main so app-wide mic matches user choice
-      if (selectedMicId) window.mic?.select?.(selectedMicId);
-    } catch {}
-  }, [selectedMicId]);
 
   // Enumerate mics when entering mic-check
   useEffect(() => {
