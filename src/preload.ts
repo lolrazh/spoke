@@ -213,6 +213,22 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke("stt:set-provider-api-key", { providerId, apiKey }),
   clearProviderApiKey: (providerId: string) =>
     ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
+  getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
+  installModel: () => ipcRenderer.invoke("stt:install-model"),
+  removeModel: () => ipcRenderer.invoke("stt:remove-model"),
+  onModelProgress: (
+    cb: (payload: {
+      progress: number;
+      downloadedBytes: number;
+      totalBytes: number;
+    }) => void,
+  ) => {
+    const handler = (_event: any, payload: any) => cb(payload);
+    ipcRenderer.on("stt:model-download-progress", handler);
+    return () => {
+      ipcRenderer.removeListener("stt:model-download-progress", handler);
+    };
+  },
 });
 
 contextBridge.exposeInMainWorld("island", {

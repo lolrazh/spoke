@@ -79,6 +79,18 @@ if (!globalThis.window.stt) {
       preferredProviderId: "spoke-cloud",
       providers: [],
     })),
+    getModelStatus: vi.fn(async () => ({
+      state: "not_installed",
+      modelId: null,
+      version: null,
+      downloadProgress: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      error: null,
+    })),
+    installModel: vi.fn(async () => {}),
+    removeModel: vi.fn(async () => {}),
+    onModelProgress: vi.fn(() => () => {}),
   } as any;
 }
 

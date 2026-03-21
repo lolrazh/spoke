@@ -16,11 +16,16 @@ import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
+let autoRestartEnabled = false;
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
 export function isSidecarRunning(): boolean {
   return sidecarProcess !== null && sidecarReady;
+}
+
+export function setAutoRestart(enabled: boolean): void {
+  autoRestartEnabled = enabled;
 }
 
 export function spawnSidecar(): Promise<void> {
@@ -90,6 +95,20 @@ export function spawnSidecar(): Promise<void> {
       clearTimeout(timeout);
       sidecarProcess = null;
       sidecarReady = false;
+
+      // Auto-restart on unexpected exit (one attempt)
+      if (autoRestartEnabled && code !== 0) {
+        console.log(
+          "[STT] Sidecar exited unexpectedly, attempting restart in 2s...",
+        );
+        setTimeout(() => {
+          if (autoRestartEnabled && !sidecarProcess) {
+            spawnSidecar().catch((err) => {
+              console.error("[STT] Auto-restart failed:", err);
+            });
+          }
+        }, 2000);
+      }
     });
 
     proc.once("error", (err) => {
@@ -103,6 +122,7 @@ export function spawnSidecar(): Promise<void> {
 }
 
 export function killSidecar(): void {
+  autoRestartEnabled = false;
   if (!sidecarProcess) return;
   console.log("[STT] Killing sidecar daemon...");
   try {

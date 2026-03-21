@@ -105,7 +105,15 @@ import {
   killSidecar,
   isSidecarRunning,
   transcribeLocal,
+  setAutoRestart,
 } from "./main/sidecarEngine";
+import {
+  initModelManager,
+  getModelStatus,
+  getModelInstallState,
+  installModel,
+  removeModel,
+} from "./main/modelManager";
 import { getHelperPath } from "./main/helperPaths";
 import {
   inspectFocusedSelection,
@@ -1662,6 +1670,20 @@ app.whenReady().then(async () => {
   // Initialize preferences and provider store
   initPreferences(app.getPath("userData"));
   initProviderStore(app.getPath("userData"));
+  initModelManager({
+    onStatusChange: (status) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send("stt:model-status-changed", status);
+      } catch {}
+    },
+    onDownloadProgress: (progress) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send("stt:model-download-progress", progress);
+      } catch {}
+    },
+  });
   // Initialize update controller with notification and tray callbacks
   initUpdateController({
     sendNotify: (message: string) => {
@@ -2498,8 +2520,26 @@ app.whenReady().then(async () => {
 
   // ============ Local STT IPC handlers ============
 
+  ipcMain.handle("stt:get-model-status", () => {
+    return getModelStatus();
+  });
+
+  ipcMain.handle("stt:install-model", async () => {
+    await installModel();
+  });
+
+  ipcMain.handle("stt:remove-model", async () => {
+    killSidecar();
+    await removeModel();
+  });
+
   ipcMain.handle("stt:transcribe-local", async (_event, pcmBuffer: Buffer) => {
     try {
+      if (getModelInstallState() !== "ready") {
+        throw new Error(
+          "Local STT model is not installed. Install it from Settings.",
+        );
+      }
       if (!isSidecarRunning()) {
         await spawnSidecar();
       }
@@ -2538,10 +2578,16 @@ app.whenReady().then(async () => {
       setPreferredProviderId(providerId);
 
       if (isPreferredProviderLocal()) {
+        if (getModelInstallState() !== "ready") {
+          // Model not installed — don't attempt to spawn sidecar
+          // The renderer will show the install UI
+          return;
+        }
         try {
           if (!isSidecarRunning()) {
             await spawnSidecar();
           }
+          setAutoRestart(true);
         } catch (err) {
           console.error(
             "[STT] Failed to spawn sidecar on provider switch:",
@@ -2552,6 +2598,7 @@ app.whenReady().then(async () => {
         return;
       }
 
+      setAutoRestart(false);
       killSidecar();
     },
   );

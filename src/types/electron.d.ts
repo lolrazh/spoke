@@ -213,6 +213,16 @@ declare global {
       clearProviderApiKey: (
         providerId: ApiKeyTranscriptionProviderId,
       ) => Promise<TranscriptionProviderSettingsSnapshot>;
+      getModelStatus: () => Promise<import("./shared").ModelStatus>;
+      installModel: () => Promise<void>;
+      removeModel: () => Promise<void>;
+      onModelProgress: (
+        cb: (payload: {
+          progress: number;
+          downloadedBytes: number;
+          totalBytes: number;
+        }) => void,
+      ) => () => void;
     };
     mic: {
       updateDevices: (
