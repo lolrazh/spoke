@@ -1,4 +1,5 @@
 // Minimal test environment shims for DOM, media, and Electron bridges
+import { vi } from "vitest";
 
 // Enable React 18 act() environment across the suite
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -62,28 +63,22 @@ if (!globalThis.window.clipboard) {
 if (!globalThis.window.stt) {
   // @ts-ignore
   globalThis.window.stt = {
-    transcribeLocal: async (_pcmBuffer: ArrayBuffer) => ({
-      text: "",
-      metrics: {},
-    }),
-    transcribeApiKeyProvider: async (_providerId: string, _payload: unknown) => ({
-      text: "",
-      metrics: {},
-    }),
-    getProviderSettings: async () => ({
+    transcribeLocal: vi.fn(async () => ({ text: "", metrics: {} })),
+    transcribeApiKeyProvider: vi.fn(async () => ({ text: "", metrics: {} })),
+    getProviderSettings: vi.fn(async () => ({
       preferredProviderId: "spoke-cloud",
       providers: [],
-    }),
-    getPreferredProvider: async () => "spoke-cloud",
-    setPreferredProvider: async (_providerId: string) => {},
-    setProviderApiKey: async (_providerId: string, _apiKey: string) => ({
+    })),
+    getPreferredProvider: vi.fn(async () => "spoke-cloud"),
+    setPreferredProvider: vi.fn(async () => {}),
+    setProviderApiKey: vi.fn(async () => ({
       preferredProviderId: "spoke-cloud",
       providers: [],
-    }),
-    clearProviderApiKey: async (_providerId: string) => ({
+    })),
+    clearProviderApiKey: vi.fn(async () => ({
       preferredProviderId: "spoke-cloud",
       providers: [],
-    }),
+    })),
   } as any;
 }
 
