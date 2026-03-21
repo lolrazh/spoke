@@ -34,9 +34,11 @@ let manualUpdateCheckInFlight = false;
 let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
 let updateBackoffMs: number | null = null;
 
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+const noop = () => {};
 let callbacks: UpdateCallbacks = {
-  sendNotify: () => {},
-  rebuildTrayMenu: () => {},
+  sendNotify: noop,
+  rebuildTrayMenu: noop,
 };
 
 // ── Initialization ─────────────────────────────────────────────────────
