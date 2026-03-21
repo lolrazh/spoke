@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
@@ -16,15 +22,14 @@ import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import {
   OPENAI_CLOUD_PROVIDER_ID,
-  listTranscriptionProviderCatalog,
   type TranscriptionProviderSettingsEntry,
-  type TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
 } from "../core/transcription/providerPreferences";
+import { useProviderSelection } from "../hooks/useProviderSelection";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -169,14 +174,17 @@ const ProviderStatusCard: React.FC<{
   selected: boolean;
   inGroup?: boolean;
 }> = ({ provider, selected, inGroup }) => {
-  const status =
-    selected
-      ? "success"
-      : provider.requiresApiKey && !provider.apiKeyConfigured
-        ? "warning"
-        : "default";
+  const status = selected
+    ? "success"
+    : provider.requiresApiKey && !provider.apiKeyConfigured
+      ? "warning"
+      : "default";
 
-  let badgeLabel = selected ? "Selected" : provider.kind === "local" ? "Local" : "Cloud";
+  let badgeLabel = selected
+    ? "Selected"
+    : provider.kind === "local"
+      ? "Local"
+      : "Cloud";
   if (provider.status === "coming_soon") {
     badgeLabel = "Soon";
   } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
@@ -280,8 +288,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [showInDock, setShowInDock] = useState<boolean>(true);
-  const [providerSettings, setProviderSettings] =
-    useState<TranscriptionProviderSettingsSnapshot | null>(null);
+  const {
+    providerSettings,
+    setProviderSettings,
+    loadProviderSettings,
+    providerEntries,
+    selectableProviderEntries,
+    selectedProviderId,
+  } = useProviderSelection();
   const [openAiApiKeyDraft, setOpenAiApiKeyDraft] = useState("");
   const [savingProviderKeyId, setSavingProviderKeyId] = useState<string | null>(
     null,
@@ -342,37 +356,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     };
   }, []);
 
-  const loadProviderSettings = useCallback(async () => {
-    if (window.stt?.getProviderSettings) {
-      return window.stt.getProviderSettings();
-    }
-
-    const providerId =
-      (await window.stt?.getPreferredProvider?.()) ?? SPOKE_CLOUD_PROVIDER_ID;
-    return {
-      preferredProviderId: providerId,
-      providers: [],
-    };
-  }, []);
-
-  // Initialize transcription provider settings
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const snapshot = await loadProviderSettings();
-        if (isMounted) {
-          setProviderSettings(snapshot);
-        }
-      } catch {}
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [loadProviderSettings]);
-
   // Listen for microphone device updates and selection changes
   useEffect(() => {
     const updateDeviceList = async () => {
@@ -426,43 +409,23 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [micDevices],
   );
 
-  const transcriptionProviderOptions = useMemo(() => {
-    const providers =
-      providerSettings?.providers.filter((provider) => provider.selectable) ?? [];
-    if (providers.length > 0) {
-      return providers.map((provider) => ({
-        value: provider.id,
-        label: provider.displayName,
-      }));
-    }
+  const transcriptionProviderOptions = useMemo(
+    () =>
+      selectableProviderEntries.length > 0
+        ? selectableProviderEntries.map((p) => ({
+            value: p.id,
+            label: p.displayName,
+          }))
+        : [
+            { value: SPOKE_CLOUD_PROVIDER_ID, label: "Spoke Cloud" },
+            { value: LOCAL_STT_PROVIDER_ID, label: "Local Moonshine" },
+          ],
+    [selectableProviderEntries],
+  );
 
-    return [
-      {
-        value: SPOKE_CLOUD_PROVIDER_ID,
-        label: "Spoke Cloud",
-      },
-      {
-        value: LOCAL_STT_PROVIDER_ID,
-        label: "Local Moonshine",
-      },
-    ];
-  }, [providerSettings]);
-
-  const selectedProviderId =
-    providerSettings?.preferredProviderId ?? SPOKE_CLOUD_PROVIDER_ID;
   const openAiProvider = providerSettings?.providers.find(
     (provider) => provider.id === OPENAI_CLOUD_PROVIDER_ID,
   );
-  const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
-    if (providerSettings?.providers.length) {
-      return providerSettings.providers;
-    }
-
-    return listTranscriptionProviderCatalog().map((provider) => ({
-      ...provider,
-      apiKeyConfigured: false,
-    }));
-  }, [providerSettings]);
 
   const handleMicChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
@@ -478,10 +441,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       );
       setProviderSettings(await loadProviderSettings());
     } catch (error) {
-      console.error("[Settings] Failed to switch transcription provider:", error);
-      window.notifications?.send?.(
-        "Failed to switch transcription provider.",
+      console.error(
+        "[Settings] Failed to switch transcription provider:",
+        error,
       );
+      window.notifications?.send?.("Failed to switch transcription provider.");
     }
   };
 
@@ -912,8 +876,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         onSave={handleSaveOpenAiKey}
                         onClear={handleClearOpenAiKey}
                         configured={openAiProvider?.apiKeyConfigured ?? false}
-                        saving={savingProviderKeyId === OPENAI_CLOUD_PROVIDER_ID}
-                        placeholder={openAiProvider?.apiKeyPlaceholder ?? "sk-..."}
+                        saving={
+                          savingProviderKeyId === OPENAI_CLOUD_PROVIDER_ID
+                        }
+                        placeholder={
+                          openAiProvider?.apiKeyPlaceholder ?? "sk-..."
+                        }
                         inGroup
                       />
                     </div>
