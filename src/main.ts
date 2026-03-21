@@ -22,7 +22,6 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { spawn, execSync, execFile } from "child_process";
 import http from "node:http";
-import https from "node:https";
 
 import fs from "node:fs";
 import { promisify } from "node:util";
@@ -251,6 +250,16 @@ import {
   inspectFocusedSelection,
   type SelectionInspectOptions,
 } from "./main/selectionInspect";
+import {
+  initUpdateController,
+  manualCheckForUpdates,
+  scheduleUpdateCheck,
+  getUpdateStatus,
+  getUpdateAvailableVersion,
+  isUpdateReadyToInstall,
+  getUpdateError,
+  jitterMs,
+} from "./main/updateController";
 
 // Initialize Sentry as early as possible in the main process
 // Vite injects env at build time; provide a typed fallback for the main process
@@ -427,255 +436,8 @@ let onboardingPrefs: { done?: boolean; currentStep?: string } = {};
 
 // Local STT sidecar lifecycle now in src/main/sidecarEngine.ts
 
-// ============ Manual Update Check (Tray integration) ============
-type UpdateStatus =
-  | "idle"
-  | "checking"
-  | "available"
-  | "not-available"
-  | "error";
 
-let updateStatus: UpdateStatus = "idle";
-let updateAvailableVersion: string | null = null;
-let updateReadyToInstall = false;
-let updateError: string | null = null;
-let updaterListenersInitialized = false;
-let manualUpdateCheckInFlight = false; // user-initiated checks for toast routing
-let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
-let updateBackoffMs: number | null = null; // background backoff on errors
-
-function sendNotify(message: string) {
-  try {
-    // Prefer whichever window is available; send to both if present
-    if (mainWindow && !mainWindow.isDestroyed())
-      mainWindow.webContents.send("notify", message);
-  } catch {}
-  try {
-    if (onboardingWindow && !onboardingWindow.isDestroyed())
-      onboardingWindow.webContents.send("notify", message);
-  } catch {}
-}
-
-function setUpdateState(
-  next: UpdateStatus,
-  opts?: { version?: string; error?: string },
-) {
-  updateStatus = next;
-  updateAvailableVersion = opts?.version ?? updateAvailableVersion;
-  updateError =
-    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
-  try {
-    rebuildTrayMenu();
-  } catch {}
-}
-
-function getReleasesUrl(): string {
-  return `https://download.spoke.so/darwin/${process.arch}/RELEASES.json`;
-}
-
-function compareSemver(a: string, b: string): number {
-  // Returns -1 if a<b, 0 if equal, 1 if a>b
-  const pa = a
-    .split("-")[0]
-    .split(".")
-    .map((n) => parseInt(n, 10));
-  const pb = b
-    .split("-")[0]
-    .split(".")
-    .map((n) => parseInt(n, 10));
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na > nb) return 1;
-    if (na < nb) return -1;
-  }
-  return 0;
-}
-
-async function fetchJson(url: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    try {
-      https
-        .get(url, (res) => {
-          const { statusCode } = res;
-          if (!statusCode || statusCode < 200 || statusCode >= 300) {
-            reject(new Error(`HTTP ${statusCode} for ${url}`));
-            res.resume();
-            return;
-          }
-          let data = "";
-          res.setEncoding("utf8");
-          res.on("data", (chunk) => (data += chunk));
-          res.on("end", () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (e) {
-              reject(e);
-            }
-          });
-        })
-        .on("error", reject);
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
-function initUpdaterEventBridgeOnce() {
-  if (updaterListenersInitialized) return;
-  updaterListenersInitialized = true;
-  // Best-effort: If electron-updater is present (bundled via update-electron-app), hook its events.
-  try {
-    // Avoid static import so bundlers don't require top-level resolution
-    const req: any = eval("require");
-    const mod = req?.("electron-updater");
-    const autoUpdater = mod?.autoUpdater as any;
-    if (autoUpdater && typeof autoUpdater.on === "function") {
-      autoUpdater.on("checking-for-update", () => {
-        setUpdateState("checking");
-        // No toast here; manual checks show their own
-      });
-      autoUpdater.on("update-available", (info: any) => {
-        const v = info?.version || info?.updateInfo?.version || null;
-        updateReadyToInstall = false;
-        setUpdateState("available", { version: v || undefined });
-        // Always surface availability
-        if (v) sendNotify(`Update found: v${v}. Downloading…`);
-        else sendNotify("Update found. Downloading…");
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("update-not-available", () => {
-        setUpdateState("not-available");
-        if (manualUpdateCheckInFlight) sendNotify("You’re up to date.");
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("error", (err: any) => {
-        const msg =
-          (err && (err.message || String(err))) || "Unknown updater error";
-        setUpdateState("error", { error: msg });
-        if (manualUpdateCheckInFlight)
-          sendNotify(`Update check failed: ${msg}`);
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("download-progress", () => {
-        setUpdateState("available"); // remain in available/downloading state
-      });
-      autoUpdater.on("update-downloaded", (info: any) => {
-        const v =
-          info?.version || info?.updateInfo?.version || updateAvailableVersion;
-        updateAvailableVersion = v ?? updateAvailableVersion;
-        updateReadyToInstall = true;
-        setUpdateState("available"); // keep as available; expose restart action via tray
-        sendNotify("Update ready. Restart to install.");
-        manualUpdateCheckInFlight = false;
-      });
-    }
-  } catch {
-    // electron-updater may not be directly resolvable; fallback handled elsewhere
-  }
-}
-
-function jitterMs(baseMs: number, pct = 0.2): number {
-  const f = 1 + (Math.random() * 2 - 1) * pct; // [1-pct, 1+pct]
-  return Math.max(0, Math.round(baseMs * f));
-}
-
-async function manualCheckForUpdates(silent = false): Promise<void> {
-  if (!app.isPackaged) {
-    if (!silent) sendNotify("Updates are only available in packaged builds.");
-    return;
-  }
-  if (updateStatus === "checking") return;
-  initUpdaterEventBridgeOnce();
-
-  // Try to delegate to electron-updater if present
-  try {
-    const req: any = eval("require");
-    const mod = req?.("electron-updater");
-    const autoUpdater = mod?.autoUpdater as any;
-    if (autoUpdater && typeof autoUpdater.checkForUpdates === "function") {
-      setUpdateState("checking");
-      manualUpdateCheckInFlight = !silent;
-      if (!silent) sendNotify("Checking for updates…");
-      try {
-        await autoUpdater.checkForUpdates();
-        return; // handled by updater events; skip manifest fallback
-      } catch (e: any) {
-        // If the delegated check fails, fall back to manifest probe
-        console.warn(
-          "[auto-update] Delegated check failed, falling back:",
-          e?.message || e,
-        );
-        // Fall through to manifest-based check
-      }
-    }
-  } catch {
-    // ignore; fall back below
-  }
-
-  // Fallback: probe manifest directly to provide user feedback
-  try {
-    setUpdateState("checking");
-    const url = getReleasesUrl();
-    const manifest = await fetchJson(url);
-    let latest: string | null = null;
-    if (manifest?.currentRelease) {
-      latest = String(manifest.currentRelease);
-    } else if (
-      Array.isArray(manifest?.releases) &&
-      manifest.releases.length > 0
-    ) {
-      // Take the highest by version string compare
-      latest =
-        manifest.releases
-          .map((r: any) => r?.version || r?.updateTo?.version)
-          .filter(Boolean)
-          .map(String)
-          .sort((a: string, b: string) => compareSemver(a, b))
-          .pop() || null;
-    }
-    const current = app.getVersion();
-    if (latest && compareSemver(latest, current) > 0) {
-      setUpdateState("available", { version: latest });
-      if (!silent)
-        sendNotify(
-          `Update available: v${latest}. It will download automatically.`,
-        );
-    } else {
-      setUpdateState("not-available");
-      if (!silent) sendNotify("You’re up to date.");
-    }
-  } catch (err: any) {
-    const msg = err?.message || String(err);
-    setUpdateState("error", { error: msg });
-    if (!silent) sendNotify(`Update check failed: ${msg}`);
-  }
-}
-
-function scheduleUpdateCheck(delayMs: number, reason: string, silent = true) {
-  try {
-    if (pendingUpdateCheckTimer) clearTimeout(pendingUpdateCheckTimer);
-  } catch {}
-  pendingUpdateCheckTimer = setTimeout(async () => {
-    pendingUpdateCheckTimer = null;
-    console.log(`[auto-update] Triggered background check: ${reason}`);
-    const prevBackoff = updateBackoffMs;
-    await manualCheckForUpdates(silent);
-    if (updateStatus === "error") {
-      // Exponential backoff up to 24h
-      updateBackoffMs = Math.min(
-        prevBackoff ? prevBackoff * 2 : 15 * 60 * 1000,
-        24 * 60 * 60 * 1000,
-      );
-      console.log(
-        `[auto-update] Error during check; scheduling backoff in ${Math.round((updateBackoffMs || 0) / 60000)}m`,
-      );
-      scheduleUpdateCheck(updateBackoffMs!, "backoff-retry", true);
-    } else {
-      updateBackoffMs = null;
-    }
-  }, delayMs);
-}
+// Update controller moved to src/main/updateController.ts
 
 // Last transcript storage for context menu copy functionality
 let lastTranscript = "";
@@ -2014,7 +1776,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
 
   const updateItems: Electron.MenuItemConstructorOptions[] = [];
   const buildCheckLabel = () =>
-    updateStatus === "checking"
+    getUpdateStatus() === "checking"
       ? "Checking for Updates…"
       : "Check for Updates…";
 
@@ -2049,7 +1811,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     },
   });
 
-  if (updateReadyToInstall) {
+  if (isUpdateReadyToInstall()) {
     updateItems.push({ type: "separator" });
     updateItems.push({
       label: "Restart and Install Update",
@@ -2531,6 +2293,20 @@ app.whenReady().then(async () => {
   appPrefsPath = path.join(app.getPath("userData"), "app-preferences.json");
   // Initialize provider store (preferences + secrets)
   initProviderStore(app.getPath("userData"));
+  // Initialize update controller with notification and tray callbacks
+  initUpdateController({
+    sendNotify: (message: string) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send("notify", message);
+      } catch {}
+      try {
+        if (onboardingWindow && !onboardingWindow.isDestroyed())
+          onboardingWindow.webContents.send("notify", message);
+      } catch {}
+    },
+    rebuildTrayMenu: () => rebuildTrayMenu(),
+  });
 
   // Load onboarding flag BEFORE startup flow decision
   onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
