@@ -11,7 +11,20 @@
 - `src/state/pillStateMachine.ts` — UI state machine with 21 unit tests
 - 206 tests passing across 31 test files
 
-**Phase 2**: Not started. Local MLX runtime productization.
+**Phase 2**: Complete. Local MLX runtime productized.
+- Model manager with download, SHA256 verification, atomic install
+- Sidecar packaging (PyInstaller build script, forge.config.ts integration)
+- Settings UI with ModelInstallCard (5 visual states)
+- Provider catalog integration with model readiness gating
+- Auto-restart on sidecar failure (one retry)
+- 240 tests passing across 34 test files
+
+**Phase 3**: Complete. BYO cloud providers and auth-free startup.
+- Added Groq Direct and Deepgram as BYO cloud STT providers
+- Dynamic API key UI renders SecretField per `requiresApiKey` provider
+- Default provider changed from spoke-cloud to local-stt (auth-free startup)
+- 5 providers total: Local Moonshine, Spoke Cloud, OpenAI Direct, Groq, Deepgram
+- App launches without sign-in when using local or BYO providers
 
 This document is the execution plan for converting Spoke from a hosted, auth-gated product into a **local-first, open-source desktop app** with **local inference and BYO cloud providers**.
 
