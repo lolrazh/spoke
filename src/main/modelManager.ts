@@ -223,12 +223,12 @@ function downloadFile(
       });
 
       fileStream.on("error", (err) => {
-        fs.unlink(destPath, () => {});
+        fs.unlink(destPath, () => undefined);
         reject(err);
       });
 
       res.on("error", (err) => {
-        fs.unlink(destPath, () => {});
+        fs.unlink(destPath, () => undefined);
         reject(err);
       });
     }).on("error", reject);
