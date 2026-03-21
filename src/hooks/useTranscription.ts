@@ -8,7 +8,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import type { SelectionInspectSnapshot } from "../types/shared";
 import type {
-  PrepareTranscriptionResult,
   TranscriptionContext,
   TranscriptionMode,
 } from "../core/transcription/sessionTypes";
@@ -63,8 +62,8 @@ export function useTranscription(
   const recorderRef = useRef<AudioRecorder | null>(null);
   const stopInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
-  const prepareDataRef = useRef<PrepareTranscriptionResult | null>(null);
-  const preparePromiseRef = useRef<Promise<void> | null>(null);
+  const ocrWordsRef = useRef<string[]>([]);
+  const ocrPromiseRef = useRef<Promise<void> | null>(null);
   const activeProviderIdRef = useRef<string | null>(null);
   const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
     LOCAL_STT_PROVIDER_ID,
@@ -182,31 +181,28 @@ export function useTranscription(
         return recorder;
       })();
 
-      const preparePromise = (async () => {
+      const ocrPromise = (async () => {
         try {
-          const prepareResult =
-            await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
-              screenshotBase64: provider.prepare
-                ? await captureScreenshotBase64()
-                : undefined,
-              context: buildTranscriptionContext(),
-            });
-
-          prepareDataRef.current = prepareResult;
-
-          if (prepareResult) {
-            console.log("[HTTP] Prepare complete:", prepareResult);
+          const imageBase64 = await captureScreenshotBase64();
+          if (imageBase64 && window.stt?.extractOcr) {
+            const result = await window.stt.extractOcr(imageBase64);
+            ocrWordsRef.current = result.words ?? [];
+            if (result.words?.length) {
+              console.log(
+                `[OCR] Extracted ${result.words.length} vocabulary words`,
+              );
+            }
           }
         } catch (err) {
-          console.error("[HTTP] Prepare failed:", err);
-          // Don't stop recording, continue without OCR
+          console.warn("[OCR] Extraction failed:", err);
+          // Non-critical — continue without OCR vocabulary
         }
       })();
 
-      // Wait for recorder to be ready, but /prepare continues in background
+      // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
       recorderRef.current = recorder;
-      preparePromiseRef.current = preparePromise;
+      ocrPromiseRef.current = ocrPromise;
     } catch (err) {
       console.error("[HTTP] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -294,18 +290,42 @@ export function useTranscription(
           );
         }
 
-        setText(result.text);
+        // Wait for OCR to finish, then enhance
+        if (ocrPromiseRef.current) {
+          await ocrPromiseRef.current;
+          ocrPromiseRef.current = null;
+        }
+
+        let finalText = result.text;
+        if (window.stt?.enhance) {
+          try {
+            const enhanced = await window.stt.enhance({
+              text: result.text,
+              vocabulary: ocrWordsRef.current,
+              mode,
+              selectionText: selection?.selectedText ?? undefined,
+            });
+            finalText = enhanced.text;
+            if (!enhanced.bypassed) {
+              console.log(
+                `[Local] Enhanced (${enhanced.tier}): "${finalText.slice(0, 50)}..."`,
+              );
+            }
+          } catch (err) {
+            console.warn("[Local] Enhancement failed, using raw STT:", err);
+          }
+        }
+
+        setText(finalText);
 
         // Add to history (fire-and-forget)
-        addTranscription(result.text, mode).catch(console.warn);
+        addTranscription(finalText, mode).catch(console.warn);
 
         // Trigger native paste if not suppressed
         if (!options.suppressNativePaste) {
           const insertText = window.clipboard?.insertText;
-          // Await local paste completion so a previous helper invocation cannot
-          // finish during the next dictation and re-insert stale text.
           try {
-            await insertText?.(result.text);
+            await insertText?.(finalText);
           } catch (err) {
             console.warn(err);
           }
@@ -321,79 +341,69 @@ export function useTranscription(
       }
 
       // ===== Cloud STT path =====
-      // Wait for /prepare to finish if still pending
-      if (preparePromiseRef.current) {
-        console.log("[HTTP] Waiting for /prepare to complete...");
-        await preparePromiseRef.current;
-        preparePromiseRef.current = null;
+      // Wait for OCR to finish if still pending
+      if (ocrPromiseRef.current) {
+        console.log("[Cloud] Waiting for OCR to complete...");
+        await ocrPromiseRef.current;
+        ocrPromiseRef.current = null;
       }
       timing.prepareDone = Date.now();
 
-      // Upload to /transcribe
-      timing.authTokenDone = Date.now();
-
-      // Measure upload and response timing
+      // Transcribe via cloud provider
       timing.fetchStarted = Date.now();
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
           audioBlob,
           context,
-          prepareResult: prepareDataRef.current,
         },
       );
       timing.fetchDone = Date.now();
-      timing.responseParsed = Date.now();
-
-      // Log comprehensive timing breakdown
-      const breakdown = {
-        postRoll: timing.postRollDone - timing.stopStarted,
-        recorderStop: timing.recorderStopped - timing.postRollDone,
-        prepareWait: timing.prepareDone - timing.recorderStopped,
-        authToken: timing.authTokenDone - timing.prepareDone,
-        formDataBuild: timing.fetchStarted - timing.authTokenDone,
-        fetch: timing.fetchDone - timing.fetchStarted,
-        responseParse: timing.responseParsed - timing.fetchDone,
-      };
 
       console.log(
-        `[HTTP] ⏱️ TIMING BREAKDOWN:\n` +
-          `  postRoll: ${breakdown.postRoll}ms\n` +
-          `  recorderStop: ${breakdown.recorderStop}ms\n` +
-          `  prepareWait: ${breakdown.prepareWait}ms\n` +
-          `  authToken: ${breakdown.authToken}ms\n` +
-          `  formDataBuild: ${breakdown.formDataBuild}ms\n` +
-          `  fetch (upload+server): ${breakdown.fetch}ms\n` +
-          `  responseParse: ${breakdown.responseParse}ms`,
+        `[Cloud] STT complete in ${timing.fetchDone - timing.fetchStarted}ms: "${result.text.slice(0, 50)}..."`,
       );
 
-      setText(result.text);
+      // Enhance with LLM if triggers detected
+      let finalText = result.text;
+      if (window.stt?.enhance) {
+        try {
+          const enhanced = await window.stt.enhance({
+            text: result.text,
+            vocabulary: ocrWordsRef.current,
+            mode,
+            selectionText: selection?.selectedText ?? undefined,
+          });
+          finalText = enhanced.text;
+          if (!enhanced.bypassed) {
+            console.log(
+              `[Cloud] Enhanced (${enhanced.tier}): "${finalText.slice(0, 50)}..."`,
+            );
+          }
+        } catch (err) {
+          console.warn("[Cloud] Enhancement failed, using raw STT:", err);
+        }
+      }
 
-      // Add to history (fire-and-forget to not block UI)
-      const historyStart = Date.now();
-      addTranscription(result.text, mode)
-        .then(() => {
-          console.log(`[HTTP] History saved in ${Date.now() - historyStart}ms`);
-        })
-        .catch(console.warn);
+      setText(finalText);
 
-      // Trigger native paste if not suppressed (fire-and-forget to not block UI)
+      // Add to history (fire-and-forget)
+      addTranscription(finalText, mode).catch(console.warn);
+
+      // Trigger native paste if not suppressed
       if (!options.suppressNativePaste) {
         const insertText = window.clipboard?.insertText;
         const pasteStart = Date.now();
-        insertText?.(result.text)
+        insertText?.(finalText)
           ?.then(() => {
             console.log(
-              `[HTTP] Paste completed in ${Date.now() - pasteStart}ms`,
-            );
-            console.log(
-              `[HTTP] 🏁 TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
+              `[Cloud] TOTAL E2E: ${Date.now() - timing.stopStarted}ms (paste: ${Date.now() - pasteStart}ms)`,
             );
           })
           ?.catch(console.warn);
       } else {
         console.log(
-          `[HTTP] 🏁 TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
+          `[Cloud] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
         );
       }
     } catch (err) {
@@ -408,8 +418,8 @@ export function useTranscription(
         streamRef.current = null;
       }
       setProcessing(false);
-      prepareDataRef.current = null;
-      preparePromiseRef.current = null;
+      ocrWordsRef.current = [];
+      ocrPromiseRef.current = null;
     }
   }, [
     buildTranscriptionContext,
@@ -435,8 +445,8 @@ export function useTranscription(
     setText("");
     setAudioLevel(0);
     activeProviderIdRef.current = null;
-    prepareDataRef.current = null;
-    preparePromiseRef.current = null;
+    ocrWordsRef.current = [];
+    ocrPromiseRef.current = null;
   }, []);
 
   // Pre-connect (no-op for HTTP, kept for interface compatibility)
