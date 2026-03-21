@@ -14,6 +14,7 @@ import {
   isApiKeyTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
+  DEEPGRAM_CLOUD_PROVIDER_ID,
   type ApiKeyTranscriptionProviderId,
 } from "../core/transcription/providerCatalog";
 import { getModelInstallState } from "./modelManager";
@@ -225,6 +226,7 @@ export function getProviderSettingsSnapshot() {
     [
       OPENAI_CLOUD_PROVIDER_ID,
       GROQ_CLOUD_PROVIDER_ID,
+      DEEPGRAM_CLOUD_PROVIDER_ID,
     ] as ApiKeyTranscriptionProviderId[]
   ).filter((id) => hasProviderApiKey(id));
 
@@ -353,6 +355,72 @@ export async function transcribeWithGroq(
     text: result.text ?? "",
     metrics: {
       model: GROQ_TRANSCRIPTION_MODEL,
+    },
+  };
+}
+
+// ── Deepgram Direct Transcription ─────────────────────────────────────
+
+const DEEPGRAM_TRANSCRIPTION_API_URL = "https://api.deepgram.com/v1/listen";
+const DEEPGRAM_MODEL = "nova-2";
+const DEEPGRAM_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+type DeepgramTranscriptionResponse = {
+  results?: {
+    channels?: Array<{
+      alternatives?: Array<{
+        transcript?: string;
+      }>;
+    }>;
+  };
+  error?: string;
+};
+
+export async function transcribeWithDeepgram(
+  audioBuffer: Buffer,
+  mimeType: string | undefined,
+  context: TranscriptionContext,
+): Promise<TranscriptionResult> {
+  if (audioBuffer.byteLength > DEEPGRAM_MAX_AUDIO_BYTES) {
+    throw new Error("Deepgram supports audio files up to 25 MiB.");
+  }
+
+  const params = new URLSearchParams({
+    model: DEEPGRAM_MODEL,
+    smart_format: "true",
+    punctuate: "true",
+  });
+  if (context.language) {
+    params.set("language", context.language);
+  }
+
+  const response = await fetch(
+    `${DEEPGRAM_TRANSCRIPTION_API_URL}?${params.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${getRequiredProviderApiKey(DEEPGRAM_CLOUD_PROVIDER_ID)}`,
+        "Content-Type": mimeType || "audio/webm",
+      },
+      body: audioBuffer,
+    },
+  );
+
+  const result = (await response
+    .json()
+    .catch(() => ({}))) as DeepgramTranscriptionResponse;
+
+  if (!response.ok) {
+    throw new Error(result.error || "Deepgram transcription failed.");
+  }
+
+  const transcript =
+    result.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
+
+  return {
+    text: transcript,
+    metrics: {
+      model: DEEPGRAM_MODEL,
     },
   };
 }

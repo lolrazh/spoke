@@ -81,6 +81,7 @@ import {
   isSelectableTranscriptionProviderId,
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
+  DEEPGRAM_CLOUD_PROVIDER_ID,
 } from "./core/transcription/providerCatalog";
 import {
   isLocalProviderSelected,
@@ -101,6 +102,7 @@ import {
   getProviderSettingsSnapshot,
   transcribeWithOpenAi,
   transcribeWithGroq,
+  transcribeWithDeepgram,
 } from "./main/providerStore";
 import {
   spawnSidecar,
@@ -2630,6 +2632,14 @@ app.whenReady().then(async () => {
 
       if (payload.providerId === GROQ_CLOUD_PROVIDER_ID) {
         return transcribeWithGroq(
+          payload.audioBuffer,
+          payload.mimeType,
+          payload.context,
+        );
+      }
+
+      if (payload.providerId === DEEPGRAM_CLOUD_PROVIDER_ID) {
+        return transcribeWithDeepgram(
           payload.audioBuffer,
           payload.mimeType,
           payload.context,

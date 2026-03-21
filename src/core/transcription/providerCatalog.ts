@@ -3,16 +3,19 @@ import {
   LOCAL_STT_PROVIDER_ID,
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
+  DEEPGRAM_CLOUD_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 export {
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
+  DEEPGRAM_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
 export type ApiKeyTranscriptionProviderId =
   | typeof OPENAI_CLOUD_PROVIDER_ID
-  | typeof GROQ_CLOUD_PROVIDER_ID;
+  | typeof GROQ_CLOUD_PROVIDER_ID
+  | typeof DEEPGRAM_CLOUD_PROVIDER_ID;
 
 export type CatalogTranscriptionProviderId =
   | PreferredTranscriptionProviderId
@@ -83,6 +86,17 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
     apiKeyLabel: "Groq API Key",
     apiKeyPlaceholder: "gsk_...",
   },
+  {
+    id: DEEPGRAM_CLOUD_PROVIDER_ID,
+    displayName: "Deepgram",
+    description: "Cloud transcription with your own Deepgram API key.",
+    kind: "cloud",
+    selectable: true,
+    requiresApiKey: true,
+    status: "ready",
+    apiKeyLabel: "Deepgram API Key",
+    apiKeyPlaceholder: "dg_...",
+  },
 ];
 
 export function listTranscriptionProviderCatalog(): TranscriptionProviderCatalogEntry[] {
@@ -122,7 +136,8 @@ export function isSelectableTranscriptionProviderId(
     providerId === LOCAL_STT_PROVIDER_ID ||
     providerId === SPOKE_CLOUD_PROVIDER_ID ||
     providerId === OPENAI_CLOUD_PROVIDER_ID ||
-    providerId === GROQ_CLOUD_PROVIDER_ID
+    providerId === GROQ_CLOUD_PROVIDER_ID ||
+    providerId === DEEPGRAM_CLOUD_PROVIDER_ID
   );
 }
 
@@ -131,6 +146,7 @@ export function isApiKeyTranscriptionProviderId(
 ): providerId is ApiKeyTranscriptionProviderId {
   return (
     providerId === OPENAI_CLOUD_PROVIDER_ID ||
-    providerId === GROQ_CLOUD_PROVIDER_ID
+    providerId === GROQ_CLOUD_PROVIDER_ID ||
+    providerId === DEEPGRAM_CLOUD_PROVIDER_ID
   );
 }

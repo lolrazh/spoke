@@ -9,6 +9,7 @@ import {
   LOCAL_STT_PROVIDER_ID,
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
+  DEEPGRAM_CLOUD_PROVIDER_ID,
   SPOKE_CLOUD_PROVIDER_ID,
 } from "./providerPreferences";
 
@@ -21,6 +22,7 @@ describe("providerCatalog", () => {
       LOCAL_STT_PROVIDER_ID,
       OPENAI_CLOUD_PROVIDER_ID,
       GROQ_CLOUD_PROVIDER_ID,
+      DEEPGRAM_CLOUD_PROVIDER_ID,
     ]);
   });
 
@@ -96,5 +98,11 @@ describe("providerCatalog", () => {
       true,
     );
     expect(isApiKeyTranscriptionProviderId(GROQ_CLOUD_PROVIDER_ID)).toBe(true);
+    expect(
+      isSelectableTranscriptionProviderId(DEEPGRAM_CLOUD_PROVIDER_ID),
+    ).toBe(true);
+    expect(isApiKeyTranscriptionProviderId(DEEPGRAM_CLOUD_PROVIDER_ID)).toBe(
+      true,
+    );
   });
 });
