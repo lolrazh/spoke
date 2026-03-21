@@ -100,3 +100,33 @@ export type TranscriptionItem = {
   timestamp: number; // Unix timestamp in ms
   mode: "dictation" | "edit";
 };
+
+// ── Model Management ───────────────────────────────────────────────────
+
+export type ModelInstallState =
+  | "not_installed"
+  | "downloading"
+  | "installing"
+  | "ready"
+  | "broken";
+
+export type ModelStatus = {
+  state: ModelInstallState;
+  modelId: string | null;
+  version: string | null;
+  downloadProgress: number; // 0-1
+  downloadedBytes: number;
+  totalBytes: number;
+  error: string | null;
+};
+
+export type ModelManifest = {
+  modelId: string;
+  version: string;
+  weightsChecksum: string; // SHA256
+  tokenizerChecksum: string; // SHA256
+  weightsUrl: string;
+  tokenizerUrl: string;
+  weightsSize: number; // bytes
+  tokenizerSize: number; // bytes
+};
