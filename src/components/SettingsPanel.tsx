@@ -11,6 +11,7 @@ import {
 } from "./ui/select";
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
+import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
@@ -852,6 +853,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         />
                       ))}
                     </div>
+
+                    {/* Model installation */}
+                    <ModelInstallCard />
                   </motion.section>
 
                   <motion.section
