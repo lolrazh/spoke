@@ -169,10 +169,8 @@ const Onboarding: React.FC = () => {
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("auth");
   const {
-    providerSettings,
     setProviderSettings,
     loadProviderSettings,
-    providerEntries,
     selectableProviderEntries,
     selectedProviderId,
     selectedProviderEntry,
@@ -237,7 +235,6 @@ const Onboarding: React.FC = () => {
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
   const {
     barValues,
-    speakingDetected,
     micDevices,
     setMicDevices,
     selectedMicId,

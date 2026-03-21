@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useMemo,
-  useRef,
-  useCallback,
-} from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, Variants } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import { Switch } from "./ui/switch";
