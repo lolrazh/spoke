@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   preferredTranscriptionProviderRequiresAuth,
-  SPOKE_CLOUD_PROVIDER_ID,
+  LOCAL_STT_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
 import {
   listTranscriptionProviderCatalog,
@@ -35,7 +35,7 @@ export function useProviderSelection() {
     }
 
     return {
-      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
+      preferredProviderId: LOCAL_STT_PROVIDER_ID,
       providers: fallbackProviders(),
     };
   }, []);
@@ -70,7 +70,7 @@ export function useProviderSelection() {
   );
 
   const selectedProviderId =
-    providerSettings?.preferredProviderId ?? SPOKE_CLOUD_PROVIDER_ID;
+    providerSettings?.preferredProviderId ?? LOCAL_STT_PROVIDER_ID;
 
   const selectedProviderEntry =
     providerEntries.find((provider) => provider.id === selectedProviderId) ??

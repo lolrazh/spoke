@@ -21,8 +21,8 @@ import { getModelInstallState } from "./modelManager";
 import {
   getDefaultProviderPreferences,
   isLocalProviderSelected,
+  LOCAL_STT_PROVIDER_ID,
   normalizeProviderPreferences,
-  SPOKE_CLOUD_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
 } from "../core/transcription/providerPreferences";
 import type {
@@ -42,7 +42,7 @@ export type StoredProviderSecret = {
 let sttPrefsPath = "";
 let sttSecretsPath = "";
 let preferredProviderId: PreferredTranscriptionProviderId =
-  SPOKE_CLOUD_PROVIDER_ID;
+  LOCAL_STT_PROVIDER_ID;
 let providerSecrets: Partial<
   Record<ApiKeyTranscriptionProviderId, StoredProviderSecret>
 > = {};

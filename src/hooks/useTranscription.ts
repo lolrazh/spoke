@@ -16,7 +16,7 @@ import type {
 import {
   defaultTranscriptionSessionOrchestrator,
   resolvePreferredTranscriptionProviderId,
-  SPOKE_CLOUD_PROVIDER_ID,
+  LOCAL_STT_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { AudioRecorder } from "../utils/audioRecorder";
@@ -87,7 +87,7 @@ export function useTranscription(
   const preparePromiseRef = useRef<Promise<void> | null>(null);
   const activeProviderIdRef = useRef<string | null>(null);
   const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
-    SPOKE_CLOUD_PROVIDER_ID,
+    LOCAL_STT_PROVIDER_ID,
   );
 
   // Get auth token from Supabase (with caching)
@@ -274,7 +274,9 @@ export function useTranscription(
 
           // Sync quota from /prepare response (server validation)
           if (prepareResult?.quotaInfo) {
-            const { updateQuotaFromServer } = await import("../state/quotaCache");
+            const { updateQuotaFromServer } = await import(
+              "../state/quotaCache"
+            );
             updateQuotaFromServer({
               wordsUsed: prepareResult.quotaInfo.wordsUsed ?? 0,
               resetDate: null, // Not provided in /prepare
@@ -324,8 +326,7 @@ export function useTranscription(
     recorderRef.current = null;
 
     const providerId =
-      activeProviderIdRef.current ??
-      (await resolveActiveProviderId());
+      activeProviderIdRef.current ?? (await resolveActiveProviderId());
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -366,11 +367,13 @@ export function useTranscription(
         const pcm16 = await decodeToPcm16(audioBlob);
         console.log(`[Local] PCM16: ${pcm16.length} samples`);
 
-        const result =
-          await defaultTranscriptionSessionOrchestrator.transcribe(providerId, {
+        const result = await defaultTranscriptionSessionOrchestrator.transcribe(
+          providerId,
+          {
             pcm16,
             context,
-          });
+          },
+        );
         console.log(
           `[Local] Transcription complete: "${result.text.slice(0, 50)}..."`,
         );
@@ -396,7 +399,9 @@ export function useTranscription(
           } catch (err) {
             console.warn(err);
           }
-          console.log(`[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`);
+          console.log(
+            `[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
+          );
         } else {
           console.log(
             `[Local] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
@@ -423,13 +428,15 @@ export function useTranscription(
 
       // Measure upload and response timing
       timing.fetchStarted = Date.now();
-      const result =
-        await defaultTranscriptionSessionOrchestrator.transcribe(providerId, {
+      const result = await defaultTranscriptionSessionOrchestrator.transcribe(
+        providerId,
+        {
           authToken: token,
           audioBlob,
           context,
           prepareResult: prepareDataRef.current,
-        });
+        },
+      );
       timing.fetchDone = Date.now();
       timing.responseParsed = Date.now();
 

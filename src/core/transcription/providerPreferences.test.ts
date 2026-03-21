@@ -9,9 +9,9 @@ import {
 } from "./providerPreferences";
 
 describe("providerPreferences", () => {
-  it("defaults to the Spoke cloud provider", () => {
+  it("defaults to the local provider", () => {
     expect(getDefaultProviderPreferences()).toEqual({
-      preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
+      preferredProviderId: LOCAL_STT_PROVIDER_ID,
     });
   });
 

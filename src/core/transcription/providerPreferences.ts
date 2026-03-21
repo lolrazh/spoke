@@ -17,7 +17,7 @@ export interface TranscriptionProviderPreferences {
 
 export function getDefaultProviderPreferences(): TranscriptionProviderPreferences {
   return {
-    preferredProviderId: SPOKE_CLOUD_PROVIDER_ID,
+    preferredProviderId: LOCAL_STT_PROVIDER_ID,
   };
 }
 

@@ -8,9 +8,9 @@ import {
 } from "./defaultSessionOrchestrator";
 
 describe("defaultSessionOrchestrator", () => {
-  it("defaults to Spoke Cloud when no preference is stored", () => {
+  it("defaults to local STT when no preference is stored", () => {
     expect(resolvePreferredTranscriptionProviderId()).toBe(
-      SPOKE_CLOUD_PROVIDER_ID,
+      LOCAL_STT_PROVIDER_ID,
     );
   });
 

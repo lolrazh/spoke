@@ -30,13 +30,13 @@ export const defaultTranscriptionSessionOrchestrator =
       groqCloudProvider,
       deepgramCloudProvider,
     ],
-    defaultProviderId: SPOKE_CLOUD_PROVIDER_ID,
+    defaultProviderId: LOCAL_STT_PROVIDER_ID,
   });
 
 export function resolvePreferredTranscriptionProviderId(
   providerId?: PreferredTranscriptionProviderId | null,
 ) {
-  return providerId ?? SPOKE_CLOUD_PROVIDER_ID;
+  return providerId ?? LOCAL_STT_PROVIDER_ID;
 }
 
 export function preferredTranscriptionProviderRequiresAuth(
