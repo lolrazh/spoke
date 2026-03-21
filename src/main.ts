@@ -269,10 +269,7 @@ if (!gotTheLock) {
 
 // Dev helper: allow skipping onboarding/auth for faster iteration
 const SKIP_ONBOARDING =
-  process.env.SKIP_ONBOARDING === "1" ||
-  process.env.SKIP_ONBOARDING === "true" ||
-  process.env.SKIP_AUTH === "1" ||
-  process.env.SKIP_AUTH === "true";
+  process.env.SKIP_ONBOARDING === "1" || process.env.SKIP_ONBOARDING === "true";
 
 // Dev helper: force-show onboarding every launch (ignore local done flag)
 const FORCE_ONBOARDING =
