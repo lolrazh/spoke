@@ -24,6 +24,7 @@ import sys
 import json
 import time
 import struct
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,7 @@ from tokenizers import Tokenizer
 
 from moonshine_mlx import MoonshineMLX
 
+# Default: weights next to script (dev mode). Overridden by --weights-dir in packaged mode.
 WEIGHTS_DIR = Path(__file__).parent / "weights"
 SAMPLE_RATE = 16000
 
@@ -156,7 +158,27 @@ def oneshot_mode():
 
 
 if __name__ == "__main__":
-    if "--oneshot" in sys.argv:
+    parser = argparse.ArgumentParser(description="Spoke STT sidecar")
+    parser.add_argument(
+        "--weights-dir",
+        type=str,
+        default=None,
+        help="Path to model weights directory (default: ./weights next to script)",
+    )
+    parser.add_argument(
+        "--oneshot",
+        action="store_true",
+        help="Read all stdin, transcribe once, and exit",
+    )
+    args = parser.parse_args()
+
+    if args.weights_dir:
+        # Override module-level WEIGHTS_DIR for load_model()
+        global WEIGHTS_DIR
+        WEIGHTS_DIR = Path(args.weights_dir)
+        log(f"sidecar: using weights dir: {WEIGHTS_DIR}")
+
+    if args.oneshot:
         oneshot_mode()
     else:
         daemon_mode()
