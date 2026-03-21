@@ -12,8 +12,7 @@ type PillMetrics = {
   devicePixelRatio: number;
 };
 
-// Use PillStateType from App.tsx
-import type { PillStateType } from "./App";
+import type { PillStateType } from "../state/pillStateMachine";
 
 interface PillProps {
   pillState: PillStateType;
