@@ -160,8 +160,8 @@ export function transcribeLocal(
     () => transcribeLocalOnce(pcmBuffer),
   );
   sidecarTranscribeQueue = queued.then(
-    () => undefined,
-    () => undefined,
+    (): undefined => undefined,
+    (): undefined => undefined,
   );
   return queued;
 }

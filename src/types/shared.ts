@@ -90,7 +90,7 @@ export type SttEvent = SttPartialEvent | SttDoneEvent;
 // IPC result from main → renderer
 export interface LocalTranscribeResult {
   text: string;
-  metrics?: SttDoneEvent["metrics"];
+  metrics?: SttDoneEvent["metrics"] & Record<string, unknown>;
 }
 
 // Transcription history types

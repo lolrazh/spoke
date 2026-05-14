@@ -174,7 +174,6 @@ if __name__ == "__main__":
 
     if args.weights_dir:
         # Override module-level WEIGHTS_DIR for load_model()
-        global WEIGHTS_DIR
         WEIGHTS_DIR = Path(args.weights_dir)
         log(f"sidecar: using weights dir: {WEIGHTS_DIR}")
 

@@ -15,7 +15,10 @@ import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import { type TranscriptionProviderSettingsEntry } from "../core/transcription/providerCatalog";
+import {
+  isApiKeyTranscriptionProviderId,
+  type TranscriptionProviderSettingsEntry,
+} from "../core/transcription/providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
@@ -447,6 +450,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   const handleSaveApiKey = async (providerId: string, displayName: string) => {
+    if (!isApiKeyTranscriptionProviderId(providerId)) {
+      return;
+    }
     const apiKey = (apiKeyDrafts[providerId] ?? "").trim();
     if (!apiKey) {
       return;
@@ -474,6 +480,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   const handleClearApiKey = async (providerId: string, displayName: string) => {
+    if (!isApiKeyTranscriptionProviderId(providerId)) {
+      return;
+    }
     setSavingProviderKeyId(providerId);
     try {
       const snapshot = await window.stt?.clearProviderApiKey?.(providerId);

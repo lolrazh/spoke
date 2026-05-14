@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import ModelInstallCard from "./ModelInstallCard";
+import type { ModelStatus } from "../types/shared";
 
 // Mock useModelStatus hook
 vi.mock("../hooks/useModelStatus", () => ({
@@ -19,7 +20,7 @@ import { useModelStatus } from "../hooks/useModelStatus";
 
 const mockUseModelStatus = vi.mocked(useModelStatus);
 
-const baseStatus = {
+const baseStatus: ModelStatus = {
   state: "not_installed" as const,
   modelId: null,
   version: null,

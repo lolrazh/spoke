@@ -264,7 +264,9 @@ export async function transcribeWithOpenAi(
   const formData = new FormData();
   formData.append(
     "file",
-    new Blob([audioBuffer], { type: mimeType || "audio/webm" }),
+    new Blob([bufferToArrayBuffer(audioBuffer)], {
+      type: mimeType || "audio/webm",
+    }),
     "audio.webm",
   );
   formData.append("model", OPENAI_TRANSCRIPTION_MODEL);
@@ -325,7 +327,9 @@ export async function transcribeWithGroq(
   const formData = new FormData();
   formData.append(
     "file",
-    new Blob([audioBuffer], { type: mimeType || "audio/webm" }),
+    new Blob([bufferToArrayBuffer(audioBuffer)], {
+      type: mimeType || "audio/webm",
+    }),
     "audio.webm",
   );
   formData.append("model", GROQ_TRANSCRIPTION_MODEL);
@@ -376,6 +380,12 @@ type DeepgramTranscriptionResponse = {
   error?: string;
 };
 
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+  const arrayBuffer = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(arrayBuffer).set(buffer);
+  return arrayBuffer;
+}
+
 export async function transcribeWithDeepgram(
   audioBuffer: Buffer,
   mimeType: string | undefined,
@@ -402,7 +412,7 @@ export async function transcribeWithDeepgram(
         Authorization: `Token ${getRequiredProviderApiKey(DEEPGRAM_CLOUD_PROVIDER_ID)}`,
         "Content-Type": mimeType || "audio/webm",
       },
-      body: audioBuffer,
+      body: bufferToArrayBuffer(audioBuffer),
     },
   );
 

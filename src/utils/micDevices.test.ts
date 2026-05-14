@@ -11,7 +11,7 @@ describe("initMicDevicesBridge", () => {
       removeEventListener: vi.fn(),
       enumerateDevices: vi.fn(async () => []),
       getUserMedia: vi.fn(async () => ({
-        getTracks: () => [{ stop: () => {} }],
+        getTracks: () => [{ stop: (): undefined => undefined }],
       })),
     } as any;
 
@@ -31,7 +31,7 @@ describe("initMicDevicesBridge", () => {
   });
 
   it("attaches devicechange listener without throwing", () => {
-    expect(() => initMicDevicesBridge("default")).not.toThrow();
+    expect(() => initMicDevicesBridge()).not.toThrow();
     expect(navigator.mediaDevices.addEventListener).toHaveBeenCalledWith(
       "devicechange",
       expect.any(Function),

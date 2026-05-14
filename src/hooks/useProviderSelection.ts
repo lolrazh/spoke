@@ -13,6 +13,7 @@ import {
   type TranscriptionProviderSettingsEntry,
   type TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
+import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 
 function fallbackProviders(): TranscriptionProviderSettingsEntry[] {
   return listTranscriptionProviderCatalog().map((provider) => ({
@@ -26,16 +27,18 @@ export function useProviderSelection() {
   const [providerSettings, setProviderSettings] =
     useState<TranscriptionProviderSettingsSnapshot | null>(null);
 
-  const loadProviderSettings = useCallback(async () => {
-    if (window.stt?.getProviderSettings) {
-      return window.stt.getProviderSettings();
-    }
+  const loadProviderSettings =
+    useCallback(async (): Promise<TranscriptionProviderSettingsSnapshot> => {
+      if (window.stt?.getProviderSettings) {
+        return window.stt.getProviderSettings();
+      }
 
-    return {
-      preferredProviderId: LOCAL_STT_PROVIDER_ID,
-      providers: fallbackProviders(),
-    };
-  }, []);
+      return {
+        preferredProviderId:
+          LOCAL_STT_PROVIDER_ID as PreferredTranscriptionProviderId,
+        providers: fallbackProviders(),
+      };
+    }, []);
 
   // Load on mount
   useEffect(() => {
@@ -47,7 +50,7 @@ export function useProviderSelection() {
           setProviderSettings(snapshot);
         }
       })
-      .catch(() => undefined);
+      .catch((): undefined => undefined);
 
     return () => {
       isMounted = false;

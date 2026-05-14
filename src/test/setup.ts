@@ -13,12 +13,14 @@ if (typeof globalThis.navigator === "undefined") {
 if (!globalThis.navigator.mediaDevices) {
   // @ts-ignore
   globalThis.navigator.mediaDevices = {
-    addEventListener: (_: string, __: any) => {},
-    removeEventListener: (_: string, __: any) => {},
-    enumerateDevices: async () => [],
+    addEventListener: (_: string, __: any): void => {},
+    removeEventListener: (_: string, __: any): void => {},
+    enumerateDevices: async (): Promise<MediaDeviceInfo[]> => [],
     getUserMedia: async (_: MediaStreamConstraints) =>
       ({
-        getTracks: () => [{ stop: () => {} }],
+        getTracks: (): Array<{ stop: () => undefined }> => [
+          { stop: (): undefined => undefined },
+        ],
       }) as unknown as MediaStream,
   } as any;
 }
@@ -111,11 +113,32 @@ if (!globalThis.window.mic) {
       return { ok: true };
     },
     getSelected: async () => ({ id: selected }),
-    onSelectedChanged: (cb: (p: { id: string }) => void) => {
+    onSelectedChanged: (_cb: (p: { id: string }) => void) => {
       // return unsubscribe
-      return () => void cb;
+      return (): undefined => undefined;
     },
-    onRefreshRequest: (_cb: () => void) => () => {},
+    onRefreshRequest: (_cb: () => void) => (): undefined => undefined,
+  } as any;
+}
+
+// Transcription history bridge shim
+// @ts-ignore
+if (!globalThis.window.transcriptions) {
+  // @ts-ignore
+  globalThis.window.transcriptions = {
+    getAll: vi.fn(async () => []),
+    save: vi.fn(
+      async (payload: {
+        text: string;
+        timestamp: number;
+        mode: "dictation" | "edit";
+      }) => ({
+        id: "test-transcription",
+        ...payload,
+      }),
+    ),
+    delete: vi.fn(async () => true),
+    clear: vi.fn(async () => ({ ok: true })),
   } as any;
 }
 

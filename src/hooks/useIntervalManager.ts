@@ -8,7 +8,7 @@ export function useIntervalManager() {
   const schedule = useCallback(
     (key: string, handler: () => void, delayMs: number) => {
       const existing = intervalsRef.current[key];
-      if (existing) clearInterval(existing as number);
+      if (existing) clearInterval(existing);
       intervalsRef.current[key] = setInterval(handler, delayMs);
     },
     [],
@@ -17,7 +17,7 @@ export function useIntervalManager() {
   const cancel = useCallback((key: string) => {
     const existing = intervalsRef.current[key];
     if (existing) {
-      clearInterval(existing as number);
+      clearInterval(existing);
       intervalsRef.current[key] = null;
     }
   }, []);
@@ -26,7 +26,7 @@ export function useIntervalManager() {
     const keys = Object.keys(intervalsRef.current);
     for (const key of keys) {
       const id = intervalsRef.current[key];
-      if (id) clearInterval(id as number);
+      if (id) clearInterval(id);
       intervalsRef.current[key] = null;
     }
   }, []);

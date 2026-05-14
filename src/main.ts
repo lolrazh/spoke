@@ -1163,7 +1163,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   // Primary update actions
   updateItems.push({
     label: buildCheckLabel(),
-    enabled: updateStatus !== "checking",
+    enabled: getUpdateStatus() !== "checking",
     click: () => {
       manualCheckForUpdates();
     },
@@ -1577,7 +1577,7 @@ app.whenReady().then(async () => {
   }
 
   // Pre-spawn sidecar if local provider is selected
-  if (isPreferredProviderLocal()) {
+  if (isPreferredProviderLocal() && getModelInstallState() === "ready") {
     spawnSidecar().catch((err) => {
       console.error("[STT] Failed to pre-spawn sidecar:", err);
     });

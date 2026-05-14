@@ -6,6 +6,7 @@ import type {
   SelectionInspectSnapshot,
   ActiveDisplayPayload,
   TranscriptionItem,
+  LocalTranscribeResult,
 } from "./shared";
 import type {
   ApiKeyTranscriptionProviderId,
@@ -180,7 +181,7 @@ declare global {
     stt: {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
-      ) => Promise<{ text: string; metrics?: object }>;
+      ) => Promise<LocalTranscribeResult>;
       transcribeApiKeyProvider: (
         providerId: ApiKeyTranscriptionProviderId,
         payload: {

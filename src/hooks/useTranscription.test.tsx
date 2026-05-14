@@ -17,7 +17,7 @@ vi.mock("../utils/audioDecoder", () => ({
 }));
 
 vi.mock("../state/transcriptionHistory", () => ({
-  addTranscription: vi.fn(),
+  addTranscription: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock MediaRecorder

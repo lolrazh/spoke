@@ -104,18 +104,22 @@ export function buildTranscriptionProviderSettingsSnapshot(input: {
 
   return {
     preferredProviderId: input.preferredProviderId,
-    providers: TRANSCRIPTION_PROVIDER_CATALOG.map((provider) => ({
-      ...provider,
-      selectable:
-        provider.selectable &&
-        (!provider.requiresApiKey || configuredProviderIds.has(provider.id)),
-      apiKeyConfigured:
-        provider.requiresApiKey && configuredProviderIds.has(provider.id),
-      modelInstalled:
-        provider.id === LOCAL_STT_PROVIDER_ID
-          ? (input.localModelInstalled ?? false)
-          : undefined,
-    })),
+    providers: TRANSCRIPTION_PROVIDER_CATALOG.map((provider) => {
+      const apiKeyConfigured =
+        isApiKeyTranscriptionProviderId(provider.id) &&
+        configuredProviderIds.has(provider.id);
+
+      return {
+        ...provider,
+        selectable:
+          provider.selectable && (!provider.requiresApiKey || apiKeyConfigured),
+        apiKeyConfigured,
+        modelInstalled:
+          provider.id === LOCAL_STT_PROVIDER_ID
+            ? (input.localModelInstalled ?? false)
+            : undefined,
+      };
+    }),
   };
 }
 

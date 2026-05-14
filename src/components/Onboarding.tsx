@@ -1757,17 +1757,13 @@ const Onboarding: React.FC = () => {
         {/* Navigation Controls */}
         {showNavControls && (
           <div className="absolute bottom-6 left-6 right-6 flex justify-between">
-            {currentStep !== "auth" && (
-              <Button
-                variant="secondary"
-                onClick={prevStep}
-                disabled={getProgressStepIndex() <= 0}
-              >
-                Back
-              </Button>
-            )}
-
-            {currentStep === "auth" && <div className="flex-1" />}
+            <Button
+              variant="secondary"
+              onClick={prevStep}
+              disabled={getProgressStepIndex() <= 0}
+            >
+              Back
+            </Button>
 
             {/* Next button appears consistently; permissions step still gated */}
             {currentStep !== "hotkey-test" &&

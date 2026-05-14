@@ -37,9 +37,9 @@ export const localSttProvider: TranscriptionProvider = {
       );
     }
 
-    const pcmBuffer = pcm16.buffer.slice(
-      pcm16.byteOffset,
-      pcm16.byteOffset + pcm16.byteLength,
+    const pcmBuffer = new ArrayBuffer(pcm16.byteLength);
+    new Uint8Array(pcmBuffer).set(
+      new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength),
     );
 
     return window.stt.transcribeLocal(pcmBuffer);
