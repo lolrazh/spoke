@@ -82,8 +82,11 @@ if (!globalThis.window.stt) {
     })),
     getModelStatus: vi.fn(async () => ({
       state: "not_installed",
+      family: null,
       modelId: null,
+      displayName: null,
       version: null,
+      manifestVersion: null,
       downloadProgress: 0,
       downloadedBytes: 0,
       totalBytes: 0,

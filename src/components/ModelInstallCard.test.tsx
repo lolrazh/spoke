@@ -22,8 +22,11 @@ const mockUseModelStatus = vi.mocked(useModelStatus);
 
 const baseStatus: ModelStatus = {
   state: "not_installed" as const,
+  family: null,
   modelId: null,
+  displayName: null,
   version: null,
+  manifestVersion: null,
   downloadProgress: 0,
   downloadedBytes: 0,
   totalBytes: 0,
@@ -82,7 +85,10 @@ describe("ModelInstallCard", () => {
       status: {
         ...baseStatus,
         state: "ready",
-        modelId: "moonshine-v2",
+        family: "whisper",
+        modelId: "mlx-community/whisper-large-v3-turbo-4bit",
+        displayName: "Whisper large-v3 turbo 4-bit",
+        manifestVersion: 1,
         version: "0.1",
       },
       install: vi.fn(),

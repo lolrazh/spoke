@@ -12,18 +12,35 @@ import * as crypto from "crypto";
 import https from "node:https";
 import http from "node:http";
 import { getLocalSttDir, getWeightsDir } from "./sidecarPaths";
+import {
+  LOCAL_MODEL_DISPLAY_NAME,
+  LOCAL_MODEL_FAMILY,
+  LOCAL_MODEL_ID,
+  LOCAL_MODEL_MANIFEST_URL,
+  LOCAL_MODEL_MANIFEST_VERSION,
+  LOCAL_MODEL_REQUIRED_FILE_PATHS,
+} from "./localModelContract";
 import type {
   ModelInstallState,
   ModelManifest,
+  ModelManifestFile,
   ModelStatus,
 } from "../types/shared";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const MANIFEST_URL =
-  "https://download.spoke.so/models/moonshine-v2/manifest.json";
+const MANIFEST_URL = LOCAL_MODEL_MANIFEST_URL;
 const MAX_REDIRECTS = 5;
 const STATE_FILE = "model-state.json";
+
+type InstalledModelFile = Pick<
+  ModelManifestFile,
+  "role" | "path" | "sha256" | "size"
+>;
+
+type PersistedModelState = Partial<ModelStatus> & {
+  files?: InstalledModelFile[];
+};
 
 // ── Callbacks ─────────────────────────────────────────────────────────
 
@@ -40,8 +57,11 @@ export interface ModelManagerCallbacks {
 
 const DEFAULT_STATUS: ModelStatus = {
   state: "not_installed",
+  family: null,
   modelId: null,
+  displayName: null,
   version: null,
+  manifestVersion: null,
   downloadProgress: 0,
   downloadedBytes: 0,
   totalBytes: 0,
@@ -49,6 +69,7 @@ const DEFAULT_STATUS: ModelStatus = {
 };
 
 let modelStatus: ModelStatus = { ...DEFAULT_STATUS };
+let installedFiles: InstalledModelFile[] = [];
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -67,6 +88,23 @@ function getTmpDir(): string {
   return path.join(getLocalSttDir(), ".tmp");
 }
 
+function safeJoin(root: string, relativePath: string): string {
+  const normalized = path.normalize(relativePath);
+  if (
+    path.isAbsolute(normalized) ||
+    normalized === ".." ||
+    normalized.startsWith(`..${path.sep}`)
+  ) {
+    throw new Error(`Invalid model file path '${relativePath}'.`);
+  }
+
+  return path.join(root, normalized);
+}
+
+function totalFileSize(files: Pick<ModelManifestFile, "size">[]): number {
+  return files.reduce((total, file) => total + file.size, 0);
+}
+
 function setStatus(partial: Partial<ModelStatus>): void {
   modelStatus = { ...modelStatus, ...partial };
   try {
@@ -80,8 +118,12 @@ function persistState(): void {
     fs.mkdirSync(dir, { recursive: true });
     const persisted = {
       state: modelStatus.state,
+      family: modelStatus.family,
       modelId: modelStatus.modelId,
+      displayName: modelStatus.displayName,
       version: modelStatus.version,
+      manifestVersion: modelStatus.manifestVersion,
+      files: installedFiles,
       error: modelStatus.error,
     };
     fs.writeFileSync(getStatePath(), JSON.stringify(persisted, null, 2));
@@ -90,17 +132,75 @@ function persistState(): void {
   }
 }
 
-function loadPersistedState(): Partial<ModelStatus> | null {
+function loadPersistedState(): PersistedModelState | null {
   try {
     const statePath = getStatePath();
     if (fs.existsSync(statePath)) {
       const data = fs.readFileSync(statePath, "utf8");
-      return JSON.parse(data);
+      return JSON.parse(data) as PersistedModelState;
     }
   } catch (error) {
     console.error("[ModelManager] Failed to load persisted state:", error);
   }
   return null;
+}
+
+function getReadyStateValidationError(
+  persisted: PersistedModelState,
+): string | null {
+  if (persisted.family !== LOCAL_MODEL_FAMILY) {
+    return "Installed model family does not match the expected Whisper model.";
+  }
+  if (persisted.modelId !== LOCAL_MODEL_ID) {
+    return "Installed model ID does not match the expected Whisper model.";
+  }
+  if (persisted.manifestVersion !== LOCAL_MODEL_MANIFEST_VERSION) {
+    return "Installed model manifest version is unsupported.";
+  }
+  if (!Array.isArray(persisted.files) || persisted.files.length === 0) {
+    return "Installed model file manifest is missing.";
+  }
+
+  const persistedPaths = new Set(persisted.files.map((file) => file.path));
+  for (const requiredPath of LOCAL_MODEL_REQUIRED_FILE_PATHS) {
+    if (!persistedPaths.has(requiredPath)) {
+      return `Installed model file '${requiredPath}' is missing from the manifest.`;
+    }
+  }
+
+  const weightsDir = getWeightsDir();
+  for (const file of persisted.files) {
+    const filePath = safeJoin(weightsDir, file.path);
+    if (!fs.existsSync(filePath)) {
+      return "Model files missing from disk";
+    }
+  }
+
+  return null;
+}
+
+function assertManifest(manifest: ModelManifest): void {
+  if (manifest.family !== LOCAL_MODEL_FAMILY) {
+    throw new Error(`Unsupported model family '${manifest.family}'.`);
+  }
+  if (manifest.modelId !== LOCAL_MODEL_ID) {
+    throw new Error(`Unsupported model ID '${manifest.modelId}'.`);
+  }
+  if (manifest.manifestVersion !== LOCAL_MODEL_MANIFEST_VERSION) {
+    throw new Error(
+      `Unsupported model manifest version '${manifest.manifestVersion}'.`,
+    );
+  }
+  if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
+    throw new Error("Model manifest does not list any files.");
+  }
+
+  const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  for (const requiredPath of LOCAL_MODEL_REQUIRED_FILE_PATHS) {
+    if (!manifestPaths.has(requiredPath)) {
+      throw new Error(`Model manifest is missing '${requiredPath}'.`);
+    }
+  }
 }
 
 function cleanupTmp(): void {
@@ -247,38 +347,50 @@ export function initModelManager(cbs: ModelManagerCallbacks): void {
   const persisted = loadPersistedState();
 
   if (persisted && persisted.state === "ready") {
-    // Validate that weight files actually exist on disk
-    const weightsDir = getWeightsDir();
-    const weightsExist =
-      fs.existsSync(path.join(weightsDir, "weights.safetensors")) &&
-      fs.existsSync(path.join(weightsDir, "tokenizer.json"));
+    const validationError = getReadyStateValidationError(persisted);
 
-    if (weightsExist) {
+    if (!validationError) {
+      installedFiles = persisted.files ?? [];
       modelStatus = {
         ...DEFAULT_STATUS,
         state: "ready",
-        modelId: persisted.modelId ?? null,
+        family: LOCAL_MODEL_FAMILY,
+        modelId: LOCAL_MODEL_ID,
+        displayName: persisted.displayName ?? LOCAL_MODEL_DISPLAY_NAME,
         version: persisted.version ?? null,
+        manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
+        totalBytes: totalFileSize(installedFiles),
+        downloadedBytes: totalFileSize(installedFiles),
+        downloadProgress: 1,
       };
     } else {
       console.log(
-        "[ModelManager] State says ready but weight files are missing, marking broken",
+        "[ModelManager] State says ready but installed model is invalid, marking broken:",
+        validationError,
       );
+      installedFiles = [];
       modelStatus = {
         ...DEFAULT_STATUS,
         state: "broken",
         modelId: persisted.modelId ?? null,
         version: persisted.version ?? null,
-        error: "Weight files missing from disk",
+        family: persisted.family ?? null,
+        displayName: persisted.displayName ?? null,
+        manifestVersion: persisted.manifestVersion ?? null,
+        error: validationError,
       };
       persistState();
     }
   } else if (persisted && persisted.state === "broken") {
+    installedFiles = persisted.files ?? [];
     modelStatus = {
       ...DEFAULT_STATUS,
       state: "broken",
+      family: persisted.family ?? null,
       modelId: persisted.modelId ?? null,
+      displayName: persisted.displayName ?? null,
       version: persisted.version ?? null,
+      manifestVersion: persisted.manifestVersion ?? null,
       error: persisted.error ?? "Unknown error",
     };
   } else if (
@@ -289,9 +401,11 @@ export function initModelManager(cbs: ModelManagerCallbacks): void {
     console.log(
       "[ModelManager] Interrupted install detected, resetting to not_installed",
     );
+    installedFiles = [];
     modelStatus = { ...DEFAULT_STATUS };
     persistState();
   } else {
+    installedFiles = [];
     modelStatus = { ...DEFAULT_STATUS };
   }
 
@@ -337,25 +451,27 @@ export async function installModel(): Promise<void> {
     // Step 2: Fetch manifest
     console.log("[ModelManager] Fetching manifest...");
     const manifest = await fetchManifest();
+    assertManifest(manifest);
     console.log(
       "[ModelManager] Manifest fetched:",
       manifest.modelId,
       manifest.version,
     );
 
-    // Step 3: Download weights
-    const weightsTmpPath = path.join(tmpDir, "weights.safetensors");
-    const tokenizerTmpPath = path.join(tmpDir, "tokenizer.json");
-
-    const totalSize = manifest.weightsSize + manifest.tokenizerSize;
+    // Step 3: Download model files
+    const totalSize = totalFileSize(manifest.files);
     let totalDownloaded = 0;
+    const completedFileBytes = new Map<string, number>();
 
-    console.log("[ModelManager] Downloading weights...");
-    await downloadFile(
-      manifest.weightsUrl,
-      weightsTmpPath,
-      (downloadedBytes, _totalBytes) => {
-        totalDownloaded = downloadedBytes;
+    for (const file of manifest.files) {
+      console.log("[ModelManager] Downloading model file:", file.path);
+      const tmpPath = safeJoin(tmpDir, file.path);
+      const completedBeforeFile = [...completedFileBytes.values()].reduce(
+        (total, bytes) => total + bytes,
+        0,
+      );
+      await downloadFile(file.url, tmpPath, (downloadedBytes, _totalBytes) => {
+        totalDownloaded = completedBeforeFile + downloadedBytes;
         const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
         setStatus({
           downloadProgress: Math.min(progress, 1),
@@ -367,69 +483,58 @@ export async function installModel(): Promise<void> {
           downloadedBytes: totalDownloaded,
           totalBytes: totalSize,
         });
-      },
-    );
+      });
+      completedFileBytes.set(file.path, file.size);
+    }
 
-    const weightsDownloaded = totalDownloaded;
-
-    // Step 4: Download tokenizer
-    console.log("[ModelManager] Downloading tokenizer...");
-    await downloadFile(
-      manifest.tokenizerUrl,
-      tokenizerTmpPath,
-      (downloadedBytes, _totalBytes) => {
-        totalDownloaded = weightsDownloaded + downloadedBytes;
-        const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
-        setStatus({
-          downloadProgress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-        callbacks.onDownloadProgress({
-          progress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-      },
-    );
-
-    // Step 5: Set state to installing
+    // Step 4: Set state to installing
     setStatus({ state: "installing", downloadProgress: 1 });
     persistState();
 
-    // Step 6: Verify SHA256 checksums
+    // Step 5: Verify SHA256 checksums
     console.log("[ModelManager] Verifying checksums...");
-    const weightsValid = await verifySha256(
-      weightsTmpPath,
-      manifest.weightsChecksum,
-    );
-    if (!weightsValid) {
-      throw new Error("Weights checksum mismatch");
+    for (const file of manifest.files) {
+      const tmpPath = safeJoin(tmpDir, file.path);
+      const valid = await verifySha256(tmpPath, file.sha256);
+      if (!valid) {
+        throw new Error(`Checksum mismatch for '${file.path}'`);
+      }
     }
 
-    const tokenizerValid = await verifySha256(
-      tokenizerTmpPath,
-      manifest.tokenizerChecksum,
-    );
-    if (!tokenizerValid) {
-      throw new Error("Tokenizer checksum mismatch");
-    }
-
-    // Step 7: Create weights directory and move files atomically
+    // Step 6: Create model directory and move files atomically
     console.log("[ModelManager] Moving files to final location...");
+    if (fs.existsSync(weightsDir)) {
+      fs.rmSync(weightsDir, { recursive: true, force: true });
+    }
     fs.mkdirSync(weightsDir, { recursive: true });
-    fs.renameSync(weightsTmpPath, path.join(weightsDir, "weights.safetensors"));
-    fs.renameSync(tokenizerTmpPath, path.join(weightsDir, "tokenizer.json"));
+    for (const file of manifest.files) {
+      const tmpPath = safeJoin(tmpDir, file.path);
+      const finalPath = safeJoin(weightsDir, file.path);
+      fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+      fs.renameSync(tmpPath, finalPath);
+    }
 
-    // Step 8: Clean up .tmp
+    // Step 7: Clean up .tmp
     cleanupTmp();
 
-    // Step 9: Set state to ready
+    installedFiles = manifest.files.map(({ role, path, sha256, size }) => ({
+      role,
+      path,
+      sha256,
+      size,
+    }));
+
+    // Step 8: Set state to ready
     setStatus({
       state: "ready",
+      family: manifest.family,
       modelId: manifest.modelId,
+      displayName: manifest.displayName,
       version: manifest.version,
+      manifestVersion: manifest.manifestVersion,
       downloadProgress: 1,
+      downloadedBytes: totalSize,
+      totalBytes: totalSize,
       error: null,
     });
     persistState();
@@ -445,6 +550,7 @@ export async function installModel(): Promise<void> {
       downloadedBytes: 0,
       totalBytes: 0,
     });
+    installedFiles = [];
     persistState();
 
     // Clean up .tmp on failure
@@ -478,6 +584,7 @@ export async function removeModel(): Promise<void> {
   cleanupTmp();
 
   // Reset state
+  installedFiles = [];
   modelStatus = { ...DEFAULT_STATUS };
   persistState();
   callbacks.onStatusChange(modelStatus);

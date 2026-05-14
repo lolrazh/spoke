@@ -104,23 +104,36 @@ export type ModelInstallState =
   | "ready"
   | "broken";
 
+export type LocalModelFamily = "whisper";
+
 export type ModelStatus = {
   state: ModelInstallState;
+  family: LocalModelFamily | null;
   modelId: string | null;
+  displayName: string | null;
   version: string | null;
+  manifestVersion: number | null;
   downloadProgress: number; // 0-1
   downloadedBytes: number;
   totalBytes: number;
   error: string | null;
 };
 
+export type ModelManifestFileRole = "config" | "weights" | "tokenizer";
+
+export type ModelManifestFile = {
+  role: ModelManifestFileRole;
+  path: string;
+  url: string;
+  sha256: string;
+  size: number; // bytes
+};
+
 export type ModelManifest = {
+  manifestVersion: number;
+  family: LocalModelFamily;
   modelId: string;
+  displayName: string;
   version: string;
-  weightsChecksum: string; // SHA256
-  tokenizerChecksum: string; // SHA256
-  weightsUrl: string;
-  tokenizerUrl: string;
-  weightsSize: number; // bytes
-  tokenizerSize: number; // bytes
+  files: ModelManifestFile[];
 };

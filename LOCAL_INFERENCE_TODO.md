@@ -11,18 +11,18 @@ Rules:
 
 ## 1. Model Contract
 
-- [ ] Define the exact model ID: `mlx-community/whisper-large-v3-turbo-4bit` unless implementation proves the ASR-specific artifact is required.
-- [ ] Define required files and final install layout under app-managed `userData`.
-- [ ] Extend the model manifest to support multiple files, file roles, sizes, checksums, and model family.
-- [ ] Add model identity validation so stale Moonshine files cannot count as installed.
+- [x] Define the exact model ID: `mlx-community/whisper-large-v3-turbo-4bit` unless implementation proves the ASR-specific artifact is required.
+- [x] Define required files and final install layout under app-managed `userData`.
+- [x] Extend the model manifest to support multiple files, file roles, sizes, checksums, and model family.
+- [x] Add model identity validation so stale Moonshine files cannot count as installed.
 - [ ] Decide whether runtime downloads from Hugging Face are allowed only for dev, with production using our CDN/release bucket.
 
 ## 2. Installer
 
-- [ ] Replace the Moonshine manifest URL and file assumptions.
-- [ ] Download all Whisper model files atomically into a temp directory.
-- [ ] Verify every file with SHA256 before marking ready.
-- [ ] Persist model family, model ID, version, and file manifest version.
+- [x] Replace the Moonshine manifest URL and file assumptions.
+- [x] Download all Whisper model files atomically into a temp directory.
+- [x] Verify every file with SHA256 before marking ready.
+- [x] Persist model family, model ID, version, and file manifest version.
 - [ ] Surface clean install states to the Models tab: not installed, downloading, verifying, ready, broken.
 - [ ] Make removal delete all local model files and stop the sidecar first.
 
@@ -54,7 +54,7 @@ Rules:
 
 ## 6. UI Copy
 
-- [ ] Replace remaining Moonshine copy with Whisper turbo copy.
+- [x] Replace remaining Moonshine copy with Whisper turbo copy.
 - [ ] Show installed model name/version in Models tab.
 - [ ] Show model size before install.
 - [ ] Keep provider settings separate from app defaults.

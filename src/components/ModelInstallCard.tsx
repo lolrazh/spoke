@@ -15,7 +15,7 @@ function formatBytes(bytes: number): string {
 function getModelDescription(status: ModelStatus): string {
   switch (status.state) {
     case "not_installed":
-      return "Install the local Moonshine model for offline transcription.";
+      return "Install Whisper large-v3 turbo 4-bit for offline transcription.";
     case "downloading":
       return "Downloading model assets.";
     case "installing":

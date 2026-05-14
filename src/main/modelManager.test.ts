@@ -57,6 +57,13 @@ import {
   installModel,
 } from "./modelManager";
 import type { ModelManagerCallbacks } from "./modelManager";
+import {
+  LOCAL_MODEL_DISPLAY_NAME,
+  LOCAL_MODEL_FAMILY,
+  LOCAL_MODEL_ID,
+  LOCAL_MODEL_MANIFEST_VERSION,
+} from "./localModelContract";
+import type { ModelManifestFile } from "../types/shared";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -64,6 +71,43 @@ function makeCallbacks(): ModelManagerCallbacks {
   return {
     onStatusChange: vi.fn(),
     onDownloadProgress: vi.fn(),
+  };
+}
+
+const VALID_INSTALLED_FILES: Pick<
+  ModelManifestFile,
+  "role" | "path" | "sha256" | "size"
+>[] = [
+  {
+    role: "config",
+    path: "config.json",
+    sha256: "config-sha",
+    size: 100,
+  },
+  {
+    role: "weights",
+    path: "model.safetensors",
+    sha256: "weights-sha",
+    size: 200,
+  },
+  {
+    role: "tokenizer",
+    path: "multilingual.tiktoken",
+    sha256: "tokenizer-sha",
+    size: 300,
+  },
+];
+
+function makeReadyState(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "ready",
+    family: LOCAL_MODEL_FAMILY,
+    modelId: LOCAL_MODEL_ID,
+    displayName: LOCAL_MODEL_DISPLAY_NAME,
+    version: "1.0.0",
+    manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
+    files: VALID_INSTALLED_FILES,
+    ...overrides,
   };
 }
 
@@ -78,11 +122,12 @@ function mockExistingState(state: Record<string, unknown>): void {
 
 function mockExistingStateWithWeights(state: Record<string, unknown>): void {
   const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
-  const weightsPath = path.join(MOCK_WEIGHTS_DIR, "weights.safetensors");
-  const tokenizerPath = path.join(MOCK_WEIGHTS_DIR, "tokenizer.json");
+  const installedPaths = new Set(
+    VALID_INSTALLED_FILES.map((file) => path.join(MOCK_WEIGHTS_DIR, file.path)),
+  );
 
   (fs.existsSync as any).mockImplementation((p: string) => {
-    return p === statePath || p === weightsPath || p === tokenizerPath;
+    return p === statePath || installedPaths.has(p);
   });
   (fs.readFileSync as any).mockImplementation((p: string) => {
     if (p === statePath) return JSON.stringify(state);
@@ -126,42 +171,57 @@ describe("modelManager", () => {
       );
     });
 
-    it("should restore ready state when weights exist on disk", () => {
-      mockExistingStateWithWeights({
-        state: "ready",
-        modelId: "moonshine-v2",
-        version: "1.0.0",
-      });
+    it("should restore ready state when expected Whisper files exist on disk", () => {
+      mockExistingStateWithWeights(makeReadyState());
 
       const cbs = makeCallbacks();
       initModelManager(cbs);
 
       const status = getModelStatus();
       expect(status.state).toBe("ready");
-      expect(status.modelId).toBe("moonshine-v2");
+      expect(status.family).toBe(LOCAL_MODEL_FAMILY);
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.manifestVersion).toBe(LOCAL_MODEL_MANIFEST_VERSION);
       expect(status.version).toBe("1.0.0");
+      expect(status.totalBytes).toBe(600);
+      expect(status.downloadedBytes).toBe(600);
     });
 
-    it("should mark as broken when state says ready but files are missing", () => {
-      // Only the state file exists, not the weight files
-      mockExistingState({
-        state: "ready",
-        modelId: "moonshine-v2",
-        version: "1.0.0",
-      });
+    it("should mark as broken when state says ready but expected files are missing", () => {
+      mockExistingState(makeReadyState());
 
       const cbs = makeCallbacks();
       initModelManager(cbs);
 
       const status = getModelStatus();
       expect(status.state).toBe("broken");
-      expect(status.error).toBe("Weight files missing from disk");
+      expect(status.error).toBe("Model files missing from disk");
+    });
+
+    it("should mark stale Moonshine state as broken even if files exist", () => {
+      mockExistingStateWithWeights(
+        makeReadyState({
+          family: null,
+          modelId: "moonshine-v2",
+        }),
+      );
+
+      const cbs = makeCallbacks();
+      initModelManager(cbs);
+
+      const status = getModelStatus();
+      expect(status.state).toBe("broken");
+      expect(status.error).toContain("expected Whisper model");
     });
 
     it("should restore broken state with error message", () => {
       mockExistingState({
         state: "broken",
-        modelId: "moonshine-v2",
+        family: LOCAL_MODEL_FAMILY,
+        modelId: LOCAL_MODEL_ID,
+        displayName: LOCAL_MODEL_DISPLAY_NAME,
+        manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
         version: "1.0.0",
         error: "Checksum mismatch",
       });
@@ -177,7 +237,7 @@ describe("modelManager", () => {
     it("should reset interrupted downloading state to not_installed", () => {
       mockExistingState({
         state: "downloading",
-        modelId: "moonshine-v2",
+        modelId: LOCAL_MODEL_ID,
       });
 
       const cbs = makeCallbacks();
@@ -192,7 +252,7 @@ describe("modelManager", () => {
     it("should reset interrupted installing state to not_installed", () => {
       mockExistingState({
         state: "installing",
-        modelId: "moonshine-v2",
+        modelId: LOCAL_MODEL_ID,
       });
 
       const cbs = makeCallbacks();
@@ -240,11 +300,7 @@ describe("modelManager", () => {
   describe("removeModel", () => {
     it("should reset state to not_installed", async () => {
       // Start with a ready state
-      mockExistingStateWithWeights({
-        state: "ready",
-        modelId: "moonshine-v2",
-        version: "1.0.0",
-      });
+      mockExistingStateWithWeights(makeReadyState());
 
       const cbs = makeCallbacks();
       initModelManager(cbs);

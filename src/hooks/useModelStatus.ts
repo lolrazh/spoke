@@ -4,8 +4,11 @@ import type { ModelStatus } from "../types/shared";
 export function useModelStatus() {
   const [status, setStatus] = useState<ModelStatus>({
     state: "not_installed",
+    family: null,
     modelId: null,
+    displayName: null,
     version: null,
+    manifestVersion: null,
     downloadProgress: 0,
     downloadedBytes: 0,
     totalBytes: 0,
