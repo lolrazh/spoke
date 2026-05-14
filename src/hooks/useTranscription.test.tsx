@@ -136,7 +136,7 @@ Object.defineProperty(window, "stt", {
   writable: true,
 });
 
-describe("useTranscription (HTTP)", () => {
+describe("useTranscription", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();

@@ -82,7 +82,7 @@ export function useTranscription(
       setReady(true);
       return stream;
     } catch (err) {
-      console.error("[HTTP] Failed to get microphone:", err);
+      console.error("[Transcription] Failed to get microphone:", err);
       setError("Failed to access microphone");
       setReady(false);
       throw err;
@@ -139,7 +139,7 @@ export function useTranscription(
         return result.imageBase64;
       }
     } catch (err) {
-      console.warn("[HTTP] Screenshot capture failed:", err);
+      console.warn("[Context] Screenshot capture failed:", err);
     }
 
     return undefined;
@@ -169,7 +169,7 @@ export function useTranscription(
         const recorder = new AudioRecorder({
           onAudioLevel: setAudioLevel,
           onError: (err) => {
-            console.error("[HTTP] Recorder error:", err);
+            console.error("[Transcription] Recorder error:", err);
             setError(err.message);
             setRecording(false);
           },
@@ -201,7 +201,7 @@ export function useTranscription(
       recorderRef.current = recorder;
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
-      console.error("[HTTP] Start failed:", err);
+      console.error("[Transcription] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
       setRecording(false);
       activeProviderIdRef.current = null;
@@ -220,7 +220,7 @@ export function useTranscription(
     resolveActiveProviderId,
   ]);
 
-  // Stop recording and upload
+  // Stop recording and transcribe
   const stop = useCallback(async () => {
     const recorder = recorderRef.current;
     if (!recording || !recorder || stopInFlightRef.current) return;
@@ -251,7 +251,7 @@ export function useTranscription(
       // Stop recording and get audio blob
       const audioBlob = await recorder.stop();
 
-      console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
+      console.log(`[Transcription] Audio recorded: ${audioBlob.size} bytes`);
 
       const context = buildTranscriptionContext();
 
@@ -394,7 +394,7 @@ export function useTranscription(
         );
       }
     } catch (err) {
-      console.error("[HTTP] Stop failed:", err);
+      console.error("[Transcription] Stop failed:", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       stopInFlightRef.current = false;
@@ -436,11 +436,10 @@ export function useTranscription(
     ocrPromiseRef.current = null;
   }, []);
 
-  // Pre-connect (no-op for HTTP, kept for interface compatibility)
+  // Pre-connect is retained for callers that still warm up transcription.
   const preConnect = useCallback(async () => {
     await resolveActiveProviderId();
-    // HTTP doesn't need pre-connection
-    console.log("[HTTP] Pre-connect called (no-op for HTTP)");
+    console.log("[Transcription] Pre-connect called");
   }, [resolveActiveProviderId]);
 
   return {
