@@ -62,7 +62,7 @@ Rules:
 ## 7. Cleanup
 
 - [x] Delete tracked legacy local STT runtime files.
-- [ ] Delete ignored legacy local-model weights and old scratch scripts from the working folder.
+- [x] Delete ignored legacy local-model weights and old scratch scripts from the working folder.
 - [x] Update tests from legacy model IDs to Whisper IDs.
 - [ ] Remove stale comments mentioning generic local STT where a concrete Whisper contract exists.
 
