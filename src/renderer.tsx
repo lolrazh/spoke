@@ -39,7 +39,7 @@ Sentry.init({
         event.breadcrumbs = event.breadcrumbs.map((b) => {
           if (typeof b.message === "string") {
             b.message = b.message.replace(
-              /(supabase|apikey|token|authorization)=([^\s&]+)/gi,
+              /(apikey|token|authorization)=([^\s&]+)/gi,
               "$1=[Filtered]",
             );
           }

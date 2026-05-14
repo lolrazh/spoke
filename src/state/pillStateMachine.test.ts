@@ -74,12 +74,9 @@ describe("pillStateMachine", () => {
     it("detects error keywords in notifications", () => {
       const errorMsgs = [
         "Permission required",
-        "Auth failed",
+        "Provider failed",
         "Connection error",
         "Token expired",
-        "Upgrade needed",
-        "Sign in to continue",
-        "Out of free words",
       ];
       for (const msg of errorMsgs) {
         const next = dispatch(listening, { type: "NOTIFY", msg });
