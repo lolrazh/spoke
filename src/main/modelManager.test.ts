@@ -199,11 +199,11 @@ describe("modelManager", () => {
       expect(status.error).toBe("Model files missing from disk");
     });
 
-    it("should mark stale Moonshine state as broken even if files exist", () => {
+    it("should mark stale local model state as broken even if files exist", () => {
       mockExistingStateWithWeights(
         makeReadyState({
           family: null,
-          modelId: "moonshine-v2",
+          modelId: "legacy-local-model",
         }),
       );
 

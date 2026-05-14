@@ -7,19 +7,19 @@ Rules:
 - No renderer-side inference.
 - No dependency on user-installed Python in packaged builds.
 - Commit every meaningful slice.
-- Delete Moonshine code once Whisper is working.
+- Delete legacy local STT code once Whisper is working.
 
 ## 1. Model Contract
 
 - [x] Define the exact model ID: `mlx-community/whisper-large-v3-turbo-4bit` unless implementation proves the ASR-specific artifact is required.
 - [x] Define required files and final install layout under app-managed `userData` (`weights.safetensors`, not HF's source filename).
 - [x] Extend the model manifest to support multiple files, file roles, sizes, checksums, and model family.
-- [x] Add model identity validation so stale Moonshine files cannot count as installed.
+- [x] Add model identity validation so stale legacy files cannot count as installed.
 - [x] Decide model downloads: the app installer uses a checked-in, pinned Hugging Face manifest; the sidecar runtime never downloads.
 
 ## 2. Installer
 
-- [x] Replace the Moonshine manifest URL and file assumptions.
+- [x] Replace the legacy manifest URL and file assumptions.
 - [x] Download all Whisper model files atomically into a temp directory.
 - [x] Verify every file with SHA256 before marking ready.
 - [x] Persist model family, model ID, version, and file manifest version.
@@ -28,13 +28,13 @@ Rules:
 
 ## 3. Sidecar Runtime
 
-- [x] Replace the Moonshine sidecar with a Whisper MLX sidecar.
+- [x] Replace the legacy sidecar with a Whisper MLX sidecar.
 - [x] Keep the daemon protocol: length-prefixed PCM16 in, JSON lines out.
 - [x] Emit structured events: `ready`, `partial` if supported, `done`, `error`.
 - [x] Include metrics: load time, audio duration, inference time, peak MLX memory, cache memory, model ID.
 - [x] Add no-speech handling inside the sidecar.
 - [x] Keep one-shot mode for smoke tests.
-- [ ] Remove `moonshine_mlx.py` and `convert_weights.py` after the Whisper sidecar is verified.
+- [x] Remove legacy conversion/model files after the Whisper sidecar is verified.
 
 ## 4. Electron Lifecycle
 
@@ -54,17 +54,17 @@ Rules:
 
 ## 6. UI Copy
 
-- [x] Replace remaining Moonshine copy with Whisper turbo copy.
+- [x] Replace remaining legacy local-model copy with Whisper turbo copy.
 - [ ] Show installed model name/version in Models tab.
 - [ ] Show model size before install.
 - [ ] Keep provider settings separate from app defaults.
 
 ## 7. Cleanup
 
-- [ ] Delete tracked Moonshine runtime files.
-- [ ] Delete ignored local Moonshine weights and old scratch scripts from the working folder.
-- [ ] Update tests from `moonshine-v2` IDs to Whisper IDs.
-- [ ] Remove stale comments mentioning Moonshine or generic local STT where a concrete Whisper contract exists.
+- [x] Delete tracked legacy local STT runtime files.
+- [ ] Delete ignored legacy local-model weights and old scratch scripts from the working folder.
+- [x] Update tests from legacy model IDs to Whisper IDs.
+- [ ] Remove stale comments mentioning generic local STT where a concrete Whisper contract exists.
 
 ## Done Means
 
@@ -73,4 +73,4 @@ Rules:
 - [ ] Silence does not paste hallucinated text.
 - [ ] Switching away from local stops the sidecar.
 - [ ] Removing the model removes files and prevents local transcription.
-- [ ] Worktree has no tracked Moonshine implementation left.
+- [x] Worktree has no tracked legacy local STT implementation left.

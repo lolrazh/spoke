@@ -46,7 +46,7 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   {
     id: LOCAL_STT_PROVIDER_ID,
     displayName: "Local",
-    description: "Offline transcription with the local Moonshine model.",
+    description: "Offline transcription with the local Whisper model.",
     kind: "local",
     selectable: true,
     requiresApiKey: false,
