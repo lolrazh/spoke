@@ -7,21 +7,11 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/defaultSessionOrchestrator";
-import {
-  listTranscriptionProviderCatalog,
-  type TranscriptionProviderSettingsEntry,
-  type TranscriptionProviderSettingsSnapshot,
+import type {
+  TranscriptionProviderSettingsEntry,
+  TranscriptionProviderSettingsSnapshot,
 } from "../core/transcription/providerCatalog";
-import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
-
-function fallbackProviders(): TranscriptionProviderSettingsEntry[] {
-  return listTranscriptionProviderCatalog().map((provider) => ({
-    ...provider,
-    selectable: provider.requiresApiKey ? false : provider.selectable,
-    apiKeyConfigured: false,
-  }));
-}
+import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 
 export function useProviderSelection() {
   const [providerSettings, setProviderSettings] =
@@ -29,15 +19,11 @@ export function useProviderSelection() {
 
   const loadProviderSettings =
     useCallback(async (): Promise<TranscriptionProviderSettingsSnapshot> => {
-      if (window.stt?.getProviderSettings) {
-        return window.stt.getProviderSettings();
+      if (!window.stt?.getProviderSettings) {
+        throw new Error("STT provider settings bridge is unavailable.");
       }
 
-      return {
-        preferredProviderId:
-          LOCAL_STT_PROVIDER_ID as PreferredTranscriptionProviderId,
-        providers: fallbackProviders(),
-      };
+      return window.stt.getProviderSettings();
     }, []);
 
   // Load on mount
@@ -58,10 +44,7 @@ export function useProviderSelection() {
   }, [loadProviderSettings]);
 
   const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
-    if (providerSettings?.providers.length) {
-      return providerSettings.providers;
-    }
-    return fallbackProviders();
+    return providerSettings?.providers ?? [];
   }, [providerSettings]);
 
   const selectableProviderEntries = useMemo(

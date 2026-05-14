@@ -16,15 +16,15 @@ describe("useProviderSelection", () => {
     };
   });
 
-  it("returns local-stt as default provider when providers list is empty", async () => {
+  it("does not fabricate provider entries when the bridge returns an empty list", async () => {
     const { result } = renderHook(() => useProviderSelection());
 
     await waitFor(() => {
       expect(result.current.selectedProviderId).toBe("local-stt");
     });
 
-    // Should still produce selectable entries from the fallback catalog
-    expect(result.current.providerEntries.length).toBeGreaterThan(0);
+    expect(result.current.providerEntries).toEqual([]);
+    expect(result.current.selectableProviderEntries).toEqual([]);
   });
 
   it("loads provider settings from window.stt bridge", async () => {
