@@ -23,7 +23,7 @@ Rules:
 - [x] Download all Whisper model files atomically into a temp directory.
 - [x] Verify every file with SHA256 before marking ready.
 - [x] Persist model family, model ID, version, and file manifest version.
-- [ ] Surface clean install states to the Models tab: not installed, downloading, verifying, ready, broken.
+- [x] Surface clean install states to the Models tab: not installed, downloading, verifying, ready, broken.
 - [x] Make removal delete all local model files and stop the sidecar first.
 
 ## 3. Sidecar Runtime
@@ -55,9 +55,9 @@ Rules:
 ## 6. UI Copy
 
 - [x] Replace remaining legacy local-model copy with Whisper turbo copy.
-- [ ] Show installed model name/version in Models tab.
-- [ ] Show model size before install.
-- [ ] Keep provider settings separate from app defaults.
+- [x] Show installed model name/version in Models tab.
+- [x] Show model size before install.
+- [x] Keep provider settings separate from app defaults.
 
 ## 7. Cleanup
 
