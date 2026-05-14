@@ -12,7 +12,7 @@ Rules:
 ## 1. Model Contract
 
 - [x] Define the exact model ID: `mlx-community/whisper-large-v3-turbo-4bit` unless implementation proves the ASR-specific artifact is required.
-- [x] Define required files and final install layout under app-managed `userData`.
+- [x] Define required files and final install layout under app-managed `userData` (`weights.safetensors`, not HF's source filename).
 - [x] Extend the model manifest to support multiple files, file roles, sizes, checksums, and model family.
 - [x] Add model identity validation so stale Moonshine files cannot count as installed.
 - [ ] Decide whether runtime downloads from Hugging Face are allowed only for dev, with production using our CDN/release bucket.
@@ -42,7 +42,7 @@ Rules:
 - [ ] Make sidecar errors typed enough for UI/log categories.
 - [ ] Keep serialized transcription requests unless we intentionally add a request ID protocol.
 - [ ] Kill sidecar on model removal, provider switch away from local, and app quit.
-- [ ] Make dev and packaged mode use the same installed model layout.
+- [x] Make dev and packaged mode use the same installed model layout.
 
 ## 5. Packaging
 

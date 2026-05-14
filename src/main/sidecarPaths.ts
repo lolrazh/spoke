@@ -5,7 +5,7 @@
  * both packaged (production) and development layouts.
  *
  * - Packaged: binary at `resources/spoke-stt`, weights in `userData/local-stt/weights/`
- * - Dev: Python venv at `local-stt/.venv/bin/python`, weights at `local-stt/weights/`
+ * - Dev: Python venv at `local-stt/.venv/bin/python`, weights in `userData/local-stt/weights/`
  */
 
 import * as path from "path";
@@ -25,8 +25,12 @@ export function getSidecarArgs(): string[] {
     return ["--weights-dir", getWeightsDir()];
   }
 
-  // Dev: Python interpreter + script path
-  return [path.join(app.getAppPath(), "local-stt", "sidecar.py")];
+  // Dev uses the same Settings-managed model directory as packaged builds.
+  return [
+    path.join(app.getAppPath(), "local-stt", "sidecar.py"),
+    "--weights-dir",
+    getWeightsDir(),
+  ];
 }
 
 /** Directory where model weights are stored (user-managed, survives updates). */

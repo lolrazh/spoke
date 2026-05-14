@@ -86,7 +86,7 @@ const VALID_INSTALLED_FILES: Pick<
   },
   {
     role: "weights",
-    path: "model.safetensors",
+    path: "weights.safetensors",
     sha256: "weights-sha",
     size: 200,
   },

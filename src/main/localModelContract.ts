@@ -9,6 +9,6 @@ export const LOCAL_MODEL_MANIFEST_URL =
 
 export const LOCAL_MODEL_REQUIRED_FILE_PATHS = [
   "config.json",
-  "model.safetensors",
+  "weights.safetensors",
   "multilingual.tiktoken",
 ] as const;
