@@ -28,7 +28,6 @@ export interface TranscriptionProviderCatalogEntry {
   selectable: boolean;
   requiresApiKey: boolean;
   status: "ready" | "coming_soon";
-  apiKeyLabel?: string;
   apiKeyPlaceholder?: string;
 }
 
@@ -46,9 +45,8 @@ export interface TranscriptionProviderSettingsSnapshot {
 const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   {
     id: LOCAL_STT_PROVIDER_ID,
-    displayName: "Local Moonshine",
-    description:
-      "On-device transcription through the bundled Moonshine sidecar.",
+    displayName: "Local",
+    description: "Offline transcription with the local Moonshine model.",
     kind: "local",
     selectable: true,
     requiresApiKey: false,
@@ -56,36 +54,33 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   },
   {
     id: OPENAI_CLOUD_PROVIDER_ID,
-    displayName: "OpenAI Direct",
-    description: "Direct cloud transcription with your own OpenAI API key.",
+    displayName: "OpenAI",
+    description: "Cloud transcription with your OpenAI API key.",
     kind: "cloud",
     selectable: true,
     requiresApiKey: true,
     status: "ready",
-    apiKeyLabel: "OpenAI API Key",
-    apiKeyPlaceholder: "sk-...",
+    apiKeyPlaceholder: "sk-…",
   },
   {
     id: GROQ_CLOUD_PROVIDER_ID,
     displayName: "Groq",
-    description: "Fast cloud transcription with your own Groq API key.",
+    description: "Cloud transcription with your Groq API key.",
     kind: "cloud",
     selectable: true,
     requiresApiKey: true,
     status: "ready",
-    apiKeyLabel: "Groq API Key",
-    apiKeyPlaceholder: "gsk_...",
+    apiKeyPlaceholder: "gsk_…",
   },
   {
     id: DEEPGRAM_CLOUD_PROVIDER_ID,
     displayName: "Deepgram",
-    description: "Cloud transcription with your own Deepgram API key.",
+    description: "Cloud transcription with your Deepgram API key.",
     kind: "cloud",
     selectable: true,
     requiresApiKey: true,
     status: "ready",
-    apiKeyLabel: "Deepgram API Key",
-    apiKeyPlaceholder: "dg_...",
+    apiKeyPlaceholder: "dg_…",
   },
 ];
 

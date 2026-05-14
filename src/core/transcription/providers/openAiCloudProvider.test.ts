@@ -13,9 +13,8 @@ describe("openAiCloudProvider", () => {
             providers: [
               {
                 id: OPENAI_CLOUD_PROVIDER_ID,
-                displayName: "OpenAI Direct",
-                description:
-                  "Direct cloud transcription with your own OpenAI API key.",
+                displayName: "OpenAI",
+                description: "Cloud transcription with your OpenAI API key.",
                 kind: "cloud",
                 selectable: true,
                 requiresApiKey: true,

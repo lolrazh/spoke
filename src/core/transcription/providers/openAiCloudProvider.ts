@@ -5,7 +5,7 @@ import { TranscriptionSessionError } from "../sessionErrors";
 export const openAiCloudProvider: TranscriptionProvider = {
   descriptor: {
     id: OPENAI_CLOUD_PROVIDER_ID,
-    displayName: "OpenAI Direct",
+    displayName: "OpenAI",
     kind: "cloud",
     requiresApiKey: true,
   },
@@ -21,14 +21,14 @@ export const openAiCloudProvider: TranscriptionProvider = {
       reason:
         provider?.apiKeyConfigured === true
           ? undefined
-          : "Save an OpenAI API key to use OpenAI Direct.",
+          : "Save an OpenAI API key to use OpenAI.",
     };
   },
   transcribe: async ({ audioBlob, context }) => {
     if (!audioBlob) {
       throw new TranscriptionSessionError(
         "transcription_failed",
-        "OpenAI Direct requires an audio blob.",
+        "OpenAI requires an audio blob.",
         { recoverable: false },
       );
     }
@@ -36,7 +36,7 @@ export const openAiCloudProvider: TranscriptionProvider = {
     if (!window.stt?.transcribeApiKeyProvider) {
       throw new TranscriptionSessionError(
         "provider_unavailable",
-        "OpenAI Direct bridge is unavailable.",
+        "OpenAI bridge is unavailable.",
         { recoverable: false },
       );
     }

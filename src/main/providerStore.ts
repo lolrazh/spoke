@@ -237,7 +237,7 @@ export function getProviderSettingsSnapshot() {
   });
 }
 
-// ── OpenAI Direct Transcription ────────────────────────────────────────
+// ── OpenAI Transcription ───────────────────────────────────────────────
 
 const OPENAI_TRANSCRIPTION_API_URL =
   "https://api.openai.com/v1/audio/transcriptions";
@@ -258,7 +258,7 @@ export async function transcribeWithOpenAi(
   context: TranscriptionContext,
 ): Promise<TranscriptionResult> {
   if (audioBuffer.byteLength > OPENAI_MAX_AUDIO_BYTES) {
-    throw new Error("OpenAI Direct supports audio files up to 25 MiB.");
+    throw new Error("OpenAI supports audio files up to 25 MiB.");
   }
 
   const formData = new FormData();

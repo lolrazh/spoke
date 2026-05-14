@@ -102,9 +102,10 @@ const SelectField: React.FC<{
   </SettingsCard>
 );
 
-const SecretField: React.FC<{
+const ApiKeyField: React.FC<{
   label: string;
   description?: string;
+  fieldId: string;
   value: string;
   onChange: (value: string) => void;
   onSave: () => void;
@@ -113,9 +114,11 @@ const SecretField: React.FC<{
   saving: boolean;
   placeholder?: string;
   inGroup?: boolean;
+  icon?: React.ReactNode;
 }> = ({
   label,
   description,
+  fieldId,
   value,
   onChange,
   onSave,
@@ -124,44 +127,48 @@ const SecretField: React.FC<{
   saving,
   placeholder,
   inGroup,
+  icon,
 }) => (
-  <SettingsCard title={label} description={description} inGroup={inGroup}>
-    <div className="ml-2 flex w-full flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <input
-          type="password"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          autoComplete="off"
-          spellCheck={false}
-          className="card-floating h-10 flex-1 rounded-lg border border-white/10 bg-transparent px-3 text-sm text-white/80 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/5"
-          style={{ WebkitAppRegion: "no-drag" }}
-        />
+  <SettingsCard
+    title={label}
+    description={description}
+    icon={icon}
+    inGroup={inGroup}
+  >
+    <div className="ml-2 flex items-center gap-2">
+      <input
+        id={fieldId}
+        name={fieldId}
+        aria-label={`${label} API key`}
+        type="password"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        className="card-floating h-9 w-36 rounded-lg border border-white/10 bg-transparent px-3 text-xs text-white/80 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/5 focus-visible:ring-2 focus-visible:ring-white/10"
+        style={{ WebkitAppRegion: "no-drag" }}
+      />
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={saving || value.trim().length === 0}
+        onClick={onSave}
+      >
+        {saving ? "Saving…" : "Save Key"}
+      </Button>
+      {configured && (
         <Button
+          type="button"
           variant="secondary"
           size="sm"
-          disabled={saving || value.trim().length === 0}
-          onClick={onSave}
+          disabled={saving}
+          onClick={onClear}
         >
-          {saving ? "Saving..." : "Save"}
+          Clear
         </Button>
-        {configured && (
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={saving}
-            onClick={onClear}
-          >
-            Clear
-          </Button>
-        )}
-      </div>
-      <div className="text-[10px] text-white/40">
-        {configured
-          ? "Saved locally and encrypted when available."
-          : "No key saved yet."}
-      </div>
+      )}
     </div>
   </SettingsCard>
 );
@@ -414,7 +421,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             value: p.id,
             label: p.displayName,
           }))
-        : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local Moonshine" }],
+        : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local" }],
     [selectableProviderEntries],
   );
 
@@ -754,17 +761,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="API Keys" />
+                    <SectionSeparator title="Cloud Providers" />
 
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       {apiKeyProviders.map((provider) => (
-                        <SecretField
+                        <ApiKeyField
                           key={provider.id}
-                          label={
-                            provider.apiKeyLabel ??
-                            `${provider.displayName} API Key`
+                          label={provider.displayName}
+                          description={
+                            provider.apiKeyConfigured
+                              ? "API key saved locally."
+                              : "Add an API key to enable this provider."
                           }
-                          description={`Stored locally for ${provider.displayName} transcription.`}
+                          fieldId={`${provider.id}-api-key`}
                           value={apiKeyDrafts[provider.id] ?? ""}
                           onChange={(v) =>
                             setApiKeyDrafts((prev) => ({
@@ -781,6 +790,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           configured={provider.apiKeyConfigured}
                           saving={savingProviderKeyId === provider.id}
                           placeholder={provider.apiKeyPlaceholder ?? ""}
+                          icon={
+                            <SfIcon
+                              name="speaker.wave.3.fill"
+                              size={16}
+                              className="text-primary/70"
+                            />
+                          }
                           inGroup
                         />
                       ))}

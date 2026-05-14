@@ -8,10 +8,11 @@ describe("useProviderSelection", () => {
     // Reset to default mock
     (window as any).stt = {
       ...window.stt,
-      getProviderSettings: async (): Promise<TranscriptionProviderSettingsSnapshot> => ({
-        preferredProviderId: "local-stt",
-        providers: [],
-      }),
+      getProviderSettings:
+        async (): Promise<TranscriptionProviderSettingsSnapshot> => ({
+          preferredProviderId: "local-stt",
+          providers: [],
+        }),
     };
   });
 
@@ -29,29 +30,29 @@ describe("useProviderSelection", () => {
   it("loads provider settings from window.stt bridge", async () => {
     (window as any).stt.getProviderSettings =
       async (): Promise<TranscriptionProviderSettingsSnapshot> => ({
-      preferredProviderId: "local-stt",
-      providers: [
-        {
-          id: "local-stt",
-          displayName: "Local STT",
-          description: "Local transcription",
-          kind: "local",
-          selectable: true,
-          requiresApiKey: false,
-          status: "ready",
-          apiKeyConfigured: false,
-        },
-        {
-          id: "openai-cloud",
-          displayName: "OpenAI Direct",
-          description: "OpenAI transcription",
-          kind: "cloud",
-          selectable: true,
-          requiresApiKey: true,
-          status: "ready",
-          apiKeyConfigured: true,
-        },
-      ],
+        preferredProviderId: "local-stt",
+        providers: [
+          {
+            id: "local-stt",
+            displayName: "Local STT",
+            description: "Local transcription",
+            kind: "local",
+            selectable: true,
+            requiresApiKey: false,
+            status: "ready",
+            apiKeyConfigured: false,
+          },
+          {
+            id: "openai-cloud",
+            displayName: "OpenAI",
+            description: "OpenAI transcription",
+            kind: "cloud",
+            selectable: true,
+            requiresApiKey: true,
+            status: "ready",
+            apiKeyConfigured: true,
+          },
+        ],
       });
 
     const { result } = renderHook(() => useProviderSelection());
@@ -67,29 +68,29 @@ describe("useProviderSelection", () => {
   it("filters non-selectable providers from selectableProviderEntries", async () => {
     (window as any).stt.getProviderSettings =
       async (): Promise<TranscriptionProviderSettingsSnapshot> => ({
-      preferredProviderId: "local-stt",
-      providers: [
-        {
-          id: "local-stt",
-          displayName: "Local STT",
-          description: "Local transcription",
-          kind: "local",
-          selectable: true,
-          requiresApiKey: false,
-          status: "ready",
-          apiKeyConfigured: false,
-        },
-        {
-          id: "openai-cloud",
-          displayName: "OpenAI Direct",
-          description: "OpenAI transcription",
-          kind: "cloud",
-          selectable: false,
-          requiresApiKey: true,
-          status: "ready",
-          apiKeyConfigured: false,
-        },
-      ],
+        preferredProviderId: "local-stt",
+        providers: [
+          {
+            id: "local-stt",
+            displayName: "Local STT",
+            description: "Local transcription",
+            kind: "local",
+            selectable: true,
+            requiresApiKey: false,
+            status: "ready",
+            apiKeyConfigured: false,
+          },
+          {
+            id: "openai-cloud",
+            displayName: "OpenAI",
+            description: "OpenAI transcription",
+            kind: "cloud",
+            selectable: false,
+            requiresApiKey: true,
+            status: "ready",
+            apiKeyConfigured: false,
+          },
+        ],
       });
 
     const { result } = renderHook(() => useProviderSelection());

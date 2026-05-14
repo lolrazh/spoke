@@ -111,8 +111,8 @@ describe("components/SettingsPanel", () => {
 
     const text = container.textContent ?? "";
     expect(text).toContain("Default Model");
-    expect(text).toContain("API Keys");
-    expect(text).toContain("OpenAI API Key");
+    expect(text).toContain("Cloud Providers");
+    expect(text).toContain("OpenAI");
     expect(text).not.toContain("Account");
     expect(text).not.toContain("Usage");
     expect(text).not.toContain("Sign In");
