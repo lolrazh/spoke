@@ -370,7 +370,7 @@ describe("modelManager", () => {
         return { on: vi.fn().mockReturnThis() } as any;
       });
 
-      // Fire-and-forget first install — it will hang on fetchManifest
+      // Fire-and-forget first install — it will hang on the first file download
       const firstInstall = installModel();
 
       // State should now be "downloading"
@@ -390,8 +390,7 @@ describe("modelManager", () => {
       const cbs = makeCallbacks();
       initModelManager(cbs);
 
-      // Simulate the "installing" state by starting a download that
-      // gets through fetching the manifest. We'll do this by directly
+      // Simulate the "installing" state by starting a download. We'll do this by directly
       // manipulating state via a full install flow mock.
       // For simplicity, just start install and check downloading guard.
       vi.mocked(https.get).mockImplementation(() => {

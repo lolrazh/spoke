@@ -15,7 +15,7 @@ Rules:
 - [x] Define required files and final install layout under app-managed `userData` (`weights.safetensors`, not HF's source filename).
 - [x] Extend the model manifest to support multiple files, file roles, sizes, checksums, and model family.
 - [x] Add model identity validation so stale Moonshine files cannot count as installed.
-- [ ] Decide whether runtime downloads from Hugging Face are allowed only for dev, with production using our CDN/release bucket.
+- [x] Decide model downloads: the app installer uses a checked-in, pinned Hugging Face manifest; the sidecar runtime never downloads.
 
 ## 2. Installer
 

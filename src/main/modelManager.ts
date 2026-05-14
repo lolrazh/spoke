@@ -16,7 +16,7 @@ import {
   LOCAL_MODEL_DISPLAY_NAME,
   LOCAL_MODEL_FAMILY,
   LOCAL_MODEL_ID,
-  LOCAL_MODEL_MANIFEST_URL,
+  LOCAL_MODEL_MANIFEST,
   LOCAL_MODEL_MANIFEST_VERSION,
   LOCAL_MODEL_REQUIRED_FILE_PATHS,
 } from "./localModelContract";
@@ -29,7 +29,6 @@ import type {
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const MANIFEST_URL = LOCAL_MODEL_MANIFEST_URL;
 const MAX_REDIRECTS = 5;
 const STATE_FILE = "model-state.json";
 
@@ -233,31 +232,13 @@ function verifySha256(
   });
 }
 
-// ── Manifest fetch ────────────────────────────────────────────────────
+// ── Manifest access ───────────────────────────────────────────────────
 
-function fetchManifest(): Promise<ModelManifest> {
-  return new Promise((resolve, reject) => {
-    https
-      .get(MANIFEST_URL, (res) => {
-        const { statusCode } = res;
-        if (!statusCode || statusCode < 200 || statusCode >= 300) {
-          reject(new Error(`HTTP ${statusCode} fetching manifest`));
-          res.resume();
-          return;
-        }
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data) as ModelManifest);
-          } catch (e) {
-            reject(e);
-          }
-        });
-      })
-      .on("error", reject);
-  });
+function getManifest(): ModelManifest {
+  return {
+    ...LOCAL_MODEL_MANIFEST,
+    files: LOCAL_MODEL_MANIFEST.files.map((file) => ({ ...file })),
+  };
 }
 
 // ── File download with progress ───────────────────────────────────────
@@ -448,12 +429,12 @@ export async function installModel(): Promise<void> {
     });
     persistState();
 
-    // Step 2: Fetch manifest
-    console.log("[ModelManager] Fetching manifest...");
-    const manifest = await fetchManifest();
+    // Step 2: Load checked-in model manifest
+    console.log("[ModelManager] Loading model manifest...");
+    const manifest = getManifest();
     assertManifest(manifest);
     console.log(
-      "[ModelManager] Manifest fetched:",
+      "[ModelManager] Manifest loaded:",
       manifest.modelId,
       manifest.version,
     );
