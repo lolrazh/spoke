@@ -19,19 +19,38 @@ import struct
 import sys
 import time
 import traceback
+import types
 from pathlib import Path
 from typing import Any
 
 import mlx.core as mx
-import mlx_whisper
 import numpy as np
+
+# mlx_whisper.__init__ imports the high-level transcribe module, which pulls
+# SciPy/Numba for word timestamps. This sidecar uses a lean lower-level decode
+# path, so stub that module before importing package submodules.
+transcribe_stub = types.ModuleType("mlx_whisper.transcribe")
+transcribe_stub.transcribe = None
+sys.modules.setdefault("mlx_whisper.transcribe", transcribe_stub)
+
+from mlx_whisper.audio import (
+    HOP_LENGTH,
+    N_FRAMES,
+    N_SAMPLES,
+    SAMPLE_RATE as WHISPER_SAMPLE_RATE,
+    log_mel_spectrogram,
+    pad_or_trim,
+)
+from mlx_whisper.decoding import DecodingOptions
 from mlx_whisper.load_models import load_model
-from mlx_whisper.transcribe import ModelHolder
+from mlx_whisper.tokenizer import get_tokenizer
 
 MODEL_ID = "mlx-community/whisper-large-v3-turbo-4bit"
 MODEL_DISPLAY_NAME = "Whisper large-v3 turbo 4-bit"
 REQUIRED_MODEL_FILES = ("config.json", "weights.safetensors", "multilingual.tiktoken")
-SAMPLE_RATE = 16000
+SAMPLE_RATE = WHISPER_SAMPLE_RATE
+NO_SPEECH_THRESHOLD = 0.6
+LOW_LOGPROB_THRESHOLD = -1.0
 
 # Conservative near-digital-silence gate. Whisper's own no_speech handling still
 # decides ambiguous low-volume clips.
@@ -202,6 +221,7 @@ class WhisperRuntime:
         self.weights_dir = weights_dir
         self.model_path = str(weights_dir)
         self.language = language
+        self.model = None
         self.load_ms: int | None = None
         self.load_peak_memory_bytes = 0
 
@@ -212,9 +232,7 @@ class WhisperRuntime:
         reset_peak_memory()
         start = time.perf_counter()
 
-        model = load_model(self.model_path, dtype=mx.float16)
-        ModelHolder.model = model
-        ModelHolder.model_path = self.model_path
+        self.model = load_model(self.model_path, dtype=mx.float16)
 
         self.load_ms = round((time.perf_counter() - start) * 1000)
         self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
@@ -243,22 +261,10 @@ class WhisperRuntime:
         reset_peak_memory()
         start = time.perf_counter()
 
-        options: dict[str, Any] = {
-            "fp16": True,
-            "temperature": 0.0,
-            "condition_on_previous_text": False,
-            "no_speech_threshold": 0.6,
-            "word_timestamps": False,
-            "verbose": None,
-        }
-        if self.language is not None:
-            options["language"] = self.language
+        if self.model is None:
+            raise RuntimeError("Whisper model has not been loaded.")
 
-        result = mlx_whisper.transcribe(
-            audio,
-            path_or_hf_repo=self.model_path,
-            **options,
-        )
+        result = transcribe_audio(self.model, audio, self.language)
         inference_ms = round((time.perf_counter() - start) * 1000)
         memory = memory_snapshot()
         clear_cache()
@@ -311,6 +317,93 @@ class WhisperRuntime:
             "segment_count": segment_count,
             **memory,
         }
+
+
+def transcribe_audio(model, audio: np.ndarray, language: str | None) -> dict[str, Any]:
+    dtype = mx.float16
+    mel = log_mel_spectrogram(audio, n_mels=model.dims.n_mels, padding=N_SAMPLES)
+    content_frames = mel.shape[-2] - N_FRAMES
+
+    detected_language = detect_language(model, mel, dtype, language)
+    tokenizer = get_tokenizer(
+        model.is_multilingual,
+        num_languages=model.num_languages,
+        language=detected_language,
+        task="transcribe",
+    )
+
+    seek = 0
+    segment_id = 0
+    all_text: list[str] = []
+    segments: list[dict[str, Any]] = []
+
+    while seek < content_frames:
+        segment_size = min(N_FRAMES, content_frames - seek)
+        if segment_size <= 0:
+            break
+
+        time_offset = float(seek * HOP_LENGTH / SAMPLE_RATE)
+        duration = float(segment_size * HOP_LENGTH / SAMPLE_RATE)
+        mel_segment = mel[seek : seek + segment_size]
+        mel_segment = pad_or_trim(mel_segment, N_FRAMES, axis=-2).astype(dtype)
+
+        result = model.decode(
+            mel_segment,
+            DecodingOptions(
+                language=detected_language,
+                task="transcribe",
+                temperature=0.0,
+                fp16=True,
+                without_timestamps=True,
+            ),
+        )
+
+        if should_skip_decoded_segment(result):
+            seek += segment_size
+            continue
+
+        text_tokens = [token for token in result.tokens if token < tokenizer.eot]
+        text = tokenizer.decode(text_tokens).strip()
+        if text:
+            all_text.append(text)
+            segments.append(
+                {
+                    "id": segment_id,
+                    "seek": seek,
+                    "start": time_offset,
+                    "end": time_offset + duration,
+                    "text": text,
+                    "avg_logprob": result.avg_logprob,
+                    "compression_ratio": result.compression_ratio,
+                    "no_speech_prob": result.no_speech_prob,
+                }
+            )
+            segment_id += 1
+
+        seek += segment_size
+
+    return {
+        "text": " ".join(all_text),
+        "segments": segments,
+        "language": detected_language,
+    }
+
+
+def detect_language(model, mel, dtype: mx.Dtype, language: str | None) -> str:
+    if language is not None:
+        return language
+    if not model.is_multilingual:
+        return "en"
+
+    mel_segment = pad_or_trim(mel, N_FRAMES, axis=-2).astype(dtype)
+    _, probabilities = model.detect_language(mel_segment)
+    return max(probabilities, key=probabilities.get)
+
+
+def should_skip_decoded_segment(result) -> bool:
+    if result.no_speech_prob <= NO_SPEECH_THRESHOLD:
+        return False
+    return result.avg_logprob <= LOW_LOGPROB_THRESHOLD
 
 
 def daemon_mode(runtime: WhisperRuntime) -> int:

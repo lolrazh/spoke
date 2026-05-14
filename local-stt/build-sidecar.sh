@@ -31,30 +31,37 @@ if ! command -v pyinstaller &>/dev/null; then
 fi
 
 echo "Building spoke-stt sidecar binary..."
+rm -rf build dist
 
 pyinstaller \
   --onefile \
   --name spoke-stt \
+  --specpath build \
+  --workpath build \
+  --distpath dist \
   --target-arch arm64 \
   --strip \
   --noupx \
   --console \
   --collect-all mlx \
   --collect-data mlx_whisper \
-  --collect-all scipy \
-  --collect-all numba \
-  --collect-all huggingface_hub \
   --collect-submodules tiktoken_ext \
+  --exclude-module torch \
+  --exclude-module torchvision \
+  --exclude-module torchaudio \
+  --exclude-module tensorflow \
+  --exclude-module scipy \
+  --exclude-module numba \
+  --exclude-module llvmlite \
   --hidden-import mlx \
   --hidden-import mlx.core \
   --hidden-import mlx.nn \
   --hidden-import numpy \
-  --hidden-import mlx_whisper \
+  --hidden-import huggingface_hub \
   --hidden-import mlx_whisper.audio \
   --hidden-import mlx_whisper.decoding \
   --hidden-import mlx_whisper.load_models \
   --hidden-import mlx_whisper.tokenizer \
-  --hidden-import mlx_whisper.transcribe \
   --hidden-import mlx_whisper.whisper \
   --hidden-import tiktoken \
   --hidden-import tiktoken_ext.openai_public \

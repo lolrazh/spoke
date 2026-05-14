@@ -47,8 +47,8 @@ Rules:
 ## 5. Packaging
 
 - [x] Update sidecar build script for Whisper/MLX dependencies.
-- [ ] Build a standalone macOS arm64 `spoke-stt` binary.
-- [ ] Ensure Electron Forge includes the sidecar binary in packaged resources.
+- [x] Build a standalone macOS arm64 `spoke-stt` binary.
+- [x] Ensure Electron Forge includes the sidecar binary in packaged resources.
 - [ ] Test packaged app on a clean Mac account without local Python or repo files.
 - [ ] Confirm signing/notarization still works with the sidecar binary.
 
@@ -70,7 +70,7 @@ Rules:
 
 - [ ] Fresh checkout can run dev local transcription after installing the Whisper model.
 - [ ] Packaged app can install the model and transcribe without user Python.
-- [ ] Silence does not paste hallucinated text.
+- [x] Silence does not paste hallucinated text.
 - [ ] Switching away from local stops the sidecar.
 - [ ] Removing the model removes files and prevents local transcription.
 - [x] Worktree has no tracked legacy local STT implementation left.
