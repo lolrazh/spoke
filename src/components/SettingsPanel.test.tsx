@@ -88,7 +88,7 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("renders provider controls without hosted account or quota sections", async () => {
+  it("keeps provider controls in the Models tab without hosted account sections", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(React.createElement(SettingsPanel));
     await act(async () => {
@@ -96,8 +96,21 @@ describe("components/SettingsPanel", () => {
       await Promise.resolve();
     });
 
+    const settingsText = container.textContent ?? "";
+    expect(settingsText).toContain("Defaults");
+    expect(settingsText).not.toContain("API Keys");
+
+    const modelsTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.getAttribute("aria-label") === "Models",
+    );
+    expect(modelsTab).toBeTruthy();
+    await act(async () => {
+      modelsTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
     const text = container.textContent ?? "";
-    expect(text).toContain("Providers");
+    expect(text).toContain("Default Model");
     expect(text).toContain("API Keys");
     expect(text).toContain("OpenAI API Key");
     expect(text).not.toContain("Account");

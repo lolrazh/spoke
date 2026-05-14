@@ -15,10 +15,7 @@ import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import {
-  isApiKeyTranscriptionProviderId,
-  type TranscriptionProviderSettingsEntry,
-} from "../core/transcription/providerCatalog";
+import { isApiKeyTranscriptionProviderId } from "../core/transcription/providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
@@ -42,6 +39,12 @@ const sectionVariants: Variants = {
     transition: { type: "spring", ...MOTION.springs.quick },
   },
 };
+
+type SettingsPanelTab = "settings" | "models" | "history";
+type SettingsPanelInitialTab = Extract<
+  SettingsPanelTab,
+  "settings" | "history"
+>;
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
@@ -163,69 +166,6 @@ const SecretField: React.FC<{
   </SettingsCard>
 );
 
-const ProviderStatusCard: React.FC<{
-  provider: TranscriptionProviderSettingsEntry;
-  selected: boolean;
-  inGroup?: boolean;
-}> = ({ provider, selected, inGroup }) => {
-  const needsModel =
-    provider.id === "local-stt" &&
-    provider.modelInstalled === false &&
-    !selected;
-
-  const status = selected
-    ? "success"
-    : provider.requiresApiKey && !provider.apiKeyConfigured
-      ? "warning"
-      : needsModel
-        ? "warning"
-        : "default";
-
-  let badgeLabel = selected
-    ? "Selected"
-    : provider.kind === "local"
-      ? "Local"
-      : "Cloud";
-  if (provider.status === "coming_soon") {
-    badgeLabel = "Soon";
-  } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
-    badgeLabel = "Needs Key";
-  } else if (needsModel) {
-    badgeLabel = "Needs Model";
-  }
-
-  const descriptionParts = [provider.description];
-  if (provider.status === "coming_soon") {
-    descriptionParts.push("Coming soon.");
-  } else if (provider.requiresApiKey && !provider.apiKeyConfigured) {
-    descriptionParts.push("Add its API key below to enable it.");
-  } else if (needsModel) {
-    descriptionParts.push("Install the model below to enable it.");
-  } else if (selected) {
-    descriptionParts.push("Currently active.");
-  }
-
-  return (
-    <SettingsCard
-      title={provider.displayName}
-      description={descriptionParts.join(" ")}
-      icon={
-        <SfIcon
-          name={provider.kind === "local" ? "desktopcomputer" : "cloud.fill"}
-          size={16}
-          className="text-primary/70"
-        />
-      }
-      status={status}
-      inGroup={inGroup}
-    >
-      <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-white/60">
-        {badgeLabel}
-      </div>
-    </SettingsCard>
-  );
-};
-
 // Cleaned out legacy row components; cards are now the single layout primitive
 
 export const SectionSeparator: React.FC<{
@@ -249,13 +189,78 @@ export const SectionSeparator: React.FC<{
   </div>
 );
 
+const TabButton: React.FC<{
+  active: boolean;
+  iconName: string;
+  label: string;
+  onClick: () => void;
+}> = ({ active, iconName, label, onClick }) => (
+  <button
+    type="button"
+    aria-pressed={active}
+    aria-label={label}
+    onClick={onClick}
+    style={{
+      transition: "background-color 200ms ease-out, color 200ms ease-out",
+    }}
+    className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/15 ${
+      active ? "" : "justify-center"
+    } ${
+      active
+        ? "text-foreground"
+        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+    }`}
+  >
+    {active && (
+      <motion.div
+        key={`${label}-bg`}
+        className="absolute inset-0 bg-white/10 rounded-md"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+      />
+    )}
+    <span
+      className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0"
+      style={{ transition: "color 200ms ease-out" }}
+    >
+      <SfIcon name={iconName} size={17} />
+    </span>
+    <motion.span
+      initial={false}
+      animate={{
+        opacity: active ? 1 : 0,
+        width: active ? "auto" : 0,
+        marginLeft: active ? "8px" : "0px",
+      }}
+      transition={{
+        opacity: {
+          duration: active ? 0.25 : 0.12,
+        },
+        width: {
+          duration: active ? 0.25 : 0.12,
+          ease: active ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1],
+        },
+        marginLeft: {
+          duration: active ? 0.25 : 0.12,
+          ease: active ? [0.34, 1.56, 0.64, 1] : [0.4, 0, 1, 1],
+        },
+      }}
+      className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
+    >
+      {label}
+    </motion.span>
+  </button>
+);
+
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
   onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
   onToggleFloatingBar?: (enabled: boolean) => void;
   onHeightChange?: (height: number) => void;
-  initialTab?: "settings" | "history"; // Initial tab to show (for paste-shortcut → history UX)
+  initialTab?: SettingsPanelInitialTab; // Initial tab to show (for paste-shortcut → history UX)
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -265,9 +270,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   initialTab = "settings",
 }) => {
   // State
-  const [activeTab, setActiveTab] = useState<"settings" | "history">(
-    initialTab,
-  );
+  const [activeTab, setActiveTab] = useState<SettingsPanelTab>(initialTab);
 
   // Sync activeTab when initialTab prop changes (e.g., on re-expand with paste timing)
   const prevInitialTabRef = useRef(initialTab);
@@ -592,125 +595,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         >
           <div className="flex items-center justify-center px-6">
             <div className="flex items-center gap-0.5 border border-white/[0.08] rounded-lg p-1">
-              <button
+              <TabButton
+                active={activeTab === "settings"}
+                iconName="gearshape.fill"
+                label="Settings"
                 onClick={() => setActiveTab("settings")}
-                style={{
-                  transition:
-                    "background-color 200ms ease-out, color 200ms ease-out",
-                }}
-                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "settings" ? "" : "justify-center"} ${
-                  activeTab === "settings"
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
-              >
-                {activeTab === "settings" && (
-                  <motion.div
-                    key="settings-bg"
-                    className="absolute inset-0 bg-white/10 rounded-md"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  />
-                )}
-                <span
-                  className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0"
-                  style={{ transition: "color 200ms ease-out" }}
-                >
-                  <SfIcon name="gearshape.fill" size={17} />
-                </span>
-                <motion.span
-                  animate={{
-                    opacity: activeTab === "settings" ? 1 : 0,
-                    width: activeTab === "settings" ? "auto" : 0,
-                    marginLeft: activeTab === "settings" ? "8px" : "0px",
-                  }}
-                  transition={{
-                    opacity: {
-                      duration: activeTab === "settings" ? 0.25 : 0.12,
-                    },
-                    width: {
-                      duration: activeTab === "settings" ? 0.25 : 0.12,
-                      ease:
-                        activeTab === "settings"
-                          ? [0.34, 1.56, 0.64, 1]
-                          : [0.4, 0, 1, 1],
-                    },
-                    marginLeft: {
-                      duration: activeTab === "settings" ? 0.25 : 0.12,
-                      ease:
-                        activeTab === "settings"
-                          ? [0.34, 1.56, 0.64, 1]
-                          : [0.4, 0, 1, 1],
-                    },
-                  }}
-                  className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
-                >
-                  Settings
-                </motion.span>
-              </button>
-              <button
+              />
+              <TabButton
+                active={activeTab === "models"}
+                iconName="point.3.filled.connected.trianglepath.dotted"
+                label="Models"
+                onClick={() => setActiveTab("models")}
+              />
+              <TabButton
+                active={activeTab === "history"}
+                iconName="clock.arrow.trianglehead.counterclockwise.rotate.90"
+                label="History"
                 onClick={() => setActiveTab("history")}
-                style={{
-                  transition:
-                    "background-color 200ms ease-out, color 200ms ease-out",
-                }}
-                className={`relative flex items-center gap-0 p-2 rounded-md min-w-[42px] ${activeTab === "history" ? "" : "justify-center"} ${
-                  activeTab === "history"
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
-              >
-                {activeTab === "history" && (
-                  <motion.div
-                    key="history-bg"
-                    className="absolute inset-0 bg-white/10 rounded-md"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                  />
-                )}
-                <span
-                  className="relative z-10 flex items-center justify-center w-[17px] flex-shrink-0"
-                  style={{ transition: "color 200ms ease-out" }}
-                >
-                  <SfIcon
-                    name="clock.arrow.trianglehead.counterclockwise.rotate.90"
-                    size={17}
-                  />
-                </span>
-                <motion.span
-                  animate={{
-                    opacity: activeTab === "history" ? 1 : 0,
-                    width: activeTab === "history" ? "auto" : 0,
-                    marginLeft: activeTab === "history" ? "8px" : "0px",
-                  }}
-                  transition={{
-                    opacity: {
-                      duration: activeTab === "history" ? 0.25 : 0.12,
-                    },
-                    width: {
-                      duration: activeTab === "history" ? 0.25 : 0.12,
-                      ease:
-                        activeTab === "history"
-                          ? [0.34, 1.56, 0.64, 1]
-                          : [0.4, 0, 1, 1],
-                    },
-                    marginLeft: {
-                      duration: activeTab === "history" ? 0.25 : 0.12,
-                      ease:
-                        activeTab === "history"
-                          ? [0.34, 1.56, 0.64, 1]
-                          : [0.4, 0, 1, 1],
-                    },
-                  }}
-                  className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
-                >
-                  History
-                </motion.span>
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -758,22 +660,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         inGroup
                       />
 
-                      <SelectField
-                        label="Transcription Provider"
-                        description="Choose where dictation audio gets transcribed."
-                        value={selectedProviderId}
-                        onChange={handleProviderChange}
-                        options={transcriptionProviderOptions}
-                        icon={
-                          <SfIcon
-                            name="speaker.wave.3.fill"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        }
-                        inGroup
-                      />
-
                       <Toggle
                         label="Show Floating Bar"
                         description="Display the floating dictation bar"
@@ -818,26 +704,46 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       />
                     </div>
                   </motion.section>
+                </motion.div>
+              ) : activeTab === "models" ? (
+                <motion.div
+                  initial="hidden"
+                  animate="visible"
+                  variants={containerVariants}
+                  className="flex flex-col"
+                >
+                  <motion.section
+                    variants={sectionVariants}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
+                  >
+                    <SectionSeparator title="Default Model" />
+
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      <SelectField
+                        label="Transcription Provider"
+                        description="Choose local or cloud transcription."
+                        value={selectedProviderId}
+                        onChange={handleProviderChange}
+                        options={transcriptionProviderOptions}
+                        icon={
+                          <SfIcon
+                            name="point.3.filled.connected.trianglepath.dotted"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+                    </div>
+                  </motion.section>
 
                   <motion.section
                     variants={sectionVariants}
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="Providers" />
-
-                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      {providerEntries.map((provider) => (
-                        <ProviderStatusCard
-                          key={provider.id}
-                          provider={provider}
-                          selected={provider.id === selectedProviderId}
-                          inGroup
-                        />
-                      ))}
-                    </div>
-
-                    {/* Model installation */}
+                    <SectionSeparator title="Local Model" />
                     <ModelInstallCard />
                   </motion.section>
 
