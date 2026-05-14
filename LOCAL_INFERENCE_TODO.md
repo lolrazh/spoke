@@ -38,7 +38,7 @@ Rules:
 
 ## 4. Electron Lifecycle
 
-- [ ] Add a shared `spawnPromise` so startup and first transcription cannot double-spawn sidecars.
+- [x] Add a shared `spawnPromise` so startup and first transcription cannot double-spawn sidecars.
 - [ ] Make sidecar errors typed enough for UI/log categories.
 - [ ] Keep serialized transcription requests unless we intentionally add a request ID protocol.
 - [ ] Kill sidecar on model removal, provider switch away from local, and app quit.

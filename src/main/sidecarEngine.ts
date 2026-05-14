@@ -15,6 +15,7 @@ import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
 
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
+let sidecarSpawnPromise: Promise<void> | null = null;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
 let autoRestartEnabled = false;
 
@@ -29,6 +30,20 @@ export function setAutoRestart(enabled: boolean): void {
 }
 
 export function spawnSidecar(): Promise<void> {
+  if (sidecarProcess && sidecarReady) {
+    return Promise.resolve();
+  }
+  if (sidecarSpawnPromise) {
+    return sidecarSpawnPromise;
+  }
+
+  sidecarSpawnPromise = spawnSidecarOnce().finally(() => {
+    sidecarSpawnPromise = null;
+  });
+  return sidecarSpawnPromise;
+}
+
+function spawnSidecarOnce(): Promise<void> {
   return new Promise((resolve, reject) => {
     const binaryPath = getSidecarBinaryPath();
     const args = getSidecarArgs();
@@ -52,12 +67,21 @@ export function spawnSidecar(): Promise<void> {
 
     sidecarProcess = proc;
     sidecarReady = false;
+    let settled = false;
+
+    const settle = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      proc.stdout?.removeListener("data", onData);
+      callback();
+    };
 
     // Timeout if model takes too long to load (30s)
     const timeout = setTimeout(() => {
       console.error("[STT] Sidecar timed out waiting for ready signal");
       killSidecar();
-      reject(new Error("Sidecar timed out loading model"));
+      settle(() => reject(new Error("Sidecar timed out loading model")));
     }, 30000);
 
     let stdoutBuffer = "";
@@ -71,12 +95,9 @@ export function spawnSidecar(): Promise<void> {
         try {
           const event = JSON.parse(line);
           if (event.type === "ready") {
-            clearTimeout(timeout);
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
-            // Remove this listener — ongoing stdout parsing is per-request
-            proc.stdout?.removeListener("data", onData);
-            resolve();
+            settle(resolve);
           }
         } catch {
           console.warn("[STT] Non-JSON stdout during init:", line);
@@ -95,6 +116,11 @@ export function spawnSidecar(): Promise<void> {
       clearTimeout(timeout);
       sidecarProcess = null;
       sidecarReady = false;
+      if (!settled) {
+        settle(() =>
+          reject(new Error(`Sidecar exited before ready with code ${code}`)),
+        );
+      }
 
       // Auto-restart on unexpected exit (one attempt)
       if (autoRestartEnabled && code !== 0) {
@@ -113,10 +139,9 @@ export function spawnSidecar(): Promise<void> {
 
     proc.once("error", (err) => {
       console.error("[STT] Sidecar spawn error:", err);
-      clearTimeout(timeout);
       sidecarProcess = null;
       sidecarReady = false;
-      reject(err);
+      settle(() => reject(err));
     });
   });
 }
