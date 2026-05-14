@@ -118,6 +118,8 @@ describe("ModelInstallCard", () => {
     render(<ModelInstallCard />);
     expect(screen.getByText(/Retry/i)).toBeTruthy();
     expect(screen.getByText(/Download failed/i)).toBeTruthy();
+    expect(screen.getByText(/442.8 MB download/i)).toBeTruthy();
+    expect(screen.getByText(/rev 0f058d3/i)).toBeTruthy();
   });
 
   it("shows fallback error text when broken with no error message", () => {

@@ -44,7 +44,13 @@ function getModelDescription(status: ModelStatus): string {
   const version = shortVersion(status.version);
 
   if (status.state === "broken") {
-    return status.error || "Model installation is broken. Retry the download.";
+    return [
+      status.error || "Model installation is broken. Retry the download.",
+      size ? `${size} download` : null,
+      version ? `rev ${version}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
   }
 
   const metadata = [

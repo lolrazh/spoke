@@ -105,6 +105,27 @@ function totalFileSize(files: Pick<ModelManifestFile, "size">[]): number {
   return files.reduce((total, file) => total + file.size, 0);
 }
 
+function getManifestStatusMetadata(
+  manifest: ModelManifest,
+): Pick<
+  ModelStatus,
+  | "family"
+  | "modelId"
+  | "displayName"
+  | "version"
+  | "manifestVersion"
+  | "totalBytes"
+> {
+  return {
+    family: manifest.family,
+    modelId: manifest.modelId,
+    displayName: manifest.displayName,
+    version: manifest.version,
+    manifestVersion: manifest.manifestVersion,
+    totalBytes: totalFileSize(manifest.files),
+  };
+}
+
 function setStatus(partial: Partial<ModelStatus>): void {
   modelStatus = { ...modelStatus, ...partial };
   try {
@@ -390,11 +411,6 @@ export function initModelManager(cbs: ModelManagerCallbacks): void {
       modelStatus = {
         ...DEFAULT_STATUS,
         state: "broken",
-        modelId: persisted.modelId ?? null,
-        version: persisted.version ?? null,
-        family: persisted.family ?? null,
-        displayName: persisted.displayName ?? null,
-        manifestVersion: persisted.manifestVersion ?? null,
         error: validationError,
       };
       persistState();
@@ -404,11 +420,6 @@ export function initModelManager(cbs: ModelManagerCallbacks): void {
     modelStatus = {
       ...DEFAULT_STATUS,
       state: "broken",
-      family: persisted.family ?? null,
-      modelId: persisted.modelId ?? null,
-      displayName: persisted.displayName ?? null,
-      version: persisted.version ?? null,
-      manifestVersion: persisted.manifestVersion ?? null,
       error: persisted.error ?? "Unknown error",
     };
   } else if (
@@ -454,30 +465,33 @@ export async function installModel(): Promise<void> {
 
   const tmpDir = getTmpDir();
   const weightsDir = getWeightsDir();
+  let manifest: ModelManifest | null = null;
+  let totalSize = LOCAL_MODEL_TOTAL_BYTES;
 
   try {
-    // Step 1: Set state to downloading
-    setStatus({
-      state: "downloading",
-      downloadProgress: 0,
-      downloadedBytes: 0,
-      totalBytes: 0,
-      error: null,
-    });
-    persistState();
-
-    // Step 2: Load checked-in model manifest
+    // Step 1: Load checked-in model manifest
     console.log("[ModelManager] Loading model manifest...");
-    const manifest = getManifest();
+    manifest = getManifest();
     assertManifest(manifest);
+    totalSize = totalFileSize(manifest.files);
     console.log(
       "[ModelManager] Manifest loaded:",
       manifest.modelId,
       manifest.version,
     );
 
+    // Step 2: Set state to downloading
+    installedFiles = [];
+    setStatus({
+      ...getManifestStatusMetadata(manifest),
+      state: "downloading",
+      downloadProgress: 0,
+      downloadedBytes: 0,
+      error: null,
+    });
+    persistState();
+
     // Step 3: Download model files
-    const totalSize = totalFileSize(manifest.files);
     let totalDownloaded = 0;
     const completedFileBytes = new Map<string, number>();
 
@@ -561,14 +575,15 @@ export async function installModel(): Promise<void> {
     const msg = error?.message || String(error);
     console.error("[ModelManager] Install failed:", msg);
 
+    installedFiles = [];
     setStatus({
+      ...(manifest ? getManifestStatusMetadata(manifest) : DEFAULT_STATUS),
       state: "broken",
       error: msg,
       downloadProgress: 0,
       downloadedBytes: 0,
-      totalBytes: 0,
+      totalBytes: totalSize,
     });
-    installedFiles = [];
     persistState();
 
     // Clean up .tmp on failure

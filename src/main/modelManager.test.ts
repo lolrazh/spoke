@@ -235,7 +235,31 @@ describe("modelManager", () => {
 
       const status = getModelStatus();
       expect(status.state).toBe("broken");
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBe("Checksum mismatch");
+    });
+
+    it("should normalize stale broken state to the current Whisper metadata", () => {
+      mockExistingState({
+        state: "broken",
+        modelId: null,
+        version: null,
+        error: "HTTP 403 fetching manifest",
+      });
+
+      const cbs = makeCallbacks();
+      initModelManager(cbs);
+
+      const status = getModelStatus();
+      expect(status.state).toBe("broken");
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.totalBytes).toBeGreaterThan(0);
+      expect(status.error).toBe("HTTP 403 fetching manifest");
     });
 
     it("should reset interrupted downloading state to not_installed", () => {
@@ -382,6 +406,60 @@ describe("modelManager", () => {
       );
 
       expect(redirect).toBe("https://cdn-lfs.huggingface.co/model.safetensors");
+    });
+
+    it("should expose model metadata immediately when retrying from broken state", async () => {
+      mockExistingState({
+        state: "broken",
+        modelId: null,
+        version: null,
+        error: "HTTP 403 fetching manifest",
+      });
+
+      const cbs = makeCallbacks();
+      initModelManager(cbs);
+
+      vi.mocked(https.get).mockImplementation(() => {
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+
+      const installPromise = installModel();
+
+      const status = getModelStatus();
+      expect(status.state).toBe("downloading");
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.totalBytes).toBeGreaterThan(0);
+      expect(status.error).toBeNull();
+
+      void installPromise.catch(() => {});
+    });
+
+    it("should keep model metadata after install failure", async () => {
+      const cbs = makeCallbacks();
+      initModelManager(cbs);
+
+      vi.mocked(https.get).mockImplementation((_url, callback: any) => {
+        callback({
+          statusCode: 500,
+          headers: {},
+          resume: vi.fn(),
+          on: vi.fn(),
+          pipe: vi.fn(),
+        });
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+
+      await installModel();
+
+      const status = getModelStatus();
+      expect(status.state).toBe("broken");
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.totalBytes).toBeGreaterThan(0);
+      expect(status.error).toContain("HTTP 500");
     });
 
     it("should throw when install is already in progress (downloading)", async () => {
