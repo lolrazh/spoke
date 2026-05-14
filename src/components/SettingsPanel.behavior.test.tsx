@@ -1,6 +1,5 @@
-import React from "react";
+import React, { act } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
 
@@ -72,8 +71,8 @@ describe("components/SettingsPanel behavior", () => {
     const switches = Array.from(container.querySelectorAll(".switch-track"));
     // First switch is "Show Floating Bar"
     const first = switches[0] as HTMLElement;
-    first.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await act(async () => {
+      first.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
     expect(onToggle).toHaveBeenCalled();

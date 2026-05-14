@@ -1,6 +1,5 @@
-import React from "react";
+import React, { act } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
 
