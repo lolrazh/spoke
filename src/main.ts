@@ -85,7 +85,6 @@ import {
   initProviderStore,
   getPreferredProviderId,
   setPreferredProviderId,
-  isPreferredProviderLocal,
   hasProviderApiKey,
   getRequiredProviderApiKey,
   setProviderApiKey,
@@ -99,19 +98,13 @@ import { enhance } from "./main/enhanceService";
 import { extractOcrWords } from "./main/ocrService";
 import { resolveEnhancementProvider } from "./main/llmService";
 import {
-  spawnSidecar,
-  killSidecar,
-  isSidecarRunning,
-  transcribeLocal,
-  setAutoRestart,
-} from "./main/sidecarEngine";
-import {
-  initModelManager,
-  getModelStatus,
-  getModelInstallState,
-  installModel,
-  removeModel,
-} from "./main/modelManager";
+  installLocalModelAndSyncSidecar,
+  removeLocalModelAndStopSidecar,
+  stopLocalSidecar,
+  syncLocalSidecarForCurrentProvider,
+  transcribeWithLocalSidecar,
+} from "./main/localSttLifecycle";
+import { initModelManager, getModelStatus } from "./main/modelManager";
 import { getHelperPath } from "./main/helperPaths";
 import {
   inspectFocusedSelection,
@@ -1534,12 +1527,10 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Pre-spawn sidecar if local provider is selected
-  if (isPreferredProviderLocal() && getModelInstallState() === "ready") {
-    spawnSidecar().catch((err) => {
-      console.error("[STT] Failed to pre-spawn sidecar:", err);
-    });
-  }
+  // Pre-spawn or stop the sidecar to match the selected provider.
+  syncLocalSidecarForCurrentProvider().catch((err) => {
+    console.error("[STT] Failed to sync sidecar on startup:", err);
+  });
 
   const isDev = !app.isPackaged;
   console.log("[Main Process] Setting up renderer security headers...");
@@ -2218,12 +2209,11 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("stt:install-model", async () => {
-    await installModel();
+    await installLocalModelAndSyncSidecar();
   });
 
   ipcMain.handle("stt:remove-model", async () => {
-    killSidecar();
-    await removeModel();
+    await removeLocalModelAndStopSidecar();
   });
 
   // ============ Enhancement + OCR IPC handlers ============
@@ -2257,15 +2247,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("stt:transcribe-local", async (_event, pcmBuffer: Buffer) => {
     try {
-      if (getModelInstallState() !== "ready") {
-        throw new Error(
-          "Local model not installed. Open Settings to install it.",
-        );
-      }
-      if (!isSidecarRunning()) {
-        await spawnSidecar();
-      }
-      return await transcribeLocal(pcmBuffer);
+      return await transcribeWithLocalSidecar(pcmBuffer);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[STT] transcribe-local failed:", msg);
@@ -2296,30 +2278,7 @@ app.whenReady().then(async () => {
       }
 
       setPreferredProviderId(providerId);
-
-      if (isPreferredProviderLocal()) {
-        if (getModelInstallState() !== "ready") {
-          // Model not installed — don't attempt to spawn sidecar
-          // The renderer will show the install UI
-          return;
-        }
-        try {
-          if (!isSidecarRunning()) {
-            await spawnSidecar();
-          }
-          setAutoRestart(true);
-        } catch (err) {
-          console.error(
-            "[STT] Failed to spawn sidecar on provider switch:",
-            err,
-          );
-          throw err;
-        }
-        return;
-      }
-
-      setAutoRestart(false);
-      killSidecar();
+      await syncLocalSidecarForCurrentProvider();
     },
   );
 
@@ -2646,7 +2605,7 @@ app.on("before-quit", () => {
   stopFollowCursor();
 
   // Clean up local STT sidecar
-  killSidecar();
+  stopLocalSidecar();
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();

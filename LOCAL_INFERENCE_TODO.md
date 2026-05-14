@@ -24,7 +24,7 @@ Rules:
 - [x] Verify every file with SHA256 before marking ready.
 - [x] Persist model family, model ID, version, and file manifest version.
 - [ ] Surface clean install states to the Models tab: not installed, downloading, verifying, ready, broken.
-- [ ] Make removal delete all local model files and stop the sidecar first.
+- [x] Make removal delete all local model files and stop the sidecar first.
 
 ## 3. Sidecar Runtime
 
@@ -40,8 +40,8 @@ Rules:
 
 - [x] Add a shared `spawnPromise` so startup and first transcription cannot double-spawn sidecars.
 - [x] Make sidecar errors typed enough for UI/log categories.
-- [ ] Keep serialized transcription requests unless we intentionally add a request ID protocol.
-- [ ] Kill sidecar on model removal, provider switch away from local, and app quit.
+- [x] Keep serialized transcription requests unless we intentionally add a request ID protocol.
+- [x] Kill sidecar on model removal, provider switch away from local, and app quit.
 - [x] Make dev and packaged mode use the same installed model layout.
 
 ## 5. Packaging
@@ -71,6 +71,6 @@ Rules:
 - [ ] Fresh checkout can run dev local transcription after installing the Whisper model.
 - [ ] Packaged app can install the model and transcribe without user Python.
 - [x] Silence does not paste hallucinated text.
-- [ ] Switching away from local stops the sidecar.
-- [ ] Removing the model removes files and prevents local transcription.
+- [x] Switching away from local stops the sidecar.
+- [x] Removing the model removes files and prevents local transcription.
 - [x] Worktree has no tracked legacy local STT implementation left.
