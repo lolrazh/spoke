@@ -744,7 +744,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
                     <SectionSeparator title="Local Model" />
-                    <ModelInstallCard />
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      <ModelInstallCard inGroup />
+                    </div>
                   </motion.section>
 
                   <motion.section
