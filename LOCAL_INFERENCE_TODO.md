@@ -28,25 +28,25 @@ Rules:
 
 ## 3. Sidecar Runtime
 
-- [ ] Replace the Moonshine sidecar with a Whisper MLX sidecar.
-- [ ] Keep the daemon protocol: length-prefixed PCM16 in, JSON lines out.
-- [ ] Emit structured events: `ready`, `partial` if supported, `done`, `error`.
-- [ ] Include metrics: load time, audio duration, inference time, peak MLX memory, cache memory, model ID.
-- [ ] Add no-speech handling inside the sidecar.
-- [ ] Keep one-shot mode for smoke tests.
+- [x] Replace the Moonshine sidecar with a Whisper MLX sidecar.
+- [x] Keep the daemon protocol: length-prefixed PCM16 in, JSON lines out.
+- [x] Emit structured events: `ready`, `partial` if supported, `done`, `error`.
+- [x] Include metrics: load time, audio duration, inference time, peak MLX memory, cache memory, model ID.
+- [x] Add no-speech handling inside the sidecar.
+- [x] Keep one-shot mode for smoke tests.
 - [ ] Remove `moonshine_mlx.py` and `convert_weights.py` after the Whisper sidecar is verified.
 
 ## 4. Electron Lifecycle
 
 - [x] Add a shared `spawnPromise` so startup and first transcription cannot double-spawn sidecars.
-- [ ] Make sidecar errors typed enough for UI/log categories.
+- [x] Make sidecar errors typed enough for UI/log categories.
 - [ ] Keep serialized transcription requests unless we intentionally add a request ID protocol.
 - [ ] Kill sidecar on model removal, provider switch away from local, and app quit.
 - [x] Make dev and packaged mode use the same installed model layout.
 
 ## 5. Packaging
 
-- [ ] Update sidecar build script for Whisper/MLX dependencies.
+- [x] Update sidecar build script for Whisper/MLX dependencies.
 - [ ] Build a standalone macOS arm64 `spoke-stt` binary.
 - [ ] Ensure Electron Forge includes the sidecar binary in packaged resources.
 - [ ] Test packaged app on a clean Mac account without local Python or repo files.

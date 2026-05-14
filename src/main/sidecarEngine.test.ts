@@ -106,4 +106,20 @@ describe("sidecarEngine", () => {
     await expect(spawnSidecar()).rejects.toThrow("Local STT binary not found");
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
+
+  it("rejects startup when the sidecar emits an error event", async () => {
+    const proc = createSidecarProcess();
+    mocks.spawn.mockReturnValue(proc);
+    const { spawnSidecar } = await importEngine();
+
+    const startup = spawnSidecar();
+    proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"type":"error","message":"Local model is incomplete","code":"model_load_failed"}\n',
+      ),
+    );
+
+    await expect(startup).rejects.toThrow("Local model is incomplete");
+  });
 });

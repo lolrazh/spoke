@@ -40,14 +40,24 @@ pyinstaller \
   --noupx \
   --console \
   --collect-all mlx \
-  --collect-all tokenizers \
+  --collect-data mlx_whisper \
+  --collect-all scipy \
+  --collect-all numba \
+  --collect-all huggingface_hub \
+  --collect-submodules tiktoken_ext \
   --hidden-import mlx \
   --hidden-import mlx.core \
   --hidden-import mlx.nn \
   --hidden-import numpy \
-  --hidden-import tokenizers \
-  --hidden-import moonshine_mlx \
-  --add-data "moonshine_mlx.py:." \
+  --hidden-import mlx_whisper \
+  --hidden-import mlx_whisper.audio \
+  --hidden-import mlx_whisper.decoding \
+  --hidden-import mlx_whisper.load_models \
+  --hidden-import mlx_whisper.tokenizer \
+  --hidden-import mlx_whisper.transcribe \
+  --hidden-import mlx_whisper.whisper \
+  --hidden-import tiktoken \
+  --hidden-import tiktoken_ext.openai_public \
   sidecar.py
 
 echo ""

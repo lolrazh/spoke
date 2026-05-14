@@ -67,6 +67,12 @@ export interface SttPartialEvent {
   text: string;
 }
 
+export interface SttErrorEvent {
+  type: "error";
+  message: string;
+  code?: string;
+}
+
 export interface SttDoneEvent {
   type: "done";
   transcript: string;
@@ -76,10 +82,10 @@ export interface SttDoneEvent {
     inference_ms: number;
     ttft_ms: number | null;
     word_count: number;
-  };
+  } & Record<string, unknown>;
 }
 
-export type SttEvent = SttPartialEvent | SttDoneEvent;
+export type SttEvent = SttPartialEvent | SttDoneEvent | SttErrorEvent;
 
 // IPC result from main → renderer
 export interface LocalTranscribeResult {

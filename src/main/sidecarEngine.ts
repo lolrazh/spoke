@@ -98,6 +98,12 @@ function spawnSidecarOnce(): Promise<void> {
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
             settle(resolve);
+          } else if (event.type === "error") {
+            const message =
+              typeof event.message === "string"
+                ? event.message
+                : "Sidecar failed during startup";
+            settle(() => reject(new Error(message)));
           }
         } catch {
           console.warn("[STT] Non-JSON stdout during init:", line);
@@ -218,6 +224,12 @@ function transcribeLocalOnce(
             resolved = true;
             cleanup();
             resolve({ text: event.transcript, metrics: event.metrics });
+            return;
+          }
+          if (event.type === "error") {
+            resolved = true;
+            cleanup();
+            reject(new Error(event.message));
             return;
           }
           // partials are ignored for now (no streaming UI in local mode)
