@@ -37,6 +37,14 @@ SAMPLE_RATE = 16000
 # decides ambiguous low-volume clips.
 SILENCE_RMS_THRESHOLD = 0.0005
 SILENCE_PEAK_THRESHOLD = 0.003
+LOW_ENERGY_RMS_THRESHOLD = 0.004
+LOW_ENERGY_PEAK_THRESHOLD = 0.025
+LOW_SPECTRAL_ENTROPY_THRESHOLD = 0.22
+NOISE_SPECTRAL_ENTROPY_THRESHOLD = 0.75
+NOISE_SPECTRAL_FLATNESS_THRESHOLD = 0.35
+SPECTRAL_FRAME_LENGTH = 400
+SPECTRAL_HOP_LENGTH = 160
+SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
 
 
 def log(message: str) -> None:
@@ -118,18 +126,74 @@ def audio_stats(audio: np.ndarray) -> dict[str, float | int | bool]:
             "audio_rms": 0.0,
             "audio_peak": 0.0,
             "is_silence": True,
+            "is_no_speech": True,
+            "spectral_entropy": 0.0,
+            "spectral_flatness": 0.0,
+            "active_frame_ratio": 0.0,
         }
 
     centered = audio - float(np.mean(audio))
     rms = float(np.sqrt(np.mean(np.square(centered, dtype=np.float64))))
     peak = float(np.max(np.abs(centered)))
     is_silence = rms < SILENCE_RMS_THRESHOLD and peak < SILENCE_PEAK_THRESHOLD
+    spectral = spectral_stats(centered)
+    is_low_energy = rms < LOW_ENERGY_RMS_THRESHOLD and peak < LOW_ENERGY_PEAK_THRESHOLD
+    is_tonal = spectral["spectral_entropy"] < LOW_SPECTRAL_ENTROPY_THRESHOLD
+    is_noise_like = (
+        spectral["spectral_entropy"] > NOISE_SPECTRAL_ENTROPY_THRESHOLD
+        and spectral["spectral_flatness"] > NOISE_SPECTRAL_FLATNESS_THRESHOLD
+    )
+    is_no_speech = is_silence or is_low_energy or is_tonal or is_noise_like
 
     return {
         "audio_duration_ms": round(duration_ms),
         "audio_rms": rms,
         "audio_peak": peak,
         "is_silence": is_silence,
+        "is_no_speech": is_no_speech,
+        **spectral,
+    }
+
+
+def spectral_stats(audio: np.ndarray) -> dict[str, float]:
+    if audio.size < SPECTRAL_FRAME_LENGTH:
+        return {
+            "spectral_entropy": 0.0,
+            "spectral_flatness": 0.0,
+            "active_frame_ratio": 0.0,
+        }
+
+    window = np.hanning(SPECTRAL_FRAME_LENGTH).astype(np.float32)
+    entropy_values: list[float] = []
+    flatness_values: list[float] = []
+    frame_count = 0
+
+    for start in range(0, len(audio) - SPECTRAL_FRAME_LENGTH + 1, SPECTRAL_HOP_LENGTH):
+        frame_count += 1
+        frame = audio[start : start + SPECTRAL_FRAME_LENGTH]
+        frame_rms = float(np.sqrt(np.mean(np.square(frame, dtype=np.float64))))
+        if frame_rms < SPECTRAL_ACTIVE_RMS_THRESHOLD:
+            continue
+
+        spectrum = np.abs(np.fft.rfft((frame - float(np.mean(frame))) * window)) ** 2
+        spectrum = spectrum[2:] + 1e-12
+        total = float(np.sum(spectrum))
+        if total <= 1e-12:
+            continue
+
+        probabilities = spectrum / total
+        entropy = float(
+            -np.sum(probabilities * np.log(probabilities)) / np.log(len(probabilities))
+        )
+        flatness = float(np.exp(np.mean(np.log(spectrum))) / np.mean(spectrum))
+        entropy_values.append(entropy)
+        flatness_values.append(flatness)
+
+    active_frames = len(entropy_values)
+    return {
+        "spectral_entropy": float(np.mean(entropy_values)) if entropy_values else 0.0,
+        "spectral_flatness": float(np.mean(flatness_values)) if flatness_values else 0.0,
+        "active_frame_ratio": active_frames / frame_count if frame_count else 0.0,
     }
 
 
@@ -163,7 +227,7 @@ class WhisperRuntime:
             f"{len(audio)} samples ({stats['audio_duration_ms']} ms)"
         )
 
-        if stats["is_silence"]:
+        if stats["is_no_speech"]:
             metrics = self._metrics(
                 stats=stats,
                 inference_ms=0,
@@ -173,7 +237,7 @@ class WhisperRuntime:
                 memory=memory_snapshot(),
             )
             emit({"type": "done", "transcript": "", "metrics": metrics})
-            log("sidecar: skipped near-silent audio")
+            log("sidecar: skipped non-speech audio")
             return
 
         reset_peak_memory()
@@ -236,6 +300,10 @@ class WhisperRuntime:
             "audio_rms": stats["audio_rms"],
             "audio_peak": stats["audio_peak"],
             "is_silence": stats["is_silence"],
+            "is_no_speech": stats["is_no_speech"],
+            "spectral_entropy": stats["spectral_entropy"],
+            "spectral_flatness": stats["spectral_flatness"],
+            "active_frame_ratio": stats["active_frame_ratio"],
             "inference_ms": inference_ms,
             "ttft_ms": None,
             "word_count": len(transcript.split()) if transcript else 0,
