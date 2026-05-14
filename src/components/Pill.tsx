@@ -32,8 +32,6 @@ interface PillProps {
     expandedH: number;
     maxW: number;
   };
-  onStartDictation: () => void;
-  onStopDictation: () => void;
   onHoverChange: (hovering: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
   onAnimDone: () => void;
@@ -43,10 +41,6 @@ interface PillProps {
   onCollapse: () => void;
   onToggleFloatingBar?: (enabled: boolean) => void;
   onNotificationAction?: (actionId: string) => void;
-  shareTranscriptionsEnabled?: boolean;
-  shareTranscriptionsLoading?: boolean;
-  shareTranscriptionsUpdating?: boolean;
-  onShareTranscriptionsChange?: (enabled: boolean) => void;
   panelView: "settings" | "permissions";
   initialSettingsTab?: "settings" | "history";
   onSettingsPanelHeightChange?: (height: number) => void;
@@ -57,8 +51,6 @@ const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
   audioLevel,
-  onStartDictation,
-  onStopDictation,
   onHoverChange,
   onMetrics,
   onAnimDone,
@@ -71,10 +63,6 @@ const Pill: React.FC<PillProps> = ({
   onCollapse,
   onToggleFloatingBar,
   onNotificationAction,
-  shareTranscriptionsEnabled,
-  shareTranscriptionsLoading,
-  shareTranscriptionsUpdating,
-  onShareTranscriptionsChange,
   panelView,
   initialSettingsTab,
   onSettingsPanelHeightChange,
@@ -99,6 +87,7 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = pillState === "NOTIFICATION";
   const isExpanded = pillState === "EXPANDED";
+  const notificationAction = pillContext.notifAction ?? null;
 
   // (Removed noisy state logging)
 
@@ -130,17 +119,6 @@ const Pill: React.FC<PillProps> = ({
     };
   }, []);
 
-  // Unified function to render animated dots (for processing state only)
-  const renderDots = (type: "animated") => {
-    return Array.from({ length: 7 }).map((_, index) => (
-      <div
-        key={`dot-${type}-${index}`}
-        className={`dot ${type}`}
-        style={{ animationDelay: `${index * 0.06}s` }}
-      />
-    ));
-  };
-
   // Handle context menu for pill
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -166,10 +144,10 @@ const Pill: React.FC<PillProps> = ({
 
     if (
       pillState === "NOTIFICATION" &&
-      pillContext.notifAction &&
+      notificationAction &&
       onNotificationAction
     ) {
-      onNotificationAction(pillContext.notifAction);
+      onNotificationAction(notificationAction);
       return;
     }
   };
@@ -327,10 +305,6 @@ const Pill: React.FC<PillProps> = ({
                       embeddedMode={true}
                       onToggleFloatingBar={onToggleFloatingBar}
                       onRequestCollapse={onCollapse}
-                      shareTranscriptionsEnabled={shareTranscriptionsEnabled}
-                      shareTranscriptionsLoading={shareTranscriptionsLoading}
-                      shareTranscriptionsUpdating={shareTranscriptionsUpdating}
-                      onShareTranscriptionsChange={onShareTranscriptionsChange}
                       onHeightChange={onSettingsPanelHeightChange}
                       initialTab={initialSettingsTab}
                     />
@@ -349,16 +323,16 @@ const Pill: React.FC<PillProps> = ({
               <motion.span
                 key="notification"
                 className={`notification-text ${isTextTruncated ? "truncated" : ""} ${
-                  pillContext.notifAction ? "cursor-pointer" : ""
+                  notificationAction ? "cursor-pointer" : ""
                 }`}
-                role={pillContext.notifAction ? "button" : undefined}
-                tabIndex={pillContext.notifAction ? 0 : undefined}
+                role={notificationAction ? "button" : undefined}
+                tabIndex={notificationAction ? 0 : undefined}
                 onKeyDown={
-                  pillContext.notifAction && onNotificationAction
+                  notificationAction && onNotificationAction
                     ? (event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          onNotificationAction(pillContext.notifAction!);
+                          onNotificationAction(notificationAction);
                         }
                       }
                     : undefined

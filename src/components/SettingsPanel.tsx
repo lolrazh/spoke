@@ -254,10 +254,6 @@ interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
   onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
   onToggleFloatingBar?: (enabled: boolean) => void;
-  shareTranscriptionsEnabled?: boolean;
-  shareTranscriptionsLoading?: boolean;
-  shareTranscriptionsUpdating?: boolean;
-  onShareTranscriptionsChange?: (enabled: boolean) => void;
   onHeightChange?: (height: number) => void;
   initialTab?: "settings" | "history"; // Initial tab to show (for paste-shortcut → history UX)
 }
@@ -265,11 +261,6 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   embeddedMode = false,
   onToggleFloatingBar,
-  onRequestCollapse: _onRequestCollapse, // Preserved for compatibility while panel hosts are simplified
-  shareTranscriptionsEnabled,
-  shareTranscriptionsLoading,
-  shareTranscriptionsUpdating,
-  onShareTranscriptionsChange,
   onHeightChange,
   initialTab = "settings",
 }) => {
@@ -294,7 +285,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
   const [showInDock, setShowInDock] = useState<boolean>(true);
   const {
-    providerSettings,
     setProviderSettings,
     loadProviderSettings,
     providerEntries,
@@ -826,25 +816,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         }
                         inGroup
                       />
-
-                      {/* Temporarily hidden - can be restored later */}
-                      {/* <Toggle
-                        label="Improve the Model for Everyone"
-                        description="Share anonymous usage to improve responses"
-                        enabled={shareTranscriptionsEnabled ?? false}
-                        onChange={(enabled) => onShareTranscriptionsChange?.(enabled)}
-                        icon={
-                          <SfIcon
-                            name="point.3.filled.connected.trianglepath.dotted"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        }
-                        disabled={
-                          !!shareTranscriptionsLoading || !!shareTranscriptionsUpdating
-                        }
-                        inGroup
-                      /> */}
                     </div>
                   </motion.section>
 

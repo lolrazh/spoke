@@ -28,7 +28,6 @@ import {
   PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
 } from "../hooks/usePermissionNotifications";
 import { usePillMachine } from "../state/pillStateMachine";
-import { useSharePreference } from "../hooks/useSharePreference";
 export type {
   PillStateType,
   PillEvent,
@@ -75,13 +74,6 @@ const AppInner: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
-  const {
-    shareTranscriptionsEnabled,
-    shareTranscriptionsLoading,
-    shareTranscriptionsUpdating,
-    loadSharePreference,
-    handleSharePreferenceToggle,
-  } = useSharePreference();
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
     useState(CONTENT_HEIGHT);
@@ -142,8 +134,7 @@ const AppInner: React.FC = () => {
     initTranscriptionHistory().catch(() => {
       // Ignore initialization errors; app can function without history
     });
-    loadSharePreference();
-  }, [loadSharePreference]);
+  }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX
   useEffect(() => {
@@ -176,7 +167,6 @@ const AppInner: React.FC = () => {
     autoEnumerateDevices: true,
     autoInitStream: false,
     requestLabelPermissionForEnumeration: false,
-    shareTranscriptionsEnabled,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -513,7 +503,7 @@ const AppInner: React.FC = () => {
               PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
             );
           } else {
-            window.notifications?.send?.("Sign in to dictate");
+            window.notifications?.send?.("Microphone access needed");
           }
         } catch {}
         clearActiveCapture(tokenId);
@@ -1178,15 +1168,6 @@ const AppInner: React.FC = () => {
           expandedH: EXPANDED_H,
           maxW: MAX_W,
         }}
-        onStartDictation={() => undefined}
-        onStopDictation={() => {
-          pendingStartTokenRef.current = null;
-          pillDispatch({ type: "PTT_STOP" });
-          trans.stop();
-          if (activeCaptureRef.current) {
-            clearActiveCapture(activeCaptureRef.current.token);
-          }
-        }}
         onHoverChange={(h) =>
           pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" })
         }
@@ -1245,10 +1226,6 @@ const AppInner: React.FC = () => {
           // If not expanded, show heads-up now and then hide after it settles
           notifyThenHide(message);
         }}
-        shareTranscriptionsEnabled={shareTranscriptionsEnabled}
-        shareTranscriptionsLoading={shareTranscriptionsLoading}
-        shareTranscriptionsUpdating={shareTranscriptionsUpdating}
-        onShareTranscriptionsChange={handleSharePreferenceToggle}
         onNotificationAction={handleNotificationAction}
         panelView={panelView}
         initialSettingsTab={initialSettingsTab}

@@ -43,8 +43,6 @@ export interface UseTranscriptionOptions {
   autoInitStream?: boolean;
   requestLabelPermissionForEnumeration?: boolean;
   suppressNativePaste?: boolean;
-  shareTranscriptionsInMetrics?: boolean;
-  shareTranscriptionsEnabled?: boolean;
 }
 
 export function useTranscription(
@@ -152,8 +150,7 @@ export function useTranscription(
     if (recording || processing || stopInFlightRef.current) return;
 
     const providerId = await resolveActiveProviderId();
-    const provider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
     try {
       setText("");
@@ -239,15 +236,8 @@ export function useTranscription(
     // Comprehensive timing for debugging latency
     const timing = {
       stopStarted: Date.now(),
-      postRollDone: 0,
-      recorderStopped: 0,
-      prepareDone: 0,
-      authTokenDone: 0,
       fetchStarted: 0,
       fetchDone: 0,
-      responseParsed: 0,
-      historyDone: 0,
-      pasteDone: 0,
     };
 
     try {
@@ -257,11 +247,9 @@ export function useTranscription(
 
       // Add post-roll delay to capture end of speech
       await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
-      timing.postRollDone = Date.now();
 
       // Stop recording and get audio blob
       const audioBlob = await recorder.stop();
-      timing.recorderStopped = Date.now();
 
       console.log(`[HTTP] Audio recorded: ${audioBlob.size} bytes`);
 
@@ -347,7 +335,6 @@ export function useTranscription(
         await ocrPromiseRef.current;
         ocrPromiseRef.current = null;
       }
-      timing.prepareDone = Date.now();
 
       // Transcribe via cloud provider
       timing.fetchStarted = Date.now();
