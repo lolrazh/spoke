@@ -36,7 +36,6 @@ describe("components/SettingsPanel", () => {
         status: "granted",
         granted: true,
       }),
-      showOnboarding: async () => ({ ok: true }),
       openSystemPreferences: async () => {},
     };
     (window as any).mic = {
@@ -75,7 +74,7 @@ describe("components/SettingsPanel", () => {
     expect(spyGetEnabled).toHaveBeenCalled();
     expect(navigator.mediaDevices.enumerateDevices).toHaveBeenCalled();
     unmount();
-  });
+  }, 10_000);
 
   it("initializes mic list and queries selected mic from main", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;

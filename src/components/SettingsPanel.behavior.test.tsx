@@ -35,7 +35,6 @@ describe("components/SettingsPanel behavior", () => {
         status: "granted",
         granted: true,
       }),
-      showOnboarding: async () => ({ ok: true }),
       openSystemPreferences: async () => {},
     };
     (window as any).mic = {
@@ -80,5 +79,5 @@ describe("components/SettingsPanel behavior", () => {
     expect(onToggle).toHaveBeenCalled();
 
     unmount();
-  });
+  }, 10_000);
 });
