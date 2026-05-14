@@ -13,7 +13,7 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     setupFiles: ["src/test/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}", "worker/**/*.{test,spec}.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       provider: "v8",
       reports: ["text", "lcov"],

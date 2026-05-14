@@ -2,7 +2,7 @@
  * Smart LLM routing with trigger-based detection
  * Routes transcriptions to the appropriate model tier or bypasses LLM entirely
  *
- * Adapted from worker/src/services/llm/smartRouting.ts for Electron main process.
+ * Smart routing for the local Electron enhancement pipeline.
  */
 
 import type { EnhancementConfig, RoutingDecision } from "./types";

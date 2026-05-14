@@ -50,10 +50,6 @@ export default defineConfig({
       "@": join(__dirname, "src"), // Example alias
     },
   },
-  // Add worker configuration
-  worker: {
-    format: "es",
-  },
   // Simplified build options - let Forge handle the main entry
   build: {
     // Target environments that support ES modules and top-level await

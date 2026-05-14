@@ -1,7 +1,7 @@
 /**
  * Edit Mode Prompt System
  *
- * Adapted from worker/src/services/llm/editPrompt.ts for Electron main process.
+ * Edit prompt builder for the local Electron enhancement pipeline.
  */
 
 export interface EditRequestPayload {

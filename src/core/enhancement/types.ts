@@ -1,7 +1,7 @@
 /**
  * Enhancement Pipeline Types
  *
- * Adapted from worker/src/services/llm/ and worker/src/pipeline/types.ts
+ * Shared enhancement types for the local Electron pipeline.
  * for the Electron main process.
  */
 
