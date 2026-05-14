@@ -22,14 +22,14 @@ const mockUseModelStatus = vi.mocked(useModelStatus);
 
 const baseStatus: ModelStatus = {
   state: "not_installed" as const,
-  family: null,
-  modelId: null,
-  displayName: null,
-  version: null,
-  manifestVersion: null,
+  family: "whisper",
+  modelId: "mlx-community/whisper-large-v3-turbo-4bit",
+  displayName: "Whisper large-v3 turbo 4-bit",
+  version: "0f058d38170d183f9fdee07908f5b515d91793a8",
+  manifestVersion: 1,
   downloadProgress: 0,
   downloadedBytes: 0,
-  totalBytes: 0,
+  totalBytes: 464_280_053,
   error: null,
 };
 
@@ -47,7 +47,9 @@ describe("ModelInstallCard", () => {
     });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/Install Model/i)).toBeTruthy();
+    expect(screen.getByText("Whisper large-v3 turbo 4-bit")).toBeTruthy();
+    expect(screen.getByText(/442.8 MB download/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Install" })).toBeTruthy();
   });
 
   it("renders progress bar when downloading", () => {
@@ -77,7 +79,7 @@ describe("ModelInstallCard", () => {
     });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/Verifying download/i)).toBeTruthy();
+    expect(screen.getByText("Verifying…")).toBeTruthy();
   });
 
   it("renders installed state with remove button", () => {
@@ -98,7 +100,7 @@ describe("ModelInstallCard", () => {
 
     render(<ModelInstallCard />);
     expect(screen.getByText(/Remove/i)).toBeTruthy();
-    expect(screen.getByText(/v0.1/)).toBeTruthy();
+    expect(screen.getByText(/rev 0.1/i)).toBeTruthy();
   });
 
   it("renders error state with retry button", () => {

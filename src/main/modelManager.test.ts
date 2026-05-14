@@ -62,6 +62,7 @@ import {
   LOCAL_MODEL_FAMILY,
   LOCAL_MODEL_ID,
   LOCAL_MODEL_MANIFEST_VERSION,
+  LOCAL_MODEL_VERSION,
 } from "./localModelContract";
 import type { ModelManifestFile } from "../types/shared";
 
@@ -155,9 +156,11 @@ describe("modelManager", () => {
 
       const status = getModelStatus();
       expect(status.state).toBe("not_installed");
-      expect(status.modelId).toBeNull();
-      expect(status.version).toBeNull();
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
       expect(status.downloadProgress).toBe(0);
+      expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBeNull();
     });
 
@@ -312,8 +315,8 @@ describe("modelManager", () => {
 
       const status = getModelStatus();
       expect(status.state).toBe("not_installed");
-      expect(status.modelId).toBeNull();
-      expect(status.version).toBeNull();
+      expect(status.modelId).toBe(LOCAL_MODEL_ID);
+      expect(status.version).toBe(LOCAL_MODEL_VERSION);
       expect(status.error).toBeNull();
     });
 
@@ -453,7 +456,7 @@ describe("modelManager", () => {
 
       const persisted = JSON.parse(writeCall![1] as string);
       expect(persisted.state).toBe("not_installed");
-      expect(persisted.modelId).toBeNull();
+      expect(persisted.modelId).toBe(LOCAL_MODEL_ID);
     });
   });
 });

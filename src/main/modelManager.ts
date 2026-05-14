@@ -31,6 +31,7 @@ import type {
 
 const MAX_REDIRECTS = 5;
 const STATE_FILE = "model-state.json";
+const LOCAL_MODEL_TOTAL_BYTES = totalFileSize(LOCAL_MODEL_MANIFEST.files);
 
 type InstalledModelFile = Pick<
   ModelManifestFile,
@@ -56,14 +57,14 @@ export interface ModelManagerCallbacks {
 
 const DEFAULT_STATUS: ModelStatus = {
   state: "not_installed",
-  family: null,
-  modelId: null,
-  displayName: null,
-  version: null,
-  manifestVersion: null,
+  family: LOCAL_MODEL_FAMILY,
+  modelId: LOCAL_MODEL_ID,
+  displayName: LOCAL_MODEL_DISPLAY_NAME,
+  version: LOCAL_MODEL_MANIFEST.version,
+  manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
   downloadProgress: 0,
   downloadedBytes: 0,
-  totalBytes: 0,
+  totalBytes: LOCAL_MODEL_TOTAL_BYTES,
   error: null,
 };
 
