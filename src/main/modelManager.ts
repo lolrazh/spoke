@@ -244,6 +244,32 @@ function getManifest(): ModelManifest {
 
 // ── File download with progress ───────────────────────────────────────
 
+export function resolveDownloadRedirectUrl(
+  location: string,
+  currentUrl: string,
+): string {
+  try {
+    return new URL(location, currentUrl).toString();
+  } catch {
+    throw new Error(`Invalid redirect URL '${location}' from '${currentUrl}'`);
+  }
+}
+
+function getDownloadClient(url: string): typeof https.get | typeof http.get {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    throw new Error(`Invalid model file URL '${url}'`);
+  }
+
+  if (parsedUrl.protocol === "https:") return https.get;
+  if (parsedUrl.protocol === "http:") return http.get;
+  throw new Error(
+    `Unsupported model file URL protocol '${parsedUrl.protocol}'`,
+  );
+}
+
 function downloadFile(
   url: string,
   destPath: string,
@@ -256,7 +282,13 @@ function downloadFile(
       return;
     }
 
-    const get = url.startsWith("https:") ? https.get : http.get;
+    let get: typeof https.get | typeof http.get;
+    try {
+      get = getDownloadClient(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
     get(url, (res) => {
       // Handle redirects
@@ -266,13 +298,17 @@ function downloadFile(
         res.statusCode < 400 &&
         res.headers.location
       ) {
+        let redirectUrl: string;
+        try {
+          redirectUrl = resolveDownloadRedirectUrl(res.headers.location, url);
+        } catch (error) {
+          reject(error);
+          res.resume();
+          return;
+        }
+
         res.resume();
-        downloadFile(
-          res.headers.location,
-          destPath,
-          onProgress,
-          redirectCount + 1,
-        )
+        downloadFile(redirectUrl, destPath, onProgress, redirectCount + 1)
           .then(resolve)
           .catch(reject);
         return;

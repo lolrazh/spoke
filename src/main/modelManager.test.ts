@@ -55,6 +55,7 @@ import {
   getModelInstallState,
   removeModel,
   installModel,
+  resolveDownloadRedirectUrl,
 } from "./modelManager";
 import type { ModelManagerCallbacks } from "./modelManager";
 import {
@@ -363,6 +364,26 @@ describe("modelManager", () => {
   });
 
   describe("installModel", () => {
+    it("should resolve Hugging Face relative redirect URLs", () => {
+      const redirect = resolveDownloadRedirectUrl(
+        "/api/resolve-cache/models/mlx-community/whisper-large-v3-turbo-4bit/config.json?etag=test",
+        "https://huggingface.co/mlx-community/whisper-large-v3-turbo-4bit/resolve/revision/config.json",
+      );
+
+      expect(redirect).toBe(
+        "https://huggingface.co/api/resolve-cache/models/mlx-community/whisper-large-v3-turbo-4bit/config.json?etag=test",
+      );
+    });
+
+    it("should keep absolute redirect URLs unchanged", () => {
+      const redirect = resolveDownloadRedirectUrl(
+        "https://cdn-lfs.huggingface.co/model.safetensors",
+        "https://huggingface.co/mlx-community/whisper-large-v3-turbo-4bit/resolve/revision/model.safetensors",
+      );
+
+      expect(redirect).toBe("https://cdn-lfs.huggingface.co/model.safetensors");
+    });
+
     it("should throw when install is already in progress (downloading)", async () => {
       const cbs = makeCallbacks();
       initModelManager(cbs);
