@@ -15,7 +15,7 @@ const LENGTH_THRESHOLD_WORDS = 180;
  * Smart routing for transcription post-processing
  *
  * Decision tree:
- * 1. No triggers detected → BYPASS (no LLM, use raw STT - even if long!)
+ * 1. No triggers detected → BYPASS (no LLM, use raw transcript - even if long!)
  * 2. Spelling trigger detected → ADVANCED model (always, regardless of length)
  * 3. Other triggers + long text (>1200 chars) → ADVANCED model (upgrade from default)
  * 4. Other triggers + normal length → DEFAULT model (fast)

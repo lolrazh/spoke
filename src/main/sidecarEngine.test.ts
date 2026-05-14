@@ -103,7 +103,9 @@ describe("sidecarEngine", () => {
     mocks.existsSync.mockReturnValue(false);
     const { spawnSidecar } = await importEngine();
 
-    await expect(spawnSidecar()).rejects.toThrow("Local STT binary not found");
+    await expect(spawnSidecar()).rejects.toThrow(
+      "MLX Whisper sidecar binary not found",
+    );
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
 

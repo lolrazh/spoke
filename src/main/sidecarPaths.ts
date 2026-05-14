@@ -1,7 +1,7 @@
 /**
  * Sidecar Paths
  *
- * Resolves paths to the STT sidecar binary and model weights, supporting
+ * Resolves paths to the MLX Whisper sidecar binary and model weights, supporting
  * both packaged (production) and development layouts.
  *
  * - Packaged: binary at `resources/spoke-stt`, weights in `userData/local-stt/weights/`

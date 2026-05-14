@@ -1,6 +1,6 @@
 /**
  * Converts a WebM/Opus Blob from MediaRecorder into PCM16 (s16le, 16kHz, mono)
- * suitable for the local STT sidecar.
+ * suitable for the MLX Whisper sidecar.
  */
 export async function decodeToPcm16(blob: Blob): Promise<Int16Array> {
   const arrayBuffer = await blob.arrayBuffer();

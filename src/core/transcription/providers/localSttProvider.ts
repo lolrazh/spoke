@@ -5,7 +5,7 @@ import { TranscriptionSessionError } from "../sessionErrors";
 export const localSttProvider: TranscriptionProvider = {
   descriptor: {
     id: LOCAL_STT_PROVIDER_ID,
-    displayName: "Local STT",
+    displayName: "Local Whisper",
     kind: "local",
     requiresApiKey: false,
   },
@@ -17,7 +17,7 @@ export const localSttProvider: TranscriptionProvider = {
     return {
       configured: available,
       available,
-      reason: available ? undefined : "Local STT bridge is unavailable.",
+      reason: available ? undefined : "Local Whisper bridge is unavailable.",
     };
   },
   transcribe: async ({ pcm16 }) => {

@@ -57,12 +57,12 @@ export interface EnhanceOptions {
 // ── Enhancement ───────────────────────────────────────────────────────
 
 /**
- * Enhance raw STT text using the trigger-based LLM pipeline.
+ * Enhance raw transcript text using the trigger-based LLM pipeline.
  *
  * Returns the original text if:
  * - No LLM provider is configured
  * - No triggers are detected (bypass — 90% of cases)
- * - LLM call fails (graceful fallback)
+ * - LLM call fails (return the original transcript)
  */
 export async function enhance(
   rawText: string,
@@ -124,7 +124,7 @@ export async function enhance(
 
     const enhanced = result.text.trim();
     if (!enhanced) {
-      console.warn("[Enhance] LLM returned empty text, using raw STT");
+      console.warn("[Enhance] LLM returned empty text, using raw transcript");
       return { text, bypassed: true };
     }
 
@@ -136,7 +136,10 @@ export async function enhance(
       model: result.model,
     };
   } catch (error) {
-    console.error("[Enhance] LLM call failed, falling back to raw STT:", error);
+    console.error(
+      "[Enhance] LLM call failed, returning raw transcript:",
+      error,
+    );
     return { text, bypassed: true };
   }
 }

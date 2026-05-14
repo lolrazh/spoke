@@ -143,7 +143,7 @@ contextBridge.exposeInMainWorld("mic", {
   },
 });
 
-// Local STT bridge
+// Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
   transcribeLocal: (pcmBuffer: ArrayBuffer) =>
     ipcRenderer.invoke("stt:transcribe-local", Buffer.from(pcmBuffer)),

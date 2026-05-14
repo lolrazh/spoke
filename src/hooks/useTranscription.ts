@@ -255,7 +255,7 @@ export function useTranscription(
 
       const context = buildTranscriptionContext();
 
-      // ===== Local STT path =====
+      // ===== Local Whisper path =====
       if (provider.descriptor.kind === "local") {
         console.log("[Local] Decoding audio to PCM16...");
         const pcm16 = await decodeToPcm16(audioBlob);
@@ -300,7 +300,10 @@ export function useTranscription(
               );
             }
           } catch (err) {
-            console.warn("[Local] Enhancement failed, using raw STT:", err);
+            console.warn(
+              "[Local] Enhancement failed, using raw transcript:",
+              err,
+            );
           }
         }
 
@@ -368,7 +371,10 @@ export function useTranscription(
             );
           }
         } catch (err) {
-          console.warn("[Cloud] Enhancement failed, using raw STT:", err);
+          console.warn(
+            "[Cloud] Enhancement failed, using raw transcript:",
+            err,
+          );
         }
       }
 

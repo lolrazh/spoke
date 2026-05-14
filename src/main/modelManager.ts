@@ -1,7 +1,7 @@
 /**
  * Model Manager
  *
- * Manages downloading, verifying, and lifecycle of local STT model weights.
+ * Manages downloading, verifying, and lifecycle of the local Whisper model.
  * Weights are stored in `userData/local-stt/weights/` and state is persisted
  * to `userData/local-stt/model-state.json`.
  */

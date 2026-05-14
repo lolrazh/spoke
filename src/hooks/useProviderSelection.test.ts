@@ -34,7 +34,7 @@ describe("useProviderSelection", () => {
         providers: [
           {
             id: "local-stt",
-            displayName: "Local STT",
+            displayName: "Local Whisper",
             description: "Local transcription",
             kind: "local",
             selectable: true,
@@ -72,7 +72,7 @@ describe("useProviderSelection", () => {
         providers: [
           {
             id: "local-stt",
-            displayName: "Local STT",
+            displayName: "Local Whisper",
             description: "Local transcription",
             kind: "local",
             selectable: true,

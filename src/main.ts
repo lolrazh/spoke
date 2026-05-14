@@ -2202,7 +2202,7 @@ app.whenReady().then(async () => {
     return { id: selectedId };
   });
 
-  // ============ Local STT IPC handlers ============
+  // ============ Local Whisper IPC handlers ============
 
   ipcMain.handle("stt:get-model-status", () => {
     return getModelStatus();
@@ -2604,7 +2604,7 @@ app.on("before-quit", () => {
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
-  // Clean up local STT sidecar
+  // Clean up local Whisper sidecar
   stopLocalSidecar();
 
   // Clean up pre-spawned paste helper

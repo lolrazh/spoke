@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the STT sidecar as a standalone macOS arm64 binary using PyInstaller.
+# Build the MLX Whisper sidecar as a standalone macOS arm64 binary using PyInstaller.
 # Output: local-stt/dist/spoke-stt
 #
 # Prerequisites:

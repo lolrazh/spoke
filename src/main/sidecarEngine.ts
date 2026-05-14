@@ -1,7 +1,7 @@
 /**
  * Sidecar Engine
  *
- * Manages the local STT Python sidecar process lifecycle and transcription.
+ * Manages the MLX Whisper sidecar process lifecycle and transcription.
  * Handles spawning, readiness detection, graceful shutdown, and serialized
  * transcription requests via length-prefixed PCM over stdin/stdout.
  */
@@ -51,7 +51,7 @@ function spawnSidecarOnce(): Promise<void> {
     if (!fs.existsSync(binaryPath)) {
       reject(
         new Error(
-          `Local STT binary not found at ${binaryPath}. In dev, run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
+          `MLX Whisper sidecar binary not found at ${binaryPath}. In dev, run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
         ),
       );
       return;

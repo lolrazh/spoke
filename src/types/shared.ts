@@ -61,7 +61,7 @@ export type ActiveDisplayPayload = {
   storedNotchWidth?: number | null;
 };
 
-// Local STT daemon protocol (JSON lines on stdout)
+// MLX Whisper daemon protocol (JSON lines on stdout)
 export interface SttPartialEvent {
   type: "partial";
   text: string;

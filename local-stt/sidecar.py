@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Spoke local STT sidecar using Whisper large-v3 turbo 4-bit on MLX.
+Spoke MLX Whisper sidecar using large-v3 turbo 4-bit.
 
 Daemon mode loads the model once, emits {"type":"ready"}, then reads requests
 as 4-byte little-endian length + raw PCM16 mono 16 kHz audio.
@@ -453,7 +453,7 @@ def oneshot_mode(runtime: WhisperRuntime) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Spoke MLX Whisper STT sidecar")
+    parser = argparse.ArgumentParser(description="Spoke MLX Whisper sidecar")
     parser.add_argument(
         "--weights-dir",
         type=Path,
