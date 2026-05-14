@@ -49,8 +49,9 @@ Rules:
 - [x] Update sidecar build script for Whisper/MLX dependencies.
 - [x] Build a standalone macOS arm64 `spoke-stt` binary.
 - [x] Ensure Electron Forge includes the sidecar binary in packaged resources.
+- [x] Verify packaged, signed sidecar starts and loads the Whisper model without user Python.
 - [ ] Test packaged app on a clean Mac account without local Python or repo files.
-- [ ] Confirm signing/notarization still works with the sidecar binary.
+- [ ] Confirm notarization/stapling still works with the sidecar binary.
 
 ## 6. UI Copy
 

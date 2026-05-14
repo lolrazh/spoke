@@ -9,5 +9,8 @@
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
+  <!-- PyInstaller one-file extracts Python.framework before dlopen; keep this scoped to the sidecar. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
 </dict>
 </plist>
