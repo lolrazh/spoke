@@ -46,7 +46,6 @@ if (!globalThis.window.electron) {
       status: "granted",
       granted: true,
     }),
-    showOnboarding: async () => ({ ok: true }),
     openSystemPreferences: async () => {},
   } as any;
 }

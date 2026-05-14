@@ -128,7 +128,6 @@ declare global {
         type: "accessibility" | "microphone",
       ) => Promise<void> | void;
       // Window controls
-      showOnboarding: () => Promise<{ ok: boolean }>;
       closeOnboarding: () => Promise<void>;
       minimizeOnboarding: () => Promise<void>;
       maximizeOnboarding: () => Promise<void>;
@@ -172,7 +171,6 @@ declare global {
         };
         error?: string;
       }>;
-      // Auth helpers
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
     };

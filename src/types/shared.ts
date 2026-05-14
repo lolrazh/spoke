@@ -1,9 +1,3 @@
-export type AuthProvider = "google" | "email";
-
-export type AuthCallbackPayload = {
-  url: string;
-};
-
 export type MicDevice = { id: string; label: string };
 
 export type MicPreferences = { selectedMicId?: string };

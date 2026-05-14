@@ -248,7 +248,6 @@ contextBridge.exposeInMainWorld("electron", {
   postPermissionGrant: (type: "accessibility" | "microphone") =>
     ipcRenderer.invoke("permissions:post-grant", type),
   // Window controls
-  showOnboarding: () => ipcRenderer.invoke("auth:show-onboarding"),
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
   minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
   maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),

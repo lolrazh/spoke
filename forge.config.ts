@@ -37,13 +37,6 @@ const config: ForgeConfig = {
     appCategoryType: "public.app-category.productivity",
 
     asar: true,
-    // Register custom URL scheme for OAuth deep-link callbacks in packaged builds
-    protocols: [
-      {
-        name: "Spoke",
-        schemes: ["spoke"],
-      },
-    ],
     // macOS app icon
     icon: "./public/assets/icon.icns",
     // Ensure icon is copied to the app bundle

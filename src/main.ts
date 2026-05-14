@@ -210,7 +210,7 @@ Sentry.init({
         event.breadcrumbs = event.breadcrumbs.map((b) => {
           if (typeof b.message === "string") {
             b.message = b.message.replace(
-              /(supabase|apikey|token|authorization)=([^\s&]+)/gi,
+              /(apikey|token|authorization)=([^\s&]+)/gi,
               "$1=[Filtered]",
             );
           }
@@ -252,7 +252,7 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
 
-// Ensure single instance so deep links route to the running app
+// Ensure a single running app instance.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -267,7 +267,7 @@ if (!gotTheLock) {
   });
 }
 
-// Dev helper: allow skipping onboarding/auth for faster iteration
+// Dev helper: allow skipping onboarding for faster iteration
 const SKIP_ONBOARDING =
   process.env.SKIP_ONBOARDING === "1" || process.env.SKIP_ONBOARDING === "true";
 
@@ -693,6 +693,22 @@ function buildFloatingBarMenuItems(): Electron.MenuItemConstructorOptions[] {
 
 const iconPath = getIconPath();
 
+function getRendererEntryUrl(hash?: string): string {
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    if (hash) url.hash = hash;
+    return url.toString();
+  }
+
+  const filePath = path.join(
+    __dirname,
+    `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+  );
+  const url = pathToFileURL(filePath);
+  if (hash) url.hash = hash;
+  return url.toString();
+}
+
 const createWindow = () => {
   // Create the browser window.
   const windowOptions: Electron.BrowserWindowConstructorOptions = {
@@ -872,34 +888,9 @@ const createWindow = () => {
     }
   });
 
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    try {
-      const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-      const wsOverride =
-        VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-      if (wsOverride && String(wsOverride).trim())
-        url.searchParams.set("ws", String(wsOverride).trim());
-      mainWindow.loadURL(url.toString());
-    } catch {
-      mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    }
-  } else {
-    const filePath = path.join(
-      __dirname,
-      `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-    );
-    try {
-      const u = pathToFileURL(filePath);
-      const wsOverride =
-        VITE_ENV?.VITE_TRANSCRIBE_WS_URL || process.env.VITE_TRANSCRIBE_WS_URL;
-      if (wsOverride && String(wsOverride).trim())
-        u.searchParams.set("ws", String(wsOverride).trim());
-      mainWindow.loadURL(u.toString());
-    } catch {
-      mainWindow.loadFile(filePath);
-    }
-  }
+  mainWindow.loadURL(getRendererEntryUrl()).catch((error) => {
+    console.error("[Main Window] Failed to load renderer:", error);
+  });
 
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
@@ -1022,40 +1013,7 @@ function createOnboardingWindow() {
   console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
 
-  const onboardingUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL
-    ? (() => {
-        try {
-          const u = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-          const wsOverride =
-            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-            process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim())
-            u.searchParams.set("ws", String(wsOverride).trim());
-          return `${u.toString()}#/onboarding`;
-        } catch {
-          return `${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/onboarding`;
-        }
-      })()
-    : (() => {
-        try {
-          const filePath = path.join(
-            __dirname,
-            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-          );
-          const u = pathToFileURL(filePath);
-          const wsOverride =
-            VITE_ENV?.VITE_TRANSCRIBE_WS_URL ||
-            process.env.VITE_TRANSCRIBE_WS_URL;
-          if (wsOverride && String(wsOverride).trim())
-            u.searchParams.set("ws", String(wsOverride).trim());
-          return `${u.toString()}#/onboarding`;
-        } catch {
-          return `file://${path.join(
-            __dirname,
-            `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-          )}#/onboarding`;
-        }
-      })();
+  const onboardingUrl = getRendererEntryUrl("/onboarding");
 
   console.log("[Onboarding] Loading URL:", onboardingUrl);
   console.log("[Onboarding] __dirname:", __dirname);
@@ -1584,48 +1542,23 @@ app.whenReady().then(async () => {
   }
 
   const isDev = !app.isPackaged;
-  // Log the WebSocket endpoint the app intends to use (terminal)
-  try {
-    const envWs =
-      (import.meta as any)?.env?.VITE_TRANSCRIBE_WS_URL ||
-      process.env.VITE_TRANSCRIBE_WS_URL;
-    const wsUrlToLog =
-      envWs || (isDev ? "ws://127.0.0.1:8787/ws" : "wss://api.spoke.so/ws");
-    console.log("[Main] WS endpoint", wsUrlToLog);
-    console.log("[Main] Flags", {
-      VITE_SF_DEVTOOLS: VITE_ENV?.VITE_SF_DEVTOOLS,
-      VITE_ALLOW_DEV_WS: VITE_ENV?.VITE_ALLOW_DEV_WS,
-      VITE_SENTRY_ENVIRONMENT: VITE_ENV?.VITE_SENTRY_ENVIRONMENT,
-    });
-  } catch {}
-  console.log(
-    "[Main Process] Setting up onHeadersReceived listener for COOP/COEP...",
-  );
+  console.log("[Main Process] Setting up renderer security headers...");
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    // Loosen CSP for auth flows; explicitly allow Supabase and websockets
     const styleSrc = "style-src 'self' 'unsafe-inline'";
     const fontSrc = "font-src 'self' data:";
-    const allowLocal = isDev || VITE_ENV?.VITE_ALLOW_DEV_WS === "1";
     const connect = [
       "connect-src 'self'",
-      "https://api.spoke.so",
-      "wss://api.spoke.so",
-      // Allow website for billing portal
-      "https://www.spoke.so",
-      // Local development HTTP/WS (dev or staging with flag)
-      ...(allowLocal
+      "https://api.openai.com",
+      "https://api.groq.com",
+      "https://api.deepgram.com",
+      ...(isDev
         ? [
-            "http://127.0.0.1:8787",
-            "http://localhost:8787",
-            "ws://127.0.0.1:8787",
-            "ws://localhost:8787",
-            // Vite dev server (HMR)
             "http://localhost:*",
+            "http://127.0.0.1:*",
             "ws://localhost:*",
+            "ws://127.0.0.1:*",
           ]
         : []),
-      "https://huggingface.co",
-      "https://cdn.jsdelivr.net",
       // Sentry endpoints for error reporting
       "https://*.sentry.io",
       "https://*.ingest.sentry.io",
@@ -1664,7 +1597,7 @@ app.whenReady().then(async () => {
 
     callback({ responseHeaders: headers });
   });
-  console.log("[Main Process] onHeadersReceived listener configured.");
+  console.log("[Main Process] Renderer security headers configured.");
 
   app.commandLine.appendSwitch("disable-http-cache");
 
@@ -1773,7 +1706,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Generic external URL opener for OAuth and links
+  // Generic external URL opener for links
   ipcMain.handle("open-external", async (_event, url: string) => {
     try {
       await shell.openExternal(url);
@@ -1842,7 +1775,7 @@ app.whenReady().then(async () => {
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
-  // Sync local onboarding flag with database (for dev testing)
+  // Reset local onboarding flag for dev testing
   ipcMain.handle("onboarding:reset-local-flag", () => {
     try {
       onboardingPrefs = { ...onboardingPrefs, done: false };
@@ -1878,31 +1811,6 @@ app.whenReady().then(async () => {
       console.error("[IPC] Failed to save onboarding step:", error);
       return { ok: false };
     }
-  });
-
-  // (Removed) auth:set-signed-in — rely on Supabase session as source of truth
-
-  ipcMain.handle("auth:show-onboarding", () => {
-    try {
-      onboardingPrefs = { ...onboardingPrefs };
-      fs.writeFileSync(
-        onboardingPrefsPath,
-        JSON.stringify(onboardingPrefs, null, 2),
-        "utf8",
-      );
-    } catch {}
-    // Hide pill/main, show onboarding
-    try {
-      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible())
-        smoothHide(mainWindow);
-    } catch {}
-    if (onboardingWindow && !onboardingWindow.isDestroyed()) {
-      smoothShow(onboardingWindow);
-    } else {
-      createOnboardingWindow();
-    }
-    pttTarget = "onboarding";
-    return { ok: true };
   });
 
   // Allow other windows (onboarding) to request the pill to expand without directly moving the window
