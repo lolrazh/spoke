@@ -74,7 +74,16 @@ Rules:
 - [x] Benchmark decode sample length caps and keep them disabled by default.
 - [x] Break down warm inference into preprocessing, encoder, language detection, and decoder timing.
 - [x] Benchmark pinned English transcription versus auto language detection.
-- [ ] Investigate encoder-bound latency reduction for short dictation windows.
+- [ ] Re-run a clean pinned-English control after machine cooldown and low background load.
+- [ ] Add benchmark metadata for machine load/thermal caveats so noisy runs are obvious.
+- [ ] Inspect MLX Whisper encoder shape constraints: conv stack, positional embeddings, and required frame count.
+- [ ] Test whether shorter effective mel windows can reduce encoder work without breaking output quality.
+- [ ] If short-window encoding is impossible in stock MLX Whisper, document why and do not keep dead knobs.
+- [ ] Investigate reusing encoded audio features only for `auto` language mode, not the default pinned-English path.
+- [ ] Evaluate upstream MLX batched decoding work for long-file throughput only; do not mix it into short dictation unless it improves latency.
+- [ ] Evaluate WhisperKit/Core ML as a separate native engine spike if MLX encoder latency remains the wall.
+- [ ] Keep production default on pinned `en` unless multilingual UX becomes a hard requirement.
+- [ ] Define pass/fail gates for any speed change: no WER regression on benchmark corpus, no hallucination regression on silence/noise, lower mean and P95 wall time, and no meaningful memory increase.
 
 ## Done Means
 
