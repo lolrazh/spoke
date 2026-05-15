@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import struct
 import sys
 import time
@@ -44,6 +45,7 @@ from mlx_whisper.audio import (
 from mlx_whisper.decoding import DecodingOptions
 from mlx_whisper.load_models import load_model
 from mlx_whisper.tokenizer import get_tokenizer
+from mlx_whisper.whisper import MultiHeadAttention
 
 MODEL_ID = "mlx-community/whisper-large-v3-turbo-4bit"
 MODEL_DISPLAY_NAME = "Whisper large-v3 turbo 4-bit"
@@ -64,6 +66,7 @@ NOISE_SPECTRAL_FLATNESS_THRESHOLD = 0.35
 SPECTRAL_FRAME_LENGTH = 400
 SPECTRAL_HOP_LENGTH = 160
 SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
+FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
 
 
 def log(message: str) -> None:
@@ -135,6 +138,59 @@ def memory_snapshot() -> dict[str, int]:
         except Exception:
             snapshot[key] = 0
     return snapshot
+
+
+def install_fast_attention_patch() -> None:
+    mode = {
+        "1": "all",
+        "true": "all",
+        "yes": "all",
+        "on": "all",
+    }.get(FAST_ATTENTION_MODE, FAST_ATTENTION_MODE)
+
+    if mode in ("", "0", "false", "no", "off"):
+        log("sidecar: fast attention disabled")
+        return
+    if mode not in ("all", "self", "cross"):
+        raise ValueError(
+            "SPOKE_STT_FAST_ATTENTION must be one of: 0, 1, all, self, cross"
+        )
+    if not hasattr(mx, "fast") or not hasattr(mx.fast, "scaled_dot_product_attention"):
+        log("sidecar: fast attention unavailable")
+        return
+
+    original_qkv_attention = MultiHeadAttention.qkv_attention
+
+    def fast_qkv_attention(self, q, k, v, mask=None):
+        is_self_attention = mask is not None
+        should_use_fast_attention = (
+            mode == "all"
+            or (mode == "self" and is_self_attention)
+            or (mode == "cross" and not is_self_attention)
+        )
+        if not should_use_fast_attention:
+            return original_qkv_attention(self, q, k, v, mask)
+
+        n_batch, n_ctx, n_state = q.shape
+        head_dim = n_state // self.n_head
+        scale = head_dim**-0.5
+        q = q.reshape(*q.shape[:2], self.n_head, -1).transpose(0, 2, 1, 3)
+        k = k.reshape(*k.shape[:2], self.n_head, -1).transpose(0, 2, 1, 3)
+        v = v.reshape(*v.shape[:2], self.n_head, -1).transpose(0, 2, 1, 3)
+
+        attention_mask = mask[:n_ctx, :n_ctx] if mask is not None else None
+        out = mx.fast.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            scale=scale,
+            mask=attention_mask,
+        )
+        out = out.transpose(0, 2, 1, 3).reshape(n_batch, n_ctx, n_state)
+        return out, None
+
+    MultiHeadAttention.qkv_attention = fast_qkv_attention
+    log(f"sidecar: fast attention enabled ({mode})")
 
 
 def audio_stats(audio: np.ndarray) -> dict[str, float | int | bool]:
@@ -475,6 +531,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    install_fast_attention_patch()
     language = args.language.strip().lower()
     runtime = WhisperRuntime(
         weights_dir=args.weights_dir.expanduser(),
