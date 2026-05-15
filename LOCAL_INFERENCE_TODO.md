@@ -75,7 +75,7 @@ Rules:
 - [x] Break down warm inference into preprocessing, encoder, language detection, and decoder timing.
 - [x] Benchmark pinned English transcription versus auto language detection.
 - [ ] Re-run a clean pinned-English control after machine cooldown and low background load.
-- [ ] Add benchmark metadata for machine load/thermal caveats so noisy runs are obvious.
+- [x] Add benchmark metadata for machine load/thermal caveats so noisy runs are obvious.
 - [ ] Inspect MLX Whisper encoder shape constraints: conv stack, positional embeddings, and required frame count.
 - [ ] Test whether shorter effective mel windows can reduce encoder work without breaking output quality.
 - [ ] If short-window encoding is impossible in stock MLX Whisper, document why and do not keep dead knobs.

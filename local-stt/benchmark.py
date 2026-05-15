@@ -12,6 +12,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import platform
 import re
 import shutil
 import statistics
@@ -240,6 +241,91 @@ def benchmark_env_snapshot() -> dict[str, str | None]:
     return {key: os.environ.get(key) for key in REPORT_ENV_KEYS}
 
 
+def command_output(command: list[str]) -> str:
+    try:
+        return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT).strip()
+    except Exception:
+        return ""
+
+
+def sysctl_value(name: str) -> str:
+    return command_output(["sysctl", "-n", name])
+
+
+def top_cpu_processes(limit: int = 8) -> list[dict[str, Any]]:
+    output = command_output(["ps", "-Ao", "pid,pcpu,pmem,comm", "-r"])
+    rows: list[dict[str, Any]] = []
+    for line in output.splitlines()[1 : limit + 1]:
+        parts = line.strip().split(None, 3)
+        if len(parts) != 4:
+            continue
+        pid, cpu, memory, command = parts
+        rows.append(
+            {
+                "pid": int(pid),
+                "cpu_percent": float(cpu),
+                "memory_percent": float(memory),
+                "command": command,
+            }
+        )
+    return rows
+
+
+def system_snapshot() -> dict[str, Any]:
+    load_avg = list(os.getloadavg()) if hasattr(os, "getloadavg") else []
+    cpu_count = os.cpu_count() or 0
+    memory_bytes = int(sysctl_value("hw.memsize") or 0)
+    return {
+        "captured_at": dt.datetime.now(dt.UTC).isoformat(),
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "cpu_brand": sysctl_value("machdep.cpu.brand_string"),
+        "cpu_count": cpu_count,
+        "memory_gb": round(memory_bytes / 1024 / 1024 / 1024, 1)
+        if memory_bytes
+        else 0.0,
+        "load_avg": [round(value, 2) for value in load_avg],
+        "thermal": command_output(["pmset", "-g", "therm"]),
+        "top_cpu_processes": top_cpu_processes(),
+    }
+
+
+def benchmark_caveats(system: dict[str, Any]) -> list[str]:
+    caveats: list[str] = []
+    snapshots = [system.get("before", {}), system.get("after", {})]
+    cpu_count = max(int(snapshots[0].get("cpu_count") or 0), 1)
+
+    max_load = 0.0
+    for snapshot in snapshots:
+        load_avg = snapshot.get("load_avg") or []
+        if load_avg:
+            max_load = max(max_load, float(load_avg[0]))
+
+    if max_load >= cpu_count * 0.5:
+        caveats.append(
+            f"High system load during benchmark: max 1m load {max_load:.2f} across {cpu_count} CPUs."
+        )
+
+    top_processes = snapshots[-1].get("top_cpu_processes") or []
+    busy_processes = [
+        process
+        for process in top_processes
+        if float(process.get("cpu_percent") or 0.0) >= 20.0
+    ]
+    if busy_processes:
+        names = ", ".join(
+            f"{Path(str(process['command'])).name} {process['cpu_percent']:.1f}%"
+            for process in busy_processes[:3]
+        )
+        caveats.append(f"Background CPU contention detected: {names}.")
+
+    thermal = "\n".join(str(snapshot.get("thermal") or "") for snapshot in snapshots)
+    if "warning" in thermal.lower() and "no thermal warning" not in thermal.lower():
+        caveats.append("macOS reported a thermal or performance warning.")
+
+    return caveats
+
+
 def start_sidecar(command: list[str]) -> tuple[subprocess.Popen[bytes], int, list[str]]:
     stderr_lines: list[str] = []
     proc = subprocess.Popen(
@@ -389,12 +475,18 @@ def make_summary(results: list[dict[str, Any]], ready_ms: int) -> dict[str, Any]
 def write_markdown(report: dict[str, Any], path: Path) -> None:
     summary = report["summary"]
     rows = [row for row in report["results"] if not row["warmup"]]
+    caveats = report.get("caveats", [])
+    system_before = report.get("system", {}).get("before", {})
+    system_after = report.get("system", {}).get("after", {})
     lines = [
         f"# STT Benchmark: {report['label']}",
         "",
         f"- Timestamp: `{report['timestamp']}`",
         f"- Command: `{' '.join(report['command'])}`",
         f"- Environment: `{json.dumps(report.get('environment', {}), sort_keys=True)}`",
+        f"- System: `{system_before.get('cpu_brand', 'unknown')}`, `{system_before.get('memory_gb', 0)} GB`, `{system_before.get('platform', 'unknown')}`",
+        f"- Load avg before: `{system_before.get('load_avg', [])}`",
+        f"- Load avg after: `{system_after.get('load_avg', [])}`",
         f"- Ready: `{summary['ready_ms']} ms`",
         f"- Cases: `{summary['cases']}`",
         f"- Runs: `{summary['runs']}`",
@@ -420,6 +512,10 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         lines.append(
             f"| {key} | {item['mean']} | {item['median']} | {item['p95']} | {item['min']} | {item['max']} |"
         )
+
+    if caveats:
+        lines.extend(["", "## Caveats", ""])
+        lines.extend(f"- {caveat}" for caveat in caveats)
 
     lines.extend(
         [
@@ -455,6 +551,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         voice=args.voice,
     )
     command = make_sidecar_command(args)
+    system_before = system_snapshot()
     proc, ready_ms, stderr_lines = start_sidecar(command)
 
     results: list[dict[str, Any]] = []
@@ -513,11 +610,17 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         stop_sidecar(proc)
 
+    system = {
+        "before": system_before,
+        "after": system_snapshot(),
+    }
     report = {
         "label": args.label,
         "timestamp": timestamp,
         "command": command,
         "environment": benchmark_env_snapshot(),
+        "system": system,
+        "caveats": benchmark_caveats(system),
         "weights_dir": str(args.weights_dir.expanduser()),
         "corpus": str(args.corpus),
         "repeat": args.repeat,
