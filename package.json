@@ -21,7 +21,8 @@
     "postinstall": "bash native/build-helper.sh",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py"
   },
   "keywords": [],
   "author": {

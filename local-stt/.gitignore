@@ -5,6 +5,7 @@ dist/
 *.pyc
 *.spec
 weights/
+benchmarks/
 
 # Rollback backup
 sidecar_hf.py

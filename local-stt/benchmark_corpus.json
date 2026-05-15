@@ -1,0 +1,42 @@
+[
+  {
+    "id": "short_command",
+    "reference": "Create a reminder to review the launch notes tomorrow morning."
+  },
+  {
+    "id": "punctuation",
+    "reference": "Send this to Maya: the draft looks good, but we need the final numbers by Friday."
+  },
+  {
+    "id": "casing",
+    "reference": "OpenAI, Deepgram, and Groq should stay capitalized in the settings screen."
+  },
+  {
+    "id": "symbols",
+    "reference": "The filename is spoke_local_inference_v2, and the branch is codex/whisper-benchmark."
+  },
+  {
+    "id": "technical",
+    "reference": "We should benchmark cold start, warm inference, peak memory, active memory, and cache memory."
+  },
+  {
+    "id": "correction",
+    "reference": "Actually, replace the first paragraph with a shorter summary and keep the rest unchanged."
+  },
+  {
+    "id": "long_dictation",
+    "reference": "This is a longer dictation benchmark for Spoke. I want to understand how local Whisper behaves when the user speaks for a realistic amount of time. The app should keep memory usage predictable, avoid hallucinations, preserve punctuation and casing, and return the transcript quickly enough that the experience still feels native."
+  },
+  {
+    "id": "numbers",
+    "reference": "The package size is four hundred sixty four megabytes, the target memory is five hundred megabytes, and the warm inference time is around one second."
+  },
+  {
+    "id": "email",
+    "reference": "Please email the team and say: I tested the local model today, and the quality is much better than the previous version."
+  },
+  {
+    "id": "mixed",
+    "reference": "For the next pass, compare MLX attention, sample length limits, prewarming, and PyInstaller one-dir packaging."
+  }
+]
