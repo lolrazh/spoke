@@ -68,6 +68,7 @@ SPECTRAL_HOP_LENGTH = 160
 SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
 FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
 SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
+PROFILE_MODE = os.environ.get("SPOKE_STT_PROFILE", "0").strip().lower()
 
 
 def log(message: str) -> None:
@@ -152,6 +153,10 @@ def get_sample_len_limit() -> int | None:
     if value <= 0:
         raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
     return value
+
+
+def is_enabled(value: str) -> bool:
+    return value in ("1", "true", "yes", "on")
 
 
 def install_fast_attention_patch() -> None:
@@ -310,7 +315,9 @@ class WhisperRuntime:
         log(f"sidecar: model loaded in {self.load_ms} ms")
 
     def transcribe(self, audio: np.ndarray) -> None:
+        request_start = time.perf_counter()
         stats = audio_stats(audio)
+        audio_analysis_ms = round((time.perf_counter() - request_start) * 1000)
         log(
             "sidecar: received "
             f"{len(audio)} samples ({stats['audio_duration_ms']} ms)"
@@ -325,6 +332,7 @@ class WhisperRuntime:
                 segment_count=0,
                 memory=memory_snapshot(),
                 sample_len=self.sample_len,
+                timings={"audio_analysis_ms": audio_analysis_ms},
             )
             emit({"type": "done", "transcript": "", "metrics": metrics})
             log("sidecar: skipped non-speech audio")
@@ -351,6 +359,10 @@ class WhisperRuntime:
             segment_count=len(segments),
             memory=memory,
             sample_len=result.get("sample_len"),
+            timings={
+                "audio_analysis_ms": audio_analysis_ms,
+                **dict(result.get("timings") or {}),
+            },
         )
 
         emit({"type": "done", "transcript": transcript, "metrics": metrics})
@@ -371,7 +383,9 @@ class WhisperRuntime:
         segment_count: int,
         memory: dict[str, int],
         sample_len: int | None = None,
+        timings: dict[str, int] | None = None,
     ) -> dict[str, Any]:
+        timings = timings or {}
         return {
             "model_id": MODEL_ID,
             "decode_sample_len": sample_len,
@@ -386,6 +400,13 @@ class WhisperRuntime:
             "spectral_flatness": stats["spectral_flatness"],
             "active_frame_ratio": stats["active_frame_ratio"],
             "inference_ms": inference_ms,
+            "audio_analysis_ms": timings.get("audio_analysis_ms", 0),
+            "mel_ms": timings.get("mel_ms", 0),
+            "language_detection_ms": timings.get("language_detection_ms", 0),
+            "encoder_ms": timings.get("encoder_ms", 0),
+            "decoder_ms": timings.get("decoder_ms", 0),
+            "postprocess_ms": timings.get("postprocess_ms", 0),
+            "profile_enabled": timings.get("profile_enabled", False),
             "ttft_ms": None,
             "word_count": len(transcript.split()) if transcript else 0,
             "language": language,
@@ -401,16 +422,28 @@ def transcribe_audio(
     sample_len: int | None,
 ) -> dict[str, Any]:
     dtype = mx.float16
+    profile_enabled = is_enabled(PROFILE_MODE)
+    timings: dict[str, int | bool] = {"profile_enabled": profile_enabled}
+
+    start = time.perf_counter()
     mel = log_mel_spectrogram(audio, n_mels=model.dims.n_mels, padding=N_SAMPLES)
+    if profile_enabled:
+        mx.eval(mel)
+    timings["mel_ms"] = round((time.perf_counter() - start) * 1000)
     content_frames = mel.shape[-2] - N_FRAMES
 
+    start = time.perf_counter()
     detected_language = detect_language(model, mel, dtype, language)
+    timings["language_detection_ms"] = round((time.perf_counter() - start) * 1000)
+
+    start = time.perf_counter()
     tokenizer = get_tokenizer(
         model.is_multilingual,
         num_languages=model.num_languages,
         language=detected_language,
         task="transcribe",
     )
+    timings["postprocess_ms"] = round((time.perf_counter() - start) * 1000)
 
     seek = 0
     segment_id = 0
@@ -427,7 +460,8 @@ def transcribe_audio(
         mel_segment = mel[seek : seek + segment_size]
         mel_segment = pad_or_trim(mel_segment, N_FRAMES, axis=-2).astype(dtype)
 
-        result = model.decode(
+        result = decode_segment(
+            model,
             mel_segment,
             DecodingOptions(
                 language=detected_language,
@@ -437,10 +471,14 @@ def transcribe_audio(
                 fp16=True,
                 without_timestamps=True,
             ),
+            timings=timings,
+            profile_enabled=profile_enabled,
         )
 
+        start = time.perf_counter()
         if should_skip_decoded_segment(result):
             seek += segment_size
+            timings["postprocess_ms"] += round((time.perf_counter() - start) * 1000)
             continue
 
         text_tokens = [token for token in result.tokens if token < tokenizer.eot]
@@ -461,6 +499,7 @@ def transcribe_audio(
             )
             segment_id += 1
 
+        timings["postprocess_ms"] += round((time.perf_counter() - start) * 1000)
         seek += segment_size
 
     return {
@@ -468,7 +507,34 @@ def transcribe_audio(
         "segments": segments,
         "language": detected_language,
         "sample_len": sample_len,
+        "timings": timings,
     }
+
+
+def decode_segment(
+    model,
+    mel_segment: mx.array,
+    options: DecodingOptions,
+    *,
+    timings: dict[str, int | bool],
+    profile_enabled: bool,
+):
+    if not profile_enabled:
+        return model.decode(mel_segment, options)
+
+    start = time.perf_counter()
+    audio_features = model.encoder(mel_segment[None])[0]
+    mx.eval(audio_features)
+    timings["encoder_ms"] = int(timings.get("encoder_ms", 0)) + round(
+        (time.perf_counter() - start) * 1000
+    )
+
+    start = time.perf_counter()
+    result = model.decode(audio_features, options)
+    timings["decoder_ms"] = int(timings.get("decoder_ms", 0)) + round(
+        (time.perf_counter() - start) * 1000
+    )
+    return result
 
 
 def detect_language(model, mel, dtype: mx.Dtype, language: str | None) -> str:
@@ -564,6 +630,7 @@ def main() -> int:
         language=None if language == "auto" else language,
     )
     log(f"sidecar: decode sample_len={runtime.sample_len or 'default'}")
+    log(f"sidecar: profiling={'enabled' if is_enabled(PROFILE_MODE) else 'disabled'}")
 
     if args.oneshot:
         return oneshot_mode(runtime)

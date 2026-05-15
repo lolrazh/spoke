@@ -72,8 +72,9 @@ Rules:
 - [x] Add a reproducible local STT benchmark harness.
 - [x] Benchmark MLX fast attention modes and keep them disabled by default.
 - [x] Benchmark decode sample length caps and keep them disabled by default.
-- [ ] Break down warm inference into preprocessing, encoder, language detection, and decoder timing.
-- [ ] Benchmark pinned English transcription versus auto language detection.
+- [x] Break down warm inference into preprocessing, encoder, language detection, and decoder timing.
+- [x] Benchmark pinned English transcription versus auto language detection.
+- [ ] Investigate encoder-bound latency reduction for short dictation windows.
 
 ## Done Means
 

@@ -112,3 +112,38 @@ Next:
 
 - Profile where the default ~1.1 second warm inference is spent: audio preprocessing, encoder, language detection, decoder loop, or IPC.
 - Test language pinning (`en`) versus auto-detect, because language detection is a plausible fixed cost on every request.
+
+## Experiment 3: profiled inference breakdown
+
+Status: instrumentation adopted
+
+Change:
+
+- Add `SPOKE_STT_PROFILE=1` to enable detailed timing inside the sidecar.
+- Keep production behavior unchanged when profiling is disabled.
+- In profiling mode, force MLX evaluation around stable phase boundaries so the timings are useful.
+- Add benchmark summaries for audio analysis, mel generation, language detection, encoder, decoder, and postprocess timings.
+
+Results:
+
+| Mode | Mean wall | Mean inference | Mean WER | Audio analysis | Mel | Language detect | Encoder | Decoder | Mean MLX peak |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Profile: pinned `en` | 1102.3 ms | 1084.7 ms | 9.6% | 15.7 ms | 3.2 ms | 0.0 ms | 1007.4 ms | 74.0 ms | 1081.5 MB |
+| Profile: `auto` language | 3157.6 ms | 3139.1 ms | 9.6% | 16.0 ms | 3.8 ms | 1524.8 ms | 1509.0 ms | 101.4 ms | 1081.5 MB |
+
+Validation/caveat:
+
+- The app already launches the sidecar with pinned English by default, so production avoids the auto-detect penalty.
+- Profiling mode adds explicit evaluation boundaries and should be used to understand phase costs, not as a production latency benchmark.
+- A later non-profile smoke run was much slower because the machine was under load; it verified correctness, but is not used as a performance conclusion.
+
+Conclusion:
+
+- The warm dictation path is encoder-bound, not decoder-bound.
+- Decoder-side optimizations can only move a small part of current latency unless they also change encoder execution.
+- Auto language detection is very expensive because it performs an additional encoder-sized pass before transcription.
+
+Next:
+
+- Investigate encoder-focused options: shorter effective audio windows, reusing encoded features in auto mode, Core ML/WhisperKit as a separate native engine, or model/runtime changes that avoid full 30-second encoder work for short dictation.
+- Keep pinned `en` as the default for now.

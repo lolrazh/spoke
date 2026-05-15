@@ -34,7 +34,19 @@ DEFAULT_WEIGHTS_DIR = (
     Path.home() / "Library" / "Application Support" / "Spoke" / "local-stt" / "weights"
 )
 REQUIRED_MODEL_FILES = ("config.json", "weights.safetensors", "multilingual.tiktoken")
-REPORT_ENV_KEYS = ("SPOKE_STT_FAST_ATTENTION", "SPOKE_STT_SAMPLE_LEN")
+REPORT_ENV_KEYS = (
+    "SPOKE_STT_FAST_ATTENTION",
+    "SPOKE_STT_SAMPLE_LEN",
+    "SPOKE_STT_PROFILE",
+)
+TIMING_METRIC_KEYS = (
+    "audio_analysis_ms",
+    "mel_ms",
+    "language_detection_ms",
+    "encoder_ms",
+    "decoder_ms",
+    "postprocess_ms",
+)
 
 
 @dataclass(frozen=True)
@@ -355,7 +367,7 @@ def mb(value: Any) -> float:
 
 def make_summary(results: list[dict[str, Any]], ready_ms: int) -> dict[str, Any]:
     measured = [row for row in results if not row["warmup"]]
-    return {
+    summary = {
         "ready_ms": ready_ms,
         "cases": len({row["case_id"] for row in measured}),
         "runs": len(measured),
@@ -369,6 +381,9 @@ def make_summary(results: list[dict[str, Any]], ready_ms: int) -> dict[str, Any]
         "mlx_active_mb": summarize([row["mlx_active_mb"] for row in measured]),
         "mlx_cache_mb": summarize([row["mlx_cache_mb"] for row in measured]),
     }
+    for key in TIMING_METRIC_KEYS:
+        summary[key] = summarize([row[key] for row in measured])
+    return summary
 
 
 def write_markdown(report: dict[str, Any], path: Path) -> None:
@@ -399,6 +414,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         "mlx_peak_mb",
         "mlx_active_mb",
         "mlx_cache_mb",
+        *TIMING_METRIC_KEYS,
     ):
         item = summary[key]
         lines.append(
@@ -475,6 +491,11 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "word_count": int(metrics.get("word_count") or 0),
                 "segment_count": int(metrics.get("segment_count") or 0),
                 "decode_sample_len": metrics.get("decode_sample_len"),
+                "profile_enabled": bool(metrics.get("profile_enabled")),
+                **{
+                    key: int(metrics.get(key) or 0)
+                    for key in TIMING_METRIC_KEYS
+                },
                 "rss_after_mb": float(event.get("rss_after_mb") or 0.0),
                 "mlx_peak_mb": mb(metrics.get("peak_memory_bytes")),
                 "mlx_active_mb": mb(metrics.get("active_memory_bytes")),
