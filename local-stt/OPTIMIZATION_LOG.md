@@ -181,3 +181,32 @@ Next:
 
 - Treat encoder latency as a model/runtime problem, not a simple padding knob problem.
 - If we need a real encoder speedup, evaluate a separate native WhisperKit/Core ML engine or a properly distilled/masked encoder rather than patching stock MLX Whisper shape assumptions.
+
+## Experiment 5: reuse language-detection encoder features
+
+Status: adopted for `auto` language mode
+
+Change:
+
+- In `--language auto`, encode the first padded mel segment once.
+- Run language detection against those encoded audio features.
+- Reuse the same encoded features for the first transcription decode instead of running the encoder again.
+- Leave pinned-language mode unchanged.
+
+Results:
+
+| Mode | Mean wall | Mean inference | Mean WER | Language detect | Encoder | Decoder | Mean MLX peak |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Before: profiled `auto` language | 3157.6 ms | 3139.1 ms | 9.6% | 1524.8 ms | 1509.0 ms | 101.4 ms | 1081.5 MB |
+| After: profiled `auto` feature reuse | 1092.4 ms | 1074.4 ms | 9.6% | 998.5 ms | 0.0 ms | 72.8 ms | 1081.5 MB |
+
+Validation/caveat:
+
+- The post-change run had background CPU contention, so the absolute latency can still move around.
+- The structural win is clear: auto mode no longer runs a second encoder pass for the first segment.
+- Pinned `en` smoke stayed in the same latency/quality band as before.
+
+Conclusion:
+
+- This is a clean optimization for multilingual/auto mode with no new model, no fallback path, and no production change for pinned English.
+- Keep pinned `en` as the default because it is still the simplest and fastest default for the current product.

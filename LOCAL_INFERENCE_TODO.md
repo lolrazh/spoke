@@ -79,7 +79,7 @@ Rules:
 - [x] Inspect MLX Whisper encoder shape constraints: conv stack, positional embeddings, and required frame count.
 - [x] Test whether shorter effective mel windows can reduce encoder work without breaking output quality.
 - [x] If short-window encoding is impossible in stock MLX Whisper, document why and do not keep dead knobs.
-- [ ] Investigate reusing encoded audio features only for `auto` language mode, not the default pinned-English path.
+- [x] Investigate reusing encoded audio features only for `auto` language mode, not the default pinned-English path.
 - [ ] Evaluate upstream MLX batched decoding work for long-file throughput only; do not mix it into short dictation unless it improves latency.
 - [ ] Evaluate WhisperKit/Core ML as a separate native engine spike if MLX encoder latency remains the wall.
 - [ ] Keep production default on pinned `en` unless multilingual UX becomes a hard requirement.

@@ -433,7 +433,12 @@ def transcribe_audio(
     content_frames = mel.shape[-2] - N_FRAMES
 
     start = time.perf_counter()
-    detected_language = detect_language(model, mel, dtype, language)
+    detected_language, detected_audio_features = detect_language(
+        model,
+        mel,
+        dtype,
+        language,
+    )
     timings["language_detection_ms"] = round((time.perf_counter() - start) * 1000)
 
     start = time.perf_counter()
@@ -459,6 +464,7 @@ def transcribe_audio(
         duration = float(segment_size * HOP_LENGTH / SAMPLE_RATE)
         mel_segment = mel[seek : seek + segment_size]
         mel_segment = pad_or_trim(mel_segment, N_FRAMES, axis=-2).astype(dtype)
+        audio_features = detected_audio_features if seek == 0 else None
 
         result = decode_segment(
             model,
@@ -473,6 +479,7 @@ def transcribe_audio(
             ),
             timings=timings,
             profile_enabled=profile_enabled,
+            audio_features=audio_features,
         )
 
         start = time.perf_counter()
@@ -518,7 +525,19 @@ def decode_segment(
     *,
     timings: dict[str, int | bool],
     profile_enabled: bool,
+    audio_features: mx.array | None = None,
 ):
+    if audio_features is not None:
+        if not profile_enabled:
+            return model.decode(audio_features, options)
+
+        start = time.perf_counter()
+        result = model.decode(audio_features, options)
+        timings["decoder_ms"] = int(timings.get("decoder_ms", 0)) + round(
+            (time.perf_counter() - start) * 1000
+        )
+        return result
+
     if not profile_enabled:
         return model.decode(mel_segment, options)
 
@@ -537,15 +556,21 @@ def decode_segment(
     return result
 
 
-def detect_language(model, mel, dtype: mx.Dtype, language: str | None) -> str:
+def detect_language(
+    model,
+    mel,
+    dtype: mx.Dtype,
+    language: str | None,
+) -> tuple[str, mx.array | None]:
     if language is not None:
-        return language
+        return language, None
     if not model.is_multilingual:
-        return "en"
+        return "en", None
 
     mel_segment = pad_or_trim(mel, N_FRAMES, axis=-2).astype(dtype)
-    _, probabilities = model.detect_language(mel_segment)
-    return max(probabilities, key=probabilities.get)
+    audio_features = model.encoder(mel_segment[None])
+    _, probabilities = model.detect_language(audio_features)
+    return max(probabilities[0], key=probabilities[0].get), audio_features[0]
 
 
 def should_skip_decoded_segment(result) -> bool:
