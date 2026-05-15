@@ -147,3 +147,37 @@ Next:
 
 - Investigate encoder-focused options: shorter effective audio windows, reusing encoded features in auto mode, Core ML/WhisperKit as a separate native engine, or model/runtime changes that avoid full 30-second encoder work for short dictation.
 - Keep pinned `en` as the default for now.
+
+## Experiment 4: shorter encoder audio context
+
+Status: not adopted
+
+Change tested:
+
+- Temporarily patched MLX Whisper's `AudioEncoder` to allow shorter mel frame counts by slicing the positional embedding instead of asserting the fixed `(1500, 1280)` post-conv shape.
+- Temporarily replaced the full `3000` mel-frame decode window with shorter padded windows.
+- Removed the patch after testing; no production knob was kept.
+
+Results:
+
+| Mode | Mean wall | Mean inference | Mean WER | Mean strict WER | Mean MLX peak | Notes |
+|---|---:|---:|---:|---:|---:|---|
+| Control: default `3000` mel frames | 1190.7 ms | 1168.4 ms | 9.6% | 15.5% | 1081.9 MB | Background CPU contention caveat |
+| Smoke: `500` mel frames | 189.7 ms | 179.7 ms | 16.5% | 20.6% | 675.3 MB | Fast, but punctuation quality regressed |
+| Smoke: `750` mel frames | 252.7 ms | 242.0 ms | 8.1% | 10.2% | 817.2 MB | Fast, but changed “Maya” to “myya” |
+| Smoke: `1000` mel frames | 331.0 ms | 319.3 ms | 8.1% | 10.2% | 989.2 MB | Same “Maya” regression |
+| Smoke: `1500` mel frames | 515.0 ms | 502.7 ms | 10.2% | 12.3% | 1223.9 MB | Quality and memory both worse |
+| Full: `1750` mel frames | 749.6 ms | 724.4 ms | 43.5% | 48.0% | 1119.0 MB | Long dictation hallucinated/repeated |
+| Full: `2000` mel frames | 1378.5 ms | 1352.6 ms | 10.8% | 15.2% | 1267.5 MB | Slower than control, higher memory, numbers regressed |
+
+Conclusion:
+
+- Stock Whisper quality depends on more trailing silence/context than a simple shortened encoder window provides.
+- Very short windows produce impressive latency/memory numbers but fail proper-noun and long-dictation quality.
+- Conservative windows remove the speed win and can increase peak MLX memory.
+- Do not keep a hidden mel-frame/window knob; it is too easy to ship a fragile path.
+
+Next:
+
+- Treat encoder latency as a model/runtime problem, not a simple padding knob problem.
+- If we need a real encoder speedup, evaluate a separate native WhisperKit/Core ML engine or a properly distilled/masked encoder rather than patching stock MLX Whisper shape assumptions.

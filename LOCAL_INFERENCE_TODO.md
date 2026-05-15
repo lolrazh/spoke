@@ -76,9 +76,9 @@ Rules:
 - [x] Benchmark pinned English transcription versus auto language detection.
 - [ ] Re-run a clean pinned-English control after machine cooldown and low background load.
 - [x] Add benchmark metadata for machine load/thermal caveats so noisy runs are obvious.
-- [ ] Inspect MLX Whisper encoder shape constraints: conv stack, positional embeddings, and required frame count.
-- [ ] Test whether shorter effective mel windows can reduce encoder work without breaking output quality.
-- [ ] If short-window encoding is impossible in stock MLX Whisper, document why and do not keep dead knobs.
+- [x] Inspect MLX Whisper encoder shape constraints: conv stack, positional embeddings, and required frame count.
+- [x] Test whether shorter effective mel windows can reduce encoder work without breaking output quality.
+- [x] If short-window encoding is impossible in stock MLX Whisper, document why and do not keep dead knobs.
 - [ ] Investigate reusing encoded audio features only for `auto` language mode, not the default pinned-English path.
 - [ ] Evaluate upstream MLX batched decoding work for long-file throughput only; do not mix it into short dictation unless it improves latency.
 - [ ] Evaluate WhisperKit/Core ML as a separate native engine spike if MLX encoder latency remains the wall.
