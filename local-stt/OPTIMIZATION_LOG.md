@@ -77,3 +77,38 @@ Conclusion:
 Next:
 
 - Test decode `sample_len` caps. This targets worst-case token-loop latency without changing attention kernels.
+
+## Experiment 2: decode sample length cap
+
+Status: not adopted
+
+Change:
+
+- Add a hidden benchmark/runtime knob: `SPOKE_STT_SAMPLE_LEN=<positive integer>`.
+- Pass the value through to MLX Whisper `DecodingOptions.sample_len`.
+- Record the active decode cap in benchmark reports and sidecar metrics.
+- Keep the production default unchanged: no explicit cap.
+
+Results:
+
+| Mode | Mean wall | P95 wall | Mean inference | Mean WER | Mean strict WER | Mean RSS | Mean MLX peak |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Control: default sample length | 1150.4 ms | 1387 ms | 1130.8 ms | 9.6% | 15.5% | 580.0 MB | 1081.9 MB |
+| `SPOKE_STT_SAMPLE_LEN=64` | 1904.0 ms | 3592 ms | 1872.7 ms | 9.6% | 15.5% | 583.6 MB | 1081.9 MB |
+| `SPOKE_STT_SAMPLE_LEN=96` | 3332.7 ms | 4758 ms | 3308.1 ms | 9.6% | 15.5% | 580.2 MB | 1081.9 MB |
+
+Validation/caveat:
+
+- A post-experiment default smoke run also slowed to 2876.0 ms mean inference, so the later capped runs were likely polluted by system load or thermal state.
+- Even with that caveat, the cap did not show any memory reduction and did not produce a clean latency win.
+- WER stayed unchanged on this corpus, but the current corpus is not enough to prove that aggressive caps are safe for real long-form dictation.
+
+Conclusion:
+
+- Do not adopt a production sample length cap from these results.
+- The knob is useful for controlled future tests, but the default should stay as MLX Whisper's native decode behavior.
+
+Next:
+
+- Profile where the default ~1.1 second warm inference is spent: audio preprocessing, encoder, language detection, decoder loop, or IPC.
+- Test language pinning (`en`) versus auto-detect, because language detection is a plausible fixed cost on every request.

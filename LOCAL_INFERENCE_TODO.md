@@ -67,6 +67,14 @@ Rules:
 - [x] Update tests from legacy model IDs to Whisper IDs.
 - [x] Remove stale comments mentioning generic local STT where a concrete Whisper contract exists.
 
+## 8. Performance
+
+- [x] Add a reproducible local STT benchmark harness.
+- [x] Benchmark MLX fast attention modes and keep them disabled by default.
+- [x] Benchmark decode sample length caps and keep them disabled by default.
+- [ ] Break down warm inference into preprocessing, encoder, language detection, and decoder timing.
+- [ ] Benchmark pinned English transcription versus auto language detection.
+
 ## Done Means
 
 - [ ] Fresh checkout can run dev local transcription after installing the Whisper model.

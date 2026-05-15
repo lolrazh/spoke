@@ -34,6 +34,7 @@ DEFAULT_WEIGHTS_DIR = (
     Path.home() / "Library" / "Application Support" / "Spoke" / "local-stt" / "weights"
 )
 REQUIRED_MODEL_FILES = ("config.json", "weights.safetensors", "multilingual.tiktoken")
+REPORT_ENV_KEYS = ("SPOKE_STT_FAST_ATTENTION", "SPOKE_STT_SAMPLE_LEN")
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,10 @@ def make_sidecar_command(args: argparse.Namespace) -> list[str]:
     ]
 
 
+def benchmark_env_snapshot() -> dict[str, str | None]:
+    return {key: os.environ.get(key) for key in REPORT_ENV_KEYS}
+
+
 def start_sidecar(command: list[str]) -> tuple[subprocess.Popen[bytes], int, list[str]]:
     stderr_lines: list[str] = []
     proc = subprocess.Popen(
@@ -374,6 +379,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         "",
         f"- Timestamp: `{report['timestamp']}`",
         f"- Command: `{' '.join(report['command'])}`",
+        f"- Environment: `{json.dumps(report.get('environment', {}), sort_keys=True)}`",
         f"- Ready: `{summary['ready_ms']} ms`",
         f"- Cases: `{summary['cases']}`",
         f"- Runs: `{summary['runs']}`",
@@ -468,6 +474,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 "strict_wer": word_error_rate(case.reference, transcript, strict=True),
                 "word_count": int(metrics.get("word_count") or 0),
                 "segment_count": int(metrics.get("segment_count") or 0),
+                "decode_sample_len": metrics.get("decode_sample_len"),
                 "rss_after_mb": float(event.get("rss_after_mb") or 0.0),
                 "mlx_peak_mb": mb(metrics.get("peak_memory_bytes")),
                 "mlx_active_mb": mb(metrics.get("active_memory_bytes")),
@@ -489,6 +496,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "label": args.label,
         "timestamp": timestamp,
         "command": command,
+        "environment": benchmark_env_snapshot(),
         "weights_dir": str(args.weights_dir.expanduser()),
         "corpus": str(args.corpus),
         "repeat": args.repeat,

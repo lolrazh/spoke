@@ -67,6 +67,7 @@ SPECTRAL_FRAME_LENGTH = 400
 SPECTRAL_HOP_LENGTH = 160
 SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
 FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
+SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
 
 
 def log(message: str) -> None:
@@ -138,6 +139,19 @@ def memory_snapshot() -> dict[str, int]:
         except Exception:
             snapshot[key] = 0
     return snapshot
+
+
+def get_sample_len_limit() -> int | None:
+    normalized = SAMPLE_LEN_LIMIT.lower()
+    if normalized in ("", "0", "none", "default"):
+        return None
+    try:
+        value = int(SAMPLE_LEN_LIMIT)
+    except ValueError:
+        raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
+    if value <= 0:
+        raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
+    return value
 
 
 def install_fast_attention_patch() -> None:
@@ -277,6 +291,7 @@ class WhisperRuntime:
         self.weights_dir = weights_dir
         self.model_path = str(weights_dir)
         self.language = language
+        self.sample_len = get_sample_len_limit()
         self.model = None
         self.load_ms: int | None = None
         self.load_peak_memory_bytes = 0
@@ -309,6 +324,7 @@ class WhisperRuntime:
                 language=None,
                 segment_count=0,
                 memory=memory_snapshot(),
+                sample_len=self.sample_len,
             )
             emit({"type": "done", "transcript": "", "metrics": metrics})
             log("sidecar: skipped non-speech audio")
@@ -320,7 +336,7 @@ class WhisperRuntime:
         if self.model is None:
             raise RuntimeError("Whisper model has not been loaded.")
 
-        result = transcribe_audio(self.model, audio, self.language)
+        result = transcribe_audio(self.model, audio, self.language, self.sample_len)
         inference_ms = round((time.perf_counter() - start) * 1000)
         memory = memory_snapshot()
         clear_cache()
@@ -334,6 +350,7 @@ class WhisperRuntime:
             language=result.get("language"),
             segment_count=len(segments),
             memory=memory,
+            sample_len=result.get("sample_len"),
         )
 
         emit({"type": "done", "transcript": transcript, "metrics": metrics})
@@ -353,9 +370,11 @@ class WhisperRuntime:
         language: str | None,
         segment_count: int,
         memory: dict[str, int],
+        sample_len: int | None = None,
     ) -> dict[str, Any]:
         return {
             "model_id": MODEL_ID,
+            "decode_sample_len": sample_len,
             "model_load_ms": self.load_ms or 0,
             "model_load_peak_memory_bytes": self.load_peak_memory_bytes,
             "audio_duration_ms": stats["audio_duration_ms"],
@@ -375,7 +394,12 @@ class WhisperRuntime:
         }
 
 
-def transcribe_audio(model, audio: np.ndarray, language: str | None) -> dict[str, Any]:
+def transcribe_audio(
+    model,
+    audio: np.ndarray,
+    language: str | None,
+    sample_len: int | None,
+) -> dict[str, Any]:
     dtype = mx.float16
     mel = log_mel_spectrogram(audio, n_mels=model.dims.n_mels, padding=N_SAMPLES)
     content_frames = mel.shape[-2] - N_FRAMES
@@ -409,6 +433,7 @@ def transcribe_audio(model, audio: np.ndarray, language: str | None) -> dict[str
                 language=detected_language,
                 task="transcribe",
                 temperature=0.0,
+                sample_len=sample_len,
                 fp16=True,
                 without_timestamps=True,
             ),
@@ -442,6 +467,7 @@ def transcribe_audio(model, audio: np.ndarray, language: str | None) -> dict[str
         "text": " ".join(all_text),
         "segments": segments,
         "language": detected_language,
+        "sample_len": sample_len,
     }
 
 
@@ -537,6 +563,7 @@ def main() -> int:
         weights_dir=args.weights_dir.expanduser(),
         language=None if language == "auto" else language,
     )
+    log(f"sidecar: decode sample_len={runtime.sample_len or 'default'}")
 
     if args.oneshot:
         return oneshot_mode(runtime)
