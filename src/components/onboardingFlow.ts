@@ -1,6 +1,7 @@
 export type OnboardingStep =
   | "permissions"
   | "mic-check"
+  | "transcription-setup"
   | "hotkey-info"
   | "hotkey-test"
   | "hands-free-test"
@@ -13,6 +14,7 @@ export type OnboardingStep =
 const ALL_ONBOARDING_STEPS: OnboardingStep[] = [
   "permissions",
   "mic-check",
+  "transcription-setup",
   "hotkey-info",
   "hotkey-test",
   "hands-free-test",

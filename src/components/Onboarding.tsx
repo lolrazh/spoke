@@ -19,7 +19,11 @@ import {
   type PermissionProvider,
 } from "../hooks/usePermissions";
 import { useProviderSelection } from "../hooks/useProviderSelection";
-import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import { useModelStatus } from "../hooks/useModelStatus";
+import {
+  LOCAL_STT_PROVIDER_ID,
+  type PreferredTranscriptionProviderId,
+} from "../core/transcription/providerPreferences";
 import {
   buildOnboardingSteps,
   isOnboardingStep,
@@ -123,6 +127,11 @@ const Onboarding: React.FC = () => {
     selectedProviderId,
     selectedProviderEntry,
   } = useProviderSelection();
+  const {
+    status: modelStatus,
+    install: installModel,
+    refresh: refreshModelStatus,
+  } = useModelStatus();
   const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
@@ -514,6 +523,29 @@ const Onboarding: React.FC = () => {
     permissions.microphone &&
     permissions.accessibility &&
     permissions.screenRecording;
+  const localProviderSelected = selectedProviderId === LOCAL_STT_PROVIDER_ID;
+  const transcriptionSetupReady =
+    !localProviderSelected || modelStatus.state === "ready";
+  const modelInstallBusy =
+    modelStatus.state === "downloading" || modelStatus.state === "installing";
+  const modelProgressPercent = Math.round(modelStatus.downloadProgress * 100);
+  const transcriptionProviderOptions =
+    selectableProviderEntries.length > 0
+      ? selectableProviderEntries.map((provider) => ({
+          value: provider.id,
+          label: provider.displayName,
+        }))
+      : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local" }];
+
+  const handleInstallModel = async () => {
+    await installModel();
+    await refreshModelStatus();
+    try {
+      setProviderSettings(await loadProviderSettings());
+    } catch {
+      // Provider settings are best-effort here; model status is the source of truth.
+    }
+  };
 
   // Initialize provider settings and restore saved step
   useEffect(() => {
@@ -1430,6 +1462,158 @@ const Onboarding: React.FC = () => {
                 </motion.div>
               )}
 
+              {/* Transcription Setup Step */}
+              {currentStep === "transcription-setup" && (
+                <motion.div
+                  key="transcription-setup"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  className="text-center"
+                >
+                  <div className="heading-stack">
+                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
+                      Choose Your Transcription Engine
+                    </h2>
+                    <p className="text-sm text-subtle leading-relaxed subheading">
+                      Use the local Whisper model for private offline
+                      transcription, or switch to a configured cloud provider.
+                    </p>
+                  </div>
+
+                  <div className="onboarding-section space-y-3">
+                    <div className="onboarding-permission-row rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                            <SfIcon
+                              name="point.3.filled.connected.trianglepath.dotted"
+                              size={16}
+                              className="text-primary/70"
+                            />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-[13px] font-medium text-foreground">
+                              Default engine
+                            </p>
+                            <p className="onboarding-permission-desc text-subtle">
+                              {selectedProviderEntry?.description ??
+                                "Offline transcription with the local Whisper model."}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="w-40 shrink-0">
+                          <Select
+                            value={selectedProviderId}
+                            onValueChange={handleProviderChange}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Provider" />
+                            </SelectTrigger>
+                            <SelectContent inPlace>
+                              {transcriptionProviderOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                  className="text-sm"
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {localProviderSelected && (
+                      <div className="onboarding-permission-row rounded-lg p-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
+                              <SfIcon
+                                name="brain.head.profile"
+                                size={16}
+                                className="text-primary/70"
+                              />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-[13px] font-medium text-foreground">
+                                Whisper large-v3 turbo 4-bit
+                              </p>
+                              <p className="onboarding-permission-desc text-subtle">
+                                {modelStatus.state === "ready"
+                                  ? "Installed and ready for offline dictation."
+                                  : modelStatus.state === "broken"
+                                    ? modelStatus.error ||
+                                      "The local model needs to be repaired."
+                                    : modelInstallBusy
+                                      ? "Installing the local transcription model."
+                                      : "Install once to use Spoke without a cloud STT key."}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex min-w-[112px] items-center justify-end">
+                            {modelStatus.state === "ready" ? (
+                              <motion.svg
+                                width="22"
+                                height="22"
+                                viewBox="0 0 24 24"
+                                className="text-white/80"
+                              >
+                                <motion.path
+                                  initial={{ pathLength: 1 }}
+                                  animate={{ pathLength: 1 }}
+                                  d="M5 13l4 4L19 7"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </motion.svg>
+                            ) : modelInstallBusy ? (
+                              <div className="w-28 space-y-1.5">
+                                <div className="text-[10px] text-white/70 tabular-nums">
+                                  {modelStatus.state === "installing"
+                                    ? "Verifying"
+                                    : `${modelProgressPercent}%`}
+                                </div>
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                                  <div
+                                    className="h-full rounded-full bg-white/60 transition-all duration-300"
+                                    style={{
+                                      width: `${modelProgressPercent}%`,
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={handleInstallModel}
+                                className="text-xs onboarding-cta"
+                              >
+                                {modelStatus.state === "broken"
+                                  ? "Repair"
+                                  : "Install"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-muted-foreground/60 text-center pt-2">
+                      Cloud providers use your own API keys. Add or manage keys
+                      later from Settings &gt; Models.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Hotkey Test Step */}
               {currentStep === "hotkey-test" && (
                 <motion.div
@@ -1774,7 +1958,9 @@ const Onboarding: React.FC = () => {
                   nextStep();
                 }}
                 disabled={
-                  currentStep === "permissions" && !allPermissionsGranted
+                  (currentStep === "permissions" && !allPermissionsGranted) ||
+                  (currentStep === "transcription-setup" &&
+                    !transcriptionSetupReady)
                 }
               >
                 Next

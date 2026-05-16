@@ -10,8 +10,19 @@ describe("onboardingFlow", () => {
 
   it("recognizes valid onboarding steps", () => {
     expect(isOnboardingStep("permissions")).toBe(true);
+    expect(isOnboardingStep("transcription-setup")).toBe(true);
     expect(isOnboardingStep("settings-info")).toBe(true);
     expect(isOnboardingStep("missing-step")).toBe(false);
+  });
+
+  it("sets up transcription before hotkey testing", () => {
+    const steps = buildOnboardingSteps();
+    expect(steps.indexOf("transcription-setup")).toBeGreaterThan(
+      steps.indexOf("mic-check"),
+    );
+    expect(steps.indexOf("transcription-setup")).toBeLessThan(
+      steps.indexOf("hotkey-info"),
+    );
   });
 
   it("does not include auth or name-verification", () => {
