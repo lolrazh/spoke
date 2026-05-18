@@ -37,13 +37,13 @@ Dogfood gate:
 ## P0: First-Run UX
 
 - [x] Gate onboarding on transcription setup before dictation tests.
-- [ ] Redesign onboarding around local-first product truth.
-- [ ] Move model install before hotkey tests.
-- [ ] Keep one simple dictation test.
-- [ ] Remove or hide edit-mode test until enhancement/edit pipeline is production-ready.
-- [ ] Remove or hide meta-directives/tricks from onboarding until post-processing is production-ready.
-- [ ] Make screen recording/OCR context optional, not required.
-- [ ] Add clear copy: local Whisper is private/offline; cloud is optional with user API keys.
+- [x] Redesign onboarding around local-first product truth.
+- [x] Move model install before hotkey tests.
+- [x] Keep one simple dictation test.
+- [x] Remove or hide edit-mode test until enhancement/edit pipeline is production-ready.
+- [x] Remove or hide meta-directives/tricks from onboarding until post-processing is production-ready.
+- [x] Make screen recording/OCR context optional, not required.
+- [x] Add clear copy: local Whisper is private/offline; cloud is optional with user API keys.
 - [ ] Add recovery copy for model install failure and broken model state.
 - [ ] Test onboarding with local model already installed.
 - [ ] Test onboarding with no model installed.

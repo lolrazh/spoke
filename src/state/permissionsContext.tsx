@@ -11,6 +11,7 @@ import {
   type PermissionUiState,
   type PermissionsState,
 } from "../hooks/usePermissions";
+import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 
 type MissingPermission = keyof PermissionsState;
 
@@ -98,7 +99,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   const missingPermissions = useMemo<MissingPermission[]>(() => {
     const missing: MissingPermission[] = [];
     if (!permissions.microphone) missing.push("microphone");
-    if (!permissions.screenRecording) missing.push("screenRecording");
+    if (ENABLE_SCREEN_CONTEXT && !permissions.screenRecording) {
+      missing.push("screenRecording");
+    }
     if (!permissions.inputMonitoring) missing.push("inputMonitoring");
     if (!permissions.accessibility) missing.push("accessibility");
     return missing;

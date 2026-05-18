@@ -7,8 +7,13 @@ import { MOTION } from "../config/motionTokens";
 import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
+import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 
-type PermissionKey = "microphone" | "accessibility" | "screenRecording";
+type PermissionKey =
+  | "microphone"
+  | "accessibility"
+  | "inputMonitoring"
+  | "screenRecording";
 
 const PERMISSION_COPY: Record<
   PermissionKey,
@@ -29,6 +34,11 @@ const PERMISSION_COPY: Record<
     title: "Text Insertion",
     description: "Type text directly into any app for you",
     icon: <SfIcon name="accessibility" size={18} className="text-primary/70" />,
+  },
+  inputMonitoring: {
+    title: "Global Hotkey",
+    description: "Listen for your dictation shortcut from any app",
+    icon: <SfIcon name="keyboard" size={18} className="text-primary/70" />,
   },
   screenRecording: {
     title: "Smart Context",
@@ -68,6 +78,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
     ui,
     requestMicrophone,
     requestAccessibility,
+    requestInputMonitoring,
     requestScreenRecording,
   } = usePermissionsController();
 
@@ -94,13 +105,23 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
         onRequest: requestAccessibility,
       },
       {
+        key: "inputMonitoring",
+        granted: permissions.inputMonitoring,
+        loading: ui.inputMonitoring.loading,
+        disabled: false,
+        onRequest: requestInputMonitoring,
+      },
+    ];
+
+    if (ENABLE_SCREEN_CONTEXT) {
+      entries.push({
         key: "screenRecording",
         granted: permissions.screenRecording,
         loading: ui.screenRecording.loading,
         disabled: false,
         onRequest: requestScreenRecording,
-      },
-    ];
+      });
+    }
 
     return entries;
   }, [
@@ -108,6 +129,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
     ui,
     requestMicrophone,
     requestAccessibility,
+    requestInputMonitoring,
     requestScreenRecording,
   ]);
 

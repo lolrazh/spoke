@@ -29,6 +29,7 @@ import {
   isOnboardingStep,
   type OnboardingStep,
 } from "./onboardingFlow";
+import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
@@ -156,7 +157,6 @@ const Onboarding: React.FC = () => {
     ui,
     init: initPermissions,
     requestMicrophone,
-    requestScreenRecording,
     requestAccessibility,
     requestInputMonitoring,
     setPermissions,
@@ -522,7 +522,8 @@ const Onboarding: React.FC = () => {
   const allPermissionsGranted =
     permissions.microphone &&
     permissions.accessibility &&
-    permissions.screenRecording;
+    permissions.inputMonitoring &&
+    (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
   const localProviderSelected = selectedProviderId === LOCAL_STT_PROVIDER_ID;
   const transcriptionSetupReady =
     !localProviderSelected || modelStatus.state === "ready";
@@ -640,11 +641,7 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       // Reset Option key visual state when leaving hotkey pages
-      if (
-        currentStep === "hotkey-info" ||
-        currentStep === "hotkey-test" ||
-        currentStep === "hands-free-test"
-      ) {
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex + 1]);
@@ -656,11 +653,7 @@ const Onboarding: React.FC = () => {
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       // Reset Option key visual state when leaving hotkey pages
-      if (
-        currentStep === "hotkey-info" ||
-        currentStep === "hotkey-test" ||
-        currentStep === "hands-free-test"
-      ) {
+      if (currentStep === "hotkey-info" || currentStep === "hotkey-test") {
         setOptKeyPressed(false);
       }
       setCurrentStep(steps[currentIndex - 1]);
@@ -670,12 +663,7 @@ const Onboarding: React.FC = () => {
   // Prepare the pill (create main window + tray) when entering test steps
   const pillPreparedRef = useRef(false);
   useEffect(() => {
-    if (
-      (currentStep === "hotkey-test" ||
-        currentStep === "hands-free-test" ||
-        currentStep === "edit-test") &&
-      !pillPreparedRef.current
-    ) {
+    if (currentStep === "hotkey-test" && !pillPreparedRef.current) {
       pillPreparedRef.current = true;
       try {
         window.electron?.preparePill?.();
@@ -687,11 +675,7 @@ const Onboarding: React.FC = () => {
 
   // Ask the pill renderer to expand itself (no direct window movement here)
   useEffect(() => {
-    if (
-      currentStep === "hotkey-test" ||
-      currentStep === "hands-free-test" ||
-      currentStep === "edit-test"
-    ) {
+    if (currentStep === "hotkey-test") {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try {
@@ -757,9 +741,7 @@ const Onboarding: React.FC = () => {
   // Auto-focus the text box on test steps for better UX
   useEffect(() => {
     if (
-      currentStep !== "hotkey-test" &&
-      currentStep !== "hands-free-test" &&
-      currentStep !== "edit-test"
+      currentStep !== "hotkey-test"
     ) {
       return;
     }
@@ -816,10 +798,6 @@ const Onboarding: React.FC = () => {
     await requestMicrophone();
   };
 
-  const handleRequestScreenRecording = async () => {
-    await requestScreenRecording();
-  };
-
   const handleComplete = async () => {
     // Finish onboarding from the Complete screen
     // Helper should already be running from permissions step, but ensure it's started
@@ -866,7 +844,7 @@ const Onboarding: React.FC = () => {
 
   // --- Dictation test wiring for test steps ---
   useEffect(() => {
-    if (currentStep === "hotkey-test" || currentStep === "hands-free-test") {
+    if (currentStep === "hotkey-test") {
       setTestText("");
     } else if (currentStep === "edit-test") {
       setTestTextTap(sampleEditText);
@@ -1297,37 +1275,37 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-                    {/* Screen Recording Permission */}
+                    {/* Input Monitoring Permission */}
                     <div
-                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.screenRecording ? "opacity-60" : "opacity-100"}`}
+                      className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                             <SfIcon
-                              name="record.circle"
+                              name="keyboard"
                               size={16}
                               className="text-primary/70"
                             />
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Smart Context
+                              Global Hotkey
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              Capture screen context for better accuracy.
+                              Listen for your dictation shortcut from any app.
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center">
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
-                              {!permissions.screenRecording ? (
+                              {!permissions.inputMonitoring ? (
                                 <motion.div
                                   key={
-                                    ui.screenRecording.loading
-                                      ? "sr-loading"
-                                      : "sr-idle"
+                                    ui.inputMonitoring.loading
+                                      ? "im-loading"
+                                      : "im-idle"
                                   }
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
@@ -1336,12 +1314,12 @@ const Onboarding: React.FC = () => {
                                 >
                                   <Button
                                     size="sm"
-                                    onClick={handleRequestScreenRecording}
-                                    disabled={ui.screenRecording.loading}
+                                    onClick={handleRequestInputMonitoring}
+                                    disabled={ui.inputMonitoring.loading}
                                     className="text-xs onboarding-cta w-full"
                                   >
                                     <div className="relative flex items-center justify-center h-4">
-                                      {ui.screenRecording.loading ? (
+                                      {ui.inputMonitoring.loading ? (
                                         <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
                                       ) : (
                                         <span>Enable</span>
@@ -1359,14 +1337,14 @@ const Onboarding: React.FC = () => {
                                   >
                                     <motion.path
                                       initial={{
-                                        pathLength: ui.screenRecording
+                                        pathLength: ui.inputMonitoring
                                           .justGranted
                                           ? 0
                                           : 1,
                                       }}
                                       animate={{ pathLength: 1 }}
                                       transition={
-                                        ui.screenRecording.justGranted
+                                        ui.inputMonitoring.justGranted
                                           ? {
                                               duration: 0.45,
                                               ease: [0.25, 0.8, 0.25, 1],
@@ -1949,36 +1927,20 @@ const Onboarding: React.FC = () => {
               Back
             </Button>
 
-            {/* Next button appears consistently; permissions step still gated */}
-            {currentStep !== "hotkey-test" &&
-            currentStep !== "hands-free-test" ? (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  nextStep();
-                }}
-                disabled={
-                  (currentStep === "permissions" && !allPermissionsGranted) ||
-                  (currentStep === "transcription-setup" &&
-                    !transcriptionSetupReady)
-                }
-              >
-                Next
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (currentStep === "hotkey-test") {
-                    setCurrentStep("hands-free-test");
-                  } else if (currentStep === "hands-free-test") {
-                    setCurrentStep("edit-test");
-                  }
-                }}
-              >
-                Next
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                nextStep();
+              }}
+              disabled={
+                (currentStep === "permissions" && !allPermissionsGranted) ||
+                (currentStep === "transcription-setup" &&
+                  !transcriptionSetupReady) ||
+                (currentStep === "hotkey-test" && !testText.trim())
+              }
+            >
+              Next
+            </Button>
           </div>
         )}
       </div>

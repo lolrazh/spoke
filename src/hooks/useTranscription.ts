@@ -22,6 +22,7 @@ import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
+import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -128,6 +129,10 @@ export function useTranscription(
   }, [mode, selection]);
 
   const captureScreenshotBase64 = useCallback(async () => {
+    if (!ENABLE_SCREEN_CONTEXT) {
+      return undefined;
+    }
+
     try {
       const takeScreenshot = window.electron?.takeScreenshot;
       if (!takeScreenshot) {
