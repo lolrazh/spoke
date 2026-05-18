@@ -50,16 +50,18 @@ Dogfood gate:
 
 ## P0: Architecture And Cleanup Audit
 
-- [ ] Audit remaining auth/login/account code and remove dead paths.
-- [ ] Audit old cloud-owned endpoints, Cloudflare/R2 assumptions, and private service assumptions.
-- [ ] Audit prompt/enhancement code and mark it behind explicit provider/config gates.
-- [ ] Audit OCR/screen-context code and mark it behind explicit context feature gates.
-- [ ] Audit renderer/main IPC surface for unused local-migration APIs.
-- [ ] Audit Electron main process file size and extract cohesive modules where it reduces risk.
-- [ ] Audit sidecar lifecycle boundaries: spawn, queueing, kill, provider switch, app quit.
-- [ ] Audit provider catalog/selectability behavior when API keys are missing.
-- [ ] Audit settings/onboarding shared state so provider/model status does not drift.
+- [x] Audit remaining auth/login/account code and remove dead paths.
+- [x] Audit old cloud-owned endpoints, Cloudflare/R2 assumptions, and private service assumptions.
+- [x] Audit prompt/enhancement code and mark it behind explicit provider/config gates.
+- [x] Audit OCR/screen-context code and mark it behind explicit context feature gates.
+- [x] Audit renderer/main IPC surface for unused local-migration APIs.
+- [x] Audit Electron main process file size and extract cohesive modules where it reduces risk.
+- [x] Audit sidecar lifecycle boundaries: spawn, queueing, kill, provider switch, app quit.
+- [x] Audit provider catalog/selectability behavior when API keys are missing.
+- [x] Audit settings/onboarding shared state so provider/model status does not drift.
 - [ ] Run focused tests for model manager, sidecar engine, provider store, onboarding flow, and transcription providers.
+
+Audit log: `P0_AUDIT.md`
 
 Architecture gate:
 
