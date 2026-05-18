@@ -22,7 +22,10 @@ import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
-import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
+import {
+  ENABLE_SCREEN_CONTEXT,
+  ENABLE_TRANSCRIPT_ENHANCEMENT,
+} from "../config/featureFlags";
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -290,7 +293,7 @@ export function useTranscription(
         }
 
         let finalText = result.text;
-        if (window.stt?.enhance) {
+        if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
           try {
             const enhanced = await window.stt.enhance({
               text: result.text,
@@ -361,7 +364,7 @@ export function useTranscription(
 
       // Enhance with LLM if triggers detected
       let finalText = result.text;
-      if (window.stt?.enhance) {
+      if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
         try {
           const enhanced = await window.stt.enhance({
             text: result.text,

@@ -132,6 +132,11 @@ Object.defineProperty(window, "stt", {
     getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
     setPreferredProvider: vi.fn(() => Promise.resolve()),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
+    enhance: vi.fn(async (payload: { text: string }) => ({
+      text: payload.text,
+      bypassed: true,
+    })),
+    extractOcr: vi.fn(async () => ({ words: [] })),
   },
   writable: true,
 });
@@ -204,6 +209,9 @@ describe("useTranscription", () => {
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
+    expect(window.stt.extractOcr).not.toHaveBeenCalled();
+    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -238,6 +246,9 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local on first start");
     });
     expect(window.stt.transcribeLocal).toHaveBeenCalled();
+    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
+    expect(window.stt.extractOcr).not.toHaveBeenCalled();
+    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
