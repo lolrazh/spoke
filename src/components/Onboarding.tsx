@@ -56,7 +56,7 @@ const devFlags = {
 
 const LOCAL_WHISPER_MODEL_NAME = "Whisper Large v3 Turbo";
 const LOCAL_WHISPER_MODEL_DESCRIPTION =
-  "Fast multilingual speech recognition, running locally with 4-bit quantization.";
+  "Fast multilingual speech recognition optimized at 4-bit precision for speed.";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
