@@ -1,4 +1,3 @@
-import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { join } from "node:path";
@@ -39,10 +38,6 @@ export default defineConfig({
           dest: "vad/ort-wasm",
         },
       ],
-    }),
-    sentryVitePlugin({
-      org: "spoke",
-      project: "spoke-app",
     }),
   ],
   resolve: {

@@ -113,7 +113,7 @@ Evidence:
 
 - `package.json:32` still says `"license": "Proprietary"`.
 - No root `README`, `LICENSE`, `CONTRIBUTING`, or `SECURITY` file exists.
-- Sentry is present in main and renderer; if kept for open source, it needs privacy copy and public configuration expectations.
+- Sentry has been removed from main, renderer, and Vite build configuration for the open-source app.
 - `package.json:68` still has `wrangler`, likely left over from Cloudflare usage.
 
 Risk: the repo is not yet ready to present as a clean open-source app.
@@ -123,7 +123,7 @@ Fix:
 - Pick and add the license.
 - Add README, privacy notes, development setup, model install notes, and release process.
 - Remove Cloudflare-only dependencies once release migration is complete.
-- Decide whether Sentry stays, becomes optional, or is removed for OSS dogfood builds.
+- If crash reporting returns, make it explicit opt-in and document the privacy behavior first.
 
 ## Confirmed Healthy
 

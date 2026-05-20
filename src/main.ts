@@ -15,7 +15,6 @@ import {
   globalShortcut,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
-import * as Sentry from "@sentry/electron/main";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -162,57 +161,10 @@ import {
   jitterMs,
 } from "./main/updateController";
 
-// Initialize Sentry as early as possible in the main process
 // Vite injects env at build time; provide a typed fallback for the main process
 const VITE_ENV: Record<string, string | undefined> =
   (import.meta as unknown as { env?: Record<string, string | undefined> })
     .env ?? {};
-
-const sentryDsn = VITE_ENV.VITE_SENTRY_DSN ?? process.env.VITE_SENTRY_DSN;
-const sentryEnv =
-  VITE_ENV.VITE_SENTRY_ENVIRONMENT ?? (app.isPackaged ? "prod" : "dev");
-const devFlag =
-  VITE_ENV.DEV === "1" || VITE_ENV.DEV === "true" || !app.isPackaged;
-
-Sentry.init({
-  // Use a single DSN variable for both main/renderer (Vite-injected)
-  dsn: sentryDsn || undefined,
-  // Default to 'prod' for packaged builds and 'dev' for development
-  environment: sentryEnv,
-  release: app.getVersion(),
-  // Enable performance tracing (tune in prod)
-  tracesSampleRate: devFlag ? 1.0 : 0.1,
-  beforeSend(event) {
-    try {
-      if (event.request?.url) {
-        try {
-          const u = new URL(event.request.url);
-          u.search = ""; // strip query params
-          event.request.url = u.toString();
-        } catch {}
-      }
-      if (event.request?.headers) {
-        const headers = event.request.headers as Record<string, string>;
-        for (const k of Object.keys(headers)) {
-          if (/authorization|api[-_]?key|token/i.test(k))
-            headers[k] = "[Filtered]";
-        }
-      }
-      if (event.breadcrumbs) {
-        event.breadcrumbs = event.breadcrumbs.map((b) => {
-          if (typeof b.message === "string") {
-            b.message = b.message.replace(
-              /(apikey|token|authorization)=([^\s&]+)/gi,
-              "$1=[Filtered]",
-            );
-          }
-          return b;
-        });
-      }
-    } catch {}
-    return event;
-  },
-});
 
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
@@ -1534,10 +1486,6 @@ app.whenReady().then(async () => {
             "ws://127.0.0.1:*",
           ]
         : []),
-      // Sentry endpoints for error reporting
-      "https://*.sentry.io",
-      "https://*.ingest.sentry.io",
-      "https://*.ingest.us.sentry.io",
       "blob:",
       "data:",
     ].join(" ");
@@ -1558,14 +1506,7 @@ app.whenReady().then(async () => {
       ...details.responseHeaders,
       "Content-Security-Policy": csp,
     };
-    // Only enforce COOP/COEP in strict prod (not dev or staging)
-    const isStrictProd =
-      app.isPackaged &&
-      !(
-        VITE_ENV?.VITE_SENTRY_ENVIRONMENT === "staging" ||
-        VITE_ENV?.VITE_SENTRY_ENVIRONMENT === "dev"
-      );
-    if (isStrictProd) {
+    if (app.isPackaged) {
       headers["Cross-Origin-Opener-Policy"] = "same-origin";
       headers["Cross-Origin-Embedder-Policy"] = "require-corp";
     }
@@ -1645,8 +1586,6 @@ app.whenReady().then(async () => {
     startFnListener();
     return { success: true };
   });
-
-  // (Removed) dev-only Sentry test hooks
 
   // Prepare the pill window and tray before onboarding completes
   ipcMain.handle("prepare-pill", () => {
@@ -2581,10 +2520,6 @@ app.on("activate", () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
-  // Attempt to flush pending Sentry events before quitting (best-effort)
-  try {
-    void Sentry.close(2000);
-  } catch {}
   // Stop follow-cursor polling to avoid timers running during shutdown
   stopFollowCursor();
 
@@ -2618,9 +2553,6 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
-  try {
-    void Sentry.close(2000);
-  } catch {}
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 

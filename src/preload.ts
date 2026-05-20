@@ -301,8 +301,6 @@ contextBridge.exposeInMainWorld("transcriptions", {
     ipcRenderer.invoke("transcriptions:clear"),
 });
 
-// (Removed) dev-only Sentry verification hooks
-
 // Event bridge for active display updates
 contextBridge.exposeInMainWorld(
   "onActiveDisplay",
