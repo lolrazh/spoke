@@ -29,7 +29,10 @@ import {
   isOnboardingStep,
   type OnboardingStep,
 } from "./onboardingFlow";
-import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
+import {
+  ENABLE_ONBOARDING_PARTICLES,
+  ENABLE_SCREEN_CONTEXT,
+} from "../config/featureFlags";
 // eslint-disable-next-line import/no-unresolved
 import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
 // eslint-disable-next-line import/no-unresolved
@@ -910,7 +913,7 @@ const Onboarding: React.FC = () => {
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {/* Grid and starfield backgrounds */}
       <GridBackground />
-      <ParticlesCanvas />
+      {ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
 
       {showIntro && (
         <IntroExperience

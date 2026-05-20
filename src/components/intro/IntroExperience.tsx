@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
+import { ENABLE_ONBOARDING_PARTICLES } from "../../config/featureFlags";
 
 type IntroExperienceProps = {
   logoSrc: string;
@@ -107,7 +108,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
           aria-label="Spoke intro"
         >
           <GridBackground holeActive={stage >= 2} />
-          {!reduced && <ParticlesCanvas />}
+          {ENABLE_ONBOARDING_PARTICLES && !reduced && <ParticlesCanvas />}
 
           {/* Logo - positioned independently */}
           <motion.img
