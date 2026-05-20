@@ -63,10 +63,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
   }, [reduced]);
 
   const handleSkip = () => {
-    try {
-      const root = document.querySelector(".onboarding-window");
-      if (root) root.classList.remove("resizing");
-    } catch {}
     setVisible(false);
   };
 

@@ -249,64 +249,6 @@ const Onboarding: React.FC = () => {
 
   useEffect(() => {
     initPermissions();
-
-    // FIX 13: Ensure DOM is fully ready before showing content
-    const handleDOMContentLoaded = () => {
-      // Force a small delay to ensure vibrancy has settled
-      setTimeout(() => {
-        const onboardingWindow = document.querySelector(
-          ".onboarding-window",
-        ) as HTMLElement;
-        if (onboardingWindow) {
-          devFlags.methods.devLog("DOM ready, ensuring vibrancy visibility");
-          // Ensure the window becomes visible by triggering a minimal style change
-          onboardingWindow.style.transform = "translateZ(0)";
-        }
-      }, 50);
-    };
-
-    // FIX 14: Handle initial content load timing
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", handleDOMContentLoaded);
-    } else {
-      // DOM already loaded
-      handleDOMContentLoaded();
-    }
-
-    // Fix resize color glitching by temporarily disabling backdrop-filter
-    let resizeTimeout: NodeJS.Timeout | null = null;
-
-    const handleResizeStart = () => {
-      const onboardingWindow = document.querySelector(
-        ".onboarding-window",
-      ) as HTMLElement;
-      if (onboardingWindow) {
-        onboardingWindow.classList.add("resizing");
-      }
-    };
-
-    const handleResizeEnd = () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        const onboardingWindow = document.querySelector(
-          ".onboarding-window",
-        ) as HTMLElement;
-        if (onboardingWindow) {
-          onboardingWindow.classList.remove("resizing");
-        }
-      }, 150);
-    };
-
-    // Listen for window resize events
-    window.addEventListener("resize", handleResizeStart);
-    window.addEventListener("resize", handleResizeEnd);
-
-    return () => {
-      document.removeEventListener("DOMContentLoaded", handleDOMContentLoaded);
-      window.removeEventListener("resize", handleResizeStart);
-      window.removeEventListener("resize", handleResizeEnd);
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-    };
   }, []);
 
   // Clear any active polling timers on unmount

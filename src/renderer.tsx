@@ -4,10 +4,6 @@ import App from "./components/App";
 import Onboarding from "./components/Onboarding";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
-import { initMicDevicesBridge } from "./utils/micDevices";
-
-// Initialize microphone devices bridge early
-initMicDevicesBridge();
 
 function mountReact(root: HTMLElement) {
   const reactRoot = createRoot(root);

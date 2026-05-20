@@ -798,16 +798,6 @@ body {
 
 /* (Removed) Glass overlay: onboarding now uses solid surface token */
 
-/* Resize performance optimization - disable effects during resize */
-.onboarding-window.resizing {
-  backdrop-filter: none;
-  transition: none;
-}
-
-.onboarding-window.resizing * {
-  transition: none !important;
-}
-
 /* Draggable header area - exclude native traffic lights region */
 .onboarding-header {
   -webkit-app-region: drag;
