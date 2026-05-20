@@ -13,11 +13,11 @@ Goal: ship a dogfoodable open-source macOS dictation app with reliable local Whi
 
 ## P0: Dogfoodable Packaged App
 
-- [ ] Package a signed macOS arm64 app.
-- [ ] Verify packaged app launches without repo files or local Python.
-- [ ] Verify bundled `spoke-stt` sidecar starts from packaged resources.
+- [x] Package a signed macOS arm64 app.
+- [x] Verify packaged app launches without repo files or local Python.
+- [x] Verify bundled `spoke-stt` sidecar starts from packaged resources.
 - [ ] Verify first-run local model install from Settings/onboarding.
-- [ ] Verify model status persists across app restart.
+- [x] Verify model status persists across app restart.
 - [ ] Verify local dictation works after model install.
 - [ ] Verify local dictation fails cleanly before model install.
 - [ ] Verify model removal stops the sidecar and prevents local dictation.
@@ -25,6 +25,17 @@ Goal: ship a dogfoodable open-source macOS dictation app with reliable local Whi
 - [ ] Verify onboarding can complete on a clean macOS account.
 - [ ] Verify crash-free app quit/relaunch after onboarding.
 - [ ] Verify notarization and stapling.
+
+Packaged smoke result, 2026-05-20:
+
+- `npm run package` produced `out/Spoke-darwin-arm64/Spoke.app`.
+- `codesign --verify --deep --strict --verbose=2 out/Spoke-darwin-arm64/Spoke.app` passed.
+- Main app and bundled `Contents/Resources/spoke-stt` are signed with Developer ID Application `Sandheep Rajkumar (LSDG748BBP)`.
+- `spctl --assess --type execute --verbose=4 out/Spoke-darwin-arm64/Spoke.app` failed with `source=Unnotarized Developer ID`; notarization is still required.
+- Copied app to `/tmp/spoke-p0-app/Spoke.app` and launched with `--user-data-dir=/tmp/spoke-p0-user-data`; app loaded resources from `/private/tmp/spoke-p0-app`, not the repo.
+- Clean temp user data started with `ModelManager` state `not_installed`; copied installed model state restarted with `ModelManager` state `ready`.
+- Direct packaged sidecar smoke loaded `/tmp/spoke-p0-user-data/local-stt/weights` and emitted `{"type":"ready"}` without user Python.
+- Idle packaged app did not leave `spoke-stt` running; quit cleanup left no packaged Spoke, hotkey helper, or sidecar processes.
 
 Dogfood gate:
 
@@ -82,7 +93,7 @@ Remaining local inference tasks:
 - [x] Audit sidecar lifecycle boundaries: spawn, queueing, kill, provider switch, app quit.
 - [x] Audit provider catalog/selectability behavior when API keys are missing.
 - [x] Audit settings/onboarding shared state so provider/model status does not drift.
-- [ ] Run focused tests for model manager, sidecar engine, provider store, onboarding flow, and transcription providers.
+- [x] Run focused tests for model manager, sidecar engine, provider store, onboarding flow, and transcription providers.
 
 Consolidated audit status:
 
@@ -98,7 +109,7 @@ Architecture gate:
 - [ ] Optional features are off by default and do not affect local dictation.
 - [ ] No fallback local models.
 - [ ] No renderer-side inference.
-- [ ] No user-installed Python dependency in packaged builds.
+- [x] No user-installed Python dependency in packaged builds.
 - [ ] No dead feature is advertised in onboarding.
 
 ## P0: Startup Bloat Cleanup
