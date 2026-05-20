@@ -54,7 +54,7 @@ const devFlags = {
   },
 };
 
-const LOCAL_WHISPER_MODEL_NAME = "Whisper large-v3 turbo 4-bit";
+const LOCAL_WHISPER_MODEL_NAME = "Whisper Large V3 Turbo";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -1008,17 +1008,17 @@ const Onboarding: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                             <SfIcon
-                              name="keyboard"
-                              size={16}
+                              name="keyboard.badge.eye.fill"
+                              size={20}
                               className="text-primary/70"
                             />
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Global Hotkey
+                              Input Monitoring
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              Listen for your dictation shortcut from any app.
+                              Listen for your hotkey from any app.
                             </p>
                           </div>
                         </div>
@@ -1208,7 +1208,7 @@ const Onboarding: React.FC = () => {
                                     "The local model needs to be repaired."
                                   : modelInstallBusy
                                     ? "Installing the local transcription model."
-                                    : "Install once to use Spoke without a cloud STT key."}
+                                    : "Fast multilingual speech recognition, running locally with 4-bit quantization."}
                             </p>
                           </div>
                         </div>
@@ -1262,11 +1262,6 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                     </div>
-
-                    <p className="text-xs text-muted-foreground/60 text-center pt-2">
-                      Cloud transcription can come later from Settings. First,
-                      make sure the local model works.
-                    </p>
                   </div>
                 </motion.div>
               )}

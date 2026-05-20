@@ -36,9 +36,15 @@ const PERMISSION_COPY: Record<
     icon: <SfIcon name="accessibility" size={18} className="text-primary/70" />,
   },
   inputMonitoring: {
-    title: "Global Hotkey",
-    description: "Listen for your dictation shortcut from any app",
-    icon: <SfIcon name="keyboard" size={18} className="text-primary/70" />,
+    title: "Input Monitoring",
+    description: "Listen for your hotkey from any app",
+    icon: (
+      <SfIcon
+        name="keyboard.badge.eye.fill"
+        size={20}
+        className="text-primary/70"
+      />
+    ),
   },
   screenRecording: {
     title: "Smart Context",
