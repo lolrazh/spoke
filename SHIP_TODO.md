@@ -95,8 +95,9 @@ Deferred cleanup candidates:
 Current state:
 
 - `forge.config.ts` publishes update artifacts through Cloudflare R2 using the S3 publisher.
-- `src/main.ts` initializes `update-electron-app` with `StaticStorage` at `https://download.spoke.so/darwin/${process.arch}`.
+- Immediate `update-electron-app` startup checks were removed to avoid broken launch-time network work.
 - `src/main/updateController.ts` fallback checks `https://download.spoke.so/darwin/${process.arch}/RELEASES.json`.
+- `src/main.ts` still schedules delayed/manual update checks through `updateController`.
 - There is no `.github/workflows` release pipeline yet.
 
 Tasks:
