@@ -172,6 +172,7 @@ contextBridge.exposeInMainWorld("stt", {
   getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
   installModel: () => ipcRenderer.invoke("stt:install-model"),
   removeModel: () => ipcRenderer.invoke("stt:remove-model"),
+  prewarmLocal: () => ipcRenderer.invoke("stt:prewarm-local"),
   onModelProgress: (
     cb: (payload: {
       progress: number;

@@ -180,6 +180,7 @@ const Onboarding: React.FC = () => {
     null,
   );
   const previousTestTextLengthRef = useRef(0);
+  const localPrewarmRequestedRef = useRef(false);
 
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
   const {
@@ -288,6 +289,18 @@ const Onboarding: React.FC = () => {
     await installModel();
     await refreshModelStatus();
   };
+
+  useEffect(() => {
+    if (currentStep !== "transcription-setup") return;
+    if (modelStatus.state !== "ready") return;
+    if (localPrewarmRequestedRef.current) return;
+
+    localPrewarmRequestedRef.current = true;
+    window.stt?.prewarmLocal?.().catch((error) => {
+      localPrewarmRequestedRef.current = false;
+      console.warn("[Onboarding] Failed to prewarm local model:", error);
+    });
+  }, [currentStep, modelStatus.state]);
 
   // Initialize provider settings and restore saved step
   useEffect(() => {

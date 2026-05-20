@@ -2141,6 +2141,11 @@ app.whenReady().then(async () => {
     return getModelStatus();
   });
 
+  ipcMain.handle("stt:prewarm-local", () => {
+    prewarmLocalSidecar("renderer");
+    return { ok: true };
+  });
+
   ipcMain.handle("stt:install-model", async () => {
     await installLocalModelAndSyncSidecar();
     scheduleLocalSidecarPrewarm("model-install", 250);

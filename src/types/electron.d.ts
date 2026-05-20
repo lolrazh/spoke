@@ -203,6 +203,7 @@ declare global {
       getModelStatus: () => Promise<import("./shared").ModelStatus>;
       installModel: () => Promise<void>;
       removeModel: () => Promise<void>;
+      prewarmLocal: () => Promise<{ ok: boolean }>;
       onModelProgress: (
         cb: (payload: {
           progress: number;
