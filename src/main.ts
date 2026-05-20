@@ -97,6 +97,7 @@ import { extractOcrWords } from "./main/ocrService";
 import { resolveEnhancementProvider } from "./main/llmService";
 import {
   installLocalModelAndSyncSidecar,
+  prewarmLocalSidecar,
   removeLocalModelAndStopSidecar,
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
@@ -1393,6 +1394,13 @@ async function pasteLastTranscript() {
   }
 }
 
+function scheduleLocalSidecarPrewarm(reason: string, delayMs: number): void {
+  const timer = setTimeout(() => {
+    prewarmLocalSidecar(reason);
+  }, delayMs);
+  timer.unref?.();
+}
+
 // Preference checking for first run
 // Removed onboarding persistence - always show onboarding
 
@@ -1552,6 +1560,7 @@ app.whenReady().then(async () => {
 
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
+      scheduleLocalSidecarPrewarm("startup", 2500);
     } catch (error) {
       console.error(
         "[Debug] Error launching main window with SKIP_ONBOARDING:",
@@ -1685,6 +1694,7 @@ app.whenReady().then(async () => {
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
+    scheduleLocalSidecarPrewarm("post-onboarding", 1000);
 
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
@@ -2133,6 +2143,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("stt:install-model", async () => {
     await installLocalModelAndSyncSidecar();
+    scheduleLocalSidecarPrewarm("model-install", 250);
   });
 
   ipcMain.handle("stt:remove-model", async () => {
@@ -2202,6 +2213,7 @@ app.whenReady().then(async () => {
 
       setPreferredProviderId(providerId);
       await syncLocalSidecarForCurrentProvider();
+      scheduleLocalSidecarPrewarm("provider-switch", 250);
     },
   );
 

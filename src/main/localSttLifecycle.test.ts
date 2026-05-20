@@ -126,6 +126,35 @@ describe("localSttLifecycle", () => {
     expect(mocks.setAutoRestart).not.toHaveBeenCalled();
   });
 
+  it("prewarms the sidecar when local model is ready", async () => {
+    const { prewarmLocalSidecar } = await importLifecycle();
+
+    prewarmLocalSidecar("test");
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
+  });
+
+  it("does not prewarm when provider is not local", async () => {
+    mocks.isPreferredProviderLocal.mockReturnValue(false);
+    const { prewarmLocalSidecar } = await importLifecycle();
+
+    prewarmLocalSidecar("test");
+
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+  });
+
+  it("does not prewarm when local model is not ready", async () => {
+    mocks.getModelInstallState.mockReturnValue("not_installed");
+    const { prewarmLocalSidecar } = await importLifecycle();
+
+    prewarmLocalSidecar("test");
+
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+  });
+
   it("stops the sidecar before model removal", async () => {
     const { removeLocalModelAndStopSidecar } = await importLifecycle();
 

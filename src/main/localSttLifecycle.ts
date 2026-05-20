@@ -16,6 +16,8 @@ import {
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
 
+let prewarmInFlight: Promise<void> | null = null;
+
 export async function ensureLocalSidecarRunning(): Promise<void> {
   if (getModelInstallState() !== "ready") {
     throw new Error(LOCAL_MODEL_NOT_INSTALLED_MESSAGE);
@@ -26,6 +28,34 @@ export async function ensureLocalSidecarRunning(): Promise<void> {
   }
 
   setAutoRestart(true);
+}
+
+export function prewarmLocalSidecar(reason: string): void {
+  if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
+    return;
+  }
+
+  if (isSidecarRunning()) {
+    setAutoRestart(true);
+    return;
+  }
+
+  if (prewarmInFlight) {
+    return;
+  }
+
+  console.log(`[STT] Prewarming local sidecar (${reason})`);
+  prewarmInFlight = ensureLocalSidecarRunning()
+    .then(() => {
+      console.log(`[STT] Local sidecar prewarmed (${reason})`);
+    })
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${msg}`);
+    })
+    .finally(() => {
+      prewarmInFlight = null;
+    });
 }
 
 export function stopLocalSidecar(): void {
