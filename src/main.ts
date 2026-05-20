@@ -16,7 +16,6 @@ import {
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import * as Sentry from "@sentry/electron/main";
-import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -215,23 +214,6 @@ Sentry.init({
   },
 });
 
-// Initialize auto-updates (packaged builds only)
-try {
-  if (app.isPackaged) {
-    updateElectronApp({
-      logger: console,
-      updateSource: {
-        type: UpdateSourceType.StaticStorage,
-        // Fetch RELEASES.json from darwin/<arch>/
-        baseUrl: `https://download.spoke.so/darwin/${process.arch}`,
-      },
-      // Production cadence; see policy: startup/resume triggers augment this
-      updateInterval: "1 hour",
-    });
-  }
-} catch (e) {
-  console.warn("[auto-update] init skipped:", e);
-}
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
