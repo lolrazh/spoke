@@ -106,24 +106,24 @@ describe("localSttLifecycle", () => {
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
   });
 
-  it("starts the sidecar when local is selected and the model is ready", async () => {
+  it("does not pre-spawn when local is selected and the model is ready", async () => {
     const { syncLocalSidecarForCurrentProvider } = await importLifecycle();
 
     await syncLocalSidecarForCurrentProvider();
 
-    expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
-    expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.setAutoRestart).not.toHaveBeenCalled();
     expect(mocks.killSidecar).not.toHaveBeenCalled();
   });
 
-  it("syncs the sidecar after model installation", async () => {
+  it("does not pre-spawn after model installation", async () => {
     const { installLocalModelAndSyncSidecar } = await importLifecycle();
 
     await installLocalModelAndSyncSidecar();
 
     expect(mocks.installModel).toHaveBeenCalledTimes(1);
-    expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
-    expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.setAutoRestart).not.toHaveBeenCalled();
   });
 
   it("stops the sidecar before model removal", async () => {

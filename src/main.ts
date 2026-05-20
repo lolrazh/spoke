@@ -1527,7 +1527,9 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Pre-spawn or stop the sidecar to match the selected provider.
+  // Stop the sidecar if current provider/model state cannot use it. Do not
+  // pre-spawn on startup; packaged PyInstaller + MLX cold starts can starve
+  // first paint and make onboarding feel frozen.
   syncLocalSidecarForCurrentProvider().catch((err) => {
     console.error("[STT] Failed to sync sidecar on startup:", err);
   });

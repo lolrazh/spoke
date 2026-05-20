@@ -36,10 +36,7 @@ export function stopLocalSidecar(): void {
 export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
   if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
     stopLocalSidecar();
-    return;
   }
-
-  await ensureLocalSidecarRunning();
 }
 
 export async function installLocalModelAndSyncSidecar(): Promise<void> {
