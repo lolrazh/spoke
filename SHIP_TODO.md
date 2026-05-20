@@ -133,6 +133,8 @@ Deferred cleanup candidates:
 
 ## P1: Local Inference Performance Backlog
 
+- [ ] Measure cold first-transcription latency separately from warm transcription latency in packaged builds.
+- [ ] Investigate safe sidecar/model warmup after install or app launch so the first real dictation is not the slowest path.
 - [ ] Re-run a clean pinned-English control after machine cooldown and low background load.
 - [ ] Evaluate upstream MLX batched decoding work for long-file throughput only; do not mix it into short dictation unless it improves latency.
 - [ ] Evaluate WhisperKit/Core ML as a separate native engine spike if MLX encoder latency remains the wall.
