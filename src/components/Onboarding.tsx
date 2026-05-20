@@ -1178,11 +1178,11 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Install Local Transcription
+                      Install Local Model
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Download Whisper once. Audio stays on your Mac and
-                      transcription runs offline.
+                      Spoke transcribes on-device, so your voice is processed
+                      locally instead of by a transcription server.
                     </p>
                   </div>
 
