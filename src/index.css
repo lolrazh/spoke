@@ -1060,15 +1060,22 @@ body {
     border-color: rgba(255, 255, 255, 0.24);
   }
   .onboarding-task-check {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border-radius: 9999px;
+    border-radius: calc(var(--radius-sm) + 2px);
     background-color: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.16);
+    transition:
+      background-color 180ms var(--ease-emphasized),
+      border-color 180ms var(--ease-emphasized);
+  }
+  .onboarding-task-complete .onboarding-task-check {
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.28);
   }
 
   /* Permission row styling without backdrop-filter to prevent timing issues */

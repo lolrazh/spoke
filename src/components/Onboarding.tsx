@@ -1287,7 +1287,7 @@ const Onboarding: React.FC = () => {
                       </p>
                     </div>
                     <div className="onboarding-section space-y-4">
-                      <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3">
                         <div
                           className={`onboarding-task-row rounded-lg p-3 ${
                             dictationChecklist.pushToTalk
@@ -1295,33 +1295,39 @@ const Onboarding: React.FC = () => {
                               : ""
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="onboarding-task-check">
-                              {dictationChecklist.pushToTalk && (
-                                <svg
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  className="text-white/85"
-                                >
-                                  <path
-                                    d="M5 13l4 4L19 7"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              )}
-                            </div>
-                            <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
                               <p className="text-[13px] font-medium text-foreground">
                                 Push-to-talk
                               </p>
                               <p className="onboarding-permission-desc text-subtle">
                                 Hold Right Option, speak, then release.
                               </p>
+                            </div>
+                            <div className="onboarding-task-check">
+                              {dictationChecklist.pushToTalk && (
+                                <motion.svg
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  className="text-white/85"
+                                >
+                                  <motion.path
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{
+                                      duration: 0.45,
+                                      ease: [0.25, 0.8, 0.25, 1],
+                                    }}
+                                    d="M5 13l4 4L19 7"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1333,27 +1339,8 @@ const Onboarding: React.FC = () => {
                               : ""
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="onboarding-task-check">
-                              {dictationChecklist.handsFree && (
-                                <svg
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  className="text-white/85"
-                                >
-                                  <path
-                                    d="M5 13l4 4L19 7"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              )}
-                            </div>
-                            <div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
                               <p className="text-[13px] font-medium text-foreground">
                                 Hands-free
                               </p>
@@ -1361,6 +1348,31 @@ const Onboarding: React.FC = () => {
                                 Double tap Right Option to start. Tap again to
                                 stop.
                               </p>
+                            </div>
+                            <div className="onboarding-task-check">
+                              {dictationChecklist.handsFree && (
+                                <motion.svg
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  className="text-white/85"
+                                >
+                                  <motion.path
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{
+                                      duration: 0.45,
+                                      ease: [0.25, 0.8, 0.25, 1],
+                                    }}
+                                    d="M5 13l4 4L19 7"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </motion.svg>
+                              )}
                             </div>
                           </div>
                         </div>
