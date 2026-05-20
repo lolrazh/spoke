@@ -53,6 +53,7 @@ export type PermissionUiState = {
 type Options = {
   pollIntervalMs?: number;
   deepLinkGraceMs?: number;
+  includeScreenRecording?: boolean;
 };
 
 const debugPermLog = (...args: unknown[]) => {
@@ -161,6 +162,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       openSystemPreferences: () => undefined,
     };
   const pollMs = opts?.pollIntervalMs ?? 1000;
+  const includeScreenRecording = opts?.includeScreenRecording ?? true;
 
   const [permissions, setPermissions] = useState<PermissionsState>({
     microphone: false,
@@ -201,12 +203,14 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       const [sys, mic, sr] = await Promise.all([
         p.checkPermissions(),
         p.checkMicrophonePermission(),
-        p.checkScreenRecordingPermission(),
+        includeScreenRecording
+          ? p.checkScreenRecordingPermission()
+          : Promise.resolve({ granted: false, status: "disabled" }),
       ]);
       if (!mountedRef.current) return;
       const nextPermissions: PermissionsState = {
         microphone: !!mic?.granted,
-        screenRecording: !!sr?.granted,
+        screenRecording: includeScreenRecording ? !!sr?.granted : false,
         inputMonitoring: !(sys?.needIM ?? true),
         accessibility: !(sys?.needAX ?? true),
       };
@@ -290,6 +294,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   };
 
   const requestScreenRecording = async () => {
+    if (!includeScreenRecording) return;
     try {
       setUi((prev) => ({
         ...prev,

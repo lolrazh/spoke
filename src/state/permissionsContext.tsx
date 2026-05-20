@@ -45,6 +45,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   } = usePermissions(undefined, {
     pollIntervalMs: 1000,
     deepLinkGraceMs: 4000,
+    includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
 
   const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null);

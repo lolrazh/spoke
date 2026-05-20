@@ -166,6 +166,7 @@ const Onboarding: React.FC = () => {
   } = usePermissions(mockProvider, {
     pollIntervalMs: 1000,
     deepLinkGraceMs: 4000,
+    includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
@@ -438,7 +439,6 @@ const Onboarding: React.FC = () => {
 
   // Initial permission check via shared hook
   useEffect(() => {
-    initPermissions();
     // Mirror previous debug mode flag
     setIsDev(devFlags.isDevelopment);
   }, []);
