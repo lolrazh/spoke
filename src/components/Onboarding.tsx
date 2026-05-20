@@ -34,8 +34,6 @@ import {
   ENABLE_SCREEN_CONTEXT,
 } from "../config/featureFlags";
 // eslint-disable-next-line import/no-unresolved
-import onboardingMusicUrl from "/assets/onboarding-music.wav?url";
-// eslint-disable-next-line import/no-unresolved
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -136,7 +134,6 @@ const Onboarding: React.FC = () => {
     install: installModel,
     refresh: refreshModelStatus,
   } = useModelStatus();
-  const [introControlsReady, setIntroControlsReady] = useState<boolean>(false);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -187,52 +184,10 @@ const Onboarding: React.FC = () => {
     selectedMicId,
     setSelectedMicId,
   } = useMicVisualizer({ active: currentStep === "mic-check" });
-  // Background music during onboarding
-  const onboardingAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [musicEnabled, setMusicEnabled] = useState<boolean>(true);
-  const targetMusicVolumeRef = useRef<number>(0.28);
-  const fadeRafRef = useRef<number | null>(null);
-
-  // Reusable volume fade helper
-  const fadeVolumeTo = (to: number, durationMs = 600) =>
-    new Promise<void>((resolve) => {
-      const audio = onboardingAudioRef.current;
-      if (!audio || durationMs <= 0) {
-        if (audio) audio.volume = Math.max(0, Math.min(1, to));
-        resolve();
-        return;
-      }
-      if (fadeRafRef.current) {
-        cancelAnimationFrame(fadeRafRef.current);
-        fadeRafRef.current = null;
-      }
-      const from = audio.volume;
-      const start = performance.now();
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / durationMs);
-        const v = from + (to - from) * t;
-        audio.volume = Math.max(0, Math.min(1, v));
-        if (t < 1) {
-          fadeRafRef.current = requestAnimationFrame(step);
-        } else {
-          if (fadeRafRef.current) {
-            cancelAnimationFrame(fadeRafRef.current);
-            fadeRafRef.current = null;
-          }
-          resolve();
-        }
-      };
-      fadeRafRef.current = requestAnimationFrame(step);
-    });
   // Dismiss intro without persisting any flag so it always shows next run
   const handleIntroFinish = useCallback(() => {
     setShowIntro(false);
   }, []);
-
-  // Ensure we reset the controls ready flag when replaying the intro
-  useEffect(() => {
-    if (showIntro) setIntroControlsReady(false);
-  }, [showIntro]);
 
   // Helper to render intro experience or replay button (for intro-only mode)
   const renderIntroOrReplay = () => {
@@ -273,53 +228,6 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
-  // Setup onboarding background music (autoplay + loop)
-  useEffect(() => {
-    const audio = new Audio(onboardingMusicUrl);
-    onboardingAudioRef.current = audio;
-    audio.loop = true;
-    audio.volume = targetMusicVolumeRef.current; // subtle by default
-
-    const tryPlay = async () => {
-      try {
-        await audio.play();
-        setMusicEnabled(true);
-      } catch {
-        // Autoplay might be blocked; keep disabled until user toggles
-        setMusicEnabled(false);
-      }
-    };
-
-    // Try to start immediately
-    tryPlay();
-
-    return () => {
-      try {
-        audio.pause();
-        audio.src = "";
-      } catch {}
-      onboardingAudioRef.current = null;
-    };
-  }, []);
-
-  // Fade out audio upon entering mic-check, then pause and mark disabled
-  useEffect(() => {
-    if (currentStep !== "mic-check") return;
-    (async () => {
-      try {
-        if (
-          onboardingAudioRef.current &&
-          !onboardingAudioRef.current.paused &&
-          onboardingAudioRef.current.volume > 0
-        ) {
-          await fadeVolumeTo(0, 800);
-          onboardingAudioRef.current.pause();
-          setMusicEnabled(false);
-        }
-      } catch {}
-    })();
-  }, [currentStep]);
-
   // Save current step for mid-onboarding restart recovery
   useEffect(() => {
     if (introOnly) return; // Don't save in intro-only mode
@@ -329,110 +237,6 @@ const Onboarding: React.FC = () => {
       console.warn("[Onboarding] Failed to save current step:", error);
     });
   }, [currentStep, introOnly]);
-
-  const toggleMusic = () => {
-    const audio = onboardingAudioRef.current;
-    if (!audio) return;
-    const nextEnabled = !musicEnabled;
-    // Flip UI state immediately for reactive icon change
-    setMusicEnabled(nextEnabled);
-    if (nextEnabled) {
-      // Enable: start playback silently, then fade up asynchronously
-      (async () => {
-        try {
-          audio.volume = 0;
-          await audio.play();
-          await fadeVolumeTo(targetMusicVolumeRef.current, 600);
-        } catch {
-          // Revert UI if play fails
-          setMusicEnabled(false);
-        }
-      })();
-    } else {
-      // Disable: fade down asynchronously, then pause
-      (async () => {
-        try {
-          await fadeVolumeTo(0, 600);
-        } catch {}
-        try {
-          audio.pause();
-        } catch {}
-      })();
-    }
-  };
-
-  // Speaker icon with fixed box and crossfade to avoid jumps
-  const SpeakerToggleIcon: React.FC<{ enabled: boolean }> = ({ enabled }) => {
-    const prevEnabledRef = useRef<boolean>(enabled);
-    const [showSlashOverlay, setShowSlashOverlay] = useState<boolean>(false);
-    const [drawForward, setDrawForward] = useState<boolean>(false);
-
-    useEffect(() => {
-      const was = prevEnabledRef.current;
-      if (was !== enabled) {
-        // Trigger slash draw overlay on transitions
-        if (!enabled) {
-          // going from on -> off: draw in
-          setDrawForward(true);
-          setShowSlashOverlay(true);
-          const t = setTimeout(() => setShowSlashOverlay(false), 260);
-          return () => clearTimeout(t);
-        } else {
-          // off -> on: draw out
-          setDrawForward(false);
-          setShowSlashOverlay(true);
-          const t = setTimeout(() => setShowSlashOverlay(false), 220);
-          return () => clearTimeout(t);
-        }
-      }
-      prevEnabledRef.current = enabled;
-    }, [enabled]);
-
-    return (
-      <div className="relative w-7 h-7 flex items-center justify-center">
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            key={enabled ? "on" : "off"}
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="absolute inset-0 flex items-center justify-center"
-          >
-            <SfIcon
-              name={enabled ? "speaker.wave.3.fill" : "speaker.slash.fill"}
-              size={22}
-            />
-          </motion.div>
-        </AnimatePresence>
-
-        {showSlashOverlay && (
-          <motion.svg
-            className="absolute inset-0"
-            width={22}
-            height={22}
-            viewBox="0 0 41.29296875 48.146484375"
-            preserveAspectRatio="xMidYMid meet"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <motion.path
-              d="M 37.060546875 4.94140625 L 3.416015625 39.359375"
-              initial={{ pathLength: drawForward ? 0 : 1, opacity: 0.9 }}
-              animate={{ pathLength: drawForward ? 1 : 0, opacity: 0.9 }}
-              transition={{
-                duration: drawForward ? 0.24 : 0.2,
-                ease: "easeOut",
-              }}
-            />
-          </motion.svg>
-        )}
-      </div>
-    );
-  };
 
   // Note: App location check moved to silent background check
   // No longer part of onboarding wizard flow
@@ -894,17 +698,6 @@ const Onboarding: React.FC = () => {
     return (
       <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
         {renderIntroOrReplay()}
-        {/* Speaker toggle - top-right, ghost style matching chevron */}
-        <button
-          className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
-          onClick={toggleMusic}
-          aria-label={
-            musicEnabled ? "Mute onboarding music" : "Unmute onboarding music"
-          }
-          title={musicEnabled ? "Mute music" : "Unmute music"}
-        >
-          <SpeakerToggleIcon enabled={musicEnabled} />
-        </button>
       </div>
     );
   }
@@ -919,7 +712,6 @@ const Onboarding: React.FC = () => {
         <IntroExperience
           logoSrc={transparentLogoUrl}
           onFinish={handleIntroFinish}
-          onReadyForControls={() => setIntroControlsReady(true)}
         />
       )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
@@ -995,31 +787,6 @@ const Onboarding: React.FC = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* Speaker toggle - show before mic-check only */}
-      {(showIntro || currentStep === "permissions") && (
-        <AnimatePresence initial={false}>
-          {(showIntro ? introControlsReady : true) && (
-            <motion.button
-              key={showIntro ? "intro-toggle" : "onboarding-toggle"}
-              className="pill-collapse-btn sf-intro-controls absolute top-4 right-4 no-drag"
-              onClick={toggleMusic}
-              aria-label={
-                musicEnabled
-                  ? "Mute onboarding music"
-                  : "Unmute onboarding music"
-              }
-              title={musicEnabled ? "Mute music" : "Unmute music"}
-              initial={{ opacity: 0, scale: 0.9, y: -2, filter: "blur(4px)" }}
-              animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-              exit={{ opacity: 0, scale: 0.95, y: -2, filter: "blur(2px)" }}
-              transition={{ duration: 0.5, ease: [0.25, 0.8, 0.25, 1] }}
-            >
-              <SpeakerToggleIcon enabled={musicEnabled} />
-            </motion.button>
-          )}
-        </AnimatePresence>
       )}
 
       {/* Close Button removed per design */}

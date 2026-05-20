@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
@@ -7,7 +7,6 @@ import { ENABLE_ONBOARDING_PARTICLES } from "../../config/featureFlags";
 type IntroExperienceProps = {
   logoSrc: string;
   onFinish: () => void;
-  onReadyForControls?: () => void; // called when main content fully visible
 };
 
 const prefersReducedMotion = () => {
@@ -32,12 +31,10 @@ const GridBackground: React.FC<{ holeActive: boolean }> = ({ holeActive }) => {
 export const IntroExperience: React.FC<IntroExperienceProps> = ({
   logoSrc,
   onFinish,
-  onReadyForControls,
 }) => {
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   const [visible, setVisible] = useState(true);
-  const isMountedRef = useRef(true);
 
   // Match onboarding page transition spring
   const spring = {
@@ -46,12 +43,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
     damping: 28,
     mass: 0.45,
   };
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
 
   // Animation stages
   useEffect(() => {
@@ -78,22 +69,6 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
     } catch {}
     setVisible(false);
   };
-
-  // Notify parent when content is fully visible
-  const notifiedRef = useRef(false);
-  useEffect(() => {
-    if (!notifiedRef.current && stage >= 3) {
-      notifiedRef.current = true;
-      // Delay slightly so headline and CTA finish easing before showing controls
-      const delay = reduced ? 120 : 650; // CTA anim ~550ms + small buffer
-      const id = setTimeout(() => {
-        try {
-          onReadyForControls && onReadyForControls();
-        } catch {}
-      }, delay);
-      return () => clearTimeout(id);
-    }
-  }, [stage, onReadyForControls, reduced]);
 
   return (
     <AnimatePresence onExitComplete={onFinish}>
