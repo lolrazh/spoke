@@ -69,6 +69,8 @@ SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
 FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
 SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
 PROFILE_MODE = os.environ.get("SPOKE_STT_PROFILE", "0").strip().lower()
+WARMUP_MODE = os.environ.get("SPOKE_STT_WARMUP", "1").strip().lower()
+WARMUP_SAMPLE_LEN = 8
 
 
 def log(message: str) -> None:
@@ -157,6 +159,21 @@ def get_sample_len_limit() -> int | None:
 
 def is_enabled(value: str) -> bool:
     return value in ("1", "true", "yes", "on")
+
+
+def synthetic_warmup_audio() -> np.ndarray:
+    """Small deterministic speech-like signal used only to compile MLX kernels."""
+    duration_s = 0.75
+    t = np.linspace(0.0, duration_s, int(SAMPLE_RATE * duration_s), endpoint=False)
+    envelope = np.minimum(1.0, np.linspace(0.0, 8.0, t.size)) * np.minimum(
+        1.0, np.linspace(8.0, 0.0, t.size)
+    )
+    carrier = (
+        0.045 * np.sin(2 * np.pi * 180 * t)
+        + 0.025 * np.sin(2 * np.pi * 430 * t)
+        + 0.015 * np.sin(2 * np.pi * 920 * t)
+    )
+    return (carrier * envelope).astype(np.float32)
 
 
 def install_fast_attention_patch() -> None:
@@ -313,6 +330,29 @@ class WhisperRuntime:
         self.load_ms = round((time.perf_counter() - start) * 1000)
         self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
         log(f"sidecar: model loaded in {self.load_ms} ms")
+
+    def warmup(self) -> None:
+        if not is_enabled(WARMUP_MODE):
+            log("sidecar: warmup disabled")
+            return
+        if self.model is None:
+            raise RuntimeError("Whisper model has not been loaded.")
+
+        try:
+            log("sidecar: warming MLX decode path")
+            start = time.perf_counter()
+            reset_peak_memory()
+            transcribe_audio(
+                self.model,
+                synthetic_warmup_audio(),
+                self.language,
+                WARMUP_SAMPLE_LEN,
+            )
+            clear_cache()
+            warmup_ms = round((time.perf_counter() - start) * 1000)
+            log(f"sidecar: warmup complete in {warmup_ms} ms")
+        except Exception as exc:
+            log(f"sidecar: warmup failed; continuing cold: {exc}")
 
     def transcribe(self, audio: np.ndarray) -> None:
         request_start = time.perf_counter()
@@ -582,6 +622,7 @@ def should_skip_decoded_segment(result) -> bool:
 def daemon_mode(runtime: WhisperRuntime) -> int:
     try:
         runtime.load()
+        runtime.warmup()
     except Exception as exc:
         log_exception(exc, include_traceback=False)
         emit_error(str(exc), "model_load_failed")
