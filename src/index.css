@@ -1059,23 +1059,26 @@ body {
     opacity: 0.68;
     border-color: rgba(255, 255, 255, 0.24);
   }
-  .onboarding-task-check {
-    width: 24px;
-    height: 24px;
+  .onboarding-task-status {
+    min-width: 52px;
+    height: 28px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    border-radius: calc(var(--radius-sm) + 2px);
-    background-color: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    transition:
-      background-color 180ms var(--ease-emphasized),
-      border-color 180ms var(--ease-emphasized);
   }
-  .onboarding-task-complete .onboarding-task-check {
-    background-color: rgba(255, 255, 255, 0.09);
-    border-color: rgba(255, 255, 255, 0.28);
+  .onboarding-task-prompt {
+    min-width: 52px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    background-color: rgba(var(--surface-base-rgb), 0.48);
+    border: 1px solid var(--stroke-fg-strong);
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.6875rem;
+    font-weight: 400;
   }
 
   /* Permission row styling without backdrop-filter to prevent timing issues */

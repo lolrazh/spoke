@@ -56,7 +56,7 @@ const devFlags = {
 
 const LOCAL_WHISPER_MODEL_NAME = "Whisper Large v3 Turbo";
 const LOCAL_WHISPER_MODEL_DESCRIPTION =
-  "Fast multilingual speech recognition optimized at 4-bit precision for speed.";
+  "Fast multilingual speech recognition optimized at 4-bit precision.";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -764,11 +764,10 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      This Is Your Dictation Hotkey
+                      Meet Your Hotkey
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Use the Right Option key for both push-to-talk and
-                      hands-free dictation.
+                      Right Option starts dictation from anywhere on your Mac.
                     </p>
                   </div>
                   <div className="onboarding-section">
@@ -788,7 +787,7 @@ const Onboarding: React.FC = () => {
                         </span>
                       </div>
                       <p className="onboarding-note">
-                        Hold to talk. Double tap to start hands-free mode.
+                        Press it here to check that Spoke can hear the key.
                       </p>
                     </div>
                   </div>
@@ -1179,11 +1178,11 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Set Up Local Transcription
+                      Install Local Transcription
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Spoke uses a private local Whisper model for first-run
-                      dictation.
+                      Download Whisper once. Audio stays on your Mac and
+                      transcription runs offline.
                     </p>
                   </div>
 
@@ -1204,11 +1203,11 @@ const Onboarding: React.FC = () => {
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
                               {modelStatus.state === "broken"
-                                  ? modelStatus.error ||
-                                    "The local model needs to be repaired."
-                                  : modelInstallBusy
-                                    ? "Installing the local transcription model."
-                                    : LOCAL_WHISPER_MODEL_DESCRIPTION}
+                                ? modelStatus.error ||
+                                  "The local model needs to be repaired."
+                                : modelInstallBusy
+                                  ? "Installing the local transcription model."
+                                  : LOCAL_WHISPER_MODEL_DESCRIPTION}
                             </p>
                           </div>
                         </div>
@@ -1279,11 +1278,11 @@ const Onboarding: React.FC = () => {
                   <div className="max-w-xl mx-auto text-left">
                     <div className="text-center heading-stack">
                       <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                        Try Both Dictation Modes
+                        Try Dictation Modes
                       </h2>
                       <p className="text-sm text-subtle leading-relaxed subheading">
-                        Try the quick hold-to-talk flow, then the relaxed
-                        hands-free flow.
+                        Hold the hotkey for quick notes, or double tap when you
+                        want to speak hands-free.
                       </p>
                     </div>
                     <div className="onboarding-section space-y-4">
@@ -1305,30 +1304,47 @@ const Onboarding: React.FC = () => {
                                 to insert.
                               </p>
                             </div>
-                            <div className="onboarding-task-check">
-                              {dictationChecklist.pushToTalk && (
-                                <motion.svg
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  className="text-white/85"
-                                >
-                                  <motion.path
-                                    initial={{ pathLength: 0 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={{
-                                      duration: 0.45,
-                                      ease: [0.25, 0.8, 0.25, 1],
-                                    }}
-                                    d="M5 13l4 4L19 7"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              )}
+                            <div className="onboarding-task-status">
+                              <AnimatePresence mode="wait" initial={false}>
+                                {dictationChecklist.pushToTalk ? (
+                                  <motion.svg
+                                    key="push-to-talk-done"
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    className="text-white/80"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                  >
+                                    <motion.path
+                                      initial={{ pathLength: 0 }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={{
+                                        duration: 0.45,
+                                        ease: [0.25, 0.8, 0.25, 1],
+                                      }}
+                                      d="M5 13l4 4L19 7"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                ) : (
+                                  <motion.span
+                                    key="push-to-talk-try"
+                                    className="onboarding-task-prompt"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    aria-hidden
+                                  >
+                                    Try
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
                             </div>
                           </div>
                         </div>
@@ -1350,30 +1366,47 @@ const Onboarding: React.FC = () => {
                                 stop.
                               </p>
                             </div>
-                            <div className="onboarding-task-check">
-                              {dictationChecklist.handsFree && (
-                                <motion.svg
-                                  width="15"
-                                  height="15"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  className="text-white/85"
-                                >
-                                  <motion.path
-                                    initial={{ pathLength: 0 }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={{
-                                      duration: 0.45,
-                                      ease: [0.25, 0.8, 0.25, 1],
-                                    }}
-                                    d="M5 13l4 4L19 7"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              )}
+                            <div className="onboarding-task-status">
+                              <AnimatePresence mode="wait" initial={false}>
+                                {dictationChecklist.handsFree ? (
+                                  <motion.svg
+                                    key="hands-free-done"
+                                    width="22"
+                                    height="22"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    className="text-white/80"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                  >
+                                    <motion.path
+                                      initial={{ pathLength: 0 }}
+                                      animate={{ pathLength: 1 }}
+                                      transition={{
+                                        duration: 0.45,
+                                        ease: [0.25, 0.8, 0.25, 1],
+                                      }}
+                                      d="M5 13l4 4L19 7"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </motion.svg>
+                                ) : (
+                                  <motion.span
+                                    key="hands-free-try"
+                                    className="onboarding-task-prompt"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    aria-hidden
+                                  >
+                                    Try
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
                             </div>
                           </div>
                         </div>
