@@ -54,7 +54,9 @@ const devFlags = {
   },
 };
 
-const LOCAL_WHISPER_MODEL_NAME = "Whisper Large V3 Turbo";
+const LOCAL_WHISPER_MODEL_NAME = "Whisper Large v3 Turbo";
+const LOCAL_WHISPER_MODEL_DESCRIPTION =
+  "Fast multilingual speech recognition, running locally with 4-bit quantization.";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -1201,14 +1203,12 @@ const Onboarding: React.FC = () => {
                               {LOCAL_WHISPER_MODEL_NAME}
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              {modelStatus.state === "ready"
-                                ? "Installed and ready for offline dictation."
-                                : modelStatus.state === "broken"
+                              {modelStatus.state === "broken"
                                   ? modelStatus.error ||
                                     "The local model needs to be repaired."
                                   : modelInstallBusy
                                     ? "Installing the local transcription model."
-                                    : "Fast multilingual speech recognition, running locally with 4-bit quantization."}
+                                    : LOCAL_WHISPER_MODEL_DESCRIPTION}
                             </p>
                           </div>
                         </div>
@@ -1282,26 +1282,27 @@ const Onboarding: React.FC = () => {
                         Try Both Dictation Modes
                       </h2>
                       <p className="text-sm text-subtle leading-relaxed subheading">
-                        Dictate anything. Spoke will mark each mode complete as
-                        you use it.
+                        Try the quick hold-to-talk flow, then the relaxed
+                        hands-free flow.
                       </p>
                     </div>
                     <div className="onboarding-section space-y-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div
-                          className={`onboarding-task-row rounded-lg p-3 ${
+                          className={`onboarding-task-row h-full rounded-lg p-3 ${
                             dictationChecklist.pushToTalk
                               ? "onboarding-task-complete"
                               : ""
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="flex h-full items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[13px] font-medium text-foreground">
                                 Push-to-talk
                               </p>
                               <p className="onboarding-permission-desc text-subtle">
-                                Hold Right Option, speak, then release.
+                                Hold Right Option while speaking, then release
+                                to insert.
                               </p>
                             </div>
                             <div className="onboarding-task-check">
@@ -1333,13 +1334,13 @@ const Onboarding: React.FC = () => {
                         </div>
 
                         <div
-                          className={`onboarding-task-row rounded-lg p-3 ${
+                          className={`onboarding-task-row h-full rounded-lg p-3 ${
                             dictationChecklist.handsFree
                               ? "onboarding-task-complete"
                               : ""
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="flex h-full items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[13px] font-medium text-foreground">
                                 Hands-free
