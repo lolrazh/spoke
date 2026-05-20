@@ -34,6 +34,29 @@ Dogfood gate:
 - [ ] No known local STT crash path.
 - [ ] Worktree has no tracked legacy local model/runtime implementation.
 
+## P0: Local Inference Ship Gates
+
+Current local inference truth:
+
+- [x] Production local model is `mlx-community/whisper-large-v3-turbo-4bit`.
+- [x] Model files install into app-managed `userData/local-stt/weights`.
+- [x] Model install verifies required files and SHA256 checksums before marking ready.
+- [x] Sidecar protocol is length-prefixed PCM16 input and structured JSON events output.
+- [x] Sidecar emits load/inference/memory metrics.
+- [x] Silence does not paste hallucinated text.
+- [x] Switching away from local stops the sidecar.
+- [x] Removing the model removes files and prevents local transcription.
+- [x] Dev and packaged mode use the same installed model layout.
+- [x] No fallback local models.
+- [x] No renderer-side inference.
+
+Remaining local inference tasks:
+
+- [ ] Fresh checkout can run dev local transcription after installing the Whisper model.
+- [ ] Packaged app can install the model and transcribe without user Python.
+- [ ] Test packaged app on a clean Mac account without repo files or local Python.
+- [ ] Confirm notarization/stapling still works with the sidecar binary.
+
 ## P0: First-Run UX
 
 - [x] Gate onboarding on transcription setup before dictation tests.
@@ -61,7 +84,14 @@ Dogfood gate:
 - [x] Audit settings/onboarding shared state so provider/model status does not drift.
 - [ ] Run focused tests for model manager, sidecar engine, provider store, onboarding flow, and transcription providers.
 
-Audit log: `P0_AUDIT.md`
+Consolidated audit status:
+
+- [x] Sentry removed from main, renderer, and Vite build configuration for the open-source app.
+- [x] Cloud enhancement and OCR are gated off by default.
+- [x] Edit mode and meta-directives are hidden from onboarding until the pipeline is real.
+- [x] Screen recording is no longer a required first-run permission.
+- [ ] Remove Cloudflare-only dependencies after release/update migration is complete.
+- [ ] Make sidecar build/signing a documented release prerequisite or package preflight.
 
 Architecture gate:
 
@@ -89,6 +119,14 @@ Deferred cleanup candidates:
 - [ ] Defer transcription history loading until the history tab opens or a transcript is saved.
 - [ ] Investigate replacing cursor-display polling with display-change/reveal-time synchronization after manual testing.
 - [ ] Evaluate whether VAD assets are still needed; remove bundled ONNX/ORT files if the current local pipeline does not use them.
+
+## P1: Local Inference Performance Backlog
+
+- [ ] Re-run a clean pinned-English control after machine cooldown and low background load.
+- [ ] Evaluate upstream MLX batched decoding work for long-file throughput only; do not mix it into short dictation unless it improves latency.
+- [ ] Evaluate WhisperKit/Core ML as a separate native engine spike if MLX encoder latency remains the wall.
+- [ ] Keep production default on pinned `en` unless multilingual UX becomes a hard requirement.
+- [ ] Define pass/fail gates for any speed change: no WER regression on benchmark corpus, no hallucination regression on silence/noise, lower mean and P95 wall time, and no meaningful memory increase.
 
 ## P1: GitHub Releases Updates And Downloads
 
