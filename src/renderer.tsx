@@ -80,28 +80,15 @@ if (existing) {
   mountReact(created);
 }
 
-// Signal main when UI is visually ready to reveal (styles and fonts applied)
-void (async () => {
+// Signal main after the first frame. Fonts use font-display: swap, so waiting
+// on document.fonts.ready can turn a slow font load into a hidden black window.
+requestAnimationFrame(() => {
   try {
-    const fonts = (
-      document as unknown as {
-        fonts?: { ready?: Promise<void> };
-      }
-    ).fonts;
-    if (fonts?.ready) {
-      await fonts.ready;
-    }
+    window.electron?.rendererReady?.();
   } catch {}
-  // Next frame to ensure first paint with styles is committed
-  requestAnimationFrame(() => {
-    try {
-      window.electron?.rendererReady?.();
-    } catch {}
-    // Remove initial fade after we've signaled readiness
-    try {
-      document.body.classList.remove("initial-fade");
-    } catch {}
-  });
-})();
+  try {
+    document.body.classList.remove("initial-fade");
+  } catch {}
+});
 
 console.log("🎤 Spoke is running");
