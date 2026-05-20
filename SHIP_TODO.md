@@ -71,6 +71,25 @@ Architecture gate:
 - [ ] No user-installed Python dependency in packaged builds.
 - [ ] No dead feature is advertised in onboarding.
 
+## P0: Startup Bloat Cleanup
+
+Done:
+
+- [x] Remove onboarding music and its bundled audio assets.
+- [x] Remove Sentry runtime initialization and Vite build plugins.
+- [x] Remove no-op renderer microphone bridge startup listeners.
+- [x] Remove dead onboarding resize/vibrancy startup effect.
+
+Deferred cleanup candidates:
+
+- [ ] Split renderer routes so onboarding does not statically import the main app bundle.
+- [ ] Split pill panels so collapsed pill does not statically import Settings, Permissions, Models, and History UI.
+- [ ] Consider hover/intention preloading for deferred pill panels after measuring the UX tradeoff.
+- [ ] Defer model/provider settings calls in onboarding until the model setup step.
+- [ ] Defer transcription history loading until the history tab opens or a transcript is saved.
+- [ ] Investigate replacing cursor-display polling with display-change/reveal-time synchronization after manual testing.
+- [ ] Evaluate whether VAD assets are still needed; remove bundled ONNX/ORT files if the current local pipeline does not use them.
+
 ## P1: GitHub Releases Updates And Downloads
 
 Current state:
