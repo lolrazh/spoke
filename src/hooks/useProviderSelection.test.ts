@@ -58,11 +58,26 @@ describe("useProviderSelection", () => {
     const { result } = renderHook(() => useProviderSelection());
 
     await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe("local-stt");
+      expect(result.current.providerEntries).toHaveLength(2);
     });
 
     expect(result.current.selectableProviderEntries).toHaveLength(2);
     expect(result.current.selectedProviderEntry?.id).toBe("local-stt");
+  });
+
+  it("can defer provider loading until enabled", async () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useProviderSelection({ enabled }),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(result.current.providerEntries).toEqual([]);
+
+    rerender({ enabled: true });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe("local-stt");
+    });
   });
 
   it("filters non-selectable providers from selectableProviderEntries", async () => {

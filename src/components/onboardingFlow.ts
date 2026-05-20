@@ -15,6 +15,7 @@ const ALL_ONBOARDING_STEPS: OnboardingStep[] = [
   "permissions",
   "mic-check",
   "transcription-setup",
+  "hotkey-info",
   "hotkey-test",
   "complete",
 ];

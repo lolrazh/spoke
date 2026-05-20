@@ -13,7 +13,14 @@ import type {
 } from "../core/transcription/providerCatalog";
 import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 
-export function useProviderSelection() {
+type UseProviderSelectionOptions = {
+  enabled?: boolean;
+};
+
+export function useProviderSelection(
+  options: UseProviderSelectionOptions = {},
+) {
+  const enabled = options.enabled ?? true;
   const [providerSettings, setProviderSettings] =
     useState<TranscriptionProviderSettingsSnapshot | null>(null);
 
@@ -28,6 +35,8 @@ export function useProviderSelection() {
 
   // Load on mount
   useEffect(() => {
+    if (!enabled) return;
+
     let isMounted = true;
 
     loadProviderSettings()
@@ -41,7 +50,7 @@ export function useProviderSelection() {
     return () => {
       isMounted = false;
     };
-  }, [loadProviderSettings]);
+  }, [enabled, loadProviderSettings]);
 
   const providerEntries = useMemo<TranscriptionProviderSettingsEntry[]>(() => {
     return providerSettings?.providers ?? [];

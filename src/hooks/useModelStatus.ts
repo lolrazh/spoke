@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ModelStatus } from "../types/shared";
 
-export function useModelStatus() {
+type UseModelStatusOptions = {
+  enabled?: boolean;
+};
+
+export function useModelStatus(options: UseModelStatusOptions = {}) {
+  const enabled = options.enabled ?? true;
   const [status, setStatus] = useState<ModelStatus>({
     state: "not_installed",
     family: null,
@@ -26,6 +31,8 @@ export function useModelStatus() {
 
   // Load on mount + subscribe to progress events
   useEffect(() => {
+    if (!enabled) return;
+
     refresh();
 
     // Subscribe to download progress
@@ -47,7 +54,7 @@ export function useModelStatus() {
       unsubProgress?.();
       window.removeEventListener("focus", onFocus);
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   const install = useCallback(async () => {
     try {

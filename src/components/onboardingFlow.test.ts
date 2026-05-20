@@ -23,14 +23,21 @@ describe("onboardingFlow", () => {
     expect(steps.indexOf("transcription-setup")).toBeLessThan(
       steps.indexOf("hotkey-test"),
     );
+    expect(steps.indexOf("hotkey-info")).toBeGreaterThan(
+      steps.indexOf("transcription-setup"),
+    );
+    expect(steps.indexOf("hotkey-info")).toBeLessThan(
+      steps.indexOf("hotkey-test"),
+    );
   });
 
-  it("keeps first-run focused on one dictation test", () => {
+  it("keeps first-run focused on local setup and one guided dictation test", () => {
     const steps = buildOnboardingSteps();
     expect(steps).toEqual([
       "permissions",
       "mic-check",
       "transcription-setup",
+      "hotkey-info",
       "hotkey-test",
       "complete",
     ]);

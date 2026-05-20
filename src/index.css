@@ -1045,6 +1045,32 @@ body {
     box-shadow: var(--shadow-floating);
   }
 
+  .onboarding-task-row {
+    background-color: var(--surface-card);
+    border: 1px solid var(--stroke-fg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-floating);
+    transition:
+      opacity 180ms var(--ease-emphasized),
+      border-color 180ms var(--ease-emphasized),
+      background-color 180ms var(--ease-emphasized);
+  }
+  .onboarding-task-row.onboarding-task-complete {
+    opacity: 0.68;
+    border-color: rgba(255, 255, 255, 0.24);
+  }
+  .onboarding-task-check {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
   /* Permission row styling without backdrop-filter to prevent timing issues */
   .onboarding-permission-row {
     background-color: var(--surface-card);
@@ -1311,17 +1337,6 @@ body {
       opacity 260ms var(--ease-emphasized);
     will-change: transform, flex-grow;
   }
-  @keyframes barSpring {
-    0% {
-      transform: scaleY(0.92);
-    }
-    60% {
-      transform: scaleY(1.08);
-    }
-    100% {
-      transform: scaleY(1);
-    }
-  }
   .onboarding-progress-bar.grow-active {
     flex-grow: 6;
   }
@@ -1332,7 +1347,6 @@ body {
   .onboarding-progress-bar.bar-active {
     background-color: rgba(255, 255, 255, 0.85);
     height: 3px;
-    animation: barSpring 260ms var(--ease-emphasized);
   }
   .onboarding-progress-bar.bar-complete {
     background-color: rgba(255, 255, 255, 0.45);

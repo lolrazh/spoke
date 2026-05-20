@@ -3,7 +3,7 @@ import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import {
   Select,
@@ -18,12 +18,8 @@ import {
   usePermissions,
   type PermissionProvider,
 } from "../hooks/usePermissions";
-import { useProviderSelection } from "../hooks/useProviderSelection";
 import { useModelStatus } from "../hooks/useModelStatus";
-import {
-  LOCAL_STT_PROVIDER_ID,
-  type PreferredTranscriptionProviderId,
-} from "../core/transcription/providerPreferences";
+import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 import {
   buildOnboardingSteps,
   isOnboardingStep,
@@ -57,6 +53,8 @@ const devFlags = {
     },
   },
 };
+
+const LOCAL_WHISPER_MODEL_NAME = "Whisper large-v3 turbo 4-bit";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -122,18 +120,13 @@ const Onboarding: React.FC = () => {
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
-  const {
-    setProviderSettings,
-    loadProviderSettings,
-    selectableProviderEntries,
-    selectedProviderId,
-    selectedProviderEntry,
-  } = useProviderSelection();
+  const shouldLoadTranscriptionSetup =
+    !showIntro && currentStep === "transcription-setup";
   const {
     status: modelStatus,
     install: installModel,
     refresh: refreshModelStatus,
-  } = useModelStatus();
+  } = useModelStatus({ enabled: shouldLoadTranscriptionSetup });
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -172,9 +165,19 @@ const Onboarding: React.FC = () => {
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const [testText, setTestText] = useState("");
   const [testTextTap, setTestTextTap] = useState("");
+  const [dictationChecklist, setDictationChecklist] = useState({
+    pushToTalk: false,
+    handsFree: false,
+  });
   // Track mount state and timeout handles to prevent leaks
   const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optionDownAtRef = useRef<number | null>(null);
+  const lastTapUpAtRef = useRef<number | null>(null);
+  const activeDictationModeRef = useRef<"push-to-talk" | "hands-free" | null>(
+    null,
+  );
+  const previousTestTextLengthRef = useRef(0);
 
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
   const {
@@ -273,39 +276,21 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.inputMonitoring &&
     (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
-  const localProviderSelected = selectedProviderId === LOCAL_STT_PROVIDER_ID;
-  const transcriptionSetupReady =
-    !localProviderSelected || modelStatus.state === "ready";
+  const transcriptionSetupReady = modelStatus.state === "ready";
   const modelInstallBusy =
     modelStatus.state === "downloading" || modelStatus.state === "installing";
   const modelProgressPercent = Math.round(modelStatus.downloadProgress * 100);
-  const transcriptionProviderOptions =
-    selectableProviderEntries.length > 0
-      ? selectableProviderEntries.map((provider) => ({
-          value: provider.id,
-          label: provider.displayName,
-        }))
-      : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local" }];
 
   const handleInstallModel = async () => {
+    await window.stt?.setPreferredProvider?.(LOCAL_STT_PROVIDER_ID);
     await installModel();
     await refreshModelStatus();
-    try {
-      setProviderSettings(await loadProviderSettings());
-    } catch {
-      // Provider settings are best-effort here; model status is the source of truth.
-    }
   };
 
   // Initialize provider settings and restore saved step
   useEffect(() => {
     if (introOnly) return;
     (async () => {
-      const snapshot = await loadProviderSettings();
-      if (isMountedRef.current) {
-        setProviderSettings(snapshot);
-      }
-
       // Check if there's a saved onboarding step (from mid-onboarding restart)
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
@@ -324,30 +309,7 @@ const Onboarding: React.FC = () => {
 
       setCurrentStep("permissions");
     })();
-  }, [introOnly, loadProviderSettings]);
-
-  const handleProviderChange = useCallback(
-    async (providerId: string) => {
-      try {
-        await window.stt?.setPreferredProvider?.(
-          providerId as PreferredTranscriptionProviderId,
-        );
-        const snapshot = await loadProviderSettings();
-        if (isMountedRef.current) {
-          setProviderSettings(snapshot);
-        }
-      } catch (error) {
-        console.error(
-          "[Onboarding] Failed to switch transcription provider:",
-          error,
-        );
-        window.notifications?.send?.(
-          "Failed to switch transcription provider.",
-        );
-      }
-    },
-    [loadProviderSettings, setProviderSettings],
-  );
+  }, [introOnly]);
 
   // Start helper when entering the hotkey info step (after permissions) so Option key testing works
   useEffect(() => {
@@ -579,38 +541,88 @@ const Onboarding: React.FC = () => {
     return progressSteps.indexOf(currentStep);
   };
 
-  // Animation variants (with dev speed control)
-  const spring = devFlags.fastAnimations
-    ? { type: "spring" as const, stiffness: 420, damping: 30, mass: 0.35 }
-    : { type: "spring" as const, stiffness: 340, damping: 28, mass: 0.45 };
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0, y: 16 },
-    visible: { opacity: 1, y: 0, transition: spring },
-    exit: { opacity: 0, y: -16, transition: spring },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.22, ease: "easeOut" },
+    },
+    exit: {
+      opacity: 0,
+      y: -10,
+      transition: { duration: 0.16, ease: "easeOut" },
+    },
   };
 
   const showNavControls = !showIntro && currentStep !== "complete";
+  const dictationTestReady =
+    dictationChecklist.pushToTalk && dictationChecklist.handsFree;
 
   // --- Dictation test wiring for test steps ---
   useEffect(() => {
     if (currentStep === "hotkey-test") {
       setTestText("");
+      setDictationChecklist({ pushToTalk: false, handsFree: false });
+      activeDictationModeRef.current = null;
+      previousTestTextLengthRef.current = 0;
     } else if (currentStep === "edit-test") {
       setTestTextTap(sampleEditText);
     }
   }, [currentStep]);
 
+  useEffect(() => {
+    if (currentStep !== "hotkey-test") return;
+    const nextLength = testText.trim().length;
+    const previousLength = previousTestTextLengthRef.current;
+    previousTestTextLengthRef.current = nextLength;
+
+    if (nextLength <= previousLength) return;
+
+    const mode = activeDictationModeRef.current;
+    if (mode === "push-to-talk") {
+      setDictationChecklist((prev) => ({ ...prev, pushToTalk: true }));
+    } else if (mode === "hands-free") {
+      setDictationChecklist((prev) => ({ ...prev, handsFree: true }));
+    }
+  }, [currentStep, testText]);
+
   // Option key visual feedback (no custom gesture handling)
   useEffect(() => {
     if (!window.ptt?.onDown || !window.ptt?.onUp) return;
-    const offDown = window.ptt.onDown(() => setOptKeyPressed(true));
-    const offUp = window.ptt.onUp(() => setOptKeyPressed(false));
+    const offDown = window.ptt.onDown(() => {
+      optionDownAtRef.current = Date.now();
+      setOptKeyPressed(true);
+    });
+    const offUp = window.ptt.onUp(() => {
+      const now = Date.now();
+      const downAt = optionDownAtRef.current;
+      optionDownAtRef.current = null;
+      setOptKeyPressed(false);
+
+      if (currentStep !== "hotkey-test") return;
+
+      const heldMs = downAt ? now - downAt : 0;
+      if (heldMs >= 130) {
+        activeDictationModeRef.current = "push-to-talk";
+        lastTapUpAtRef.current = null;
+        return;
+      }
+
+      const lastTapUpAt = lastTapUpAtRef.current;
+      if (lastTapUpAt && now - lastTapUpAt <= 450) {
+        activeDictationModeRef.current = "hands-free";
+        lastTapUpAtRef.current = null;
+      } else {
+        lastTapUpAtRef.current = now;
+      }
+    });
     return () => {
       offDown?.();
       offUp?.();
       setOptKeyPressed(false);
     };
-  }, []);
+  }, [currentStep]);
 
   // Hook: Right Command visual feedback on cancel-info step only
   useEffect(() => {
@@ -750,10 +762,11 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Your Hotkey Is the Right Option Key
+                      This Is Your Dictation Hotkey
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Press your Right Option key now to test it.
+                      Use the Right Option key for both push-to-talk and
+                      hands-free dictation.
                     </p>
                   </div>
                   <div className="onboarding-section">
@@ -773,7 +786,7 @@ const Onboarding: React.FC = () => {
                         </span>
                       </div>
                       <p className="onboarding-note">
-                        Hold for push-to-talk, double tap for hands-free mode.
+                        Hold to talk. Double tap to start hands-free mode.
                       </p>
                     </div>
                   </div>
@@ -1164,11 +1177,11 @@ const Onboarding: React.FC = () => {
                 >
                   <div className="heading-stack">
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Choose Your Transcription Engine
+                      Set Up Local Transcription
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
-                      Use the local Whisper model for private offline
-                      transcription, or switch to a configured cloud provider.
+                      Spoke uses a private local Whisper model for first-run
+                      dictation.
                     </p>
                   </div>
 
@@ -1178,127 +1191,81 @@ const Onboarding: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
                             <SfIcon
-                              name="point.3.filled.connected.trianglepath.dotted"
+                              name="brain.head.profile"
                               size={16}
                               className="text-primary/70"
                             />
                           </div>
                           <div className="text-left">
                             <p className="text-[13px] font-medium text-foreground">
-                              Default engine
+                              {LOCAL_WHISPER_MODEL_NAME}
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
-                              {selectedProviderEntry?.description ??
-                                "Offline transcription with the local Whisper model."}
+                              {modelStatus.state === "ready"
+                                ? "Installed and ready for offline dictation."
+                                : modelStatus.state === "broken"
+                                  ? modelStatus.error ||
+                                    "The local model needs to be repaired."
+                                  : modelInstallBusy
+                                    ? "Installing the local transcription model."
+                                    : "Install once to use Spoke without a cloud STT key."}
                             </p>
                           </div>
                         </div>
-                        <div className="w-40 shrink-0">
-                          <Select
-                            value={selectedProviderId}
-                            onValueChange={handleProviderChange}
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Provider" />
-                            </SelectTrigger>
-                            <SelectContent inPlace>
-                              {transcriptionProviderOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                  className="text-sm"
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+
+                        <div className="flex min-w-[112px] items-center justify-end">
+                          {modelStatus.state === "ready" ? (
+                            <motion.svg
+                              width="22"
+                              height="22"
+                              viewBox="0 0 24 24"
+                              className="text-white/80"
+                            >
+                              <motion.path
+                                initial={{ pathLength: 1 }}
+                                animate={{ pathLength: 1 }}
+                                d="M5 13l4 4L19 7"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </motion.svg>
+                          ) : modelInstallBusy ? (
+                            <div className="w-28 space-y-1.5">
+                              <div className="text-[10px] text-white/70 tabular-nums">
+                                {modelStatus.state === "installing"
+                                  ? "Verifying"
+                                  : `${modelProgressPercent}%`}
+                              </div>
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                                <div
+                                  className="h-full rounded-full bg-white/60 transition-all duration-300"
+                                  style={{
+                                    width: `${modelProgressPercent}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={handleInstallModel}
+                              className="text-xs onboarding-cta"
+                            >
+                              {modelStatus.state === "broken"
+                                ? "Repair"
+                                : "Install"}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {localProviderSelected && (
-                      <div className="onboarding-permission-row rounded-lg p-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                              <SfIcon
-                                name="brain.head.profile"
-                                size={16}
-                                className="text-primary/70"
-                              />
-                            </div>
-                            <div className="text-left">
-                              <p className="text-[13px] font-medium text-foreground">
-                                Whisper large-v3 turbo 4-bit
-                              </p>
-                              <p className="onboarding-permission-desc text-subtle">
-                                {modelStatus.state === "ready"
-                                  ? "Installed and ready for offline dictation."
-                                  : modelStatus.state === "broken"
-                                    ? modelStatus.error ||
-                                      "The local model needs to be repaired."
-                                    : modelInstallBusy
-                                      ? "Installing the local transcription model."
-                                      : "Install once to use Spoke without a cloud STT key."}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex min-w-[112px] items-center justify-end">
-                            {modelStatus.state === "ready" ? (
-                              <motion.svg
-                                width="22"
-                                height="22"
-                                viewBox="0 0 24 24"
-                                className="text-white/80"
-                              >
-                                <motion.path
-                                  initial={{ pathLength: 1 }}
-                                  animate={{ pathLength: 1 }}
-                                  d="M5 13l4 4L19 7"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </motion.svg>
-                            ) : modelInstallBusy ? (
-                              <div className="w-28 space-y-1.5">
-                                <div className="text-[10px] text-white/70 tabular-nums">
-                                  {modelStatus.state === "installing"
-                                    ? "Verifying"
-                                    : `${modelProgressPercent}%`}
-                                </div>
-                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                                  <div
-                                    className="h-full rounded-full bg-white/60 transition-all duration-300"
-                                    style={{
-                                      width: `${modelProgressPercent}%`,
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <Button
-                                size="sm"
-                                onClick={handleInstallModel}
-                                className="text-xs onboarding-cta"
-                              >
-                                {modelStatus.state === "broken"
-                                  ? "Repair"
-                                  : "Install"}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     <p className="text-xs text-muted-foreground/60 text-center pt-2">
-                      Cloud providers use your own API keys. Add or manage keys
-                      later from Settings &gt; Models.
+                      Cloud transcription can come later from Settings. First,
+                      make sure the local model works.
                     </p>
                   </div>
                 </motion.div>
@@ -1317,35 +1284,105 @@ const Onboarding: React.FC = () => {
                   <div className="max-w-xl mx-auto text-left">
                     <div className="text-center heading-stack">
                       <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                        Let's Try Push-to-Talk Mode
+                        Try Both Dictation Modes
                       </h2>
                       <p className="text-sm text-subtle leading-relaxed subheading">
-                        Hold the hotkey to start dictation. Release to stop.
+                        Dictate anything. Spoke will mark each mode complete as
+                        you use it.
                       </p>
                     </div>
-                    <div className="onboarding-section">
-                      {/* Sample hint as tertiary text for improved hierarchy */}
-                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                        Try saying: "Let's go! I'm so excited to use Spoke!
-                        Write all of that in caps."
+                    <div className="onboarding-section space-y-4">
+                      <div className="space-y-2">
+                        <div
+                          className={`onboarding-task-row rounded-lg p-3 ${
+                            dictationChecklist.pushToTalk
+                              ? "onboarding-task-complete"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="onboarding-task-check">
+                              {dictationChecklist.pushToTalk && (
+                                <svg
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  className="text-white/85"
+                                >
+                                  <path
+                                    d="M5 13l4 4L19 7"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-medium text-foreground">
+                                Push-to-talk
+                              </p>
+                              <p className="onboarding-permission-desc text-subtle">
+                                Hold Right Option, speak, then release.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`onboarding-task-row rounded-lg p-3 ${
+                            dictationChecklist.handsFree
+                              ? "onboarding-task-complete"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="onboarding-task-check">
+                              {dictationChecklist.handsFree && (
+                                <svg
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  className="text-white/85"
+                                >
+                                  <path
+                                    d="M5 13l4 4L19 7"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-[13px] font-medium text-foreground">
+                                Hands-free
+                              </p>
+                              <p className="onboarding-permission-desc text-subtle">
+                                Double tap Right Option to start. Tap again to
+                                stop.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Dictation Textarea */}
                       <div className="onboarding-content-gap">
-                        {/* removed the small label above the textarea */}
                         <textarea
                           className={
-                            "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
+                            "w-full h-32 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
                           }
-                          placeholder="Say something…"
+                          placeholder="Your dictated text will appear here…"
                           value={testText}
                           onChange={(e) => setTestText(e.target.value)}
                           ref={textAreaRef}
                           data-onboarding-step="hotkey-test"
                         />
                       </div>
-
-                      {/* No CTA here; proceed with Next to the completion screen */}
                     </div>
                   </div>
                 </motion.div>
@@ -1648,7 +1685,7 @@ const Onboarding: React.FC = () => {
                 (currentStep === "permissions" && !allPermissionsGranted) ||
                 (currentStep === "transcription-setup" &&
                   !transcriptionSetupReady) ||
-                (currentStep === "hotkey-test" && !testText.trim())
+                (currentStep === "hotkey-test" && !dictationTestReady)
               }
             >
               Next
