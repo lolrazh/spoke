@@ -124,4 +124,10 @@ describe("sidecarEngine", () => {
 
     await expect(startup).rejects.toThrow("Local model is incomplete");
   });
+
+  it("allows a long packaged cold-start timeout", async () => {
+    const { SIDECAR_STARTUP_TIMEOUT_MS } = await importEngine();
+
+    expect(SIDECAR_STARTUP_TIMEOUT_MS).toBeGreaterThanOrEqual(120000);
+  });
 });

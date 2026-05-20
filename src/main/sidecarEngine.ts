@@ -19,6 +19,8 @@ let sidecarSpawnPromise: Promise<void> | null = null;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
 let autoRestartEnabled = false;
 
+export const SIDECAR_STARTUP_TIMEOUT_MS = 120000;
+
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
 export function isSidecarRunning(): boolean {
@@ -77,12 +79,13 @@ function spawnSidecarOnce(): Promise<void> {
       callback();
     };
 
-    // Timeout if model takes too long to load (30s)
+    // Packaged PyInstaller + MLX cold starts can spend tens of seconds
+    // unpacking/importing before the model load log appears.
     const timeout = setTimeout(() => {
       console.error("[STT] Sidecar timed out waiting for ready signal");
       killSidecar();
       settle(() => reject(new Error("Sidecar timed out loading model")));
-    }, 30000);
+    }, SIDECAR_STARTUP_TIMEOUT_MS);
 
     let stdoutBuffer = "";
     const onData = (chunk: Buffer) => {
