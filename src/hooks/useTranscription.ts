@@ -18,6 +18,7 @@ import {
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
+import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
@@ -255,10 +256,23 @@ export function useTranscription(
       await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
 
       const context = buildTranscriptionContext();
-      const audio = await recorder.stop();
+      const capturedAudio = await recorder.stop();
       console.log(
-        `[Transcription] PCM captured: ${audio.pcm16.length} samples, ${Math.round(audio.durationMs)}ms`,
+        `[Transcription] PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
       );
+
+      const vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      console.log(
+        `[VAD] speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
+      );
+
+      if (!vadResult.speechDetected) {
+        console.log(`[Transcription] No speech detected; skipping STT`);
+        setText("");
+        return;
+      }
+
+      const audio = vadResult.audio;
 
       // ===== Local Whisper path =====
       if (provider.descriptor.kind === "local") {

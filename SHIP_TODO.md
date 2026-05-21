@@ -129,7 +129,7 @@ Deferred cleanup candidates:
 - [ ] Defer model/provider settings calls in onboarding until the model setup step.
 - [ ] Defer transcription history loading until the history tab opens or a transcript is saved.
 - [ ] Investigate replacing cursor-display polling with display-change/reveal-time synchronization after manual testing.
-- [ ] Evaluate whether VAD assets are still needed; remove bundled ONNX/ORT files if the current local pipeline does not use them.
+- [x] Evaluate whether VAD assets are still needed; keep bundled ONNX/ORT files because VAD is back in the current local pipeline.
 
 ## P0: PCM Capture And VAD Refactor
 
@@ -142,8 +142,8 @@ Goal: make PCM16 mono 16 kHz the single in-memory audio format for dictation. Lo
 - [x] Replace `MediaRecorder` recording in `useTranscription` with an AudioWorklet-backed PCM capture session.
 - [x] Rewrite the PCM AudioWorklet frame buffer to use fixed typed arrays instead of a growing JS sample array.
 - [x] Delete the WebM/Opus decoder path after providers no longer use it.
-- [ ] Restore Silero ONNX VAD as a speech-boundary/trimming layer, not a second transcription path.
-- [ ] Use VAD first for no-speech skip, leading/trailing silence trim, and capture metrics.
+- [x] Restore Silero ONNX VAD as a speech-boundary/trimming layer, not a second transcription path.
+- [x] Use VAD first for no-speech skip, leading/trailing silence trim, and capture metrics.
 - [ ] Add timing logs for post-roll, PCM readiness, VAD trim, sidecar inference, and total end-to-end latency.
 - [ ] Benchmark before/after with the existing local STT harness and one real dogfood pass.
 

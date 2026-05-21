@@ -6,6 +6,9 @@ import {
   FakeAudioContext,
   FakeAudioWorkletNode,
 } from "../test/fakes/fakeAudio";
+import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
+import type { CapturedAudio } from "../core/transcription/capturedAudio";
+import type { VadAudioResult } from "../utils/vadTrimmer";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -14,6 +17,10 @@ global.fetch = mockFetch;
 // Mock APIs
 vi.mock("../utils/audioFeedback", () => ({
   playToggleOff: vi.fn(),
+}));
+
+vi.mock("../utils/vadTrimmer", () => ({
+  trimCapturedAudioWithVad: vi.fn(),
 }));
 
 vi.mock("../state/transcriptionHistory", () => ({
@@ -96,6 +103,9 @@ describe("useTranscription", () => {
       text: "",
       metrics: {},
     });
+    vi.mocked(trimCapturedAudioWithVad).mockImplementation(async (audio) =>
+      createVadResult(audio, true),
+    );
   });
 
   afterEach(() => {
@@ -222,6 +232,32 @@ describe("useTranscription", () => {
     expect(result.current.recording).toBe(false);
     expect(result.current.text).toBe("");
   });
+
+  it("skips local transcription when VAD detects no speech", async () => {
+    vi.mocked(trimCapturedAudioWithVad).mockImplementationOnce((audio) =>
+      Promise.resolve(createVadResult(audio, false)),
+    );
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([0, 0, 0, 0]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("");
+  });
 });
 
 function emitPcmFrame(samples: number[]) {
@@ -229,4 +265,22 @@ function emitPcmFrame(samples: number[]) {
     .__lastWorklet as FakeAudioWorkletNode | null;
   expect(worklet).toBeTruthy();
   worklet?.emitAudio(new Int16Array(samples));
+}
+
+function createVadResult(
+  audio: CapturedAudio,
+  speechDetected: boolean,
+): VadAudioResult {
+  return {
+    audio,
+    speechDetected,
+    segments: speechDetected ? [{ startMs: 0, endMs: audio.durationMs }] : [],
+    trimRange: {
+      startSample: 0,
+      endSample: audio.pcm16.length,
+    },
+    leadingTrimmedMs: 0,
+    trailingTrimmedMs: 0,
+    vadMs: 1,
+  };
 }
