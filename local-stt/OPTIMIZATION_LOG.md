@@ -281,6 +281,32 @@ Conclusion:
 - Electron Forge successfully packaged the onedir sidecar at `Contents/Resources/spoke-stt/spoke-stt`.
 - Packaged app size increased to about 529 MB, with the sidecar resource directory around 240 MB.
 
+Follow-up packaged baseline:
+
+```bash
+npm run benchmark:stt -- --binary out/Spoke-darwin-arm64/Spoke.app/Contents/Resources/spoke-stt/spoke-stt --label packaged-onedir-full --repeat 2 --warmup 1 --audio-cache-dir local-stt/benchmarks/audio-cache
+```
+
+| Metric | Result |
+|---|---:|
+| Ready | 9208 ms |
+| Runs | 20 |
+| Mean wall | 4651.6 ms |
+| P95 wall | 5436 ms |
+| Mean inference | 4627.4 ms |
+| P95 inference | 5403 ms |
+| Mean WER | 10.2% |
+| Mean strict WER | 16.2% |
+| Mean RSS | 591.2 MB |
+| Mean MLX peak | 1081.9 MB |
+| Mean MLX active | 451.6 MB |
+| Mean MLX cache | 676.5 MB |
+
+Notes:
+
+- The synthetic TTS corpus has repeatable but imperfect cases for symbols, numbers, and mixed product terms.
+- Use this as the packaged production baseline for future local STT runtime experiments.
+
 ## Experiment 8: MLX `mx.compile()` around the Whisper encoder
 
 Status: not adopted
