@@ -140,7 +140,7 @@ Goal: make PCM16 mono 16 kHz the single in-memory audio format for dictation. Lo
 - [ ] Update local transcription to pass PCM16 straight to the MLX sidecar.
 - [ ] Update cloud transcription providers to create WAV from PCM16 only when a cloud request is made.
 - [ ] Replace `MediaRecorder` recording in `useTranscription` with an AudioWorklet-backed PCM capture session.
-- [ ] Rewrite the PCM AudioWorklet frame buffer to use fixed typed arrays instead of a growing JS sample array.
+- [x] Rewrite the PCM AudioWorklet frame buffer to use fixed typed arrays instead of a growing JS sample array.
 - [ ] Delete the WebM/Opus decoder path after providers no longer use it.
 - [ ] Restore Silero ONNX VAD as a speech-boundary/trimming layer, not a second transcription path.
 - [ ] Use VAD first for no-speech skip, leading/trailing silence trim, and capture metrics.

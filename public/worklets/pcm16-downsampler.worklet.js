@@ -11,8 +11,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const opts = (options && options.processorOptions) || {};
-    this.targetRate = opts.targetSampleRate || 16000;
-    this.frameSamples = opts.frameSamples || 1600; // default 100 ms @ 16k; overridden by node options
+    const targetRate = Number(opts.targetSampleRate) || 16000;
+    const frameSamples = Number(opts.frameSamples) || 1600;
+    this.targetRate = Math.max(1, Math.floor(targetRate));
+    this.frameSamples = Math.max(1, Math.floor(frameSamples)); // default 100 ms @ 16k
 
     this.inputRate = sampleRate; // AudioContext's rate
     this.ratio = this.inputRate / this.targetRate;
@@ -54,8 +56,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       this._phase = 0; // emit every 3rd sample
     }
 
-    // Output frame buffer (Int16 values in a JS array for accumulation)
-    this._accum = [];
+    // Output frame buffer. Keep this fixed-size on the audio thread to avoid
+    // per-sample JS array growth and slicing during recording.
+    this._frame = new Int16Array(this.frameSamples);
+    this._frameIndex = 0;
     this._seq = 0;
 
     // Track pause state
@@ -65,27 +69,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
       if (msg.type === "reset") {
-        this._last = 0.0;
-        this._pos = 0.0;
-        this._accum = [];
+        this._resetState();
         this._seq = 0;
         this._paused = false;
       } else if (msg.type === "flush") {
-        // Emit any remaining partial frame as-is (may be < frameSamples)
-        if (this._accum.length > 0) {
-          const out = new Int16Array(this._accum.length);
-          for (let k = 0; k < this._accum.length; k++) out[k] = this._accum[k];
-          this._accum.length = 0;
-          this.port.postMessage(
-            {
-              type: "audio",
-              seq: this._seq++,
-              rate: this.targetRate,
-              samples: out.buffer,
-            },
-            [out.buffer],
-          );
-        }
+        this._emitPartialFrame();
       } else if (msg.type === "pause") {
         this._paused = true;
       } else if (msg.type === "resume") {
@@ -94,25 +82,56 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     };
   }
 
-  _flushFramesIfReady() {
-    if (this._accum.length >= this.frameSamples) {
-      const out = new Int16Array(this.frameSamples);
-      for (let k = 0; k < this.frameSamples; k++) out[k] = this._accum[k];
-      if (this._accum.length === this.frameSamples) {
-        this._accum.length = 0;
-      } else {
-        this._accum = this._accum.slice(this.frameSamples);
-      }
-      this.port.postMessage(
-        {
-          type: "audio",
-          seq: this._seq++,
-          rate: this.targetRate,
-          samples: out.buffer,
-        },
-        [out.buffer],
-      );
+  _resetState() {
+    this._last = 0.0;
+    this._pos = 0.0;
+    this._frame = new Int16Array(this.frameSamples);
+    this._frameIndex = 0;
+    if (this.mode === "decimate3") {
+      this._dl.fill(0);
+      this._dlIdx = 0;
+      this._phase = 0;
     }
+  }
+
+  _floatToInt16(sample) {
+    if (sample > 1) sample = 1;
+    else if (sample < -1) sample = -1;
+    return sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+
+  _pushSample(sample) {
+    this._frame[this._frameIndex++] = this._floatToInt16(sample);
+    if (this._frameIndex === this.frameSamples) {
+      this._emitFullFrame();
+    }
+  }
+
+  _postFrame(out) {
+    this.port.postMessage(
+      {
+        type: "audio",
+        seq: this._seq++,
+        rate: this.targetRate,
+        samples: out.buffer,
+      },
+      [out.buffer],
+    );
+  }
+
+  _emitFullFrame() {
+    const out = this._frame;
+    this._frame = new Int16Array(this.frameSamples);
+    this._frameIndex = 0;
+    this._postFrame(out);
+  }
+
+  _emitPartialFrame() {
+    if (this._frameIndex === 0) return;
+    const out = new Int16Array(this._frameIndex);
+    out.set(this._frame.subarray(0, this._frameIndex));
+    this._frameIndex = 0;
+    this._postFrame(out);
   }
 
   _linearResample(input) {
@@ -127,11 +146,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       const t = this._pos - i;
       const a = window[i];
       const b = window[i + 1];
-      let s = a + (b - a) * t;
-      if (s > 1) s = 1;
-      else if (s < -1) s = -1;
-      this._accum.push((s * 0x7fff) | 0);
-      this._flushFramesIfReady();
+      this._pushSample(a + (b - a) * t);
       this._pos += this.ratio;
     }
     this._pos -= windowLen - 1;
@@ -156,11 +171,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
           acc += taps[k] * dl[di];
           di = (di - 1 + TAPS) % TAPS;
         }
-        // Clamp and convert
-        if (acc > 1) acc = 1;
-        else if (acc < -1) acc = -1;
-        this._accum.push((acc * 0x7fff) | 0);
-        this._flushFramesIfReady();
+        this._pushSample(acc);
         phase = 0;
       }
     }
@@ -170,11 +181,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
 
   _passthrough(input) {
     for (let i = 0; i < input.length; i++) {
-      let s = input[i];
-      if (s > 1) s = 1;
-      else if (s < -1) s = -1;
-      this._accum.push((s * 0x7fff) | 0);
-      this._flushFramesIfReady();
+      this._pushSample(input[i]);
     }
   }
 
