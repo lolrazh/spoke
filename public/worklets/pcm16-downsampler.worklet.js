@@ -74,6 +74,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._paused = false;
       } else if (msg.type === "flush") {
         this._emitPartialFrame();
+        this.port.postMessage({
+          type: "flushed",
+          seq: this._seq,
+          rate: this.targetRate,
+        });
       } else if (msg.type === "pause") {
         this._paused = true;
       } else if (msg.type === "resume") {

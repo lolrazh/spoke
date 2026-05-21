@@ -2,6 +2,10 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useTranscription } from "./useTranscription";
+import {
+  FakeAudioContext,
+  FakeAudioWorkletNode,
+} from "../test/fakes/fakeAudio";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -12,73 +16,14 @@ vi.mock("../utils/audioFeedback", () => ({
   playToggleOff: vi.fn(),
 }));
 
-vi.mock("../utils/audioDecoder", () => ({
-  decodeToPcm16: vi.fn(() => Promise.resolve(new Int16Array([1, 2, 3, 4]))),
-}));
-
 vi.mock("../state/transcriptionHistory", () => ({
   addTranscription: vi.fn(() => Promise.resolve()),
 }));
 
-// Mock MediaRecorder
-class MockMediaRecorder {
-  state: "inactive" | "recording" | "paused" = "inactive";
-  mimeType = "audio/webm";
-  ondataavailable: ((event: { data: Blob }) => void) | null = null;
-  onstop: (() => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-
-  constructor(stream: MediaStream, options?: any) {
-    this.mimeType = options?.mimeType || "audio/webm";
-  }
-
-  start() {
-    this.state = "recording";
-  }
-
-  stop() {
-    this.state = "inactive";
-    // Simulate stop event with audio blob
-    setTimeout(() => {
-      if (this.onstop) {
-        this.onstop();
-      }
-    }, 0);
-  }
-
-  static isTypeSupported(type: string) {
-    return type.includes("webm");
-  }
-}
-
 // @ts-ignore
-global.MediaRecorder = MockMediaRecorder;
-
-// Mock AudioContext
-class MockAudioContext {
-  createMediaStreamSource() {
-    return {
-      connect: vi.fn(),
-    };
-  }
-
-  createAnalyser() {
-    return {
-      fftSize: 256,
-      frequencyBinCount: 128,
-      smoothingTimeConstant: 0.8,
-      getByteFrequencyData: vi.fn(),
-      connect: vi.fn(),
-    };
-  }
-
-  close() {
-    return Promise.resolve();
-  }
-}
-
+global.AudioContext = FakeAudioContext;
 // @ts-ignore
-global.AudioContext = MockAudioContext;
+global.AudioWorkletNode = FakeAudioWorkletNode;
 
 // Mock navigator.mediaDevices
 Object.defineProperty(navigator, "mediaDevices", {
@@ -145,6 +90,7 @@ describe("useTranscription", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockClear();
+    (globalThis as any).__lastWorklet = null;
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
@@ -194,6 +140,7 @@ describe("useTranscription", () => {
     await act(async () => {
       result.current.start();
       await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -233,6 +180,7 @@ describe("useTranscription", () => {
     await act(async () => {
       result.current.start();
       await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([5, 6, 7, 8]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -262,6 +210,7 @@ describe("useTranscription", () => {
     await act(async () => {
       result.current.start();
       await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([9, 10, 11, 12]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -274,3 +223,10 @@ describe("useTranscription", () => {
     expect(result.current.text).toBe("");
   });
 });
+
+function emitPcmFrame(samples: number[]) {
+  const worklet = (globalThis as any)
+    .__lastWorklet as FakeAudioWorkletNode | null;
+  expect(worklet).toBeTruthy();
+  worklet?.emitAudio(new Int16Array(samples));
+}

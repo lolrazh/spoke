@@ -2,7 +2,7 @@
  * Transcription Hook
  *
  * Manages audio recording and transcription using provider-backed adapters.
- * Uses MediaRecorder for audio capture and delegates transport to providers.
+ * Captures PCM16 audio and delegates transcription to providers.
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -17,9 +17,7 @@ import {
   LOCAL_STT_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
-import { createCapturedAudio } from "../core/transcription/capturedAudio";
-import { AudioRecorder } from "../utils/audioRecorder";
-import { decodeToPcm16 } from "../utils/audioDecoder";
+import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
@@ -62,7 +60,7 @@ export function useTranscription(
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
 
-  const recorderRef = useRef<AudioRecorder | null>(null);
+  const recorderRef = useRef<PcmCaptureSession | null>(null);
   const stopInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const ocrWordsRef = useRef<string[]>([]);
@@ -175,10 +173,10 @@ export function useTranscription(
 
       // Start both recording and OCR extraction in parallel
       const recorderPromise = (async () => {
-        const recorder = new AudioRecorder({
+        const recorder = new PcmCaptureSession({
           onAudioLevel: setAudioLevel,
           onError: (err) => {
-            console.error("[Transcription] Recorder error:", err);
+            console.error("[Transcription] PCM capture error:", err);
             setError(err.message);
             setRecording(false);
           },
@@ -221,7 +219,6 @@ export function useTranscription(
       }
     }
   }, [
-    buildTranscriptionContext,
     captureScreenshotBase64,
     initStream,
     processing,
@@ -257,16 +254,10 @@ export function useTranscription(
       // Add post-roll delay to capture end of speech
       await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
 
-      // Stop recording and get audio blob
-      const audioBlob = await recorder.stop();
-
-      console.log(`[Transcription] Audio recorded: ${audioBlob.size} bytes`);
-
       const context = buildTranscriptionContext();
-      console.log("[Transcription] Decoding audio to PCM16...");
-      const audio = createCapturedAudio(await decodeToPcm16(audioBlob));
+      const audio = await recorder.stop();
       console.log(
-        `[Transcription] PCM16: ${audio.pcm16.length} samples, ${Math.round(audio.durationMs)}ms`,
+        `[Transcription] PCM captured: ${audio.pcm16.length} samples, ${Math.round(audio.durationMs)}ms`,
       );
 
       // ===== Local Whisper path =====

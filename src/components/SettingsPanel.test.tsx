@@ -2,6 +2,8 @@ import React, { act } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
+import { buildTranscriptionProviderSettingsSnapshot } from "../core/transcription/providerCatalog";
+import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 
 function render(ui: React.ReactElement) {
   const container = document.createElement("div");
@@ -44,6 +46,16 @@ describe("components/SettingsPanel", () => {
       onRefreshRequest: (_cb: () => void) => () => {},
       updateDevices: (_d: any, _s?: string) => {},
     } as any;
+    const providerSettings = buildTranscriptionProviderSettingsSnapshot({
+      preferredProviderId: LOCAL_STT_PROVIDER_ID,
+      localModelInstalled: false,
+    });
+    (window as any).stt = {
+      ...(window as any).stt,
+      getProviderSettings: vi.fn(async () => providerSettings),
+      setProviderApiKey: vi.fn(async () => providerSettings),
+      clearProviderApiKey: vi.fn(async () => providerSettings),
+    };
     // Media devices
     // @ts-ignore
     navigator.mediaDevices = {
