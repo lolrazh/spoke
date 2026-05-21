@@ -210,3 +210,104 @@ Conclusion:
 
 - This is a clean optimization for multilingual/auto mode with no new model, no fallback path, and no production change for pinned English.
 - Keep pinned `en` as the default because it is still the simplest and fastest default for the current product.
+
+## Experiment 6: MLX cache clearing
+
+Status: keep current behavior
+
+Change tested:
+
+- Added a hidden benchmark/runtime knob: `SPOKE_STT_CLEAR_CACHE=0`.
+- Compared current behavior, which calls `mx.clear_cache()` after warmup and after each request, against leaving the MLX cache alone.
+- The knob is kept only because it is useful for repeatable benchmarking; production default remains cache clearing enabled.
+
+Command:
+
+```bash
+npm run benchmark:stt:suite -- --label triage-compile-dev --repeat 2 --warmup 1 --max-cases 3
+```
+
+Results:
+
+| Mode | Ready | Mean wall | P95 wall | Mean inference | Mean WER | Mean strict WER | Mean RSS | Mean MLX peak | Mean MLX cache |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Default clear cache | 5219 ms | 4292.8 ms | 4672 ms | 4282.3 ms | 6.1% | 10.2% | 570.2 MB | 1081.8 MB | 670.9 MB |
+| `SPOKE_STT_CLEAR_CACHE=0` | 5468 ms | 4803.3 ms | 6751 ms | 4763.0 ms | 6.1% | 10.2% | 573.2 MB | 1081.8 MB | 714.5 MB |
+
+Validation/caveat:
+
+- This was a triage run over 3 cases, 2 repeats, not a full corpus run.
+- The machine was not perfectly quiet, but the direction was consistent enough: disabling cache clearing did not produce a reliable latency win and increased MLX cache memory.
+
+Conclusion:
+
+- Do not disable `mx.clear_cache()` for production right now.
+- Cache clearing keeps memory more predictable and did not cost measurable speed in this run.
+
+## Experiment 7: PyInstaller onefile versus onedir
+
+Status: promising, not adopted yet
+
+Change tested:
+
+- Added `build-sidecar-onedir.sh` to build a PyInstaller onedir bundle at `local-stt/dist-ondir/spoke-stt/spoke-stt`.
+- Compared the current onefile sidecar against the onedir sidecar using the same cached audio.
+
+Commands:
+
+```bash
+local-stt/build-sidecar.sh
+local-stt/build-sidecar-onedir.sh
+npm run benchmark:stt -- --binary local-stt/dist/spoke-stt --label triage-onefile-default --repeat 1 --warmup 0 --max-cases 1 --audio-cache-dir local-stt/benchmarks/audio-cache
+npm run benchmark:stt -- --binary local-stt/dist-ondir/spoke-stt/spoke-stt --label triage-onedir-default --repeat 1 --warmup 0 --max-cases 1 --audio-cache-dir local-stt/benchmarks/audio-cache
+```
+
+Results:
+
+| Mode | Artifact size | Ready | Wall | Inference | WER | RSS | MLX peak |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| PyInstaller onefile | 80 MB | 35766 ms | 5163 ms | 4686 ms | 0.0% | 583.1 MB | 1081.8 MB |
+| PyInstaller onedir | 229 MB | 18364 ms | 4013 ms | 3815 ms | 0.0% | 578.7 MB | 1081.8 MB |
+
+Validation/caveat:
+
+- This was a single-case smoke focused on startup/packaging shape, not a full-quality run.
+- Onedir is larger on disk, but appears to avoid some onefile extraction/import cost.
+
+Conclusion:
+
+- Onedir is worth a full packaged-app integration test.
+- Do not switch production packaging until we verify Electron Forge copies/signs the directory correctly and the packaged app launches the onedir executable reliably.
+
+## Experiment 8: MLX `mx.compile()` around the Whisper encoder
+
+Status: not adopted
+
+Change tested:
+
+- Temporarily wrapped the Whisper encoder with `mx.compile()` behind `SPOKE_STT_COMPILE_ENCODER=1`.
+- Warmup compiled the encoder path before measured requests.
+- Removed the production knob after testing because it did not help.
+
+Command:
+
+```bash
+npm run benchmark:stt:suite -- --label triage-compile-dev --repeat 2 --warmup 1 --max-cases 3 --include-compile-encoder
+```
+
+Results:
+
+| Mode | Ready | Mean wall | P95 wall | Mean inference | Mean WER | Mean strict WER | Mean RSS | Mean MLX peak | Mean MLX active | Mean MLX cache |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Default encoder | 5219 ms | 4292.8 ms | 4672 ms | 4282.3 ms | 6.1% | 10.2% | 570.2 MB | 1081.8 MB | 451.6 MB | 670.9 MB |
+| `mx.compile()` encoder | 6096 ms | 5150.8 ms | 6112 ms | 5139.5 ms | 6.1% | 10.2% | 572.7 MB | 1078.2 MB | 447.9 MB | 681.8 MB |
+
+Validation/caveat:
+
+- Compile reduced active/peak MLX memory slightly, but it made latency meaningfully worse.
+- The app cares more about latency than a roughly 4 MB active-memory reduction here.
+
+Conclusion:
+
+- Do not compile the Whisper encoder with `mx.compile()` in this implementation.
+- Treat encoder speed as a model/runtime architecture problem, not a simple compile wrapper fix.
