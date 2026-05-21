@@ -29,6 +29,7 @@ DEFAULT_WEIGHTS_DIR = (
 )
 DEFAULT_DEV_PYTHON = LOCAL_STT_DIR / ".venv" / "bin" / "python"
 DEFAULT_DIST_BINARY = LOCAL_STT_DIR / "dist" / "spoke-stt"
+DEFAULT_ONEDIR_BINARY = LOCAL_STT_DIR / "dist-ondir" / "spoke-stt" / "spoke-stt"
 DEFAULT_PACKAGED_BINARY = (
     REPO_ROOT
     / "out"
@@ -73,6 +74,11 @@ def parse_args() -> argparse.Namespace:
         "--include-dist-binary",
         action="store_true",
         help="Also benchmark local-stt/dist/spoke-stt if it exists.",
+    )
+    parser.add_argument(
+        "--include-onedir-binary",
+        action="store_true",
+        help="Also benchmark local-stt/dist-ondir/spoke-stt/spoke-stt if it exists.",
     )
     parser.add_argument(
         "--include-packaged-binary",
@@ -126,6 +132,8 @@ def benchmark_variants(args: argparse.Namespace) -> list[Variant]:
     binaries: list[tuple[str, Path]] = []
     if args.include_dist_binary:
         binaries.append(("dist", DEFAULT_DIST_BINARY))
+    if args.include_onedir_binary:
+        binaries.append(("onedir", DEFAULT_ONEDIR_BINARY))
     if args.include_packaged_binary:
         binaries.append(("packaged", DEFAULT_PACKAGED_BINARY))
     binaries.extend((f"binary-{index}", path) for index, path in enumerate(args.binary, start=1))
