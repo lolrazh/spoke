@@ -246,7 +246,7 @@ Conclusion:
 
 ## Experiment 7: PyInstaller onefile versus onedir
 
-Status: promising, not adopted yet
+Status: adopted for packaged builds
 
 Change tested:
 
@@ -268,6 +268,7 @@ Results:
 |---|---:|---:|---:|---:|---:|---:|---:|
 | PyInstaller onefile | 80 MB | 35766 ms | 5163 ms | 4686 ms | 0.0% | 583.1 MB | 1081.8 MB |
 | PyInstaller onedir | 229 MB | 18364 ms | 4013 ms | 3815 ms | 0.0% | 578.7 MB | 1081.8 MB |
+| Packaged app onedir | 240 MB resource | 13998 ms | 4002 ms | 3944 ms | 0.0% | 577.8 MB | 1081.8 MB |
 
 Validation/caveat:
 
@@ -276,8 +277,9 @@ Validation/caveat:
 
 Conclusion:
 
-- Onedir is worth a full packaged-app integration test.
-- Do not switch production packaging until we verify Electron Forge copies/signs the directory correctly and the packaged app launches the onedir executable reliably.
+- Onedir is better than onefile for packaged sidecar startup in this smoke test.
+- Electron Forge successfully packaged the onedir sidecar at `Contents/Resources/spoke-stt/spoke-stt`.
+- Packaged app size increased to about 529 MB, with the sidecar resource directory around 240 MB.
 
 ## Experiment 8: MLX `mx.compile()` around the Whisper encoder
 

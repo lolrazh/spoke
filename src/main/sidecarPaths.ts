@@ -4,7 +4,7 @@
  * Resolves paths to the MLX Whisper sidecar binary and model weights, supporting
  * both packaged (production) and development layouts.
  *
- * - Packaged: binary at `resources/spoke-stt`, weights in `userData/local-stt/weights/`
+ * - Packaged: binary at `resources/spoke-stt/spoke-stt`, weights in `userData/local-stt/weights/`
  * - Dev: Python venv at `local-stt/.venv/bin/python`, weights in `userData/local-stt/weights/`
  */
 
@@ -14,7 +14,7 @@ import { app } from "electron";
 /** Path to the sidecar binary (PyInstaller) or Python interpreter (dev). */
 export function getSidecarBinaryPath(): string {
   return app.isPackaged
-    ? path.join(process.resourcesPath, "spoke-stt")
+    ? path.join(process.resourcesPath, "spoke-stt", "spoke-stt")
     : path.join(app.getAppPath(), "local-stt", ".venv", "bin", "python");
 }
 

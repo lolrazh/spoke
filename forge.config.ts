@@ -47,7 +47,7 @@ const config: ForgeConfig = {
       "./public/assets/Assets.car",
       "./native/bin/Spoke Helper.app",
       "./native/bin/notch-reporter",
-      "./local-stt/dist/spoke-stt",
+      "./local-stt/dist-ondir/spoke-stt",
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
@@ -61,7 +61,7 @@ const config: ForgeConfig = {
         "Contents/Resources/Spoke Helper.app",
         "Contents/Resources/Spoke Helper.app/Contents/MacOS/Spoke Helper",
         "Contents/Resources/notch-reporter",
-        "Contents/Resources/spoke-stt",
+        "Contents/Resources/spoke-stt/spoke-stt",
       ],
       optionsForFile: (filePath) => {
         // Base options applied to all files
