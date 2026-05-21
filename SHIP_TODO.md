@@ -136,9 +136,9 @@ Deferred cleanup candidates:
 Goal: make PCM16 mono 16 kHz the single in-memory audio format for dictation. Local Whisper should receive raw PCM directly; cloud providers can encode that PCM as WAV at the provider edge. No WebM/Opus capture path for normal dictation.
 
 - [x] Add canonical captured-audio helpers: duration math, PCM concatenation, trimming, and WAV encoding.
-- [ ] Refactor transcription provider input to accept one captured-audio object instead of `audioBlob` plus optional `pcm16`.
-- [ ] Update local transcription to pass PCM16 straight to the MLX sidecar.
-- [ ] Update cloud transcription providers to create WAV from PCM16 only when a cloud request is made.
+- [x] Refactor transcription provider input to accept one captured-audio object instead of `audioBlob` plus optional `pcm16`.
+- [x] Update local transcription to pass PCM16 straight to the MLX sidecar.
+- [x] Update cloud transcription providers to create WAV from PCM16 only when a cloud request is made.
 - [ ] Replace `MediaRecorder` recording in `useTranscription` with an AudioWorklet-backed PCM capture session.
 - [x] Rewrite the PCM AudioWorklet frame buffer to use fixed typed arrays instead of a growing JS sample array.
 - [ ] Delete the WebM/Opus decoder path after providers no longer use it.

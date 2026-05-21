@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCapturedAudio } from "../capturedAudio";
 import { TranscriptionSessionError } from "../sessionErrors";
 import { localSttProvider } from "./localSttProvider";
 
@@ -18,8 +19,10 @@ describe("localSttProvider", () => {
   });
 
   it("transcribes PCM16 audio through the Electron bridge", async () => {
+    const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
+
     const result = await localSttProvider.transcribe({
-      pcm16: new Int16Array([1, 2, 3, 4]),
+      audio,
       context: { mode: "dictation" },
     });
 
@@ -34,7 +37,7 @@ describe("localSttProvider", () => {
     await expect(
       localSttProvider.transcribe({
         context: { mode: "dictation" },
-      }),
+      } as any),
     ).rejects.toBeInstanceOf(TranscriptionSessionError);
   });
 });

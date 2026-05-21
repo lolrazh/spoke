@@ -262,12 +262,13 @@ export async function transcribeWithOpenAi(
   }
 
   const formData = new FormData();
+  const resolvedMimeType = normalizeAudioMimeType(mimeType);
   formData.append(
     "file",
     new Blob([bufferToArrayBuffer(audioBuffer)], {
-      type: mimeType || "audio/webm",
+      type: resolvedMimeType,
     }),
-    "audio.webm",
+    getAudioFileName(resolvedMimeType),
   );
   formData.append("model", OPENAI_TRANSCRIPTION_MODEL);
   formData.append("response_format", "json");
@@ -325,12 +326,13 @@ export async function transcribeWithGroq(
   }
 
   const formData = new FormData();
+  const resolvedMimeType = normalizeAudioMimeType(mimeType);
   formData.append(
     "file",
     new Blob([bufferToArrayBuffer(audioBuffer)], {
-      type: mimeType || "audio/webm",
+      type: resolvedMimeType,
     }),
-    "audio.webm",
+    getAudioFileName(resolvedMimeType),
   );
   formData.append("model", GROQ_TRANSCRIPTION_MODEL);
   formData.append("response_format", "json");
@@ -386,6 +388,23 @@ function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
   return arrayBuffer;
 }
 
+function normalizeAudioMimeType(mimeType: string | undefined): string {
+  return mimeType || "audio/wav";
+}
+
+function getAudioFileName(mimeType: string): string {
+  if (mimeType === "audio/wav" || mimeType === "audio/wave") {
+    return "audio.wav";
+  }
+  if (mimeType === "audio/mpeg") {
+    return "audio.mp3";
+  }
+  if (mimeType === "audio/mp4") {
+    return "audio.mp4";
+  }
+  return "audio.webm";
+}
+
 export async function transcribeWithDeepgram(
   audioBuffer: Buffer,
   mimeType: string | undefined,
@@ -410,7 +429,7 @@ export async function transcribeWithDeepgram(
       method: "POST",
       headers: {
         Authorization: `Token ${getRequiredProviderApiKey(DEEPGRAM_CLOUD_PROVIDER_ID)}`,
-        "Content-Type": mimeType || "audio/webm",
+        "Content-Type": normalizeAudioMimeType(mimeType),
       },
       body: bufferToArrayBuffer(audioBuffer),
     },

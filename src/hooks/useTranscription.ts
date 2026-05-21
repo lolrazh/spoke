@@ -17,6 +17,7 @@ import {
   LOCAL_STT_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import { createCapturedAudio } from "../core/transcription/capturedAudio";
 import { AudioRecorder } from "../utils/audioRecorder";
 import { decodeToPcm16 } from "../utils/audioDecoder";
 import { playToggleOff } from "../utils/audioFeedback";
@@ -262,17 +263,18 @@ export function useTranscription(
       console.log(`[Transcription] Audio recorded: ${audioBlob.size} bytes`);
 
       const context = buildTranscriptionContext();
+      console.log("[Transcription] Decoding audio to PCM16...");
+      const audio = createCapturedAudio(await decodeToPcm16(audioBlob));
+      console.log(
+        `[Transcription] PCM16: ${audio.pcm16.length} samples, ${Math.round(audio.durationMs)}ms`,
+      );
 
       // ===== Local Whisper path =====
       if (provider.descriptor.kind === "local") {
-        console.log("[Local] Decoding audio to PCM16...");
-        const pcm16 = await decodeToPcm16(audioBlob);
-        console.log(`[Local] PCM16: ${pcm16.length} samples`);
-
         const result = await defaultTranscriptionSessionOrchestrator.transcribe(
           providerId,
           {
-            pcm16,
+            audio,
             context,
           },
         );
@@ -352,7 +354,7 @@ export function useTranscription(
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
-          audioBlob,
+          audio,
           context,
         },
       );

@@ -1,6 +1,7 @@
 import type { TranscriptionProvider } from "../providerContracts";
 import { GROQ_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
+import { encodeCloudTranscriptionAudio } from "./cloudAudioPayload";
 
 export const groqCloudProvider: TranscriptionProvider = {
   descriptor: {
@@ -24,11 +25,11 @@ export const groqCloudProvider: TranscriptionProvider = {
           : "Save a Groq API key to use Groq.",
     };
   },
-  transcribe: async ({ audioBlob, context }) => {
-    if (!audioBlob) {
+  transcribe: async ({ audio, context }) => {
+    if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
-        "Groq requires an audio blob.",
+        "Groq requires captured audio input.",
         { recoverable: false },
       );
     }
@@ -42,8 +43,7 @@ export const groqCloudProvider: TranscriptionProvider = {
     }
 
     return window.stt.transcribeApiKeyProvider(GROQ_CLOUD_PROVIDER_ID, {
-      audioBuffer: await audioBlob.arrayBuffer(),
-      mimeType: audioBlob.type || "audio/webm",
+      ...encodeCloudTranscriptionAudio(audio),
       context,
     });
   },

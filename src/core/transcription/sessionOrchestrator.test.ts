@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { createCapturedAudio } from "./capturedAudio";
 import type { TranscriptionProvider } from "./providerContracts";
 import { TranscriptionSessionError } from "./sessionErrors";
 import { createSessionOrchestrator } from "./sessionOrchestrator";
+
+const testAudio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
 
 const localProvider: TranscriptionProvider = {
   descriptor: {
@@ -34,6 +37,7 @@ describe("createSessionOrchestrator", () => {
     });
 
     const result = await orchestrator.transcribe(undefined, {
+      audio: testAudio,
       context: { mode: "dictation" },
     });
 

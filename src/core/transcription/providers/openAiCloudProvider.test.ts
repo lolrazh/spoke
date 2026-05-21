@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCapturedAudio } from "../capturedAudio";
 import { TranscriptionSessionError } from "../sessionErrors";
 import { OPENAI_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { openAiCloudProvider } from "./openAiCloudProvider";
@@ -44,10 +45,10 @@ describe("openAiCloudProvider", () => {
   });
 
   it("delegates transcription through the secure bridge", async () => {
-    const audioBlob = new Blob(["audio"], { type: "audio/webm" });
+    const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
 
     const result = await openAiCloudProvider.transcribe({
-      audioBlob,
+      audio,
       context: {
         mode: "dictation",
         language: "en",
@@ -57,12 +58,17 @@ describe("openAiCloudProvider", () => {
     expect(window.stt.transcribeApiKeyProvider).toHaveBeenCalledWith(
       OPENAI_CLOUD_PROVIDER_ID,
       expect.objectContaining({
-        mimeType: "audio/webm",
+        mimeType: "audio/wav",
         context: {
           mode: "dictation",
           language: "en",
         },
       }),
+    );
+    const payload = (window.stt.transcribeApiKeyProvider as any).mock
+      .calls[0][1];
+    expect(new DataView(payload.audioBuffer).getUint32(0, false)).toBe(
+      0x52494646,
     );
     expect(result).toEqual({
       text: "openai transcript",
@@ -74,7 +80,7 @@ describe("openAiCloudProvider", () => {
     await expect(
       openAiCloudProvider.transcribe({
         context: { mode: "dictation" },
-      }),
+      } as any),
     ).rejects.toBeInstanceOf(TranscriptionSessionError);
   });
 });

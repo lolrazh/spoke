@@ -20,8 +20,8 @@ export const localSttProvider: TranscriptionProvider = {
       reason: available ? undefined : "Local Whisper bridge is unavailable.",
     };
   },
-  transcribe: async ({ pcm16 }) => {
-    if (!pcm16) {
+  transcribe: async ({ audio }) => {
+    if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
         "Local transcription requires PCM16 audio input.",
@@ -37,9 +37,13 @@ export const localSttProvider: TranscriptionProvider = {
       );
     }
 
-    const pcmBuffer = new ArrayBuffer(pcm16.byteLength);
+    const pcmBuffer = new ArrayBuffer(audio.pcm16.byteLength);
     new Uint8Array(pcmBuffer).set(
-      new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength),
+      new Uint8Array(
+        audio.pcm16.buffer,
+        audio.pcm16.byteOffset,
+        audio.pcm16.byteLength,
+      ),
     );
 
     return window.stt.transcribeLocal(pcmBuffer);

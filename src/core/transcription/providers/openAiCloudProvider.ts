@@ -1,6 +1,7 @@
 import type { TranscriptionProvider } from "../providerContracts";
 import { OPENAI_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
+import { encodeCloudTranscriptionAudio } from "./cloudAudioPayload";
 
 export const openAiCloudProvider: TranscriptionProvider = {
   descriptor: {
@@ -24,11 +25,11 @@ export const openAiCloudProvider: TranscriptionProvider = {
           : "Save an OpenAI API key to use OpenAI.",
     };
   },
-  transcribe: async ({ audioBlob, context }) => {
-    if (!audioBlob) {
+  transcribe: async ({ audio, context }) => {
+    if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
-        "OpenAI requires an audio blob.",
+        "OpenAI requires captured audio input.",
         { recoverable: false },
       );
     }
@@ -42,8 +43,7 @@ export const openAiCloudProvider: TranscriptionProvider = {
     }
 
     return window.stt.transcribeApiKeyProvider(OPENAI_CLOUD_PROVIDER_ID, {
-      audioBuffer: await audioBlob.arrayBuffer(),
-      mimeType: audioBlob.type || "audio/webm",
+      ...encodeCloudTranscriptionAudio(audio),
       context,
     });
   },

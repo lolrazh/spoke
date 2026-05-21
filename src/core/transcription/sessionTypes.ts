@@ -1,3 +1,5 @@
+import type { CapturedAudio } from "./capturedAudio";
+
 export type TranscriptionMode = "dictation" | "edit";
 
 export type TranscriptionProviderKind = "local" | "cloud";
@@ -20,8 +22,7 @@ export interface PrepareTranscriptionResult {
 }
 
 export interface TranscribeAudioInput {
-  audioBlob?: Blob;
-  pcm16?: Int16Array;
+  audio: CapturedAudio;
   context: TranscriptionContext;
   prepareResult?: PrepareTranscriptionResult | null;
 }

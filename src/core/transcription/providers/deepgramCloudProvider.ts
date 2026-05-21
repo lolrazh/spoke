@@ -1,6 +1,7 @@
 import type { TranscriptionProvider } from "../providerContracts";
 import { DEEPGRAM_CLOUD_PROVIDER_ID } from "../providerPreferences";
 import { TranscriptionSessionError } from "../sessionErrors";
+import { encodeCloudTranscriptionAudio } from "./cloudAudioPayload";
 
 export const deepgramCloudProvider: TranscriptionProvider = {
   descriptor: {
@@ -24,11 +25,11 @@ export const deepgramCloudProvider: TranscriptionProvider = {
           : "Save a Deepgram API key to use Deepgram.",
     };
   },
-  transcribe: async ({ audioBlob, context }) => {
-    if (!audioBlob) {
+  transcribe: async ({ audio, context }) => {
+    if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
-        "Deepgram requires an audio blob.",
+        "Deepgram requires captured audio input.",
         { recoverable: false },
       );
     }
@@ -42,8 +43,7 @@ export const deepgramCloudProvider: TranscriptionProvider = {
     }
 
     return window.stt.transcribeApiKeyProvider(DEEPGRAM_CLOUD_PROVIDER_ID, {
-      audioBuffer: await audioBlob.arrayBuffer(),
-      mimeType: audioBlob.type || "audio/webm",
+      ...encodeCloudTranscriptionAudio(audio),
       context,
     });
   },
