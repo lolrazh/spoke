@@ -10,7 +10,9 @@ import type { SelectionInspectSnapshot } from "../types/shared";
 import type {
   TranscriptionContext,
   TranscriptionMode,
+  TranscriptionProviderKind,
 } from "../core/transcription/sessionTypes";
+import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import {
   defaultTranscriptionSessionOrchestrator,
   resolvePreferredTranscriptionProviderId,
@@ -18,7 +20,10 @@ import {
 } from "../core/transcription/defaultSessionOrchestrator";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
-import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
+import {
+  trimCapturedAudioWithVad,
+  type VadAudioResult,
+} from "../utils/vadTrimmer";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
@@ -240,11 +245,18 @@ export function useTranscription(
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
-    // Comprehensive timing for debugging latency
     const timing = {
-      stopStarted: Date.now(),
-      fetchStarted: 0,
-      fetchDone: 0,
+      stopStartedAt: performance.now(),
+      postRollStartedAt: 0,
+      postRollDoneAt: 0,
+      pcmStopStartedAt: 0,
+      pcmReadyAt: 0,
+      vadStartedAt: 0,
+      vadDoneAt: 0,
+      sttStartedAt: 0,
+      sttDoneAt: 0,
+      pasteStartedAt: 0,
+      pasteDoneAt: 0,
     };
 
     try {
@@ -253,21 +265,34 @@ export function useTranscription(
       playToggleOff();
 
       // Add post-roll delay to capture end of speech
+      timing.postRollStartedAt = performance.now();
       await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      timing.postRollDoneAt = performance.now();
 
       const context = buildTranscriptionContext();
+      timing.pcmStopStartedAt = performance.now();
       const capturedAudio = await recorder.stop();
+      timing.pcmReadyAt = performance.now();
       console.log(
         `[Transcription] PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
       );
 
+      timing.vadStartedAt = performance.now();
       const vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      timing.vadDoneAt = performance.now();
       console.log(
         `[VAD] speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
       );
 
       if (!vadResult.speechDetected) {
         console.log(`[Transcription] No speech detected; skipping STT`);
+        logTranscriptionLatency({
+          providerKind: provider.descriptor.kind,
+          status: "no_speech",
+          timing,
+          capturedAudio,
+          vadResult,
+        });
         setText("");
         return;
       }
@@ -276,6 +301,7 @@ export function useTranscription(
 
       // ===== Local Whisper path =====
       if (provider.descriptor.kind === "local") {
+        timing.sttStartedAt = performance.now();
         const result = await defaultTranscriptionSessionOrchestrator.transcribe(
           providerId,
           {
@@ -283,6 +309,7 @@ export function useTranscription(
             context,
           },
         );
+        timing.sttDoneAt = performance.now();
         console.log(
           `[Local] Transcription complete: "${result.text.slice(0, 50)}..."`,
         );
@@ -331,18 +358,22 @@ export function useTranscription(
         if (!options.suppressNativePaste) {
           const insertText = window.clipboard?.insertText;
           try {
+            timing.pasteStartedAt = performance.now();
             await insertText?.(finalText);
+            timing.pasteDoneAt = performance.now();
           } catch (err) {
+            timing.pasteDoneAt = performance.now();
             console.warn(err);
           }
-          console.log(
-            `[Local] TOTAL E2E: ${Date.now() - timing.stopStarted}ms`,
-          );
-        } else {
-          console.log(
-            `[Local] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
-          );
         }
+        logTranscriptionLatency({
+          providerKind: provider.descriptor.kind,
+          status: "done",
+          timing,
+          capturedAudio,
+          vadResult,
+          metrics: result.metrics,
+        });
         return; // Skip cloud path
       }
 
@@ -355,7 +386,7 @@ export function useTranscription(
       }
 
       // Transcribe via cloud provider
-      timing.fetchStarted = Date.now();
+      timing.sttStartedAt = performance.now();
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
@@ -363,10 +394,10 @@ export function useTranscription(
           context,
         },
       );
-      timing.fetchDone = Date.now();
+      timing.sttDoneAt = performance.now();
 
       console.log(
-        `[Cloud] STT complete in ${timing.fetchDone - timing.fetchStarted}ms: "${result.text.slice(0, 50)}..."`,
+        `[Cloud] STT complete in ${elapsedMs(timing.sttStartedAt, timing.sttDoneAt)}ms: "${result.text.slice(0, 50)}..."`,
       );
 
       // Enhance with LLM if triggers detected
@@ -401,19 +432,23 @@ export function useTranscription(
       // Trigger native paste if not suppressed
       if (!options.suppressNativePaste) {
         const insertText = window.clipboard?.insertText;
-        const pasteStart = Date.now();
-        insertText?.(finalText)
-          ?.then(() => {
-            console.log(
-              `[Cloud] TOTAL E2E: ${Date.now() - timing.stopStarted}ms (paste: ${Date.now() - pasteStart}ms)`,
-            );
-          })
-          ?.catch(console.warn);
-      } else {
-        console.log(
-          `[Cloud] TOTAL E2E (no paste): ${Date.now() - timing.stopStarted}ms`,
-        );
+        timing.pasteStartedAt = performance.now();
+        try {
+          await insertText?.(finalText);
+        } catch (err) {
+          console.warn(err);
+        } finally {
+          timing.pasteDoneAt = performance.now();
+        }
       }
+      logTranscriptionLatency({
+        providerKind: provider.descriptor.kind,
+        status: "done",
+        timing,
+        capturedAudio,
+        vadResult,
+        metrics: result.metrics,
+      });
     } catch (err) {
       console.error("[Transcription] Stop failed:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -477,4 +512,68 @@ export function useTranscription(
     cancel,
     preConnect,
   };
+}
+
+interface TranscriptionLatencyTiming {
+  stopStartedAt: number;
+  postRollStartedAt: number;
+  postRollDoneAt: number;
+  pcmStopStartedAt: number;
+  pcmReadyAt: number;
+  vadStartedAt: number;
+  vadDoneAt: number;
+  sttStartedAt: number;
+  sttDoneAt: number;
+  pasteStartedAt: number;
+  pasteDoneAt: number;
+}
+
+function logTranscriptionLatency({
+  providerKind,
+  status,
+  timing,
+  capturedAudio,
+  vadResult,
+  metrics,
+}: {
+  providerKind: TranscriptionProviderKind;
+  status: "done" | "no_speech";
+  timing: TranscriptionLatencyTiming;
+  capturedAudio: CapturedAudio;
+  vadResult: VadAudioResult;
+  metrics?: Record<string, unknown>;
+}) {
+  const totalDoneAt = performance.now();
+  const trimmedMs = vadResult.leadingTrimmedMs + vadResult.trailingTrimmedMs;
+
+  console.log("[Latency] Transcription", {
+    provider: providerKind,
+    status,
+    total_ms: elapsedMs(timing.stopStartedAt, totalDoneAt),
+    post_roll_ms: elapsedMs(timing.postRollStartedAt, timing.postRollDoneAt),
+    pcm_ready_ms: elapsedMs(timing.pcmStopStartedAt, timing.pcmReadyAt),
+    vad_wall_ms: elapsedMs(timing.vadStartedAt, timing.vadDoneAt),
+    vad_engine_ms: vadResult.vadMs,
+    stt_wall_ms: elapsedMs(timing.sttStartedAt, timing.sttDoneAt),
+    sidecar_inference_ms: numberMetric(metrics, "inference_ms"),
+    paste_ms: elapsedMs(timing.pasteStartedAt, timing.pasteDoneAt),
+    captured_audio_ms: Math.round(capturedAudio.durationMs),
+    transcribed_audio_ms: Math.round(vadResult.audio.durationMs),
+    trimmed_audio_ms: Math.round(trimmedMs),
+  });
+}
+
+function elapsedMs(startAt: number, doneAt: number): number | null {
+  if (startAt <= 0 || doneAt <= 0) {
+    return null;
+  }
+  return Math.max(0, Math.round(doneAt - startAt));
+}
+
+function numberMetric(
+  metrics: Record<string, unknown> | undefined,
+  key: string,
+): number | null {
+  const value = metrics?.[key];
+  return typeof value === "number" ? Math.round(value) : null;
 }

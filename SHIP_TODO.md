@@ -144,7 +144,7 @@ Goal: make PCM16 mono 16 kHz the single in-memory audio format for dictation. Lo
 - [x] Delete the WebM/Opus decoder path after providers no longer use it.
 - [x] Restore Silero ONNX VAD as a speech-boundary/trimming layer, not a second transcription path.
 - [x] Use VAD first for no-speech skip, leading/trailing silence trim, and capture metrics.
-- [ ] Add timing logs for post-roll, PCM readiness, VAD trim, sidecar inference, and total end-to-end latency.
+- [x] Add timing logs for post-roll, PCM readiness, VAD trim, sidecar inference, and total end-to-end latency.
 - [ ] Benchmark before/after with the existing local STT harness and one real dogfood pass.
 
 ## P1: Local Inference Performance Backlog
