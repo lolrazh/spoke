@@ -39,6 +39,8 @@ REPORT_ENV_KEYS = (
     "SPOKE_STT_FAST_ATTENTION",
     "SPOKE_STT_SAMPLE_LEN",
     "SPOKE_STT_PROFILE",
+    "SPOKE_STT_WARMUP",
+    "SPOKE_STT_CLEAR_CACHE",
 )
 TIMING_METRIC_KEYS = (
     "audio_analysis_ms",
@@ -62,6 +64,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--label", default="baseline", help="Run label for output files.")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--audio-cache-dir",
+        type=Path,
+        help="Directory for generated/converted PCM corpus audio shared across benchmark runs.",
+    )
     parser.add_argument("--weights-dir", type=Path, default=DEFAULT_WEIGHTS_DIR)
     parser.add_argument("--language", default="en")
     parser.add_argument("--repeat", type=int, default=3)
@@ -187,11 +194,12 @@ def prepare_audio(
     cases: list[CorpusCase],
     run_dir: Path,
     *,
+    audio_cache_dir: Path | None,
     generate_tts: bool,
     voice: str,
 ) -> dict[str, Path]:
     audio_paths: dict[str, Path] = {}
-    generated_dir = run_dir / "audio"
+    generated_dir = audio_cache_dir or run_dir / "audio"
 
     for case in cases:
         if case.audio_path:
@@ -365,13 +373,38 @@ def stop_sidecar(proc: subprocess.Popen[bytes]) -> None:
         proc.kill()
 
 
-def process_rss_mb(pid: int) -> float:
+def child_pids(pid: int) -> list[int]:
+    try:
+        output = subprocess.check_output(["pgrep", "-P", str(pid)], text=True)
+        return [int(line.strip()) for line in output.splitlines() if line.strip()]
+    except Exception:
+        return []
+
+
+def process_tree_pids(root_pid: int) -> list[int]:
+    pending = [root_pid]
+    seen: set[int] = set()
+    while pending:
+        pid = pending.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        pending.extend(child for child in child_pids(pid) if child not in seen)
+    return sorted(seen)
+
+
+def rss_kb(pid: int) -> int:
     try:
         output = subprocess.check_output(["ps", "-o", "rss=", "-p", str(pid)], text=True)
         value = output.strip()
-        return round(int(value) / 1024, 1) if value else 0.0
+        return int(value) if value else 0
     except Exception:
-        return 0.0
+        return 0
+
+
+def process_rss_mb(pid: int) -> float:
+    total_kb = sum(rss_kb(process_pid) for process_pid in process_tree_pids(pid))
+    return round(total_kb / 1024, 1)
 
 
 def transcribe_pcm(proc: subprocess.Popen[bytes], pcm_path: Path) -> dict[str, Any]:
@@ -547,6 +580,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     audio_paths = prepare_audio(
         cases,
         run_dir,
+        audio_cache_dir=args.audio_cache_dir.expanduser()
+        if args.audio_cache_dir
+        else None,
         generate_tts=not args.no_tts,
         voice=args.voice,
     )
@@ -623,6 +659,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         "caveats": benchmark_caveats(system),
         "weights_dir": str(args.weights_dir.expanduser()),
         "corpus": str(args.corpus),
+        "audio_cache_dir": str(args.audio_cache_dir.expanduser())
+        if args.audio_cache_dir
+        else None,
         "repeat": args.repeat,
         "warmup": args.warmup,
         "summary": make_summary(results, ready_ms),

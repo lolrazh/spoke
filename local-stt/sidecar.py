@@ -70,6 +70,7 @@ FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lo
 SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
 PROFILE_MODE = os.environ.get("SPOKE_STT_PROFILE", "0").strip().lower()
 WARMUP_MODE = os.environ.get("SPOKE_STT_WARMUP", "1").strip().lower()
+CLEAR_CACHE_MODE = os.environ.get("SPOKE_STT_CLEAR_CACHE", "1").strip().lower()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -128,6 +129,11 @@ def clear_cache() -> None:
         mx.clear_cache()
     except Exception:
         pass
+
+
+def clear_cache_if_enabled() -> None:
+    if is_enabled(CLEAR_CACHE_MODE):
+        clear_cache()
 
 
 def memory_snapshot() -> dict[str, int]:
@@ -348,7 +354,7 @@ class WhisperRuntime:
                 self.language,
                 WARMUP_SAMPLE_LEN,
             )
-            clear_cache()
+            clear_cache_if_enabled()
             warmup_ms = round((time.perf_counter() - start) * 1000)
             log(f"sidecar: warmup complete in {warmup_ms} ms")
         except Exception as exc:
@@ -387,7 +393,7 @@ class WhisperRuntime:
         result = transcribe_audio(self.model, audio, self.language, self.sample_len)
         inference_ms = round((time.perf_counter() - start) * 1000)
         memory = memory_snapshot()
-        clear_cache()
+        clear_cache_if_enabled()
 
         transcript = str(result.get("text", "")).strip()
         segments = result.get("segments") or []
@@ -697,6 +703,7 @@ def main() -> int:
     )
     log(f"sidecar: decode sample_len={runtime.sample_len or 'default'}")
     log(f"sidecar: profiling={'enabled' if is_enabled(PROFILE_MODE) else 'disabled'}")
+    log(f"sidecar: clear_cache={'enabled' if is_enabled(CLEAR_CACHE_MODE) else 'disabled'}")
 
     if args.oneshot:
         return oneshot_mode(runtime)

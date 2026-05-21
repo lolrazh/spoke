@@ -22,7 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py"
+    "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py",
+    "benchmark:stt:suite": "local-stt/.venv/bin/python local-stt/benchmark_suite.py"
   },
   "keywords": [],
   "author": {
