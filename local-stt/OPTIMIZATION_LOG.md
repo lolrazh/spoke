@@ -339,3 +339,51 @@ Conclusion:
 
 - Do not compile the Whisper encoder with `mx.compile()` in this implementation.
 - Treat encoder speed as a model/runtime architecture problem, not a simple compile wrapper fix.
+
+## Experiment 9: P0 PCM/VAD sidecar baseline
+
+Status: recorded as P0 smoke baseline
+
+Change context:
+
+- Renderer capture now records PCM16 directly and trims with Silero VAD before STT.
+- This benchmark exercises the fixed local STT sidecar protocol and model with the cached corpus. It does not include renderer VAD time or app paste time; those are now visible in the app through `[Latency] Transcription` logs.
+
+Command:
+
+```bash
+npm run benchmark:stt -- --label p0-pcm-vad-baseline --repeat 2 --warmup 1 --audio-cache-dir local-stt/benchmarks/audio-cache
+```
+
+Results:
+
+| Metric | Result |
+|---|---:|
+| Ready | 9656 ms |
+| Cases | 10 |
+| Runs | 20 |
+| Mean wall | 2714.45 ms |
+| P95 wall | 3056 ms |
+| Mean inference | 2698.1 ms |
+| P95 inference | 3047 ms |
+| Mean WER | 10.2% |
+| Mean strict WER | 16.2% |
+| Mean RSS | 580.44 MB |
+| Mean MLX peak | 1081.93 MB |
+| Mean MLX active | 451.6 MB |
+| Mean MLX cache | 676.41 MB |
+
+Report:
+
+- `local-stt/benchmarks/runs/20260521T113046Z-p0-pcm-vad-baseline/report.md`
+
+Validation/caveat:
+
+- The harness first failed with `--no-tts` because the corpus entries do not declare explicit `audio_path` values; rerunning without that flag reused the existing cached PCM files.
+- System load was high during the run, and the report flagged Codex renderer CPU contention. Treat these numbers as a smoke baseline until rerun on a quiet machine.
+- Real app latency now needs one dogfood pass using the renderer logs so post-roll, PCM readiness, VAD trim, sidecar inference, paste, and total end-to-end latency can be read from the same dictation.
+
+Conclusion:
+
+- Sidecar quality stayed in the known synthetic-corpus range: failures are still concentrated around product names, symbols, and numeric phrasing.
+- The remaining P0 validation is a real app dogfood pass, not more raw sidecar benchmarking.
