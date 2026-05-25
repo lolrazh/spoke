@@ -144,6 +144,12 @@ const AppInner: React.FC = () => {
 
   useLayoutEffect(() => {
     window.electron?.bootMark?.("app-layout-effect");
+    try {
+      document.body.classList.remove("initial-fade");
+    } catch {}
+    try {
+      window.electron?.rendererReady?.();
+    } catch {}
   }, []);
 
   useEffect(() => {

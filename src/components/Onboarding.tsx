@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
@@ -118,6 +124,16 @@ const TapRipple: React.FC<{
 };
 
 const Onboarding: React.FC = () => {
+  useLayoutEffect(() => {
+    window.electron?.bootMark?.("onboarding-layout-effect");
+    try {
+      document.body.classList.remove("initial-fade");
+    } catch {}
+    try {
+      window.electron?.rendererReady?.();
+    } catch {}
+  }, []);
+
   const introOnly =
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
@@ -466,9 +482,7 @@ const Onboarding: React.FC = () => {
 
   // Auto-focus the text box on test steps for better UX
   useEffect(() => {
-    if (
-      currentStep !== "hotkey-test"
-    ) {
+    if (currentStep !== "hotkey-test") {
       return;
     }
     if (typeof window === "undefined") return;

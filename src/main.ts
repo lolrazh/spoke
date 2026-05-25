@@ -188,6 +188,7 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
+let mainWindowPostReadyWorkScheduled = false;
 
 // Ensure a single running app instance.
 const gotTheLock = app.requestSingleInstanceLock();
@@ -778,6 +779,7 @@ const createWindow = () => {
   mainWindow.on("closed", () => {
     console.log("Main window has been closed.");
     mainWindow = null; // Ensure reference is cleared
+    mainWindowPostReadyWorkScheduled = false;
   });
 
   mainWindow.webContents.once("dom-ready", () => {
@@ -912,6 +914,7 @@ ipcMain.on("renderer-ready", (event) => {
     } catch (e) {
       console.warn("[renderer-ready] Failed to show:", e);
     }
+    scheduleMainWindowPostReadyWork();
     return;
   }
 
@@ -1463,6 +1466,18 @@ function scheduleLocalSidecarPrewarm(reason: string, delayMs: number): void {
   timer.unref?.();
 }
 
+function scheduleMainWindowPostReadyWork(): void {
+  if (mainWindowPostReadyWorkScheduled) return;
+  mainWindowPostReadyWorkScheduled = true;
+
+  const trayTimer = setTimeout(() => {
+    createTray();
+  }, 50);
+  trayTimer.unref?.();
+
+  scheduleLocalSidecarPrewarm("renderer-ready", 250);
+}
+
 // Preference checking for first run
 // Removed onboarding persistence - always show onboarding
 
@@ -1621,7 +1636,6 @@ app.whenReady().then(async () => {
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
-      createTray();
       // Start continuous follow, and start helper only if IM already granted
       startFollowCursor();
       pttTarget = "main";
@@ -1646,7 +1660,6 @@ app.whenReady().then(async () => {
 
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
-      scheduleLocalSidecarPrewarm("startup", 2500);
     } catch (error) {
       console.error(
         "[Debug] Error launching main window with SKIP_ONBOARDING:",
@@ -1785,7 +1798,7 @@ app.whenReady().then(async () => {
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
-    scheduleLocalSidecarPrewarm("post-onboarding", 1000);
+    scheduleLocalSidecarPrewarm("post-onboarding", 250);
 
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });

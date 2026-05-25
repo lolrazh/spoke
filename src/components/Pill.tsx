@@ -1,8 +1,12 @@
-import React, { useLayoutEffect, useRef, useEffect } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useLayoutEffect,
+  useRef,
+  useEffect,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
-import SettingsPanel from "./SettingsPanel";
-import PermissionsPanel from "./PermissionsPanel";
 import SfIcon from "./icons/SfIcon";
 import FrequencyBars from "./FrequencyBars";
 
@@ -13,6 +17,28 @@ type PillMetrics = {
 };
 
 import type { PillStateType } from "../state/pillStateMachine";
+
+const SettingsPanel = lazy(() => {
+  window.electron?.bootMark?.("settings-panel:import:start");
+  return import("./SettingsPanel").then((module) => {
+    window.electron?.bootMark?.("settings-panel:import:done");
+    return module;
+  });
+});
+
+const PermissionsPanel = lazy(() => {
+  window.electron?.bootMark?.("permissions-panel:import:start");
+  return import("./PermissionsPanel").then((module) => {
+    window.electron?.bootMark?.("permissions-panel:import:done");
+    return module;
+  });
+});
+
+const PanelLoadingFallback: React.FC = () => (
+  <div className="flex h-full w-full items-center justify-center text-[13px] text-primary/50">
+    Loading...
+  </div>
+);
 
 interface PillProps {
   pillState: PillStateType;
@@ -296,19 +322,21 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: MOTION.durations.standard }}
               >
                 <div className="w-full h-full relative">
-                  {panelView === "permissions" ? (
-                    <PermissionsPanel
-                      onHeightChange={onPermissionsPanelHeightChange}
-                    />
-                  ) : (
-                    <SettingsPanel
-                      embeddedMode={true}
-                      onToggleFloatingBar={onToggleFloatingBar}
-                      onRequestCollapse={onCollapse}
-                      onHeightChange={onSettingsPanelHeightChange}
-                      initialTab={initialSettingsTab}
-                    />
-                  )}
+                  <Suspense fallback={<PanelLoadingFallback />}>
+                    {panelView === "permissions" ? (
+                      <PermissionsPanel
+                        onHeightChange={onPermissionsPanelHeightChange}
+                      />
+                    ) : (
+                      <SettingsPanel
+                        embeddedMode={true}
+                        onToggleFloatingBar={onToggleFloatingBar}
+                        onRequestCollapse={onCollapse}
+                        onHeightChange={onSettingsPanelHeightChange}
+                        initialTab={initialSettingsTab}
+                      />
+                    )}
+                  </Suspense>
                   {/* Collapse chevron at bottom */}
                   <button
                     className="pill-collapse-btn absolute bottom-2 left-1/2 transform -translate-x-1/2 z-30"
