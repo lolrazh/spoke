@@ -10,6 +10,7 @@ import * as fs from "fs";
 import { spawn } from "child_process";
 import type { SttEvent, LocalTranscribeResult } from "../types/shared";
 import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
+import { bootTimeline } from "./bootTimeline";
 
 // ── Internal state ─────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ function spawnSidecarOnce(): Promise<void> {
     console.log(
       `[STT] Spawning sidecar daemon: ${binaryPath} ${args.join(" ")}`,
     );
+    bootTimeline.mark("sidecar:spawn", { binary: binaryPath });
     const proc = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
       detached: false,
@@ -100,6 +102,7 @@ function spawnSidecarOnce(): Promise<void> {
           if (event.type === "ready") {
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
+            bootTimeline.mark("sidecar:ready");
             settle(resolve);
           } else if (event.type === "error") {
             const message =

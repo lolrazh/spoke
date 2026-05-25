@@ -12,6 +12,7 @@ import {
   spawnSidecar,
   transcribeLocal,
 } from "./sidecarEngine";
+import { bootTimeline } from "./bootTimeline";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -45,13 +46,16 @@ export function prewarmLocalSidecar(reason: string): void {
   }
 
   console.log(`[STT] Prewarming local sidecar (${reason})`);
+  bootTimeline.mark("sidecar-prewarm:start", { reason });
   prewarmInFlight = ensureLocalSidecarRunning()
     .then(() => {
       console.log(`[STT] Local sidecar prewarmed (${reason})`);
+      bootTimeline.mark("sidecar-prewarm:ready", { reason });
     })
     .catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${msg}`);
+      bootTimeline.mark("sidecar-prewarm:failed", { reason, error: msg });
     })
     .finally(() => {
       prewarmInFlight = null;

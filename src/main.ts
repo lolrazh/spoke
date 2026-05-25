@@ -161,11 +161,20 @@ import {
   getUpdateError,
   jitterMs,
 } from "./main/updateController";
+import { bootTimeline } from "./main/bootTimeline";
 
 // Vite injects env at build time; provide a typed fallback for the main process
 const VITE_ENV: Record<string, string | undefined> =
   (import.meta as unknown as { env?: Record<string, string | undefined> })
     .env ?? {};
+
+bootTimeline.configure({
+  enabled: !app.isPackaged || process.env.SF_BOOT_TIMELINE === "1",
+});
+bootTimeline.mark("main:module-loaded", {
+  packaged: app.isPackaged,
+  pid: process.pid,
+});
 
 let mainWindow: BrowserWindow | null = null;
 let onboardingWindow: BrowserWindow | null = null;
@@ -501,9 +510,11 @@ function spawnHelper(path: string, args: string[] = [], isFnHelper: boolean) {
 
 async function startHelperIfIMGranted(): Promise<void> {
   try {
+    bootTimeline.mark("helper:im-preflight:start");
     const helperPath = getHelperPath();
     if (!fs.existsSync(helperPath)) {
       console.warn("[FnListener] Helper not found; cannot preflight IM grant");
+      bootTimeline.mark("helper:im-preflight:missing");
       return;
     }
     await new Promise<void>((resolve) => {
@@ -519,6 +530,7 @@ async function startHelperIfIMGranted(): Promise<void> {
       });
       proc.on("close", () => {
         const hasIM = out.includes("im-granted");
+        bootTimeline.mark("helper:im-preflight:done", { hasIM });
         if (hasIM) {
           try {
             startFnListener();
@@ -638,6 +650,7 @@ function getRendererEntryUrl(hash?: string): string {
 }
 
 const createWindow = () => {
+  bootTimeline.mark("main-window:create:start");
   // Create the browser window.
   const windowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ISLAND_WIDTH,
@@ -684,6 +697,7 @@ const createWindow = () => {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  bootTimeline.mark("main-window:browser-window-created");
 
   // Also try to set the icon explicitly after creation (optional but good practice)
   try {
@@ -711,6 +725,7 @@ const createWindow = () => {
 
   // Prepare DevTools behavior; actual show happens on renderer-ready handshake
   mainWindow.once("ready-to-show", () => {
+    bootTimeline.mark("main-window:ready-to-show");
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
       const current = mainWindow.getBounds();
@@ -765,6 +780,14 @@ const createWindow = () => {
     mainWindow = null; // Ensure reference is cleared
   });
 
+  mainWindow.webContents.once("dom-ready", () => {
+    bootTimeline.mark("main-window:dom-ready");
+  });
+
+  mainWindow.webContents.once("did-finish-load", () => {
+    bootTimeline.mark("main-window:did-finish-load");
+  });
+
   // Rebuild tray menu when main window visibility changes to update "Show Floating Bar" option
   mainWindow.on("show", () => {
     console.log("[Main Window] Window shown, rebuilding tray menu");
@@ -816,6 +839,7 @@ const createWindow = () => {
     }
   });
 
+  bootTimeline.mark("main-window:load-url:start");
   mainWindow.loadURL(getRendererEntryUrl()).catch((error) => {
     console.error("[Main Window] Failed to load renderer:", error);
   });
@@ -847,6 +871,7 @@ ipcMain.on("renderer-ready", (event) => {
 
   // Only top-align and show if the pill (main) window is the sender
   if (senderWin === mainWindow) {
+    bootTimeline.mark("main-window:renderer-ready", { target: pttTarget });
     // During onboarding prepare, avoid auto-show to prevent flicker
     if (pttTarget !== "main") {
       return;
@@ -892,6 +917,7 @@ ipcMain.on("renderer-ready", (event) => {
 
   // If the onboarding window reports ready, do not manipulate the pill.
   if (senderWin === onboardingWindow) {
+    bootTimeline.mark("onboarding-window:renderer-ready");
     try {
       if (!onboardingWindow?.isVisible()) smoothShow(onboardingWindow);
     } catch (e) {
@@ -901,6 +927,7 @@ ipcMain.on("renderer-ready", (event) => {
 });
 
 function createOnboardingWindow() {
+  bootTimeline.mark("onboarding-window:create:start");
   console.log("[Debug] Inside createOnboardingWindow function");
   const onboardingWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: ONBOARDING_WIDTH,
@@ -938,6 +965,7 @@ function createOnboardingWindow() {
     onboardingWindowOptions,
   );
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  bootTimeline.mark("onboarding-window:browser-window-created");
   console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
 
@@ -948,10 +976,23 @@ function createOnboardingWindow() {
   console.log("[Onboarding] MAIN_WINDOW_VITE_NAME:", MAIN_WINDOW_VITE_NAME);
   console.log("[Debug] About to load URL in onboarding window");
 
+  bootTimeline.mark("onboarding-window:load-url:start");
   onboardingWindow.loadURL(onboardingUrl).catch((error) => {
     console.error("[Debug] Error loading URL:", error);
   });
   console.log("[Debug] URL load initiated");
+
+  onboardingWindow.webContents.once("dom-ready", () => {
+    bootTimeline.mark("onboarding-window:dom-ready");
+  });
+
+  onboardingWindow.webContents.once("did-finish-load", () => {
+    bootTimeline.mark("onboarding-window:did-finish-load");
+  });
+
+  onboardingWindow.once("ready-to-show", () => {
+    bootTimeline.mark("onboarding-window:ready-to-show");
+  });
 
   // Add comprehensive error handling
   onboardingWindow.webContents.on(
@@ -1159,11 +1200,13 @@ function rebuildTrayMenu(): void {
 
 const createTray = () => {
   try {
+    bootTimeline.mark("tray:create:start");
     console.log("[Tray] Starting tray creation...");
 
     // Check if tray already exists
     if (tray) {
       console.log("[Tray] Tray already exists, skipping creation");
+      bootTimeline.mark("tray:create:skipped-existing");
       return;
     }
 
@@ -1236,6 +1279,7 @@ const createTray = () => {
     console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
     console.log("[Tray] ✅ Tray created successfully with enhanced menu!");
+    bootTimeline.mark("tray:create:done");
   } catch (error) {
     console.error("[Tray] ❌ Failed to create tray:", error);
     console.error("[Tray] Error stack:", error.stack);
@@ -1395,7 +1439,9 @@ async function pasteLastTranscript() {
 }
 
 function scheduleLocalSidecarPrewarm(reason: string, delayMs: number): void {
+  bootTimeline.mark("sidecar-prewarm:scheduled", { reason, delayMs });
   const timer = setTimeout(() => {
+    bootTimeline.mark("sidecar-prewarm:timer-fired", { reason });
     prewarmLocalSidecar(reason);
   }, delayMs);
   timer.unref?.();
@@ -1405,54 +1451,71 @@ function scheduleLocalSidecarPrewarm(reason: string, delayMs: number): void {
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  bootTimeline.mark("app:when-ready");
   // Initialize preferences and provider store
-  initPreferences(app.getPath("userData"));
-  initProviderStore(app.getPath("userData"));
-  initModelManager({
-    onStatusChange: (status) => {
-      try {
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send("stt:model-status-changed", status);
-      } catch {}
-    },
-    onDownloadProgress: (progress) => {
-      try {
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send("stt:model-download-progress", progress);
-      } catch {}
-    },
+  const userDataPath = app.getPath("userData");
+  bootTimeline.measureSync("startup:init-preferences", () => {
+    initPreferences(userDataPath);
+    initProviderStore(userDataPath);
+  });
+  bootTimeline.measureSync("startup:init-model-manager", () => {
+    initModelManager({
+      onStatusChange: (status) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send("stt:model-status-changed", status);
+        } catch {}
+      },
+      onDownloadProgress: (progress) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send(
+              "stt:model-download-progress",
+              progress,
+            );
+        } catch {}
+      },
+    });
   });
   // Initialize update controller with notification and tray callbacks
-  initUpdateController({
-    sendNotify: (message: string) => {
-      try {
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send("notify", message);
-      } catch {}
-      try {
-        if (onboardingWindow && !onboardingWindow.isDestroyed())
-          onboardingWindow.webContents.send("notify", message);
-      } catch {}
-    },
-    rebuildTrayMenu: () => rebuildTrayMenu(),
+  bootTimeline.measureSync("startup:init-update-controller", () => {
+    initUpdateController({
+      sendNotify: (message: string) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send("notify", message);
+        } catch {}
+        try {
+          if (onboardingWindow && !onboardingWindow.isDestroyed())
+            onboardingWindow.webContents.send("notify", message);
+        } catch {}
+      },
+      rebuildTrayMenu: () => rebuildTrayMenu(),
+    });
   });
 
   // Load onboarding flag BEFORE startup flow decision
-  onboardingPrefsPath = path.join(app.getPath("userData"), "onboarding.json");
-  try {
-    if (fs.existsSync(onboardingPrefsPath)) {
-      const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
-      onboardingPrefs = JSON.parse(raw);
+  bootTimeline.measureSync("startup:load-onboarding-prefs", () => {
+    onboardingPrefsPath = path.join(userDataPath, "onboarding.json");
+    try {
+      if (fs.existsSync(onboardingPrefsPath)) {
+        const raw = fs.readFileSync(onboardingPrefsPath, "utf8");
+        onboardingPrefs = JSON.parse(raw);
+      }
+    } catch {
+      onboardingPrefs = {};
     }
-  } catch {
-    onboardingPrefs = {};
-  }
+  });
 
   // Load pill preferences
-  pillPreferences = loadPillPreferences();
+  pillPreferences = bootTimeline.measureSync("startup:load-pill-prefs", () =>
+    loadPillPreferences(),
+  );
 
   // Load app preferences and apply dock visibility
-  appPreferences = loadAppPreferences();
+  appPreferences = bootTimeline.measureSync("startup:load-app-prefs", () =>
+    loadAppPreferences(),
+  );
   // Default to showing in dock if preference not set
   const showInDock = appPreferences.showInDock ?? true;
   if (process.platform === "darwin") {
@@ -1472,6 +1535,7 @@ app.whenReady().then(async () => {
   // Stop the sidecar if current provider/model state cannot use it. Do not
   // pre-spawn on startup; packaged PyInstaller + MLX cold starts can starve
   // first paint and make onboarding feel frozen.
+  bootTimeline.mark("startup:sync-sidecar-scheduled");
   syncLocalSidecarForCurrentProvider().catch((err) => {
     console.error("[STT] Failed to sync sidecar on startup:", err);
   });
@@ -1526,6 +1590,7 @@ app.whenReady().then(async () => {
     callback({ responseHeaders: headers });
   });
   console.log("[Main Process] Renderer security headers configured.");
+  bootTimeline.mark("startup:security-headers-configured");
 
   app.commandLine.appendSwitch("disable-http-cache");
 
@@ -1536,6 +1601,7 @@ app.whenReady().then(async () => {
     !FORCE_ONBOARDING &&
     (SKIP_ONBOARDING || onboardingPrefs?.done === true)
   ) {
+    bootTimeline.mark("startup:flow", { route: "main" });
     console.log("[Startup] SKIP_ONBOARDING enabled — launching main window");
     try {
       createWindow();
@@ -1572,6 +1638,7 @@ app.whenReady().then(async () => {
       );
     }
   } else {
+    bootTimeline.mark("startup:flow", { route: "onboarding" });
     console.log(
       FORCE_ONBOARDING
         ? "[Startup] FORCE_ONBOARDING enabled — showing onboarding"
@@ -1587,9 +1654,13 @@ app.whenReady().then(async () => {
   }
 
   // Initialize microphone manager
-  const micPrefs = loadMicPreferences();
+  const micPrefs = bootTimeline.measureSync("startup:load-mic-prefs", () =>
+    loadMicPreferences(),
+  );
   console.log("[Main Process] Microphone preferences loaded:", micPrefs);
-  initMicManager(micPrefs, () => rebuildTrayMenu());
+  bootTimeline.measureSync("startup:init-mic-manager", () => {
+    initMicManager(micPrefs, () => rebuildTrayMenu());
+  });
 
   // Silent background check for app location will be triggered after onboarding completes
 
@@ -2041,7 +2112,9 @@ app.whenReady().then(async () => {
 
   // Transcription history storage handlers
   ipcMain.handle("transcriptions:get-all", () => {
-    return getTranscriptions();
+    return bootTimeline.measureSync("ipc:transcriptions:get-all", () =>
+      getTranscriptions(),
+    );
   });
 
   ipcMain.handle(
@@ -2596,6 +2669,7 @@ app.on("will-quit", () => {
 });
 
 function startFnListener() {
+  bootTimeline.mark("helper:start-listener");
   // Clear any pending restart timer and reset permission flag
   if (fnRestartTimeout) {
     clearTimeout(fnRestartTimeout);
@@ -2668,6 +2742,9 @@ function startFnListener() {
         if (!trimmedLine) return; // Skip empty lines
 
         console.log(`[FnListener] Received command: "${trimmedLine}"`);
+        if (trimmedLine === "ready") {
+          bootTimeline.mark("helper:ready");
+        }
 
         let targetWindow: BrowserWindow | null = null;
         if (pttTarget === "onboarding")
