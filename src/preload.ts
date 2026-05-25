@@ -272,6 +272,11 @@ contextBridge.exposeInMainWorld("electron", {
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Renderer lifecycle
   rendererReady: () => ipcRenderer.send("renderer-ready"),
+  bootMark: (label: string) =>
+    ipcRenderer.send("boot:renderer-mark", {
+      label,
+      rendererMs: Math.round(performance.now()),
+    }),
   // Screenshot capture (Phase 1 OCR)
   takeScreenshot: (options?: {
     display?: "active" | number;

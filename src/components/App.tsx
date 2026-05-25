@@ -36,6 +36,7 @@ export type {
 
 // Notification timing tokens
 const DEFAULT_NOTIFICATION_DURATION_MS = 2000;
+let appRenderMarked = false;
 
 const logPermissionsDebug = (...args: unknown[]) => {
   if (typeof window === "undefined") return;
@@ -70,6 +71,10 @@ const leadingThrottle = <T extends (...args: unknown[]) => void>(
 };
 
 const AppInner: React.FC = () => {
+  if (!appRenderMarked) {
+    appRenderMarked = true;
+    window.electron?.bootMark?.("app-render");
+  }
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
@@ -131,9 +136,18 @@ const AppInner: React.FC = () => {
 
   // Initialize always-on client state on app start
   useEffect(() => {
+    window.electron?.bootMark?.("app-effect:init-history");
     initTranscriptionHistory().catch(() => {
       // Ignore initialization errors; app can function without history
     });
+  }, []);
+
+  useLayoutEffect(() => {
+    window.electron?.bootMark?.("app-layout-effect");
+  }, []);
+
+  useEffect(() => {
+    window.electron?.bootMark?.("app-effect:mounted");
   }, []);
 
   // Subscribe to paste shortcut events (Cmd+Ctrl+V) for history-on-expand UX

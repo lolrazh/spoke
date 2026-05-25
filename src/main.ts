@@ -926,6 +926,22 @@ ipcMain.on("renderer-ready", (event) => {
   }
 });
 
+ipcMain.on(
+  "boot:renderer-mark",
+  (_event, payload: { label?: string; rendererMs?: number } | undefined) => {
+    const label =
+      typeof payload?.label === "string" && payload.label.trim()
+        ? payload.label.trim()
+        : "unknown";
+    bootTimeline.mark(`renderer:${label}`, {
+      rendererMs:
+        typeof payload?.rendererMs === "number"
+          ? Math.round(payload.rendererMs)
+          : undefined,
+    });
+  },
+);
+
 function createOnboardingWindow() {
   bootTimeline.mark("onboarding-window:create:start");
   console.log("[Debug] Inside createOnboardingWindow function");

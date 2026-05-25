@@ -100,6 +100,7 @@ export function useTranscription(
 
   // Initialize on mount
   useEffect(() => {
+    window.electron?.bootMark?.("transcription-hook:init");
     if (options.autoInitStream !== false) {
       initStream().catch(console.error);
     } else {
@@ -107,9 +108,11 @@ export function useTranscription(
     }
 
     // Load provider preference
+    window.electron?.bootMark?.("transcription-hook:get-provider:start");
     window.stt?.getPreferredProvider?.().then((providerId) => {
       preferredProviderIdRef.current =
         resolvePreferredTranscriptionProviderId(providerId);
+      window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
     return () => {

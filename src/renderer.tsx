@@ -5,7 +5,10 @@ import Onboarding from "./components/Onboarding";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 
+window.electron?.bootMark?.("module-loaded");
+
 function mountReact(root: HTMLElement) {
+  window.electron?.bootMark?.("react-render:start");
   const reactRoot = createRoot(root);
   reactRoot.render(
     <HashRouter>
@@ -15,6 +18,7 @@ function mountReact(root: HTMLElement) {
       </Routes>
     </HashRouter>,
   );
+  window.electron?.bootMark?.("react-render:scheduled");
 }
 
 // Add a temporary class to body to avoid any first-paint flash
@@ -35,6 +39,7 @@ if (existing) {
 // Signal main after the first frame. Fonts use font-display: swap, so waiting
 // on document.fonts.ready can turn a slow font load into a hidden black window.
 requestAnimationFrame(() => {
+  window.electron?.bootMark?.("first-animation-frame");
   try {
     window.electron?.rendererReady?.();
   } catch {}

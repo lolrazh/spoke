@@ -147,6 +147,7 @@ declare global {
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       // Renderer lifecycle
       rendererReady: () => void;
+      bootMark?: (label: string) => void;
       // Screenshot capture (Phase 1 OCR)
       takeScreenshot: (options?: {
         display?: "active" | number;

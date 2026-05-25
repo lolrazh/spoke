@@ -54,7 +54,9 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const runInit = async () => {
       try {
+        window.electron?.bootMark?.("permissions:init:start");
         await initPermissions();
+        window.electron?.bootMark?.("permissions:init:done");
       } catch {
         // ignore init failures; hook will retry on next focus/visibility event
       }
