@@ -66,7 +66,10 @@ export async function trimCapturedAudioWithVad(
 
 function getVad(): Promise<NonRealTimeVadInstance> {
   if (!vadPromise) {
-    vadPromise = createVad();
+    vadPromise = createVad().catch((error) => {
+      vadPromise = null;
+      throw error;
+    });
   }
   return vadPromise;
 }

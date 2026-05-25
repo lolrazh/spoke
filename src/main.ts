@@ -1498,8 +1498,12 @@ app.whenReady().then(async () => {
       "data:",
     ].join(" ");
 
-    // Avoid 'unsafe-eval' to satisfy Electron security recommendations
-    const scriptSrc = `script-src 'self' ${isDev ? "'unsafe-inline'" : ""}`;
+    // ORT Web needs WASM compilation for local VAD. Keep JS eval blocked.
+    const scriptSrc = [
+      "script-src 'self'",
+      "'wasm-unsafe-eval'",
+      ...(isDev ? ["'unsafe-inline'"] : []),
+    ].join(" ");
     const imgSrc = "img-src 'self' data:";
     const csp = [
       "default-src 'self'",

@@ -6,7 +6,7 @@ export const VAD_MIN_SPEECH_MS = 120;
 export const VAD_PRE_SPEECH_PAD_MS = 300;
 export const VAD_REDEMPTION_MS = 200;
 
-export const VAD_MODEL_URL = "/vad/silero_vad.onnx";
+export const VAD_MODEL_URL = "/vad/silero_vad_legacy.onnx";
 export const VAD_ORT_WASM_BASE_URL = "/vad/ort-wasm/";
 
 export function getVadModelUrl(): string {

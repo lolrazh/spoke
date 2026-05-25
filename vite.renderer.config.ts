@@ -29,7 +29,7 @@ export default defineConfig({
         },
         {
           // Copy VAD model
-          src: [join(__dirname, "public/vad/silero_vad.onnx")],
+          src: [join(__dirname, "public/vad/silero_vad_legacy.onnx")],
           dest: "vad",
         },
         {
