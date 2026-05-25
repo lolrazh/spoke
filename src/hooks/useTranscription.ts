@@ -67,6 +67,9 @@ export function useTranscription(
   const [audioLevel, setAudioLevel] = useState(0);
 
   const recorderRef = useRef<PcmCaptureSession | null>(null);
+  const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
+    null,
+  );
   const stopInFlightRef = useRef(false);
   const streamRef = useRef<MediaStream | null>(null);
   const ocrWordsRef = useRef<string[]>([]);
@@ -169,19 +172,12 @@ export function useTranscription(
     defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
     try {
-      setText("");
-      setError(null);
-      setRecording(true);
-      activeProviderIdRef.current = providerId;
-
-      // Get stream if not already initialized
-      let stream = streamRef.current;
-      if (!stream) {
-        stream = await initStream();
-      }
-
-      // Start both recording and OCR extraction in parallel
       const recorderPromise = (async () => {
+        let stream = streamRef.current;
+        if (!stream) {
+          stream = await initStream();
+        }
+
         const recorder = new PcmCaptureSession({
           onAudioLevel: setAudioLevel,
           onError: (err) => {
@@ -193,7 +189,15 @@ export function useTranscription(
         await recorder.start(stream);
         return recorder;
       })();
+      recorderStartPromiseRef.current = recorderPromise;
 
+      setText("");
+      setError(null);
+      setRecording(true);
+      activeProviderIdRef.current = providerId;
+
+      // Start OCR extraction in parallel. It is non-critical and can finish
+      // after capture has started.
       const ocrPromise = (async () => {
         try {
           const imageBase64 = await captureScreenshotBase64();
@@ -214,13 +218,18 @@ export function useTranscription(
 
       // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
+      if (stopInFlightRef.current) {
+        return;
+      }
       recorderRef.current = recorder;
+      recorderStartPromiseRef.current = null;
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
       console.error("[Transcription] Start failed:", err);
       setError(err instanceof Error ? err.message : String(err));
       setRecording(false);
       activeProviderIdRef.current = null;
+      recorderStartPromiseRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -237,11 +246,15 @@ export function useTranscription(
 
   // Stop recording and transcribe
   const stop = useCallback(async () => {
-    const recorder = recorderRef.current;
-    if (!recording || !recorder || stopInFlightRef.current) return;
+    let recorder = recorderRef.current;
+    const recorderStartPromise = recorderStartPromiseRef.current;
+    if (
+      !recording ||
+      (!recorder && !recorderStartPromise) ||
+      stopInFlightRef.current
+    )
+      return;
     stopInFlightRef.current = true;
-    // Clear immediately so duplicate stop calls (same tick / gesture race) no-op.
-    recorderRef.current = null;
 
     const providerId =
       activeProviderIdRef.current ?? (await resolveActiveProviderId());
@@ -273,6 +286,15 @@ export function useTranscription(
       timing.postRollDoneAt = performance.now();
 
       const context = buildTranscriptionContext();
+      if (!recorder && recorderStartPromise) {
+        recorder = await recorderStartPromise;
+      }
+      if (!recorder) {
+        throw new Error("Recording stopped before audio capture was ready.");
+      }
+      // Clear once the pending recorder is resolved so duplicate stop calls no-op.
+      recorderRef.current = null;
+      recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
       const capturedAudio = await recorder.stop();
       timing.pcmReadyAt = performance.now();
@@ -458,6 +480,7 @@ export function useTranscription(
     } finally {
       stopInFlightRef.current = false;
       activeProviderIdRef.current = null;
+      recorderStartPromiseRef.current = null;
       // Release microphone stream so the OS mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -477,6 +500,13 @@ export function useTranscription(
   // Cancel recording
   const cancel = useCallback(() => {
     stopInFlightRef.current = false;
+    const pendingRecorder = recorderStartPromiseRef.current;
+    recorderStartPromiseRef.current = null;
+    if (pendingRecorder) {
+      pendingRecorder
+        .then((recorder) => recorder.cancel())
+        .catch(() => undefined);
+    }
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;

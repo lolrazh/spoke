@@ -210,6 +210,71 @@ describe("useTranscription", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("stops after recorder startup resolves when key-up wins the startup race", async () => {
+    const originalAudioContext = global.AudioContext;
+    let resolveAddModule: (() => void) | null = null;
+
+    class SlowAudioContext extends FakeAudioContext {
+      audioWorklet = {
+        addModule: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveAddModule = resolve;
+            }),
+        ),
+      };
+    }
+
+    // @ts-ignore
+    global.AudioContext = SlowAudioContext;
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Race handled",
+      metrics: {},
+    });
+
+    try {
+      const { result } = renderHook(() =>
+        useTranscription({ autoInitStream: false }),
+      );
+
+      await waitFor(() => {
+        expect(result.current.ready).toBe(true);
+      });
+
+      await act(async () => {
+        void result.current.start();
+      });
+
+      await waitFor(() => {
+        expect(result.current.recording).toBe(true);
+      });
+
+      await act(async () => {
+        void result.current.stop();
+      });
+
+      expect(result.current.processing).toBe(true);
+      expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+      expect(resolveAddModule).toBeTruthy();
+
+      resolveAddModule?.();
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      });
+
+      await waitFor(() => {
+        expect(result.current.processing).toBe(false);
+      });
+
+      expect(result.current.text).toBe("Race handled");
+      expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+    } finally {
+      // @ts-ignore
+      global.AudioContext = originalAudioContext;
+    }
+  });
+
   it("should cancel recording", async () => {
     const { result } = renderHook(() => useTranscription());
 
