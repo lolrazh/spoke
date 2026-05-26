@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface FrequencyBarsProps {
@@ -12,11 +12,48 @@ interface FrequencyBarsProps {
 const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   audioLevel,
   isListening,
+  isIdle = false,
   isHovered = false,
   isProcessing = false,
 }) => {
   // More bars for denser visualization (increased from 7 to 18)
   const barCount = 18;
+
+  // Animation ticker for processing wave
+  const [ticker, setTicker] = useState(0);
+
+  // Transition blend: 0 = listening, 1 = processing
+  const [transitionBlend, setTransitionBlend] = useState(isProcessing ? 1 : 0);
+
+  // Animate the wave continuously when processing
+  useEffect(() => {
+    if (!isProcessing) return;
+
+    const interval = setInterval(() => {
+      setTicker((t) => t + 1);
+    }, 33); // Update every 33ms for 10% slower animation
+
+    return () => clearInterval(interval);
+  }, [isProcessing]);
+
+  // Smooth transition between listening and processing states
+  useEffect(() => {
+    const targetBlend = isProcessing ? 1 : isListening ? 0 : transitionBlend;
+
+    let rafId: number;
+    const animate = () => {
+      setTransitionBlend((prev) => {
+        const diff = targetBlend - prev;
+        if (Math.abs(diff) < 0.01) return targetBlend;
+        // Smooth spring-like interpolation
+        return prev + diff * 0.18;
+      });
+      rafId = requestAnimationFrame(animate);
+    };
+
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
+  }, [isProcessing, isListening]);
 
   // Generate symmetric height pattern for base heights
   const baseHeights = useMemo(() => {
@@ -43,55 +80,65 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
       return baseHeights.map(() => 3); // Small dots when not active
     }
 
+    const time = ticker / 2;
     const now = Date.now();
 
+    // Single pass: compute both listening and processing heights, then blend
     return baseHeights.map((baseHeight, index) => {
-      if (isProcessing) {
-        return Math.max(2, Math.min(9, baseHeight * 1.1));
-      }
-
+      // Listening height calculation (voice-reactive)
       const listeningVariation = Math.sin(now / 100 + index) * 0.15 + 1;
       const listeningScaled =
         baseHeight * (0.35 + audioLevel * 2.6) * listeningVariation;
-      return Math.max(2, Math.min(12, listeningScaled));
+      const listeningHeight = Math.max(2, Math.min(12, listeningScaled));
+
+      // Processing height calculation (sine wave with layered variation)
+      const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
+      const slowVariation = Math.sin(ticker / 6 + index * 0.4) * 0.12;
+      const fastVariation = Math.sin(ticker / 3 + index * 0.8) * 0.08;
+      const microVariation = Math.sin(ticker / 2.5 + index * 1.2) * 0.05;
+      const totalVariation = 1 + slowVariation + fastVariation + microVariation;
+      const processingScaled =
+        baseHeight * (0.35 + wave * 1.8) * totalVariation;
+      const processingHeight = Math.max(2, Math.min(9, processingScaled));
+
+      // Blend based on transition state
+      return (
+        listeningHeight * (1 - transitionBlend) +
+        processingHeight * transitionBlend
+      );
     });
-  }, [audioLevel, isListening, isProcessing, baseHeights]);
+  }, [
+    audioLevel,
+    isListening,
+    isProcessing,
+    ticker,
+    baseHeights,
+    transitionBlend,
+  ]);
 
   return (
     <div className="frequency-bars-container">
       {reactiveHeights.map((height, index) => {
+        const isBar = isListening || isProcessing;
         const isDot = !isListening && !isProcessing;
-        const processingHeights = buildProcessingKeyframes(height, index);
 
         return (
           <motion.div
             key={`freq-${index}`}
             className={`frequency-element ${isDot ? "as-dot" : "as-bar"}`}
             animate={{
-              height: isProcessing
-                ? processingHeights
-                : isDot
-                  ? 2
-                  : height,
+              height: isDot ? 2 : height,
               width: isDot ? 2 : 2,
               borderRadius: isDot ? "50%" : "1px",
               opacity: isDot ? (isHovered ? 0.8 : 0.6) : 1.0,
             }}
             transition={{
-              height: isProcessing
-                ? {
-                    duration: 1.05,
-                    repeat: Infinity,
-                    repeatType: "mirror",
-                    ease: "easeInOut",
-                    delay: index * 0.025,
-                  }
-                : {
-                    type: "spring",
-                    stiffness: isListening ? 750 : 350,
-                    damping: isListening ? 19 : 28,
-                    mass: 0.25,
-                  },
+              height: {
+                type: "spring",
+                stiffness: isListening || isProcessing ? 750 : 350,
+                damping: isListening || isProcessing ? 19 : 28,
+                mass: 0.25,
+              },
               width: { duration: 0.15 },
               borderRadius: { duration: 0.15 },
               opacity: { duration: 0.1 },
@@ -104,11 +151,3 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 };
 
 export default FrequencyBars;
-
-function buildProcessingKeyframes(height: number, index: number): number[] {
-  const phase = index * 0.45;
-  const low = Math.max(2, height * (0.55 + Math.sin(phase) * 0.08));
-  const mid = Math.max(2, height * (1.25 + Math.cos(phase) * 0.12));
-  const high = Math.max(2, height * (1.65 + Math.sin(phase + 1.1) * 0.12));
-  return [low, mid, high, mid, low];
-}
