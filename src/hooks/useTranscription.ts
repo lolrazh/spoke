@@ -21,6 +21,7 @@ import {
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import {
+  prewarmVad,
   trimCapturedAudioWithVad,
   type VadAudioResult,
 } from "../utils/vadTrimmer";
@@ -120,7 +121,14 @@ export function useTranscription(
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
+    const vadPrewarmTimer = window.setTimeout(() => {
+      prewarmVad()
+        .then(() => console.log("[VAD] Prewarm ready"))
+        .catch((err) => console.warn("[VAD] Prewarm failed:", err));
+    }, 750);
+
     return () => {
+      window.clearTimeout(vadPrewarmTimer);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -169,6 +177,10 @@ export function useTranscription(
   // Start recording
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
+
+    void prewarmVad().catch((err) =>
+      console.warn("[VAD] Start prewarm failed:", err),
+    );
 
     const providerId = await resolveActiveProviderId();
     defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
@@ -522,7 +534,7 @@ export function useTranscription(
     if (pendingRecorder) {
       pendingRecorder
         .then((recorder) => recorder.cancel())
-        .catch(() => undefined);
+        .catch((): undefined => undefined);
     }
     if (recorderRef.current) {
       recorderRef.current.cancel();

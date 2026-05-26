@@ -32,24 +32,22 @@ export interface VadAudioResult extends VadTrimResult {
 
 let vadPromise: Promise<NonRealTimeVadInstance> | null = null;
 
+export async function prewarmVad(): Promise<void> {
+  await resolveVad(VAD_INIT_TIMEOUT_MS, 0);
+}
+
 export async function trimCapturedAudioWithVad(
   audio: CapturedAudio,
 ): Promise<VadAudioResult> {
-  const startedAt = performance.now();
-
   if (audio.sampleRateHz !== VAD_SAMPLE_RATE_HZ) {
     throw new Error(
       `VAD requires ${VAD_SAMPLE_RATE_HZ} Hz PCM, received ${audio.sampleRateHz} Hz.`,
     );
   }
 
+  const vad = await resolveVad(VAD_INIT_TIMEOUT_MS, audio.durationMs);
+  const startedAt = performance.now();
   const timeoutMs = getVadTimeoutMs(audio.durationMs);
-  const vad = await withVadTimeout(
-    getVad(),
-    VAD_INIT_TIMEOUT_MS,
-    VAD_INIT_TIMEOUT_MS,
-    audio.durationMs,
-  );
   const segments: VadSpeechSegment[] = [];
   const floatAudio = pcm16ToFloat32(audio.pcm16);
   const segmentStream = vad.run(floatAudio, CAPTURED_AUDIO_SAMPLE_RATE_HZ);
@@ -80,7 +78,7 @@ export async function trimCapturedAudioWithVad(
   } catch (error) {
     vadPromise = null;
     try {
-      void iterator.return?.();
+      void iterator.return?.(undefined as never);
     } catch {
       // Ignore cleanup failures after a timed-out VAD pass.
     }
@@ -100,12 +98,43 @@ export async function trimCapturedAudioWithVad(
 
 function getVad(): Promise<NonRealTimeVadInstance> {
   if (!vadPromise) {
-    vadPromise = createVad().catch((error) => {
-      vadPromise = null;
-      throw error;
-    });
+    const pending = createVad()
+      .then((vad) => {
+        if (vadPromise === pending || vadPromise === null) {
+          vadPromise = Promise.resolve(vad);
+        }
+        return vad;
+      })
+      .catch((error) => {
+        if (vadPromise === pending) {
+          vadPromise = null;
+        }
+        throw error;
+      });
+    vadPromise = pending;
   }
   return vadPromise;
+}
+
+async function resolveVad(
+  timeoutMs: number,
+  audioDurationMs: number,
+): Promise<NonRealTimeVadInstance> {
+  const pending = getVad();
+  try {
+    return await withVadTimeout(
+      pending,
+      timeoutMs,
+      timeoutMs,
+      audioDurationMs,
+      "initialization",
+    );
+  } catch (error) {
+    if (vadPromise === pending) {
+      vadPromise = null;
+    }
+    throw error;
+  }
 }
 
 async function createVad(): Promise<NonRealTimeVadInstance> {
@@ -122,6 +151,9 @@ async function createVad(): Promise<NonRealTimeVadInstance> {
     submitUserSpeechOnPause: false,
     ortConfig: (ort) => {
       ort.env.logLevel = "error";
+      ort.env.wasm.initTimeout = VAD_INIT_TIMEOUT_MS;
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
       ort.env.wasm.wasmPaths = getVadOrtWasmBaseUrl();
     },
   });
@@ -161,6 +193,7 @@ function nextVadSegmentWithTimeout<T>(
     timeoutMs,
     totalTimeoutMs,
     audioDurationMs,
+    "processing",
   );
 }
 
@@ -169,6 +202,7 @@ function withVadTimeout<T>(
   timeoutMs: number,
   totalTimeoutMs: number,
   audioDurationMs: number,
+  stage: "initialization" | "processing",
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -176,7 +210,7 @@ function withVadTimeout<T>(
     promise,
     new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
-        reject(createVadTimeoutError(totalTimeoutMs, audioDurationMs));
+        reject(createVadTimeoutError(totalTimeoutMs, audioDurationMs, stage));
       }, timeoutMs);
     }),
   ]).finally(() => {
@@ -187,8 +221,14 @@ function withVadTimeout<T>(
 function createVadTimeoutError(
   timeoutMs: number,
   audioDurationMs: number,
+  stage: "initialization" | "processing" = "processing",
 ): Error {
+  const audioContext =
+    audioDurationMs > 0
+      ? ` while processing ${Math.round(audioDurationMs)}ms of audio`
+      : "";
+
   return new Error(
-    `VAD timed out after ${Math.round(timeoutMs)}ms while processing ${Math.round(audioDurationMs)}ms of audio.`,
+    `VAD ${stage} timed out after ${Math.round(timeoutMs)}ms${audioContext}.`,
   );
 }
