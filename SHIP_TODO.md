@@ -18,7 +18,7 @@ Goal: ship a dogfoodable open-source macOS dictation app with reliable local Whi
 - [x] Verify bundled `spoke-stt` sidecar starts from packaged resources.
 - [ ] Verify first-run local model install from Settings/onboarding.
 - [x] Verify model status persists across app restart.
-- [ ] Verify local dictation works after model install.
+- [x] Verify local dictation works after model install.
 - [ ] Verify local dictation fails cleanly before model install.
 - [ ] Verify model removal stops the sidecar and prevents local dictation.
 - [ ] Verify permissions flow on a clean macOS account.
@@ -37,12 +37,20 @@ Packaged smoke result, 2026-05-20:
 - Direct packaged sidecar smoke loaded `/tmp/spoke-p0-user-data/local-stt/weights` and emitted `{"type":"ready"}` without user Python.
 - Idle packaged app did not leave `spoke-stt` running; quit cleanup left no packaged Spoke, hotkey helper, or sidecar processes.
 
+Packaged dogfood result, 2026-05-26:
+
+- Rebuilt packaged app from `fb7ccc17` and launched `out/Spoke-darwin-arm64/Spoke.app`.
+- Verified fresh renderer bundle loaded (`App-Bm8F4LVq.js`), replacing the previous stale package bundle (`App-urZ2LnUX.js`).
+- Verified VAD assets initialize in packaged mode and prewarm before dictation (`[VAD] Prewarm ready`).
+- Verified packaged local dictation works with installed `mlx-community/whisper-large-v3-turbo-4bit` model.
+- Observed real dictation latency logs: VAD trim around 45-58 ms, local Whisper inference around 986-1021 ms.
+
 Dogfood gate:
 
 - [ ] Fresh install can reach working dictation in one session.
-- [ ] No auth/login/cloud account required.
+- [x] No auth/login/cloud account required.
 - [ ] No broken promise in onboarding.
-- [ ] No known local STT crash path.
+- [x] No known local STT crash path from current dogfood testing.
 - [ ] Worktree has no tracked legacy local model/runtime implementation.
 
 ## P0: Local Inference Ship Gates
@@ -146,7 +154,7 @@ Goal: make PCM16 mono 16 kHz the single in-memory audio format for dictation. Lo
 - [x] Use VAD first for no-speech skip, leading/trailing silence trim, and capture metrics.
 - [x] Add timing logs for post-roll, PCM readiness, VAD trim, sidecar inference, and total end-to-end latency.
 - [x] Benchmark the post-PCM/VAD local STT baseline with the existing harness.
-- [ ] Dogfood one real app dictation and read the new `[Latency] Transcription` breakdown.
+- [x] Dogfood one real app dictation and read the new `[Latency] Transcription` breakdown.
 
 ## P1: Local Inference Performance Backlog
 
