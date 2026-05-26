@@ -162,6 +162,10 @@ import {
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
+import {
+  attachRendererConsoleFileSink,
+  installMainConsoleFileSink,
+} from "./main/diagnosticLog";
 
 // Vite injects env at build time; provide a typed fallback for the main process
 const VITE_ENV: Record<string, string | undefined> =
@@ -698,6 +702,7 @@ const createWindow = () => {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  attachRendererConsoleFileSink(mainWindow.webContents, "main");
   bootTimeline.mark("main-window:browser-window-created");
 
   // Also try to set the icon explicitly after creation (optional but good practice)
@@ -984,6 +989,7 @@ function createOnboardingWindow() {
     onboardingWindowOptions,
   );
   onboardingWindow = new BrowserWindow(onboardingWindowOptions);
+  attachRendererConsoleFileSink(onboardingWindow.webContents, "onboarding");
   bootTimeline.mark("onboarding-window:browser-window-created");
   console.log("[Debug] BrowserWindow created, setting menu bar visibility");
   onboardingWindow.setMenuBarVisibility(false);
@@ -1482,6 +1488,7 @@ function scheduleMainWindowPostReadyWork(): void {
 // Removed onboarding persistence - always show onboarding
 
 app.whenReady().then(async () => {
+  installMainConsoleFileSink();
   bootTimeline.mark("app:when-ready");
   // Initialize preferences and provider store
   const userDataPath = app.getPath("userData");
