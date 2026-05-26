@@ -5,6 +5,9 @@ export const VAD_NEGATIVE_SPEECH_THRESHOLD = 0.25;
 export const VAD_MIN_SPEECH_MS = 120;
 export const VAD_PRE_SPEECH_PAD_MS = 300;
 export const VAD_REDEMPTION_MS = 200;
+export const VAD_MIN_TIMEOUT_MS = 5_000;
+export const VAD_MAX_TIMEOUT_MS = 30_000;
+export const VAD_TIMEOUT_AUDIO_MULTIPLIER = 4;
 
 export const VAD_MODEL_URL = "/vad/silero_vad_legacy.onnx";
 export const VAD_ORT_WASM_BASE_URL = "/vad/ort-wasm/";

@@ -32,6 +32,8 @@ import {
   ENABLE_TRANSCRIPT_ENHANCEMENT,
 } from "../config/featureFlags";
 
+const PASTE_TIMEOUT_MS = 2_000;
+
 export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
@@ -303,6 +305,9 @@ export function useTranscription(
       );
 
       timing.vadStartedAt = performance.now();
+      console.log(
+        `[VAD] Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
+      );
       const vadResult = await trimCapturedAudioWithVad(capturedAudio);
       timing.vadDoneAt = performance.now();
       console.log(
@@ -327,6 +332,7 @@ export function useTranscription(
       // ===== Local Whisper path =====
       if (provider.descriptor.kind === "local") {
         timing.sttStartedAt = performance.now();
+        console.log("[Local] Starting transcription");
         const result = await defaultTranscriptionSessionOrchestrator.transcribe(
           providerId,
           {
@@ -384,7 +390,12 @@ export function useTranscription(
           const insertText = window.clipboard?.insertText;
           try {
             timing.pasteStartedAt = performance.now();
-            await insertText?.(finalText);
+            console.log("[Paste] Starting native text insertion");
+            await withTimeout(
+              Promise.resolve(insertText?.(finalText)),
+              PASTE_TIMEOUT_MS,
+              "Native text insertion",
+            );
             timing.pasteDoneAt = performance.now();
           } catch (err) {
             timing.pasteDoneAt = performance.now();
@@ -412,6 +423,7 @@ export function useTranscription(
 
       // Transcribe via cloud provider
       timing.sttStartedAt = performance.now();
+      console.log("[Cloud] Starting transcription");
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
@@ -459,7 +471,12 @@ export function useTranscription(
         const insertText = window.clipboard?.insertText;
         timing.pasteStartedAt = performance.now();
         try {
-          await insertText?.(finalText);
+          console.log("[Paste] Starting native text insertion");
+          await withTimeout(
+            Promise.resolve(insertText?.(finalText)),
+            PASTE_TIMEOUT_MS,
+            "Native text insertion",
+          );
         } catch (err) {
           console.warn(err);
         } finally {
@@ -609,4 +626,23 @@ function numberMetric(
 ): number | null {
   const value = metrics?.[key];
   return typeof value === "number" ? Math.round(value) : null;
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }

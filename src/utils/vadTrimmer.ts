@@ -10,12 +10,15 @@ import {
 import {
   getVadModelUrl,
   getVadOrtWasmBaseUrl,
+  VAD_MAX_TIMEOUT_MS,
   VAD_MIN_SPEECH_MS,
+  VAD_MIN_TIMEOUT_MS,
   VAD_NEGATIVE_SPEECH_THRESHOLD,
   VAD_POSITIVE_SPEECH_THRESHOLD,
   VAD_PRE_SPEECH_PAD_MS,
   VAD_REDEMPTION_MS,
   VAD_SAMPLE_RATE_HZ,
+  VAD_TIMEOUT_AUDIO_MULTIPLIER,
 } from "../config/vad";
 
 type NonRealTimeVadInstance = Awaited<
@@ -42,15 +45,40 @@ export async function trimCapturedAudioWithVad(
   const vad = await getVad();
   const segments: VadSpeechSegment[] = [];
   const floatAudio = pcm16ToFloat32(audio.pcm16);
+  const timeoutMs = getVadTimeoutMs(audio.durationMs);
+  const segmentStream = vad.run(floatAudio, CAPTURED_AUDIO_SAMPLE_RATE_HZ);
+  const iterator = segmentStream[Symbol.asyncIterator]();
 
-  for await (const segment of vad.run(
-    floatAudio,
-    CAPTURED_AUDIO_SAMPLE_RATE_HZ,
-  )) {
-    segments.push({
-      startMs: segment.start,
-      endMs: segment.end,
-    });
+  try {
+    let done = false;
+    while (!done) {
+      const remainingMs = timeoutMs - (performance.now() - startedAt);
+      if (remainingMs <= 0) {
+        throw createVadTimeoutError(timeoutMs, audio.durationMs);
+      }
+
+      const next = await nextVadSegmentWithTimeout(
+        iterator,
+        remainingMs,
+        timeoutMs,
+        audio.durationMs,
+      );
+      done = Boolean(next.done);
+      if (done) break;
+
+      segments.push({
+        startMs: next.value.start,
+        endMs: next.value.end,
+      });
+    }
+  } catch (error) {
+    vadPromise = null;
+    try {
+      void iterator.return?.();
+    } catch {
+      // Ignore cleanup failures after a timed-out VAD pass.
+    }
+    throw error;
   }
 
   const result = trimCapturedAudioToSpeech(audio, segments, {
@@ -107,4 +135,40 @@ function pcm16ToFloat32(pcm16: Int16Array): Float32Array {
     out[i] = pcm16[i] / 32768;
   }
   return out;
+}
+
+function getVadTimeoutMs(audioDurationMs: number): number {
+  const scaled = audioDurationMs * VAD_TIMEOUT_AUDIO_MULTIPLIER;
+  return Math.round(
+    Math.min(VAD_MAX_TIMEOUT_MS, Math.max(VAD_MIN_TIMEOUT_MS, scaled)),
+  );
+}
+
+function nextVadSegmentWithTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs: number,
+  totalTimeoutMs: number,
+  audioDurationMs: number,
+): Promise<IteratorResult<T>> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  return Promise.race([
+    iterator.next(),
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(createVadTimeoutError(totalTimeoutMs, audioDurationMs));
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function createVadTimeoutError(
+  timeoutMs: number,
+  audioDurationMs: number,
+): Error {
+  return new Error(
+    `VAD timed out after ${Math.round(timeoutMs)}ms while processing ${Math.round(audioDurationMs)}ms of audio.`,
+  );
 }
