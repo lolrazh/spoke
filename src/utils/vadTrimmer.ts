@@ -10,6 +10,7 @@ import {
 import {
   getVadModelUrl,
   getVadOrtWasmBaseUrl,
+  VAD_INIT_TIMEOUT_MS,
   VAD_MAX_TIMEOUT_MS,
   VAD_MIN_SPEECH_MS,
   VAD_MIN_TIMEOUT_MS,
@@ -42,10 +43,15 @@ export async function trimCapturedAudioWithVad(
     );
   }
 
-  const vad = await getVad();
+  const timeoutMs = getVadTimeoutMs(audio.durationMs);
+  const vad = await withVadTimeout(
+    getVad(),
+    VAD_INIT_TIMEOUT_MS,
+    VAD_INIT_TIMEOUT_MS,
+    audio.durationMs,
+  );
   const segments: VadSpeechSegment[] = [];
   const floatAudio = pcm16ToFloat32(audio.pcm16);
-  const timeoutMs = getVadTimeoutMs(audio.durationMs);
   const segmentStream = vad.run(floatAudio, CAPTURED_AUDIO_SAMPLE_RATE_HZ);
   const iterator = segmentStream[Symbol.asyncIterator]();
 
@@ -150,10 +156,24 @@ function nextVadSegmentWithTimeout<T>(
   totalTimeoutMs: number,
   audioDurationMs: number,
 ): Promise<IteratorResult<T>> {
+  return withVadTimeout(
+    iterator.next(),
+    timeoutMs,
+    totalTimeoutMs,
+    audioDurationMs,
+  );
+}
+
+function withVadTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  totalTimeoutMs: number,
+  audioDurationMs: number,
+): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   return Promise.race([
-    iterator.next(),
+    promise,
     new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         reject(createVadTimeoutError(totalTimeoutMs, audioDurationMs));
