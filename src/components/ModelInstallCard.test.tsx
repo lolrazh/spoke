@@ -116,7 +116,7 @@ describe("ModelInstallCard", () => {
     });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/Retry/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.getByText(/Download failed/i)).toBeTruthy();
     expect(screen.getByText(/442.8 MB download/i)).toBeTruthy();
     expect(screen.getByText(/rev 0f058d3/i)).toBeTruthy();
@@ -135,6 +135,6 @@ describe("ModelInstallCard", () => {
     });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/Model installation is broken/i)).toBeTruthy();
+    expect(screen.getByText(/could not verify the local model/i)).toBeTruthy();
   });
 });

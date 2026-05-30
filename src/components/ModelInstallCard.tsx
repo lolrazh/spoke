@@ -45,7 +45,9 @@ function getModelDescription(status: ModelStatus): string {
 
   if (status.state === "broken") {
     return [
-      status.error || "Model installation is broken. Retry the download.",
+      status.error
+        ? `${status.error}. Retry will download and verify a clean copy.`
+        : "Spoke could not verify the local model. Retry will download and verify a clean copy.",
       size ? `${size} download` : null,
       version ? `rev ${version}` : null,
     ]

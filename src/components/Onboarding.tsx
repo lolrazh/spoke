@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
-import TricksComponent from "./meta/MetaDirectivesComponent";
 import {
   usePermissions,
   type PermissionProvider,
@@ -63,6 +62,8 @@ const devFlags = {
 const LOCAL_WHISPER_MODEL_NAME = "Whisper Large v3 Turbo";
 const LOCAL_WHISPER_MODEL_DESCRIPTION =
   "Fast multilingual speech recognition optimized at 4-bit precision.";
+const LOCAL_MODEL_REPAIR_DESCRIPTION =
+  "Spoke could not verify the local model. Repair will download and verify a clean copy.";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -88,40 +89,6 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
       if (isDevelopment) console.debug("[MockPermissions] resetPermissions");
     },
   };
-
-// TapRipple component for settings demo
-const TapRipple: React.FC<{
-  delay: number; // delay in seconds within the 3s loop
-  top: string;
-  left: string;
-}> = ({ delay, top, left }) => {
-  return (
-    <motion.div
-      className="absolute rounded-full border border-white/35"
-      style={{
-        width: "24px",
-        height: "24px",
-        top,
-        left,
-        transform: "translate(-50%, -50%)",
-        background: "transparent",
-        zIndex: 10,
-      }}
-      initial={{ scale: 0.3, opacity: 0 }}
-      animate={{
-        scale: [0.3, 1.2, 2.0, 2.0, 0.3],
-        opacity: [0, 0.6, 0.15, 0, 0],
-      }}
-      transition={{
-        duration: 3,
-        ease: "easeOut",
-        times: [0, 0.05, 0.1, 0.15, 1],
-        repeat: Infinity,
-        delay: delay,
-      }}
-    />
-  );
-};
 
 const Onboarding: React.FC = () => {
   useLayoutEffect(() => {
@@ -179,10 +146,8 @@ const Onboarding: React.FC = () => {
   const [isDev, setIsDev] = useState(false);
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
-  const [cmdKeyPressed, setCmdKeyPressed] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const [testText, setTestText] = useState("");
-  const [testTextTap, setTestTextTap] = useState("");
   const [dictationChecklist, setDictationChecklist] = useState({
     pushToTalk: false,
     handsFree: false,
@@ -229,10 +194,6 @@ const Onboarding: React.FC = () => {
       </div>
     );
   };
-  // Sample prompts for tests
-  const sampleEditText =
-    "I wanna show you how Spoke actually helps, how Spoke actually behaves and why Spoke is better than the other apps.";
-
   // Debug logging and listen for explicit PTT readiness from helper
   useEffect(() => {
     devFlags.methods.devLog("Component mounted");
@@ -277,7 +238,6 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     return () => {
       setOptKeyPressed(false); // Reset Option key state
-      setCmdKeyPressed(false);
       isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
         clearTimeout(pttCheckTimeoutRef.current);
@@ -595,8 +555,6 @@ const Onboarding: React.FC = () => {
       setDictationChecklist({ pushToTalk: false, handsFree: false });
       activeDictationModeRef.current = null;
       previousTestTextLengthRef.current = 0;
-    } else if (currentStep === "edit-test") {
-      setTestTextTap(sampleEditText);
     }
   }, [currentStep]);
 
@@ -650,29 +608,6 @@ const Onboarding: React.FC = () => {
       offDown?.();
       offUp?.();
       setOptKeyPressed(false);
-    };
-  }, [currentStep]);
-
-  // Hook: Right Command visual feedback on cancel-info step only
-  useEffect(() => {
-    if (currentStep !== "cancel-info") {
-      setCmdKeyPressed(false);
-      return;
-    }
-    const cleanups: Array<() => void> = [];
-    if (window.ptt?.onCancelDown) {
-      cleanups.push(window.ptt.onCancelDown(() => setCmdKeyPressed(true)));
-    }
-    if (window.ptt?.onCancel) {
-      cleanups.push(
-        window.ptt.onCancel(() => {
-          setCmdKeyPressed(false);
-        }),
-      );
-    }
-    return () => {
-      cleanups.forEach((fn) => fn && fn());
-      setCmdKeyPressed(false);
     };
   }, [currentStep]);
 
@@ -1230,8 +1165,7 @@ const Onboarding: React.FC = () => {
                             </p>
                             <p className="onboarding-permission-desc text-subtle">
                               {modelStatus.state === "broken"
-                                ? modelStatus.error ||
-                                  "The local model needs to be repaired."
+                                ? LOCAL_MODEL_REPAIR_DESCRIPTION
                                 : modelInstallBusy
                                   ? "Installing the local transcription model."
                                   : LOCAL_WHISPER_MODEL_DESCRIPTION}
@@ -1449,222 +1383,6 @@ const Onboarding: React.FC = () => {
                           onChange={(e) => setTestText(e.target.value)}
                           ref={textAreaRef}
                           data-onboarding-step="hotkey-test"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Hands-Free Test Step */}
-              {currentStep === "hands-free-test" && (
-                <motion.div
-                  key="hands-free-test"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center overflow-hidden"
-                >
-                  <div className="max-w-xl mx-auto text-left">
-                    <div className="text-center heading-stack">
-                      <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                        Let's Try Hands-Free Mode
-                      </h2>
-                      <p className="text-sm text-subtle leading-relaxed subheading">
-                        Double tap the hotkey to start dictation. Tap again to
-                        stop.
-                      </p>
-                    </div>
-                    <div className="onboarding-section">
-                      {/* Sample hint as tertiary text for improved hierarchy */}
-                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                        Try saying: "Look mom, no hands! Tag mom with an at
-                        symbol. And show excitement."
-                      </div>
-
-                      {/* Dictation Textarea */}
-                      <div className="onboarding-content-gap">
-                        {/* removed the small label above the textarea */}
-                        <textarea
-                          className={
-                            "w-full h-28 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                          }
-                          placeholder="Say something…"
-                          value={testText}
-                          onChange={(e) => setTestText(e.target.value)}
-                          ref={textAreaRef}
-                          data-onboarding-step="hands-free-test"
-                        />
-                      </div>
-
-                      {/* No CTA here; proceed with Next to the completion screen */}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Edit Test Step */}
-              {currentStep === "edit-test" && (
-                <motion.div
-                  key="edit-test"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center overflow-hidden"
-                >
-                  <div className="max-w-xl mx-auto text-left">
-                    <div className="text-center heading-stack">
-                      <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                        Let's Try Edit Mode
-                      </h2>
-                      <p className="text-sm text-subtle leading-relaxed subheading">
-                        Select the text, hold the hotkey and give it
-                        instructions.
-                      </p>
-                    </div>
-                    <div className="onboarding-section">
-                      {/* Sample hint as tertiary text for improved hierarchy */}
-                      <div className="onboarding-hint onboarding-hint-centered text-dimmed">
-                        Try saying: "Can you write how and why in caps."
-                      </div>
-
-                      {/* Dictation Textarea with pre-filled content */}
-                      <div className="onboarding-content-gap">
-                        <textarea
-                          className={
-                            "w-full h-32 resize-none onboarding-textarea px-4 py-4 text-sm outline-none overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20 hover:scrollbar-thumb-white/30"
-                          }
-                          placeholder="Select some text and try editing it..."
-                          value={testTextTap}
-                          onChange={(e) => setTestTextTap(e.target.value)}
-                          ref={textAreaRef}
-                          data-onboarding-step="edit-test"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Meta-Directives Step */}
-              {currentStep === "meta-directives" && (
-                <motion.div
-                  key="meta-directives"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center"
-                >
-                  <TricksComponent />
-                </motion.div>
-              )}
-
-              {/* Cancel Info Step */}
-              {currentStep === "cancel-info" && (
-                <motion.div
-                  key="cancel-info"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center"
-                >
-                  <div className="heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Your Cancel Key Is the Right Command Key
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      Press your Right Command key now to test it.
-                    </p>
-                  </div>
-                  <div className="onboarding-section">
-                    <div className="flex flex-col items-center justify-center">
-                      <div
-                        className={`keycap keycap-lg keycap-wide ${cmdKeyPressed ? "keycap-active" : ""}`}
-                        aria-label={"Command key - press to cancel dictation"}
-                        aria-live="polite"
-                      >
-                        <span className="keycap-legend-top font-system">⌘</span>
-                        <span className="keycap-legend-bottom font-system">
-                          command
-                        </span>
-                      </div>
-                      <p className="onboarding-note">
-                        You can tap this key any time to cancel dictation.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Settings Info Step */}
-              {currentStep === "settings-info" && (
-                <motion.div
-                  key="settings-info"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="text-center"
-                >
-                  <div className="heading-stack">
-                    <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
-                      Quick Access to Settings
-                    </h2>
-                    <p className="text-sm text-subtle leading-relaxed subheading">
-                      Double-click the island anytime to open settings.
-                    </p>
-                  </div>
-                  <div className="onboarding-section flex flex-col items-center justify-center">
-                    {/* Screen outline container */}
-                    <div className="relative w-[320px] h-[200px] rounded-lg border-2 border-white/10 flex items-start justify-center pt-1">
-                      {/* Pill container - positioned at top like real macOS island */}
-                      <div className="relative">
-                        {/* First ripple */}
-                        <TapRipple
-                          delay={0}
-                          top="calc(50% - 11px)"
-                          left="calc(50% - 11px)"
-                        />
-                        {/* Second ripple */}
-                        <TapRipple
-                          delay={0.2}
-                          top="calc(50% - 11px)"
-                          left="calc(50% - 11px)"
-                        />
-                        {/* Close tap ripple */}
-                        <TapRipple
-                          delay={1.26}
-                          top="calc(100% - 19px)"
-                          left="calc(50% - 11px)"
-                        />
-                        {/* Pill shape - single stroke line that expands to settings */}
-                        <motion.div
-                          className="relative bg-white/10 border border-white/20 backdrop-blur-sm"
-                          style={{
-                            borderRadius: "1.5px",
-                          }}
-                          initial={{ width: "35px", height: "3px" }}
-                          animate={{
-                            width: ["35px", "35px", "100px", "100px", "35px"],
-                            height: ["3px", "3px", "117px", "117px", "3px"],
-                            borderRadius: [
-                              "1.5px",
-                              "1.5px",
-                              "4px",
-                              "4px",
-                              "1.5px",
-                            ],
-                          }}
-                          transition={{
-                            duration: 3.0,
-                            ease: [0.25, 0.8, 0.25, 1],
-                            times: [0, 0.17, 0.33, 0.5, 0.67], // Hold at rest, expand, hold expanded, contract, hold resting
-                            repeat: Infinity,
-                          }}
                         />
                       </div>
                     </div>

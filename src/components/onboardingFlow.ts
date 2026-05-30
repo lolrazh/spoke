@@ -4,11 +4,6 @@ export type OnboardingStep =
   | "transcription-setup"
   | "hotkey-info"
   | "hotkey-test"
-  | "hands-free-test"
-  | "edit-test"
-  | "meta-directives"
-  | "cancel-info"
-  | "settings-info"
   | "complete";
 
 const ALL_ONBOARDING_STEPS: OnboardingStep[] = [

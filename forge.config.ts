@@ -30,6 +30,44 @@ const enableNotarize =
       : Boolean(signIdentity && appleId && applePassword && appleTeamId);
 
 const timings: Record<string, number> = {};
+const packagedSidecarResource = "./local-stt/dist-ondir/spoke-stt";
+const packagedSidecarBinary = `${packagedSidecarResource}/spoke-stt`;
+
+async function assertPackagedSidecarReady(platform: string, arch: string) {
+  if (platform !== "darwin") return;
+
+  if (!fs.existsSync(packagedSidecarBinary)) {
+    throw new Error(
+      `Packaged STT sidecar is missing at ${packagedSidecarBinary}. Run ./local-stt/build-sidecar-onedir.sh before packaging.`,
+    );
+  }
+
+  const stat = fs.statSync(packagedSidecarBinary);
+  if (!stat.isFile()) {
+    throw new Error(
+      `Packaged STT sidecar path is not a file: ${packagedSidecarBinary}`,
+    );
+  }
+
+  try {
+    fs.accessSync(packagedSidecarBinary, fs.constants.X_OK);
+  } catch {
+    throw new Error(
+      `Packaged STT sidecar is not executable: ${packagedSidecarBinary}`,
+    );
+  }
+
+  const { stdout } = await execa("file", [packagedSidecarBinary]);
+  if (arch === "arm64" && !stdout.includes("arm64")) {
+    throw new Error(
+      `Packaged STT sidecar must be arm64 for this build. file(1): ${stdout}`,
+    );
+  }
+
+  console.log(
+    `[Forge] Sidecar preflight passed: ${packagedSidecarBinary} (${(stat.size / (1024 * 1024)).toFixed(1)} MB)`,
+  );
+}
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -47,7 +85,7 @@ const config: ForgeConfig = {
       "./public/assets/Assets.car",
       "./native/bin/Spoke Helper.app",
       "./native/bin/notch-reporter",
-      "./local-stt/dist-ondir/spoke-stt",
+      packagedSidecarResource,
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
@@ -189,6 +227,7 @@ const config: ForgeConfig = {
     prePackage: async (_forgeConfig, platform, arch) => {
       timings["packageStart"] = Date.now();
       console.log(`[Forge] PrePackage: target=${platform}/${arch}`);
+      await assertPackagedSidecarReady(platform, arch);
     },
     postPackage: async () => {
       const ms = Date.now() - (timings["packageStart"] || Date.now());

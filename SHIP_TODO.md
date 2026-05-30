@@ -49,9 +49,16 @@ Dogfood gate:
 
 - [ ] Fresh install can reach working dictation in one session.
 - [x] No auth/login/cloud account required.
-- [ ] No broken promise in onboarding.
+- [x] No broken promise in onboarding.
 - [x] No known local STT crash path from current dogfood testing.
-- [ ] Worktree has no tracked legacy local model/runtime implementation.
+- [x] Worktree has no tracked legacy local model/runtime implementation.
+
+P0 cleanup result, 2026-05-30:
+
+- Removed unreachable onboarding pages for edit mode, meta-directives, cancel-key training, hands-free-only testing, and settings demo.
+- Confirmed onboarding flow only advertises permissions, microphone check, local model install, hotkey intro, one dictation test, and completion.
+- Confirmed tracked local STT files are source/scripts/docs only; ignored `.venv`, PyInstaller build outputs, benchmark audio cache, and model weights remain untracked.
+- Confirmed the only tracked ONNX asset is Silero VAD, which is part of the current speech-boundary pipeline, not a fallback transcription model.
 
 ## P0: Local Inference Ship Gates
 
@@ -86,7 +93,7 @@ Remaining local inference tasks:
 - [x] Remove or hide meta-directives/tricks from onboarding until post-processing is production-ready.
 - [x] Make screen recording/OCR context optional, not required.
 - [x] Add clear copy: local Whisper is private/offline; cloud is optional with user API keys.
-- [ ] Add recovery copy for model install failure and broken model state.
+- [x] Add recovery copy for model install failure and broken model state.
 - [ ] Test onboarding with local model already installed.
 - [ ] Test onboarding with no model installed.
 
@@ -110,15 +117,15 @@ Consolidated audit status:
 - [x] Edit mode and meta-directives are hidden from onboarding until the pipeline is real.
 - [x] Screen recording is no longer a required first-run permission.
 - [ ] Remove Cloudflare-only dependencies after release/update migration is complete.
-- [ ] Make sidecar build/signing a documented release prerequisite or package preflight.
+- [x] Make sidecar build/signing a documented release prerequisite or package preflight.
 
 Architecture gate:
 
-- [ ] Optional features are off by default and do not affect local dictation.
-- [ ] No fallback local models.
-- [ ] No renderer-side inference.
+- [x] Optional features are off by default and do not affect local dictation.
+- [x] No fallback local models.
+- [x] No renderer-side inference.
 - [x] No user-installed Python dependency in packaged builds.
-- [ ] No dead feature is advertised in onboarding.
+- [x] No dead feature is advertised in onboarding.
 
 ## P0: Startup Bloat Cleanup
 
