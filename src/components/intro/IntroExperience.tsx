@@ -7,6 +7,10 @@ import { ENABLE_ONBOARDING_PARTICLES } from "../../config/featureFlags";
 type IntroExperienceProps = {
   logoSrc: string;
   onFinish: () => void;
+  // Fired the instant the intro begins its exit (Get Started clicked), so the
+  // parent can start fading the first step in while the intro fades out —
+  // producing a crossfade instead of a sequential gap.
+  onExitStart?: () => void;
 };
 
 const prefersReducedMotion = () => {
@@ -31,6 +35,7 @@ const GridBackground: React.FC<{ holeActive: boolean }> = ({ holeActive }) => {
 export const IntroExperience: React.FC<IntroExperienceProps> = ({
   logoSrc,
   onFinish,
+  onExitStart,
 }) => {
   const reduced = prefersReducedMotion();
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
@@ -63,6 +68,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
   }, [reduced]);
 
   const handleSkip = () => {
+    onExitStart?.();
     setVisible(false);
   };
 

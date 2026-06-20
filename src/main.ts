@@ -1497,21 +1497,35 @@ app.whenReady().then(async () => {
     initProviderStore(userDataPath);
   });
   bootTimeline.measureSync("startup:init-model-manager", () => {
+    // Broadcast model events to every window. The model install runs during
+    // onboarding, which lives in its own window (onboardingWindow) — sending
+    // only to mainWindow meant the onboarding progress bar received almost no
+    // updates and appeared to jump straight from ~0% to done.
+    const broadcastToAllWindows = (channel: string, payload: unknown) => {
+      try {
+        BrowserWindow.getAllWindows().forEach((window) => {
+          if (!window.isDestroyed())
+            window.webContents.send(channel, payload);
+        });
+      } catch {}
+    };
+
+    // Throttle high-frequency download chunks (~thousands for a 442MB file),
+    // but always emit the endpoints so the bar reliably reaches 0% and 100%.
+    let lastProgressEmit = 0;
+    const PROGRESS_EMIT_INTERVAL_MS = 30;
+
     initModelManager({
       onStatusChange: (status) => {
-        try {
-          if (mainWindow && !mainWindow.isDestroyed())
-            mainWindow.webContents.send("stt:model-status-changed", status);
-        } catch {}
+        broadcastToAllWindows("stt:model-status-changed", status);
       },
       onDownloadProgress: (progress) => {
-        try {
-          if (mainWindow && !mainWindow.isDestroyed())
-            mainWindow.webContents.send(
-              "stt:model-download-progress",
-              progress,
-            );
-        } catch {}
+        const now = Date.now();
+        const isEndpoint = progress.progress <= 0 || progress.progress >= 1;
+        if (!isEndpoint && now - lastProgressEmit < PROGRESS_EMIT_INTERVAL_MS)
+          return;
+        lastProgressEmit = now;
+        broadcastToAllWindows("stt:model-download-progress", progress);
       },
     });
   });
