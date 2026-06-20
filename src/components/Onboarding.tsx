@@ -104,6 +104,9 @@ const Onboarding: React.FC = () => {
   const introOnly =
     params.has("introOnly") || import.meta.env?.VITE_INTRO_ONLY === "1";
   const [showIntro, setShowIntro] = useState<boolean>(true);
+  // Steps mount when the intro *begins* exiting (not when it finishes), so the
+  // first step fades in while the intro fades out — a crossfade, not a gap.
+  const [stepsRevealed, setStepsRevealed] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
   const shouldLoadTranscriptionSetup =
     !showIntro && currentStep === "transcription-setup";
@@ -171,8 +174,14 @@ const Onboarding: React.FC = () => {
     selectedMicId,
     setSelectedMicId,
   } = useMicVisualizer({ active: currentStep === "mic-check" });
-  // Dismiss intro without persisting any flag so it always shows next run
+  // Reveal the first step the moment the intro starts exiting, so they overlap.
+  const handleIntroExitStart = useCallback(() => {
+    setStepsRevealed(true);
+  }, []);
+  // Dismiss intro without persisting any flag so it always shows next run.
+  // Also guard stepsRevealed in case the intro finishes without firing exitStart.
   const handleIntroFinish = useCallback(() => {
+    setStepsRevealed(true);
     setShowIntro(false);
   }, []);
 
@@ -629,6 +638,7 @@ const Onboarding: React.FC = () => {
       {showIntro && (
         <IntroExperience
           logoSrc={transparentLogoUrl}
+          onExitStart={handleIntroExitStart}
           onFinish={handleIntroFinish}
         />
       )}
@@ -712,7 +722,7 @@ const Onboarding: React.FC = () => {
       {/* Main Content - Single Column */}
       <div className="flex-1 flex flex-col justify-center p-6 pt-10 relative min-h-0 overflow-hidden">
         <div className="max-w-2xl w-full mx-auto flex-1 flex flex-col justify-center max-h-full overflow-y-auto p-6">
-          {!showIntro && (
+          {stepsRevealed && (
             <AnimatePresence mode="wait">
               {/* Hotkey Info Step */}
               {currentStep === "hotkey-info" && (
