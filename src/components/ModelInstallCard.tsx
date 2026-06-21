@@ -4,7 +4,7 @@ import { useModelStatus } from "../hooks/useModelStatus";
 import type { ModelStatus } from "../types/shared";
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
-import SfIcon from "./icons/SfIcon";
+import IconButton from "./ui/IconButton";
 
 // Matches the name shown in onboarding.
 const MODEL_NAME = "Whisper Large v3 Turbo";
@@ -65,6 +65,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
       description={getModelDescription(status)}
       icon={<OpenAiGlyph />}
       inGroup={inGroup}
+      interactive={status.state === "ready"}
     >
       {/* initial={false} so the row is static on open and only animates when the
           state actually changes (mirrors the onboarding dictation tasks). */}
@@ -137,14 +138,14 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="flex items-center gap-2"
             >
-              {/* Bare monochrome checkmark — the app's "done" language, same as
-                  a granted permission row. Draws on for in-session installs. */}
+              {/* Quiet, muted "done" checkmark (14px, matches the history icon
+                  scale). Draws on for in-session installs. */}
               <motion.svg
-                width="16"
-                height="16"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
-                className="text-white/80"
+                className="text-muted-foreground"
                 role="img"
                 aria-label="Installed"
               >
@@ -159,21 +160,15 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
                   strokeLinejoin="round"
                 />
               </motion.svg>
-              {/* Uninstall — hidden until row hover, icon brightens on hover
-                  (matches the history copy icon; no background box). */}
-              <button
-                type="button"
+              {/* Uninstall — reveals on row hover, brightens on hover. Same
+                  primitive as the history copy icon. */}
+              <IconButton
+                name="trash"
                 onClick={remove}
                 title="Uninstall"
-                aria-label="Uninstall model"
-                className="opacity-0 transition-opacity duration-150 focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
-              >
-                <SfIcon
-                  name="trash"
-                  size={16}
-                  className="text-muted-foreground/50 transition-colors hover:text-foreground"
-                />
-              </button>
+                ariaLabel="Uninstall model"
+                revealOnHover
+              />
             </motion.div>
           )}
 
