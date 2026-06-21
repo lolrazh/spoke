@@ -41,7 +41,9 @@ type SettingsPanelInitialTab = Extract<
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
-  enabled: boolean;
+  // `null` means "not loaded yet" — render a placeholder instead of guessing
+  // an on/off position (which would flash the wrong state).
+  enabled: boolean | null;
   onChange: (enabled: boolean) => void;
   label: string;
   description?: string;
@@ -55,7 +57,14 @@ const Toggle: React.FC<{
     icon={icon}
     inGroup={inGroup}
   >
-    <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
+    {enabled === null ? (
+      <div
+        className="h-5 w-10 shrink-0 rounded-[6px] bg-white/5"
+        aria-hidden
+      />
+    ) : (
+      <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
+    )}
   </SettingsCard>
 );
 
@@ -214,8 +223,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [],
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
-  const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
-  const [showInDock, setShowInDock] = useState<boolean>(true);
+  const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
+  const [showInDock, setShowInDock] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
 
   // Load app version from main via preload bridge
@@ -240,13 +249,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         const pref = await window.electron?.getFloatingBarEnabled?.();
         if (pref && typeof pref.enabled === "boolean") {
           if (isMounted) setShowFloatingBar(pref.enabled);
-        } else {
-          const vis = await window.electron?.isFloatingBarVisible?.();
-          if (vis && typeof vis.visible === "boolean") {
-            if (isMounted) setShowFloatingBar(vis.visible);
-          }
+          return;
         }
-      } catch {}
+        const vis = await window.electron?.isFloatingBarVisible?.();
+        if (isMounted) {
+          setShowFloatingBar(
+            vis && typeof vis.visible === "boolean" ? vis.visible : true,
+          );
+        }
+      } catch {
+        // Resolve to a value so the toggle never sticks on the placeholder.
+        if (isMounted) setShowFloatingBar(true);
+      }
     })();
 
     return () => {
@@ -261,10 +275,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     (async () => {
       try {
         const result = await window.electron?.getDockVisible?.();
-        if (result && typeof result.visible === "boolean") {
-          if (isMounted) setShowInDock(result.visible);
+        if (isMounted) {
+          setShowInDock(
+            result && typeof result.visible === "boolean"
+              ? result.visible
+              : true,
+          );
         }
-      } catch {}
+      } catch {
+        // Resolve to a value so the toggle never sticks on the placeholder.
+        if (isMounted) setShowInDock(true);
+      }
     })();
 
     return () => {
