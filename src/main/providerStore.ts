@@ -56,6 +56,12 @@ export function initProviderStore(userDataDir: string): void {
   const prefs = loadSttPreferences();
   providerSecrets = loadProviderSecrets();
   preferredProviderId = prefs.preferredProviderId;
+  // Cloud transcription providers were removed from the UI; the app is
+  // local-only. Coerce any previously-selected cloud provider back to the
+  // local Whisper model so a stale preference can't linger at runtime.
+  if (preferredProviderId !== LOCAL_STT_PROVIDER_ID) {
+    preferredProviderId = LOCAL_STT_PROVIDER_ID;
+  }
 }
 
 // ── Preferences ────────────────────────────────────────────────────────
