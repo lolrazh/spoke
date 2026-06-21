@@ -274,6 +274,21 @@ const config: ForgeConfig = {
 
         for (const dmg of dmgPaths) {
           try {
+            // Code-sign the DMG wrapper itself (Forge only signs the .app).
+            // Must happen before notarization so the notary validates it, and
+            // before stapling so the staple isn't invalidated.
+            const signingIdentity = process.env.APPLE_IDENTITY;
+            if (signingIdentity) {
+              console.log(`[DMG Sign] Signing: ${dmg}`);
+              await execa(
+                "codesign",
+                ["--force", "--sign", signingIdentity, "--timestamp", dmg],
+                { stdio: "inherit" },
+              );
+            } else {
+              console.log("[DMG Sign] Skipped (APPLE_IDENTITY unset)");
+            }
+
             console.log(`[DMG Notarize] Submitting: ${dmg}`);
             await execa(
               "xcrun",
