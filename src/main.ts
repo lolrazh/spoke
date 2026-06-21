@@ -159,6 +159,7 @@ import {
   getUpdateAvailableVersion,
   isUpdateReadyToInstall,
   getUpdateError,
+  quitAndInstallUpdate,
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
@@ -1091,25 +1092,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
       : "Check for Updates…";
 
   function restartToInstallUpdate() {
-    try {
-      const req: any = eval("require");
-      const mod = req?.("electron-updater");
-      const autoUpdater = mod?.autoUpdater as any;
-      if (autoUpdater && typeof autoUpdater.quitAndInstall === "function") {
-        console.log("[Updater] quitAndInstall invoked");
-        autoUpdater.quitAndInstall();
-        return;
-      }
-    } catch {}
-    console.log(
-      "[Updater] quitAndInstall unavailable; relaunching app as fallback",
-    );
-    try {
-      app.relaunch();
-      app.quit();
-    } catch (e) {
-      console.warn("[Updater] Fallback relaunch failed:", e);
-    }
+    quitAndInstallUpdate();
   }
 
   // Primary update actions
