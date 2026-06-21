@@ -10,11 +10,11 @@ import IconButton from "./ui/IconButton";
 const MODEL_NAME = "Whisper Large v3 Turbo";
 
 function formatBytes(bytes: number): string {
-  if (bytes <= 0) return "";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  // Whole units, no decimals. The model is MB-scale, so 0 reads as "0 MB".
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${Math.max(0, Math.round(bytes / (1024 * 1024)))} MB`;
+  }
+  return `${Math.round(bytes / (1024 * 1024 * 1024))} GB`;
 }
 
 function getModelDescription(status: ModelStatus): string {
@@ -30,9 +30,7 @@ function getModelDescription(status: ModelStatus): string {
         : "Couldn't verify the model. Repair downloads a clean copy.";
     case "not_installed":
     default:
-      return [size ? `${size} download` : null, "runs on-device"]
-        .filter(Boolean)
-        .join(" · ");
+      return ["Recommended on-device model", size].filter(Boolean).join(" · ");
   }
 }
 
@@ -80,9 +78,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
             >
               <Button
                 type="button"
-                variant="secondary"
                 size="sm"
                 onClick={install}
+                className="text-xs onboarding-cta"
               >
                 Install
               </Button>
@@ -185,9 +183,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
             >
               <Button
                 type="button"
-                variant="secondary"
                 size="sm"
                 onClick={install}
+                className="text-xs onboarding-cta"
               >
                 Repair
               </Button>
