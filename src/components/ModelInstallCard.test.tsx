@@ -33,108 +33,81 @@ const baseStatus: ModelStatus = {
   error: null,
 };
 
+function mockStatus(status: ModelStatus, loaded = true) {
+  mockUseModelStatus.mockReturnValue({
+    status,
+    install: vi.fn(),
+    remove: vi.fn(),
+    refresh: vi.fn(),
+    loaded,
+  });
+}
+
 describe("ModelInstallCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders install button when not installed", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: baseStatus,
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
-    });
+  it("renders the install button when not installed", () => {
+    mockStatus(baseStatus);
 
     render(<ModelInstallCard />);
-    expect(screen.getByText("Whisper large-v3 turbo 4-bit")).toBeTruthy();
-    expect(screen.getByText(/442.8 MB download/i)).toBeTruthy();
+    expect(screen.getByText("Whisper Large v3 Turbo")).toBeTruthy();
+    expect(screen.getByText(/Recommended on-device model/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Install" })).toBeTruthy();
   });
 
-  it("renders progress bar when downloading", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: {
-        ...baseStatus,
-        state: "downloading",
-        downloadProgress: 0.5,
-        downloadedBytes: 800_000_000,
-        totalBytes: 1_600_000_000,
-      },
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
+  it("renders no control until the status has loaded (no flash)", () => {
+    mockStatus(baseStatus, false);
+
+    render(<ModelInstallCard />);
+    // Title/description still show, but the state-specific control does not.
+    expect(screen.getByText("Whisper Large v3 Turbo")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+  });
+
+  it("renders progress when downloading", () => {
+    mockStatus({
+      ...baseStatus,
+      state: "downloading",
+      downloadProgress: 0.5,
+      downloadedBytes: 800_000_000,
+      totalBytes: 1_600_000_000,
     });
 
     render(<ModelInstallCard />);
     expect(screen.getByText(/50%/)).toBeTruthy();
   });
 
-  it("renders installing/verifying state", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: { ...baseStatus, state: "installing" },
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
-    });
+  it("renders the verifying state while installing", () => {
+    mockStatus({ ...baseStatus, state: "installing" });
 
     render(<ModelInstallCard />);
     expect(screen.getByText("Verifying…")).toBeTruthy();
   });
 
-  it("renders installed state with remove button", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: {
-        ...baseStatus,
-        state: "ready",
-        family: "whisper",
-        modelId: "mlx-community/whisper-large-v3-turbo-4bit",
-        displayName: "Whisper large-v3 turbo 4-bit",
-        manifestVersion: 1,
-        version: "0.1",
-      },
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
-    });
+  it("renders the installed state with an uninstall control", () => {
+    mockStatus({ ...baseStatus, state: "ready", version: "0.1" });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/Remove/i)).toBeTruthy();
-    expect(screen.getByText(/rev 0.1/i)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Uninstall model" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
   });
 
-  it("renders error state with retry button", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: {
-        ...baseStatus,
-        state: "broken",
-        error: "Download failed",
-      },
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
-    });
+  it("renders the repair button when broken", () => {
+    mockStatus({ ...baseStatus, state: "broken", error: "Download failed" });
 
     render(<ModelInstallCard />);
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Repair" })).toBeTruthy();
     expect(screen.getByText(/Download failed/i)).toBeTruthy();
-    expect(screen.getByText(/442.8 MB download/i)).toBeTruthy();
-    expect(screen.getByText(/rev 0f058d3/i)).toBeTruthy();
   });
 
   it("shows fallback error text when broken with no error message", () => {
-    mockUseModelStatus.mockReturnValue({
-      status: {
-        ...baseStatus,
-        state: "broken",
-        error: null,
-      },
-      install: vi.fn(),
-      remove: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockStatus({ ...baseStatus, state: "broken", error: null });
 
     render(<ModelInstallCard />);
-    expect(screen.getByText(/could not verify the local model/i)).toBeTruthy();
+    expect(screen.getByText(/Couldn't verify the model/i)).toBeTruthy();
   });
 });

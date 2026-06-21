@@ -99,7 +99,7 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("keeps provider controls in the Models tab without hosted account sections", async () => {
+  it("shows only the local Whisper model in the Models tab (no providers/cloud)", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(React.createElement(SettingsPanel));
     await act(async () => {
@@ -121,12 +121,14 @@ describe("components/SettingsPanel", () => {
     });
 
     const text = container.textContent ?? "";
-    expect(text).toContain("Default Model");
-    expect(text).toContain("Cloud Providers");
-    expect(text).toContain("OpenAI");
-    expect(text).not.toContain("Account");
-    expect(text).not.toContain("Usage");
-    expect(text).not.toContain("Sign In");
+    // Only the local model remains.
+    expect(text).toContain("Whisper Large v3 Turbo");
+    // Cloud provider / API-key UI is gone.
+    expect(text).not.toContain("Default Model");
+    expect(text).not.toContain("Cloud Providers");
+    expect(text).not.toContain("OpenAI");
+    expect(text).not.toContain("Groq");
+    expect(text).not.toContain("Deepgram");
 
     unmount();
   });
