@@ -97,14 +97,18 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="w-44 space-y-1.5"
             >
+              {/* Fixed-width slots + tabular figures so the layout never
+                  reflows as digit counts change (9% -> 100%, KB -> MB). */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-white/70 tabular-nums">
+                <span className="inline-block w-8 text-[10px] text-white/70 tabular-nums">
                   {progressPercent}%
                 </span>
                 {status.totalBytes > 0 && (
                   <span className="text-[10px] text-white/50 tabular-nums">
-                    {formatBytes(status.downloadedBytes)} /{" "}
-                    {formatBytes(status.totalBytes)}
+                    <span className="inline-block w-14 text-right">
+                      {formatBytes(status.downloadedBytes)}
+                    </span>{" "}
+                    / {formatBytes(status.totalBytes)}
                   </span>
                 )}
               </div>
