@@ -438,7 +438,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
               <TabButton
                 active={activeTab === "models"}
-                iconName="point.3.filled.connected.trianglepath.dotted"
+                iconName="brain"
                 label="Models"
                 onClick={() => setActiveTab("models")}
               />

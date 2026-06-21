@@ -138,11 +138,11 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="flex items-center gap-2"
             >
-              {/* Quiet, muted "done" checkmark (14px, matches the history icon
-                  scale). Draws on for in-session installs. */}
+              {/* Quiet, muted "done" checkmark. Draws on for in-session
+                  installs. */}
               <motion.svg
-                width="14"
-                height="14"
+                width="17"
+                height="17"
                 viewBox="0 0 24 24"
                 fill="none"
                 className="text-muted-foreground"
