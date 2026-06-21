@@ -54,7 +54,7 @@ interface ModelInstallCardProps {
 }
 
 const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
-  const { status, install, remove } = useModelStatus();
+  const { status, install, remove, loaded } = useModelStatus();
   const progressPercent = Math.round(status.downloadProgress * 100);
 
   return (
@@ -68,8 +68,10 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
       {/* initial={false} so the row is static on open and only animates when the
           state actually changes (mirrors the onboarding dictation tasks). */}
       <div className="ml-2 flex items-center justify-end">
+        {/* Render nothing until the real status loads — avoids flashing the
+            Install button before a ready model resolves. */}
         <AnimatePresence mode="wait" initial={false}>
-          {status.state === "not_installed" && (
+          {loaded && status.state === "not_installed" && (
             <motion.div
               key="install"
               initial={{ opacity: 0 }}

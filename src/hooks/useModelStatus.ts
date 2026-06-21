@@ -19,6 +19,9 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
     totalBytes: 0,
     error: null,
   });
+  // False until the first real status arrives, so consumers can avoid
+  // rendering a default ("not_installed") state before the truth is known.
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -26,6 +29,8 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
       if (s) setStatus(s);
     } catch {
       // ignore
+    } finally {
+      setLoaded(true);
     }
   }, []);
 
@@ -37,6 +42,7 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
 
     // Subscribe to download progress
     const unsubProgress = window.stt?.onModelProgress?.((payload) => {
+      setLoaded(true);
       setStatus((prev) => ({
         ...prev,
         state: "downloading",
@@ -89,5 +95,5 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
     }
   }, [refresh]);
 
-  return { status, install, remove, refresh };
+  return { status, install, remove, refresh, loaded };
 }
