@@ -9,18 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import { isApiKeyTranscriptionProviderId } from "../core/transcription/providerCatalog";
-import {
-  LOCAL_STT_PROVIDER_ID,
-  type PreferredTranscriptionProviderId,
-} from "../core/transcription/providerPreferences";
-import { useProviderSelection } from "../hooks/useProviderSelection";
 
 // --- Animation Variants --- //
 const containerVariants: Variants = {
@@ -48,7 +41,9 @@ type SettingsPanelInitialTab = Extract<
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
-  enabled: boolean;
+  // `null` means "not loaded yet" — render a placeholder instead of guessing
+  // an on/off position (which would flash the wrong state).
+  enabled: boolean | null;
   onChange: (enabled: boolean) => void;
   label: string;
   description?: string;
@@ -62,7 +57,14 @@ const Toggle: React.FC<{
     icon={icon}
     inGroup={inGroup}
   >
-    <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
+    {enabled === null ? (
+      <div
+        className="h-5 w-10 shrink-0 rounded-[6px] bg-white/5"
+        aria-hidden
+      />
+    ) : (
+      <Switch checked={enabled} onCheckedChange={onChange} disabled={disabled} />
+    )}
   </SettingsCard>
 );
 
@@ -98,77 +100,6 @@ const SelectField: React.FC<{
           ))}
         </SelectContent>
       </Select>
-    </div>
-  </SettingsCard>
-);
-
-const ApiKeyField: React.FC<{
-  label: string;
-  description?: string;
-  fieldId: string;
-  value: string;
-  onChange: (value: string) => void;
-  onSave: () => void;
-  onClear: () => void;
-  configured: boolean;
-  saving: boolean;
-  placeholder?: string;
-  inGroup?: boolean;
-  icon?: React.ReactNode;
-}> = ({
-  label,
-  description,
-  fieldId,
-  value,
-  onChange,
-  onSave,
-  onClear,
-  configured,
-  saving,
-  placeholder,
-  inGroup,
-  icon,
-}) => (
-  <SettingsCard
-    title={label}
-    description={description}
-    icon={icon}
-    inGroup={inGroup}
-  >
-    <div className="ml-2 flex items-center gap-2">
-      <input
-        id={fieldId}
-        name={fieldId}
-        aria-label={`${label} API key`}
-        type="password"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        className="card-floating h-9 w-36 rounded-lg border border-white/10 bg-transparent px-3 text-xs text-white/80 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/5 focus-visible:ring-2 focus-visible:ring-white/10"
-        style={{ WebkitAppRegion: "no-drag" }}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={saving || value.trim().length === 0}
-        onClick={onSave}
-      >
-        {saving ? "Saving…" : "Save Key"}
-      </Button>
-      {configured && (
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={saving}
-          onClick={onClear}
-        >
-          Clear
-        </Button>
-      )}
     </div>
   </SettingsCard>
 );
@@ -292,19 +223,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [],
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
-  const [showFloatingBar, setShowFloatingBar] = useState<boolean>(true);
-  const [showInDock, setShowInDock] = useState<boolean>(true);
-  const {
-    setProviderSettings,
-    loadProviderSettings,
-    providerEntries,
-    selectableProviderEntries,
-    selectedProviderId,
-  } = useProviderSelection();
-  const [apiKeyDrafts, setApiKeyDrafts] = useState<Record<string, string>>({});
-  const [savingProviderKeyId, setSavingProviderKeyId] = useState<string | null>(
-    null,
-  );
+  const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
+  const [showInDock, setShowInDock] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
 
   // Load app version from main via preload bridge
@@ -329,13 +249,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         const pref = await window.electron?.getFloatingBarEnabled?.();
         if (pref && typeof pref.enabled === "boolean") {
           if (isMounted) setShowFloatingBar(pref.enabled);
-        } else {
-          const vis = await window.electron?.isFloatingBarVisible?.();
-          if (vis && typeof vis.visible === "boolean") {
-            if (isMounted) setShowFloatingBar(vis.visible);
-          }
+          return;
         }
-      } catch {}
+        const vis = await window.electron?.isFloatingBarVisible?.();
+        if (isMounted) {
+          setShowFloatingBar(
+            vis && typeof vis.visible === "boolean" ? vis.visible : true,
+          );
+        }
+      } catch {
+        // Resolve to a value so the toggle never sticks on the placeholder.
+        if (isMounted) setShowFloatingBar(true);
+      }
     })();
 
     return () => {
@@ -350,10 +275,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     (async () => {
       try {
         const result = await window.electron?.getDockVisible?.();
-        if (result && typeof result.visible === "boolean") {
-          if (isMounted) setShowInDock(result.visible);
+        if (isMounted) {
+          setShowInDock(
+            result && typeof result.visible === "boolean"
+              ? result.visible
+              : true,
+          );
         }
-      } catch {}
+      } catch {
+        // Resolve to a value so the toggle never sticks on the placeholder.
+        if (isMounted) setShowInDock(true);
+      }
     })();
 
     return () => {
@@ -414,93 +346,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     [micDevices],
   );
 
-  const transcriptionProviderOptions = useMemo(
-    () =>
-      selectableProviderEntries.length > 0
-        ? selectableProviderEntries.map((p) => ({
-            value: p.id,
-            label: p.displayName,
-          }))
-        : [{ value: LOCAL_STT_PROVIDER_ID, label: "Local" }],
-    [selectableProviderEntries],
-  );
-
-  const apiKeyProviders = providerEntries.filter((p) => p.requiresApiKey);
-
   const handleMicChange = (deviceId: string) => {
     setSelectedMicId(deviceId);
     if (window.mic?.select) {
       window.mic.select(deviceId);
-    }
-  };
-
-  const handleProviderChange = async (providerId: string) => {
-    try {
-      await window.stt?.setPreferredProvider?.(
-        providerId as PreferredTranscriptionProviderId,
-      );
-      setProviderSettings(await loadProviderSettings());
-    } catch (error) {
-      console.error(
-        "[Settings] Failed to switch transcription provider:",
-        error,
-      );
-      window.notifications?.send?.("Failed to switch transcription provider.");
-    }
-  };
-
-  const handleSaveApiKey = async (providerId: string, displayName: string) => {
-    if (!isApiKeyTranscriptionProviderId(providerId)) {
-      return;
-    }
-    const apiKey = (apiKeyDrafts[providerId] ?? "").trim();
-    if (!apiKey) {
-      return;
-    }
-
-    setSavingProviderKeyId(providerId);
-    try {
-      const snapshot = await window.stt?.setProviderApiKey?.(
-        providerId,
-        apiKey,
-      );
-      if (snapshot) {
-        setProviderSettings(snapshot);
-      } else {
-        setProviderSettings(await loadProviderSettings());
-      }
-      setApiKeyDrafts((prev) => ({ ...prev, [providerId]: "" }));
-      window.notifications?.send?.(`Saved ${displayName} API key locally.`);
-    } catch (error) {
-      console.error(`[Settings] Failed to save ${displayName} API key:`, error);
-      window.notifications?.send?.(`Failed to save ${displayName} API key.`);
-    } finally {
-      setSavingProviderKeyId(null);
-    }
-  };
-
-  const handleClearApiKey = async (providerId: string, displayName: string) => {
-    if (!isApiKeyTranscriptionProviderId(providerId)) {
-      return;
-    }
-    setSavingProviderKeyId(providerId);
-    try {
-      const snapshot = await window.stt?.clearProviderApiKey?.(providerId);
-      if (snapshot) {
-        setProviderSettings(snapshot);
-      } else {
-        setProviderSettings(await loadProviderSettings());
-      }
-      setApiKeyDrafts((prev) => ({ ...prev, [providerId]: "" }));
-      window.notifications?.send?.(`Cleared stored ${displayName} API key.`);
-    } catch (error) {
-      console.error(
-        `[Settings] Failed to clear ${displayName} API key:`,
-        error,
-      );
-      window.notifications?.send?.(`Failed to clear ${displayName} API key.`);
-    } finally {
-      setSavingProviderKeyId(null);
     }
   };
 
@@ -610,7 +459,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
               <TabButton
                 active={activeTab === "models"}
-                iconName="point.3.filled.connected.trianglepath.dotted"
+                iconName="brain"
                 label="Models"
                 onClick={() => setActiveTab("models")}
               />
@@ -724,82 +573,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="Default Model" />
-
-                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <SelectField
-                        label="Transcription Provider"
-                        description="Choose local or cloud transcription."
-                        value={selectedProviderId}
-                        onChange={handleProviderChange}
-                        options={transcriptionProviderOptions}
-                        icon={
-                          <SfIcon
-                            name="point.3.filled.connected.trianglepath.dotted"
-                            size={16}
-                            className="text-primary/70"
-                          />
-                        }
-                        inGroup
-                      />
-                    </div>
-                  </motion.section>
-
-                  <motion.section
-                    variants={sectionVariants}
-                    className="space-y-4"
-                    style={{ marginTop: "var(--panel-section-offset)" }}
-                  >
-                    <SectionSeparator title="Local Model" />
+                    <SectionSeparator title="Transcription" />
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <ModelInstallCard inGroup />
-                    </div>
-                  </motion.section>
-
-                  <motion.section
-                    variants={sectionVariants}
-                    className="space-y-4"
-                    style={{ marginTop: "var(--panel-section-offset)" }}
-                  >
-                    <SectionSeparator title="Cloud Providers" />
-
-                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      {apiKeyProviders.map((provider) => (
-                        <ApiKeyField
-                          key={provider.id}
-                          label={provider.displayName}
-                          description={
-                            provider.apiKeyConfigured
-                              ? "API key saved locally."
-                              : "Add an API key to enable this provider."
-                          }
-                          fieldId={`${provider.id}-api-key`}
-                          value={apiKeyDrafts[provider.id] ?? ""}
-                          onChange={(v) =>
-                            setApiKeyDrafts((prev) => ({
-                              ...prev,
-                              [provider.id]: v,
-                            }))
-                          }
-                          onSave={() =>
-                            handleSaveApiKey(provider.id, provider.displayName)
-                          }
-                          onClear={() =>
-                            handleClearApiKey(provider.id, provider.displayName)
-                          }
-                          configured={provider.apiKeyConfigured}
-                          saving={savingProviderKeyId === provider.id}
-                          placeholder={provider.apiKeyPlaceholder ?? ""}
-                          icon={
-                            <SfIcon
-                              name="speaker.wave.3.fill"
-                              size={16}
-                              className="text-primary/70"
-                            />
-                          }
-                          inGroup
-                        />
-                      ))}
                     </div>
                   </motion.section>
                 </motion.div>

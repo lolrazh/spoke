@@ -176,6 +176,9 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     inputMonitoring: { loading: false, justGranted: false },
     accessibility: { loading: false, justGranted: false },
   });
+  // False until the first init() resolves, so consumers can avoid rendering
+  // the default (all-denied) state before the real one is known.
+  const [loaded, setLoaded] = useState(false);
 
   const prevPermissionsRef = useRef<PermissionsState | null>(null);
   const timersRef = useRef<{
@@ -222,7 +225,13 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         screenRecordingStatus: sr?.status ?? "unknown",
         permissions: nextPermissions,
       });
-    } catch {}
+    } catch {
+      // ignore; pollers/focus retries will recover
+    } finally {
+      // Mark loaded after the first attempt (success or failure) so the UI
+      // doesn't sit on a placeholder forever.
+      if (mountedRef.current) setLoaded(true);
+    }
   };
 
   const requestMicrophone = async () => {
@@ -488,6 +497,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     () => ({
       permissions,
       ui,
+      loaded,
       init,
       requestMicrophone,
       requestScreenRecording,
@@ -495,6 +505,6 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       requestAccessibility,
       setPermissions, // exposed for dev overlays/tests
     }),
-    [permissions, ui],
+    [permissions, ui, loaded],
   );
 }

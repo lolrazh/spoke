@@ -25,6 +25,7 @@ type PermissionsControllerContext = {
   requestInputMonitoring: () => Promise<void>;
   missingPermissions: MissingPermission[];
   lastSnapshotAt: number | null;
+  permissionsLoaded: boolean;
 };
 
 const PermissionsContext = createContext<PermissionsControllerContext | null>(
@@ -37,6 +38,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   const {
     permissions,
     ui,
+    loaded: permissionsLoaded,
     init: initPermissions,
     requestMicrophone,
     requestScreenRecording,
@@ -121,6 +123,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestInputMonitoring,
       missingPermissions,
       lastSnapshotAt,
+      permissionsLoaded,
     }),
     [
       permissions,
@@ -132,6 +135,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestInputMonitoring,
       missingPermissions,
       lastSnapshotAt,
+      permissionsLoaded,
     ],
   );
 

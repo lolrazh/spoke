@@ -8,6 +8,7 @@ type SettingsCardProps = {
   className?: string;
   status?: "default" | "success" | "warning";
   inGroup?: boolean; // When true, removes individual border/rounding for use in grouped container
+  interactive?: boolean; // When true, the row highlights on hover (like a history row)
 };
 
 const SettingsCard: React.FC<SettingsCardProps> = ({
@@ -18,6 +19,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   className = "",
   status = "default",
   inGroup = false,
+  interactive = false,
 }) => {
   const statusClass =
     status === "success"
@@ -36,7 +38,9 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
 
   return (
     <div
-      className={`${baseClass} ${roundedClass} ${statusClass} ${className}`}
+      className={`group ${baseClass} ${roundedClass} ${statusClass} ${
+        interactive ? "transition-colors hover:bg-white/5" : ""
+      } ${className}`}
       role="group"
       aria-label={title}
     >
