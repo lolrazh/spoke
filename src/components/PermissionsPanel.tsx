@@ -82,6 +82,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
   const {
     permissions,
     ui,
+    permissionsLoaded,
     requestMicrophone,
     requestAccessibility,
     requestInputMonitoring,
@@ -170,7 +171,13 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
                     description={copy.description}
                     icon={copy.icon}
                   >
-                    {entry.granted ? (
+                    {!permissionsLoaded ? (
+                      // Don't flash "Enable" before the real status loads.
+                      <div
+                        className="h-[22px] w-[22px] rounded-md bg-white/[0.05]"
+                        aria-hidden
+                      />
+                    ) : entry.granted ? (
                       <svg
                         width="22"
                         height="22"
