@@ -36,7 +36,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
 
   return (
     <div
-      className={`${baseClass} ${roundedClass} ${statusClass} ${className}`}
+      className={`group ${baseClass} ${roundedClass} ${statusClass} ${className}`}
       role="group"
       aria-label={title}
     >
