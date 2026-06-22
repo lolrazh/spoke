@@ -141,6 +141,9 @@ function initUpdaterEventBridgeOnce() {
 
   autoUpdater.on("error", (err: Error) => {
     const msg = err?.message || String(err) || "Unknown updater error";
+    // Log even on silent background checks — an invisible error here is exactly
+    // what makes a stuck updater impossible to tell apart from "up to date".
+    console.error("[auto-update] error:", msg);
     setUpdateState("error", { error: msg });
     if (manualUpdateCheckInFlight)
       callbacks.sendNotify(`Update check failed: ${msg}`);
