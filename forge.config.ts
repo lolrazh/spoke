@@ -198,8 +198,8 @@ const config: ForgeConfig = {
   publishers: [
     new PublisherGithub({
       repository: { owner: "lolrazh", name: "spoke" },
-      // Create as a draft so a human can verify before it goes live.
-      draft: true,
+      // Publish the release live on tag push (no draft gate). A tag means ship.
+      draft: false,
       prerelease: false,
     }),
   ],
