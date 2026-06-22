@@ -150,6 +150,10 @@ const config: ForgeConfig = {
   makers: [
     new MakerDMG(
       {
+        // Stable, version-less filename so the website can permanently hot-link
+        // https://github.com/lolrazh/spoke/releases/latest/download/Spoke-arm64.dmg
+        // (arm64-only because the MLX sidecar requires Apple Silicon).
+        name: "Spoke-arm64",
         // Modern DMG format (same as VS Code, Raycast, etc.)
         format: "ULFO",
         // Use the existing icon for DMG
