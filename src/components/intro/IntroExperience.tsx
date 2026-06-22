@@ -112,11 +112,10 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
               transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
             >
               <h1 className="text-heading-xl heading-gradient heading-crisp text-breathe">
-                So Good You'll Want to Lick It
+                Dictation that just works.
               </h1>
               <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
-                Let's get you set up for the most intelligent dictation in the
-                world.
+                Let's get you set up for fast, private dictation in every app.
               </p>
             </motion.div>
             {/* CTA */}
