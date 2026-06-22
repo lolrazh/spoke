@@ -206,7 +206,21 @@ export function quitAndInstallUpdate(): void {
     } catch (relaunchErr) {
       console.warn("[Updater] Fallback relaunch failed:", relaunchErr);
     }
+    return;
   }
+
+  // Squirrel.Mac (ShipIt) only swaps the bundle once THIS process exits. By the
+  // time quitAndInstall returns ShipIt is already armed and waiting on our PID,
+  // but on a menu-bar app quitAndInstall doesn't reliably terminate us
+  // (window-all-closed keeps the app alive), so the install hangs indefinitely.
+  // Drive the same clean-quit path the "Quit Spoke" menu uses — it runs the
+  // before-quit cleanup that kills the sidecar/helpers — then hard-backstop with
+  // exit() if even that stalls.
+  app.quit();
+  setTimeout(() => {
+    console.warn("[Updater] still alive after quitAndInstall; forcing exit");
+    app.exit(0);
+  }, 4000).unref();
 }
 
 export function scheduleUpdateCheck(
