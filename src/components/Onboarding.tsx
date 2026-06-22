@@ -107,6 +107,10 @@ const Onboarding: React.FC = () => {
   // Steps mount when the intro *begins* exiting (not when it finishes), so the
   // first step fades in while the intro fades out — a crossfade, not a gap.
   const [stepsRevealed, setStepsRevealed] = useState<boolean>(false);
+  // Post-permissions auto-restart: relaunch so the OS applies the grants,
+  // then resume at the next step. One-shot so it can't loop.
+  const [autoRestarting, setAutoRestarting] = useState<boolean>(false);
+  const autoRestartTriggeredRef = useRef(false);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
   const shouldLoadTranscriptionSetup =
     !showIntro && currentStep === "transcription-setup";
@@ -315,6 +319,11 @@ const Onboarding: React.FC = () => {
           isOnboardingStep(savedStep) &&
           steps.includes(savedStep)
         ) {
+          // Resuming a session already in progress (e.g. right after the
+          // post-permissions auto-restart) — skip the intro and land directly
+          // on the saved step so it "reopens from the next page".
+          setShowIntro(false);
+          setStepsRevealed(true);
           setCurrentStep(savedStep);
           return;
         }
@@ -352,14 +361,27 @@ const Onboarding: React.FC = () => {
     };
   }, [currentStep, pttApiReady]);
 
-  // Auto-advance disabled per UX: user will click Next explicitly
-  // useEffect(() => {
-  //   if (currentStep === "permissions" && allPermissionsGranted) {
-  //     setTimeout(() => {
-  //       setCurrentStep("hotkey-info");
-  //     }, 1200);
-  //   }
-  // }, [currentStep, allPermissionsGranted]);
+  // Once every permission is granted, auto-restart: a relaunch is what makes
+  // macOS actually apply the Accessibility / Input Monitoring grants. We persist
+  // the next step first so onboarding reopens straight on it (intro skipped).
+  useEffect(() => {
+    if (introOnly || autoRestartTriggeredRef.current) return;
+    if (currentStep !== "permissions" || !allPermissionsGranted) return;
+    autoRestartTriggeredRef.current = true;
+    setAutoRestarting(true);
+    const steps = buildOnboardingSteps();
+    const nextStepAfterPermissions =
+      steps[steps.indexOf("permissions") + 1] ?? "complete";
+    (async () => {
+      try {
+        await window.electron?.setOnboardingStep?.(nextStepAfterPermissions);
+      } catch {
+        /* ignore — resume will fall back to the permissions step */
+      }
+      // Brief, deliberate beat so the "Restarting…" moment reads, then relaunch.
+      setTimeout(() => window.electron?.reloadApp?.(), 1600);
+    })();
+  }, [currentStep, allPermissionsGranted, introOnly]);
 
   // Navigation functions
   const nextStep = () => {
@@ -656,6 +678,20 @@ const Onboarding: React.FC = () => {
           onExitStart={handleIntroExitStart}
           onFinish={handleIntroFinish}
         />
+      )}
+
+      {/* Auto-restart moment after all permissions are granted */}
+      {autoRestarting && (
+        <motion.div
+          className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <div className="h-6 w-6 animate-spin will-change-transform rounded-full border-2 border-white/20 border-t-white/80" />
+          <p className="text-sm text-foreground">
+            You&apos;re all set. Restarting Spoke…
+          </p>
+        </motion.div>
       )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
 
@@ -1081,9 +1117,9 @@ const Onboarding: React.FC = () => {
                       {/* No separate denied section; user can press Enable again. */}
                     </div>
 
-                    {/* Restart hint */}
+                    {/* Auto-restart note */}
                     <p className="text-xs text-muted-foreground/60 text-center pt-4">
-                      You may need to restart Spoke after enabling permissions.
+                      Spoke restarts automatically once all permissions are on.
                     </p>
                   </div>
                 </motion.div>
