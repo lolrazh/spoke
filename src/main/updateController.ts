@@ -89,9 +89,12 @@ function setUpdateState(
 // ── Utilities ──────────────────────────────────────────────────────────
 
 function getFeedUrl(): string {
-  // update.electronjs.org generates a Squirrel feed from the repo's GitHub
-  // Releases. Format: /OWNER/REPO/PLATFORM/CURRENT_VERSION
-  return `https://update.electronjs.org/${GITHUB_OWNER}/${GITHUB_REPO}/${process.platform}/${app.getVersion()}`;
+  // update.electronjs.org maps a bare "darwin" platform to darwin-x64. This is
+  // an Apple-Silicon-only build, so we must request the arch-specific channel
+  // (darwin-arm64) or the service finds no matching asset and 404s.
+  // Format: /OWNER/REPO/PLATFORM-ARCH/CURRENT_VERSION
+  const platform = `${process.platform}-${process.arch}`;
+  return `https://update.electronjs.org/${GITHUB_OWNER}/${GITHUB_REPO}/${platform}/${app.getVersion()}`;
 }
 
 function ensureFeedConfigured(): boolean {
