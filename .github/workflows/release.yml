@@ -48,6 +48,11 @@ jobs:
           bash local-stt/build-sidecar-onedir.sh
           test -x local-stt/dist-ondir/spoke-stt/spoke-stt
 
+      # Match the npm that generated package-lock.json so `npm ci`'s strict
+      # tree derivation agrees with the lockfile (Node's bundled npm differs).
+      - name: Pin npm
+        run: npm install -g npm@11.4.2
+
       - name: Install dependencies
         run: npm ci
 
