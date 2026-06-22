@@ -79,13 +79,14 @@ const AppInner: React.FC = () => {
   const [showDebug, setShowDebug] = useState(false);
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
-  const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
-  const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
-    useState(CONTENT_HEIGHT);
-  const [permissionsPanelMeasured, setPermissionsPanelMeasured] =
-    useState(false);
+  // null = not measured yet; the expanded-height target falls back to the
+  // constant envelope until the panel reports its real height. One source of
+  // truth per panel (no separate "measured" boolean to keep in sync).
+  const [settingsPanelContentHeight, setSettingsPanelContentHeight] = useState<
+    number | null
+  >(null);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
-    useState(PERMISSIONS_CONTENT_HEIGHT);
+    useState<number | null>(null);
   const { missingPermissions } = usePermissionsController();
   const [panelView, setPanelView] = useState<"settings" | "permissions">(
     "settings",
@@ -110,29 +111,21 @@ const AppInner: React.FC = () => {
     "settings" | "history"
   >("settings");
 
-  const handleSettingsPanelHeight = useCallback(
-    (height: number) => {
-      if (!Number.isFinite(height) || height <= 0) return;
-      const normalized = Math.round(height);
-      if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
-      setSettingsPanelContentHeight((prev) =>
-        prev === normalized ? prev : normalized,
-      );
-    },
-    [settingsPanelMeasured],
-  );
+  const handleSettingsPanelHeight = useCallback((height: number) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const normalized = Math.round(height);
+    setSettingsPanelContentHeight((prev) =>
+      prev === normalized ? prev : normalized,
+    );
+  }, []);
 
-  const handlePermissionsPanelHeight = useCallback(
-    (height: number) => {
-      if (!Number.isFinite(height) || height <= 0) return;
-      const normalized = Math.round(height);
-      if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
-      setPermissionsPanelContentHeight((prev) =>
-        prev === normalized ? prev : normalized,
-      );
-    },
-    [permissionsPanelMeasured],
-  );
+  const handlePermissionsPanelHeight = useCallback((height: number) => {
+    if (!Number.isFinite(height) || height <= 0) return;
+    const normalized = Math.round(height);
+    setPermissionsPanelContentHeight((prev) =>
+      prev === normalized ? prev : normalized,
+    );
+  }, []);
 
   // Initialize always-on client state on app start
   useEffect(() => {
@@ -862,12 +855,9 @@ const AppInner: React.FC = () => {
     panelView === "permissions" ? PERMISSIONS_CONTENT_WIDTH : CONTENT_WIDTH;
   const expandedHeightTarget =
     panelView === "permissions"
-      ? permissionsPanelMeasured
-        ? permissionsPanelContentHeight
-        : Math.round(PERMISSIONS_CONTENT_HEIGHT * S)
-      : settingsPanelMeasured
-        ? settingsPanelContentHeight
-        : Math.round(CONTENT_HEIGHT * S);
+      ? (permissionsPanelContentHeight ??
+        Math.round(PERMISSIONS_CONTENT_HEIGHT * S))
+      : (settingsPanelContentHeight ?? Math.round(CONTENT_HEIGHT * S));
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
   const EXPANDED_H = Math.round(expandedHeightTarget);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
