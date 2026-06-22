@@ -1,13 +1,18 @@
 /**
  * Update Controller
  *
- * Manages update checking, state tracking, and user notification for
- * Electron auto-updates. Supports both electron-updater (primary) and
- * manifest-based fallback checking against RELEASES.json.
+ * Wires Electron's built-in Squirrel.Mac autoUpdater to the free
+ * update.electronjs.org service, which serves a Squirrel feed straight from
+ * the public GitHub Releases of this repo. Tracks state for the tray UI and
+ * surfaces notifications. Updates only work in a signed, packaged build.
  */
 
-import https from "node:https";
-import { app } from "electron";
+import { app, autoUpdater } from "electron";
+
+// ── Config ─────────────────────────────────────────────────────────────
+
+const GITHUB_OWNER = "lolrazh";
+const GITHUB_REPO = "spoke";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -30,6 +35,7 @@ let updateAvailableVersion: string | null = null;
 let updateReadyToInstall = false;
 let updateError: string | null = null;
 let updaterListenersInitialized = false;
+let feedConfigured = false;
 let manualUpdateCheckInFlight = false;
 let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
 let updateBackoffMs: number | null = null;
@@ -82,55 +88,22 @@ function setUpdateState(
 
 // ── Utilities ──────────────────────────────────────────────────────────
 
-function getReleasesUrl(): string {
-  return `https://download.spoke.so/darwin/${process.arch}/RELEASES.json`;
+function getFeedUrl(): string {
+  // update.electronjs.org generates a Squirrel feed from the repo's GitHub
+  // Releases. Format: /OWNER/REPO/PLATFORM/CURRENT_VERSION
+  return `https://update.electronjs.org/${GITHUB_OWNER}/${GITHUB_REPO}/${process.platform}/${app.getVersion()}`;
 }
 
-export function compareSemver(a: string, b: string): number {
-  const pa = a
-    .split("-")[0]
-    .split(".")
-    .map((n) => parseInt(n, 10));
-  const pb = b
-    .split("-")[0]
-    .split(".")
-    .map((n) => parseInt(n, 10));
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na > nb) return 1;
-    if (na < nb) return -1;
+function ensureFeedConfigured(): boolean {
+  if (feedConfigured) return true;
+  try {
+    autoUpdater.setFeedURL({ url: getFeedUrl() });
+    feedConfigured = true;
+    return true;
+  } catch (e) {
+    console.warn("[auto-update] setFeedURL failed:", e);
+    return false;
   }
-  return 0;
-}
-
-async function fetchJson(url: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    try {
-      https
-        .get(url, (res) => {
-          const { statusCode } = res;
-          if (!statusCode || statusCode < 200 || statusCode >= 300) {
-            reject(new Error(`HTTP ${statusCode} for ${url}`));
-            res.resume();
-            return;
-          }
-          let data = "";
-          res.setEncoding("utf8");
-          res.on("data", (chunk) => (data += chunk));
-          res.on("end", () => {
-            try {
-              resolve(JSON.parse(data));
-            } catch (e) {
-              reject(e);
-            }
-          });
-        })
-        .on("error", reject);
-    } catch (e) {
-      reject(e);
-    }
-  });
 }
 
 function jitterMs(baseMs: number, pct = 0.2): number {
@@ -143,52 +116,45 @@ function jitterMs(baseMs: number, pct = 0.2): number {
 function initUpdaterEventBridgeOnce() {
   if (updaterListenersInitialized) return;
   updaterListenersInitialized = true;
-  try {
-    const req: any = eval("require");
-    const mod = req?.("electron-updater");
-    const autoUpdater = mod?.autoUpdater as any;
-    if (autoUpdater && typeof autoUpdater.on === "function") {
-      autoUpdater.on("checking-for-update", () => {
-        setUpdateState("checking");
-      });
-      autoUpdater.on("update-available", (info: any) => {
-        const v = info?.version || info?.updateInfo?.version || null;
-        updateReadyToInstall = false;
-        setUpdateState("available", { version: v || undefined });
-        if (v) callbacks.sendNotify(`Update found: v${v}. Downloading…`);
-        else callbacks.sendNotify("Update found. Downloading…");
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("update-not-available", () => {
-        setUpdateState("not-available");
-        if (manualUpdateCheckInFlight)
-          callbacks.sendNotify("You're up to date.");
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("error", (err: any) => {
-        const msg =
-          (err && (err.message || String(err))) || "Unknown updater error";
-        setUpdateState("error", { error: msg });
-        if (manualUpdateCheckInFlight)
-          callbacks.sendNotify(`Update check failed: ${msg}`);
-        manualUpdateCheckInFlight = false;
-      });
-      autoUpdater.on("download-progress", () => {
-        setUpdateState("available");
-      });
-      autoUpdater.on("update-downloaded", (info: any) => {
-        const v =
-          info?.version || info?.updateInfo?.version || updateAvailableVersion;
-        updateAvailableVersion = v ?? updateAvailableVersion;
-        updateReadyToInstall = true;
-        setUpdateState("available");
-        callbacks.sendNotify("Update ready. Restart to install.");
-        manualUpdateCheckInFlight = false;
-      });
-    }
-  } catch {
-    // electron-updater may not be directly resolvable
-  }
+
+  autoUpdater.on("checking-for-update", () => {
+    setUpdateState("checking");
+  });
+
+  // Squirrel.Mac auto-downloads after finding an update; there is no
+  // download-progress event, just update-available then update-downloaded.
+  autoUpdater.on("update-available", () => {
+    updateReadyToInstall = false;
+    setUpdateState("available");
+    callbacks.sendNotify("Update found. Downloading…");
+    manualUpdateCheckInFlight = false;
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    setUpdateState("not-available");
+    if (manualUpdateCheckInFlight) callbacks.sendNotify("You're up to date.");
+    manualUpdateCheckInFlight = false;
+  });
+
+  autoUpdater.on("error", (err: Error) => {
+    const msg = err?.message || String(err) || "Unknown updater error";
+    setUpdateState("error", { error: msg });
+    if (manualUpdateCheckInFlight)
+      callbacks.sendNotify(`Update check failed: ${msg}`);
+    manualUpdateCheckInFlight = false;
+  });
+
+  // Signature: (event, releaseNotes, releaseName, releaseDate, updateURL)
+  autoUpdater.on(
+    "update-downloaded",
+    (_event, _releaseNotes, releaseName) => {
+      if (releaseName) updateAvailableVersion = String(releaseName);
+      updateReadyToInstall = true;
+      setUpdateState("available");
+      callbacks.sendNotify("Update ready. Restart to install.");
+      manualUpdateCheckInFlight = false;
+    },
+  );
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -200,66 +166,43 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     return;
   }
   if (updateStatus === "checking") return;
-  initUpdaterEventBridgeOnce();
 
-  // Try to delegate to electron-updater if present
-  try {
-    const req: any = eval("require");
-    const mod = req?.("electron-updater");
-    const autoUpdater = mod?.autoUpdater as any;
-    if (autoUpdater && typeof autoUpdater.checkForUpdates === "function") {
-      setUpdateState("checking");
-      manualUpdateCheckInFlight = !silent;
-      if (!silent) callbacks.sendNotify("Checking for updates…");
-      try {
-        await autoUpdater.checkForUpdates();
-        return;
-      } catch (e: any) {
-        console.warn(
-          "[auto-update] Delegated check failed, falling back:",
-          e?.message || e,
-        );
-      }
-    }
-  } catch {
-    // fall back below
+  initUpdaterEventBridgeOnce();
+  if (!ensureFeedConfigured()) {
+    setUpdateState("error", { error: "Could not configure update feed" });
+    if (!silent) callbacks.sendNotify("Update check failed.");
+    return;
   }
 
-  // Fallback: probe manifest directly
   try {
     setUpdateState("checking");
-    const url = getReleasesUrl();
-    const manifest = await fetchJson(url);
-    let latest: string | null = null;
-    if (manifest?.currentRelease) {
-      latest = String(manifest.currentRelease);
-    } else if (
-      Array.isArray(manifest?.releases) &&
-      manifest.releases.length > 0
-    ) {
-      latest =
-        manifest.releases
-          .map((r: any) => r?.version || r?.updateTo?.version)
-          .filter(Boolean)
-          .map(String)
-          .sort((a: string, b: string) => compareSemver(a, b))
-          .pop() || null;
-    }
-    const current = app.getVersion();
-    if (latest && compareSemver(latest, current) > 0) {
-      setUpdateState("available", { version: latest });
-      if (!silent)
-        callbacks.sendNotify(
-          `Update available: v${latest}. It will download automatically.`,
-        );
-    } else {
-      setUpdateState("not-available");
-      if (!silent) callbacks.sendNotify("You're up to date.");
-    }
+    manualUpdateCheckInFlight = !silent;
+    if (!silent) callbacks.sendNotify("Checking for updates…");
+    // checkForUpdates emits the events wired above; it does not return a value.
+    autoUpdater.checkForUpdates();
   } catch (err: any) {
     const msg = err?.message || String(err);
     setUpdateState("error", { error: msg });
     if (!silent) callbacks.sendNotify(`Update check failed: ${msg}`);
+    manualUpdateCheckInFlight = false;
+  }
+}
+
+export function quitAndInstallUpdate(): void {
+  try {
+    console.log("[Updater] quitAndInstall invoked");
+    autoUpdater.quitAndInstall();
+  } catch (e) {
+    console.warn(
+      "[Updater] quitAndInstall failed; relaunching as fallback:",
+      e,
+    );
+    try {
+      app.relaunch();
+      app.quit();
+    } catch (relaunchErr) {
+      console.warn("[Updater] Fallback relaunch failed:", relaunchErr);
+    }
   }
 }
 

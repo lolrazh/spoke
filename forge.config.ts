@@ -4,7 +4,7 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
-import { PublisherS3 } from "@electron-forge/publisher-s3";
+import { PublisherGithub } from "@electron-forge/publisher-github";
 import fs from "node:fs";
 import { execa } from "execa";
 
@@ -184,33 +184,19 @@ const config: ForgeConfig = {
       },
       ["darwin"],
     ),
-    // Produce a ZIP for macOS auto-updates (read by update-electron-app)
-    // Include absolute URLs in RELEASES.json for stable CDN behavior
-    new MakerZIP(
-      (arch) => ({
-        macUpdateManifestBaseUrl: `https://download.spoke.so/darwin/${arch}`,
-      }),
-      ["darwin"],
-    ),
+    // Produce the Squirrel.Mac ZIP for auto-updates. update.electronjs.org
+    // generates the feed from the GitHub Release assets, so no self-hosted
+    // manifest base URL is needed.
+    new MakerZIP({}, ["darwin"]),
   ],
-  // Auto-publish artifacts to Cloudflare R2 (S3-compatible)
+  // Publish DMG + update ZIP to GitHub Releases (served to clients for free
+  // via update.electronjs.org). Auth via GITHUB_TOKEN.
   publishers: [
-    new PublisherS3({
-      // Credentials from environment (CI-style, also works locally via dotenv-cli)
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      sessionToken: process.env.AWS_SESSION_TOKEN,
-      // Required: your R2 bucket name (no protocol)
-      bucket: process.env.R2_BUCKET || "releases",
-      // R2 specifics
-      endpoint: process.env.R2_ENDPOINT, // e.g. https://<ACCOUNT_ID>.r2.cloudflarestorage.com
-      region: process.env.R2_REGION || "auto",
-      s3ForcePathStyle: true,
-      // Place artifacts where update-electron-app expects them
-      // Result: darwin/arm64/<filename> or darwin/x64/<filename>
-      keyResolver: (filename: string, platform: string, arch: string) => {
-        return `${platform}/${arch}/${filename}`;
-      },
+    new PublisherGithub({
+      repository: { owner: "lolrazh", name: "spoke" },
+      // Create as a draft so a human can verify before it goes live.
+      draft: true,
+      prerelease: false,
     }),
   ],
   hooks: {
@@ -288,6 +274,21 @@ const config: ForgeConfig = {
 
         for (const dmg of dmgPaths) {
           try {
+            // Code-sign the DMG wrapper itself (Forge only signs the .app).
+            // Must happen before notarization so the notary validates it, and
+            // before stapling so the staple isn't invalidated.
+            const signingIdentity = process.env.APPLE_IDENTITY;
+            if (signingIdentity) {
+              console.log(`[DMG Sign] Signing: ${dmg}`);
+              await execa(
+                "codesign",
+                ["--force", "--sign", signingIdentity, "--timestamp", dmg],
+                { stdio: "inherit" },
+              );
+            } else {
+              console.log("[DMG Sign] Skipped (APPLE_IDENTITY unset)");
+            }
+
             console.log(`[DMG Notarize] Submitting: ${dmg}`);
             await execa(
               "xcrun",
