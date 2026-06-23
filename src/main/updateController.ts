@@ -28,7 +28,17 @@ export type UpdateStatus =
 export interface UpdateCallbacks {
   sendNotify: (message: string) => void;
   rebuildTrayMenu: () => void;
+  onStateChange?: (snapshot: UpdateSnapshot) => void;
 }
+
+export interface UpdateSnapshot {
+  status: UpdateStatus;
+  version: string | null;
+  readyToInstall: boolean;
+  error: string | null;
+}
+
+export type DevUpdateState = UpdateStatus | "ready";
 
 // ── Internal state ─────────────────────────────────────────────────────
 
@@ -75,6 +85,15 @@ export function getUpdateError(): string | null {
   return updateError;
 }
 
+export function getUpdateSnapshot(): UpdateSnapshot {
+  return {
+    status: updateStatus,
+    version: updateAvailableVersion,
+    readyToInstall: updateReadyToInstall,
+    error: updateError,
+  };
+}
+
 // ── State management ───────────────────────────────────────────────────
 
 function setUpdateState(
@@ -87,6 +106,9 @@ function setUpdateState(
     opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
   try {
     callbacks.rebuildTrayMenu();
+  } catch {}
+  try {
+    callbacks.onStateChange?.(getUpdateSnapshot());
   } catch {}
 }
 
@@ -335,6 +357,33 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     if (!silent) callbacks.sendNotify(`Update check failed: ${msg}`);
     manualUpdateCheckInFlight = false;
   }
+}
+
+export function setDevUpdateStateForTesting(
+  next: DevUpdateState,
+): { ok: boolean; snapshot: UpdateSnapshot; error?: string } {
+  if (app.isPackaged) {
+    return {
+      ok: false,
+      snapshot: getUpdateSnapshot(),
+      error: "Dev update state is unavailable in packaged builds",
+    };
+  }
+
+  updateReadyToInstall = next === "ready";
+  updateAvailableNotificationSent = next === "available";
+  updateAvailableVersion =
+    next === "available" || next === "ready" ? `v${app.getVersion()}-dev` : null;
+
+  if (next === "ready") {
+    setUpdateState("available", { version: updateAvailableVersion ?? undefined });
+  } else if (next === "error") {
+    setUpdateState("error", { error: "Dev update preview" });
+  } else {
+    setUpdateState(next);
+  }
+
+  return { ok: true, snapshot: getUpdateSnapshot() };
 }
 
 export function quitAndInstallUpdate(): void {

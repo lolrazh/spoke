@@ -32,9 +32,55 @@ if (!globalThis.window) {
   globalThis.window = {};
 }
 // @ts-ignore
+if (!globalThis.window.app) {
+  // @ts-ignore
+  globalThis.window.app = {
+    getVersion: vi.fn(async () => "0.1.7"),
+  } as any;
+}
+// @ts-ignore
+if (!globalThis.window.update) {
+  // @ts-ignore
+  globalThis.window.update = {
+    getState: vi.fn(async () => ({
+      status: "idle",
+      version: null,
+      readyToInstall: false,
+      error: null,
+    })),
+    check: vi.fn(async () => ({
+      status: "checking",
+      version: null,
+      readyToInstall: false,
+      error: null,
+    })),
+    restart: vi.fn(async () => ({ ok: true })),
+    installWhenReady: vi.fn(async () => ({
+      ok: true,
+      snapshot: {
+        status: "available",
+        version: "v0.1.7-dev",
+        readyToInstall: false,
+        error: null,
+      },
+    })),
+    devSetState: vi.fn(async () => ({
+      ok: true,
+      snapshot: {
+        status: "available",
+        version: "v0.1.7-dev",
+        readyToInstall: true,
+        error: null,
+      },
+    })),
+    onStateChanged: vi.fn(() => () => {}),
+  } as any;
+}
+// @ts-ignore
 if (!globalThis.window.electron) {
   // @ts-ignore
   globalThis.window.electron = {
+    setClickThrough: vi.fn(),
     getFloatingBarEnabled: async () => ({ enabled: true }),
     isFloatingBarVisible: async () => ({ visible: true }),
     checkPermissions: async () => ({
@@ -47,6 +93,7 @@ if (!globalThis.window.electron) {
       granted: true,
     }),
     openSystemPreferences: async () => {},
+    openExternal: vi.fn(async () => ({ ok: true })),
   } as any;
 }
 

@@ -291,6 +291,21 @@ contextBridge.exposeInMainWorld("app", {
   getVersion: (): Promise<string> => ipcRenderer.invoke("app:get-version"),
 });
 
+contextBridge.exposeInMainWorld("update", {
+  getState: () => ipcRenderer.invoke("update:get-state"),
+  check: () => ipcRenderer.invoke("update:check"),
+  restart: () => ipcRenderer.invoke("update:restart"),
+  installWhenReady: () => ipcRenderer.invoke("update:install-when-ready"),
+  devSetState: (state: string) =>
+    ipcRenderer.invoke("update:dev-set-state", state),
+  onStateChanged: (cb: (snapshot: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown) =>
+      cb(snapshot);
+    ipcRenderer.on("update:state-changed", listener);
+    return () => ipcRenderer.removeListener("update:state-changed", listener);
+  },
+});
+
 // Transcription history storage bridge
 contextBridge.exposeInMainWorld("transcriptions", {
   getAll: (): Promise<TranscriptionItem[]> =>

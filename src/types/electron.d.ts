@@ -25,6 +25,71 @@ declare global {
     app: {
       getVersion: () => Promise<string>;
     };
+    update: {
+      getState: () => Promise<{
+        status: "idle" | "checking" | "available" | "not-available" | "error";
+        version: string | null;
+        readyToInstall: boolean;
+        error: string | null;
+      }>;
+      check: () => Promise<{
+        status: "idle" | "checking" | "available" | "not-available" | "error";
+        version: string | null;
+        readyToInstall: boolean;
+        error: string | null;
+      }>;
+      restart: () => Promise<{ ok: boolean }>;
+      installWhenReady: () => Promise<{
+        ok: boolean;
+        snapshot: {
+          status:
+            | "idle"
+            | "checking"
+            | "available"
+            | "not-available"
+            | "error";
+          version: string | null;
+          readyToInstall: boolean;
+          error: string | null;
+        };
+      }>;
+      devSetState?: (
+        state:
+          | "idle"
+          | "checking"
+          | "available"
+          | "not-available"
+          | "error"
+          | "ready",
+      ) => Promise<{
+        ok: boolean;
+        snapshot: {
+          status:
+            | "idle"
+            | "checking"
+            | "available"
+            | "not-available"
+            | "error";
+          version: string | null;
+          readyToInstall: boolean;
+          error: string | null;
+        };
+        error?: string;
+      }>;
+      onStateChanged: (
+        cb: (snapshot: {
+          status:
+            | "idle"
+            | "checking"
+            | "available"
+            | "not-available"
+            | "error";
+          version: string | null;
+          readyToInstall: boolean;
+          error: string | null;
+        }) => void,
+      ) => () => void;
+    };
     devFlags: {
       skipOnboarding: boolean;
       forceOnboarding: boolean;

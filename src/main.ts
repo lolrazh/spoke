@@ -160,6 +160,8 @@ import {
   getUpdateAvailableVersion,
   isUpdateReadyToInstall,
   getUpdateError,
+  getUpdateSnapshot,
+  setDevUpdateStateForTesting,
   quitAndInstallUpdate,
   jitterMs,
 } from "./main/updateController";
@@ -195,6 +197,7 @@ let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 let pttTarget: PttTarget = "auto";
 let mainWindowPostReadyWorkScheduled = false;
+let installUpdateWhenReady = false;
 
 // Ensure a single running app instance.
 const gotTheLock = app.requestSingleInstanceLock();
@@ -1539,6 +1542,22 @@ app.whenReady().then(async () => {
         }
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
+      onStateChange: (snapshot) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("update:state-changed", snapshot);
+          }
+        } catch {}
+        try {
+          if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+            onboardingWindow.webContents.send("update:state-changed", snapshot);
+          }
+        } catch {}
+        if (installUpdateWhenReady && snapshot.readyToInstall) {
+          installUpdateWhenReady = false;
+          quitAndInstallUpdate();
+        }
+      },
     });
   });
 
@@ -2493,6 +2512,51 @@ app.whenReady().then(async () => {
     } catch (e) {
       return "";
     }
+  });
+
+  ipcMain.handle("update:get-state", () => getUpdateSnapshot());
+
+  ipcMain.handle("update:check", async () => {
+    await manualCheckForUpdates(false);
+    return getUpdateSnapshot();
+  });
+
+  ipcMain.handle("update:restart", () => {
+    quitAndInstallUpdate();
+    return { ok: true };
+  });
+
+  ipcMain.handle("update:install-when-ready", async () => {
+    if (isUpdateReadyToInstall()) {
+      quitAndInstallUpdate();
+      return { ok: true, snapshot: getUpdateSnapshot() };
+    }
+
+    installUpdateWhenReady = true;
+
+    if (getUpdateStatus() !== "available" && getUpdateStatus() !== "checking") {
+      await manualCheckForUpdates(false);
+    }
+
+    return { ok: true, snapshot: getUpdateSnapshot() };
+  });
+
+  ipcMain.handle("update:dev-set-state", (_event, state: unknown) => {
+    if (
+      state !== "idle" &&
+      state !== "checking" &&
+      state !== "available" &&
+      state !== "not-available" &&
+      state !== "error" &&
+      state !== "ready"
+    ) {
+      return {
+        ok: false,
+        snapshot: getUpdateSnapshot(),
+        error: "Invalid dev update state",
+      };
+    }
+    return setDevUpdateStateForTesting(state);
   });
 
   // Screenshot capture for OCR context (Phase 1)

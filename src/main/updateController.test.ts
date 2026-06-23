@@ -138,6 +138,32 @@ describe("updateController", () => {
     expect(electron.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
   });
 
+  it("allows update state previews only in development builds", async () => {
+    const packaged = await loadController({ packaged: true });
+    expect(packaged.controller.setDevUpdateStateForTesting("ready")).toEqual({
+      ok: false,
+      snapshot: {
+        status: "idle",
+        version: null,
+        readyToInstall: false,
+        error: null,
+      },
+      error: "Dev update state is unavailable in packaged builds",
+    });
+
+    const dev = await loadController({ packaged: false, version: "0.1.7" });
+    const result = dev.controller.setDevUpdateStateForTesting("ready");
+
+    expect(result.ok).toBe(true);
+    expect(result.snapshot).toEqual({
+      status: "available",
+      version: "v0.1.7-dev",
+      readyToInstall: true,
+      error: null,
+    });
+    expect(dev.rebuildTrayMenu).toHaveBeenCalled();
+  });
+
   it("does not start another check while an update is downloading", async () => {
     const { controller, electron, fetchMock, sendNotify } =
       await loadController();
