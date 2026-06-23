@@ -89,6 +89,7 @@ const config: ForgeConfig = {
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
+      ...(appleTeamId ? { ElectronTeamID: appleTeamId } : {}),
     },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
     osxSign: {

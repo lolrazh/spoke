@@ -1,7 +1,7 @@
 {
   "name": "spoke",
   "productName": "Spoke",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Voice-to-text AI that works everywhere you do",
   "main": ".vite/build/main.js",
   "scripts": {
@@ -14,6 +14,7 @@
     "make:env": "dotenv -e .env -- electron-forge make --arch=arm64",
     "stage:package": "dotenv -e .env -- bash -lc \"VITE_SF_DEVTOOLS=1 electron-forge package --arch=arm64\"",
     "stage:make": "dotenv -e .env -- bash -lc \"VITE_SF_DEVTOOLS=1 electron-forge make --arch=arm64\"",
+    "release:preflight": "dotenv -e .env -- bash scripts/release-preflight.sh",
     "publish": "electron-forge publish",
     "publish:env": "dotenv -e .env -- electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",

@@ -13,6 +13,7 @@ import {
   systemPreferences,
   powerMonitor,
   globalShortcut,
+  Notification,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import path from "node:path";
@@ -1086,10 +1087,13 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   );
 
   const updateItems: Electron.MenuItemConstructorOptions[] = [];
-  const buildCheckLabel = () =>
-    getUpdateStatus() === "checking"
-      ? "Checking for Updates…"
-      : "Check for Updates…";
+  const buildCheckLabel = () => {
+    if (getUpdateStatus() === "checking") return "Checking for Updates…";
+    if (getUpdateStatus() === "available" && !isUpdateReadyToInstall())
+      return "Downloading Update…";
+    if (isUpdateReadyToInstall()) return "Update Ready";
+    return "Check for Updates…";
+  };
 
   function restartToInstallUpdate() {
     quitAndInstallUpdate();
@@ -1098,7 +1102,9 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   // Primary update actions
   updateItems.push({
     label: buildCheckLabel(),
-    enabled: getUpdateStatus() !== "checking",
+    enabled:
+      getUpdateStatus() !== "checking" &&
+      !(getUpdateStatus() === "available" && !isUpdateReadyToInstall()),
     click: () => {
       manualCheckForUpdates();
     },
@@ -1487,8 +1493,7 @@ app.whenReady().then(async () => {
     const broadcastToAllWindows = (channel: string, payload: unknown) => {
       try {
         BrowserWindow.getAllWindows().forEach((window) => {
-          if (!window.isDestroyed())
-            window.webContents.send(channel, payload);
+          if (!window.isDestroyed()) window.webContents.send(channel, payload);
         });
       } catch {}
     };
@@ -1524,6 +1529,17 @@ app.whenReady().then(async () => {
           if (onboardingWindow && !onboardingWindow.isDestroyed())
             onboardingWindow.webContents.send("notify", message);
         } catch {}
+        try {
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "Spoke",
+              body: message,
+              silent: false,
+            }).show();
+          }
+        } catch (err) {
+          console.warn("[auto-update] native notification failed:", err);
+        }
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
     });

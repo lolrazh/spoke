@@ -13,6 +13,7 @@ import { app, autoUpdater } from "electron";
 
 const GITHUB_OWNER = "lolrazh";
 const GITHUB_REPO = "spoke";
+const UPDATE_CHECK_TIMEOUT_MS = 60_000;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ let feedConfigured = false;
 let manualUpdateCheckInFlight = false;
 let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
 let updateBackoffMs: number | null = null;
+let updateCheckWatchdog: NodeJS.Timeout | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -86,6 +88,32 @@ function setUpdateState(
   } catch {}
 }
 
+function clearUpdateCheckWatchdog() {
+  if (!updateCheckWatchdog) return;
+  try {
+    clearTimeout(updateCheckWatchdog);
+  } catch {}
+  updateCheckWatchdog = null;
+}
+
+function startUpdateCheckWatchdog(silent: boolean) {
+  clearUpdateCheckWatchdog();
+  updateCheckWatchdog = setTimeout(() => {
+    updateCheckWatchdog = null;
+    if (updateStatus !== "checking") return;
+
+    const msg = `No updater response after ${Math.round(
+      UPDATE_CHECK_TIMEOUT_MS / 1000,
+    )}s`;
+    console.warn("[auto-update] timed out:", msg);
+    setUpdateState("error", { error: msg });
+    if (!silent || manualUpdateCheckInFlight)
+      callbacks.sendNotify("Update check timed out. Try again in a moment.");
+    manualUpdateCheckInFlight = false;
+  }, UPDATE_CHECK_TIMEOUT_MS);
+  updateCheckWatchdog.unref?.();
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────
 
 function getFeedUrl(): string {
@@ -100,7 +128,9 @@ function getFeedUrl(): string {
 function ensureFeedConfigured(): boolean {
   if (feedConfigured) return true;
   try {
-    autoUpdater.setFeedURL({ url: getFeedUrl() });
+    const feedUrl = getFeedUrl();
+    console.log("[auto-update] configuring feed:", feedUrl);
+    autoUpdater.setFeedURL({ url: feedUrl });
     feedConfigured = true;
     return true;
   } catch (e) {
@@ -121,12 +151,15 @@ function initUpdaterEventBridgeOnce() {
   updaterListenersInitialized = true;
 
   autoUpdater.on("checking-for-update", () => {
+    console.log("[auto-update] checking-for-update");
     setUpdateState("checking");
   });
 
   // Squirrel.Mac auto-downloads after finding an update; there is no
   // download-progress event, just update-available then update-downloaded.
   autoUpdater.on("update-available", () => {
+    console.log("[auto-update] update-available");
+    clearUpdateCheckWatchdog();
     updateReadyToInstall = false;
     setUpdateState("available");
     callbacks.sendNotify("Update found. Downloading…");
@@ -134,12 +167,15 @@ function initUpdaterEventBridgeOnce() {
   });
 
   autoUpdater.on("update-not-available", () => {
+    console.log("[auto-update] update-not-available");
+    clearUpdateCheckWatchdog();
     setUpdateState("not-available");
     if (manualUpdateCheckInFlight) callbacks.sendNotify("You're up to date.");
     manualUpdateCheckInFlight = false;
   });
 
   autoUpdater.on("error", (err: Error) => {
+    clearUpdateCheckWatchdog();
     const msg = err?.message || String(err) || "Unknown updater error";
     // Log even on silent background checks — an invisible error here is exactly
     // what makes a stuck updater impossible to tell apart from "up to date".
@@ -151,16 +187,15 @@ function initUpdaterEventBridgeOnce() {
   });
 
   // Signature: (event, releaseNotes, releaseName, releaseDate, updateURL)
-  autoUpdater.on(
-    "update-downloaded",
-    (_event, _releaseNotes, releaseName) => {
-      if (releaseName) updateAvailableVersion = String(releaseName);
-      updateReadyToInstall = true;
-      setUpdateState("available");
-      callbacks.sendNotify("Update ready. Restart to install.");
-      manualUpdateCheckInFlight = false;
-    },
-  );
+  autoUpdater.on("update-downloaded", (_event, _releaseNotes, releaseName) => {
+    console.log("[auto-update] update-downloaded:", releaseName);
+    clearUpdateCheckWatchdog();
+    if (releaseName) updateAvailableVersion = String(releaseName);
+    updateReadyToInstall = true;
+    setUpdateState("available");
+    callbacks.sendNotify("Update ready. Restart to install.");
+    manualUpdateCheckInFlight = false;
+  });
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -171,7 +206,14 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
       callbacks.sendNotify("Updates are only available in packaged builds.");
     return;
   }
-  if (updateStatus === "checking") return;
+  if (updateReadyToInstall) {
+    if (!silent) callbacks.sendNotify("Update ready. Restart to install.");
+    return;
+  }
+  if (updateStatus === "checking") {
+    if (!silent) callbacks.sendNotify("Still checking for updates…");
+    return;
+  }
 
   initUpdaterEventBridgeOnce();
   if (!ensureFeedConfigured()) {
@@ -184,9 +226,18 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     setUpdateState("checking");
     manualUpdateCheckInFlight = !silent;
     if (!silent) callbacks.sendNotify("Checking for updates…");
+    console.log("[auto-update] checkForUpdates requested", {
+      manual: !silent,
+      feed: getFeedUrl(),
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+    });
+    startUpdateCheckWatchdog(silent);
     // checkForUpdates emits the events wired above; it does not return a value.
     autoUpdater.checkForUpdates();
   } catch (err: any) {
+    clearUpdateCheckWatchdog();
     const msg = err?.message || String(err);
     setUpdateState("error", { error: msg });
     if (!silent) callbacks.sendNotify(`Update check failed: ${msg}`);
