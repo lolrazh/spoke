@@ -6,7 +6,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
 import ModelInstallCard from "./ModelInstallCard";
@@ -23,6 +22,8 @@ type SettingsPanelInitialTab = Extract<
   SettingsPanelTab,
   "settings" | "history"
 >;
+
+const DEFAULT_MIC_DEVICE = { id: "default", label: "System Default" };
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
@@ -61,33 +62,43 @@ const SelectField: React.FC<{
   description?: string;
   inGroup?: boolean;
   icon?: React.ReactNode;
-}> = ({ value, onChange, options, label, description, inGroup, icon }) => (
-  <SettingsCard
-    title={label}
-    description={description}
-    icon={
-      icon ?? (
-        <SfIcon name="microphone.fill" size={16} className="text-primary/70" />
-      )
-    }
-    inGroup={inGroup}
-  >
-    <div className="ml-2">
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-48">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  </SettingsCard>
-);
+}> = ({ value, onChange, options, label, description, inGroup, icon }) => {
+  const selectedLabel =
+    options.find((option) => option.value === value)?.label ??
+    (value === DEFAULT_MIC_DEVICE.id ? DEFAULT_MIC_DEVICE.label : "Select…");
+
+  return (
+    <SettingsCard
+      title={label}
+      description={description}
+      icon={
+        icon ?? (
+          <SfIcon
+            name="microphone.fill"
+            size={16}
+            className="text-primary/70"
+          />
+        )
+      }
+      inGroup={inGroup}
+    >
+      <div className="ml-2">
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger className="w-48">
+            <span className="block truncate">{selectedLabel}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </SettingsCard>
+  );
+};
 
 // Cleaned out legacy row components; cards are now the single layout primitive
 
@@ -205,7 +216,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [initialTab]);
 
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
-    [],
+    [DEFAULT_MIC_DEVICE],
   );
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
@@ -290,10 +301,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
           }));
 
-        setMicDevices(audioInputs);
+        setMicDevices([
+          DEFAULT_MIC_DEVICE,
+          ...audioInputs.filter((device) => device.id !== DEFAULT_MIC_DEVICE.id),
+        ]);
       } catch (err) {
         console.error("[SettingsPanel] Failed to enumerate devices:", err);
-        setMicDevices([]);
+        setMicDevices([DEFAULT_MIC_DEVICE]);
       }
     };
 

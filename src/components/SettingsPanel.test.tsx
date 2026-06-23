@@ -99,6 +99,15 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
+  it("renders the default mic label on the first paint", async () => {
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(React.createElement(SettingsPanel));
+
+    expect(container.textContent ?? "").toContain("System Default");
+
+    unmount();
+  });
+
   it("shows only the local Whisper model in the Models tab (no providers/cloud)", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(React.createElement(SettingsPanel));
