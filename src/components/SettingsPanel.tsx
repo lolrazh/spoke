@@ -195,87 +195,121 @@ const TabButton: React.FC<{
   </button>
 );
 
+type UpdateCapsuleMode =
+  | "available"
+  | "downloading"
+  | "checking"
+  | "ready"
+  | "error";
+
+// Spring shared by the capsule's entrance and the version label it pushes
+// aside, so the two read as a single coordinated motion.
+const UPDATE_CAPSULE_SPRING = {
+  type: "spring",
+  stiffness: 480,
+  damping: 30,
+  mass: 0.85,
+} as const;
+
+const UPDATE_CAPSULE_CONFIG: Record<
+  UpdateCapsuleMode,
+  { label: string; interactive: boolean; spinner: boolean }
+> = {
+  available: {
+    label: "Update Available",
+    interactive: true,
+    spinner: false,
+  },
+  downloading: {
+    label: "Downloading",
+    interactive: false,
+    spinner: true,
+  },
+  checking: {
+    label: "Checking",
+    interactive: false,
+    spinner: true,
+  },
+  ready: {
+    label: "Restart Spoke",
+    interactive: true,
+    spinner: false,
+  },
+  error: {
+    label: "Try Again",
+    interactive: true,
+    spinner: false,
+  },
+};
+
+function deriveUpdateCapsuleMode(
+  state: UpdatePanelState | null,
+  installRequested: boolean,
+): UpdateCapsuleMode | null {
+  if (!state) return null;
+  if (state.readyToInstall) return "ready";
+  if (state.status === "checking") return "checking";
+  if (state.status === "available") {
+    return installRequested ? "downloading" : "available";
+  }
+  if (state.status === "error") return "error";
+  return null;
+}
+
 const UpdateCapsule: React.FC<{
-  updateState: UpdatePanelState | null;
-  onInstallRequested: () => void;
-  installRequested: boolean;
-}> = ({ updateState, onInstallRequested, installRequested }) => {
-  if (!updateState) return null;
-
-  const isReady = updateState.readyToInstall;
-  const isAvailable =
-    updateState.status === "available" && !updateState.readyToInstall;
-  const isChecking = updateState.status === "checking";
-  const isError = updateState.status === "error";
-  const visible = isReady || isAvailable || isChecking || isError;
-
-  if (!visible) return null;
-
-  const label = isReady
-    ? "Restart Spoke"
-    : isAvailable
-      ? installRequested
-        ? "Downloading"
-        : "Update Available"
-      : isChecking
-        ? "Checking"
-        : "Try Again";
+  mode: UpdateCapsuleMode;
+  onInstall: () => void;
+  onRestart: () => void;
+  onRetry: () => void;
+}> = ({ mode, onInstall, onRestart, onRetry }) => {
+  const config = UPDATE_CAPSULE_CONFIG[mode];
 
   const handleClick = () => {
-    if (isReady) {
-      window.update?.restart?.();
-      return;
-    }
-    if (isAvailable) {
-      onInstallRequested();
-      return;
-    }
-    if (isError) {
-      window.update?.check?.();
-    }
+    if (mode === "ready") onRestart();
+    else if (mode === "available") onInstall();
+    else if (mode === "error") onRetry();
   };
 
   return (
-    <motion.div
-      className="relative"
+    <motion.button
+      type="button"
       layout
-      initial={{ opacity: 0, scale: 0.96, x: 16 }}
+      initial={{ opacity: 0, scale: 0.9, x: 14 }}
       animate={{ opacity: 1, scale: 1, x: 0 }}
-      exit={{ opacity: 0, scale: 0.96, x: 10 }}
-      transition={{ type: "spring", stiffness: 520, damping: 32, mass: 0.75 }}
+      exit={{ opacity: 0, scale: 0.9, x: 8 }}
+      transition={UPDATE_CAPSULE_SPRING}
+      whileTap={config.interactive ? { scale: 0.95 } : undefined}
+      onClick={config.interactive ? handleClick : undefined}
+      disabled={!config.interactive}
+      aria-label={config.label}
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      className={`no-drag flex h-6 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium leading-none transition-colors duration-200 ${
+        config.interactive
+          ? "onboarding-cta cursor-pointer"
+          : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
+      }`}
     >
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={isChecking || (installRequested && !isReady)}
-        aria-label={label}
-        className={`no-drag card-floating flex h-7 items-center rounded-lg border border-white/[0.08] px-2.5 text-[10px] font-medium text-white/75 transition-colors duration-200 ${
-          isError
-            ? "bg-red-300/[0.08] hover:bg-red-300/[0.12]"
-            : "bg-white/[0.055] hover:bg-white/[0.085]"
-        } ${
-          isChecking || (installRequested && !isReady)
-            ? "cursor-default opacity-85"
-            : "cursor-pointer"
-        }`}
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
-        <span className="whitespace-nowrap">{label}</span>
-      </button>
-      <AnimatePresence>
-        {installRequested && isAvailable && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-            className="card-floating pointer-events-none absolute bottom-9 right-0 w-36 rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-[10px] text-white/65 shadow-[0_10px_28px_rgba(0,0,0,0.24)]"
-          >
-            Downloading update…
-          </motion.div>
-        )}
+      {config.spinner && (
+        <motion.span
+          layout
+          className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-white/25 border-t-white/80"
+          aria-hidden
+        />
+      )}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={config.label}
+          layout
+          initial={{ opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -3 }}
+          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+          className="whitespace-nowrap"
+        >
+          {config.label}
+        </motion.span>
       </AnimatePresence>
-    </motion.div>
+    </motion.button>
   );
 };
 
@@ -316,6 +350,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
   const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
   const [installRequested, setInstallRequested] = useState(false);
+
+  const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -555,12 +591,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     >
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
-        <motion.div
-          layout
-          className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
-        >
+        <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
           <motion.a
             layout
+            transition={UPDATE_CAPSULE_SPRING}
             href="https://spoke.so/changelog"
             onClick={(e) => {
               e.preventDefault();
@@ -572,16 +606,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             Spoke Beta {appVersion}
           </motion.a>
           <AnimatePresence initial={false}>
-            {showUpdateCapsule && (
+            {showUpdateCapsule && capsuleMode && (
               <UpdateCapsule
-                key={`${updateState?.status ?? "idle"}-${updateState?.readyToInstall ? "ready" : "pending"}`}
-                updateState={updateState}
-                onInstallRequested={handleInstallUpdate}
-                installRequested={installRequested}
+                key="update-capsule"
+                mode={capsuleMode}
+                onInstall={handleInstallUpdate}
+                onRestart={() => window.update?.restart?.()}
+                onRetry={() => window.update?.check?.()}
               />
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       )}
 
       {/* Draggable Header - only show in standalone mode */}
