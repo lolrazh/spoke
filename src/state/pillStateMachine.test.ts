@@ -77,6 +77,7 @@ describe("pillStateMachine", () => {
         "Provider failed",
         "Connection error",
         "Token expired",
+        "Model unavailable. Open Models to install it.",
       ];
       for (const msg of errorMsgs) {
         const next = dispatch(listening, { type: "NOTIFY", msg });

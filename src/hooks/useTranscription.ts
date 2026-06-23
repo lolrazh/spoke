@@ -18,6 +18,7 @@ import {
   resolvePreferredTranscriptionProviderId,
   LOCAL_STT_PROVIDER_ID,
 } from "../core/transcription/defaultSessionOrchestrator";
+import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import {
@@ -186,6 +187,10 @@ export function useTranscription(
     defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
     try {
+      await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
+        context: buildTranscriptionContext(),
+      });
+
       const recorderPromise = (async () => {
         let stream = streamRef.current;
         if (!stream) {
@@ -240,7 +245,7 @@ export function useTranscription(
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
       console.error("[Transcription] Start failed:", err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingTranscriptionError(err));
       setRecording(false);
       activeProviderIdRef.current = null;
       recorderStartPromiseRef.current = null;
@@ -251,6 +256,7 @@ export function useTranscription(
       }
     }
   }, [
+    buildTranscriptionContext,
     captureScreenshotBase64,
     initStream,
     processing,
@@ -505,7 +511,7 @@ export function useTranscription(
       });
     } catch (err) {
       console.error("[Transcription] Stop failed:", err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toUserFacingTranscriptionError(err));
     } finally {
       stopInFlightRef.current = false;
       activeProviderIdRef.current = null;
@@ -574,6 +580,29 @@ export function useTranscription(
     cancel,
     preConnect,
   };
+}
+
+function toUserFacingTranscriptionError(err: unknown) {
+  if (isTranscriptionSessionError(err)) {
+    return err.message;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("model") &&
+    (lowerMessage.includes("missing") ||
+      lowerMessage.includes("incomplete") ||
+      lowerMessage.includes("unavailable") ||
+      lowerMessage.includes("not installed") ||
+      lowerMessage.includes("not downloaded") ||
+      lowerMessage.includes("load failed"))
+  ) {
+    return "Model unavailable. Open Models to install it.";
+  }
+
+  return message;
 }
 
 interface TranscriptionLatencyTiming {

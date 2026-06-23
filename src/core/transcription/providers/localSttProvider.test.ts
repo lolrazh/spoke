@@ -7,6 +7,20 @@ describe("localSttProvider", () => {
   beforeEach(() => {
     Object.defineProperty(window, "stt", {
       value: {
+        getModelStatus: vi.fn(() =>
+          Promise.resolve({
+            state: "ready",
+            family: "whisper",
+            modelId: "test-model",
+            displayName: "Test Model",
+            version: "1.0.0",
+            manifestVersion: 1,
+            downloadProgress: 1,
+            downloadedBytes: 1,
+            totalBytes: 1,
+            error: null,
+          }),
+        ),
         transcribeLocal: vi.fn(() =>
           Promise.resolve({
             text: "local transcript",
@@ -30,6 +44,30 @@ describe("localSttProvider", () => {
     expect(result).toEqual({
       text: "local transcript",
       metrics: { inference_ms: 42 },
+    });
+  });
+
+  it("fails prepare with a clear message when the model is not installed", async () => {
+    (window.stt.getModelStatus as any).mockResolvedValueOnce({
+      state: "not_installed",
+      family: null,
+      modelId: null,
+      displayName: null,
+      version: null,
+      manifestVersion: null,
+      downloadProgress: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      error: null,
+    });
+
+    await expect(
+      localSttProvider.prepare?.({
+        context: { mode: "dictation" },
+      }),
+    ).rejects.toMatchObject({
+      code: "model_not_installed",
+      message: "Model unavailable. Open Models to install it.",
     });
   });
 

@@ -65,7 +65,9 @@ export const pillReducer = (
           (event.msg.includes("required") ||
             event.msg.includes("failed") ||
             event.msg.includes("error") ||
-            event.msg.includes("expired"));
+            event.msg.includes("expired") ||
+            event.msg.includes("unavailable") ||
+            event.msg.includes("not downloaded"));
 
         if (isErrorNotif) {
           // Cancel listening and show error notification immediately

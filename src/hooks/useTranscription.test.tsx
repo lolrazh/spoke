@@ -84,6 +84,20 @@ Object.defineProperty(window, "stt", {
   value: {
     getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
     setPreferredProvider: vi.fn(() => Promise.resolve()),
+    getModelStatus: vi.fn(() =>
+      Promise.resolve({
+        state: "ready",
+        family: "whisper",
+        modelId: "test-model",
+        displayName: "Test Model",
+        version: "1.0.0",
+        manifestVersion: 1,
+        downloadProgress: 1,
+        downloadedBytes: 1,
+        totalBytes: 1,
+        error: null,
+      }),
+    ),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
     enhance: vi.fn(async (payload: { text: string }) => ({
       text: payload.text,
@@ -103,6 +117,18 @@ describe("useTranscription", () => {
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
       metrics: {},
+    });
+    (window.stt.getModelStatus as any).mockResolvedValue({
+      state: "ready",
+      family: "whisper",
+      modelId: "test-model",
+      displayName: "Test Model",
+      version: "1.0.0",
+      manifestVersion: 1,
+      downloadProgress: 1,
+      downloadedBytes: 1,
+      totalBytes: 1,
+      error: null,
     });
     vi.mocked(trimCapturedAudioWithVad).mockImplementation(async (audio) =>
       createVadResult(audio, true),
@@ -209,6 +235,41 @@ describe("useTranscription", () => {
     expect(window.stt.extractOcr).not.toHaveBeenCalled();
     expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("fails fast before recording when the local model is not installed", async () => {
+    (window.stt.getModelStatus as any).mockResolvedValueOnce({
+      state: "not_installed",
+      family: null,
+      modelId: null,
+      displayName: null,
+      version: null,
+      manifestVersion: null,
+      downloadProgress: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      error: null,
+    });
+
+    const { result } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(result.current.recording).toBe(false);
+    expect(result.current.error).toBe(
+      "Model unavailable. Open Models to install it.",
+    );
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
   });
 
   it("stops after recorder startup resolves when key-up wins the startup race", async () => {

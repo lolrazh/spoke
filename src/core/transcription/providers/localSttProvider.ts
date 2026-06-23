@@ -20,6 +20,31 @@ export const localSttProvider: TranscriptionProvider = {
       reason: available ? undefined : "Local Whisper bridge is unavailable.",
     };
   },
+  prepare: async () => {
+    if (!window.stt?.getModelStatus) {
+      throw new TranscriptionSessionError(
+        "provider_unavailable",
+        "Local model status is unavailable.",
+        { recoverable: false },
+      );
+    }
+
+    const status = await window.stt.getModelStatus();
+    if (status.state === "ready") {
+      return {};
+    }
+
+    const message =
+      status.state === "downloading" || status.state === "installing"
+        ? "Local model is still downloading. Try again when it finishes."
+        : status.state === "broken"
+          ? "Local model needs to be reinstalled from Models."
+          : "Model unavailable. Open Models to install it.";
+
+    throw new TranscriptionSessionError("model_not_installed", message, {
+      details: { modelState: status.state },
+    });
+  },
   transcribe: async ({ audio }) => {
     if (!audio) {
       throw new TranscriptionSessionError(
