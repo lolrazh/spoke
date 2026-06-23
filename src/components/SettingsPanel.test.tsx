@@ -199,7 +199,7 @@ describe("components/SettingsPanel", () => {
     });
 
     const updateButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Update Available",
+      (button) => button.textContent === "Download",
     );
     expect(updateButton).toBeTruthy();
 

@@ -216,7 +216,7 @@ const UPDATE_CAPSULE_CONFIG: Record<
   { label: string; interactive: boolean; spinner: boolean }
 > = {
   available: {
-    label: "Update Available",
+    label: "Download",
     interactive: true,
     spinner: false,
   },
