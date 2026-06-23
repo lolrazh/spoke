@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import { MOTION } from "../config/motionTokens";
 import DateGroup from "./DateGroup";
 import HistoryItem, { HistoryItemData } from "./HistoryItem";
+import {
+  panelCascadeContainer,
+  panelCascadeItem,
+} from "./shared/panelMotion";
 import {
   subscribeTranscriptionHistory,
   getTranscriptionHistory,
@@ -173,22 +176,27 @@ const TranscriptionHistoryView: React.FC = () => {
   // Empty state
   if (historyItems.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-4">
-        <div className="text-center">
+      <motion.div
+        className="flex flex-col items-center justify-center py-16 px-4"
+        initial="hidden"
+        animate="visible"
+        variants={panelCascadeContainer}
+      >
+        <motion.div className="text-center" variants={panelCascadeItem}>
           <p className="text-sm text-muted-foreground">No transcriptions yet</p>
           <p className="text-xs text-muted-foreground/60 mt-1">
             Your transcription history will appear here
           </p>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     );
   }
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: MOTION.durations.standard }}
+      initial="hidden"
+      animate="visible"
+      variants={panelCascadeContainer}
     >
       {groupedItems.map((group) => (
         <DateGroup key={group.label} label={group.label}>

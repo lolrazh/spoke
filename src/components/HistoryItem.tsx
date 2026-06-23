@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
+import { panelCascadeItem } from "./shared/panelMotion";
 
 export interface HistoryItemData {
   id: string;
@@ -41,10 +41,10 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
 
   return (
     <motion.div
-      initial={skipAnimation ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ type: "spring", ...MOTION.springs.quick }}
+      initial={skipAnimation ? false : "hidden"}
+      animate="visible"
+      exit="exit"
+      variants={panelCascadeItem}
       className="group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default"
     >
       {/* Text - left side with max width */}

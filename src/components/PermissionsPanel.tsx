@@ -1,13 +1,16 @@
 import React, { useMemo, useRef } from "react";
-import { motion, Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import SettingsCard from "./SettingsCard";
 import { Button } from "./ui/button";
 import SfIcon from "./icons/SfIcon";
-import { MOTION } from "../config/motionTokens";
 import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
+import {
+  panelCascadeContainer,
+  panelCascadeItem,
+} from "./shared/panelMotion";
 
 type PermissionKey =
   | "microphone"
@@ -50,25 +53,6 @@ const PERMISSION_COPY: Record<
     title: "Smart Context",
     description: "Capture screen context for better accuracy",
     icon: <SfIcon name="record.circle" size={18} className="text-primary/70" />,
-  },
-};
-
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: "spring", ...MOTION.springs.quick },
   },
 };
 
@@ -154,10 +138,10 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
             className="flex flex-col gap-4"
             initial="hidden"
             animate="visible"
-            variants={containerVariants}
+            variants={panelCascadeContainer}
           >
             <motion.div
-              variants={itemVariants}
+              variants={panelCascadeItem}
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Permissions" />
@@ -165,52 +149,51 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
             {permissionEntries.map((entry) => {
               const copy = PERMISSION_COPY[entry.key];
               return (
-                <motion.div key={entry.key} variants={itemVariants}>
-                  <SettingsCard
-                    title={copy.title}
-                    description={copy.description}
-                    icon={copy.icon}
-                  >
-                    {!permissionsLoaded ? (
-                      // Don't flash "Enable" before the real status loads.
-                      <div
-                        className="h-[22px] w-[22px] rounded-md bg-white/[0.05]"
-                        aria-hidden
+                <SettingsCard
+                  key={entry.key}
+                  title={copy.title}
+                  description={copy.description}
+                  icon={copy.icon}
+                >
+                  {!permissionsLoaded ? (
+                    // Don't flash "Enable" before the real status loads.
+                    <div
+                      className="h-[22px] w-[22px] rounded-md bg-white/[0.05]"
+                      aria-hidden
+                    />
+                  ) : entry.granted ? (
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      className="text-white/80"
+                    >
+                      <path
+                        d="M5 13l4 4L19 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       />
-                    ) : entry.granted ? (
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        className="text-white/80"
-                      >
-                        <path
-                          d="M5 13l4 4L19 7"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : (
-                      <Button
-                        size="sm"
-                        disabled={entry.loading || entry.disabled}
-                        onClick={() => entry.onRequest()}
-                        className="text-xs onboarding-cta"
-                      >
-                        <div className="relative flex items-center justify-center h-4 w-14">
-                          {entry.loading ? (
-                            <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
-                          ) : (
-                            <span>Enable</span>
-                          )}
-                        </div>
-                      </Button>
-                    )}
-                  </SettingsCard>
-                </motion.div>
+                    </svg>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={entry.loading || entry.disabled}
+                      onClick={() => entry.onRequest()}
+                      className="text-xs onboarding-cta"
+                    >
+                      <div className="relative flex items-center justify-center h-4 w-14">
+                        {entry.loading ? (
+                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </div>
+                    </Button>
+                  )}
+                </SettingsCard>
               );
             })}
           </motion.div>

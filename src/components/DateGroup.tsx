@@ -1,7 +1,10 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { MOTION } from "../config/motionTokens";
 import { SectionSeparator } from "./SettingsPanel";
+import {
+  panelCascadeContainer,
+  panelCascadeItem,
+} from "./shared/panelMotion";
 
 interface DateGroupProps {
   label: string; // e.g., "TODAY", "YESTERDAY", "THIS WEEK"
@@ -11,18 +14,19 @@ interface DateGroupProps {
 const DateGroup: React.FC<DateGroupProps> = ({ label, children }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", ...MOTION.springs.quick }}
+      variants={panelCascadeItem}
       style={{ marginTop: "var(--panel-section-offset)" }}
     >
       {/* Date Label - using same style as settings sections */}
       <SectionSeparator title={label} />
 
       {/* Items - with card outline */}
-      <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0">
+      <motion.div
+        variants={panelCascadeContainer}
+        className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0"
+      >
         {children}
-      </div>
+      </motion.div>
     </motion.div>
   );
 };

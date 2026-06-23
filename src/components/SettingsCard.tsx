@@ -1,4 +1,6 @@
 import React from "react";
+import { motion } from "framer-motion";
+import { panelCascadeItem } from "./shared/panelMotion";
 
 type SettingsCardProps = {
   title: string;
@@ -37,7 +39,8 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     : "settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3";
 
   return (
-    <div
+    <motion.div
+      variants={panelCascadeItem}
       className={`group ${baseClass} ${roundedClass} ${statusClass} ${
         interactive ? "transition-colors hover:bg-white/5" : ""
       } ${className}`}
@@ -67,7 +70,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
           {children}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 };
 

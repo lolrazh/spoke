@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { motion, Variants } from "framer-motion";
-import { MOTION } from "../config/motionTokens";
+import { motion } from "framer-motion";
 import { Switch } from "./ui/switch";
 import {
   Select,
@@ -14,24 +13,10 @@ import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
-
-// --- Animation Variants --- //
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 },
-  },
-};
-
-const sectionVariants: Variants = {
-  hidden: { y: 8, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: { type: "spring", ...MOTION.springs.quick },
-  },
-};
+import {
+  panelCascadeContainer,
+  panelCascadeItem,
+} from "./shared/panelMotion";
 
 type SettingsPanelTab = "settings" | "models" | "history";
 type SettingsPanelInitialTab = Extract<
@@ -440,9 +425,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       )}
 
       {/* Content container for height measurement - includes navbar */}
-      <div ref={contentRef}>
+      <motion.div
+        ref={contentRef}
+        variants={panelCascadeContainer}
+        initial="hidden"
+        animate="visible"
+      >
         {/* Tab Navigation - top bezel */}
-        <div
+        <motion.div
+          variants={panelCascadeItem}
           className="bg-background flex-shrink-0 no-drag"
           style={{
             paddingTop: "var(--nav-bar-padding-top)",
@@ -471,7 +462,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Scrollable Content - the screen */}
         <div className="relative flex-1">
@@ -493,18 +484,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="max-w-lg mx-auto w-full px-5 pt-0 pb-14">
               {activeTab === "settings" ? (
                 <motion.div
+                  key="settings-tab"
                   initial="hidden"
                   animate="visible"
-                  variants={containerVariants}
+                  variants={panelCascadeContainer}
                   className="flex flex-col"
                 >
                   {/* Section 1: Defaults */}
                   <motion.section
-                    variants={sectionVariants}
+                    variants={panelCascadeContainer}
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="Defaults" />
+                    <motion.div variants={panelCascadeItem}>
+                      <SectionSeparator title="Defaults" />
+                    </motion.div>
 
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <SelectField
@@ -563,17 +557,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </motion.div>
               ) : activeTab === "models" ? (
                 <motion.div
+                  key="models-tab"
                   initial="hidden"
                   animate="visible"
-                  variants={containerVariants}
+                  variants={panelCascadeContainer}
                   className="flex flex-col"
                 >
                   <motion.section
-                    variants={sectionVariants}
+                    variants={panelCascadeContainer}
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <SectionSeparator title="Transcription" />
+                    <motion.div variants={panelCascadeItem}>
+                      <SectionSeparator title="Transcription" />
+                    </motion.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <ModelInstallCard inGroup />
                     </div>
@@ -613,7 +610,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

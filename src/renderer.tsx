@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Routes, Route } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
 import "./index.css";
 
 window.electron?.bootMark?.("module-loaded");
@@ -25,14 +26,16 @@ function mountReact(root: HTMLElement) {
   window.electron?.bootMark?.("react-render:start");
   const reactRoot = createRoot(root);
   reactRoot.render(
-    <HashRouter>
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/onboarding" element={<Onboarding />} />
-        </Routes>
-      </Suspense>
-    </HashRouter>,
+    <MotionConfig reducedMotion="user">
+      <HashRouter>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<App />} />
+            <Route path="/onboarding" element={<Onboarding />} />
+          </Routes>
+        </Suspense>
+      </HashRouter>
+    </MotionConfig>,
   );
   window.electron?.bootMark?.("react-render:scheduled");
 }

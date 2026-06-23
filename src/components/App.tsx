@@ -10,6 +10,7 @@ import { useTranscription } from "../hooks/useTranscription";
 import {
   CONTENT_WIDTH,
   CONTENT_HEIGHT,
+  SETTINGS_CONTENT_HEIGHT,
   PERMISSIONS_CONTENT_WIDTH,
   PERMISSIONS_CONTENT_HEIGHT,
 } from "../constants/window";
@@ -81,7 +82,7 @@ const AppInner: React.FC = () => {
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
   const [settingsPanelContentHeight, setSettingsPanelContentHeight] =
-    useState(CONTENT_HEIGHT);
+    useState(SETTINGS_CONTENT_HEIGHT);
   const [permissionsPanelMeasured, setPermissionsPanelMeasured] =
     useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
@@ -867,7 +868,11 @@ const AppInner: React.FC = () => {
         : Math.round(PERMISSIONS_CONTENT_HEIGHT * S)
       : settingsPanelMeasured
         ? settingsPanelContentHeight
-        : Math.round(CONTENT_HEIGHT * S);
+        : Math.round(
+            (initialSettingsTab === "history"
+              ? CONTENT_HEIGHT
+              : SETTINGS_CONTENT_HEIGHT) * S,
+          );
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
   const EXPANDED_H = Math.round(expandedHeightTarget);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
