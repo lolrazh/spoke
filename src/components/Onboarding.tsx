@@ -34,6 +34,10 @@ import {
   ENABLE_ONBOARDING_PARTICLES,
   ENABLE_SCREEN_CONTEXT,
 } from "../config/featureFlags";
+import {
+  panelCascadeContainer,
+  panelCascadeItem,
+} from "./shared/panelMotion";
 // eslint-disable-next-line import/no-unresolved
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 // Development flags - only enabled in development mode
@@ -581,7 +585,12 @@ const Onboarding: React.FC = () => {
     visible: {
       opacity: 1,
       y: 0,
-      transition: { duration: 0.22, ease: "easeOut" },
+      transition: {
+        duration: 0.22,
+        ease: "easeOut",
+        delayChildren: 0.02,
+        staggerChildren: 0.032,
+      },
     },
     exit: {
       opacity: 0,
@@ -829,18 +838,22 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <div className="heading-stack">
+                  <motion.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Enable Required Permissions
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       Spoke needs these permissions to work.
                     </p>
-                  </div>
+                  </motion.div>
 
-                  <div className="onboarding-section space-y-3">
+                  <motion.div
+                    className="onboarding-section space-y-3"
+                    variants={panelCascadeContainer}
+                  >
                     {/* Microphone Permission */}
-                    <div
+                    <motion.div
+                      variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
@@ -930,10 +943,11 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </div>
+                    </motion.div>
 
                     {/* Accessibility Permission */}
-                    <div
+                    <motion.div
+                      variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
@@ -1022,10 +1036,11 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </div>
+                    </motion.div>
 
                     {/* Input Monitoring Permission */}
-                    <div
+                    <motion.div
+                      variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}
                     >
                       <div className="flex items-center justify-between">
@@ -1115,13 +1130,16 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </div>
+                    </motion.div>
 
                     {/* Auto-restart note */}
-                    <p className="text-xs text-muted-foreground/60 text-center pt-4">
+                    <motion.p
+                      variants={panelCascadeItem}
+                      className="text-xs text-muted-foreground/60 text-center pt-4"
+                    >
                       Spoke restarts automatically once all permissions are on.
-                    </p>
-                  </div>
+                    </motion.p>
+                  </motion.div>
                 </motion.div>
               )}
 
@@ -1135,7 +1153,7 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <div className="heading-stack">
+                  <motion.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Let’s Check Your Microphone
                     </h2>
@@ -1143,11 +1161,17 @@ const Onboarding: React.FC = () => {
                       Pick the right input and say a few words. The bars should
                       bounce.
                     </p>
-                  </div>
+                  </motion.div>
 
-                  <div className="onboarding-section space-y-5">
+                  <motion.div
+                    className="onboarding-section space-y-5"
+                    variants={panelCascadeContainer}
+                  >
                     {/* Mic selector */}
-                    <div className="mx-auto w-full max-w-xl">
+                    <motion.div
+                      className="mx-auto w-full max-w-xl"
+                      variants={panelCascadeItem}
+                    >
                       <Select
                         value={selectedMicId}
                         onValueChange={(v) => setSelectedMicId(v)}
@@ -1167,9 +1191,12 @@ const Onboarding: React.FC = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                    </motion.div>
 
-                    <div className="flex items-center justify-center py-3">
+                    <motion.div
+                      className="flex items-center justify-center py-3"
+                      variants={panelCascadeItem}
+                    >
                       <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
                         {barValues.map((v, i) => {
                           const h = Math.max(6, Math.round(6 + v * 80));
@@ -1184,8 +1211,8 @@ const Onboarding: React.FC = () => {
                           );
                         })}
                       </div>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
                 </motion.div>
               )}
 
@@ -1199,7 +1226,7 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <div className="heading-stack">
+                  <motion.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Install Local Model
                     </h2>
@@ -1207,10 +1234,16 @@ const Onboarding: React.FC = () => {
                       Spoke transcribes on-device, so your voice is processed
                       locally instead of by a transcription server.
                     </p>
-                  </div>
+                  </motion.div>
 
-                  <div className="onboarding-section space-y-3">
-                    <div className="onboarding-permission-row rounded-lg p-3">
+                  <motion.div
+                    className="onboarding-section space-y-3"
+                    variants={panelCascadeContainer}
+                  >
+                    <motion.div
+                      className="onboarding-permission-row rounded-lg p-3"
+                      variants={panelCascadeItem}
+                    >
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
@@ -1330,8 +1363,8 @@ const Onboarding: React.FC = () => {
                           </AnimatePresence>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
                 </motion.div>
               )}
 
