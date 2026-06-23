@@ -199,7 +199,7 @@ describe("components/SettingsPanel", () => {
     });
 
     const updateButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "Download",
+      (button) => button.getAttribute("aria-label") === "Download update",
     );
     expect(updateButton).toBeTruthy();
 

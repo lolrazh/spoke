@@ -211,36 +211,92 @@ const UPDATE_CAPSULE_SPRING = {
   mass: 0.85,
 } as const;
 
-const UPDATE_CAPSULE_CONFIG: Record<
-  UpdateCapsuleMode,
-  { label: string; interactive: boolean; spinner: boolean }
-> = {
-  available: {
-    label: "Download",
-    interactive: true,
-    spinner: false,
-  },
-  downloading: {
-    label: "Downloading",
-    interactive: false,
-    spinner: true,
-  },
-  checking: {
-    label: "Checking",
-    interactive: false,
-    spinner: true,
-  },
-  ready: {
-    label: "Restart Spoke",
-    interactive: true,
-    spinner: false,
-  },
-  error: {
-    label: "Try Again",
-    interactive: true,
-    spinner: false,
-  },
+// Visible text per mode. `available` rests as an icon and only reveals this
+// label on hover; the other modes always show it.
+const UPDATE_CAPSULE_LABELS: Record<UpdateCapsuleMode, string> = {
+  available: "Update available",
+  downloading: "Downloading",
+  checking: "Checking",
+  ready: "Restart Spoke",
+  error: "Try again",
 };
+
+// Spoken label — the icon-only rest state needs a name for screen readers and
+// for tests to target.
+const UPDATE_CAPSULE_ARIA: Record<UpdateCapsuleMode, string> = {
+  available: "Download update",
+  downloading: "Downloading update",
+  checking: "Checking for updates",
+  ready: "Restart Spoke to update",
+  error: "Retry update check",
+};
+
+const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
+  "available",
+  "ready",
+  "error",
+]);
+
+// Download glyph for the resting affordance — hand-rolled to match the stroke
+// language of the install checkmark (no SF symbol exists for this).
+const DownloadGlyph: React.FC = () => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="shrink-0"
+    aria-hidden
+  >
+    <path d="M12 4v10" />
+    <path d="M7.5 10.5 12 15l4.5-4.5" />
+    <path d="M5 19.5h14" />
+  </svg>
+);
+
+// Draw-on checkmark — the exact path/animation the Models card uses for its
+// "ready" state, so the update's completion reads as the same moment.
+const InstalledCheck: React.FC = () => (
+  <motion.svg
+    width="13"
+    height="13"
+    viewBox="0 0 24 24"
+    fill="none"
+    className="shrink-0"
+    aria-hidden
+  >
+    <motion.path
+      initial={{ pathLength: 0 }}
+      animate={{ pathLength: 1 }}
+      transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
+      d="M5 13l4 4L19 7"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </motion.svg>
+);
+
+// Honest indeterminate progress — Squirrel.Mac reports no percentage, so a
+// looping sweep (borrowing the Models gradient) communicates "working" without
+// faking a number.
+const IndeterminateSweep: React.FC = () => (
+  <span
+    className="pointer-events-none absolute inset-x-1.5 bottom-[2px] h-[2px] overflow-hidden rounded-full"
+    aria-hidden
+  >
+    <motion.span
+      className="absolute inset-y-0 left-0 w-1/2 rounded-full bg-gradient-to-r from-white/20 to-white/70"
+      animate={{ x: ["-110%", "230%"] }}
+      transition={{ duration: 1.15, repeat: Infinity, ease: "easeInOut" }}
+    />
+  </span>
+);
 
 function deriveUpdateCapsuleMode(
   state: UpdatePanelState | null,
@@ -258,11 +314,18 @@ function deriveUpdateCapsuleMode(
 
 const UpdateCapsule: React.FC<{
   mode: UpdateCapsuleMode;
+  hovered: boolean;
+  onHoverChange: (hovered: boolean) => void;
   onInstall: () => void;
   onRestart: () => void;
   onRetry: () => void;
-}> = ({ mode, onInstall, onRestart, onRetry }) => {
-  const config = UPDATE_CAPSULE_CONFIG[mode];
+}> = ({ mode, hovered, onHoverChange, onInstall, onRestart, onRetry }) => {
+  const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
+  const isAvailable = mode === "available";
+  const isBusy = mode === "downloading" || mode === "checking";
+  // `available` is the only mode that rests as a bare icon; everything else
+  // shows its label so download/ready feedback is visible without hovering.
+  const showLabel = isAvailable ? hovered : true;
 
   const handleClick = () => {
     if (mode === "ready") onRestart();
@@ -271,45 +334,56 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    <motion.button
-      type="button"
-      layout
-      initial={{ opacity: 0, scale: 0.9, x: 14 }}
+    // Wrapper owns the entrance so it never fights the button's layout spring.
+    // transformOrigin keeps the pop anchored to the right edge — a clean
+    // horizontal emerge from the corner, not a diagonal drift.
+    <motion.div
+      style={{ transformOrigin: "right center" }}
+      initial={{ opacity: 0, scale: 0.9, x: 8 }}
       animate={{ opacity: 1, scale: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.9, x: 8 }}
       transition={UPDATE_CAPSULE_SPRING}
-      whileTap={config.interactive ? { scale: 0.95 } : undefined}
-      onClick={config.interactive ? handleClick : undefined}
-      disabled={!config.interactive}
-      aria-label={config.label}
-      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      className={`no-drag flex h-6 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium leading-none transition-colors duration-200 ${
-        config.interactive
-          ? "onboarding-cta cursor-pointer"
-          : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
-      }`}
     >
-      {config.spinner && (
-        <motion.span
-          layout
-          className="h-2.5 w-2.5 shrink-0 animate-spin rounded-full border border-white/25 border-t-white/80"
-          aria-hidden
-        />
-      )}
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.span
-          key={config.label}
-          layout
-          initial={{ opacity: 0, y: 3 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -3 }}
-          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-          className="whitespace-nowrap"
-        >
-          {config.label}
-        </motion.span>
-      </AnimatePresence>
-    </motion.button>
+      <motion.button
+        type="button"
+        layout
+        transition={UPDATE_CAPSULE_SPRING}
+        onMouseEnter={() => onHoverChange(true)}
+        onMouseLeave={() => onHoverChange(false)}
+        whileTap={interactive ? { scale: 0.95 } : undefined}
+        onClick={interactive ? handleClick : undefined}
+        disabled={!interactive}
+        aria-label={UPDATE_CAPSULE_ARIA[mode]}
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        className={`no-drag relative flex h-6 items-center gap-1.5 overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
+          interactive
+            ? "onboarding-cta cursor-pointer"
+            : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
+        }`}
+      >
+        {mode === "ready" && <InstalledCheck />}
+
+        <AnimatePresence mode="popLayout" initial={false}>
+          {showLabel && (
+            <motion.span
+              key={UPDATE_CAPSULE_LABELS[mode]}
+              layout
+              initial={{ opacity: 0, x: 4 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 4 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="whitespace-nowrap"
+            >
+              {UPDATE_CAPSULE_LABELS[mode]}
+            </motion.span>
+          )}
+        </AnimatePresence>
+
+        {isAvailable && <DownloadGlyph />}
+
+        {isBusy && <IndeterminateSweep />}
+      </motion.button>
+    </motion.div>
   );
 };
 
@@ -352,6 +426,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [installRequested, setInstallRequested] = useState(false);
 
   const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
+  // Hover lives here (not in the capsule) so the version label re-renders with
+  // the capsule and springs aside as it expands.
+  const [capsuleHovered, setCapsuleHovered] = useState(false);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -610,6 +687,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <UpdateCapsule
                 key="update-capsule"
                 mode={capsuleMode}
+                hovered={capsuleHovered}
+                onHoverChange={setCapsuleHovered}
                 onInstall={handleInstallUpdate}
                 onRestart={() => window.update?.restart?.()}
                 onRetry={() => window.update?.check?.()}
