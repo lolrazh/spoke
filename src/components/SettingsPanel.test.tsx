@@ -24,8 +24,46 @@ function render(ui: React.ReactElement) {
 describe("components/SettingsPanel", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    (window as any).app = {
+      getVersion: vi.fn(async () => "0.1.7"),
+    };
+    (window as any).update = {
+      getState: vi.fn(async () => ({
+        status: "idle",
+        version: null,
+        readyToInstall: false,
+        error: null,
+      })),
+      check: vi.fn(async () => ({
+        status: "checking",
+        version: null,
+        readyToInstall: false,
+        error: null,
+      })),
+      restart: vi.fn(async () => ({ ok: true })),
+      installWhenReady: vi.fn(async () => ({
+        ok: true,
+        snapshot: {
+          status: "available",
+          version: "v0.1.8",
+          readyToInstall: false,
+          error: null,
+        },
+      })),
+      devSetState: vi.fn(async () => ({
+        ok: true,
+        snapshot: {
+          status: "available",
+          version: "v0.1.7-dev",
+          readyToInstall: true,
+          error: null,
+        },
+      })),
+      onStateChanged: vi.fn(() => () => {}),
+    };
     // Ensure electron + mic bridges exist
-    (window as any).electron = (window as any).electron || {
+    (window as any).electron = {
+      setClickThrough: vi.fn(),
       getFloatingBarEnabled: async () => ({ enabled: true }),
       isFloatingBarVisible: async () => ({ visible: true }),
       checkPermissions: async () => ({
@@ -38,6 +76,7 @@ describe("components/SettingsPanel", () => {
         granted: true,
       }),
       openSystemPreferences: async () => {},
+      openExternal: vi.fn(async () => ({ ok: true })),
     };
     (window as any).mic = {
       select: vi.fn(async (_id: string) => ({ ok: true })),
@@ -105,6 +144,72 @@ describe("components/SettingsPanel", () => {
 
     expect(container.textContent ?? "").toContain("System Default");
 
+    unmount();
+  });
+
+  it("shows a single restart capsule when an update is ready", async () => {
+    (window as any).update.getState = vi.fn(async () => ({
+      status: "available",
+      version: "v0.1.8",
+      readyToInstall: true,
+      error: null,
+    }));
+
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(
+      React.createElement(SettingsPanel, { embeddedMode: true }),
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 540));
+      await Promise.resolve();
+    });
+
+    const restartButtons = Array.from(container.querySelectorAll("button")).filter(
+      (button) => button.textContent === "Restart Spoke",
+    );
+    expect(restartButtons).toHaveLength(1);
+    expect(container.textContent ?? "").toContain("Spoke Beta 0.1.7");
+
+    await act(async () => {
+      restartButtons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(window.update.restart).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("starts the install-ready flow from the available capsule", async () => {
+    (window as any).update.getState = vi.fn(async () => ({
+      status: "available",
+      version: "v0.1.8",
+      readyToInstall: false,
+      error: null,
+    }));
+
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(
+      React.createElement(SettingsPanel, { embeddedMode: true }),
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 540));
+      await Promise.resolve();
+    });
+
+    const updateButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Update Available",
+    );
+    expect(updateButton).toBeTruthy();
+
+    await act(async () => {
+      updateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(window.update.installWhenReady).toHaveBeenCalledTimes(1);
+    expect(container.textContent ?? "").toContain("Downloading");
     unmount();
   });
 

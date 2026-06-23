@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Switch } from "./ui/switch";
 import {
   Select,
@@ -24,6 +24,13 @@ type SettingsPanelInitialTab = Extract<
 >;
 
 const DEFAULT_MIC_DEVICE = { id: "default", label: "System Default" };
+
+type UpdatePanelState = {
+  status: "idle" | "checking" | "available" | "not-available" | "error";
+  version: string | null;
+  readyToInstall: boolean;
+  error: string | null;
+};
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
@@ -188,6 +195,90 @@ const TabButton: React.FC<{
   </button>
 );
 
+const UpdateCapsule: React.FC<{
+  updateState: UpdatePanelState | null;
+  onInstallRequested: () => void;
+  installRequested: boolean;
+}> = ({ updateState, onInstallRequested, installRequested }) => {
+  if (!updateState) return null;
+
+  const isReady = updateState.readyToInstall;
+  const isAvailable =
+    updateState.status === "available" && !updateState.readyToInstall;
+  const isChecking = updateState.status === "checking";
+  const isError = updateState.status === "error";
+  const visible = isReady || isAvailable || isChecking || isError;
+
+  if (!visible) return null;
+
+  const label = isReady
+    ? "Restart Spoke"
+    : isAvailable
+      ? installRequested
+        ? "Downloading"
+        : "Update Available"
+      : isChecking
+        ? "Checking"
+        : "Try Again";
+
+  const handleClick = () => {
+    if (isReady) {
+      window.update?.restart?.();
+      return;
+    }
+    if (isAvailable) {
+      onInstallRequested();
+      return;
+    }
+    if (isError) {
+      window.update?.check?.();
+    }
+  };
+
+  return (
+    <motion.div
+      className="relative"
+      layout
+      initial={{ opacity: 0, scale: 0.96, x: 16 }}
+      animate={{ opacity: 1, scale: 1, x: 0 }}
+      exit={{ opacity: 0, scale: 0.96, x: 10 }}
+      transition={{ type: "spring", stiffness: 520, damping: 32, mass: 0.75 }}
+    >
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={isChecking || (installRequested && !isReady)}
+        aria-label={label}
+        className={`no-drag card-floating flex h-7 items-center rounded-lg border border-white/[0.08] px-2.5 text-[10px] font-medium text-white/75 transition-colors duration-200 ${
+          isError
+            ? "bg-red-300/[0.08] hover:bg-red-300/[0.12]"
+            : "bg-white/[0.055] hover:bg-white/[0.085]"
+        } ${
+          isChecking || (installRequested && !isReady)
+            ? "cursor-default opacity-85"
+            : "cursor-pointer"
+        }`}
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <span className="whitespace-nowrap">{label}</span>
+      </button>
+      <AnimatePresence>
+        {installRequested && isAvailable && (
+          <motion.div
+            initial={{ opacity: 0, y: 4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            className="card-floating pointer-events-none absolute bottom-9 right-0 w-36 rounded-lg border border-white/[0.08] bg-background px-3 py-2 text-[10px] text-white/65 shadow-[0_10px_28px_rgba(0,0,0,0.24)]"
+          >
+            Downloading update…
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
@@ -222,6 +313,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
   const [showInDock, setShowInDock] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
+  const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
+  const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
+  const [installRequested, setInstallRequested] = useState(false);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -233,6 +327,48 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         // ignore
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!embeddedMode) {
+      setShowUpdateCapsule(false);
+      return;
+    }
+    const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
+    return () => clearTimeout(timer);
+  }, [embeddedMode]);
+
+  const handleInstallUpdate = () => {
+    setInstallRequested(true);
+    window.update
+      ?.installWhenReady?.()
+      .then((result) => {
+        if (result?.snapshot) setUpdateState(result.snapshot);
+      })
+      .catch(() => {
+        setInstallRequested(false);
+      });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    window.update
+      ?.getState?.()
+      .then((state) => {
+        if (isMounted) setUpdateState(state);
+      })
+      .catch(() => {
+        setUpdateState(null);
+      });
+
+    const unsubscribe = window.update?.onStateChanged?.((state) => {
+      setUpdateState(state);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
   }, []);
 
   // Initialize from main visibility state (source of truth)
@@ -417,18 +553,35 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     <div
       className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
-      {/* Version text on bottom-right (embedded mode) */}
+      {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
-        <a
-          href="https://spoke.so/changelog"
-          onClick={(e) => {
-            e.preventDefault();
-            window.electron?.openExternal?.("https://spoke.so/changelog");
-          }}
-          className="absolute right-4 bottom-3 text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200 z-30"
+        <motion.div
+          layout
+          className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
         >
-          Spoke Beta {appVersion}
-        </a>
+          <motion.a
+            layout
+            href="https://spoke.so/changelog"
+            onClick={(e) => {
+              e.preventDefault();
+              window.electron?.openExternal?.("https://spoke.so/changelog");
+            }}
+            className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            Spoke Beta {appVersion}
+          </motion.a>
+          <AnimatePresence initial={false}>
+            {showUpdateCapsule && (
+              <UpdateCapsule
+                key={`${updateState?.status ?? "idle"}-${updateState?.readyToInstall ? "ready" : "pending"}`}
+                updateState={updateState}
+                onInstallRequested={handleInstallUpdate}
+                installRequested={installRequested}
+              />
+            )}
+          </AnimatePresence>
+        </motion.div>
       )}
 
       {/* Draggable Header - only show in standalone mode */}
