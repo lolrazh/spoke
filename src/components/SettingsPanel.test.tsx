@@ -169,7 +169,7 @@ describe("components/SettingsPanel", () => {
       (button) => button.textContent === "Restart Spoke",
     );
     expect(restartButtons).toHaveLength(1);
-    expect(container.textContent ?? "").toContain("Spoke Beta 0.1.7");
+    expect(container.textContent ?? "").toContain("Spoke v0.1.7");
 
     await act(async () => {
       restartButtons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));

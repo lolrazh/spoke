@@ -603,7 +603,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
-            Spoke Beta {appVersion}
+            Spoke v{appVersion}
           </motion.a>
           <AnimatePresence initial={false}>
             {showUpdateCapsule && capsuleMode && (
@@ -806,7 +806,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   className="w-4 h-4 brightness-0 invert"
                 />
                 <p className="text-[10px] text-muted-foreground opacity-70">
-                  {appVersion ? `Spoke Beta ${appVersion}` : ""}
+                  {appVersion ? `Spoke v${appVersion}` : ""}
                 </p>
               </div>
             )}
