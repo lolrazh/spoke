@@ -1086,37 +1086,34 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     (id) => selectMicDevice(id),
   );
 
-  const updateItems: Electron.MenuItemConstructorOptions[] = [];
-  const buildCheckLabel = () => {
-    if (getUpdateStatus() === "checking") return "Checking for Updates…";
-    if (getUpdateStatus() === "available" && !isUpdateReadyToInstall())
-      return "Downloading Update…";
-    if (isUpdateReadyToInstall()) return "Update Ready";
-    return "Check for Updates…";
-  };
-
   function restartToInstallUpdate() {
     quitAndInstallUpdate();
   }
 
-  // Primary update actions
-  updateItems.push({
-    label: buildCheckLabel(),
-    enabled:
-      getUpdateStatus() !== "checking" &&
-      !(getUpdateStatus() === "available" && !isUpdateReadyToInstall()),
-    click: () => {
-      manualCheckForUpdates();
-    },
-  });
-
-  if (isUpdateReadyToInstall()) {
-    updateItems.push({ type: "separator" });
-    updateItems.push({
-      label: "Restart and Install Update",
-      click: () => restartToInstallUpdate(),
-    });
-  }
+  const updateItems: Electron.MenuItemConstructorOptions[] =
+    isUpdateReadyToInstall()
+      ? [
+          {
+            label: "Restart and Install Update",
+            click: () => restartToInstallUpdate(),
+          },
+        ]
+      : [
+          {
+            label:
+              getUpdateStatus() === "checking"
+                ? "Checking for Updates…"
+                : getUpdateStatus() === "available"
+                  ? "Downloading Update…"
+                  : "Check for Updates…",
+            enabled:
+              getUpdateStatus() !== "checking" &&
+              getUpdateStatus() !== "available",
+            click: () => {
+              manualCheckForUpdates();
+            },
+          },
+        ];
 
   return [
     ...buildCommonAppItems(() => {
