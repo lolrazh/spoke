@@ -10,6 +10,7 @@ import {
 import SettingsCard from "./SettingsCard";
 import ModelInstallCard from "./ModelInstallCard";
 import SfIcon from "./icons/SfIcon";
+import Spinner from "./ui/Spinner";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import {
@@ -290,15 +291,6 @@ const InstalledCheck: React.FC = () => (
   </motion.svg>
 );
 
-// Indeterminate spinner — the same idiom used in onboarding/permissions, sized
-// to sit in the icon slot in place of the download glyph while working.
-const Spinner: React.FC = () => (
-  <span
-    className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white"
-    aria-hidden
-  />
-);
-
 // The single slot at the trailing edge of the chip cross-fades between the
 // download glyph, the working spinner, and the success checkmark — all in the
 // same spot, same size, so nothing shifts as the state advances.
@@ -307,7 +299,7 @@ function updateCapsuleIcon(mode: UpdateCapsuleMode): {
   node: React.ReactNode;
 } {
   if (mode === "downloading" || mode === "checking") {
-    return { key: "spinner", node: <Spinner /> };
+    return { key: "spinner", node: <Spinner className="h-3.5 w-3.5" /> };
   }
   if (mode === "ready") {
     return { key: "check", node: <InstalledCheck /> };
@@ -342,10 +334,10 @@ const UpdateCapsule: React.FC<{
 }> = ({ mode, revealed, onInstall, onRestart, onRetry }) => {
   const [hovered, setHovered] = useState(false);
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
-  // Only the two actionable resting states reveal a label on hover; while
-  // working (spinner) or on error the chip stays icon-sized so its width never
-  // jumps and the text never moves.
-  const showLabel = (mode === "available" || mode === "ready") && hovered;
+  // `available` rests as a bare icon and reveals its label on hover; every
+  // other state keeps its label visible (Downloading / Restart Spoke / …) so
+  // only the trailing icon changes as the flow advances — the text stays put.
+  const showLabel = mode === "available" ? hovered : true;
   const icon = updateCapsuleIcon(mode);
 
   const handleClick = () => {
