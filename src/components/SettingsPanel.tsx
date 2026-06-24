@@ -16,6 +16,7 @@ import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
+import { MOTION } from "../config/motionTokens";
 
 type SettingsPanelTab = "settings" | "models" | "history";
 type SettingsPanelInitialTab = Extract<
@@ -202,21 +203,26 @@ type UpdateCapsuleMode =
   | "ready"
   | "error";
 
-// Smooth spring for the hover label expansion.
-const UPDATE_CAPSULE_SPRING = {
+// Borrow the pill's spring vocabulary so the capsule reacts with the same
+// rubbery feel. `lively` (low mass, light damping) drives expansion/entrance;
+// `settle` is the snappy return the pill uses when it collapses to idle.
+const UPDATE_EXPAND_SPRING = {
   type: "spring",
-  stiffness: 480,
-  damping: 30,
-  mass: 0.85,
+  ...MOTION.springs.lively,
+} as const;
+const UPDATE_COLLAPSE_SPRING = {
+  type: "spring",
+  ...MOTION.springs.settle,
 } as const;
 
-// Bouncy spring for the icon springing into place on entrance — low damping so
-// the version visibly overshoots left and settles back.
-const UPDATE_CAPSULE_POP = {
+// The pill's "impact pulse": a quick scale overshoot on every transition,
+// driven by a snappy spring. This is the bit of force that makes the collapse
+// feel reactive instead of just fitting back into place.
+const UPDATE_IMPACT_SPRING = {
   type: "spring",
-  stiffness: 520,
-  damping: 16,
-  mass: 0.8,
+  stiffness: 600,
+  damping: 30,
+  mass: 0.5,
 } as const;
 
 // Visible text per mode. `available` rests as an icon and only reveals this
@@ -335,6 +341,15 @@ const UpdateCapsule: React.FC<{
   // hovering.
   const showLabel = isAvailable ? hovered : true;
 
+  // Fire the pill-style impact pulse only on the frame the label toggles, so
+  // expanding and (especially) collapsing react with a little force instead of
+  // just snapping back.
+  const prevShowLabelRef = useRef(showLabel);
+  const pulse = prevShowLabelRef.current !== showLabel;
+  useEffect(() => {
+    prevShowLabelRef.current = showLabel;
+  });
+
   const handleClick = () => {
     if (mode === "ready") onRestart();
     else if (mode === "available") onInstall();
@@ -355,6 +370,8 @@ const UpdateCapsule: React.FC<{
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         whileTap={interactive ? { scale: 0.95 } : undefined}
+        animate={{ scale: pulse ? [1, 1.04, 1] : 1 }}
+        transition={{ scale: UPDATE_IMPACT_SPRING }}
         onClick={interactive ? handleClick : undefined}
         disabled={!interactive}
         aria-label={UPDATE_CAPSULE_ARIA[mode]}
@@ -381,15 +398,16 @@ const UpdateCapsule: React.FC<{
             opacity: showLabel ? 1 : 0,
             marginRight: showLabel && isAvailable ? 6 : 0,
           }}
-          transition={UPDATE_CAPSULE_SPRING}
+          transition={showLabel ? UPDATE_EXPAND_SPRING : UPDATE_COLLAPSE_SPRING}
           className="overflow-hidden whitespace-nowrap"
         >
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Width animates 0 -> auto, driving the reflow that springs the
-            version aside. justify-end reveals the glyph from the right edge so
-            it expands in horizontally from the corner, never diagonally. */}
+        {/* Outer width animates 0 -> auto (reflow that springs the version
+            aside); inner span slides the glyph in from the right with overshoot
+            so the entrance reads as a clear horizontal spring, not a corner
+            pop. */}
         <AnimatePresence initial>
           {isAvailable && (
             <motion.span
@@ -397,10 +415,18 @@ const UpdateCapsule: React.FC<{
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: "auto", opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={UPDATE_CAPSULE_POP}
+              transition={UPDATE_EXPAND_SPRING}
               className="flex justify-end overflow-hidden"
             >
-              <DownloadGlyph />
+              <motion.span
+                initial={{ x: 7 }}
+                animate={{ x: 0 }}
+                exit={{ x: 7 }}
+                transition={UPDATE_EXPAND_SPRING}
+                className="flex"
+              >
+                <DownloadGlyph />
+              </motion.span>
             </motion.span>
           )}
         </AnimatePresence>
