@@ -462,6 +462,34 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Hover spans the whole version+capsule row so the expanded label doesn't
   // collapse as the cursor crosses from the capsule onto the version.
   const [capsuleHovered, setCapsuleHovered] = useState(false);
+  // Hover *intent*: require a brief dwell before opening (so an incidental
+  // brush or edge-graze never triggers it) and a short grace before closing
+  // (so a momentary dip out doesn't make it flicker).
+  const capsuleHoverTimers = useRef<{
+    open: ReturnType<typeof setTimeout> | null;
+    close: ReturnType<typeof setTimeout> | null;
+  }>({ open: null, close: null });
+  const handleCapsuleHoverEnter = () => {
+    const t = capsuleHoverTimers.current;
+    if (t.close) clearTimeout(t.close);
+    if (t.open) clearTimeout(t.open);
+    t.close = null;
+    t.open = setTimeout(() => setCapsuleHovered(true), 150);
+  };
+  const handleCapsuleHoverLeave = () => {
+    const t = capsuleHoverTimers.current;
+    if (t.open) clearTimeout(t.open);
+    t.open = null;
+    t.close = setTimeout(() => setCapsuleHovered(false), 100);
+  };
+  useEffect(
+    () => () => {
+      const t = capsuleHoverTimers.current;
+      if (t.open) clearTimeout(t.open);
+      if (t.close) clearTimeout(t.close);
+    },
+    [],
+  );
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -703,8 +731,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {embeddedMode && appVersion && (
         <div
           className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
-          onMouseEnter={() => setCapsuleHovered(true)}
-          onMouseLeave={() => setCapsuleHovered(false)}
+          onMouseEnter={handleCapsuleHoverEnter}
+          onMouseLeave={handleCapsuleHoverLeave}
         >
           {/* The capsule reserves its slot the moment an update exists, which
               would normally push the version left immediately. We cancel that
