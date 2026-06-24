@@ -290,21 +290,30 @@ const InstalledCheck: React.FC = () => (
   </motion.svg>
 );
 
-// Honest indeterminate progress — Squirrel.Mac reports no percentage, so a
-// looping sweep (borrowing the Models gradient) communicates "working" without
-// faking a number.
-const IndeterminateSweep: React.FC = () => (
+// Indeterminate spinner — the same idiom used in onboarding/permissions, sized
+// to sit in the icon slot in place of the download glyph while working.
+const Spinner: React.FC = () => (
   <span
-    className="pointer-events-none absolute inset-x-1.5 bottom-[2px] h-[2px] overflow-hidden rounded-full"
+    className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white"
     aria-hidden
-  >
-    <motion.span
-      className="absolute inset-y-0 left-0 w-1/2 rounded-full bg-gradient-to-r from-white/20 to-white/70"
-      animate={{ x: ["-110%", "230%"] }}
-      transition={{ duration: 1.15, repeat: Infinity, ease: "easeInOut" }}
-    />
-  </span>
+  />
 );
+
+// The single slot at the trailing edge of the chip cross-fades between the
+// download glyph, the working spinner, and the success checkmark — all in the
+// same spot, same size, so nothing shifts as the state advances.
+function updateCapsuleIcon(mode: UpdateCapsuleMode): {
+  key: string;
+  node: React.ReactNode;
+} {
+  if (mode === "downloading" || mode === "checking") {
+    return { key: "spinner", node: <Spinner /> };
+  }
+  if (mode === "ready") {
+    return { key: "check", node: <InstalledCheck /> };
+  }
+  return { key: "download", node: <DownloadGlyph /> };
+}
 
 function deriveUpdateCapsuleMode(
   state: UpdatePanelState | null,
@@ -333,12 +342,11 @@ const UpdateCapsule: React.FC<{
 }> = ({ mode, revealed, onInstall, onRestart, onRetry }) => {
   const [hovered, setHovered] = useState(false);
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
-  const isAvailable = mode === "available";
-  const isBusy = mode === "downloading" || mode === "checking";
-  // `available` rests as a bare icon and reveals its label on hover; every
-  // other mode shows the label so download/ready feedback is visible without
-  // hovering.
-  const showLabel = isAvailable ? hovered : true;
+  // Only the two actionable resting states reveal a label on hover; while
+  // working (spinner) or on error the chip stays icon-sized so its width never
+  // jumps and the text never moves.
+  const showLabel = (mode === "available" || mode === "ready") && hovered;
+  const icon = updateCapsuleIcon(mode);
 
   const handleClick = () => {
     if (mode === "ready") onRestart();
@@ -373,21 +381,15 @@ const UpdateCapsule: React.FC<{
             : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
         }`}
       >
-        {mode === "ready" && (
-          <span className="mr-1.5 flex shrink-0">
-            <InstalledCheck />
-          </span>
-        )}
-
-        {/* The label's own width animates 0 -> auto, so it extends the button
-            while the trailing icon stays pinned to the right edge. No layout
-            projection means the icon never gets dragged or rescaled. */}
+        {/* Hover label for the actionable states; its width animates 0 -> auto
+            so it extends the chip leftward while the icon slot stays pinned to
+            the right edge. */}
         <motion.span
           initial={false}
           animate={{
             width: showLabel ? "auto" : 0,
             opacity: showLabel ? 1 : 0,
-            marginRight: showLabel && isAvailable ? 6 : 0,
+            marginRight: showLabel ? 6 : 0,
           }}
           transition={UPDATE_CAPSULE_SPRING}
           className="overflow-hidden whitespace-nowrap"
@@ -395,22 +397,29 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Scale the glyph from its own center so it grows outward evenly from
-            the middle — gated on `revealed` so it blooms in its reserved slot
-            after the delay, never on mount. */}
-        {isAvailable && (
-          <motion.span
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: revealed ? 1 : 0, opacity: revealed ? 1 : 0 }}
-            transition={UPDATE_CAPSULE_POP}
-            style={{ transformOrigin: "center center" }}
-            className="flex shrink-0"
-          >
-            <DownloadGlyph />
-          </motion.span>
-        )}
-
-        {isBusy && <IndeterminateSweep />}
+        {/* Trailing icon slot: blooms from its own center on reveal, then
+            cross-fades between glyph / spinner / checkmark in place as the
+            state advances — fixed-size so nothing shifts. */}
+        <motion.span
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: revealed ? 1 : 0, opacity: revealed ? 1 : 0 }}
+          transition={UPDATE_CAPSULE_POP}
+          style={{ transformOrigin: "center center" }}
+          className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={icon.key}
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute inset-0 flex items-center justify-center"
+            >
+              {icon.node}
+            </motion.span>
+          </AnimatePresence>
+        </motion.span>
       </motion.button>
     </motion.div>
   );
@@ -695,10 +704,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
-          {/* Stationary — it never slides. The capsule below reserves its own
-              slot while invisible, so the version doesn't reflow when the icon
-              reveals. */}
-          <a
+          {/* The capsule reserves its slot the moment an update exists, which
+              would normally push the version left immediately. We cancel that
+              with an equal-and-opposite x offset (applied instantly) so the
+              version stays flush-right — then, on reveal, animate x to 0 so it
+              springs left in sync with the icon blooming. */}
+          <motion.a
+            initial={false}
+            animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
+            transition={{
+              x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
+            }}
             href="https://spoke.so/changelog"
             onClick={(e) => {
               e.preventDefault();
@@ -708,7 +724,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             Spoke v{appVersion}
-          </a>
+          </motion.a>
           {/* Mounted as soon as an update exists (reserving the slot); the
               entrance delay only gates the visual reveal, not the layout. */}
           <AnimatePresence initial={false}>
