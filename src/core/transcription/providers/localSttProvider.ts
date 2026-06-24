@@ -39,7 +39,7 @@ export const localSttProvider: TranscriptionProvider = {
         ? "Local model is still downloading. Try again when it finishes."
         : status.state === "broken"
           ? "Local model needs to be reinstalled from Models."
-          : "Model unavailable. Open Models to install it.";
+          : "Model unavailable. Open Settings to install.";
 
     throw new TranscriptionSessionError("model_not_installed", message, {
       details: { modelState: status.state },

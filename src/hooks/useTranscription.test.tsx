@@ -266,7 +266,7 @@ describe("useTranscription", () => {
 
     expect(result.current.recording).toBe(false);
     expect(result.current.error).toBe(
-      "Model unavailable. Open Models to install it.",
+      "Model unavailable. Open Settings to install.",
     );
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
@@ -279,7 +279,7 @@ describe("useTranscription", () => {
     });
 
     expect(result.current.error).toBe(
-      "Model unavailable. Open Models to install it.",
+      "Model unavailable. Open Settings to install.",
     );
     expect(result.current.errorId).toBeGreaterThan(firstErrorId);
   });

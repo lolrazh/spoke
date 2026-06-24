@@ -58,18 +58,7 @@ export const pillReducer = (
       if (event.type === "PTT_STOP") return { ...state, state: "PROCESSING" };
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
       if (event.type === "NOTIFY") {
-        // If it's an error notification (starts with common error phrases),
-        // show it immediately instead of queuing it
-        const isErrorNotif =
-          event.msg &&
-          (event.msg.includes("required") ||
-            event.msg.includes("failed") ||
-            event.msg.includes("error") ||
-            event.msg.includes("expired") ||
-            event.msg.includes("unavailable") ||
-            event.msg.includes("not downloaded"));
-
-        if (isErrorNotif) {
+        if (isUrgentNotification(event.msg)) {
           // Cancel listening and show error notification immediately
           return {
             state: "NOTIFICATION",
@@ -156,6 +145,18 @@ export const pillReducer = (
       return state;
   }
 };
+
+function isUrgentNotification(message: string) {
+  const normalized = message.toLowerCase();
+  return [
+    "required",
+    "failed",
+    "error",
+    "expired",
+    "unavailable",
+    "not downloaded",
+  ].some((keyword) => normalized.includes(keyword));
+}
 
 export const usePillMachine = () => {
   const [machine, dispatch] = useReducer(

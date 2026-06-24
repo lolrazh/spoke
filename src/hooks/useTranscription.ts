@@ -609,7 +609,7 @@ function toUserFacingTranscriptionError(err: unknown) {
       lowerMessage.includes("not downloaded") ||
       lowerMessage.includes("load failed"))
   ) {
-    return "Model unavailable. Open Models to install it.";
+    return "Model unavailable. Open Settings to install.";
   }
 
   return message;

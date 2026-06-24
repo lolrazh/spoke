@@ -67,7 +67,7 @@ describe("localSttProvider", () => {
       }),
     ).rejects.toMatchObject({
       code: "model_not_installed",
-      message: "Model unavailable. Open Models to install it.",
+      message: "Model unavailable. Open Settings to install.",
     });
   });
 
