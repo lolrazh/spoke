@@ -342,15 +342,14 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // The capsule sizes up in place — a pronounced scale from center (explicit
-    // origin so it can never anchor to a corner), never sliding in from a
-    // direction. The version eases aside separately (in the parent).
+    // The chip just fades; the size-up lives on the icon itself (below), which
+    // scales from its own center so it grows outward evenly. The version eases
+    // aside separately (in the parent).
     <motion.div
-      style={{ transformOrigin: "center center" }}
-      initial={{ opacity: 0, scale: 0.5 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.5 }}
-      transition={UPDATE_CAPSULE_POP}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
     >
       <motion.button
         type="button"
@@ -389,9 +388,20 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Reserved at full size from mount — the capsule pops in place around
-            it, so there's no width-reveal that would read as a slide. */}
-        {isAvailable && <DownloadGlyph />}
+        {/* Scale the glyph from its own center so it grows outward evenly from
+            the middle — never anchored to an edge or corner of the chip. */}
+        {isAvailable && (
+          <motion.span
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={UPDATE_CAPSULE_POP}
+            style={{ transformOrigin: "center center" }}
+            className="flex shrink-0"
+          >
+            <DownloadGlyph />
+          </motion.span>
+        )}
 
         {isBusy && <IndeterminateSweep />}
       </motion.button>
