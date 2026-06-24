@@ -238,7 +238,7 @@ describe("useTranscription", () => {
   });
 
   it("fails fast before recording when the local model is not installed", async () => {
-    (window.stt.getModelStatus as any).mockResolvedValueOnce({
+    (window.stt.getModelStatus as any).mockResolvedValue({
       state: "not_installed",
       family: null,
       modelId: null,
@@ -270,6 +270,18 @@ describe("useTranscription", () => {
     );
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+
+    const firstErrorId = result.current.errorId;
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(result.current.error).toBe(
+      "Model unavailable. Open Models to install it.",
+    );
+    expect(result.current.errorId).toBeGreaterThan(firstErrorId);
   });
 
   it("stops after recorder startup resolves when key-up wins the startup race", async () => {

@@ -574,7 +574,7 @@ const AppInner: React.FC = () => {
       window.notifications.send(trans.error);
       pushTrace(`Error: ${trans.error}`);
     }
-  }, [pushTrace, trans.error]);
+  }, [pushTrace, trans.error, trans.errorId]);
 
   useEffect(() => {
     const cleanup = window.notifications.on(({ message, actionId }) => {

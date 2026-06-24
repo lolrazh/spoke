@@ -42,6 +42,7 @@ export interface UseTranscriptionReturn {
   ready: boolean;
   text: string;
   error: string | null;
+  errorId: number;
   mode: TranscriptionMode;
   selection: SelectionInspectSnapshot | null;
   audioLevel: number;
@@ -66,6 +67,7 @@ export function useTranscription(
   const [ready, setReady] = useState(false);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState(0);
   const [mode] = useState<TranscriptionMode>("dictation");
   const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -83,6 +85,11 @@ export function useTranscription(
     LOCAL_STT_PROVIDER_ID,
   );
 
+  const reportTranscriptionError = useCallback((message: string) => {
+    setError(message);
+    setErrorId((value) => value + 1);
+  }, []);
+
   // Initialize microphone stream
   const initStream = useCallback(async () => {
     try {
@@ -99,11 +106,11 @@ export function useTranscription(
       return stream;
     } catch (err) {
       console.error("[Transcription] Failed to get microphone:", err);
-      setError("Failed to access microphone");
+      reportTranscriptionError("Failed to access microphone");
       setReady(false);
       throw err;
     }
-  }, []);
+  }, [reportTranscriptionError]);
 
   // Initialize on mount
   useEffect(() => {
@@ -201,7 +208,7 @@ export function useTranscription(
           onAudioLevel: setAudioLevel,
           onError: (err) => {
             console.error("[Transcription] PCM capture error:", err);
-            setError(err.message);
+            reportTranscriptionError(err.message);
             setRecording(false);
           },
         });
@@ -245,7 +252,7 @@ export function useTranscription(
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
       console.error("[Transcription] Start failed:", err);
-      setError(toUserFacingTranscriptionError(err));
+      reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
       activeProviderIdRef.current = null;
       recorderStartPromiseRef.current = null;
@@ -260,6 +267,7 @@ export function useTranscription(
     captureScreenshotBase64,
     initStream,
     processing,
+    reportTranscriptionError,
     recording,
     resolveActiveProviderId,
   ]);
@@ -511,7 +519,7 @@ export function useTranscription(
       });
     } catch (err) {
       console.error("[Transcription] Stop failed:", err);
-      setError(toUserFacingTranscriptionError(err));
+      reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
       stopInFlightRef.current = false;
       activeProviderIdRef.current = null;
@@ -529,6 +537,7 @@ export function useTranscription(
     buildTranscriptionContext,
     options.suppressNativePaste,
     recording,
+    reportTranscriptionError,
     resolveActiveProviderId,
   ]);
 
@@ -572,6 +581,7 @@ export function useTranscription(
     ready,
     text,
     error,
+    errorId,
     mode,
     selection,
     audioLevel,
