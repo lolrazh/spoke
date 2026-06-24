@@ -658,9 +658,19 @@
     will-change: transform;
   }
 
+  /* Define BOTH endpoints with the same transform function list (translateZ
+     keeps the GPU/compositing hint live during the animation). A single `to`
+     would leave the implicit `from` as the element's base transform —
+     translateZ(0) from `.animate-spin` — which mismatches `rotate()` and forces
+     matrix interpolation. Both endpoints resolve to the identity matrix there,
+     so the element never visibly rotates. Listing matching functions makes the
+     browser interpolate the rotation angle instead. */
   @keyframes spin {
+    from {
+      transform: translateZ(0) rotate(0deg);
+    }
     to {
-      transform: rotate(360deg);
+      transform: translateZ(0) rotate(360deg);
     }
   }
 
