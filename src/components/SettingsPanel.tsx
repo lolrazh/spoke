@@ -202,13 +202,21 @@ type UpdateCapsuleMode =
   | "ready"
   | "error";
 
-// Spring shared by the capsule's entrance and the version label it pushes
-// aside, so the two read as a single coordinated motion.
+// Smooth spring for the hover label expansion.
 const UPDATE_CAPSULE_SPRING = {
   type: "spring",
   stiffness: 480,
   damping: 30,
   mass: 0.85,
+} as const;
+
+// Livelier spring for the icon popping into place on entrance — a touch of
+// overshoot so it reads as springing in rather than easing.
+const UPDATE_CAPSULE_POP = {
+  type: "spring",
+  stiffness: 520,
+  damping: 24,
+  mass: 0.8,
 } as const;
 
 // Visible text per mode. `available` rests as an icon and only reveals this
@@ -249,7 +257,7 @@ const DownloadGlyph: React.FC = () => (
     strokeWidth="2.2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="shrink-0 text-muted-foreground/70 transition-colors duration-200 group-hover:text-foreground"
+    className="shrink-0"
     aria-hidden
   >
     <path d="M12 4v10" />
@@ -334,14 +342,13 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // Wrapper owns the entrance; transformOrigin anchors the pop to the right
-    // edge so it emerges horizontally from the corner, not diagonally.
+    // Wrapper only fades the capsule in/out; the spring "expand into place"
+    // lives on the icon below, which drives the version push via real reflow.
     <motion.div
-      style={{ transformOrigin: "right center" }}
-      initial={{ opacity: 0, scale: 0.9, x: 8 }}
-      animate={{ opacity: 1, scale: 1, x: 0 }}
-      exit={{ opacity: 0, scale: 0.9, x: 8 }}
-      transition={UPDATE_CAPSULE_SPRING}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
     >
       <motion.button
         type="button"
@@ -352,7 +359,7 @@ const UpdateCapsule: React.FC<{
         disabled={!interactive}
         aria-label={UPDATE_CAPSULE_ARIA[mode]}
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        className={`group no-drag relative flex h-6 items-center overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
+        className={`no-drag relative flex h-6 items-center overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
           interactive
             ? "onboarding-cta cursor-pointer"
             : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
@@ -380,7 +387,31 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {isAvailable && <DownloadGlyph />}
+        {/* Outer span animates width (drives the reflow that pushes the
+            version); inner span scales the glyph so it springs into place
+            rather than slicing into view via the width clip. */}
+        <AnimatePresence initial>
+          {isAvailable && (
+            <motion.span
+              key="download-icon"
+              initial={{ width: 0 }}
+              animate={{ width: "auto" }}
+              exit={{ width: 0 }}
+              transition={UPDATE_CAPSULE_POP}
+              className="flex overflow-hidden"
+            >
+              <motion.span
+                initial={{ scale: 0.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.4, opacity: 0 }}
+                transition={UPDATE_CAPSULE_POP}
+                className="flex"
+              >
+                <DownloadGlyph />
+              </motion.span>
+            </motion.span>
+          )}
+        </AnimatePresence>
 
         {isBusy && <IndeterminateSweep />}
       </motion.button>
