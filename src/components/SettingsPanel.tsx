@@ -210,12 +210,12 @@ const UPDATE_CAPSULE_SPRING = {
   mass: 0.85,
 } as const;
 
-// Livelier spring for the icon popping into place on entrance — a touch of
-// overshoot so it reads as springing in rather than easing.
+// Bouncy spring for the icon springing into place on entrance — low damping so
+// the version visibly overshoots left and settles back.
 const UPDATE_CAPSULE_POP = {
   type: "spring",
   stiffness: 520,
-  damping: 24,
+  damping: 16,
   mass: 0.8,
 } as const;
 
@@ -387,28 +387,20 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Outer span animates width (drives the reflow that pushes the
-            version); inner span scales the glyph so it springs into place
-            rather than slicing into view via the width clip. */}
+        {/* Width animates 0 -> auto, driving the reflow that springs the
+            version aside. justify-end reveals the glyph from the right edge so
+            it expands in horizontally from the corner, never diagonally. */}
         <AnimatePresence initial>
           {isAvailable && (
             <motion.span
               key="download-icon"
-              initial={{ width: 0 }}
-              animate={{ width: "auto" }}
-              exit={{ width: 0 }}
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: "auto", opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
               transition={UPDATE_CAPSULE_POP}
-              className="flex overflow-hidden"
+              className="flex justify-end overflow-hidden"
             >
-              <motion.span
-                initial={{ scale: 0.4, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.4, opacity: 0 }}
-                transition={UPDATE_CAPSULE_POP}
-                className="flex"
-              >
-                <DownloadGlyph />
-              </motion.span>
+              <DownloadGlyph />
             </motion.span>
           )}
         </AnimatePresence>
