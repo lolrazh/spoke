@@ -328,11 +328,14 @@ const UpdateCapsule: React.FC<{
   // delay. Reserving the slot up front means the version never reflows when the
   // icon appears — it simply blooms in place.
   revealed: boolean;
+  // Hover is tracked on the whole version+capsule row (in the parent), not the
+  // button, so the expanded label stays open as the cursor moves left onto the
+  // version — the hover target never collapses out from under you.
+  hovered: boolean;
   onInstall: () => void;
   onRestart: () => void;
   onRetry: () => void;
-}> = ({ mode, revealed, onInstall, onRestart, onRetry }) => {
-  const [hovered, setHovered] = useState(false);
+}> = ({ mode, revealed, hovered, onInstall, onRestart, onRetry }) => {
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
   // The working states (downloading / checking) collapse to a bare spinner —
   // no label — so clicking the download glyph simply morphs it into a spinner
@@ -365,8 +368,6 @@ const UpdateCapsule: React.FC<{
     >
       <motion.button
         type="button"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         whileTap={interactive ? { scale: 0.95 } : undefined}
         onClick={interactive ? handleClick : undefined}
         disabled={!interactive}
@@ -458,6 +459,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [installRequested, setInstallRequested] = useState(false);
 
   const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
+  // Hover spans the whole version+capsule row so the expanded label doesn't
+  // collapse as the cursor crosses from the capsule onto the version.
+  const [capsuleHovered, setCapsuleHovered] = useState(false);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -697,7 +701,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     >
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
-        <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
+        <div
+          className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
+          onMouseEnter={() => setCapsuleHovered(true)}
+          onMouseLeave={() => setCapsuleHovered(false)}
+        >
           {/* The capsule reserves its slot the moment an update exists, which
               would normally push the version left immediately. We cancel that
               with an equal-and-opposite x offset (applied instantly) so the
@@ -727,6 +735,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 key="update-capsule"
                 mode={capsuleMode}
                 revealed={showUpdateCapsule}
+                hovered={capsuleHovered}
                 onInstall={handleInstallUpdate}
                 onRestart={() => window.update?.restart?.()}
                 onRetry={() => window.update?.check?.()}
