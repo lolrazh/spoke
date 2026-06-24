@@ -17,7 +17,6 @@ import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
-import { MOTION } from "../config/motionTokens";
 
 type SettingsPanelTab = "settings" | "models" | "history";
 type SettingsPanelInitialTab = Extract<
@@ -397,19 +396,18 @@ const UpdateCapsule: React.FC<{
 
         {/* Trailing icon slot — fixed-size; the chip's scale handles the
             entrance, and this only cross-fades the glyph / spinner / checkmark
-            in place as the state advances. Same idiom as the Models card:
-            `mode="wait"` so one icon fully settles out before the next eases
-            in, an opacity-led fade with only a whisper of scale, on a soft
-            spring so the morph reads as one continuous moment (and the
-            checkmark then draws itself on). */}
+            in place as the state advances. Like the Models card, it's a plain
+            opacity cross-fade (no scale pop) — but simultaneous, since the slot
+            is fixed-size and the icons overlap, so one dissolves into the next
+            with no dead gap. The checkmark then draws itself on. */}
         <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence initial={false}>
             <motion.span
               key={icon.key}
-              initial={{ opacity: 0, scale: 0.82 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.82 }}
-              transition={MOTION.springs.quick}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
               className="absolute inset-0 flex items-center justify-center"
             >
               {icon.node}
