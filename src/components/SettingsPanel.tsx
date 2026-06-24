@@ -249,7 +249,7 @@ const DownloadGlyph: React.FC = () => (
     strokeWidth="2.2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="shrink-0"
+    className="shrink-0 text-muted-foreground/70 transition-colors duration-200 group-hover:text-foreground"
     aria-hidden
   >
     <path d="M12 4v10" />
@@ -314,17 +314,17 @@ function deriveUpdateCapsuleMode(
 
 const UpdateCapsule: React.FC<{
   mode: UpdateCapsuleMode;
-  hovered: boolean;
-  onHoverChange: (hovered: boolean) => void;
   onInstall: () => void;
   onRestart: () => void;
   onRetry: () => void;
-}> = ({ mode, hovered, onHoverChange, onInstall, onRestart, onRetry }) => {
+}> = ({ mode, onInstall, onRestart, onRetry }) => {
+  const [hovered, setHovered] = useState(false);
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
   const isAvailable = mode === "available";
   const isBusy = mode === "downloading" || mode === "checking";
-  // `available` is the only mode that rests as a bare icon; everything else
-  // shows its label so download/ready feedback is visible without hovering.
+  // `available` rests as a bare icon and reveals its label on hover; every
+  // other mode shows the label so download/ready feedback is visible without
+  // hovering.
   const showLabel = isAvailable ? hovered : true;
 
   const handleClick = () => {
@@ -334,9 +334,8 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // Wrapper owns the entrance so it never fights the button's layout spring.
-    // transformOrigin keeps the pop anchored to the right edge — a clean
-    // horizontal emerge from the corner, not a diagonal drift.
+    // Wrapper owns the entrance; transformOrigin anchors the pop to the right
+    // edge so it emerges horizontally from the corner, not diagonally.
     <motion.div
       style={{ transformOrigin: "right center" }}
       initial={{ opacity: 0, scale: 0.9, x: 8 }}
@@ -346,38 +345,40 @@ const UpdateCapsule: React.FC<{
     >
       <motion.button
         type="button"
-        layout
-        transition={UPDATE_CAPSULE_SPRING}
-        onMouseEnter={() => onHoverChange(true)}
-        onMouseLeave={() => onHoverChange(false)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         whileTap={interactive ? { scale: 0.95 } : undefined}
         onClick={interactive ? handleClick : undefined}
         disabled={!interactive}
         aria-label={UPDATE_CAPSULE_ARIA[mode]}
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        className={`no-drag relative flex h-6 items-center gap-1.5 overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
+        className={`group no-drag relative flex h-6 items-center overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
           interactive
             ? "onboarding-cta cursor-pointer"
             : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
         }`}
       >
-        {mode === "ready" && <InstalledCheck />}
+        {mode === "ready" && (
+          <span className="mr-1.5 flex shrink-0">
+            <InstalledCheck />
+          </span>
+        )}
 
-        <AnimatePresence mode="popLayout" initial={false}>
-          {showLabel && (
-            <motion.span
-              key={UPDATE_CAPSULE_LABELS[mode]}
-              layout
-              initial={{ opacity: 0, x: 4 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 4 }}
-              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              className="whitespace-nowrap"
-            >
-              {UPDATE_CAPSULE_LABELS[mode]}
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {/* The label's own width animates 0 -> auto, so it extends the button
+            while the trailing icon stays pinned to the right edge. No layout
+            projection means the icon never gets dragged or rescaled. */}
+        <motion.span
+          initial={false}
+          animate={{
+            width: showLabel ? "auto" : 0,
+            opacity: showLabel ? 1 : 0,
+            marginRight: showLabel && isAvailable ? 6 : 0,
+          }}
+          transition={UPDATE_CAPSULE_SPRING}
+          className="overflow-hidden whitespace-nowrap"
+        >
+          {UPDATE_CAPSULE_LABELS[mode]}
+        </motion.span>
 
         {isAvailable && <DownloadGlyph />}
 
@@ -426,9 +427,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [installRequested, setInstallRequested] = useState(false);
 
   const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
-  // Hover lives here (not in the capsule) so the version label re-renders with
-  // the capsule and springs aside as it expands.
-  const [capsuleHovered, setCapsuleHovered] = useState(false);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -669,9 +667,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
-          <motion.a
-            layout
-            transition={UPDATE_CAPSULE_SPRING}
+          <a
             href="https://spoke.so/changelog"
             onClick={(e) => {
               e.preventDefault();
@@ -681,14 +677,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             Spoke v{appVersion}
-          </motion.a>
+          </a>
           <AnimatePresence initial={false}>
             {showUpdateCapsule && capsuleMode && (
               <UpdateCapsule
                 key="update-capsule"
                 mode={capsuleMode}
-                hovered={capsuleHovered}
-                onHoverChange={setCapsuleHovered}
                 onInstall={handleInstallUpdate}
                 onRestart={() => window.update?.restart?.()}
                 onRetry={() => window.update?.check?.()}
