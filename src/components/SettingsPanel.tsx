@@ -210,13 +210,13 @@ const UPDATE_CAPSULE_SPRING = {
   mass: 0.85,
 } as const;
 
-// Bouncy spring for the icon springing into place on entrance — low damping so
-// the version visibly overshoots left and settles back.
+// Clean pop for the capsule scaling up in place (and the version easing aside
+// to match) — snappy with just a little overshoot, not a wobble.
 const UPDATE_CAPSULE_POP = {
   type: "spring",
-  stiffness: 520,
-  damping: 16,
-  mass: 0.8,
+  stiffness: 600,
+  damping: 26,
+  mass: 0.7,
 } as const;
 
 // Visible text per mode. `available` rests as an icon and only reveals this
@@ -342,12 +342,14 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // The capsule pops in place — scale + fade from center, never sliding in
-    // from a direction. The version is pushed aside separately (in the parent).
+    // The capsule sizes up in place — a pronounced scale from center (explicit
+    // origin so it can never anchor to a corner), never sliding in from a
+    // direction. The version eases aside separately (in the parent).
     <motion.div
-      initial={{ opacity: 0, scale: 0.82 }}
+      style={{ transformOrigin: "center center" }}
+      initial={{ opacity: 0, scale: 0.5 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.82 }}
+      exit={{ opacity: 0, scale: 0.5 }}
       transition={UPDATE_CAPSULE_POP}
     >
       <motion.button
