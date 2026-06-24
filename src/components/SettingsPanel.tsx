@@ -355,16 +355,19 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // The chip reserves its slot while invisible, then fades in on reveal; the
-    // size-up lives on the icon itself (below), which scales from its own
-    // center so it grows outward evenly. Nothing slides — the version is
-    // stationary.
+    // The whole chip — background, border and icon together — scales up from
+    // its center while fading in, as one cohesive motion on a single spring.
+    // It reserves its slot while invisible (scale is a transform, so layout is
+    // unaffected); nothing slides — the version is handled separately.
     <motion.div
-      style={{ pointerEvents: revealed ? "auto" : "none" }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: revealed ? 1 : 0 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      style={{
+        transformOrigin: "center center",
+        pointerEvents: revealed ? "auto" : "none",
+      }}
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{ opacity: revealed ? 1 : 0, scale: revealed ? 1 : 0 }}
+      exit={{ opacity: 0, scale: 0 }}
+      transition={UPDATE_CAPSULE_POP}
     >
       <motion.button
         type="button"
@@ -397,16 +400,10 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Trailing icon slot: blooms from its own center on reveal, then
-            cross-fades between glyph / spinner / checkmark in place as the
-            state advances — fixed-size so nothing shifts. */}
-        <motion.span
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: revealed ? 1 : 0, opacity: revealed ? 1 : 0 }}
-          transition={UPDATE_CAPSULE_POP}
-          style={{ transformOrigin: "center center" }}
-          className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center"
-        >
+        {/* Trailing icon slot — fixed-size; the chip's scale handles the
+            entrance, and this only cross-fades the glyph / spinner / checkmark
+            in place as the state advances. */}
+        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={icon.key}
@@ -419,7 +416,7 @@ const UpdateCapsule: React.FC<{
               {icon.node}
             </motion.span>
           </AnimatePresence>
-        </motion.span>
+        </span>
       </motion.button>
     </motion.div>
   );
