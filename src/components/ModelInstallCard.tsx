@@ -5,6 +5,7 @@ import type { ModelStatus } from "../types/shared";
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import IconButton from "./ui/IconButton";
+import Spinner from "./ui/Spinner";
 
 // Matches the name shown in onboarding.
 const MODEL_NAME = "Whisper Large v3 Turbo";
@@ -129,7 +130,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="inline-flex items-center gap-2 text-[11px] text-white/70"
             >
-              <span className="h-3 w-3 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+              <Spinner className="h-3 w-3" />
               Verifying…
             </motion.div>
           )}

@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import SettingsCard from "./SettingsCard";
 import { Button } from "./ui/button";
+import Spinner from "./ui/Spinner";
 import SfIcon from "./icons/SfIcon";
 import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SettingsPanel";
@@ -186,7 +187,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
                     >
                       <div className="relative flex items-center justify-center h-4 w-14">
                         {entry.loading ? (
-                          <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                          <Spinner className="h-4 w-4" />
                         ) : (
                           <span>Enable</span>
                         )}

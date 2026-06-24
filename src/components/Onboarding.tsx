@@ -11,6 +11,7 @@ import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
+import Spinner from "./ui/Spinner";
 import {
   Select,
   SelectTrigger,
@@ -897,7 +898,7 @@ const Onboarding: React.FC = () => {
                                   >
                                     <div className="relative flex items-center justify-center h-4">
                                       {ui.microphone.loading ? (
-                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                        <Spinner className="h-4 w-4" />
                                       ) : (
                                         <span>Enable</span>
                                       )}
@@ -991,7 +992,7 @@ const Onboarding: React.FC = () => {
                                   >
                                     <div className="relative flex items-center justify-center h-4">
                                       {ui.accessibility.loading ? (
-                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                        <Spinner className="h-4 w-4" />
                                       ) : (
                                         <span>Enable</span>
                                       )}
@@ -1084,7 +1085,7 @@ const Onboarding: React.FC = () => {
                                   >
                                     <div className="relative flex items-center justify-center h-4">
                                       {ui.inputMonitoring.loading ? (
-                                        <div className="h-4 w-4 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                        <Spinner className="h-4 w-4" />
                                       ) : (
                                         <span>Enable</span>
                                       )}
@@ -1334,7 +1335,7 @@ const Onboarding: React.FC = () => {
                                     across 1–3 digits (e.g. 5% / 42% / 100%). */}
                                 <div className="flex w-10 shrink-0 items-center justify-center">
                                   {modelStatus.state === "installing" ? (
-                                    <div className="h-3 w-3 animate-spin will-change-transform rounded-full border-2 border-white/30 border-t-white" />
+                                    <Spinner className="h-3 w-3" />
                                   ) : (
                                     <span className="text-[10px] text-white/70 tabular-nums">
                                       {modelProgressPercent}%
