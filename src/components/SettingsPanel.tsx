@@ -342,13 +342,13 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // Wrapper only fades the capsule in/out; the spring "expand into place"
-    // lives on the icon below, which drives the version push via real reflow.
+    // The capsule pops in place — scale + fade from center, never sliding in
+    // from a direction. The version is pushed aside separately (in the parent).
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, scale: 0.82 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.82 }}
+      transition={UPDATE_CAPSULE_POP}
     >
       <motion.button
         type="button"
@@ -387,23 +387,9 @@ const UpdateCapsule: React.FC<{
           {UPDATE_CAPSULE_LABELS[mode]}
         </motion.span>
 
-        {/* Width animates 0 -> auto, driving the reflow that springs the
-            version aside. justify-end reveals the glyph from the right edge so
-            it expands in horizontally from the corner, never diagonally. */}
-        <AnimatePresence initial>
-          {isAvailable && (
-            <motion.span
-              key="download-icon"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: "auto", opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={UPDATE_CAPSULE_POP}
-              className="flex justify-end overflow-hidden"
-            >
-              <DownloadGlyph />
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {/* Reserved at full size from mount — the capsule pops in place around
+            it, so there's no width-reveal that would read as a slide. */}
+        {isAvailable && <DownloadGlyph />}
 
         {isBusy && <IndeterminateSweep />}
       </motion.button>
@@ -450,6 +436,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [installRequested, setInstallRequested] = useState(false);
 
   const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
+  const capsulePresent = showUpdateCapsule && Boolean(capsuleMode);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -690,7 +677,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
-          <a
+          {/* When the capsule appears, the version slides left into its pushed
+              slot (starting from where it sat with no capsule) so the push is
+              animated while the capsule itself just pops in place. Keyed so the
+              one-shot slide only fires on the present/absent transition; hover
+              expansion afterwards moves it via plain reflow. */}
+          <motion.a
+            key={capsulePresent ? "version-pushed" : "version-rest"}
+            initial={{ x: capsulePresent ? 34 : 0 }}
+            animate={{ x: 0 }}
+            transition={UPDATE_CAPSULE_POP}
             href="https://spoke.so/changelog"
             onClick={(e) => {
               e.preventDefault();
@@ -700,7 +696,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             Spoke v{appVersion}
-          </a>
+          </motion.a>
           <AnimatePresence initial={false}>
             {showUpdateCapsule && capsuleMode && (
               <UpdateCapsule
