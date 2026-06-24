@@ -166,7 +166,8 @@ describe("components/SettingsPanel", () => {
     });
 
     const restartButtons = Array.from(container.querySelectorAll("button")).filter(
-      (button) => button.textContent === "Restart Spoke",
+      (button) =>
+        button.getAttribute("aria-label") === "Restart Spoke to update",
     );
     expect(restartButtons).toHaveLength(1);
     expect(container.textContent ?? "").toContain("Spoke v0.1.7");
@@ -209,7 +210,15 @@ describe("components/SettingsPanel", () => {
     });
 
     expect(window.update.installWhenReady).toHaveBeenCalledTimes(1);
-    expect(container.textContent ?? "").toContain("Downloading");
+    // The chip collapses to an icon-only spinner while working — assert the
+    // downloading state via its (always-present) aria-label rather than text.
+    const downloadingButton = Array.from(
+      container.querySelectorAll("button"),
+    ).find(
+      (button) =>
+        button.getAttribute("aria-label") === "Downloading update",
+    );
+    expect(downloadingButton).toBeTruthy();
     unmount();
   });
 

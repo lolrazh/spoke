@@ -17,6 +17,7 @@ import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
+import { MOTION } from "../config/motionTokens";
 
 type SettingsPanelTab = "settings" | "models" | "history";
 type SettingsPanelInitialTab = Extract<
@@ -334,10 +335,12 @@ const UpdateCapsule: React.FC<{
 }> = ({ mode, revealed, onInstall, onRestart, onRetry }) => {
   const [hovered, setHovered] = useState(false);
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
-  // `available` rests as a bare icon and reveals its label on hover; every
-  // other state keeps its label visible (Downloading / Restart Spoke / …) so
-  // only the trailing icon changes as the flow advances — the text stays put.
-  const showLabel = mode === "available" ? hovered : true;
+  // The working states (downloading / checking) collapse to a bare spinner —
+  // no label — so clicking the download glyph simply morphs it into a spinner
+  // in place while the text slides away. The actionable states rest as their
+  // icon and reveal their label on hover (Update available / Restart Spoke /
+  // Try again) so the chip stays compact until you reach for it.
+  const showLabel = interactive && hovered;
   const icon = updateCapsuleIcon(mode);
 
   const handleClick = () => {
@@ -394,15 +397,19 @@ const UpdateCapsule: React.FC<{
 
         {/* Trailing icon slot — fixed-size; the chip's scale handles the
             entrance, and this only cross-fades the glyph / spinner / checkmark
-            in place as the state advances. */}
+            in place as the state advances. Same idiom as the Models card:
+            `mode="wait"` so one icon fully settles out before the next eases
+            in, an opacity-led fade with only a whisper of scale, on a soft
+            spring so the morph reads as one continuous moment (and the
+            checkmark then draws itself on). */}
         <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={icon.key}
-              initial={{ opacity: 0, scale: 0.5 }}
+              initial={{ opacity: 0, scale: 0.82 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              exit={{ opacity: 0, scale: 0.82 }}
+              transition={MOTION.springs.quick}
               className="absolute inset-0 flex items-center justify-center"
             >
               {icon.node}
