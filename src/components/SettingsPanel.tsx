@@ -322,10 +322,15 @@ function deriveUpdateCapsuleMode(
 
 const UpdateCapsule: React.FC<{
   mode: UpdateCapsuleMode;
+  // The capsule is mounted (reserving its layout slot) as soon as an update
+  // exists, but stays invisible until `revealed` flips after the entrance
+  // delay. Reserving the slot up front means the version never reflows when the
+  // icon appears — it simply blooms in place.
+  revealed: boolean;
   onInstall: () => void;
   onRestart: () => void;
   onRetry: () => void;
-}> = ({ mode, onInstall, onRestart, onRetry }) => {
+}> = ({ mode, revealed, onInstall, onRestart, onRetry }) => {
   const [hovered, setHovered] = useState(false);
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
   const isAvailable = mode === "available";
@@ -342,12 +347,14 @@ const UpdateCapsule: React.FC<{
   };
 
   return (
-    // The chip just fades; the size-up lives on the icon itself (below), which
-    // scales from its own center so it grows outward evenly. The version eases
-    // aside separately (in the parent).
+    // The chip reserves its slot while invisible, then fades in on reveal; the
+    // size-up lives on the icon itself (below), which scales from its own
+    // center so it grows outward evenly. Nothing slides — the version is
+    // stationary.
     <motion.div
+      style={{ pointerEvents: revealed ? "auto" : "none" }}
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      animate={{ opacity: revealed ? 1 : 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
     >
@@ -389,12 +396,12 @@ const UpdateCapsule: React.FC<{
         </motion.span>
 
         {/* Scale the glyph from its own center so it grows outward evenly from
-            the middle — never anchored to an edge or corner of the chip. */}
+            the middle — gated on `revealed` so it blooms in its reserved slot
+            after the delay, never on mount. */}
         {isAvailable && (
           <motion.span
             initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
+            animate={{ scale: revealed ? 1 : 0, opacity: revealed ? 1 : 0 }}
             transition={UPDATE_CAPSULE_POP}
             style={{ transformOrigin: "center center" }}
             className="flex shrink-0"
@@ -448,7 +455,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [installRequested, setInstallRequested] = useState(false);
 
   const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
-  const capsulePresent = showUpdateCapsule && Boolean(capsuleMode);
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -689,16 +695,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Version + update capsule on bottom-right (embedded mode) */}
       {embeddedMode && appVersion && (
         <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
-          {/* When the capsule appears, the version slides left into its pushed
-              slot (starting from where it sat with no capsule) so the push is
-              animated while the capsule itself just pops in place. Keyed so the
-              one-shot slide only fires on the present/absent transition; hover
-              expansion afterwards moves it via plain reflow. */}
-          <motion.a
-            key={capsulePresent ? "version-pushed" : "version-rest"}
-            initial={{ x: capsulePresent ? 34 : 0 }}
-            animate={{ x: 0 }}
-            transition={UPDATE_CAPSULE_POP}
+          {/* Stationary — it never slides. The capsule below reserves its own
+              slot while invisible, so the version doesn't reflow when the icon
+              reveals. */}
+          <a
             href="https://spoke.so/changelog"
             onClick={(e) => {
               e.preventDefault();
@@ -708,12 +708,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             Spoke v{appVersion}
-          </motion.a>
+          </a>
+          {/* Mounted as soon as an update exists (reserving the slot); the
+              entrance delay only gates the visual reveal, not the layout. */}
           <AnimatePresence initial={false}>
-            {showUpdateCapsule && capsuleMode && (
+            {capsuleMode && (
               <UpdateCapsule
                 key="update-capsule"
                 mode={capsuleMode}
+                revealed={showUpdateCapsule}
                 onInstall={handleInstallUpdate}
                 onRestart={() => window.update?.restart?.()}
                 onRetry={() => window.update?.check?.()}
