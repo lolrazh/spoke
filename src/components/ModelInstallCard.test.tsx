@@ -59,7 +59,7 @@ describe("ModelInstallCard", () => {
   it("shows a download affordance + tagline and installs on row click when not installed", () => {
     const props = renderCard();
     expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
-    expect(screen.getByText(/Multilingual speech recognition/i)).toBeTruthy();
+    expect(screen.getByText(/14 languages/i)).toBeTruthy();
     // No buttons (no "Install"/"Use") — the whole row is the affordance.
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     // The row itself is the clickable button; clicking it installs.

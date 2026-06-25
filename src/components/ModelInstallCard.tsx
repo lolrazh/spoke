@@ -22,7 +22,9 @@ function describe(info: LocalModelInfo, status: ModelStatus): string {
       ? `${status.error}. Repair downloads a clean copy.`
       : "Couldn't verify the model. Repair downloads a clean copy.";
   }
-  return [info.tagline, size].filter(Boolean).join(" · ");
+  // Keep this short so the size never gets truncated behind an ellipsis; the
+  // full tagline lives in onboarding where there's room.
+  return [`${info.languageCount} languages`, size].filter(Boolean).join(" · ");
 }
 
 // Quiet, muted "done" checkmark — the exact path/animation the original card
@@ -34,11 +36,12 @@ const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
     height="17"
     viewBox="0 0 24 24"
     fill="none"
-    className={
-      dim
-        ? "text-white/30 transition-colors group-hover:text-foreground"
-        : "text-foreground"
-    }
+    // `transition-colors` is always present (not just on the dim variant) so
+    // the shade eases smoothly in both directions — including when a model is
+    // switched out of active (foreground -> dim) instead of snapping.
+    className={`transition-colors duration-300 ${
+      dim ? "text-white/30 group-hover:text-foreground" : "text-foreground"
+    }`}
     role="img"
     aria-label={dim ? "Installed, click to use" : "Active"}
   >
