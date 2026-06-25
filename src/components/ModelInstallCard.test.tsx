@@ -23,9 +23,9 @@ const mockUseModelStatus = vi.mocked(useModelStatus);
 const baseStatus: ModelStatus = {
   state: "not_installed" as const,
   family: "whisper",
-  modelId: "mlx-community/whisper-large-v3-turbo-4bit",
+  modelId: "spokedotso/whisper-large-v3-turbo-4bit",
   displayName: "Whisper large-v3 turbo 4-bit",
-  version: "0f058d38170d183f9fdee07908f5b515d91793a8",
+  version: "7bf3b66db8320cbf31d31a9e8a9d4a453bc62f52",
   manifestVersion: 1,
   downloadProgress: 0,
   downloadedBytes: 0,

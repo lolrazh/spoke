@@ -47,7 +47,7 @@ from mlx_whisper.load_models import load_model
 from mlx_whisper.tokenizer import get_tokenizer
 from mlx_whisper.whisper import MultiHeadAttention
 
-MODEL_ID = "mlx-community/whisper-large-v3-turbo-4bit"
+MODEL_ID = "spokedotso/whisper-large-v3-turbo-4bit"
 MODEL_DISPLAY_NAME = "Whisper large-v3 turbo 4-bit"
 REQUIRED_MODEL_FILES = ("config.json", "weights.safetensors", "multilingual.tiktoken")
 SAMPLE_RATE = WHISPER_SAMPLE_RATE

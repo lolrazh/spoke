@@ -1,10 +1,10 @@
 import type { LocalModelFamily, ModelManifest } from "../types/shared";
 
 export const LOCAL_MODEL_FAMILY: LocalModelFamily = "whisper";
-export const LOCAL_MODEL_ID = "mlx-community/whisper-large-v3-turbo-4bit";
+export const LOCAL_MODEL_ID = "spokedotso/whisper-large-v3-turbo-4bit";
 export const LOCAL_MODEL_DISPLAY_NAME = "Whisper large-v3 turbo 4-bit";
 export const LOCAL_MODEL_MANIFEST_VERSION = 1;
-export const LOCAL_MODEL_VERSION = "0f058d38170d183f9fdee07908f5b515d91793a8";
+export const LOCAL_MODEL_VERSION = "7bf3b66db8320cbf31d31a9e8a9d4a453bc62f52";
 
 export const LOCAL_MODEL_REQUIRED_FILE_PATHS = [
   "config.json",
