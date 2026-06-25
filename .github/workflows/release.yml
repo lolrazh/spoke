@@ -1,10 +1,10 @@
 name: Release
 
-# Build, sign, notarize, and publish a draft GitHub Release on a version tag.
+# Build, sign, notarize, and publish a GitHub Release on a version tag.
 # Tag a release with:  npm version patch && git push --follow-tags
-# (or push any tag matching v*). The published release is a DRAFT — review
-# and click "Publish release" to make it live (update.electronjs.org then
-# serves it to clients).
+# (or push any tag matching v*). The release publishes LIVE immediately
+# (forge.config.ts sets draft: false), and update.electronjs.org then
+# serves it to clients. A tag means ship.
 
 on:
   push:
