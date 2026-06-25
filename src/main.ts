@@ -111,6 +111,7 @@ import {
   getAllModelStatuses,
   getActiveModelId,
 } from "./main/modelManager";
+import { listModelInfos } from "./main/localModelContract";
 import { getHelperPath } from "./main/helperPaths";
 import {
   inspectFocusedSelection,
@@ -2295,6 +2296,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("stt:get-active-model", () => {
     return getActiveModelId();
+  });
+
+  ipcMain.handle("stt:get-model-infos", () => {
+    return listModelInfos();
   });
 
   ipcMain.handle("stt:set-active-model", async (_event, modelId: string) => {

@@ -268,6 +268,7 @@ declare global {
       ) => Promise<TranscriptionProviderSettingsSnapshot>;
       getModelStatus: () => Promise<import("./shared").ModelStatus>;
       getModelStatuses: () => Promise<import("./shared").ModelStatus[]>;
+      getModelInfos: () => Promise<import("./shared").LocalModelInfo[]>;
       getActiveModel: () => Promise<string>;
       setActiveModel: (modelId: string) => Promise<void>;
       installModel: (modelId?: string) => Promise<void>;

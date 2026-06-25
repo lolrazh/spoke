@@ -1,41 +1,29 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useModelStatus } from "../hooks/useModelStatus";
-import type { ModelStatus } from "../types/shared";
+import type { LocalModelInfo, ModelStatus } from "../types/shared";
 import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import Spinner from "./ui/Spinner";
 
-// Matches the name shown in onboarding.
-const MODEL_NAME = "Whisper Large v3 Turbo";
-
 function formatBytes(bytes: number): string {
-  // Whole units, no decimals. The model is MB-scale, so 0 reads as "0 MB".
   if (bytes < 1024 * 1024 * 1024) {
     return `${Math.max(0, Math.round(bytes / (1024 * 1024)))} MB`;
   }
   return `${Math.round(bytes / (1024 * 1024 * 1024))} GB`;
 }
 
-function getModelDescription(status: ModelStatus): string {
+function describe(info: LocalModelInfo, status: ModelStatus): string {
   const size = status.totalBytes > 0 ? formatBytes(status.totalBytes) : null;
-  switch (status.state) {
-    case "ready":
-    case "downloading":
-    case "installing":
-      return ["Runs on-device", size].filter(Boolean).join(" · ");
-    case "broken":
-      return status.error
-        ? `${status.error}. Repair downloads a clean copy.`
-        : "Couldn't verify the model. Repair downloads a clean copy.";
-    case "not_installed":
-    default:
-      return ["Recommended on-device model", size].filter(Boolean).join(" · ");
+  if (status.state === "broken") {
+    return status.error
+      ? `${status.error}. Repair downloads a clean copy.`
+      : "Couldn't verify the model. Repair downloads a clean copy.";
   }
+  return [info.tagline, size].filter(Boolean).join(" · ");
 }
 
-// OpenAI logomark — Whisper is an OpenAI model (matches the onboarding row).
+// OpenAI logomark — Whisper is an OpenAI model.
 const OpenAiGlyph: React.FC = () => (
   <svg
     viewBox="0 0 24 24"
@@ -50,27 +38,60 @@ const OpenAiGlyph: React.FC = () => (
   </svg>
 );
 
+// Simple waveform mark for Cohere Transcribe.
+const CohereGlyph: React.FC = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width={15}
+    height={15}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    className="text-foreground/80"
+    aria-label="Cohere"
+    role="img"
+  >
+    <path d="M4 12h0M8 8v8M12 5v14M16 8v8M20 12h0" />
+  </svg>
+);
+
+function glyphFor(info: LocalModelInfo): React.ReactNode {
+  return info.family === "cohere" ? <CohereGlyph /> : <OpenAiGlyph />;
+}
+
 interface ModelInstallCardProps {
+  info: LocalModelInfo;
+  status: ModelStatus;
+  isActive: boolean;
+  loaded: boolean;
+  onInstall: () => void;
+  onRemove: () => void;
+  onActivate: () => void;
   inGroup?: boolean;
 }
 
-const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
-  const { status, install, remove, loaded } = useModelStatus();
+const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
+  info,
+  status,
+  isActive,
+  loaded,
+  onInstall,
+  onRemove,
+  onActivate,
+  inGroup,
+}) => {
   const progressPercent = Math.round(status.downloadProgress * 100);
 
   return (
     <SettingsCard
-      title={MODEL_NAME}
-      description={getModelDescription(status)}
-      icon={<OpenAiGlyph />}
+      title={info.displayName}
+      description={describe(info, status)}
+      icon={glyphFor(info)}
       inGroup={inGroup}
       interactive={status.state === "ready"}
     >
-      {/* initial={false} so the row is static on open and only animates when the
-          state actually changes (mirrors the onboarding dictation tasks). */}
       <div className="ml-2 flex items-center justify-end">
-        {/* Render nothing until the real status loads — avoids flashing the
-            Install button before a ready model resolves. */}
         <AnimatePresence mode="wait" initial={false}>
           {loaded && status.state === "not_installed" && (
             <motion.div
@@ -82,7 +103,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               <Button
                 type="button"
                 size="sm"
-                onClick={install}
+                onClick={onInstall}
                 className="text-xs onboarding-cta"
               >
                 Install
@@ -98,8 +119,6 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="w-44 space-y-1.5"
             >
-              {/* Fixed-width slots + tabular figures so the layout never
-                  reflows as digit counts change (9% -> 100%, KB -> MB). */}
               <div className="flex items-center justify-between">
                 <span className="inline-block w-8 text-[10px] text-white/70 tabular-nums">
                   {progressPercent}%
@@ -143,33 +162,41 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               exit={{ opacity: 0 }}
               className="flex items-center gap-2"
             >
-              {/* Quiet, muted "done" checkmark. Draws on for in-session
-                  installs. */}
-              <motion.svg
-                width="17"
-                height="17"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="text-muted-foreground"
-                role="img"
-                aria-label="Installed"
-              >
-                <motion.path
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
-                  d="M5 13l4 4L19 7"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </motion.svg>
-              {/* Uninstall — reveals on row hover, brightens on hover. Same
-                  primitive as the history copy icon. */}
+              {isActive ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="text-emerald-400/80"
+                    role="img"
+                    aria-label="Active"
+                  >
+                    <path
+                      d="M5 13l4 4L19 7"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Active
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={onActivate}
+                  className="text-xs"
+                >
+                  Use
+                </Button>
+              )}
               <IconButton
                 name="trash"
-                onClick={remove}
+                onClick={onRemove}
                 title="Uninstall"
                 ariaLabel="Uninstall model"
                 revealOnHover
@@ -187,7 +214,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({ inGroup }) => {
               <Button
                 type="button"
                 size="sm"
-                onClick={install}
+                onClick={onInstall}
                 className="text-xs onboarding-cta"
               >
                 Repair

@@ -8,7 +8,7 @@ import {
   SelectTrigger,
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
-import ModelInstallCard from "./ModelInstallCard";
+import ModelsList from "./ModelsList";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
@@ -928,7 +928,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <SectionSeparator title="Transcription" />
                     </motion.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <ModelInstallCard inGroup />
+                      <ModelsList enabled={activeTab === "models"} />
                     </div>
                   </motion.section>
                 </motion.div>

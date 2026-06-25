@@ -171,6 +171,7 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
   getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
   getModelStatuses: () => ipcRenderer.invoke("stt:get-model-statuses"),
+  getModelInfos: () => ipcRenderer.invoke("stt:get-model-infos"),
   getActiveModel: () => ipcRenderer.invoke("stt:get-active-model"),
   setActiveModel: (modelId: string) =>
     ipcRenderer.invoke("stt:set-active-model", modelId),
