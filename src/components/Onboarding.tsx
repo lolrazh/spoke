@@ -406,10 +406,20 @@ const Onboarding: React.FC = () => {
     if (introOnly || autoRestartTriggeredRef.current) return;
     if (currentStep !== "permissions" || !allPermissionsGranted) return;
     autoRestartTriggeredRef.current = true;
-    setAutoRestarting(true);
     const steps = buildOnboardingSteps();
     const nextStepAfterPermissions =
       steps[steps.indexOf("permissions") + 1] ?? "complete";
+
+    // The relaunch is what makes macOS actually apply the Accessibility / Input
+    // Monitoring grants in the packaged app. Under electron-forge (dev) a
+    // relaunch doesn't respawn the app, so it would dead-end onboarding — just
+    // advance to the next step instead.
+    if (isDevelopment) {
+      setCurrentStep(nextStepAfterPermissions);
+      return;
+    }
+
+    setAutoRestarting(true);
     (async () => {
       try {
         await window.electron?.setOnboardingStep?.(nextStepAfterPermissions);
