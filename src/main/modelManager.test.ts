@@ -67,6 +67,7 @@ import {
   setActiveModelId,
   removeModel,
   installModel,
+  cancelInstall,
   resolveDownloadRedirectUrl,
 } from "./modelManager";
 import type { ModelManagerCallbacks } from "./modelManager";
@@ -505,7 +506,10 @@ describe("modelManager", () => {
     it("keeps model metadata after an install failure", async () => {
       initModelManager(makeCallbacks());
 
-      vi.mocked(https.get).mockImplementation((_url, callback: any) => {
+      // https.get is now called as get(url, { signal }, cb): the response
+      // callback is the last argument.
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const callback = args[args.length - 1];
         callback({
           statusCode: 500,
           headers: {},
@@ -542,7 +546,8 @@ describe("modelManager", () => {
 
       // Successful downloads for every file so the install advances past the
       // download phase into "installing" (sha256 verification).
-      vi.mocked(https.get).mockImplementation((_url, callback: any) => {
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const callback = args[args.length - 1];
         const res = {
           statusCode: 200,
           headers: { "content-length": "10" },
@@ -587,6 +592,49 @@ describe("modelManager", () => {
       );
 
       void installPromise.catch(() => {});
+    });
+  });
+
+  describe("cancelInstall", () => {
+    it("aborts an in-flight download and resets the model to not_installed", async () => {
+      initModelManager(makeCallbacks());
+
+      // A download that hangs until its request is aborted. We mirror Node's
+      // https.get(url, { signal }, cb): when the signal fires, the request
+      // emits an AbortError on its "error" handler, which downloadFile rejects.
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const options = args[1] as { signal?: AbortSignal };
+        const req: any = {
+          on: vi.fn((event: string, cb: (err: Error) => void) => {
+            if (event === "error" && options?.signal) {
+              options.signal.addEventListener("abort", () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                cb(err);
+              });
+            }
+            return req;
+          }),
+        };
+        return req;
+      });
+
+      const installPromise = installModel();
+      expect(getModelInstallState()).toBe("downloading");
+
+      cancelInstall();
+      await installPromise;
+
+      const status = getModelStatus();
+      expect(status.state).toBe("not_installed");
+      expect(status.error).toBeNull();
+      expect(status.downloadProgress).toBe(0);
+    });
+
+    it("is a no-op when nothing is downloading", () => {
+      initModelManager(makeCallbacks());
+      expect(() => cancelInstall()).not.toThrow();
+      expect(getModelInstallState()).toBe("not_installed");
     });
   });
 

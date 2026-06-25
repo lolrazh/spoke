@@ -8,7 +8,9 @@ import ModelInstallCard from "./ModelInstallCard";
  * container that draws the shared borders.
  */
 const ModelsList: React.FC<{ enabled?: boolean }> = ({ enabled }) => {
-  const { rows, install, remove, setActive, loaded } = useModels({ enabled });
+  const { rows, install, remove, cancel, setActive, loaded } = useModels({
+    enabled,
+  });
 
   return (
     <>
@@ -21,6 +23,7 @@ const ModelsList: React.FC<{ enabled?: boolean }> = ({ enabled }) => {
           loaded={loaded}
           onInstall={() => install(row.info.modelId)}
           onRemove={() => remove(row.info.modelId)}
+          onCancel={() => cancel(row.info.modelId)}
           onActivate={() => setActive(row.info.modelId)}
           inGroup
         />

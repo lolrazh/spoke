@@ -273,6 +273,7 @@ declare global {
       setActiveModel: (modelId: string) => Promise<void>;
       installModel: (modelId?: string) => Promise<void>;
       removeModel: (modelId?: string) => Promise<void>;
+      cancelInstall: (modelId?: string) => Promise<void>;
       prewarmLocal: () => Promise<{ ok: boolean }>;
       onModelProgress: (
         cb: (payload: {

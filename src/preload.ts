@@ -179,6 +179,8 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke("stt:install-model", modelId),
   removeModel: (modelId?: string) =>
     ipcRenderer.invoke("stt:remove-model", modelId),
+  cancelInstall: (modelId?: string) =>
+    ipcRenderer.invoke("stt:cancel-install", modelId),
   prewarmLocal: () => ipcRenderer.invoke("stt:prewarm-local"),
   onModelProgress: (
     cb: (payload: {

@@ -110,6 +110,7 @@ import {
   getModelStatus,
   getAllModelStatuses,
   getActiveModelId,
+  cancelInstall,
 } from "./main/modelManager";
 import { listModelInfos } from "./main/localModelContract";
 import { getHelperPath } from "./main/helperPaths";
@@ -2321,6 +2322,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("stt:remove-model", async (_event, modelId?: string) => {
     await removeLocalModelAndStopSidecar(modelId);
   });
+
+  ipcMain.handle("stt:cancel-install", (_event, modelId?: string) =>
+    cancelInstall(modelId),
+  );
 
   // ============ Enhancement + OCR IPC handlers ============
 

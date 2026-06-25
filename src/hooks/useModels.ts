@@ -109,6 +109,17 @@ export function useModels(options: UseModelsOptions = {}) {
     [refresh],
   );
 
+  const cancel = useCallback(
+    async (modelId: string) => {
+      try {
+        await window.stt?.cancelInstall?.(modelId);
+      } finally {
+        await refresh();
+      }
+    },
+    [refresh],
+  );
+
   const setActive = useCallback(
     async (modelId: string) => {
       setActiveModelId(modelId);
@@ -138,5 +149,14 @@ export function useModels(options: UseModelsOptions = {}) {
     isActive: info.modelId === activeModelId,
   }));
 
-  return { rows, activeModelId, install, remove, setActive, refresh, loaded };
+  return {
+    rows,
+    activeModelId,
+    install,
+    remove,
+    cancel,
+    setActive,
+    refresh,
+    loaded,
+  };
 }

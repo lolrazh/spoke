@@ -48,6 +48,7 @@ function renderCard(
     loaded: overrides.loaded ?? true,
     onInstall: vi.fn(),
     onRemove: vi.fn(),
+    onCancel: vi.fn(),
     onActivate: vi.fn(),
   };
   render(<ModelInstallCard {...props} />);
@@ -76,7 +77,7 @@ describe("ModelInstallCard", () => {
     ).toBeNull();
   });
 
-  it("renders progress when downloading", () => {
+  it("renders a determinate progress ring when downloading (no %/byte text)", () => {
     renderCard({
       status: {
         state: "downloading",
@@ -85,12 +86,24 @@ describe("ModelInstallCard", () => {
         totalBytes: 1_600_000_000,
       },
     });
-    expect(screen.getByText(/50%/)).toBeTruthy();
+    // The wide bar + %/byte text is gone; a compact ring stands in.
+    expect(screen.getByTestId("progress-ring")).toBeTruthy();
+    expect(screen.queryByText(/50%/)).toBeNull();
   });
 
-  it("renders the verifying state while installing", () => {
+  it("cancel trash fires onCancel (and not onInstall/onActivate) while downloading", () => {
+    const props = renderCard({
+      status: { state: "downloading", downloadProgress: 0.5 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel download" }));
+    expect(props.onCancel).toHaveBeenCalledTimes(1);
+    expect(props.onInstall).not.toHaveBeenCalled();
+    expect(props.onActivate).not.toHaveBeenCalled();
+  });
+
+  it("renders the progress ring while installing (verifying)", () => {
     renderCard({ status: { state: "installing" } });
-    expect(screen.getByText("Verifying…")).toBeTruthy();
+    expect(screen.getByTestId("progress-ring")).toBeTruthy();
   });
 
   it("shows a dim 'click to use' check for a ready but inactive model and activates on row click", () => {

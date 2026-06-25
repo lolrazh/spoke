@@ -71,6 +71,9 @@ export interface ModelManagerCallbacks {
 let activeModelId: string = DEFAULT_MODEL_ID;
 const statuses = new Map<string, ModelStatus>();
 const installedFiles = new Map<string, InstalledModelFile[]>();
+// In-flight installs, so a download can be cancelled. Keyed by modelId; the
+// entry is cleared in installModel's `finally`.
+const installAborts = new Map<string, AbortController>();
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -329,6 +332,7 @@ function downloadFile(
   url: string,
   destPath: string,
   onProgress: (downloadedBytes: number, totalBytes: number) => void,
+  signal?: AbortSignal,
   redirectCount = 0,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -345,7 +349,9 @@ function downloadFile(
       return;
     }
 
-    get(url, (res) => {
+    // Pass the abort signal to Node's http(s).get so cancelling aborts the
+    // in-flight request (rejecting with an AbortError).
+    get(url, { signal }, (res) => {
       if (
         res.statusCode &&
         res.statusCode >= 300 &&
@@ -362,7 +368,7 @@ function downloadFile(
         }
 
         res.resume();
-        downloadFile(redirectUrl, destPath, onProgress, redirectCount + 1)
+        downloadFile(redirectUrl, destPath, onProgress, signal, redirectCount + 1)
           .then(resolve)
           .catch(reject);
         return;
@@ -529,6 +535,10 @@ export async function installModel(modelId?: string): Promise<void> {
   const manifest = manifestFor(id);
   const totalSize = totalFileSize(manifest.files);
 
+  const abortController = new AbortController();
+  installAborts.set(id, abortController);
+  const { signal } = abortController;
+
   try {
     installedFiles.set(id, []);
     setStatus(id, {
@@ -549,21 +559,26 @@ export async function installModel(modelId?: string): Promise<void> {
         (total, bytes) => total + bytes,
         0,
       );
-      await downloadFile(file.url, tmpPath, (downloadedBytes) => {
-        totalDownloaded = completedBeforeFile + downloadedBytes;
-        const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
-        setStatus(id, {
-          downloadProgress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-        callbacks.onDownloadProgress({
-          modelId: id,
-          progress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-      });
+      await downloadFile(
+        file.url,
+        tmpPath,
+        (downloadedBytes) => {
+          totalDownloaded = completedBeforeFile + downloadedBytes;
+          const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
+          setStatus(id, {
+            downloadProgress: Math.min(progress, 1),
+            downloadedBytes: totalDownloaded,
+            totalBytes: totalSize,
+          });
+          callbacks.onDownloadProgress({
+            modelId: id,
+            progress: Math.min(progress, 1),
+            downloadedBytes: totalDownloaded,
+            totalBytes: totalSize,
+          });
+        },
+        signal,
+      );
       completedFileBytes.set(file.path, file.size);
     }
 
@@ -610,6 +625,20 @@ export async function installModel(modelId?: string): Promise<void> {
     persistState();
     console.log(`[ModelManager] ${id} installed successfully`);
   } catch (error: any) {
+    // A cancelled download should look like "never installed", not an error:
+    // reset to the default not_installed status instead of marking broken.
+    if (signal.aborted || error?.name === "AbortError") {
+      console.log(`[ModelManager] Install cancelled for ${id}`);
+      installedFiles.set(id, []);
+      statuses.set(id, defaultStatus(id));
+      try {
+        callbacks.onStatusChange(getModelStatus(id));
+      } catch {}
+      persistState();
+      cleanupTmp(family);
+      return;
+    }
+
     const msg = error?.message || String(error);
     console.error(`[ModelManager] Install failed for ${id}:`, msg);
     installedFiles.set(id, []);
@@ -622,7 +651,28 @@ export async function installModel(modelId?: string): Promise<void> {
     });
     persistState();
     cleanupTmp(family);
+  } finally {
+    // Clear the in-flight controller (only if it's still ours — a later install
+    // for the same model may have replaced it).
+    if (installAborts.get(id) === abortController) {
+      installAborts.delete(id);
+    }
   }
+}
+
+// ── Cancel ────────────────────────────────────────────────────────────
+
+/**
+ * Abort an in-flight install for `modelId` (defaults to the active model). The
+ * download's catch resets the model to `not_installed`. No-op if nothing is
+ * downloading for that model.
+ */
+export function cancelInstall(modelId?: string): void {
+  const id = resolveModelId(modelId);
+  const controller = installAborts.get(id);
+  if (!controller) return;
+  console.log(`[ModelManager] Cancelling install for ${id}`);
+  controller.abort();
 }
 
 // ── Remove ────────────────────────────────────────────────────────────
