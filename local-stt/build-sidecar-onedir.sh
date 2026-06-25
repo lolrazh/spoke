@@ -37,6 +37,8 @@ pyinstaller \
   --noupx \
   --console \
   --collect-all mlx \
+  --collect-all mlx_speech \
+  --collect-all tokenizers \
   --collect-data mlx_whisper \
   --collect-submodules tiktoken_ext \
   --exclude-module torch \
