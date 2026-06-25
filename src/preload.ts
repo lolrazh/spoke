@@ -170,11 +170,18 @@ contextBridge.exposeInMainWorld("stt", {
   clearProviderApiKey: (providerId: string) =>
     ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
   getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
-  installModel: () => ipcRenderer.invoke("stt:install-model"),
-  removeModel: () => ipcRenderer.invoke("stt:remove-model"),
+  getModelStatuses: () => ipcRenderer.invoke("stt:get-model-statuses"),
+  getActiveModel: () => ipcRenderer.invoke("stt:get-active-model"),
+  setActiveModel: (modelId: string) =>
+    ipcRenderer.invoke("stt:set-active-model", modelId),
+  installModel: (modelId?: string) =>
+    ipcRenderer.invoke("stt:install-model", modelId),
+  removeModel: (modelId?: string) =>
+    ipcRenderer.invoke("stt:remove-model", modelId),
   prewarmLocal: () => ipcRenderer.invoke("stt:prewarm-local"),
   onModelProgress: (
     cb: (payload: {
+      modelId: string;
       progress: number;
       downloadedBytes: number;
       totalBytes: number;

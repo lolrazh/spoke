@@ -19,19 +19,16 @@ export function getSidecarBinaryPath(): string {
     : path.join(app.getAppPath(), "local-stt", ".venv", "bin", "python");
 }
 
-/** Arguments to pass to the sidecar process. */
-export function getSidecarArgs(): string[] {
+/** Arguments to pass to the sidecar process for a given model family. */
+export function getSidecarArgs(family: LocalModelFamily): string[] {
+  const modelArgs = ["--family", family, "--weights-dir", getWeightsDir(family)];
+
   if (app.isPackaged) {
-    // Packaged: binary + weights dir in userData
-    return ["--weights-dir", getWeightsDir()];
+    return modelArgs;
   }
 
   // Dev uses the same Settings-managed model directory as packaged builds.
-  return [
-    path.join(app.getAppPath(), "local-stt", "sidecar.py"),
-    "--weights-dir",
-    getWeightsDir(),
-  ];
+  return [path.join(app.getAppPath(), "local-stt", "sidecar.py"), ...modelArgs];
 }
 
 /**

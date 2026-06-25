@@ -100,11 +100,17 @@ import {
   installLocalModelAndSyncSidecar,
   prewarmLocalSidecar,
   removeLocalModelAndStopSidecar,
+  setActiveModelAndResync,
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
   transcribeWithLocalSidecar,
 } from "./main/localSttLifecycle";
-import { initModelManager, getModelStatus } from "./main/modelManager";
+import {
+  initModelManager,
+  getModelStatus,
+  getAllModelStatuses,
+  getActiveModelId,
+} from "./main/modelManager";
 import { getHelperPath } from "./main/helperPaths";
 import {
   inspectFocusedSelection,
@@ -2283,18 +2289,31 @@ app.whenReady().then(async () => {
     return getModelStatus();
   });
 
+  ipcMain.handle("stt:get-model-statuses", () => {
+    return getAllModelStatuses();
+  });
+
+  ipcMain.handle("stt:get-active-model", () => {
+    return getActiveModelId();
+  });
+
+  ipcMain.handle("stt:set-active-model", async (_event, modelId: string) => {
+    await setActiveModelAndResync(modelId);
+    scheduleLocalSidecarPrewarm("active-model-change", 250);
+  });
+
   ipcMain.handle("stt:prewarm-local", () => {
     prewarmLocalSidecar("renderer");
     return { ok: true };
   });
 
-  ipcMain.handle("stt:install-model", async () => {
-    await installLocalModelAndSyncSidecar();
+  ipcMain.handle("stt:install-model", async (_event, modelId?: string) => {
+    await installLocalModelAndSyncSidecar(modelId);
     scheduleLocalSidecarPrewarm("model-install", 250);
   });
 
-  ipcMain.handle("stt:remove-model", async () => {
-    await removeLocalModelAndStopSidecar();
+  ipcMain.handle("stt:remove-model", async (_event, modelId?: string) => {
+    await removeLocalModelAndStopSidecar(modelId);
   });
 
   // ============ Enhancement + OCR IPC handlers ============

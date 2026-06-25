@@ -1,9 +1,11 @@
 import type { LocalTranscribeResult } from "../types/shared";
 import { isPreferredProviderLocal } from "./providerStore";
 import {
+  getActiveModelId,
   getModelInstallState,
   installModel,
   removeModel,
+  setActiveModelId,
 } from "./modelManager";
 import {
   isSidecarRunning,
@@ -73,14 +75,32 @@ export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
   }
 }
 
-export async function installLocalModelAndSyncSidecar(): Promise<void> {
-  await installModel();
+export async function installLocalModelAndSyncSidecar(
+  modelId?: string,
+): Promise<void> {
+  await installModel(modelId);
   await syncLocalSidecarForCurrentProvider();
 }
 
-export async function removeLocalModelAndStopSidecar(): Promise<void> {
+export async function removeLocalModelAndStopSidecar(
+  modelId?: string,
+): Promise<void> {
+  // Only disturb the running sidecar if we're removing the active model.
+  if (!modelId || modelId === getActiveModelId()) {
+    stopLocalSidecar();
+  }
+  await removeModel(modelId);
+}
+
+/**
+ * Switch the active model and restart the sidecar so the new family is loaded.
+ * Prewarm only kicks in if the newly active model is installed and local
+ * transcription is the preferred provider.
+ */
+export async function setActiveModelAndResync(modelId: string): Promise<void> {
+  setActiveModelId(modelId);
   stopLocalSidecar();
-  await removeModel();
+  prewarmLocalSidecar("active-model-change");
 }
 
 export async function transcribeWithLocalSidecar(

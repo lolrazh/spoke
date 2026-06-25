@@ -10,6 +10,8 @@ import * as fs from "fs";
 import { spawn } from "child_process";
 import type { SttEvent, LocalTranscribeResult } from "../types/shared";
 import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
+import { getActiveModelId } from "./modelManager";
+import { getModelFamily } from "./localModelContract";
 import { bootTimeline } from "./bootTimeline";
 
 // ── Internal state ─────────────────────────────────────────────────────
@@ -49,7 +51,8 @@ export function spawnSidecar(): Promise<void> {
 function spawnSidecarOnce(): Promise<void> {
   return new Promise((resolve, reject) => {
     const binaryPath = getSidecarBinaryPath();
-    const args = getSidecarArgs();
+    const family = getModelFamily(getActiveModelId()) ?? "whisper";
+    const args = getSidecarArgs(family);
 
     if (!fs.existsSync(binaryPath)) {
       reject(
