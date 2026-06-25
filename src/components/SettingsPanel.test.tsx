@@ -4,6 +4,10 @@ import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
 import { buildTranscriptionProviderSettingsSnapshot } from "../core/transcription/providerCatalog";
 import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
+import {
+  listModelInfos,
+  DEFAULT_MODEL_ID,
+} from "../main/localModelContract";
 
 function render(ui: React.ReactElement) {
   const container = document.createElement("div");
@@ -89,11 +93,32 @@ describe("components/SettingsPanel", () => {
       preferredProviderId: LOCAL_STT_PROVIDER_ID,
       localModelInstalled: false,
     });
+    const modelInfos = listModelInfos();
     (window as any).stt = {
       ...(window as any).stt,
       getProviderSettings: vi.fn(async () => providerSettings),
       setProviderApiKey: vi.fn(async () => providerSettings),
       clearProviderApiKey: vi.fn(async () => providerSettings),
+      getModelInfos: vi.fn(async () => modelInfos),
+      getModelStatuses: vi.fn(async () =>
+        modelInfos.map((info): import("../types/shared").ModelStatus => ({
+          state: "not_installed" as const,
+          family: info.family,
+          modelId: info.modelId,
+          displayName: info.displayName,
+          version: null,
+          manifestVersion: null,
+          downloadProgress: 0,
+          downloadedBytes: 0,
+          totalBytes: info.totalBytes,
+          error: null,
+        })),
+      ),
+      getActiveModel: vi.fn(async () => DEFAULT_MODEL_ID),
+      installModel: vi.fn(async () => {}),
+      removeModel: vi.fn(async () => {}),
+      setActiveModel: vi.fn(async () => {}),
+      onModelProgress: vi.fn(() => () => {}),
     };
     // Media devices
     // @ts-ignore
@@ -222,7 +247,7 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("shows only the local Whisper model in the Models tab (no providers/cloud)", async () => {
+  it("shows the local ASR models in the Models tab (no providers/cloud)", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(React.createElement(SettingsPanel));
     await act(async () => {
@@ -244,8 +269,9 @@ describe("components/SettingsPanel", () => {
     });
 
     const text = container.textContent ?? "";
-    // Only the local model remains.
-    expect(text).toContain("Whisper Large v3 Turbo");
+    // Both local ASR models are listed (default first).
+    expect(text).toContain("Cohere Transcribe 03-2026 4-bit");
+    expect(text).toContain("Whisper Large-v3 Turbo");
     // Cloud provider / API-key UI is gone.
     expect(text).not.toContain("Default Model");
     expect(text).not.toContain("Cloud Providers");

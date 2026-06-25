@@ -1,13 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import ModelInstallCard from "./ModelInstallCard";
-import type { ModelStatus } from "../types/shared";
-
-// Mock useModelStatus hook
-vi.mock("../hooks/useModelStatus", () => ({
-  useModelStatus: vi.fn(),
-}));
+import type { LocalModelInfo, ModelStatus } from "../types/shared";
 
 // Mock SfIcon to avoid import.meta.glob issues in tests
 vi.mock("./icons/SfIcon", () => ({
@@ -16,98 +11,148 @@ vi.mock("./icons/SfIcon", () => ({
   ),
 }));
 
-import { useModelStatus } from "../hooks/useModelStatus";
-
-const mockUseModelStatus = vi.mocked(useModelStatus);
+const info: LocalModelInfo = {
+  modelId: "spokedotso/cohere-transcribe-03-2026-mlx-4bit",
+  family: "cohere",
+  displayName: "Cohere Transcribe 03-2026 4-bit",
+  tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
+  languageCount: 14,
+  totalBytes: 1_600_000_000,
+  isDefault: true,
+};
 
 const baseStatus: ModelStatus = {
-  state: "not_installed" as const,
-  family: "whisper",
-  modelId: "spokedotso/whisper-large-v3-turbo-4bit",
-  displayName: "Whisper large-v3 turbo 4-bit",
-  version: "7bf3b66db8320cbf31d31a9e8a9d4a453bc62f52",
-  manifestVersion: 1,
+  state: "not_installed",
+  family: "cohere",
+  modelId: info.modelId,
+  displayName: info.displayName,
+  version: null,
+  manifestVersion: null,
   downloadProgress: 0,
   downloadedBytes: 0,
-  totalBytes: 464_280_053,
+  totalBytes: info.totalBytes,
   error: null,
 };
 
-function mockStatus(status: ModelStatus, loaded = true) {
-  mockUseModelStatus.mockReturnValue({
-    status,
-    install: vi.fn(),
-    remove: vi.fn(),
-    refresh: vi.fn(),
-    loaded,
-  });
+function renderCard(
+  overrides: {
+    status?: Partial<ModelStatus>;
+    isActive?: boolean;
+    loaded?: boolean;
+  } = {},
+) {
+  const props = {
+    info,
+    status: { ...baseStatus, ...overrides.status },
+    isActive: overrides.isActive ?? false,
+    loaded: overrides.loaded ?? true,
+    onInstall: vi.fn(),
+    onRemove: vi.fn(),
+    onCancel: vi.fn(),
+    onActivate: vi.fn(),
+  };
+  render(<ModelInstallCard {...props} />);
+  return props;
 }
 
 describe("ModelInstallCard", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("renders the install button when not installed", () => {
-    mockStatus(baseStatus);
-
-    render(<ModelInstallCard />);
-    expect(screen.getByText("Whisper Large v3 Turbo")).toBeTruthy();
-    expect(screen.getByText(/Recommended on-device model/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Install" })).toBeTruthy();
-  });
-
-  it("renders no control until the status has loaded (no flash)", () => {
-    mockStatus(baseStatus, false);
-
-    render(<ModelInstallCard />);
-    // Title/description still show, but the state-specific control does not.
-    expect(screen.getByText("Whisper Large v3 Turbo")).toBeTruthy();
+  it("shows a download affordance + tagline and installs on row click when not installed", () => {
+    const props = renderCard();
+    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
+    expect(screen.getByText(/14 languages/i)).toBeTruthy();
+    // No buttons (no "Install"/"Use") — the whole row is the affordance.
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    // The row itself is the clickable button; clicking it installs.
+    const row = screen.getByRole("button", { name: info.displayName });
+    fireEvent.click(row);
+    expect(props.onInstall).toHaveBeenCalledTimes(1);
   });
 
-  it("renders progress when downloading", () => {
-    mockStatus({
-      ...baseStatus,
-      state: "downloading",
-      downloadProgress: 0.5,
-      downloadedBytes: 800_000_000,
-      totalBytes: 1_600_000_000,
+  it("renders no clickable control until loaded (no flash)", () => {
+    renderCard({ loaded: false });
+    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
+    // Until loaded the row is inert (a plain group, not a button).
+    expect(
+      screen.queryByRole("button", { name: info.displayName }),
+    ).toBeNull();
+  });
+
+  it("renders a determinate progress ring when downloading (no %/byte text)", () => {
+    renderCard({
+      status: {
+        state: "downloading",
+        downloadProgress: 0.5,
+        downloadedBytes: 800_000_000,
+        totalBytes: 1_600_000_000,
+      },
     });
-
-    render(<ModelInstallCard />);
-    expect(screen.getByText(/50%/)).toBeTruthy();
+    // The wide bar + %/byte text is gone; a compact ring stands in.
+    expect(screen.getByTestId("progress-ring")).toBeTruthy();
+    expect(screen.queryByText(/50%/)).toBeNull();
   });
 
-  it("renders the verifying state while installing", () => {
-    mockStatus({ ...baseStatus, state: "installing" });
-
-    render(<ModelInstallCard />);
-    expect(screen.getByText("Verifying…")).toBeTruthy();
+  it("cancel trash fires onCancel (and not onInstall/onActivate) while downloading", () => {
+    const props = renderCard({
+      status: { state: "downloading", downloadProgress: 0.5 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel download" }));
+    expect(props.onCancel).toHaveBeenCalledTimes(1);
+    expect(props.onInstall).not.toHaveBeenCalled();
+    expect(props.onActivate).not.toHaveBeenCalled();
   });
 
-  it("renders the installed state with an uninstall control", () => {
-    mockStatus({ ...baseStatus, state: "ready", version: "0.1" });
+  it("renders the progress ring while installing (verifying)", () => {
+    renderCard({ status: { state: "installing" } });
+    expect(screen.getByTestId("progress-ring")).toBeTruthy();
+  });
 
-    render(<ModelInstallCard />);
+  it("shows a dim 'click to use' check for a ready but inactive model and activates on row click", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: false });
+    // The inactive check is labelled as the click-to-use affordance, not "Active".
+    expect(
+      screen.getByRole("img", { name: "Installed, click to use" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Active")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Uninstall model" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+
+    // Row click activates the model.
+    fireEvent.click(screen.getByRole("button", { name: info.displayName }));
+    expect(props.onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it("uninstall click does not also activate the model (stopPropagation)", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: false });
+    fireEvent.click(screen.getByRole("button", { name: "Uninstall model" }));
+    expect(props.onRemove).toHaveBeenCalledTimes(1);
+    expect(props.onActivate).not.toHaveBeenCalled();
+  });
+
+  it("shows a full check (no 'Active' text, no 'Use') for the active model and the row is inert", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: true });
+    expect(screen.getByRole("img", { name: "Active" })).toBeTruthy();
+    expect(screen.queryByText("Active")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Uninstall model" }),
+    ).toBeTruthy();
+    // The active row is not a clickable button (no-op).
+    expect(
+      screen.queryByRole("button", { name: info.displayName }),
+    ).toBeNull();
+    expect(props.onActivate).not.toHaveBeenCalled();
   });
 
   it("renders the repair button when broken", () => {
-    mockStatus({ ...baseStatus, state: "broken", error: "Download failed" });
-
-    render(<ModelInstallCard />);
+    renderCard({ status: { state: "broken", error: "Download failed" } });
     expect(screen.getByRole("button", { name: "Repair" })).toBeTruthy();
     expect(screen.getByText(/Download failed/i)).toBeTruthy();
   });
 
-  it("shows fallback error text when broken with no error message", () => {
-    mockStatus({ ...baseStatus, state: "broken", error: null });
-
-    render(<ModelInstallCard />);
+  it("shows fallback error text when broken with no message", () => {
+    renderCard({ status: { state: "broken", error: null } });
     expect(screen.getByText(/Couldn't verify the model/i)).toBeTruthy();
   });
 });

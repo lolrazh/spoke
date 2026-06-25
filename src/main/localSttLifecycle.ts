@@ -1,9 +1,11 @@
 import type { LocalTranscribeResult } from "../types/shared";
 import { isPreferredProviderLocal } from "./providerStore";
 import {
+  getActiveModelId,
   getModelInstallState,
   installModel,
   removeModel,
+  setActiveModelId,
 } from "./modelManager";
 import {
   isSidecarRunning,
@@ -73,14 +75,44 @@ export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
   }
 }
 
-export async function installLocalModelAndSyncSidecar(): Promise<void> {
-  await installModel();
+export async function installLocalModelAndSyncSidecar(
+  modelId?: string,
+): Promise<void> {
+  await installModel(modelId);
   await syncLocalSidecarForCurrentProvider();
 }
 
-export async function removeLocalModelAndStopSidecar(): Promise<void> {
+export async function removeLocalModelAndStopSidecar(
+  modelId?: string,
+): Promise<void> {
+  // Only disturb the running sidecar if we're removing the active model.
+  const wasActive = !modelId || modelId === getActiveModelId();
+  if (wasActive) {
+    stopLocalSidecar();
+  }
+  await removeModel(modelId);
+  // removeModel may auto-promote a different installed model to active when the
+  // active one is uninstalled. If that newly active model is ready and local is
+  // the preferred provider, prewarm it so transcription stays available without
+  // a cold start. prewarmLocalSidecar self-guards on provider/ready/in-flight.
+  if (wasActive && getModelInstallState() === "ready") {
+    prewarmLocalSidecar("post-remove");
+  }
+}
+
+/**
+ * Switch the active model and restart the sidecar so the new family is loaded.
+ *
+ * We deliberately only stop the old sidecar here and do NOT prewarm — the
+ * `stt:set-active-model` IPC handler schedules a single delayed prewarm. Doing
+ * both an immediate prewarm here and a scheduled one in the handler briefly ran
+ * two sidecars from different families at once, each holding GPU/MLX memory
+ * while the old process worked through its SIGKILL grace period. Consolidating
+ * to the single scheduled prewarm guarantees at most one sidecar at a time.
+ */
+export async function setActiveModelAndResync(modelId: string): Promise<void> {
+  setActiveModelId(modelId);
   stopLocalSidecar();
-  await removeModel();
 }
 
 export async function transcribeWithLocalSidecar(

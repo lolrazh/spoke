@@ -1,9 +1,10 @@
 /**
  * Model Manager
  *
- * Manages downloading, verifying, and lifecycle of the local Whisper model.
- * Weights are stored in `userData/local-stt/weights/` and state is persisted
- * to `userData/local-stt/model-state.json`.
+ * Manages downloading, verifying, and the lifecycle of the local ASR models.
+ * Multiple models can be installed side by side; one is "active" (used by the
+ * sidecar). Weights live in `userData/local-stt/weights/<family>/` and state is
+ * persisted to `userData/local-stt/model-state.json`.
  */
 
 import * as fs from "fs";
@@ -13,12 +14,12 @@ import https from "node:https";
 import http from "node:http";
 import { getLocalSttDir, getWeightsDir } from "./sidecarPaths";
 import {
-  LOCAL_MODEL_DISPLAY_NAME,
-  LOCAL_MODEL_FAMILY,
-  LOCAL_MODEL_ID,
-  LOCAL_MODEL_MANIFEST,
+  DEFAULT_MODEL_ID,
+  getModelEntry,
+  isKnownModelId,
+  LOCAL_MODEL_IDS,
   LOCAL_MODEL_MANIFEST_VERSION,
-  LOCAL_MODEL_REQUIRED_FILE_PATHS,
+  LOCAL_MODELS,
 } from "./localModelContract";
 import type {
   ModelInstallState,
@@ -31,15 +32,26 @@ import type {
 
 const MAX_REDIRECTS = 5;
 const STATE_FILE = "model-state.json";
-const LOCAL_MODEL_TOTAL_BYTES = totalFileSize(LOCAL_MODEL_MANIFEST.files);
 
 type InstalledModelFile = Pick<
   ModelManifestFile,
   "role" | "path" | "sha256" | "size"
 >;
 
-type PersistedModelState = Partial<ModelStatus> & {
-  files?: InstalledModelFile[];
+type PersistedModelEntry = {
+  state: ModelInstallState;
+  family: ModelStatus["family"];
+  modelId: string;
+  displayName: string | null;
+  version: string | null;
+  manifestVersion: number | null;
+  files: InstalledModelFile[];
+  error: string | null;
+};
+
+type PersistedState = {
+  activeModelId: string;
+  models: Record<string, PersistedModelEntry>;
 };
 
 // ── Callbacks ─────────────────────────────────────────────────────────
@@ -47,6 +59,7 @@ type PersistedModelState = Partial<ModelStatus> & {
 export interface ModelManagerCallbacks {
   onStatusChange: (status: ModelStatus) => void;
   onDownloadProgress: (progress: {
+    modelId: string;
     progress: number;
     downloadedBytes: number;
     totalBytes: number;
@@ -55,21 +68,12 @@ export interface ModelManagerCallbacks {
 
 // ── Internal state ────────────────────────────────────────────────────
 
-const DEFAULT_STATUS: ModelStatus = {
-  state: "not_installed",
-  family: LOCAL_MODEL_FAMILY,
-  modelId: LOCAL_MODEL_ID,
-  displayName: LOCAL_MODEL_DISPLAY_NAME,
-  version: LOCAL_MODEL_MANIFEST.version,
-  manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
-  downloadProgress: 0,
-  downloadedBytes: 0,
-  totalBytes: LOCAL_MODEL_TOTAL_BYTES,
-  error: null,
-};
-
-let modelStatus: ModelStatus = { ...DEFAULT_STATUS };
-let installedFiles: InstalledModelFile[] = [];
+let activeModelId: string = DEFAULT_MODEL_ID;
+const statuses = new Map<string, ModelStatus>();
+const installedFiles = new Map<string, InstalledModelFile[]>();
+// In-flight installs, so a download can be cancelled. Keyed by modelId; the
+// entry is cleared in installModel's `finally`.
+const installAborts = new Map<string, AbortController>();
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -84,8 +88,8 @@ function getStatePath(): string {
   return path.join(getLocalSttDir(), STATE_FILE);
 }
 
-function getTmpDir(): string {
-  return path.join(getLocalSttDir(), ".tmp");
+function getTmpDir(family: string): string {
+  return path.join(getLocalSttDir(), ".tmp", family);
 }
 
 function safeJoin(root: string, relativePath: string): string {
@@ -105,31 +109,39 @@ function totalFileSize(files: Pick<ModelManifestFile, "size">[]): number {
   return files.reduce((total, file) => total + file.size, 0);
 }
 
-function getManifestStatusMetadata(
-  manifest: ModelManifest,
-): Pick<
-  ModelStatus,
-  | "family"
-  | "modelId"
-  | "displayName"
-  | "version"
-  | "manifestVersion"
-  | "totalBytes"
-> {
+function manifestFor(modelId: string): ModelManifest {
+  const entry = getModelEntry(modelId);
+  if (!entry) throw new Error(`Unknown model '${modelId}'.`);
   return {
+    ...entry.manifest,
+    files: entry.manifest.files.map((file) => ({ ...file })),
+  };
+}
+
+function defaultStatus(modelId: string): ModelStatus {
+  const entry = getModelEntry(modelId);
+  if (!entry) throw new Error(`Unknown model '${modelId}'.`);
+  const { manifest } = entry;
+  return {
+    state: "not_installed",
     family: manifest.family,
     modelId: manifest.modelId,
     displayName: manifest.displayName,
     version: manifest.version,
     manifestVersion: manifest.manifestVersion,
+    downloadProgress: 0,
+    downloadedBytes: 0,
     totalBytes: totalFileSize(manifest.files),
+    error: null,
   };
 }
 
-function setStatus(partial: Partial<ModelStatus>): void {
-  modelStatus = { ...modelStatus, ...partial };
+function setStatus(modelId: string, partial: Partial<ModelStatus>): void {
+  const current = statuses.get(modelId) ?? defaultStatus(modelId);
+  const next = { ...current, ...partial };
+  statuses.set(modelId, next);
   try {
-    callbacks.onStatusChange(modelStatus);
+    callbacks.onStatusChange(next);
   } catch {}
 }
 
@@ -137,43 +149,106 @@ function persistState(): void {
   try {
     const dir = getLocalSttDir();
     fs.mkdirSync(dir, { recursive: true });
-    const persisted = {
-      state: modelStatus.state,
-      family: modelStatus.family,
-      modelId: modelStatus.modelId,
-      displayName: modelStatus.displayName,
-      version: modelStatus.version,
-      manifestVersion: modelStatus.manifestVersion,
-      files: installedFiles,
-      error: modelStatus.error,
-    };
+    const models: Record<string, PersistedModelEntry> = {};
+    for (const modelId of LOCAL_MODEL_IDS) {
+      const status = statuses.get(modelId) ?? defaultStatus(modelId);
+      models[modelId] = {
+        state: status.state,
+        family: status.family,
+        modelId,
+        displayName: status.displayName,
+        version: status.version,
+        manifestVersion: status.manifestVersion,
+        files: installedFiles.get(modelId) ?? [],
+        error: status.error,
+      };
+    }
+    const persisted: PersistedState = { activeModelId, models };
     fs.writeFileSync(getStatePath(), JSON.stringify(persisted, null, 2));
   } catch (error) {
     console.error("[ModelManager] Failed to persist state:", error);
   }
 }
 
-function loadPersistedState(): PersistedModelState | null {
+function loadPersistedState(): PersistedState | null {
   try {
     const statePath = getStatePath();
-    if (fs.existsSync(statePath)) {
-      const data = fs.readFileSync(statePath, "utf8");
-      return JSON.parse(data) as PersistedModelState;
-    }
+    if (!fs.existsSync(statePath)) return null;
+    const raw = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    return migratePersistedState(raw);
   } catch (error) {
     console.error("[ModelManager] Failed to load persisted state:", error);
+    return null;
   }
+}
+
+/**
+ * Accepts either the new multi-model shape `{ activeModelId, models }` or the
+ * legacy single-model shape (a flat ModelStatus-like object) and normalizes to
+ * the new shape.
+ */
+function migratePersistedState(raw: unknown): PersistedState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (obj.models && typeof obj.models === "object") {
+    return {
+      activeModelId:
+        typeof obj.activeModelId === "string" &&
+        isKnownModelId(obj.activeModelId)
+          ? obj.activeModelId
+          : DEFAULT_MODEL_ID,
+      models: obj.models as Record<string, PersistedModelEntry>,
+    };
+  }
+
+  // Legacy single-model state: lift it into the new map under its modelId.
+  if (typeof obj.state === "string" && typeof obj.modelId === "string") {
+    const legacy = obj as unknown as PersistedModelEntry;
+    return {
+      activeModelId: isKnownModelId(legacy.modelId)
+        ? legacy.modelId
+        : DEFAULT_MODEL_ID,
+      models: { [legacy.modelId]: legacy },
+    };
+  }
+
   return null;
 }
 
-function getReadyStateValidationError(
-  persisted: PersistedModelState,
-): string | null {
-  if (persisted.family !== LOCAL_MODEL_FAMILY) {
-    return "Installed model family does not match the expected Whisper model.";
+/**
+ * Pre-multi-model builds stored Whisper weights directly in `weights/`. Move
+ * them into `weights/whisper/` so they survive the layout change instead of
+ * forcing a re-download.
+ */
+function migrateLegacyWhisperWeights(): void {
+  try {
+    const legacyDir = getWeightsDir();
+    const targetDir = getWeightsDir("whisper");
+    const marker = path.join(legacyDir, "weights.safetensors");
+    if (!fs.existsSync(marker) || fs.existsSync(targetDir)) return;
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const name of fs.readdirSync(legacyDir)) {
+      const src = path.join(legacyDir, name);
+      if (!fs.statSync(src).isFile()) continue;
+      fs.renameSync(src, path.join(targetDir, name));
+    }
+    console.log("[ModelManager] Migrated legacy Whisper weights to weights/whisper");
+  } catch (error) {
+    console.error("[ModelManager] Legacy weights migration failed:", error);
   }
-  if (persisted.modelId !== LOCAL_MODEL_ID) {
-    return "Installed model ID does not match the expected Whisper model.";
+}
+
+function getReadyStateValidationError(
+  modelId: string,
+  persisted: PersistedModelEntry,
+): string | null {
+  const entry = getModelEntry(modelId);
+  if (!entry) return "Installed model is no longer supported.";
+
+  if (persisted.family !== entry.manifest.family) {
+    return "Installed model family does not match the expected model.";
   }
   if (persisted.manifestVersion !== LOCAL_MODEL_MANIFEST_VERSION) {
     return "Installed model manifest version is unsupported.";
@@ -183,16 +258,15 @@ function getReadyStateValidationError(
   }
 
   const persistedPaths = new Set(persisted.files.map((file) => file.path));
-  for (const requiredPath of LOCAL_MODEL_REQUIRED_FILE_PATHS) {
+  for (const requiredPath of entry.requiredFilePaths) {
     if (!persistedPaths.has(requiredPath)) {
       return `Installed model file '${requiredPath}' is missing from the manifest.`;
     }
   }
 
-  const weightsDir = getWeightsDir();
+  const weightsDir = getWeightsDir(entry.manifest.family);
   for (const file of persisted.files) {
-    const filePath = safeJoin(weightsDir, file.path);
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(safeJoin(weightsDir, file.path))) {
       return "Model files missing from disk";
     }
   }
@@ -200,36 +274,11 @@ function getReadyStateValidationError(
   return null;
 }
 
-function assertManifest(manifest: ModelManifest): void {
-  if (manifest.family !== LOCAL_MODEL_FAMILY) {
-    throw new Error(`Unsupported model family '${manifest.family}'.`);
-  }
-  if (manifest.modelId !== LOCAL_MODEL_ID) {
-    throw new Error(`Unsupported model ID '${manifest.modelId}'.`);
-  }
-  if (manifest.manifestVersion !== LOCAL_MODEL_MANIFEST_VERSION) {
-    throw new Error(
-      `Unsupported model manifest version '${manifest.manifestVersion}'.`,
-    );
-  }
-  if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
-    throw new Error("Model manifest does not list any files.");
-  }
-
-  const manifestPaths = new Set(manifest.files.map((file) => file.path));
-  for (const requiredPath of LOCAL_MODEL_REQUIRED_FILE_PATHS) {
-    if (!manifestPaths.has(requiredPath)) {
-      throw new Error(`Model manifest is missing '${requiredPath}'.`);
-    }
-  }
-}
-
-function cleanupTmp(): void {
+function cleanupTmp(family: string): void {
   try {
-    const tmpDir = getTmpDir();
+    const tmpDir = getTmpDir(family);
     if (fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-      console.log("[ModelManager] Cleaned up .tmp directory");
     }
   } catch (error) {
     console.error("[ModelManager] Failed to clean up .tmp:", error);
@@ -246,21 +295,9 @@ function verifySha256(
     const hash = crypto.createHash("sha256");
     const stream = fs.createReadStream(filePath);
     stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => {
-      const actual = hash.digest("hex");
-      resolve(actual === expectedHash);
-    });
+    stream.on("end", () => resolve(hash.digest("hex") === expectedHash));
     stream.on("error", reject);
   });
-}
-
-// ── Manifest access ───────────────────────────────────────────────────
-
-function getManifest(): ModelManifest {
-  return {
-    ...LOCAL_MODEL_MANIFEST,
-    files: LOCAL_MODEL_MANIFEST.files.map((file) => ({ ...file })),
-  };
 }
 
 // ── File download with progress ───────────────────────────────────────
@@ -295,6 +332,7 @@ function downloadFile(
   url: string,
   destPath: string,
   onProgress: (downloadedBytes: number, totalBytes: number) => void,
+  signal?: AbortSignal,
   redirectCount = 0,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -311,8 +349,9 @@ function downloadFile(
       return;
     }
 
-    get(url, (res) => {
-      // Handle redirects
+    // Pass the abort signal to Node's http(s).get so cancelling aborts the
+    // in-flight request (rejecting with an AbortError).
+    get(url, { signal }, (res) => {
       if (
         res.statusCode &&
         res.statusCode >= 300 &&
@@ -329,7 +368,7 @@ function downloadFile(
         }
 
         res.resume();
-        downloadFile(redirectUrl, destPath, onProgress, redirectCount + 1)
+        downloadFile(redirectUrl, destPath, onProgress, signal, redirectCount + 1)
           .then(resolve)
           .catch(reject);
         return;
@@ -344,9 +383,7 @@ function downloadFile(
       const totalBytes = parseInt(res.headers["content-length"] || "0", 10);
       let downloadedBytes = 0;
 
-      const dir = path.dirname(destPath);
-      fs.mkdirSync(dir, { recursive: true });
-
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
       const fileStream = fs.createWriteStream(destPath);
 
       res.on("data", (chunk: Buffer) => {
@@ -379,162 +416,182 @@ function downloadFile(
 export function initModelManager(cbs: ModelManagerCallbacks): void {
   callbacks = cbs;
 
-  // Clean up any leftover .tmp directory from interrupted downloads
-  cleanupTmp();
+  migrateLegacyWhisperWeights();
 
-  // Load persisted state
   const persisted = loadPersistedState();
+  activeModelId =
+    persisted && isKnownModelId(persisted.activeModelId)
+      ? persisted.activeModelId
+      : DEFAULT_MODEL_ID;
 
-  if (persisted && persisted.state === "ready") {
-    const validationError = getReadyStateValidationError(persisted);
+  for (const modelId of LOCAL_MODEL_IDS) {
+    cleanupTmp(getModelEntry(modelId)!.manifest.family);
+    const saved = persisted?.models?.[modelId];
 
-    if (!validationError) {
-      installedFiles = persisted.files ?? [];
-      modelStatus = {
-        ...DEFAULT_STATUS,
-        state: "ready",
-        family: LOCAL_MODEL_FAMILY,
-        modelId: LOCAL_MODEL_ID,
-        displayName: persisted.displayName ?? LOCAL_MODEL_DISPLAY_NAME,
-        version: persisted.version ?? null,
-        manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
-        totalBytes: totalFileSize(installedFiles),
-        downloadedBytes: totalFileSize(installedFiles),
-        downloadProgress: 1,
-      };
-    } else {
+    if (saved && saved.state === "ready") {
+      const validationError = getReadyStateValidationError(modelId, saved);
+      if (!validationError) {
+        installedFiles.set(modelId, saved.files ?? []);
+        statuses.set(modelId, {
+          ...defaultStatus(modelId),
+          state: "ready",
+          totalBytes: totalFileSize(saved.files ?? []),
+          downloadedBytes: totalFileSize(saved.files ?? []),
+          downloadProgress: 1,
+        });
+        continue;
+      }
       console.log(
-        "[ModelManager] State says ready but installed model is invalid, marking broken:",
+        `[ModelManager] ${modelId} marked ready but invalid:`,
         validationError,
       );
-      installedFiles = [];
-      modelStatus = {
-        ...DEFAULT_STATUS,
+      installedFiles.set(modelId, []);
+      statuses.set(modelId, {
+        ...defaultStatus(modelId),
         state: "broken",
         error: validationError,
-      };
-      persistState();
+      });
+      continue;
     }
-  } else if (persisted && persisted.state === "broken") {
-    installedFiles = persisted.files ?? [];
-    modelStatus = {
-      ...DEFAULT_STATUS,
-      state: "broken",
-      error: persisted.error ?? "Unknown error",
-    };
-  } else if (
-    persisted &&
-    (persisted.state === "downloading" || persisted.state === "installing")
-  ) {
-    // Interrupted mid-download/install — treat as not installed
-    console.log(
-      "[ModelManager] Interrupted install detected, resetting to not_installed",
-    );
-    installedFiles = [];
-    modelStatus = { ...DEFAULT_STATUS };
-    persistState();
-  } else {
-    installedFiles = [];
-    modelStatus = { ...DEFAULT_STATUS };
+
+    if (saved && saved.state === "broken") {
+      installedFiles.set(modelId, saved.files ?? []);
+      statuses.set(modelId, {
+        ...defaultStatus(modelId),
+        state: "broken",
+        error: saved.error ?? "Unknown error",
+      });
+      continue;
+    }
+
+    // not_installed, or interrupted downloading/installing -> not_installed
+    installedFiles.set(modelId, []);
+    statuses.set(modelId, defaultStatus(modelId));
   }
 
-  callbacks.onStatusChange(modelStatus);
-  console.log("[ModelManager] Initialized, state:", modelStatus.state);
+  persistState();
+
+  for (const status of statuses.values()) {
+    callbacks.onStatusChange(status);
+  }
+  console.log(
+    "[ModelManager] Initialized. Active:",
+    activeModelId,
+    "states:",
+    LOCAL_MODEL_IDS.map((id) => `${id}=${statuses.get(id)?.state}`).join(", "),
+  );
 }
 
 // ── State accessors ───────────────────────────────────────────────────
 
-export function getModelStatus(): ModelStatus {
-  return { ...modelStatus };
+function resolveModelId(modelId?: string): string {
+  return modelId ?? activeModelId;
 }
 
-export function getModelInstallState(): ModelInstallState {
-  return modelStatus.state;
+export function getModelStatus(modelId?: string): ModelStatus {
+  const id = resolveModelId(modelId);
+  return { ...(statuses.get(id) ?? defaultStatus(id)) };
+}
+
+export function getAllModelStatuses(): ModelStatus[] {
+  return LOCAL_MODEL_IDS.map((id) => ({
+    ...(statuses.get(id) ?? defaultStatus(id)),
+  }));
+}
+
+export function getModelInstallState(modelId?: string): ModelInstallState {
+  return getModelStatus(modelId).state;
+}
+
+export function getActiveModelId(): string {
+  return activeModelId;
+}
+
+export function setActiveModelId(modelId: string): void {
+  if (!isKnownModelId(modelId)) {
+    throw new Error(`Cannot activate unknown model '${modelId}'.`);
+  }
+  if (modelId === activeModelId) return;
+  activeModelId = modelId;
+  persistState();
+  // Re-emit so listeners can recompute which model is active.
+  callbacks.onStatusChange(getModelStatus(modelId));
 }
 
 // ── Install ───────────────────────────────────────────────────────────
 
-export async function installModel(): Promise<void> {
-  // Guard against concurrent installs
-  if (
-    modelStatus.state === "downloading" ||
-    modelStatus.state === "installing"
-  ) {
+export async function installModel(modelId?: string): Promise<void> {
+  const id = resolveModelId(modelId);
+  const current = statuses.get(id) ?? defaultStatus(id);
+  if (current.state === "downloading" || current.state === "installing") {
     throw new Error("Install already in progress");
   }
 
-  const tmpDir = getTmpDir();
-  const weightsDir = getWeightsDir();
-  let manifest: ModelManifest | null = null;
-  let totalSize = LOCAL_MODEL_TOTAL_BYTES;
+  const entry = getModelEntry(id);
+  if (!entry) throw new Error(`Unknown model '${id}'.`);
+  const family = entry.manifest.family;
+  const tmpDir = getTmpDir(family);
+  const weightsDir = getWeightsDir(family);
+  const manifest = manifestFor(id);
+  const totalSize = totalFileSize(manifest.files);
+
+  const abortController = new AbortController();
+  installAborts.set(id, abortController);
+  const { signal } = abortController;
 
   try {
-    // Step 1: Load checked-in model manifest
-    console.log("[ModelManager] Loading model manifest...");
-    manifest = getManifest();
-    assertManifest(manifest);
-    totalSize = totalFileSize(manifest.files);
-    console.log(
-      "[ModelManager] Manifest loaded:",
-      manifest.modelId,
-      manifest.version,
-    );
-
-    // Step 2: Set state to downloading
-    installedFiles = [];
-    setStatus({
-      ...getManifestStatusMetadata(manifest),
+    installedFiles.set(id, []);
+    setStatus(id, {
       state: "downloading",
       downloadProgress: 0,
       downloadedBytes: 0,
+      totalBytes: totalSize,
       error: null,
     });
     persistState();
 
-    // Step 3: Download model files
     let totalDownloaded = 0;
     const completedFileBytes = new Map<string, number>();
 
     for (const file of manifest.files) {
-      console.log("[ModelManager] Downloading model file:", file.path);
       const tmpPath = safeJoin(tmpDir, file.path);
       const completedBeforeFile = [...completedFileBytes.values()].reduce(
         (total, bytes) => total + bytes,
         0,
       );
-      await downloadFile(file.url, tmpPath, (downloadedBytes, _totalBytes) => {
-        totalDownloaded = completedBeforeFile + downloadedBytes;
-        const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
-        setStatus({
-          downloadProgress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-        callbacks.onDownloadProgress({
-          progress: Math.min(progress, 1),
-          downloadedBytes: totalDownloaded,
-          totalBytes: totalSize,
-        });
-      });
+      await downloadFile(
+        file.url,
+        tmpPath,
+        (downloadedBytes) => {
+          totalDownloaded = completedBeforeFile + downloadedBytes;
+          const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
+          setStatus(id, {
+            downloadProgress: Math.min(progress, 1),
+            downloadedBytes: totalDownloaded,
+            totalBytes: totalSize,
+          });
+          callbacks.onDownloadProgress({
+            modelId: id,
+            progress: Math.min(progress, 1),
+            downloadedBytes: totalDownloaded,
+            totalBytes: totalSize,
+          });
+        },
+        signal,
+      );
       completedFileBytes.set(file.path, file.size);
     }
 
-    // Step 4: Set state to installing
-    setStatus({ state: "installing", downloadProgress: 1 });
+    setStatus(id, { state: "installing", downloadProgress: 1 });
     persistState();
 
-    // Step 5: Verify SHA256 checksums
-    console.log("[ModelManager] Verifying checksums...");
     for (const file of manifest.files) {
       const tmpPath = safeJoin(tmpDir, file.path);
-      const valid = await verifySha256(tmpPath, file.sha256);
-      if (!valid) {
+      if (!(await verifySha256(tmpPath, file.sha256))) {
         throw new Error(`Checksum mismatch for '${file.path}'`);
       }
     }
 
-    // Step 6: Create model directory and move files atomically
-    console.log("[ModelManager] Moving files to final location...");
     if (fs.existsSync(weightsDir)) {
       fs.rmSync(weightsDir, { recursive: true, force: true });
     }
@@ -546,38 +603,46 @@ export async function installModel(): Promise<void> {
       fs.renameSync(tmpPath, finalPath);
     }
 
-    // Step 7: Clean up .tmp
-    cleanupTmp();
+    cleanupTmp(family);
 
-    installedFiles = manifest.files.map(({ role, path, sha256, size }) => ({
-      role,
-      path,
-      sha256,
-      size,
-    }));
+    installedFiles.set(
+      id,
+      manifest.files.map(({ role, path: p, sha256, size }) => ({
+        role,
+        path: p,
+        sha256,
+        size,
+      })),
+    );
 
-    // Step 8: Set state to ready
-    setStatus({
+    setStatus(id, {
       state: "ready",
-      family: manifest.family,
-      modelId: manifest.modelId,
-      displayName: manifest.displayName,
-      version: manifest.version,
-      manifestVersion: manifest.manifestVersion,
       downloadProgress: 1,
       downloadedBytes: totalSize,
       totalBytes: totalSize,
       error: null,
     });
     persistState();
-    console.log("[ModelManager] Model installed successfully");
+    console.log(`[ModelManager] ${id} installed successfully`);
   } catch (error: any) {
-    const msg = error?.message || String(error);
-    console.error("[ModelManager] Install failed:", msg);
+    // A cancelled download should look like "never installed", not an error:
+    // reset to the default not_installed status instead of marking broken.
+    if (signal.aborted || error?.name === "AbortError") {
+      console.log(`[ModelManager] Install cancelled for ${id}`);
+      installedFiles.set(id, []);
+      statuses.set(id, defaultStatus(id));
+      try {
+        callbacks.onStatusChange(getModelStatus(id));
+      } catch {}
+      persistState();
+      cleanupTmp(family);
+      return;
+    }
 
-    installedFiles = [];
-    setStatus({
-      ...(manifest ? getManifestStatusMetadata(manifest) : DEFAULT_STATUS),
+    const msg = error?.message || String(error);
+    console.error(`[ModelManager] Install failed for ${id}:`, msg);
+    installedFiles.set(id, []);
+    setStatus(id, {
       state: "broken",
       error: msg,
       downloadProgress: 0,
@@ -585,41 +650,79 @@ export async function installModel(): Promise<void> {
       totalBytes: totalSize,
     });
     persistState();
-
-    // Clean up .tmp on failure
-    cleanupTmp();
+    cleanupTmp(family);
+  } finally {
+    // Clear the in-flight controller (only if it's still ours — a later install
+    // for the same model may have replaced it).
+    if (installAborts.get(id) === abortController) {
+      installAborts.delete(id);
+    }
   }
+}
+
+// ── Cancel ────────────────────────────────────────────────────────────
+
+/**
+ * Abort an in-flight install for `modelId` (defaults to the active model). The
+ * download's catch resets the model to `not_installed`. No-op if nothing is
+ * downloading for that model.
+ */
+export function cancelInstall(modelId?: string): void {
+  const id = resolveModelId(modelId);
+  const controller = installAborts.get(id);
+  if (!controller) return;
+  console.log(`[ModelManager] Cancelling install for ${id}`);
+  controller.abort();
 }
 
 // ── Remove ────────────────────────────────────────────────────────────
 
-export async function removeModel(): Promise<void> {
-  // Guard against removal during active download/install
-  if (
-    modelStatus.state === "downloading" ||
-    modelStatus.state === "installing"
-  ) {
+export async function removeModel(modelId?: string): Promise<void> {
+  const id = resolveModelId(modelId);
+  const current = statuses.get(id) ?? defaultStatus(id);
+  if (current.state === "downloading" || current.state === "installing") {
     throw new Error("Cannot remove model while install is in progress");
   }
 
-  const weightsDir = getWeightsDir();
+  const entry = getModelEntry(id);
+  if (!entry) throw new Error(`Unknown model '${id}'.`);
+  const family = entry.manifest.family;
+  const weightsDir = getWeightsDir(family);
 
   try {
     if (fs.existsSync(weightsDir)) {
       fs.rmSync(weightsDir, { recursive: true, force: true });
-      console.log("[ModelManager] Removed weights directory");
     }
   } catch (error) {
     console.error("[ModelManager] Failed to remove weights:", error);
   }
 
-  // Clean up any tmp files too
-  cleanupTmp();
+  cleanupTmp(family);
 
-  // Reset state
-  installedFiles = [];
-  modelStatus = { ...DEFAULT_STATUS };
+  installedFiles.set(id, []);
+  statuses.set(id, defaultStatus(id));
+
+  // If we just removed the active model, promote another installed model so we
+  // don't leave `activeModelId` pointing at a now-uninstalled model (a dead end
+  // where transcription breaks even though another installed model exists).
+  if (id === activeModelId) {
+    const promoted =
+      LOCAL_MODEL_IDS.find(
+        (candidate) =>
+          candidate !== id && statuses.get(candidate)?.state === "ready",
+      ) ?? DEFAULT_MODEL_ID;
+    if (promoted !== activeModelId) {
+      activeModelId = promoted;
+    }
+  }
+
   persistState();
-  callbacks.onStatusChange(modelStatus);
-  console.log("[ModelManager] Model removed, state reset to not_installed");
+  callbacks.onStatusChange(getModelStatus(id));
+  // Re-emit the (possibly newly promoted) active model so listeners recompute.
+  if (activeModelId !== id) {
+    callbacks.onStatusChange(getModelStatus(activeModelId));
+  }
+  console.log(
+    `[ModelManager] ${id} removed, reset to not_installed. Active: ${activeModelId}`,
+  );
 }

@@ -8,9 +8,9 @@ type SettingsCardProps = {
   icon?: React.ReactNode;
   children?: React.ReactNode; // Right-aligned control area
   className?: string;
-  status?: "default" | "success" | "warning";
   inGroup?: boolean; // When true, removes individual border/rounding for use in grouped container
-  interactive?: boolean; // When true, the row highlights on hover (like a history row)
+  interactive?: boolean; // When true, the row highlights on hover (like a history row). Independent of `onClick`.
+  onClick?: () => void; // When set, the whole row acts as a button
 };
 
 const SettingsCard: React.FC<SettingsCardProps> = ({
@@ -19,18 +19,13 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   icon,
   children,
   className = "",
-  status = "default",
   inGroup = false,
   interactive = false,
+  onClick,
 }) => {
-  const statusClass =
-    status === "success"
-      ? "border border-emerald-400/60 bg-emerald-500/5"
-      : status === "warning"
-        ? "border border-amber-400/60 bg-amber-500/5"
-        : inGroup
-          ? "border-0 border-b border-white/[0.08]"
-          : "border border-white/[0.08]";
+  const borderClass = inGroup
+    ? "border-0 border-b border-white/[0.08]"
+    : "border border-white/[0.08]";
 
   const roundedClass = inGroup ? "" : "rounded-[var(--radius-lg)]";
 
@@ -38,14 +33,28 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     ? "p-3 flex items-center justify-between gap-3"
     : "settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3";
 
+  const clickableProps = onClick
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onClick,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onClick();
+          }
+        },
+      }
+    : { role: "group" as const };
+
   return (
     <motion.div
       variants={panelCascadeItem}
-      className={`group ${baseClass} ${roundedClass} ${statusClass} ${
+      className={`group ${baseClass} ${roundedClass} ${borderClass} ${
         interactive ? "transition-colors hover:bg-white/5" : ""
-      } ${className}`}
-      role="group"
+      } ${onClick ? "cursor-pointer" : ""} ${className}`}
       aria-label={title}
+      {...clickableProps}
     >
       <div className="flex items-center gap-3 min-w-0">
         {icon && (
@@ -73,5 +82,42 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     </motion.div>
   );
 };
+
+/**
+ * Trailing controls for a settings card, laid out as two fixed columns so a
+ * stacked list of cards reads as aligned columns:
+ *
+ *   [ primary glyph ][ reserved action column ]
+ *
+ * - `primary` is the row's main state glyph (e.g. download / check). It is
+ *   centered in a fixed-width slot (`--card-primary-col`) so glyphs of
+ *   differing widths share an exact column center vertically across every row,
+ *   regardless of whether a trailing action is present.
+ * - `action` is an optional reveal-on-hover control (e.g. the uninstall trash).
+ *   Its column width is reserved via `--card-action-col` even when `action` is
+ *   omitted, so neighbouring rows never shift the primary glyph to fill the gap.
+ *
+ * Centralising this convention here means future cards get aligned trailing
+ * controls for free instead of hand-rolling the spacing.
+ */
+export const CardTrailing: React.FC<{
+  primary?: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ primary, action }) => (
+  <div className="flex items-center gap-2">
+    <div
+      className="flex items-center justify-center shrink-0"
+      style={{ width: "var(--card-primary-col)" }}
+    >
+      {primary}
+    </div>
+    <div
+      className="flex items-center justify-center shrink-0"
+      style={{ width: "var(--card-action-col)" }}
+    >
+      {action}
+    </div>
+  </div>
+);
 
 export default SettingsCard;

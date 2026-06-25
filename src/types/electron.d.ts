@@ -267,11 +267,17 @@ declare global {
         providerId: ApiKeyTranscriptionProviderId,
       ) => Promise<TranscriptionProviderSettingsSnapshot>;
       getModelStatus: () => Promise<import("./shared").ModelStatus>;
-      installModel: () => Promise<void>;
-      removeModel: () => Promise<void>;
+      getModelStatuses: () => Promise<import("./shared").ModelStatus[]>;
+      getModelInfos: () => Promise<import("./shared").LocalModelInfo[]>;
+      getActiveModel: () => Promise<string>;
+      setActiveModel: (modelId: string) => Promise<void>;
+      installModel: (modelId?: string) => Promise<void>;
+      removeModel: (modelId?: string) => Promise<void>;
+      cancelInstall: (modelId?: string) => Promise<void>;
       prewarmLocal: () => Promise<{ ok: boolean }>;
       onModelProgress: (
         cb: (payload: {
+          modelId: string;
           progress: number;
           downloadedBytes: number;
           totalBytes: number;

@@ -8,7 +8,7 @@ import {
   SelectTrigger,
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
-import ModelInstallCard from "./ModelInstallCard";
+import ModelsList from "./ModelsList";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
@@ -247,11 +247,12 @@ const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
 ]);
 
 // Download glyph for the resting affordance — hand-rolled to match the stroke
-// language of the install checkmark (no SF symbol exists for this).
-const DownloadGlyph: React.FC = () => (
+// language of the install checkmark (no SF symbol exists for this). Exported so
+// the Models install card reuses the exact same download affordance.
+export const DownloadGlyph: React.FC<{ size?: number }> = ({ size = 12 }) => (
   <svg
-    width="12"
-    height="12"
+    width={size}
+    height={size}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -928,7 +929,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <SectionSeparator title="Transcription" />
                     </motion.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <ModelInstallCard inGroup />
+                      <ModelsList enabled={activeTab === "models"} />
                     </div>
                   </motion.section>
                 </motion.div>

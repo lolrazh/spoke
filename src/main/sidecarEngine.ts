@@ -1,7 +1,8 @@
 /**
  * Sidecar Engine
  *
- * Manages the MLX Whisper sidecar process lifecycle and transcription.
+ * Manages the MLX STT sidecar process lifecycle and transcription. The sidecar
+ * is multi-engine; the active model family is selected at spawn time.
  * Handles spawning, readiness detection, graceful shutdown, and serialized
  * transcription requests via length-prefixed PCM over stdin/stdout.
  */
@@ -10,6 +11,8 @@ import * as fs from "fs";
 import { spawn } from "child_process";
 import type { SttEvent, LocalTranscribeResult } from "../types/shared";
 import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
+import { getActiveModelId } from "./modelManager";
+import { getModelFamily } from "./localModelContract";
 import { bootTimeline } from "./bootTimeline";
 
 // ── Internal state ─────────────────────────────────────────────────────
@@ -49,12 +52,13 @@ export function spawnSidecar(): Promise<void> {
 function spawnSidecarOnce(): Promise<void> {
   return new Promise((resolve, reject) => {
     const binaryPath = getSidecarBinaryPath();
-    const args = getSidecarArgs();
+    const family = getModelFamily(getActiveModelId()) ?? "whisper";
+    const args = getSidecarArgs(family);
 
     if (!fs.existsSync(binaryPath)) {
       reject(
         new Error(
-          `MLX Whisper sidecar binary not found at ${binaryPath}. In dev, run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
+          `MLX STT sidecar binary not found at ${binaryPath}. In dev, run: cd local-stt && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`,
         ),
       );
       return;
