@@ -20,14 +20,12 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
-import { glyphForFamily } from "./ModelGlyph";
+import ModelsList from "./ModelsList";
 import {
   usePermissions,
   type PermissionProvider,
 } from "../hooks/usePermissions";
 import { useModelStatus } from "../hooks/useModelStatus";
-import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
-import type { LocalModelInfo } from "../types/shared";
 import {
   buildOnboardingSteps,
   isOnboardingStep,
@@ -65,9 +63,6 @@ const devFlags = {
     },
   },
 };
-
-const LOCAL_MODEL_REPAIR_DESCRIPTION =
-  "Spoke could not verify the local model. Repair will download and verify a clean copy.";
 
 // Simple mock for now - starting in disabled state for UI development
 const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
@@ -118,33 +113,14 @@ const Onboarding: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
   const shouldLoadTranscriptionSetup =
     !showIntro && currentStep === "transcription-setup";
+  // Drives Next-gating and prewarm off the *active* model's live status: the
+  // user installs a model in a card below, it becomes active + ready, and that
+  // flips `transcriptionSetupReady`. `refresh` re-reads after the cards mutate
+  // state (install/activate) so this status stays in sync with the active row.
   const {
     status: modelStatus,
-    install: installModel,
     refresh: refreshModelStatus,
   } = useModelStatus({ enabled: shouldLoadTranscriptionSetup });
-  const [modelInfos, setModelInfos] = useState<LocalModelInfo[]>([]);
-  const [activeModelId, setActiveModelId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!shouldLoadTranscriptionSetup) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [infos, active] = await Promise.all([
-          window.stt?.getModelInfos?.(),
-          window.stt?.getActiveModel?.(),
-        ]);
-        if (cancelled) return;
-        if (infos) setModelInfos(infos);
-        if (active) setActiveModelId(active);
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldLoadTranscriptionSetup]);
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -294,43 +270,23 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.inputMonitoring &&
     (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
+  // Next on the transcription step gates on the *active* model being ready.
+  // The cards below install/activate models; when the active one resolves to
+  // "ready" this flips true. Nothing installed → not ready → Next stays
+  // disabled (the deleted-models case).
   const transcriptionSetupReady = modelStatus.state === "ready";
-  const modelInstallBusy =
-    modelStatus.state === "downloading" || modelStatus.state === "installing";
-  const activeModelTagline =
-    modelInfos.find((m) => m.modelId === modelStatus.modelId)?.tagline ??
-    "On-device speech recognition.";
-  const selectModel = async (modelId: string) => {
-    if (modelInstallBusy) return;
-    setActiveModelId(modelId);
-    try {
-      await window.stt?.setActiveModel?.(modelId);
-    } finally {
-      refreshModelStatus();
-    }
-  };
-  const modelProgressPercent = Math.round(modelStatus.downloadProgress * 100);
-  // Draw the completion checkmark on only when the model *transitions* into
-  // ready (mirrors the permission rows' justGranted behavior). Persisted as
-  // state so it survives the AnimatePresence exit delay before the checkmark
-  // mounts; left untouched when the model is already ready on mount.
-  const prevModelStateRef = useRef(modelStatus.state);
-  const [modelCheckDrawOn, setModelCheckDrawOn] = useState(false);
-  useEffect(() => {
-    if (
-      prevModelStateRef.current !== "ready" &&
-      modelStatus.state === "ready"
-    ) {
-      setModelCheckDrawOn(true);
-    }
-    prevModelStateRef.current = modelStatus.state;
-  }, [modelStatus.state]);
 
-  const handleInstallModel = async () => {
-    await window.stt?.setPreferredProvider?.(LOCAL_STT_PROVIDER_ID);
-    await installModel();
-    await refreshModelStatus();
-  };
+  // The model cards (ModelsList) own their own install/activate state, so the
+  // active-model status this step reads doesn't auto-update when a card
+  // installs a model or switches the active one. Poll while the step is visible
+  // so `transcriptionSetupReady` (Next-gating) and prewarm track the active row.
+  useEffect(() => {
+    if (currentStep !== "transcription-setup") return;
+    const interval = setInterval(() => {
+      void refreshModelStatus();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [currentStep, refreshModelStatus]);
 
   useEffect(() => {
     if (currentStep !== "transcription-setup") return;
@@ -1281,185 +1237,21 @@ const Onboarding: React.FC = () => {
                   </motion.div>
 
                   <motion.div
-                    className="onboarding-section space-y-3"
+                    className="onboarding-section space-y-2"
                     variants={panelCascadeContainer}
                   >
-                    {modelInfos.length > 1 && (
-                      <motion.div
-                        className="grid grid-cols-2 gap-2"
-                        variants={panelCascadeItem}
-                      >
-                        {modelInfos.map((info) => {
-                          const selected =
-                            info.modelId ===
-                            (modelStatus.modelId ?? activeModelId);
-                          return (
-                            <button
-                              key={info.modelId}
-                              type="button"
-                              disabled={modelInstallBusy}
-                              onClick={() => selectModel(info.modelId)}
-                              className={`group onboarding-permission-row rounded-lg p-3 text-left transition-colors duration-300 ${
-                                selected ? "bg-white/5" : "hover:bg-white/5"
-                              } ${modelInstallBusy ? "cursor-not-allowed" : ""}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-md card-floating flex items-center justify-center">
-                                  {glyphForFamily(info.family)}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[12px] font-medium text-foreground truncate">
-                                    {info.displayName}
-                                  </p>
-                                  <p className="text-[11px] text-subtle truncate">
-                                    {info.languageCount} languages
-                                  </p>
-                                </div>
-                                {/* Selected → full check; available → dim check
-                                    that the card's group-hover brightens, the
-                                    same idiom the Models page uses. */}
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  className={`shrink-0 transition-colors ${
-                                    selected
-                                      ? "text-foreground"
-                                      : "text-white/30 group-hover:text-foreground"
-                                  }`}
-                                  role="img"
-                                  aria-label={
-                                    selected ? "Selected" : "Select model"
-                                  }
-                                >
-                                  <path
-                                    d="M5 13l4 4L19 7"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </svg>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                    <motion.div
-                      className="onboarding-permission-row rounded-lg p-3"
-                      variants={panelCascadeItem}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 rounded-md card-floating flex items-center justify-center">
-                            {glyphForFamily(modelStatus.family ?? "whisper")}
-                          </div>
-                          <div className="text-left">
-                            <p className="text-[13px] font-medium text-foreground">
-                              {modelStatus.displayName ?? "Local model"}
-                            </p>
-                            <p className="onboarding-permission-desc text-subtle">
-                              {modelStatus.state === "broken"
-                                ? LOCAL_MODEL_REPAIR_DESCRIPTION
-                                : modelInstallBusy
-                                  ? "Installing the local transcription model."
-                                  : activeModelTagline}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex min-w-[112px] items-center justify-end">
-                          <AnimatePresence mode="wait">
-                            {modelStatus.state === "ready" ? (
-                              <motion.div
-                                key="model-ready"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center justify-center"
-                              >
-                                <motion.svg
-                                  width="22"
-                                  height="22"
-                                  viewBox="0 0 24 24"
-                                  className="text-white/80"
-                                >
-                                  <motion.path
-                                    // Draw on completion; show instantly if
-                                    // the model was already ready on mount.
-                                    initial={{
-                                      pathLength: modelCheckDrawOn ? 0 : 1,
-                                    }}
-                                    animate={{ pathLength: 1 }}
-                                    transition={
-                                      modelCheckDrawOn
-                                        ? {
-                                            duration: 0.45,
-                                            ease: [0.25, 0.8, 0.25, 1],
-                                          }
-                                        : { duration: 0 }
-                                    }
-                                    d="M5 13l4 4L19 7"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                </motion.svg>
-                              </motion.div>
-                            ) : modelInstallBusy ? (
-                              <motion.div
-                                key="model-progress"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex w-32 items-center gap-2"
-                              >
-                                <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                                  <div
-                                    className="h-full rounded-full bg-gradient-to-r from-white/30 to-white/80 transition-[width] duration-300 ease-out"
-                                    style={{
-                                      width: `${modelProgressPercent}%`,
-                                    }}
-                                  />
-                                </div>
-                                {/* Fixed, centered slot so the number stays put
-                                    across 1–3 digits (e.g. 5% / 42% / 100%). */}
-                                <div className="flex w-10 shrink-0 items-center justify-center">
-                                  {modelStatus.state === "installing" ? (
-                                    <Spinner className="h-3 w-3" />
-                                  ) : (
-                                    <span className="text-[10px] text-white/70 tabular-nums">
-                                      {modelProgressPercent}%
-                                    </span>
-                                  )}
-                                </div>
-                              </motion.div>
-                            ) : (
-                              <motion.div
-                                key="model-install"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                              >
-                                <Button
-                                  size="sm"
-                                  onClick={handleInstallModel}
-                                  className="text-xs onboarding-cta"
-                                >
-                                  {modelStatus.state === "broken"
-                                    ? "Repair"
-                                    : "Install"}
-                                </Button>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </motion.div>
+                    {/* The same model list the Settings → Models page renders,
+                        as standalone (non-grouped) cards so the two models read
+                        as two distinct cards stacked with a gap. Each card shows
+                        its real install state and doubles as install + activate:
+                        download glyph when not installed, bright check when
+                        active, dim check (brightens on hover, click to activate)
+                        when installed-but-inactive. Installing one and making it
+                        active is what flips this step's Next on. */}
+                    <ModelsList
+                      enabled={shouldLoadTranscriptionSetup}
+                      inGroup={false}
+                    />
                   </motion.div>
                 </motion.div>
               )}
