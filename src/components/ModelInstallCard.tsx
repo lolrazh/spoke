@@ -116,7 +116,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               <CardTrailing
                 primary={
                   <span className="text-muted-foreground/60 transition-colors group-hover:text-foreground">
-                    <DownloadGlyph />
+                    {/* Match the install check's size so the two share the
+                        primary glyph column visually, not just by center. */}
+                    <DownloadGlyph size={17} />
                   </span>
                 }
               />
