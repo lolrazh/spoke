@@ -16,14 +16,18 @@ function formatBytes(bytes: number): string {
 }
 
 function describe(info: LocalModelInfo, status: ModelStatus): string {
-  const size = status.totalBytes > 0 ? formatBytes(status.totalBytes) : null;
   if (status.state === "broken") {
     return status.error
       ? `${status.error}. Repair downloads a clean copy.`
       : "Couldn't verify the model. Repair downloads a clean copy.";
   }
+  // While downloading, show live byte progress (the ring carries the percent).
+  if (status.state === "downloading") {
+    return `${formatBytes(status.downloadedBytes)} / ${formatBytes(status.totalBytes)}`;
+  }
   // Keep this short so the size never gets truncated behind an ellipsis; the
   // full tagline lives in onboarding where there's room.
+  const size = status.totalBytes > 0 ? formatBytes(status.totalBytes) : null;
   return [`${info.languageCount} languages`, size].filter(Boolean).join(" · ");
 }
 

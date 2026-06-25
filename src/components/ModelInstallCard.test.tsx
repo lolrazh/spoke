@@ -77,7 +77,7 @@ describe("ModelInstallCard", () => {
     ).toBeNull();
   });
 
-  it("renders a determinate progress ring when downloading (no %/byte text)", () => {
+  it("renders a progress ring + byte progress when downloading", () => {
     renderCard({
       status: {
         state: "downloading",
@@ -86,9 +86,10 @@ describe("ModelInstallCard", () => {
         totalBytes: 1_600_000_000,
       },
     });
-    // The wide bar + %/byte text is gone; a compact ring stands in.
+    // A compact ring carries the percent; the byte readout returns as text.
     expect(screen.getByTestId("progress-ring")).toBeTruthy();
     expect(screen.queryByText(/50%/)).toBeNull();
+    expect(screen.getByText(/763 MB \/ 1 GB/)).toBeTruthy();
   });
 
   it("cancel trash fires onCancel (and not onInstall/onActivate) while downloading", () => {
