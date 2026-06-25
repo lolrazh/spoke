@@ -11,6 +11,7 @@ type SettingsCardProps = {
   status?: "default" | "success" | "warning";
   inGroup?: boolean; // When true, removes individual border/rounding for use in grouped container
   interactive?: boolean; // When true, the row highlights on hover (like a history row)
+  onClick?: () => void; // When set, the whole row acts as a button
 };
 
 const SettingsCard: React.FC<SettingsCardProps> = ({
@@ -22,6 +23,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
   status = "default",
   inGroup = false,
   interactive = false,
+  onClick,
 }) => {
   const statusClass =
     status === "success"
@@ -38,14 +40,28 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     ? "p-3 flex items-center justify-between gap-3"
     : "settings-card onboarding-permission-row p-3 md:p-3 flex items-center justify-between gap-3";
 
+  const clickableProps = onClick
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onClick,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onClick();
+          }
+        },
+      }
+    : { role: "group" as const };
+
   return (
     <motion.div
       variants={panelCascadeItem}
       className={`group ${baseClass} ${roundedClass} ${statusClass} ${
         interactive ? "transition-colors hover:bg-white/5" : ""
-      } ${className}`}
-      role="group"
+      } ${onClick ? "cursor-pointer" : ""} ${className}`}
       aria-label={title}
+      {...clickableProps}
     >
       <div className="flex items-center gap-3 min-w-0">
         {icon && (

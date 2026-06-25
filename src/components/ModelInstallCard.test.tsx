@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import ModelInstallCard from "./ModelInstallCard";
 import type { LocalModelInfo, ModelStatus } from "../types/shared";
 
@@ -15,7 +15,7 @@ const info: LocalModelInfo = {
   modelId: "spokedotso/cohere-transcribe-03-2026-mlx-4bit",
   family: "cohere",
   displayName: "Cohere Transcribe 4-bit",
-  tagline: "Most accurate and fastest. 14 languages.",
+  tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
   languageCount: 14,
   totalBytes: 1_600_000_000,
   isDefault: true,
@@ -55,17 +55,25 @@ function renderCard(
 }
 
 describe("ModelInstallCard", () => {
-  it("renders the install button + tagline when not installed", () => {
-    renderCard();
+  it("shows a download affordance + tagline and installs on row click when not installed", () => {
+    const props = renderCard();
     expect(screen.getByText("Cohere Transcribe 4-bit")).toBeTruthy();
-    expect(screen.getByText(/Most accurate and fastest/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Install" })).toBeTruthy();
+    expect(screen.getByText(/Multilingual speech recognition/i)).toBeTruthy();
+    // No buttons (no "Install"/"Use") — the whole row is the affordance.
+    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    // The row itself is the clickable button; clicking it installs.
+    const row = screen.getByRole("button", { name: info.displayName });
+    fireEvent.click(row);
+    expect(props.onInstall).toHaveBeenCalledTimes(1);
   });
 
-  it("renders no control until loaded (no flash)", () => {
+  it("renders no clickable control until loaded (no flash)", () => {
     renderCard({ loaded: false });
     expect(screen.getByText("Cohere Transcribe 4-bit")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+    // Until loaded the row is inert (a plain group, not a button).
+    expect(
+      screen.queryByRole("button", { name: info.displayName }),
+    ).toBeNull();
   });
 
   it("renders progress when downloading", () => {
@@ -85,22 +93,43 @@ describe("ModelInstallCard", () => {
     expect(screen.getByText("Verifying…")).toBeTruthy();
   });
 
-  it("offers a Use control for a ready but inactive model", () => {
-    renderCard({ status: { state: "ready" }, isActive: false });
-    expect(screen.getByRole("button", { name: "Use" })).toBeTruthy();
+  it("shows a dim 'click to use' check for a ready but inactive model and activates on row click", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: false });
+    // The inactive check is labelled as the click-to-use affordance, not "Active".
     expect(
-      screen.getByRole("button", { name: "Uninstall model" }),
+      screen.getByRole("img", { name: "Installed, click to use" }),
     ).toBeTruthy();
     expect(screen.queryByText("Active")).toBeNull();
-  });
-
-  it("shows Active (no Use) for the active model", () => {
-    renderCard({ status: { state: "ready" }, isActive: true });
-    expect(screen.getByText("Active")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Uninstall model" }),
     ).toBeTruthy();
+
+    // Row click activates the model.
+    fireEvent.click(screen.getByRole("button", { name: info.displayName }));
+    expect(props.onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it("uninstall click does not also activate the model (stopPropagation)", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: false });
+    fireEvent.click(screen.getByRole("button", { name: "Uninstall model" }));
+    expect(props.onRemove).toHaveBeenCalledTimes(1);
+    expect(props.onActivate).not.toHaveBeenCalled();
+  });
+
+  it("shows a full check (no 'Active' text, no 'Use') for the active model and the row is inert", () => {
+    const props = renderCard({ status: { state: "ready" }, isActive: true });
+    expect(screen.getByRole("img", { name: "Active" })).toBeTruthy();
+    expect(screen.queryByText("Active")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Uninstall model" }),
+    ).toBeTruthy();
+    // The active row is not a clickable button (no-op).
+    expect(
+      screen.queryByRole("button", { name: info.displayName }),
+    ).toBeNull();
+    expect(props.onActivate).not.toHaveBeenCalled();
   });
 
   it("renders the repair button when broken", () => {

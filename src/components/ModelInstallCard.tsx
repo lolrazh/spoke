@@ -5,6 +5,8 @@ import { Button } from "./ui/button";
 import SettingsCard from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import Spinner from "./ui/Spinner";
+import { glyphForFamily } from "./ModelGlyph";
+import { DownloadGlyph } from "./SettingsPanel";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) {
@@ -23,42 +25,35 @@ function describe(info: LocalModelInfo, status: ModelStatus): string {
   return [info.tagline, size].filter(Boolean).join(" · ");
 }
 
-// OpenAI logomark — Whisper is an OpenAI model.
-const OpenAiGlyph: React.FC = () => (
-  <svg
+// Quiet, muted "done" checkmark — the exact path/animation the original card
+// used for its ready state. `dim` renders it as a faint affordance that the
+// card's group-hover brightens to full to signal "click to make active".
+const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
+  <motion.svg
+    width="17"
+    height="17"
     viewBox="0 0 24 24"
-    width={15}
-    height={15}
-    fill="currentColor"
-    className="text-foreground/80"
-    aria-label="OpenAI"
-    role="img"
-  >
-    <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997z" />
-  </svg>
-);
-
-// Simple waveform mark for Cohere Transcribe.
-const CohereGlyph: React.FC = () => (
-  <svg
-    viewBox="0 0 24 24"
-    width={15}
-    height={15}
     fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    className="text-foreground/80"
-    aria-label="Cohere"
+    className={
+      dim
+        ? "text-white/30 transition-colors group-hover:text-foreground"
+        : "text-muted-foreground"
+    }
     role="img"
+    aria-label={dim ? "Installed, click to use" : "Active"}
   >
-    <path d="M4 12h0M8 8v8M12 5v14M16 8v8M20 12h0" />
-  </svg>
+    <motion.path
+      initial={{ pathLength: 0 }}
+      animate={{ pathLength: 1 }}
+      transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
+      d="M5 13l4 4L19 7"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </motion.svg>
 );
-
-function glyphFor(info: LocalModelInfo): React.ReactNode {
-  return info.family === "cohere" ? <CohereGlyph /> : <OpenAiGlyph />;
-}
 
 interface ModelInstallCardProps {
   info: LocalModelInfo;
@@ -83,13 +78,26 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
 }) => {
   const progressPercent = Math.round(status.downloadProgress * 100);
 
+  // The whole row is the affordance: clicking a not-installed row installs it,
+  // clicking a ready-but-inactive row activates it. The active row is a no-op,
+  // and busy/broken rows defer to their inline controls. Only attach the click
+  // once `loaded` so we never react before the real status resolves.
+  const rowClick = !loaded
+    ? undefined
+    : status.state === "not_installed"
+      ? onInstall
+      : status.state === "ready" && !isActive
+        ? onActivate
+        : undefined;
+
   return (
     <SettingsCard
       title={info.displayName}
       description={describe(info, status)}
-      icon={glyphFor(info)}
+      icon={glyphForFamily(info.family)}
       inGroup={inGroup}
-      interactive={status.state === "ready"}
+      interactive={rowClick !== undefined}
+      onClick={rowClick}
     >
       <div className="ml-2 flex items-center justify-end">
         <AnimatePresence mode="wait" initial={false}>
@@ -99,15 +107,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              className="text-muted-foreground/60 transition-colors group-hover:text-foreground"
             >
-              <Button
-                type="button"
-                size="sm"
-                onClick={onInstall}
-                className="text-xs onboarding-cta"
-              >
-                Install
-              </Button>
+              <DownloadGlyph />
             </motion.div>
           )}
 
@@ -162,45 +164,20 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               exit={{ opacity: 0 }}
               className="flex items-center gap-2"
             >
-              {isActive ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="text-emerald-400/80"
-                    role="img"
-                    aria-label="Active"
-                  >
-                    <path
-                      d="M5 13l4 4L19 7"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Active
-                </span>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={onActivate}
-                  className="text-xs"
-                >
-                  Use
-                </Button>
-              )}
-              <IconButton
-                name="trash"
-                onClick={onRemove}
-                title="Uninstall"
-                ariaLabel="Uninstall model"
-                revealOnHover
-              />
+              {/* Active → full check; inactive → dim check that the row's
+                  group-hover brightens to signal "click to make active". */}
+              <InstalledCheck dim={!isActive} />
+              {/* Uninstall — stop the click bubbling so removing the model
+                  doesn't also trigger the row's install/activate handler. */}
+              <span onClick={(e) => e.stopPropagation()}>
+                <IconButton
+                  name="trash"
+                  onClick={onRemove}
+                  title="Uninstall"
+                  ariaLabel="Uninstall model"
+                  revealOnHover
+                />
+              </span>
             </motion.div>
           )}
 

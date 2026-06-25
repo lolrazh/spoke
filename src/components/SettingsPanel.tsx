@@ -247,8 +247,9 @@ const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
 ]);
 
 // Download glyph for the resting affordance — hand-rolled to match the stroke
-// language of the install checkmark (no SF symbol exists for this).
-const DownloadGlyph: React.FC = () => (
+// language of the install checkmark (no SF symbol exists for this). Exported so
+// the Models install card reuses the exact same download affordance.
+export const DownloadGlyph: React.FC = () => (
   <svg
     width="12"
     height="12"
