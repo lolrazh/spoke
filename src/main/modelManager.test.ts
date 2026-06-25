@@ -16,10 +16,17 @@ const MOCK_WEIGHTS_DIR = "/tmp/test-spoke/local-stt/weights";
 
 vi.mock("./sidecarPaths", () => ({
   getLocalSttDir: () => MOCK_LOCAL_STT_DIR,
-  // Family-agnostic in tests: every family resolves to the same dir so the
-  // existence mocks below stay simple.
-  getWeightsDir: () => MOCK_WEIGHTS_DIR,
+  // Mirror production: family-scoped weights live in `weights/<family>/`, and
+  // calling without a family returns the legacy flat `weights/` dir (used by
+  // the pre-multi-model migration path).
+  getWeightsDir: (family?: string) =>
+    family ? `${MOCK_WEIGHTS_DIR}/${family}` : MOCK_WEIGHTS_DIR,
 }));
+
+/** Family-scoped weights dir, matching the mocked getWeightsDir above. */
+function weightsDirFor(modelId: string): string {
+  return `${MOCK_WEIGHTS_DIR}/${getModelEntry(modelId)!.manifest.family}`;
+}
 
 // ── Mock fs ───────────────────────────────────────────────────────────
 
@@ -33,6 +40,8 @@ vi.mock("fs", async () => {
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
     renameSync: vi.fn(),
+    readdirSync: vi.fn(() => []),
+    statSync: vi.fn(() => ({ isFile: () => true })),
     createReadStream: vi.fn(),
     createWriteStream: vi.fn(),
     unlink: vi.fn(),
@@ -83,6 +92,13 @@ const TOTAL_BYTES = INSTALLED_FILES.reduce((s, f) => s + f.size, 0);
 
 // The "other" (non-default) model, for active-selection tests.
 const OTHER_MODEL_ID = LOCAL_MODEL_IDS.find((id) => id !== DEFAULT_MODEL_ID)!;
+const OTHER_ENTRY = getModelEntry(OTHER_MODEL_ID)!;
+const OTHER_INSTALLED_FILES = OTHER_ENTRY.manifest.files.map((f) => ({
+  role: f.role,
+  path: f.path,
+  sha256: f.sha256,
+  size: f.size,
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -109,9 +125,55 @@ function readyEntry(
   };
 }
 
+/** A ready entry for an arbitrary model id. */
+function readyEntryFor(modelId: string): Record<string, unknown> {
+  const entry = getModelEntry(modelId)!;
+  return {
+    state: "ready",
+    family: entry.manifest.family,
+    modelId,
+    displayName: entry.manifest.displayName,
+    version: entry.manifest.version,
+    manifestVersion: entry.manifest.manifestVersion,
+    files:
+      modelId === DEFAULT_MODEL_ID ? INSTALLED_FILES : OTHER_INSTALLED_FILES,
+    error: null,
+  };
+}
+
 /** New multi-model persisted shape. */
 function persisted(entry: Record<string, unknown>, modelId = DEFAULT_MODEL_ID) {
   return { activeModelId: DEFAULT_MODEL_ID, models: { [modelId]: entry } };
+}
+
+/**
+ * Persist both models as ready with all their weights present on disk. The
+ * mocked `getWeightsDir` is family-agnostic, so every model's files resolve to
+ * the same dir; we mark each model's file paths as existing.
+ */
+function mockBothModelsReady(activeModelId = DEFAULT_MODEL_ID): void {
+  const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
+  const installedPaths = new Set([
+    ...INSTALLED_FILES.map((f) =>
+      path.join(weightsDirFor(DEFAULT_MODEL_ID), f.path),
+    ),
+    ...OTHER_INSTALLED_FILES.map((f) =>
+      path.join(weightsDirFor(OTHER_MODEL_ID), f.path),
+    ),
+  ]);
+  const state = {
+    activeModelId,
+    models: {
+      [DEFAULT_MODEL_ID]: readyEntryFor(DEFAULT_MODEL_ID),
+      [OTHER_MODEL_ID]: readyEntryFor(OTHER_MODEL_ID),
+    },
+  };
+  (fs.existsSync as any).mockImplementation(
+    (p: string) => p === statePath || installedPaths.has(p),
+  );
+  (fs.readFileSync as any).mockImplementation((p: string) =>
+    p === statePath ? JSON.stringify(state) : "{}",
+  );
 }
 
 function mockState(state: Record<string, unknown>): void {
@@ -125,7 +187,9 @@ function mockState(state: Record<string, unknown>): void {
 function mockStateWithWeights(state: Record<string, unknown>): void {
   const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
   const installedPaths = new Set(
-    INSTALLED_FILES.map((f) => path.join(MOCK_WEIGHTS_DIR, f.path)),
+    INSTALLED_FILES.map((f) =>
+      path.join(weightsDirFor(DEFAULT_MODEL_ID), f.path),
+    ),
   );
   (fs.existsSync as any).mockImplementation(
     (p: string) => p === statePath || installedPaths.has(p),
@@ -326,14 +390,13 @@ describe("modelManager", () => {
     });
 
     it("deletes the weights directory", async () => {
-      (fs.existsSync as any).mockImplementation(
-        (p: string) => p === MOCK_WEIGHTS_DIR,
-      );
+      const weightsDir = weightsDirFor(DEFAULT_MODEL_ID);
+      (fs.existsSync as any).mockImplementation((p: string) => p === weightsDir);
       initModelManager(makeCallbacks());
 
       await removeModel();
 
-      expect(fs.rmSync).toHaveBeenCalledWith(MOCK_WEIGHTS_DIR, {
+      expect(fs.rmSync).toHaveBeenCalledWith(weightsDir, {
         recursive: true,
         force: true,
       });
@@ -361,6 +424,34 @@ describe("modelManager", () => {
       expect(cbs.onStatusChange).toHaveBeenCalledWith(
         expect.objectContaining({ state: "not_installed" }),
       );
+    });
+
+    it("promotes another ready model when the active one is removed", async () => {
+      mockBothModelsReady(DEFAULT_MODEL_ID);
+      initModelManager(makeCallbacks());
+      setActiveModelId(DEFAULT_MODEL_ID);
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
+
+      await removeModel(DEFAULT_MODEL_ID);
+
+      // The other still-ready model is promoted.
+      expect(getActiveModelId()).toBe(OTHER_MODEL_ID);
+      expect(getModelStatus(DEFAULT_MODEL_ID).state).toBe("not_installed");
+      expect(getModelStatus(OTHER_MODEL_ID).state).toBe("ready");
+    });
+
+    it("falls back to the default model when no other model is ready", async () => {
+      mockBothModelsReady(DEFAULT_MODEL_ID);
+      initModelManager(makeCallbacks());
+
+      // Remove the default (active) -> promotes the remaining ready OTHER model.
+      await removeModel(DEFAULT_MODEL_ID);
+      expect(getActiveModelId()).toBe(OTHER_MODEL_ID);
+
+      // Remove the now-active OTHER model -> nothing ready left, fall back.
+      await removeModel(OTHER_MODEL_ID);
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
+      expect(getModelStatus(OTHER_MODEL_ID).state).toBe("not_installed");
     });
   });
 
@@ -445,6 +536,58 @@ describe("modelManager", () => {
       await expect(installModel()).rejects.toThrow("Install already in progress");
       void firstInstall.catch(() => {});
     });
+
+    it("throws when removing/reinstalling while in the installing state", async () => {
+      initModelManager(makeCallbacks());
+
+      // Successful downloads for every file so the install advances past the
+      // download phase into "installing" (sha256 verification).
+      vi.mocked(https.get).mockImplementation((_url, callback: any) => {
+        const res = {
+          statusCode: 200,
+          headers: { "content-length": "10" },
+          resume: vi.fn(),
+          on: vi.fn((event: string, cb: (chunk?: Buffer) => void) => {
+            if (event === "data") cb(Buffer.alloc(10));
+            return res;
+          }),
+          pipe: vi.fn(),
+        };
+        callback(res);
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+      // Write stream resolves immediately so each download "finish"es.
+      (fs.createWriteStream as any).mockImplementation(() => {
+        const handlers: Record<string, () => void> = {};
+        return {
+          on: (event: string, cb: () => void) => {
+            handlers[event] = cb;
+            if (event === "finish") setTimeout(cb, 0);
+          },
+          close: vi.fn(),
+        };
+      });
+      // A read stream that never emits "end" so verifySha256 (and thus the
+      // overall install) stays pending in the "installing" state.
+      (fs.createReadStream as any).mockImplementation(() => ({
+        on: vi.fn().mockReturnThis(),
+      }));
+
+      const installPromise = installModel();
+      // Poll until the (mocked) downloads finish and the install enters the
+      // verification phase; avoids depending on a fixed wall-clock delay.
+      for (let i = 0; i < 200 && getModelInstallState() !== "installing"; i++) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(getModelInstallState()).toBe("installing");
+
+      await expect(installModel()).rejects.toThrow("Install already in progress");
+      await expect(removeModel()).rejects.toThrow(
+        "Cannot remove model while install is in progress",
+      );
+
+      void installPromise.catch(() => {});
+    });
   });
 
   describe("removeModel during download", () => {
@@ -461,6 +604,101 @@ describe("modelManager", () => {
         "Cannot remove model while install is in progress",
       );
       void firstInstall.catch(() => {});
+    });
+  });
+
+  describe("persistence", () => {
+    it("writes the new multi-model shape with per-model entries", () => {
+      mockBothModelsReady(DEFAULT_MODEL_ID);
+      initModelManager(makeCallbacks());
+
+      const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
+      const writeCall = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.find((c) => c[0] === statePath);
+      expect(writeCall).toBeDefined();
+
+      const parsed = JSON.parse(writeCall![1] as string);
+
+      // Top-level shape: { activeModelId, models: { <id>: {...} } }.
+      expect(parsed.activeModelId).toBe(DEFAULT_MODEL_ID);
+      expect(typeof parsed.models).toBe("object");
+      expect(Object.keys(parsed.models).sort()).toEqual(
+        [...LOCAL_MODEL_IDS].sort(),
+      );
+
+      // Each known model has a fully-formed per-model entry.
+      for (const modelId of LOCAL_MODEL_IDS) {
+        const entry = parsed.models[modelId];
+        expect(entry).toBeDefined();
+        expect(entry.modelId).toBe(modelId);
+        expect(entry.state).toBe("ready");
+        expect(entry.family).toBe(getModelEntry(modelId)!.manifest.family);
+        expect(Array.isArray(entry.files)).toBe(true);
+        expect(entry.files.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe("migrateLegacyWhisperWeights", () => {
+    const LEGACY_DIR = MOCK_WEIGHTS_DIR; // getWeightsDir() with no family
+    const WHISPER_DIR = `${MOCK_WEIGHTS_DIR}/whisper`;
+    const MARKER = path.join(LEGACY_DIR, "weights.safetensors");
+
+    it("moves legacy flat weights into weights/whisper", () => {
+      // Legacy marker present, target dir absent -> migrate.
+      (fs.existsSync as any).mockImplementation(
+        (p: string) => p === MARKER || p === LEGACY_DIR,
+      );
+      (fs.readdirSync as any).mockReturnValue([
+        "weights.safetensors",
+        "config.json",
+      ]);
+      (fs.statSync as any).mockReturnValue({ isFile: () => true });
+
+      initModelManager(makeCallbacks());
+
+      expect(fs.mkdirSync).toHaveBeenCalledWith(WHISPER_DIR, {
+        recursive: true,
+      });
+      expect(fs.renameSync).toHaveBeenCalledWith(
+        path.join(LEGACY_DIR, "weights.safetensors"),
+        path.join(WHISPER_DIR, "weights.safetensors"),
+      );
+      expect(fs.renameSync).toHaveBeenCalledWith(
+        path.join(LEGACY_DIR, "config.json"),
+        path.join(WHISPER_DIR, "config.json"),
+      );
+    });
+
+    it("no-ops when the target weights/whisper dir already exists", () => {
+      (fs.existsSync as any).mockImplementation(
+        (p: string) => p === MARKER || p === WHISPER_DIR,
+      );
+      (fs.readdirSync as any).mockReturnValue(["weights.safetensors"]);
+      (fs.statSync as any).mockReturnValue({ isFile: () => true });
+
+      initModelManager(makeCallbacks());
+
+      // No migration moves should occur.
+      const movedToWhisper = vi
+        .mocked(fs.renameSync)
+        .mock.calls.some((c) => String(c[1]).startsWith(WHISPER_DIR));
+      expect(movedToWhisper).toBe(false);
+    });
+
+    it("no-ops when the legacy marker file is absent", () => {
+      // Nothing exists -> no marker -> no migration.
+      (fs.existsSync as any).mockReturnValue(false);
+      (fs.readdirSync as any).mockReturnValue(["weights.safetensors"]);
+      (fs.statSync as any).mockReturnValue({ isFile: () => true });
+
+      initModelManager(makeCallbacks());
+
+      const movedToWhisper = vi
+        .mocked(fs.renameSync)
+        .mock.calls.some((c) => String(c[1]).startsWith(WHISPER_DIR));
+      expect(movedToWhisper).toBe(false);
     });
   });
 });

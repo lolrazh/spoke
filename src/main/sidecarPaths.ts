@@ -1,8 +1,9 @@
 /**
  * Sidecar Paths
  *
- * Resolves paths to the MLX Whisper sidecar binary and model weights, supporting
- * both packaged (production) and development layouts.
+ * Resolves paths to the MLX STT sidecar binary and model weights, supporting
+ * both packaged (production) and development layouts. The sidecar is
+ * multi-engine; the active model family is passed at spawn time.
  *
  * - Packaged: binary at `resources/spoke-stt/spoke-stt`, weights in `userData/local-stt/weights/`
  * - Dev: Python venv at `local-stt/.venv/bin/python`, weights in `userData/local-stt/weights/`

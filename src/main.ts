@@ -1507,7 +1507,8 @@ app.whenReady().then(async () => {
 
     // Throttle high-frequency download chunks (~thousands for a 442MB file),
     // but always emit the endpoints so the bar reliably reaches 0% and 100%.
-    let lastProgressEmit = 0;
+    // Keyed per modelId so concurrent installs don't starve each other's bars.
+    const lastProgressEmit = new Map<string, number>();
     const PROGRESS_EMIT_INTERVAL_MS = 30;
 
     initModelManager({
@@ -1517,9 +1518,9 @@ app.whenReady().then(async () => {
       onDownloadProgress: (progress) => {
         const now = Date.now();
         const isEndpoint = progress.progress <= 0 || progress.progress >= 1;
-        if (!isEndpoint && now - lastProgressEmit < PROGRESS_EMIT_INTERVAL_MS)
-          return;
-        lastProgressEmit = now;
+        const last = lastProgressEmit.get(progress.modelId) ?? 0;
+        if (!isEndpoint && now - last < PROGRESS_EMIT_INTERVAL_MS) return;
+        lastProgressEmit.set(progress.modelId, now);
         broadcastToAllWindows("stt:model-download-progress", progress);
       },
     });

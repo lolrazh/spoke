@@ -651,7 +651,28 @@ export async function removeModel(modelId?: string): Promise<void> {
 
   installedFiles.set(id, []);
   statuses.set(id, defaultStatus(id));
+
+  // If we just removed the active model, promote another installed model so we
+  // don't leave `activeModelId` pointing at a now-uninstalled model (a dead end
+  // where transcription breaks even though another installed model exists).
+  if (id === activeModelId) {
+    const promoted =
+      LOCAL_MODEL_IDS.find(
+        (candidate) =>
+          candidate !== id && statuses.get(candidate)?.state === "ready",
+      ) ?? DEFAULT_MODEL_ID;
+    if (promoted !== activeModelId) {
+      activeModelId = promoted;
+    }
+  }
+
   persistState();
   callbacks.onStatusChange(getModelStatus(id));
-  console.log(`[ModelManager] ${id} removed, reset to not_installed`);
+  // Re-emit the (possibly newly promoted) active model so listeners recompute.
+  if (activeModelId !== id) {
+    callbacks.onStatusChange(getModelStatus(activeModelId));
+  }
+  console.log(
+    `[ModelManager] ${id} removed, reset to not_installed. Active: ${activeModelId}`,
+  );
 }

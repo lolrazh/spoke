@@ -86,21 +86,33 @@ export async function removeLocalModelAndStopSidecar(
   modelId?: string,
 ): Promise<void> {
   // Only disturb the running sidecar if we're removing the active model.
-  if (!modelId || modelId === getActiveModelId()) {
+  const wasActive = !modelId || modelId === getActiveModelId();
+  if (wasActive) {
     stopLocalSidecar();
   }
   await removeModel(modelId);
+  // removeModel may auto-promote a different installed model to active when the
+  // active one is uninstalled. If that newly active model is ready and local is
+  // the preferred provider, prewarm it so transcription stays available without
+  // a cold start. prewarmLocalSidecar self-guards on provider/ready/in-flight.
+  if (wasActive && getModelInstallState() === "ready") {
+    prewarmLocalSidecar("post-remove");
+  }
 }
 
 /**
  * Switch the active model and restart the sidecar so the new family is loaded.
- * Prewarm only kicks in if the newly active model is installed and local
- * transcription is the preferred provider.
+ *
+ * We deliberately only stop the old sidecar here and do NOT prewarm — the
+ * `stt:set-active-model` IPC handler schedules a single delayed prewarm. Doing
+ * both an immediate prewarm here and a scheduled one in the handler briefly ran
+ * two sidecars from different families at once, each holding GPU/MLX memory
+ * while the old process worked through its SIGKILL grace period. Consolidating
+ * to the single scheduled prewarm guarantees at most one sidecar at a time.
  */
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
   setActiveModelId(modelId);
   stopLocalSidecar();
-  prewarmLocalSidecar("active-model-change");
 }
 
 export async function transcribeWithLocalSidecar(

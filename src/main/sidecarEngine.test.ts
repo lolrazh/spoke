@@ -104,7 +104,7 @@ describe("sidecarEngine", () => {
     const { spawnSidecar } = await importEngine();
 
     await expect(spawnSidecar()).rejects.toThrow(
-      "MLX Whisper sidecar binary not found",
+      "MLX STT sidecar binary not found",
     );
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
