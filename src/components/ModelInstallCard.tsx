@@ -2,7 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { LocalModelInfo, ModelStatus } from "../types/shared";
 import { Button } from "./ui/button";
-import SettingsCard from "./SettingsCard";
+import SettingsCard, { CardTrailing } from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import Spinner from "./ui/Spinner";
 import { glyphForFamily } from "./ModelGlyph";
@@ -96,7 +96,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
       description={describe(info, status)}
       icon={glyphForFamily(info.family)}
       inGroup={inGroup}
-      interactive={rowClick !== undefined}
+      // Every loaded card highlights on hover for visual consistency; this is
+      // decoupled from clickability, so the active (inert) row still lights up.
+      interactive={loaded}
       onClick={rowClick}
     >
       <div className="ml-2 flex items-center justify-end">
@@ -107,9 +109,17 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="text-muted-foreground/60 transition-colors group-hover:text-foreground"
             >
-              <DownloadGlyph />
+              {/* Download lives in the primary glyph column; no trailing
+                  action, but its column stays reserved so the glyph aligns
+                  with the check on installed rows below. */}
+              <CardTrailing
+                primary={
+                  <span className="text-muted-foreground/60 transition-colors group-hover:text-foreground">
+                    <DownloadGlyph />
+                  </span>
+                }
+              />
             </motion.div>
           )}
 
@@ -162,22 +172,27 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2"
             >
-              {/* Active → full check; inactive → dim check that the row's
-                  group-hover brightens to signal "click to make active". */}
-              <InstalledCheck dim={!isActive} />
-              {/* Uninstall — stop the click bubbling so removing the model
-                  doesn't also trigger the row's install/activate handler. */}
-              <span onClick={(e) => e.stopPropagation()}>
-                <IconButton
-                  name="trash"
-                  onClick={onRemove}
-                  title="Uninstall"
-                  ariaLabel="Uninstall model"
-                  revealOnHover
-                />
-              </span>
+              <CardTrailing
+                // Active → full check; inactive → dim check that the row's
+                // group-hover brightens to signal "click to make active".
+                // The check shares the primary glyph column with the download
+                // glyph on not-installed rows, so they line up vertically.
+                primary={<InstalledCheck dim={!isActive} />}
+                // Uninstall — stop the click bubbling so removing the model
+                // doesn't also trigger the row's install/activate handler.
+                action={
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <IconButton
+                      name="trash"
+                      onClick={onRemove}
+                      title="Uninstall"
+                      ariaLabel="Uninstall model"
+                      revealOnHover
+                    />
+                  </span>
+                }
+              />
             </motion.div>
           )}
 

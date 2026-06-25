@@ -896,6 +896,16 @@ body {
     --spacing-md: 1rem; /* 16px */
     --spacing-lg: 1.5rem; /* 24px */
     --spacing-xl: 2rem; /* 32px */
+    /* Reserved width of a settings card's trailing reveal-on-hover action
+       column (e.g. the model uninstall trash). Kept as a token so the
+       primary state glyph to its left stays column-aligned down a list
+       whether or not the action is present. Matches IconButton's 14px box. */
+    --card-action-col: 0.875rem; /* 14px */
+    /* Fixed width of a settings card's primary trailing glyph slot. Glyphs of
+       differing widths (e.g. the 12px download vs the 17px check) are centered
+       in this slot so they share an exact column center down a list. Sized to
+       the largest glyph (the 17px install check). */
+    --card-primary-col: 1.0625rem; /* 17px */
     --onboarding-section-gap: clamp(
       calc(var(--spacing-lg) * 0.75),
       4vh,
