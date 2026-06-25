@@ -37,7 +37,7 @@ const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
     className={
       dim
         ? "text-white/30 transition-colors group-hover:text-foreground"
-        : "text-muted-foreground"
+        : "text-foreground"
     }
     role="img"
     aria-label={dim ? "Installed, click to use" : "Active"}

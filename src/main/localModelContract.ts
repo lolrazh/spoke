@@ -33,7 +33,7 @@ const WHISPER_MANIFEST: ModelManifest = {
   manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
   family: "whisper",
   modelId: WHISPER_ID,
-  displayName: "Whisper large-v3 turbo 4-bit",
+  displayName: "Whisper Large-v3 Turbo",
   version: WHISPER_VERSION,
   files: [
     {
@@ -76,7 +76,7 @@ const COHERE_MANIFEST: ModelManifest = {
   manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
   family: "cohere",
   modelId: COHERE_ID,
-  displayName: "Cohere Transcribe 4-bit",
+  displayName: "Cohere Transcribe 03-2026 4-bit",
   version: COHERE_VERSION,
   files: [
     {

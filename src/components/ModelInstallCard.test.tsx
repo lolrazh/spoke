@@ -14,7 +14,7 @@ vi.mock("./icons/SfIcon", () => ({
 const info: LocalModelInfo = {
   modelId: "spokedotso/cohere-transcribe-03-2026-mlx-4bit",
   family: "cohere",
-  displayName: "Cohere Transcribe 4-bit",
+  displayName: "Cohere Transcribe 03-2026 4-bit",
   tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
   languageCount: 14,
   totalBytes: 1_600_000_000,
@@ -58,7 +58,7 @@ function renderCard(
 describe("ModelInstallCard", () => {
   it("shows a download affordance + tagline and installs on row click when not installed", () => {
     const props = renderCard();
-    expect(screen.getByText("Cohere Transcribe 4-bit")).toBeTruthy();
+    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
     expect(screen.getByText(/Multilingual speech recognition/i)).toBeTruthy();
     // No buttons (no "Install"/"Use") — the whole row is the affordance.
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
@@ -70,7 +70,7 @@ describe("ModelInstallCard", () => {
 
   it("renders no clickable control until loaded (no flash)", () => {
     renderCard({ loaded: false });
-    expect(screen.getByText("Cohere Transcribe 4-bit")).toBeTruthy();
+    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
     // Until loaded the row is inert (a plain group, not a button).
     expect(
       screen.queryByRole("button", { name: info.displayName }),

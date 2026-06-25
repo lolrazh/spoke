@@ -34,7 +34,7 @@ import numpy as np
 
 # Whisper model identity / files.
 WHISPER_MODEL_ID = "spokedotso/whisper-large-v3-turbo-4bit"
-WHISPER_MODEL_DISPLAY_NAME = "Whisper large-v3 turbo 4-bit"
+WHISPER_MODEL_DISPLAY_NAME = "Whisper Large-v3 Turbo"
 WHISPER_REQUIRED_MODEL_FILES = (
     "config.json",
     "weights.safetensors",
@@ -43,7 +43,7 @@ WHISPER_REQUIRED_MODEL_FILES = (
 
 # Cohere model identity / files.
 COHERE_MODEL_ID = "spokedotso/cohere-transcribe-03-2026-mlx-4bit"
-COHERE_MODEL_DISPLAY_NAME = "Cohere Transcribe 4-bit"
+COHERE_MODEL_DISPLAY_NAME = "Cohere Transcribe 03-2026 4-bit"
 # Keep in sync with the `requiredFilePaths` for Cohere in
 # src/main/localModelContract.ts (the install-completeness gate).
 COHERE_REQUIRED_MODEL_FILES = (
