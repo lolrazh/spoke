@@ -10,6 +10,7 @@
 
 import * as path from "path";
 import { app } from "electron";
+import type { LocalModelFamily } from "../types/shared";
 
 /** Path to the sidecar binary (PyInstaller) or Python interpreter (dev). */
 export function getSidecarBinaryPath(): string {
@@ -33,9 +34,15 @@ export function getSidecarArgs(): string[] {
   ];
 }
 
-/** Directory where model weights are stored (user-managed, survives updates). */
-export function getWeightsDir(): string {
-  return path.join(app.getPath("userData"), "local-stt", "weights");
+/**
+ * Directory where a model's weights are stored (user-managed, survives
+ * updates). Each model family gets its own subdirectory so multiple models
+ * can be installed side by side; calling without a family returns the legacy
+ * flat directory (retained for migration of pre-multi-model installs).
+ */
+export function getWeightsDir(family?: LocalModelFamily): string {
+  const base = path.join(app.getPath("userData"), "local-stt", "weights");
+  return family ? path.join(base, family) : base;
 }
 
 /** Directory for model state and temp files. */

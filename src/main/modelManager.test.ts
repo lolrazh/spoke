@@ -1,8 +1,8 @@
 /**
  * Model Manager Tests
  *
- * Tests the state machine logic, persistence, and lifecycle of the model
- * manager. File I/O and Electron's `app` module are mocked.
+ * Tests the multi-model state machine, persistence/migration, active-model
+ * selection, and lifecycle. File I/O and Electron's `app` module are mocked.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -16,6 +16,8 @@ const MOCK_WEIGHTS_DIR = "/tmp/test-spoke/local-stt/weights";
 
 vi.mock("./sidecarPaths", () => ({
   getLocalSttDir: () => MOCK_LOCAL_STT_DIR,
+  // Family-agnostic in tests: every family resolves to the same dir so the
+  // existence mocks below stay simple.
   getWeightsDir: () => MOCK_WEIGHTS_DIR,
 }));
 
@@ -40,9 +42,7 @@ vi.mock("fs", async () => {
 // ── Mock node:https ──────────────────────────────────────────────────
 
 vi.mock("node:https", () => ({
-  default: {
-    get: vi.fn(),
-  },
+  default: { get: vi.fn() },
 }));
 
 import https from "node:https";
@@ -52,20 +52,37 @@ import https from "node:https";
 import {
   initModelManager,
   getModelStatus,
+  getAllModelStatuses,
   getModelInstallState,
+  getActiveModelId,
+  setActiveModelId,
   removeModel,
   installModel,
   resolveDownloadRedirectUrl,
 } from "./modelManager";
 import type { ModelManagerCallbacks } from "./modelManager";
 import {
-  LOCAL_MODEL_DISPLAY_NAME,
-  LOCAL_MODEL_FAMILY,
-  LOCAL_MODEL_ID,
-  LOCAL_MODEL_MANIFEST_VERSION,
-  LOCAL_MODEL_VERSION,
+  DEFAULT_MODEL_ID,
+  LOCAL_MODEL_IDS,
+  getModelEntry,
 } from "./localModelContract";
-import type { ModelManifestFile } from "../types/shared";
+
+// The default (active) model the no-arg accessors operate on.
+const ENTRY = getModelEntry(DEFAULT_MODEL_ID)!;
+const FAMILY = ENTRY.manifest.family;
+const DISPLAY = ENTRY.manifest.displayName;
+const VERSION = ENTRY.manifest.version;
+const MANIFEST_VERSION = ENTRY.manifest.manifestVersion;
+const INSTALLED_FILES = ENTRY.manifest.files.map((f) => ({
+  role: f.role,
+  path: f.path,
+  sha256: f.sha256,
+  size: f.size,
+}));
+const TOTAL_BYTES = INSTALLED_FILES.reduce((s, f) => s + f.size, 0);
+
+// The "other" (non-default) model, for active-selection tests.
+const OTHER_MODEL_ID = LOCAL_MODEL_IDS.find((id) => id !== DEFAULT_MODEL_ID)!;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -76,65 +93,46 @@ function makeCallbacks(): ModelManagerCallbacks {
   };
 }
 
-const VALID_INSTALLED_FILES: Pick<
-  ModelManifestFile,
-  "role" | "path" | "sha256" | "size"
->[] = [
-  {
-    role: "config",
-    path: "config.json",
-    sha256: "config-sha",
-    size: 100,
-  },
-  {
-    role: "weights",
-    path: "weights.safetensors",
-    sha256: "weights-sha",
-    size: 200,
-  },
-  {
-    role: "tokenizer",
-    path: "multilingual.tiktoken",
-    sha256: "tokenizer-sha",
-    size: 300,
-  },
-];
-
-function makeReadyState(overrides: Record<string, unknown> = {}) {
+function readyEntry(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     state: "ready",
-    family: LOCAL_MODEL_FAMILY,
-    modelId: LOCAL_MODEL_ID,
-    displayName: LOCAL_MODEL_DISPLAY_NAME,
-    version: "1.0.0",
-    manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
-    files: VALID_INSTALLED_FILES,
+    family: FAMILY,
+    modelId: DEFAULT_MODEL_ID,
+    displayName: DISPLAY,
+    version: VERSION,
+    manifestVersion: MANIFEST_VERSION,
+    files: INSTALLED_FILES,
+    error: null,
     ...overrides,
   };
 }
 
-function mockExistingState(state: Record<string, unknown>): void {
-  const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
-  (fs.existsSync as any).mockImplementation((p: string) => p === statePath);
-  (fs.readFileSync as any).mockImplementation((p: string) => {
-    if (p === statePath) return JSON.stringify(state);
-    return "{}";
-  });
+/** New multi-model persisted shape. */
+function persisted(entry: Record<string, unknown>, modelId = DEFAULT_MODEL_ID) {
+  return { activeModelId: DEFAULT_MODEL_ID, models: { [modelId]: entry } };
 }
 
-function mockExistingStateWithWeights(state: Record<string, unknown>): void {
+function mockState(state: Record<string, unknown>): void {
+  const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
+  (fs.existsSync as any).mockImplementation((p: string) => p === statePath);
+  (fs.readFileSync as any).mockImplementation((p: string) =>
+    p === statePath ? JSON.stringify(state) : "{}",
+  );
+}
+
+function mockStateWithWeights(state: Record<string, unknown>): void {
   const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
   const installedPaths = new Set(
-    VALID_INSTALLED_FILES.map((file) => path.join(MOCK_WEIGHTS_DIR, file.path)),
+    INSTALLED_FILES.map((f) => path.join(MOCK_WEIGHTS_DIR, f.path)),
   );
-
-  (fs.existsSync as any).mockImplementation((p: string) => {
-    return p === statePath || installedPaths.has(p);
-  });
-  (fs.readFileSync as any).mockImplementation((p: string) => {
-    if (p === statePath) return JSON.stringify(state);
-    return "{}";
-  });
+  (fs.existsSync as any).mockImplementation(
+    (p: string) => p === statePath || installedPaths.has(p),
+  );
+  (fs.readFileSync as any).mockImplementation((p: string) =>
+    p === statePath ? JSON.stringify(state) : "{}",
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -142,7 +140,6 @@ function mockExistingStateWithWeights(state: Record<string, unknown>): void {
 describe("modelManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: nothing exists
     (fs.existsSync as any).mockReturnValue(false);
   });
 
@@ -151,151 +148,119 @@ describe("modelManager", () => {
   });
 
   describe("initModelManager", () => {
-    it("should initialize with not_installed when no persisted state", () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+    it("defaults every model to not_installed with no persisted state", () => {
+      initModelManager(makeCallbacks());
 
       const status = getModelStatus();
       expect(status.state).toBe("not_installed");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
-      expect(status.downloadProgress).toBe(0);
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
+      expect(status.displayName).toBe(DISPLAY);
+      expect(status.version).toBe(VERSION);
       expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBeNull();
     });
 
-    it("should call onStatusChange callback during init", () => {
+    it("emits a status change for every known model during init", () => {
       const cbs = makeCallbacks();
       initModelManager(cbs);
 
-      expect(cbs.onStatusChange).toHaveBeenCalledTimes(1);
+      expect(cbs.onStatusChange).toHaveBeenCalledTimes(LOCAL_MODEL_IDS.length);
       expect(cbs.onStatusChange).toHaveBeenCalledWith(
         expect.objectContaining({ state: "not_installed" }),
       );
     });
 
-    it("should restore ready state when expected Whisper files exist on disk", () => {
-      mockExistingStateWithWeights(makeReadyState());
+    it("activates the default model with no persisted state", () => {
+      initModelManager(makeCallbacks());
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
+    });
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+    it("restores ready state when the model's files exist on disk", () => {
+      mockStateWithWeights(persisted(readyEntry()));
+
+      initModelManager(makeCallbacks());
 
       const status = getModelStatus();
       expect(status.state).toBe("ready");
-      expect(status.family).toBe(LOCAL_MODEL_FAMILY);
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.manifestVersion).toBe(LOCAL_MODEL_MANIFEST_VERSION);
-      expect(status.version).toBe("1.0.0");
-      expect(status.totalBytes).toBe(600);
-      expect(status.downloadedBytes).toBe(600);
+      expect(status.family).toBe(FAMILY);
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
+      expect(status.totalBytes).toBe(TOTAL_BYTES);
+      expect(status.downloadedBytes).toBe(TOTAL_BYTES);
     });
 
-    it("should mark as broken when state says ready but expected files are missing", () => {
-      mockExistingState(makeReadyState());
+    it("marks ready-but-missing files as broken", () => {
+      mockState(persisted(readyEntry()));
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
       const status = getModelStatus();
       expect(status.state).toBe("broken");
       expect(status.error).toBe("Model files missing from disk");
     });
 
-    it("should mark stale local model state as broken even if files exist", () => {
-      mockExistingStateWithWeights(
-        makeReadyState({
-          family: null,
-          modelId: "legacy-local-model",
+    it("marks a model with a mismatched family as broken even if files exist", () => {
+      mockStateWithWeights(persisted(readyEntry({ family: "whisper-bogus" })));
+
+      initModelManager(makeCallbacks());
+
+      const status = getModelStatus();
+      expect(status.state).toBe("broken");
+      expect(status.error).toContain("family does not match");
+    });
+
+    it("restores a broken state with its error message", () => {
+      mockState(
+        persisted({
+          state: "broken",
+          family: FAMILY,
+          modelId: DEFAULT_MODEL_ID,
+          displayName: DISPLAY,
+          manifestVersion: MANIFEST_VERSION,
+          version: VERSION,
+          error: "Checksum mismatch",
         }),
       );
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
       const status = getModelStatus();
       expect(status.state).toBe("broken");
-      expect(status.error).toContain("expected Whisper model");
-    });
-
-    it("should restore broken state with error message", () => {
-      mockExistingState({
-        state: "broken",
-        family: LOCAL_MODEL_FAMILY,
-        modelId: LOCAL_MODEL_ID,
-        displayName: LOCAL_MODEL_DISPLAY_NAME,
-        manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
-        version: "1.0.0",
-        error: "Checksum mismatch",
-      });
-
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      const status = getModelStatus();
-      expect(status.state).toBe("broken");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
-      expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBe("Checksum mismatch");
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
     });
 
-    it("should normalize stale broken state to the current Whisper metadata", () => {
-      mockExistingState({
-        state: "broken",
-        modelId: null,
-        version: null,
-        error: "HTTP 403 fetching manifest",
-      });
+    it("migrates the legacy single-model state shape", () => {
+      // Pre-multi-model builds stored a flat object (no `models` map).
+      mockStateWithWeights(readyEntry());
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
-      const status = getModelStatus();
-      expect(status.state).toBe("broken");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
-      expect(status.totalBytes).toBeGreaterThan(0);
-      expect(status.error).toBe("HTTP 403 fetching manifest");
+      expect(getModelStatus().state).toBe("ready");
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
     });
 
-    it("should reset interrupted downloading state to not_installed", () => {
-      mockExistingState({
-        state: "downloading",
-        modelId: LOCAL_MODEL_ID,
-      });
+    it("resets an interrupted downloading state to not_installed", () => {
+      mockState(persisted({ state: "downloading", modelId: DEFAULT_MODEL_ID }));
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
-      const status = getModelStatus();
-      expect(status.state).toBe("not_installed");
-      // Should persist the reset
+      expect(getModelStatus().state).toBe("not_installed");
       expect(fs.writeFileSync).toHaveBeenCalled();
     });
 
-    it("should reset interrupted installing state to not_installed", () => {
-      mockExistingState({
-        state: "installing",
-        modelId: LOCAL_MODEL_ID,
-      });
+    it("resets an interrupted installing state to not_installed", () => {
+      mockState(persisted({ state: "installing", modelId: DEFAULT_MODEL_ID }));
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
-      const status = getModelStatus();
-      expect(status.state).toBe("not_installed");
+      expect(getModelStatus().state).toBe("not_installed");
     });
 
-    it("should clean up leftover .tmp directory on init", () => {
-      const tmpDir = path.join(MOCK_LOCAL_STT_DIR, ".tmp");
+    it("cleans up leftover per-family .tmp directories on init", () => {
+      const tmpDir = path.join(MOCK_LOCAL_STT_DIR, ".tmp", FAMILY);
       (fs.existsSync as any).mockImplementation((p: string) => p === tmpDir);
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
       expect(fs.rmSync).toHaveBeenCalledWith(tmpDir, {
         recursive: true,
@@ -304,54 +269,67 @@ describe("modelManager", () => {
     });
   });
 
-  describe("getModelStatus", () => {
-    it("should return a copy of the status (not a reference)", () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+  describe("active model selection", () => {
+    it("getAllModelStatuses returns one status per known model", () => {
+      initModelManager(makeCallbacks());
+      const all = getAllModelStatuses();
+      expect(all.map((s) => s.modelId).sort()).toEqual(
+        [...LOCAL_MODEL_IDS].sort(),
+      );
+    });
 
-      const status1 = getModelStatus();
-      const status2 = getModelStatus();
-      expect(status1).toEqual(status2);
-      expect(status1).not.toBe(status2);
+    it("setActiveModelId switches the active model and persists", () => {
+      initModelManager(makeCallbacks());
+      vi.mocked(fs.writeFileSync).mockClear();
+
+      setActiveModelId(OTHER_MODEL_ID);
+
+      expect(getActiveModelId()).toBe(OTHER_MODEL_ID);
+      expect(getModelStatus().modelId).toBe(OTHER_MODEL_ID);
+      expect(fs.writeFileSync).toHaveBeenCalled();
+    });
+
+    it("rejects activating an unknown model", () => {
+      initModelManager(makeCallbacks());
+      expect(() => setActiveModelId("nope/not-a-model")).toThrow("unknown");
+    });
+
+    it("operates on a specific model when an id is passed", () => {
+      initModelManager(makeCallbacks());
+      expect(getModelStatus(OTHER_MODEL_ID).modelId).toBe(OTHER_MODEL_ID);
+      expect(getModelInstallState(OTHER_MODEL_ID)).toBe("not_installed");
     });
   });
 
-  describe("getModelInstallState", () => {
-    it("should return the current state string", () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      expect(getModelInstallState()).toBe("not_installed");
+  describe("getModelStatus", () => {
+    it("returns a copy, not a reference", () => {
+      initModelManager(makeCallbacks());
+      const a = getModelStatus();
+      const b = getModelStatus();
+      expect(a).toEqual(b);
+      expect(a).not.toBe(b);
     });
   });
 
   describe("removeModel", () => {
-    it("should reset state to not_installed", async () => {
-      // Start with a ready state
-      mockExistingStateWithWeights(makeReadyState());
-
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
+    it("resets state to not_installed", async () => {
+      mockStateWithWeights(persisted(readyEntry()));
+      initModelManager(makeCallbacks());
       expect(getModelStatus().state).toBe("ready");
 
-      // Now remove
       await removeModel();
 
       const status = getModelStatus();
       expect(status.state).toBe("not_installed");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
       expect(status.error).toBeNull();
     });
 
-    it("should attempt to delete the weights directory", async () => {
+    it("deletes the weights directory", async () => {
       (fs.existsSync as any).mockImplementation(
         (p: string) => p === MOCK_WEIGHTS_DIR,
       );
-
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+      initModelManager(makeCallbacks());
 
       await removeModel();
 
@@ -361,11 +339,10 @@ describe("modelManager", () => {
       });
     });
 
-    it("should persist the reset state", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
+    it("persists the reset state", async () => {
+      initModelManager(makeCallbacks());
       vi.mocked(fs.writeFileSync).mockClear();
+
       await removeModel();
 
       expect(fs.writeFileSync).toHaveBeenCalledWith(
@@ -374,11 +351,11 @@ describe("modelManager", () => {
       );
     });
 
-    it("should notify via callback after removal", async () => {
+    it("notifies via callback after removal", async () => {
       const cbs = makeCallbacks();
       initModelManager(cbs);
-
       vi.mocked(cbs.onStatusChange).mockClear();
+
       await removeModel();
 
       expect(cbs.onStatusChange).toHaveBeenCalledWith(
@@ -388,57 +365,54 @@ describe("modelManager", () => {
   });
 
   describe("installModel", () => {
-    it("should resolve Hugging Face relative redirect URLs", () => {
+    it("resolves Hugging Face relative redirect URLs", () => {
       const redirect = resolveDownloadRedirectUrl(
-        "/api/resolve-cache/models/spokedotso/whisper-large-v3-turbo-4bit/config.json?etag=test",
-        "https://huggingface.co/spokedotso/whisper-large-v3-turbo-4bit/resolve/revision/config.json",
+        "/api/resolve-cache/models/spokedotso/cohere-transcribe-03-2026-mlx-4bit/config.json?etag=test",
+        "https://huggingface.co/spokedotso/cohere-transcribe-03-2026-mlx-4bit/resolve/revision/config.json",
       );
-
       expect(redirect).toBe(
-        "https://huggingface.co/api/resolve-cache/models/spokedotso/whisper-large-v3-turbo-4bit/config.json?etag=test",
+        "https://huggingface.co/api/resolve-cache/models/spokedotso/cohere-transcribe-03-2026-mlx-4bit/config.json?etag=test",
       );
     });
 
-    it("should keep absolute redirect URLs unchanged", () => {
+    it("keeps absolute redirect URLs unchanged", () => {
       const redirect = resolveDownloadRedirectUrl(
         "https://cdn-lfs.huggingface.co/model.safetensors",
-        "https://huggingface.co/spokedotso/whisper-large-v3-turbo-4bit/resolve/revision/model.safetensors",
+        "https://huggingface.co/spokedotso/cohere-transcribe-03-2026-mlx-4bit/resolve/revision/model.safetensors",
       );
-
       expect(redirect).toBe("https://cdn-lfs.huggingface.co/model.safetensors");
     });
 
-    it("should expose model metadata immediately when retrying from broken state", async () => {
-      mockExistingState({
-        state: "broken",
-        modelId: null,
-        version: null,
-        error: "HTTP 403 fetching manifest",
-      });
+    it("exposes model metadata immediately when retrying from broken state", async () => {
+      mockState(
+        persisted({
+          state: "broken",
+          family: FAMILY,
+          modelId: DEFAULT_MODEL_ID,
+          version: VERSION,
+          manifestVersion: MANIFEST_VERSION,
+          error: "HTTP 403 fetching manifest",
+        }),
+      );
+      initModelManager(makeCallbacks());
 
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      vi.mocked(https.get).mockImplementation(() => {
-        return { on: vi.fn().mockReturnThis() } as any;
-      });
+      vi.mocked(https.get).mockImplementation(
+        () => ({ on: vi.fn().mockReturnThis() }) as any,
+      );
 
       const installPromise = installModel();
 
       const status = getModelStatus();
       expect(status.state).toBe("downloading");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
       expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBeNull();
 
       void installPromise.catch(() => {});
     });
 
-    it("should keep model metadata after install failure", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+    it("keeps model metadata after an install failure", async () => {
+      initModelManager(makeCallbacks());
 
       vi.mocked(https.get).mockImplementation((_url, callback: any) => {
         callback({
@@ -455,107 +429,38 @@ describe("modelManager", () => {
 
       const status = getModelStatus();
       expect(status.state).toBe("broken");
-      expect(status.modelId).toBe(LOCAL_MODEL_ID);
-      expect(status.displayName).toBe(LOCAL_MODEL_DISPLAY_NAME);
-      expect(status.version).toBe(LOCAL_MODEL_VERSION);
-      expect(status.totalBytes).toBeGreaterThan(0);
+      expect(status.modelId).toBe(DEFAULT_MODEL_ID);
       expect(status.error).toContain("HTTP 500");
     });
 
-    it("should throw when install is already in progress (downloading)", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      // Start an install that will hang (https.get never calls back)
-      vi.mocked(https.get).mockImplementation(() => {
-        // Return a fake request object that does nothing
-        return { on: vi.fn().mockReturnThis() } as any;
-      });
-
-      // Fire-and-forget first install — it will hang on the first file download
-      const firstInstall = installModel();
-
-      // State should now be "downloading"
-      expect(getModelInstallState()).toBe("downloading");
-
-      // Second install should throw
-      await expect(installModel()).rejects.toThrow(
-        "Install already in progress",
+    it("throws when an install is already in progress", async () => {
+      initModelManager(makeCallbacks());
+      vi.mocked(https.get).mockImplementation(
+        () => ({ on: vi.fn().mockReturnThis() }) as any,
       );
-
-      // Clean up: the first install is still pending but won't resolve
-      // in the test, so we just leave it
-      void firstInstall.catch(() => {});
-    });
-
-    it("should throw when install is called during installing state", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      // Simulate the "installing" state by starting a download. We'll do this by directly
-      // manipulating state via a full install flow mock.
-      // For simplicity, just start install and check downloading guard.
-      vi.mocked(https.get).mockImplementation(() => {
-        return { on: vi.fn().mockReturnThis() } as any;
-      });
 
       const firstInstall = installModel();
       expect(getModelInstallState()).toBe("downloading");
 
-      await expect(installModel()).rejects.toThrow(
-        "Install already in progress",
-      );
-
+      await expect(installModel()).rejects.toThrow("Install already in progress");
       void firstInstall.catch(() => {});
     });
   });
 
   describe("removeModel during download", () => {
-    it("should throw when removing while download is in progress", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
+    it("throws when removing while a download is in progress", async () => {
+      initModelManager(makeCallbacks());
+      vi.mocked(https.get).mockImplementation(
+        () => ({ on: vi.fn().mockReturnThis() }) as any,
+      );
 
-      // Start a hanging install
-      vi.mocked(https.get).mockImplementation(() => {
-        return { on: vi.fn().mockReturnThis() } as any;
-      });
-
-      const installPromise = installModel();
+      const firstInstall = installModel();
       expect(getModelInstallState()).toBe("downloading");
 
-      // Attempting to remove during download should throw
       await expect(removeModel()).rejects.toThrow(
         "Cannot remove model while install is in progress",
       );
-
-      void installPromise.catch(() => {});
-    });
-  });
-
-  describe("persistence round-trip", () => {
-    it("should write state to correct file path", () => {
-      mockExistingState({ state: "broken", error: "test error" });
-
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      // broken state from load — no extra persist call
-      // But removing should persist
-      vi.mocked(fs.writeFileSync).mockClear();
-
-      removeModel();
-
-      const writeCall = vi
-        .mocked(fs.writeFileSync)
-        .mock.calls.find(
-          (call) =>
-            call[0] === path.join(MOCK_LOCAL_STT_DIR, "model-state.json"),
-        );
-      expect(writeCall).toBeDefined();
-
-      const persisted = JSON.parse(writeCall![1] as string);
-      expect(persisted.state).toBe("not_installed");
-      expect(persisted.modelId).toBe(LOCAL_MODEL_ID);
+      void firstInstall.catch(() => {});
     });
   });
 });

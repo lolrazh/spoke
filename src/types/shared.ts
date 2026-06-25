@@ -110,7 +110,7 @@ export type ModelInstallState =
   | "ready"
   | "broken";
 
-export type LocalModelFamily = "whisper";
+export type LocalModelFamily = "whisper" | "cohere";
 
 export type ModelStatus = {
   state: ModelInstallState;
@@ -125,7 +125,11 @@ export type ModelStatus = {
   error: string | null;
 };
 
-export type ModelManifestFileRole = "config" | "weights" | "tokenizer";
+export type ModelManifestFileRole =
+  | "config"
+  | "weights"
+  | "tokenizer"
+  | "aux";
 
 export type ModelManifestFile = {
   role: ModelManifestFileRole;
@@ -142,4 +146,22 @@ export type ModelManifest = {
   displayName: string;
   version: string;
   files: ModelManifestFile[];
+};
+
+/**
+ * UI-facing descriptor for a selectable local model. The download contract
+ * lives in ModelManifest; this carries the metadata the picker needs.
+ */
+export type LocalModelInfo = {
+  modelId: string;
+  family: LocalModelFamily;
+  displayName: string;
+  /** Short one-line description shown under the model name. */
+  tagline: string;
+  /** Approximate number of supported languages, for UI ("99 languages"). */
+  languageCount: number;
+  /** Sum of manifest file sizes, in bytes. */
+  totalBytes: number;
+  /** True for the model pre-selected in onboarding / for fresh installs. */
+  isDefault: boolean;
 };
