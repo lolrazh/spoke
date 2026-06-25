@@ -185,7 +185,7 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
   [COHERE_ID]: {
     manifest: COHERE_MANIFEST,
     info: makeInfo(COHERE_MANIFEST, {
-      tagline: "Most accurate and fastest. 14 languages.",
+      tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
       languageCount: 14,
       isDefault: true,
     }),
@@ -199,7 +199,7 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
   [WHISPER_ID]: {
     manifest: WHISPER_MANIFEST,
     info: makeInfo(WHISPER_MANIFEST, {
-      tagline: "Broad multilingual coverage. 99 languages.",
+      tagline: "Broad multilingual speech recognition optimized at 4-bit precision.",
       languageCount: 99,
       isDefault: false,
     }),
