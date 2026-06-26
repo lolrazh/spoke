@@ -11,6 +11,7 @@ import SettingsCard from "./SettingsCard";
 import ModelsList from "./ModelsList";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
+import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import {
@@ -27,10 +28,18 @@ type SettingsPanelInitialTab = Extract<
 const DEFAULT_MIC_DEVICE = { id: "default", label: "System Default" };
 
 type UpdatePanelState = {
-  status: "idle" | "checking" | "available" | "not-available" | "error";
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "not-available"
+    | "error";
   version: string | null;
   readyToInstall: boolean;
   error: string | null;
+  // 0..100 while downloading, 100 when ready, null otherwise.
+  downloadPercent: number | null;
 };
 
 // --- Clean Spoke Components --- //
@@ -293,12 +302,30 @@ const InstalledCheck: React.FC = () => (
 );
 
 // The single slot at the trailing edge of the chip cross-fades between the
-// download glyph, the working spinner, and the success checkmark — all in the
-// same spot, same size, so nothing shifts as the state advances.
-function updateCapsuleIcon(mode: UpdateCapsuleMode): {
+// download glyph, the working spinner/ring, and the success checkmark — all in
+// the same spot, same size, so nothing shifts as the state advances. While
+// downloading we know the real percent, so the slot fills a determinate
+// ProgressRing (the determinate cousin of Spinner, same monochrome geometry the
+// Models card uses); `checking` has no percent yet so it keeps the indeterminate
+// spinner, and `downloading` falls back to the spinner if percent is missing.
+function updateCapsuleIcon(
+  mode: UpdateCapsuleMode,
+  downloadPercent: number | null,
+): {
   key: string;
   node: React.ReactNode;
 } {
+  if (mode === "downloading" && downloadPercent != null) {
+    return {
+      key: "ring",
+      node: (
+        <ProgressRing
+          progress={downloadPercent / 100}
+          className="h-3.5 w-3.5"
+        />
+      ),
+    };
+  }
   if (mode === "downloading" || mode === "checking") {
     return { key: "spinner", node: <Spinner className="h-3.5 w-3.5" /> };
   }
@@ -310,20 +337,24 @@ function updateCapsuleIcon(mode: UpdateCapsuleMode): {
 
 function deriveUpdateCapsuleMode(
   state: UpdatePanelState | null,
-  installRequested: boolean,
 ): UpdateCapsuleMode | null {
   if (!state) return null;
   if (state.readyToInstall) return "ready";
+  // The downloading visual comes straight from the engine's real status, not a
+  // renderer-local guess, so it stays correct even if the panel is closed and
+  // reopened mid-download.
+  if (state.status === "downloading") return "downloading";
   if (state.status === "checking") return "checking";
-  if (state.status === "available") {
-    return installRequested ? "downloading" : "available";
-  }
+  if (state.status === "available") return "available";
   if (state.status === "error") return "error";
   return null;
 }
 
 const UpdateCapsule: React.FC<{
   mode: UpdateCapsuleMode;
+  // Real download progress (0..100) from the engine; drives the determinate
+  // ring while `mode` is "downloading". Null in every other mode.
+  downloadPercent: number | null;
   // The capsule is mounted (reserving its layout slot) as soon as an update
   // exists, but stays invisible until `revealed` flips after the entrance
   // delay. Reserving the slot up front means the version never reflows when the
@@ -336,7 +367,15 @@ const UpdateCapsule: React.FC<{
   onInstall: () => void;
   onRestart: () => void;
   onRetry: () => void;
-}> = ({ mode, revealed, hovered, onInstall, onRestart, onRetry }) => {
+}> = ({
+  mode,
+  downloadPercent,
+  revealed,
+  hovered,
+  onInstall,
+  onRestart,
+  onRetry,
+}) => {
   const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
   // The working states (downloading / checking) collapse to a bare spinner —
   // no label — so clicking the download glyph simply morphs it into a spinner
@@ -344,7 +383,7 @@ const UpdateCapsule: React.FC<{
   // icon and reveal their label on hover (Update available / Restart Spoke /
   // Try again) so the chip stays compact until you reach for it.
   const showLabel = interactive && hovered;
-  const icon = updateCapsuleIcon(mode);
+  const icon = updateCapsuleIcon(mode, downloadPercent);
 
   const handleClick = () => {
     if (mode === "ready") onRestart();
@@ -457,9 +496,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [appVersion, setAppVersion] = useState<string>("");
   const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
   const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
-  const [installRequested, setInstallRequested] = useState(false);
 
-  const capsuleMode = deriveUpdateCapsuleMode(updateState, installRequested);
+  const capsuleMode = deriveUpdateCapsuleMode(updateState);
   // Hover spans the whole version+capsule row so the expanded label doesn't
   // collapse as the cursor crosses from the capsule onto the version.
   const [capsuleHovered, setCapsuleHovered] = useState(false);
@@ -513,15 +551,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return () => clearTimeout(timer);
   }, [embeddedMode]);
 
+  // Arm install-when-ready so the update auto-restarts once the engine finishes
+  // downloading. With autoDownload the engine drives the download itself and
+  // broadcasts the real "downloading" status + percent, so the renderer never
+  // fakes a downloading state — it just records the latest snapshot.
   const handleInstallUpdate = () => {
-    setInstallRequested(true);
     window.update
       ?.installWhenReady?.()
       .then((result) => {
         if (result?.snapshot) setUpdateState(result.snapshot);
       })
       .catch(() => {
-        setInstallRequested(false);
+        // ignore — the engine keeps broadcasting the authoritative state.
       });
   };
 
@@ -763,6 +804,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <UpdateCapsule
                 key="update-capsule"
                 mode={capsuleMode}
+                downloadPercent={updateState?.downloadPercent ?? null}
                 revealed={showUpdateCapsule}
                 hovered={capsuleHovered}
                 onInstall={handleInstallUpdate}
