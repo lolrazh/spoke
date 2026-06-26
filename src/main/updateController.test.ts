@@ -89,7 +89,8 @@ describe("updateController", () => {
     expect(electron.autoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     expect(controller.getUpdateStatus()).toBe("checking");
-    expect(sendNotify).toHaveBeenCalledWith("Checking for updates…");
+    // A manual check stays quiet until it has a result to report.
+    expect(sendNotify).not.toHaveBeenCalled();
   });
 
   it("announces an available update when the updater finds one", async () => {
@@ -104,7 +105,6 @@ describe("updateController", () => {
     expect(controller.getUpdateAvailableVersion()).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
-      "Checking for updates…",
       "Update found. Downloading…",
     ]);
   });

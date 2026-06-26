@@ -342,7 +342,10 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     setUpdateState("checking");
     manualUpdateCheckInFlight = !silent;
     updateAvailableNotificationSent = false;
-    if (!silent) callbacks.sendNotify("Checking for updates…");
+    // No "checking" notification. A manual check conveys only its result (up to
+    // date, update found, or failed), so there is one notification per action
+    // instead of a redundant "checking" then "result" pair. The tray menu item
+    // still shows "Checking for Updates…" as live feedback while it runs.
     console.log("[auto-update] checkForUpdates requested", {
       manual: !silent,
       version: app.getVersion(),
