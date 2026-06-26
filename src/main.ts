@@ -1101,6 +1101,13 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     quitAndInstallUpdate();
   }
 
+  const updateStatus = getUpdateStatus();
+  const downloadPercent = getUpdateSnapshot().downloadPercent;
+  const downloadingLabel =
+    downloadPercent != null
+      ? `Downloading Update… (${downloadPercent}%)`
+      : "Downloading Update…";
+
   const updateItems: Electron.MenuItemConstructorOptions[] =
     isUpdateReadyToInstall()
       ? [
@@ -1112,14 +1119,17 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
       : [
           {
             label:
-              getUpdateStatus() === "checking"
+              updateStatus === "checking"
                 ? "Checking for Updates…"
-                : getUpdateStatus() === "available"
-                  ? "Downloading Update…"
-                  : "Check for Updates…",
+                : updateStatus === "downloading"
+                  ? downloadingLabel
+                  : updateStatus === "available"
+                    ? "Downloading Update…"
+                    : "Check for Updates…",
             enabled:
-              getUpdateStatus() !== "checking" &&
-              getUpdateStatus() !== "available",
+              updateStatus !== "checking" &&
+              updateStatus !== "available" &&
+              updateStatus !== "downloading",
             click: () => {
               manualCheckForUpdates();
             },
@@ -2552,6 +2562,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("update:restart", () => {
+    // Guard: a stray call must not quit-to-same-version. Only install when a
+    // downloaded update is actually staged and ready.
+    if (!isUpdateReadyToInstall()) return { ok: false };
     quitAndInstallUpdate();
     return { ok: true };
   });
