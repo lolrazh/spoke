@@ -1,16 +1,24 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type MockAutoUpdater = EventEmitter & {
+  autoDownload: boolean;
+  autoInstallOnAppQuit: boolean;
+  setFeedURL: ReturnType<typeof vi.fn>;
+  checkForUpdates: ReturnType<typeof vi.fn>;
+  downloadUpdate: ReturnType<typeof vi.fn>;
+  quitAndInstall: ReturnType<typeof vi.fn>;
+};
+
 type MockElectron = {
   app: {
     isPackaged: boolean;
     getVersion: ReturnType<typeof vi.fn>;
+    quit: ReturnType<typeof vi.fn>;
+    exit: ReturnType<typeof vi.fn>;
+    relaunch: ReturnType<typeof vi.fn>;
   };
-  autoUpdater: EventEmitter & {
-    setFeedURL: ReturnType<typeof vi.fn>;
-    checkForUpdates: ReturnType<typeof vi.fn>;
-    quitAndInstall: ReturnType<typeof vi.fn>;
-  };
+  autoUpdater: MockAutoUpdater;
 };
 
 async function loadController(
@@ -18,36 +26,38 @@ async function loadController(
 ) {
   vi.resetModules();
 
-  const fetchMock = vi.fn(async () => ({
-    status: 503,
-    statusText: "Service Unavailable",
-    json: async () => ({}),
-  }));
-  vi.stubGlobal("fetch", fetchMock);
-
   const autoUpdater = Object.assign(new EventEmitter(), {
+    autoDownload: false,
+    autoInstallOnAppQuit: false,
     setFeedURL: vi.fn(),
-    checkForUpdates: vi.fn(),
+    checkForUpdates: vi.fn(async () => null),
+    downloadUpdate: vi.fn(async () => []),
     quitAndInstall: vi.fn(),
-  });
+  }) as MockAutoUpdater;
+
   const app = {
     isPackaged: options.packaged ?? true,
     getVersion: vi.fn(() => options.version ?? "0.1.4"),
+    quit: vi.fn(),
+    exit: vi.fn(),
+    relaunch: vi.fn(),
   };
 
-  vi.doMock("electron", () => ({ app, autoUpdater }));
+  vi.doMock("electron", () => ({ app }));
+  vi.doMock("electron-updater", () => ({ autoUpdater }));
 
   const controller = await import("./updateController");
   const sendNotify = vi.fn();
   const rebuildTrayMenu = vi.fn();
-  controller.initUpdateController({ sendNotify, rebuildTrayMenu });
+  const onStateChange = vi.fn();
+  controller.initUpdateController({ sendNotify, rebuildTrayMenu, onStateChange });
 
   return {
     controller,
     electron: { app, autoUpdater } satisfies MockElectron,
-    fetchMock,
     sendNotify,
     rebuildTrayMenu,
+    onStateChange,
   };
 }
 
@@ -61,10 +71,11 @@ describe("updateController", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.doUnmock("electron");
+    vi.doUnmock("electron-updater");
     vi.resetModules();
   });
 
-  it("configures the arch-specific feed and starts a manual check", async () => {
+  it("configures the github provider and starts a manual check", async () => {
     const { controller, electron, sendNotify } = await loadController({
       version: "0.1.4",
     });
@@ -72,113 +83,93 @@ describe("updateController", () => {
     await controller.manualCheckForUpdates(false);
 
     expect(electron.autoUpdater.setFeedURL).toHaveBeenCalledWith({
-      url: "https://update.electronjs.org/lolrazh/spoke/darwin-arm64/0.1.4",
+      provider: "github",
+      owner: "lolrazh",
+      repo: "spoke",
     });
+    expect(electron.autoUpdater.autoDownload).toBe(false);
+    expect(electron.autoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     expect(controller.getUpdateStatus()).toBe("checking");
-    expect(sendNotify).toHaveBeenCalledWith("Checking for updates…");
+    // A manual check stays quiet until it has a result to report.
+    expect(sendNotify).not.toHaveBeenCalled();
   });
 
-  it("announces an available update immediately after feed preflight", async () => {
-    const { controller, electron, fetchMock, sendNotify } =
-      await loadController({
-        version: "0.1.4",
-      });
-    fetchMock.mockResolvedValueOnce({
-      status: 200,
-      statusText: "OK",
-      json: async () => ({ name: "v0.1.7" }),
+  it("announces an available update when the updater finds one", async () => {
+    const { controller, electron, sendNotify } = await loadController({
+      version: "0.1.4",
     });
 
     await controller.manualCheckForUpdates(false);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://update.electronjs.org/lolrazh/spoke/darwin-arm64/0.1.4",
-      expect.objectContaining({
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      }),
-    );
     expect(controller.getUpdateStatus()).toBe("available");
-    expect(controller.getUpdateAvailableVersion()).toBe("v0.1.7");
+    expect(controller.getUpdateAvailableVersion()).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
-      "Checking for updates…",
-      "Update found. Downloading…",
+      "Update available",
     ]);
-    expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    // autoDownload is off: finding an update must not start the transfer.
+    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.getUpdateSnapshot().downloadPercent).toBeNull();
+  });
 
-    electron.autoUpdater.emit("checking-for-update");
+  it("starts the download on demand via downloadUpdate", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(controller.getUpdateStatus()).toBe("downloading");
+  });
+
+  it("ignores downloadUpdate unless an update is available", async () => {
+    const { controller, electron } = await loadController();
+
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.getUpdateStatus()).toBe("idle");
+  });
+
+  it("tracks real download progress in the snapshot", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    expect(controller.getUpdateSnapshot().downloadPercent).toBeNull();
+
+    electron.autoUpdater.emit("download-progress", {
+      percent: 42.6,
+      transferred: 100,
+      total: 235,
+      bytesPerSecond: 1000,
+    });
+
+    expect(controller.getUpdateStatus()).toBe("downloading");
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(43);
+
+    electron.autoUpdater.emit("download-progress", { percent: 99.2 });
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(99);
+  });
+
+  it("marks the update ready once it finishes downloading", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(false);
+    electron.autoUpdater.emit("update-available", { version: "0.1.5" });
+    electron.autoUpdater.emit("download-progress", { percent: 50 });
+    electron.autoUpdater.emit("update-downloaded", { version: "0.1.5" });
+
     expect(controller.getUpdateStatus()).toBe("available");
-
-    electron.autoUpdater.emit("update-available");
-    expect(
-      sendNotify.mock.calls.filter(
-        (call) => call[0] === "Update found. Downloading…",
-      ),
-    ).toHaveLength(1);
+    expect(controller.isUpdateReadyToInstall()).toBe(true);
+    expect(controller.getUpdateAvailableVersion()).toBe("0.1.5");
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
+    expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
   });
 
-  it("reports up to date immediately when feed preflight finds no update", async () => {
-    const { controller, electron, fetchMock, sendNotify } =
-      await loadController();
-    fetchMock.mockResolvedValueOnce({
-      status: 204,
-      statusText: "No Content",
-      json: async () => ({}),
-    });
-
-    await controller.manualCheckForUpdates(false);
-
-    expect(controller.getUpdateStatus()).toBe("not-available");
-    expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
-      "Checking for updates…",
-      "You're up to date.",
-    ]);
-    expect(electron.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
-  });
-
-  it("allows update state previews only in development builds", async () => {
-    const packaged = await loadController({ packaged: true });
-    expect(packaged.controller.setDevUpdateStateForTesting("ready")).toEqual({
-      ok: false,
-      snapshot: {
-        status: "idle",
-        version: null,
-        readyToInstall: false,
-        error: null,
-      },
-      error: "Dev update state is unavailable in packaged builds",
-    });
-
-    const dev = await loadController({ packaged: false, version: "0.1.7" });
-    const result = dev.controller.setDevUpdateStateForTesting("ready");
-
-    expect(result.ok).toBe(true);
-    expect(result.snapshot).toEqual({
-      status: "available",
-      version: "v0.1.7-dev",
-      readyToInstall: true,
-      error: null,
-    });
-    expect(dev.rebuildTrayMenu).toHaveBeenCalled();
-  });
-
-  it("does not start another check while an update is downloading", async () => {
-    const { controller, electron, fetchMock, sendNotify } =
-      await loadController();
-
-    await controller.manualCheckForUpdates(false);
-    electron.autoUpdater.emit("update-available");
-    await controller.manualCheckForUpdates(false);
-
-    expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(sendNotify).toHaveBeenLastCalledWith("Update found. Downloading…");
-    expect(controller.getUpdateStatus()).toBe("available");
-  });
-
-  it("notifies manual checks when the app is already up to date", async () => {
+  it("reports up to date when no update is available", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(false);
@@ -188,22 +179,17 @@ describe("updateController", () => {
     expect(sendNotify).toHaveBeenCalledWith("You're up to date.");
   });
 
-  it("tracks available and downloaded update states", async () => {
+  it("does not start another check while an update is downloading", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(false);
-    electron.autoUpdater.emit("update-available");
-    expect(controller.getUpdateStatus()).toBe("available");
-    expect(controller.isUpdateReadyToInstall()).toBe(false);
-    expect(sendNotify).toHaveBeenCalledWith("Update found. Downloading…");
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.emit("download-progress", { percent: 10 });
+    await controller.manualCheckForUpdates(false);
 
-    electron.autoUpdater.emit("update-downloaded", {}, null, "v0.1.5");
-    expect(controller.getUpdateStatus()).toBe("available");
-    expect(controller.getUpdateAvailableVersion()).toBe("v0.1.5");
-    expect(controller.isUpdateReadyToInstall()).toBe(true);
-    expect(sendNotify).toHaveBeenCalledWith(
-      "Update ready. Restart to install.",
-    );
+    expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(sendNotify).toHaveBeenLastCalledWith("Downloading update");
+    expect(controller.getUpdateStatus()).toBe("downloading");
   });
 
   it("recovers from a check that never emits an updater result", async () => {
@@ -216,6 +202,27 @@ describe("updateController", () => {
     expect(controller.getUpdateError()).toContain("No updater response");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update check timed out. Try again in a moment.",
+    );
+  });
+
+  it("errors out when the download stalls with no progress", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.emit("download-progress", { percent: 20 });
+
+    // A late chunk keeps the watchdog from firing early...
+    await vi.advanceTimersByTimeAsync(60_000);
+    electron.autoUpdater.emit("download-progress", { percent: 21 });
+    expect(controller.getUpdateStatus()).toBe("downloading");
+
+    // ...but once progress truly stops, the stall watchdog trips.
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(controller.getUpdateStatus()).toBe("error");
+    expect(controller.getUpdateError()).toContain("stalled");
+    expect(sendNotify).toHaveBeenCalledWith(
+      "Update download stalled. Try again in a moment.",
     );
   });
 
@@ -235,5 +242,70 @@ describe("updateController", () => {
     expect(sendNotify).toHaveBeenCalledWith(
       "Update check failed: The command is disabled and cannot be executed",
     );
+  });
+
+  it("previews the ready state only in development builds", async () => {
+    const packaged = await loadController({ packaged: true });
+    expect(packaged.controller.setDevUpdateStateForTesting("ready")).toEqual({
+      ok: false,
+      snapshot: {
+        status: "idle",
+        version: null,
+        readyToInstall: false,
+        error: null,
+        downloadPercent: null,
+      },
+      error: "Dev update state is unavailable in packaged builds",
+    });
+
+    const dev = await loadController({ packaged: false, version: "0.1.7" });
+    const result = dev.controller.setDevUpdateStateForTesting("ready");
+
+    expect(result.ok).toBe(true);
+    expect(result.snapshot).toEqual({
+      status: "available",
+      version: "v0.1.7-dev",
+      readyToInstall: true,
+      error: null,
+      downloadPercent: 100,
+    });
+    expect(dev.rebuildTrayMenu).toHaveBeenCalled();
+  });
+
+  it("previews the downloading state with a percent", async () => {
+    const dev = await loadController({ packaged: false, version: "0.1.7" });
+    const result = dev.controller.setDevUpdateStateForTesting("downloading");
+
+    expect(result.ok).toBe(true);
+    expect(result.snapshot).toEqual({
+      status: "downloading",
+      version: "v0.1.7-dev",
+      readyToInstall: false,
+      error: null,
+      downloadPercent: 42,
+    });
+  });
+
+  it("only reports ready to install after the download completes (restart guard)", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    expect(controller.isUpdateReadyToInstall()).toBe(false);
+
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.emit("download-progress", { percent: 90 });
+    expect(controller.isUpdateReadyToInstall()).toBe(false);
+
+    electron.autoUpdater.emit("update-downloaded", { version: "0.1.7" });
+    expect(controller.isUpdateReadyToInstall()).toBe(true);
+  });
+
+  it("installs via quitAndInstall and force-quits the menu-bar process", async () => {
+    const { controller, electron } = await loadController();
+
+    controller.quitAndInstallUpdate();
+
+    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(electron.app.quit).toHaveBeenCalledTimes(1);
   });
 });

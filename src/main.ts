@@ -171,6 +171,7 @@ import {
   getUpdateSnapshot,
   setDevUpdateStateForTesting,
   quitAndInstallUpdate,
+  downloadUpdate,
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
@@ -1100,31 +1101,49 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   function restartToInstallUpdate() {
     quitAndInstallUpdate();
   }
+  function downloadAndInstallUpdate() {
+    // Arm auto-restart, then start the download for the available update.
+    installUpdateWhenReady = true;
+    downloadUpdate();
+  }
+
+  const updateStatus = getUpdateStatus();
+  const downloadPercent = getUpdateSnapshot().downloadPercent;
+  const downloadingLabel =
+    downloadPercent != null
+      ? `Downloading Update (${downloadPercent}%)`
+      : "Downloading Update";
 
   const updateItems: Electron.MenuItemConstructorOptions[] =
     isUpdateReadyToInstall()
       ? [
           {
-            label: "Restart and Install Update",
+            label: "Restart to Update",
             click: () => restartToInstallUpdate(),
           },
         ]
-      : [
-          {
-            label:
-              getUpdateStatus() === "checking"
-                ? "Checking for Updates…"
-                : getUpdateStatus() === "available"
-                  ? "Downloading Update…"
-                  : "Check for Updates…",
-            enabled:
-              getUpdateStatus() !== "checking" &&
-              getUpdateStatus() !== "available",
-            click: () => {
-              manualCheckForUpdates();
+      : updateStatus === "available"
+        ? [
+            {
+              label: "Download Update",
+              click: () => downloadAndInstallUpdate(),
             },
-          },
-        ];
+          ]
+        : [
+            {
+              label:
+                updateStatus === "checking"
+                  ? "Checking for Updates"
+                  : updateStatus === "downloading"
+                    ? downloadingLabel
+                    : "Check for Updates",
+              enabled:
+                updateStatus !== "checking" && updateStatus !== "downloading",
+              click: () => {
+                manualCheckForUpdates();
+              },
+            },
+          ];
 
   return [
     ...buildCommonAppItems(() => {
@@ -2552,6 +2571,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("update:restart", () => {
+    // Guard: a stray call must not quit-to-same-version. Only install when a
+    // downloaded update is actually staged and ready.
+    if (!isUpdateReadyToInstall()) return { ok: false };
     quitAndInstallUpdate();
     return { ok: true };
   });
@@ -2562,9 +2584,16 @@ app.whenReady().then(async () => {
       return { ok: true, snapshot: getUpdateSnapshot() };
     }
 
+    // Arm auto-restart, then start the download. autoDownload is off, so an
+    // available update only begins transferring once we ask it to here.
     installUpdateWhenReady = true;
 
-    if (getUpdateStatus() !== "available" && getUpdateStatus() !== "checking") {
+    if (getUpdateStatus() === "available") {
+      downloadUpdate();
+    } else if (
+      getUpdateStatus() !== "checking" &&
+      getUpdateStatus() !== "downloading"
+    ) {
       await manualCheckForUpdates(false);
     }
 

@@ -192,7 +192,7 @@ describe("components/SettingsPanel", () => {
 
     const restartButtons = Array.from(container.querySelectorAll("button")).filter(
       (button) =>
-        button.getAttribute("aria-label") === "Restart Spoke to update",
+        button.getAttribute("aria-label") === "Restart to update",
     );
     expect(restartButtons).toHaveLength(1);
     expect(container.textContent ?? "").toContain("Spoke v0.1.7");
@@ -206,13 +206,23 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("starts the install-ready flow from the available capsule", async () => {
+  it("arms install-when-ready from the available capsule, then shows real download progress", async () => {
     (window as any).update.getState = vi.fn(async () => ({
       status: "available",
       version: "v0.1.8",
       readyToInstall: false,
       error: null,
+      downloadPercent: null,
     }));
+    // Capture the broadcast callback so the test can push the engine's real
+    // "downloading" snapshot, the way autoDownload does after install is armed.
+    let pushState: ((snapshot: unknown) => void) | null = null;
+    (window as any).update.onStateChanged = vi.fn(
+      (cb: (snapshot: unknown) => void) => {
+        pushState = cb;
+        return () => {};
+      },
+    );
 
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(
@@ -234,16 +244,33 @@ describe("components/SettingsPanel", () => {
       await Promise.resolve();
     });
 
+    // Clicking only arms auto-install; it does not fake a downloading visual.
     expect(window.update.installWhenReady).toHaveBeenCalledTimes(1);
-    // The chip collapses to an icon-only spinner while working — assert the
-    // downloading state via its (always-present) aria-label rather than text.
+
+    // The engine begins downloading on its own and broadcasts real progress.
+    await act(async () => {
+      pushState?.({
+        status: "downloading",
+        version: "v0.1.8",
+        readyToInstall: false,
+        error: null,
+        downloadPercent: 42,
+      });
+      await Promise.resolve();
+    });
+
+    // The chip collapses to an icon-only working state. Assert the downloading
+    // state via its (always-present) aria-label rather than text.
     const downloadingButton = Array.from(
       container.querySelectorAll("button"),
     ).find(
-      (button) =>
-        button.getAttribute("aria-label") === "Downloading update",
+      (button) => button.getAttribute("aria-label") === "Downloading update",
     );
     expect(downloadingButton).toBeTruthy();
+    // Determinate progress (the ring), not the indeterminate spinner.
+    expect(
+      container.querySelector('[data-testid="progress-ring"]'),
+    ).toBeTruthy();
     unmount();
   });
 

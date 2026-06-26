@@ -18,6 +18,23 @@ import type {
   TranscriptionResult,
 } from "../core/transcription/sessionTypes";
 
+type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "not-available"
+  | "error";
+
+interface UpdateSnapshot {
+  status: UpdateStatus;
+  version: string | null;
+  readyToInstall: boolean;
+  error: string | null;
+  // 0..100 while downloading, 100 when ready, null otherwise.
+  downloadPercent: number | null;
+}
+
 declare global {
   interface Window {
     /** Safari/WebKit fallback for AudioContext */
@@ -26,69 +43,21 @@ declare global {
       getVersion: () => Promise<string>;
     };
     update: {
-      getState: () => Promise<{
-        status: "idle" | "checking" | "available" | "not-available" | "error";
-        version: string | null;
-        readyToInstall: boolean;
-        error: string | null;
-      }>;
-      check: () => Promise<{
-        status: "idle" | "checking" | "available" | "not-available" | "error";
-        version: string | null;
-        readyToInstall: boolean;
-        error: string | null;
-      }>;
+      getState: () => Promise<UpdateSnapshot>;
+      check: () => Promise<UpdateSnapshot>;
       restart: () => Promise<{ ok: boolean }>;
       installWhenReady: () => Promise<{
         ok: boolean;
-        snapshot: {
-          status:
-            | "idle"
-            | "checking"
-            | "available"
-            | "not-available"
-            | "error";
-          version: string | null;
-          readyToInstall: boolean;
-          error: string | null;
-        };
+        snapshot: UpdateSnapshot;
       }>;
       devSetState?: (
-        state:
-          | "idle"
-          | "checking"
-          | "available"
-          | "not-available"
-          | "error"
-          | "ready",
+        state: UpdateStatus | "ready",
       ) => Promise<{
         ok: boolean;
-        snapshot: {
-          status:
-            | "idle"
-            | "checking"
-            | "available"
-            | "not-available"
-            | "error";
-          version: string | null;
-          readyToInstall: boolean;
-          error: string | null;
-        };
+        snapshot: UpdateSnapshot;
         error?: string;
       }>;
-      onStateChanged: (
-        cb: (snapshot: {
-          status:
-            | "idle"
-            | "checking"
-            | "available"
-            | "not-available"
-            | "error";
-          version: string | null;
-          readyToInstall: boolean;
-          error: string | null;
-        }) => void,
-      ) => () => void;
+      onStateChanged: (cb: (snapshot: UpdateSnapshot) => void) => () => void;
     };
     devFlags: {
       skipOnboarding: boolean;
