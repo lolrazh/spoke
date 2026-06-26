@@ -192,7 +192,7 @@ describe("components/SettingsPanel", () => {
 
     const restartButtons = Array.from(container.querySelectorAll("button")).filter(
       (button) =>
-        button.getAttribute("aria-label") === "Restart Spoke to update",
+        button.getAttribute("aria-label") === "Restart to update",
     );
     expect(restartButtons).toHaveLength(1);
     expect(container.textContent ?? "").toContain("Spoke v0.1.7");

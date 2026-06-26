@@ -6,6 +6,7 @@ type MockAutoUpdater = EventEmitter & {
   autoInstallOnAppQuit: boolean;
   setFeedURL: ReturnType<typeof vi.fn>;
   checkForUpdates: ReturnType<typeof vi.fn>;
+  downloadUpdate: ReturnType<typeof vi.fn>;
   quitAndInstall: ReturnType<typeof vi.fn>;
 };
 
@@ -30,6 +31,7 @@ async function loadController(
     autoInstallOnAppQuit: false,
     setFeedURL: vi.fn(),
     checkForUpdates: vi.fn(async () => null),
+    downloadUpdate: vi.fn(async () => []),
     quitAndInstall: vi.fn(),
   }) as MockAutoUpdater;
 
@@ -85,7 +87,7 @@ describe("updateController", () => {
       owner: "lolrazh",
       repo: "spoke",
     });
-    expect(electron.autoUpdater.autoDownload).toBe(true);
+    expect(electron.autoUpdater.autoDownload).toBe(false);
     expect(electron.autoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
     expect(controller.getUpdateStatus()).toBe("checking");
@@ -105,8 +107,30 @@ describe("updateController", () => {
     expect(controller.getUpdateAvailableVersion()).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
-      "Update found. Downloading…",
+      "Update available",
     ]);
+    // autoDownload is off: finding an update must not start the transfer.
+    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.getUpdateSnapshot().downloadPercent).toBeNull();
+  });
+
+  it("starts the download on demand via downloadUpdate", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(controller.getUpdateStatus()).toBe("downloading");
+  });
+
+  it("ignores downloadUpdate unless an update is available", async () => {
+    const { controller, electron } = await loadController();
+
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(controller.getUpdateStatus()).toBe("idle");
   });
 
   it("tracks real download progress in the snapshot", async () => {
@@ -142,9 +166,7 @@ describe("updateController", () => {
     expect(controller.isUpdateReadyToInstall()).toBe(true);
     expect(controller.getUpdateAvailableVersion()).toBe("0.1.5");
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
-    expect(sendNotify).toHaveBeenCalledWith(
-      "Update ready. Restart to install.",
-    );
+    expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
   });
 
   it("reports up to date when no update is available", async () => {
@@ -166,7 +188,7 @@ describe("updateController", () => {
     await controller.manualCheckForUpdates(false);
 
     expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(sendNotify).toHaveBeenLastCalledWith("Update found. Downloading…");
+    expect(sendNotify).toHaveBeenLastCalledWith("Downloading update");
     expect(controller.getUpdateStatus()).toBe("downloading");
   });
 

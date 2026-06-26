@@ -183,7 +183,7 @@ function startUpdateDownloadWatchdog() {
   updateDownloadWatchdog = setTimeout(() => {
     updateDownloadWatchdog = null;
     if (updateReadyToInstall) return;
-    if (updateStatus !== "downloading" && updateStatus !== "available") return;
+    if (updateStatus !== "downloading") return;
 
     const msg = `Download stalled (no progress for ${Math.round(
       UPDATE_DOWNLOAD_STALL_TIMEOUT_MS / 1000,
@@ -231,9 +231,9 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function notifyUpdateDownloadStarted() {
+function notifyUpdateAvailable() {
   if (updateAvailableNotificationSent) return;
-  callbacks.sendNotify("Update found. Downloading…");
+  callbacks.sendNotify("Update available");
   updateAvailableNotificationSent = true;
 }
 
@@ -243,9 +243,11 @@ function initUpdaterEventBridgeOnce() {
   if (updaterListenersInitialized) return;
   updaterListenersInitialized = true;
 
-  // Auto-download in the background once found (Raycast-style), but now it is
-  // observable via download-progress. Install on the next quit if not sooner.
-  autoUpdater.autoDownload = true;
+  // The download is driven by a user action (the "available" capsule / tray
+  // item calls downloadUpdate), not started automatically, so the available
+  // state is a real beat the user taps. autoInstallOnAppQuit still applies a
+  // finished download on the next quit.
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("checking-for-update", () => {
@@ -261,9 +263,9 @@ function initUpdaterEventBridgeOnce() {
     updateDownloadPercent = null;
     if (info?.version) updateAvailableVersion = String(info.version);
     setUpdateState("available", { version: updateAvailableVersion ?? undefined });
-    notifyUpdateDownloadStarted();
-    // The download starts now; watch for it stalling.
-    startUpdateDownloadWatchdog();
+    // autoDownload is off: we only announce the update here. The download (and
+    // its stall watchdog) starts when the user taps it, via downloadUpdate.
+    notifyUpdateAvailable();
     manualUpdateCheckInFlight = false;
   });
 
@@ -303,7 +305,7 @@ function initUpdaterEventBridgeOnce() {
     updateReadyToInstall = true;
     updateDownloadPercent = 100;
     setUpdateState("available");
-    callbacks.sendNotify("Update ready. Restart to install.");
+    callbacks.sendNotify("Update ready. Restart to update");
     updateAvailableNotificationSent = false;
     manualUpdateCheckInFlight = false;
   });
@@ -318,15 +320,19 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     return;
   }
   if (updateReadyToInstall) {
-    if (!silent) callbacks.sendNotify("Update ready. Restart to install.");
+    if (!silent) callbacks.sendNotify("Update ready. Restart to update");
     return;
   }
-  if (updateStatus === "available" || updateStatus === "downloading") {
-    if (!silent) callbacks.sendNotify("Update found. Downloading…");
+  if (updateStatus === "available") {
+    if (!silent) callbacks.sendNotify("Update available");
+    return;
+  }
+  if (updateStatus === "downloading") {
+    if (!silent) callbacks.sendNotify("Downloading update");
     return;
   }
   if (updateStatus === "checking") {
-    if (!silent) callbacks.sendNotify("Still checking for updates…");
+    if (!silent) callbacks.sendNotify("Already checking for updates");
     return;
   }
 
@@ -354,10 +360,11 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     });
     startUpdateCheckWatchdog(silent);
 
-    // checkForUpdates drives the events wired above. With autoDownload it also
-    // kicks off the download. We don't need its return value; events are the
-    // source of truth. Errors surface via the "error" event; the catch below
-    // is only a backstop for a synchronous/rejecting throw with no event.
+    // checkForUpdates drives the events wired above. autoDownload is off, so it
+    // only finds the update; downloadUpdate starts the transfer later. We don't
+    // need its return value; events are the source of truth. Errors surface via
+    // the "error" event; the catch below is only a backstop for a
+    // synchronous/rejecting throw with no event.
     await autoUpdater.checkForUpdates();
   } catch (err: unknown) {
     if (updateStatus === "error") return;
@@ -366,6 +373,27 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     setUpdateState("error", { error: msg });
     if (!silent) callbacks.sendNotify(`Update check failed: ${msg}`);
     manualUpdateCheckInFlight = false;
+  }
+}
+
+// Start downloading the update the last check found. autoDownload is off, so
+// this is the user-driven step behind the "available" capsule / tray tap. The
+// download stall watchdog is armed here and re-armed on every progress chunk.
+export function downloadUpdate(): void {
+  if (!app.isPackaged) return;
+  if (updateReadyToInstall) return;
+  if (updateStatus !== "available") return;
+  try {
+    updateDownloadPercent = null;
+    setUpdateState("downloading");
+    startUpdateDownloadWatchdog();
+    // electron-updater downloads the update info cached by the last check.
+    autoUpdater.downloadUpdate();
+  } catch (err: unknown) {
+    clearUpdateDownloadWatchdog();
+    const msg = getErrorMessage(err, "Unknown updater error");
+    setUpdateState("error", { error: msg });
+    callbacks.sendNotify(`Update download failed: ${msg}`);
   }
 }
 

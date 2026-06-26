@@ -235,7 +235,7 @@ const UPDATE_CAPSULE_LABELS: Record<UpdateCapsuleMode, string> = {
   available: "Update available",
   downloading: "Downloading",
   checking: "Checking",
-  ready: "Restart Spoke",
+  ready: "Restart",
   error: "Try again",
 };
 
@@ -245,7 +245,7 @@ const UPDATE_CAPSULE_ARIA: Record<UpdateCapsuleMode, string> = {
   available: "Download update",
   downloading: "Downloading update",
   checking: "Checking for updates",
-  ready: "Restart Spoke to update",
+  ready: "Restart to update",
   error: "Retry update check",
 };
 
@@ -380,7 +380,7 @@ const UpdateCapsule: React.FC<{
   // The working states (downloading / checking) collapse to a bare spinner —
   // no label — so clicking the download glyph simply morphs it into a spinner
   // in place while the text slides away. The actionable states rest as their
-  // icon and reveal their label on hover (Update available / Restart Spoke /
+  // icon and reveal their label on hover (Update available / Restart /
   // Try again) so the chip stays compact until you reach for it.
   const showLabel = interactive && hovered;
   const icon = updateCapsuleIcon(mode, downloadPercent);
