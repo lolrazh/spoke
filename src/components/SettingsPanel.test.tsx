@@ -259,7 +259,7 @@ describe("components/SettingsPanel", () => {
       await Promise.resolve();
     });
 
-    // The chip collapses to an icon-only working state — assert the downloading
+    // The chip collapses to an icon-only working state. Assert the downloading
     // state via its (always-present) aria-label rather than text.
     const downloadingButton = Array.from(
       container.querySelectorAll("button"),

@@ -302,7 +302,7 @@ const InstalledCheck: React.FC = () => (
 );
 
 // The single slot at the trailing edge of the chip cross-fades between the
-// download glyph, the working spinner/ring, and the success checkmark — all in
+// download glyph, the working spinner/ring, and the success checkmark, all in
 // the same spot, same size, so nothing shifts as the state advances. While
 // downloading we know the real percent, so the slot fills a determinate
 // ProgressRing (the determinate cousin of Spinner, same monochrome geometry the
@@ -554,7 +554,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Arm install-when-ready so the update auto-restarts once the engine finishes
   // downloading. With autoDownload the engine drives the download itself and
   // broadcasts the real "downloading" status + percent, so the renderer never
-  // fakes a downloading state — it just records the latest snapshot.
+  // fakes a downloading state. It just records the latest snapshot.
   const handleInstallUpdate = () => {
     window.update
       ?.installWhenReady?.()
@@ -562,7 +562,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         if (result?.snapshot) setUpdateState(result.snapshot);
       })
       .catch(() => {
-        // ignore — the engine keeps broadcasting the authoritative state.
+        // ignore. The engine keeps broadcasting the authoritative state.
       });
   };
 
