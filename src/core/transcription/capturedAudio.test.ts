@@ -8,6 +8,7 @@ import {
   encodePcm16Wav,
   getPcm16DurationMs,
   normalizePcm16TrimRange,
+  pcm16ToFloat32,
   trimCapturedAudio,
   trimPcm16,
 } from "./capturedAudio";
@@ -130,6 +131,15 @@ describe("capturedAudio", () => {
 
     expect(view.getUint32(24, true)).toBe(48_000);
     expect(view.getUint32(28, true)).toBe(96_000);
+  });
+
+  it("converts PCM16 samples to normalized Float32 in [-1, 1)", () => {
+    const float32 = pcm16ToFloat32(new Int16Array([0, 32_767, -32_768]));
+
+    expect(float32.length).toBe(3);
+    expect(float32[0]).toBeCloseTo(0);
+    expect(float32[1]).toBeCloseTo(0.99997, 4);
+    expect(float32[2]).toBeCloseTo(-1);
   });
 
   it("rejects invalid sample rates", () => {

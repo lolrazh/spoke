@@ -27,6 +27,10 @@ import {
   trimCapturedAudioWithVad,
   type VadAudioResult,
 } from "../utils/vadTrimmer";
+import {
+  createStreamingVadSession,
+  type StreamingVadSessionHandle,
+} from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
@@ -82,6 +86,7 @@ export function useTranscription(
   const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
     null,
   );
+  const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
   const stopInFlightRef = useRef(false);
   // Incremented by cancel(); an in-flight stop() pipeline compares against the
   // value it captured at entry and bails out once they differ.
@@ -211,6 +216,9 @@ export function useTranscription(
         context: buildTranscriptionContext(),
       });
 
+      const streamingVadSession = createStreamingVadSession();
+      streamingVadRef.current = streamingVadSession;
+
       const recorderPromise = (async () => {
         let stream = streamRef.current;
         if (!stream) {
@@ -224,6 +232,7 @@ export function useTranscription(
             reportTranscriptionError(err.message);
             setRecording(false);
           },
+          onPcmFrame: (frame) => streamingVadSession.pushFrame(frame),
         });
         await recorder.start(stream);
         return recorder;
@@ -267,6 +276,8 @@ export function useTranscription(
       setRecording(false);
       activeProviderIdRef.current = null;
       recorderStartPromiseRef.current = null;
+      streamingVadRef.current?.dispose();
+      streamingVadRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -403,14 +414,27 @@ export function useTranscription(
       pasteDoneAt: 0,
     };
 
+    const streamingVadSession = streamingVadRef.current;
+    streamingVadRef.current = null;
+
     try {
       setProcessing(true);
       setRecording(false);
       playToggleOff();
 
-      // Add post-roll delay to capture end of speech
+      // Post-roll: capture any tail audio the user spoke right up to
+      // key-release. If the streaming VAD already confirmed speech ended a
+      // redemption window ago, that tail is already in the buffer and we
+      // don't wait at all; if speech is still active (or the model hasn't
+      // caught up yet) we keep capturing until it settles, capped at
+      // POST_ROLL_MS. If streaming VAD never became usable, fall back to
+      // today's fixed wait exactly.
       timing.postRollStartedAt = performance.now();
-      await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      if (streamingVadSession && streamingVadSession.isUsable()) {
+        await streamingVadSession.waitForQuiet(POST_ROLL_MS);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      }
       timing.postRollDoneAt = performance.now();
       if (isCancelled()) return;
 
@@ -437,7 +461,16 @@ export function useTranscription(
       vadLog.info(
         `Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
       );
-      const vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      let vadResult: VadAudioResult | null = null;
+      if (streamingVadSession && streamingVadSession.isUsable()) {
+        vadResult = await streamingVadSession.finish(capturedAudio);
+      }
+      if (!vadResult) {
+        // Streaming VAD never became usable (model init failed, or it
+        // failed mid-recording) — fall back to the post-hoc full-clip pass.
+        vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
+        vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      }
       timing.vadDoneAt = performance.now();
       if (isCancelled()) return;
       vadLog.info(
@@ -503,6 +536,11 @@ export function useTranscription(
       log.error("Stop failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
+      // stop() owns streamingVadSession once it's captured it above (the
+      // shared ref was already nulled), regardless of how the pipeline
+      // above exited — mirrors how `recorder.stop()` always runs. dispose()
+      // is a no-op if finish() already completed it.
+      streamingVadSession?.dispose();
       // If cancel() interrupted this pipeline it already performed the
       // cleanup below and a new session may have started since; leave it be.
       if (!isCancelled()) {
@@ -544,6 +582,13 @@ export function useTranscription(
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;
+    }
+    // If a stop() pipeline is mid-flight it already took ownership of the
+    // streaming VAD session (nulled this ref) and is responsible for
+    // disposing it itself; only dispose here when cancel() got to it first.
+    if (streamingVadRef.current) {
+      streamingVadRef.current.dispose();
+      streamingVadRef.current = null;
     }
     // Release microphone stream so the OS mic indicator turns off
     if (streamRef.current) {

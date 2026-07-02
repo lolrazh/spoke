@@ -23,6 +23,15 @@ export interface VadTrimResult {
   trailingTrimmedMs: number;
 }
 
+/**
+ * A `VadTrimResult` plus the wall-clock cost of producing it. Shared by both
+ * the post-hoc (whole-clip) and streaming VAD paths so callers can log
+ * latency uniformly regardless of which path produced the result.
+ */
+export interface VadAudioResult extends VadTrimResult {
+  vadMs: number;
+}
+
 export function trimCapturedAudioToSpeech(
   audio: CapturedAudio,
   segments: readonly VadSpeechSegment[],

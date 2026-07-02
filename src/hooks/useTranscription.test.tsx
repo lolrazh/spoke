@@ -25,6 +25,42 @@ vi.mock("../utils/vadTrimmer", () => ({
   trimCapturedAudioWithVad: vi.fn(),
 }));
 
+// By default the streaming VAD session reports itself as unusable so every
+// existing test exercises the exact same fixed-post-roll +
+// trimCapturedAudioWithVad fallback path that ran before streaming VAD was
+// introduced. Tests that specifically exercise the adaptive path override
+// this per-test via `mockCreateStreamingVadSession`.
+const mockCreateStreamingVadSession = vi.fn(() => createUnusableStreamingVadSessionFake());
+vi.mock("../utils/streamingVad", () => ({
+  createStreamingVadSession: (...args: unknown[]) =>
+    mockCreateStreamingVadSession(...(args as [])),
+}));
+
+function createUnusableStreamingVadSessionFake() {
+  return {
+    isUsable: () => false,
+    pushFrame: vi.fn(),
+    waitForQuiet: vi.fn(async () => 0),
+    finish: vi.fn(async () => null),
+    dispose: vi.fn(),
+  };
+}
+
+function createUsableStreamingVadSessionFake(overrides: {
+  waitForQuiet?: (maxWaitMs: number) => Promise<number>;
+  finish?: (audio: CapturedAudio) => Promise<VadAudioResult | null>;
+} = {}) {
+  return {
+    isUsable: () => true,
+    pushFrame: vi.fn(),
+    waitForQuiet: vi.fn(overrides.waitForQuiet ?? (async () => 0)),
+    finish: vi.fn(
+      overrides.finish ?? (async (audio: CapturedAudio) => createVadResult(audio, true)),
+    ),
+    dispose: vi.fn(),
+  };
+}
+
 vi.mock("../state/transcriptionHistory", () => ({
   addTranscription: vi.fn(() => Promise.resolve()),
 }));
@@ -449,6 +485,177 @@ describe("useTranscription", () => {
 
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
     expect(result.current.text).toBe("");
+  });
+
+  it("falls back to the fixed post-roll and post-hoc VAD when streaming VAD never becomes usable", async () => {
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Fallback path",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    const stopStartedAt = performance.now();
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    const elapsed = performance.now() - stopStartedAt;
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Fallback path");
+    });
+    expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+    // Fell all the way through today's exact fixed post-roll wait (~240ms).
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+  });
+
+  it("skips the post-roll wait and post-hoc VAD when the streaming VAD already confirmed speech ended", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      waitForQuiet: async () => 0,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Adaptive path",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    expect(usableSession.pushFrame).toHaveBeenCalled();
+
+    const consoleInfoSpy = vi.spyOn(console, "info");
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Adaptive path");
+    });
+    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+    expect(usableSession.finish).toHaveBeenCalledTimes(1);
+    // The old fixed post-roll fallback never ran.
+    expect(trimCapturedAudioWithVad).not.toHaveBeenCalled();
+    // The latency log's post_roll_ms honestly reflects the actual
+    // (near-zero) adaptive wait, not the old fixed POST_ROLL_MS.
+    const latencyCall = consoleInfoSpy.mock.calls.find(
+      (call) => call[0] === "[Latency]",
+    );
+    const payload = latencyCall?.[2] as { post_roll_ms: number } | undefined;
+    expect(payload?.post_roll_ms).toBeLessThan(50);
+    consoleInfoSpy.mockRestore();
+  });
+
+  it("caps the adaptive post-roll wait at POST_ROLL_MS when the streaming VAD never settles", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      waitForQuiet: async (maxWaitMs) => maxWaitMs,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Capped wait",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Capped wait");
+    });
+    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+  });
+
+  it("falls back to post-hoc VAD if the streaming session's finish() returns null mid-recording", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      finish: async () => null,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Recovered via fallback",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Recovered via fallback");
+    });
+    expect(usableSession.finish).toHaveBeenCalledTimes(1);
+    expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes the streaming VAD session on cancel()", async () => {
+    const usableSession = createUsableStreamingVadSessionFake();
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.cancel();
+    });
+
+    expect(usableSession.dispose).toHaveBeenCalledTimes(1);
+    expect(usableSession.finish).not.toHaveBeenCalled();
   });
 });
 

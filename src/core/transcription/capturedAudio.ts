@@ -65,6 +65,14 @@ export function getPcm16DurationMs(
   return (sampleCount / normalizeSampleRateHz(sampleRateHz)) * 1000;
 }
 
+export function pcm16ToFloat32(pcm16: Int16Array): Float32Array {
+  const out = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i++) {
+    out[i] = pcm16[i] / 32768;
+  }
+  return out;
+}
+
 export function concatPcm16(chunks: readonly Int16Array[]): Int16Array {
   let totalSamples = 0;
   for (const chunk of chunks) {

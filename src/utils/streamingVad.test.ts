@@ -1,0 +1,284 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Message } from "@ricky0123/vad-web";
+import { createStreamingVadSession } from "./streamingVad";
+import { resolveVadModel } from "./vadModel";
+import {
+  createCapturedAudio,
+  pcm16ToFloat32,
+} from "../core/transcription/capturedAudio";
+import {
+  trimCapturedAudioToSpeech,
+  type VadSpeechSegment,
+} from "../core/transcription/vadTrim";
+import { VAD_PRE_SPEECH_PAD_MS, VAD_REDEMPTION_MS } from "../config/vad";
+import {
+  createScriptedFrameProcessor,
+  createScriptedNonRealTimeVad,
+  FAKE_VAD_MODEL_FRAME_SAMPLES,
+} from "../test/fakes/fakeVadModel";
+
+vi.mock("./vadModel", () => ({
+  resolveVadModel: vi.fn(),
+}));
+
+type FakeEvent =
+  | { msg: Message.SpeechStart }
+  | { msg: Message.SpeechEnd; audio: Float32Array }
+  | { msg: Message.VADMisfire }
+  | { msg: Message.FrameProcessed; probs: { isSpeech: number; notSpeech: number }; frame: Float32Array };
+
+type ProcessImpl = (
+  frame: Float32Array,
+  handleEvent: (event: FakeEvent) => void,
+) => Promise<void> | void;
+
+function createManualFrameProcessor(processImpl?: ProcessImpl) {
+  const process = vi.fn(
+    processImpl ??
+      (async (frame: Float32Array, handleEvent: (event: FakeEvent) => void) => {
+        handleEvent({
+          msg: Message.FrameProcessed,
+          probs: { isSpeech: 0, notSpeech: 1 },
+          frame,
+        });
+      }),
+  );
+  return {
+    reset: vi.fn(),
+    resume: vi.fn(),
+    pause: vi.fn(),
+    setOptions: vi.fn(),
+    process,
+    endSegment: vi.fn((_handleEvent: (event: FakeEvent) => void) => ({})),
+  };
+}
+
+async function flush(times = 20): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
+describe("streamingVad", () => {
+  beforeEach(() => {
+    vi.mocked(resolveVadModel).mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("re-chunks 30ms capture frames into fixed 1536-sample model windows", async () => {
+    const fp = createManualFrameProcessor();
+    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    // 8 frames of 480 samples = 3840 samples -> two full 1536 windows, 768 left over.
+    for (let i = 0; i < 8; i++) {
+      session.pushFrame(new Int16Array(480));
+    }
+    await flush();
+
+    expect(fp.process).toHaveBeenCalledTimes(2);
+    expect(fp.process.mock.calls[0][0]).toHaveLength(1536);
+    expect(fp.process.mock.calls[1][0]).toHaveLength(1536);
+
+    // 4 more frames (1920 samples) -> carried 768 + 1920 = 2688 -> one more
+    // window (1536), 1152 left over in the carry buffer.
+    for (let i = 0; i < 4; i++) {
+      session.pushFrame(new Int16Array(480));
+    }
+    await flush();
+
+    expect(fp.process).toHaveBeenCalledTimes(3);
+    expect(fp.process.mock.calls[2][0]).toHaveLength(1536);
+  });
+
+  it("drops a trailing partial window at finish(), matching NonRealTimeVAD.run()", async () => {
+    const fp = createManualFrameProcessor();
+    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    session.pushFrame(new Int16Array(1536)); // one full window
+    session.pushFrame(new Int16Array(700)); // leftover, never reaches 1536
+    await flush();
+
+    expect(fp.process).toHaveBeenCalledTimes(1);
+
+    const audio = createCapturedAudio(new Int16Array(4000));
+    await session.finish(audio);
+
+    // The leftover 700 samples were never fed to the model (same as
+    // Resampler.stream() dropping a trailing partial frame in the post-hoc
+    // path), so no further process() call happens at flush time.
+    expect(fp.process).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks itself unusable when the model fails to load, and finish() returns null", async () => {
+    vi.mocked(resolveVadModel).mockRejectedValue(new Error("model load failed"));
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    expect(session.isUsable()).toBe(false);
+
+    const result = await session.finish(createCapturedAudio(new Int16Array(1600)));
+    expect(result).toBeNull();
+  });
+
+  it("stops accepting frames once disposed", async () => {
+    const fp = createManualFrameProcessor();
+    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.dispose();
+
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(fp.process).not.toHaveBeenCalled();
+  });
+
+  describe("adaptive post-roll decision (waitForQuiet)", () => {
+    it("resolves immediately (0ms) when no speech was ever detected", async () => {
+      const fp = createManualFrameProcessor();
+      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+      const session = createStreamingVadSession();
+      await flush();
+
+      session.pushFrame(new Int16Array(1536));
+      await flush();
+
+      const waited = await session.waitForQuiet(240);
+      expect(waited).toBe(0);
+    });
+
+    it("keeps waiting while speech is still active, capped at maxWaitMs", async () => {
+      const fp = createManualFrameProcessor(async (frame, handleEvent) => {
+        handleEvent({ msg: Message.SpeechStart });
+        handleEvent({
+          msg: Message.FrameProcessed,
+          probs: { isSpeech: 1, notSpeech: 0 },
+          frame,
+        });
+      });
+      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+      const session = createStreamingVadSession();
+      await flush();
+      session.pushFrame(new Int16Array(1536));
+      await flush();
+
+      const waited = await session.waitForQuiet(60);
+      expect(waited).toBe(60);
+    });
+
+    it("resolves once enough quiet audio accumulates, before the cap", async () => {
+      let windowIndex = 0;
+      const fp = createManualFrameProcessor(async (frame, handleEvent) => {
+        if (windowIndex === 0) {
+          handleEvent({ msg: Message.SpeechStart });
+        }
+        if (windowIndex === 1) {
+          handleEvent({ msg: Message.SpeechEnd, audio: frame });
+        }
+        handleEvent({
+          msg: Message.FrameProcessed,
+          probs: { isSpeech: windowIndex < 1 ? 1 : 0, notSpeech: windowIndex < 1 ? 0 : 1 },
+          frame,
+        });
+        windowIndex += 1;
+      });
+      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+      const session = createStreamingVadSession();
+      await flush();
+
+      // Two windows: speech starts, then ends (192ms of captured audio,
+      // speechEndAtMs = 192ms). VAD_REDEMPTION_MS is 200ms, so we're not
+      // quiet yet purely from these two windows.
+      session.pushFrame(new Int16Array(1536));
+      session.pushFrame(new Int16Array(1536));
+      await flush();
+
+      const waitPromise = session.waitForQuiet(500);
+      // Simulate real-time capture continuing during the post-roll wait
+      // (silence keeps flowing in) until enough time has accumulated past
+      // the redemption window.
+      const pushSilence = () => session.pushFrame(new Int16Array(1536));
+      const timers = [
+        setTimeout(pushSilence, 5),
+        setTimeout(pushSilence, 15),
+        setTimeout(pushSilence, 25),
+      ];
+
+      const waited = await waitPromise;
+      timers.forEach(clearTimeout);
+
+      expect(waited).toBeGreaterThanOrEqual(0);
+      expect(waited).toBeLessThan(500);
+    });
+  });
+
+  describe("parity with the post-hoc NonRealTimeVAD path", () => {
+    it("produces the same segments and trimmed audio as feeding the whole clip through NonRealTimeVAD.run()", async () => {
+      const totalWindows = 30;
+      const speechWindows = new Set([8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+      const isSpeechScript = (windowIndex: number) => speechWindows.has(windowIndex);
+
+      const totalSamples = totalWindows * FAKE_VAD_MODEL_FRAME_SAMPLES;
+      const pcm16 = new Int16Array(totalSamples);
+      for (let i = 0; i < pcm16.length; i++) {
+        // Content is irrelevant to the fake model (it only counts calls),
+        // but keep it non-zero so this isn't a degenerate all-silence buffer.
+        pcm16[i] = (i % 2000) - 1000;
+      }
+      const capturedAudio = createCapturedAudio(pcm16, { sampleRateHz: 16000 });
+
+      // --- post-hoc path: the real NonRealTimeVAD.run() over the whole clip ---
+      const postHocVad = createScriptedNonRealTimeVad(isSpeechScript);
+      const postHocSegments: VadSpeechSegment[] = [];
+      for await (const seg of postHocVad.run(pcm16ToFloat32(pcm16), 16000)) {
+        postHocSegments.push({ startMs: seg.start, endMs: seg.end });
+      }
+      const postHocResult = trimCapturedAudioToSpeech(capturedAudio, postHocSegments, {
+        preSpeechPadMs: VAD_PRE_SPEECH_PAD_MS,
+        redemptionMs: VAD_REDEMPTION_MS,
+      });
+
+      // Sanity: the scripted speech run should actually have produced a segment.
+      expect(postHocResult.speechDetected).toBe(true);
+
+      // --- streaming path: the same clip fed as real-time 30ms capture frames ---
+      const streamingFrameProcessor = createScriptedFrameProcessor(isSpeechScript);
+      vi.mocked(resolveVadModel).mockResolvedValue({
+        frameProcessor: streamingFrameProcessor,
+      } as never);
+
+      const session = createStreamingVadSession();
+      await flush();
+
+      const captureFrameSamples = 480; // 30ms @ 16kHz, matches PCM_CAPTURE_FRAME_SAMPLES
+      for (let offset = 0; offset < pcm16.length; offset += captureFrameSamples) {
+        session.pushFrame(pcm16.subarray(offset, offset + captureFrameSamples));
+      }
+      const streamingResult = await session.finish(capturedAudio);
+
+      expect(streamingResult).not.toBeNull();
+      expect(streamingResult?.segments).toEqual(postHocResult.segments);
+      expect(streamingResult?.trimRange).toEqual(postHocResult.trimRange);
+      expect(streamingResult?.speechDetected).toBe(postHocResult.speechDetected);
+      expect(streamingResult?.leadingTrimmedMs).toBe(postHocResult.leadingTrimmedMs);
+      expect(streamingResult?.trailingTrimmedMs).toBe(postHocResult.trailingTrimmedMs);
+      expect(Array.from(streamingResult!.audio.pcm16)).toEqual(
+        Array.from(postHocResult.audio.pcm16),
+      );
+    });
+  });
+});
