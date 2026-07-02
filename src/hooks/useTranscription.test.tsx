@@ -7,6 +7,7 @@ import {
   FakeAudioWorkletNode,
 } from "../test/fakes/fakeAudio";
 import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
+import { addTranscription } from "../state/transcriptionHistory";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import type { VadAudioResult } from "../utils/vadTrimmer";
 
@@ -370,6 +371,56 @@ describe("useTranscription", () => {
 
     expect(result.current.recording).toBe(false);
     expect(result.current.text).toBe("");
+  });
+
+  it("discards an in-flight stop pipeline when cancelled mid-processing", async () => {
+    let resolveTranscription:
+      | ((value: { text: string; metrics: Record<string, unknown> }) => void)
+      | null = null;
+    (window.stt.transcribeLocal as any).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTranscription = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    expect(result.current.recording).toBe(true);
+
+    await act(async () => {
+      result.current.stop();
+      // Let stop progress past post-roll and VAD into transcription
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    expect(result.current.processing).toBe(true);
+    expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      result.current.cancel();
+    });
+
+    expect(result.current.processing).toBe(false);
+
+    await act(async () => {
+      resolveTranscription?.({ text: "Cancelled transcription", metrics: {} });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(result.current.text).toBe("");
+    expect(vi.mocked(addTranscription)).not.toHaveBeenCalled();
+    expect(window.clipboard.insertText).not.toHaveBeenCalled();
   });
 
   it("skips local transcription when VAD detects no speech", async () => {

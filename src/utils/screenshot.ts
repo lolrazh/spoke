@@ -6,6 +6,9 @@
  */
 
 import { desktopCapturer, screen, BrowserWindow } from "electron";
+import { createLogger } from "./logger";
+
+const screenshotTestLog = createLogger("Screenshot Test");
 
 export interface ScreenshotResult {
   /** Base64-encoded PNG data (no data URI prefix) */
@@ -174,7 +177,7 @@ export async function testScreenshotCapture(): Promise<{
   error?: string;
 }> {
   try {
-    console.log("[Screenshot Test] Starting capture...");
+    screenshotTestLog.info("Starting capture...");
     const result = await captureScreenshot();
 
     const metrics = {
@@ -184,9 +187,9 @@ export async function testScreenshotCapture(): Promise<{
       resolution: `${result.displayBounds.width}x${result.displayBounds.height}`,
     };
 
-    console.log("[Screenshot Test] ✅ Success!", metrics);
-    console.log(
-      `[Screenshot Test] Base64 preview (first 100 chars): ${result.imageBase64.substring(0, 100)}...`,
+    screenshotTestLog.info("Success!", metrics);
+    screenshotTestLog.info(
+      `Base64 preview (first 100 chars): ${result.imageBase64.substring(0, 100)}...`,
     );
 
     return { success: true, metrics };
