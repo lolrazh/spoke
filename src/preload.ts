@@ -94,14 +94,14 @@ contextBridge.exposeInMainWorld("notifications", {
 
 contextBridge.exposeInMainWorld("ptt", {
   onDown: (cb: () => void) => {
-    ipcRenderer.removeAllListeners("ptt-down");
-    ipcRenderer.on("ptt-down", cb);
-    return () => ipcRenderer.removeAllListeners("ptt-down");
+    const listener = () => cb();
+    ipcRenderer.on("ptt-down", listener);
+    return () => ipcRenderer.removeListener("ptt-down", listener);
   },
   onUp: (cb: () => void) => {
-    ipcRenderer.removeAllListeners("ptt-up");
-    ipcRenderer.on("ptt-up", cb);
-    return () => ipcRenderer.removeAllListeners("ptt-up");
+    const listener = () => cb();
+    ipcRenderer.on("ptt-up", listener);
+    return () => ipcRenderer.removeListener("ptt-up", listener);
   },
   onReady: (cb: () => void) => {
     const listener = () => cb();
@@ -109,14 +109,14 @@ contextBridge.exposeInMainWorld("ptt", {
     return () => ipcRenderer.removeListener("ptt-ready", listener);
   },
   onCancelDown: (cb: () => void) => {
-    ipcRenderer.removeAllListeners("ptt-cancel-down");
-    ipcRenderer.on("ptt-cancel-down", cb);
-    return () => ipcRenderer.removeAllListeners("ptt-cancel-down");
+    const listener = () => cb();
+    ipcRenderer.on("ptt-cancel-down", listener);
+    return () => ipcRenderer.removeListener("ptt-cancel-down", listener);
   },
   onCancel: (cb: () => void) => {
-    ipcRenderer.removeAllListeners("ptt-cancel");
-    ipcRenderer.on("ptt-cancel", cb);
-    return () => ipcRenderer.removeAllListeners("ptt-cancel");
+    const listener = () => cb();
+    ipcRenderer.on("ptt-cancel", listener);
+    return () => ipcRenderer.removeListener("ptt-cancel", listener);
   },
 });
 
@@ -133,20 +133,25 @@ contextBridge.exposeInMainWorld("mic", {
     ipcRenderer.invoke("mic:get-selected"),
   /** Subscribe to selection changes coming from main. */
   onSelectedChanged: (cb: (payload: { id: string }) => void) => {
-    ipcRenderer.on("mic:selected-changed", (_e, payload) => cb(payload));
-    return () => ipcRenderer.removeAllListeners("mic:selected-changed");
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: { id: string },
+    ) => cb(payload);
+    ipcRenderer.on("mic:selected-changed", listener);
+    return () => ipcRenderer.removeListener("mic:selected-changed", listener);
   },
   /** Subscribe to refresh device requests from main. */
   onRefreshRequest: (cb: () => void) => {
-    ipcRenderer.on("mic:refresh-devices", cb);
-    return () => ipcRenderer.removeAllListeners("mic:refresh-devices");
+    const listener = () => cb();
+    ipcRenderer.on("mic:refresh-devices", listener);
+    return () => ipcRenderer.removeListener("mic:refresh-devices", listener);
   },
 });
 
 // Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
   transcribeLocal: (pcmBuffer: ArrayBuffer) =>
-    ipcRenderer.invoke("stt:transcribe-local", Buffer.from(pcmBuffer)),
+    ipcRenderer.invoke("stt:transcribe-local", new Uint8Array(pcmBuffer)),
   transcribeApiKeyProvider: (
     providerId: string,
     payload: {
@@ -157,7 +162,7 @@ contextBridge.exposeInMainWorld("stt", {
   ) =>
     ipcRenderer.invoke("stt:transcribe-api-key-provider", {
       providerId,
-      audioBuffer: Buffer.from(payload.audioBuffer),
+      audioBuffer: new Uint8Array(payload.audioBuffer),
       mimeType: payload.mimeType,
       context: payload.context,
     }),
@@ -217,7 +222,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.send("set-focusable", focusable),
   focusWindow: () => ipcRenderer.send("focus-window"),
   expandPill: (callback: () => void) => {
-    ipcRenderer.on("expand-pill", callback);
+    const listener = () => callback();
+    ipcRenderer.on("expand-pill", listener);
+    return () => ipcRenderer.removeListener("expand-pill", listener);
   },
   onPasteShortcutPressed: (callback: () => void) => {
     ipcRenderer.on("paste-shortcut-pressed", callback);
@@ -341,6 +348,7 @@ contextBridge.exposeInMainWorld(
       payload: ActiveDisplayPayload,
     ) => cb(payload);
     ipcRenderer.on("active-display", listener);
+    return () => ipcRenderer.removeListener("active-display", listener);
   },
 );
 
