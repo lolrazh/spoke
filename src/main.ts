@@ -223,10 +223,10 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin") {
     try {
       if (showInDock) {
-        app.dock.show();
+        app.dock?.show();
         logger.main.info("[AppPrefs] Dock icon visible");
       } else {
-        app.dock.hide();
+        app.dock?.hide();
         logger.main.info("[AppPrefs] Dock icon hidden");
       }
     } catch (error) {

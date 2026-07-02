@@ -770,7 +770,7 @@ const Onboarding: React.FC = () => {
                       accessibility: false,
                       inputMonitoring: false,
                     });
-                    mockPermissions.resetPermissions();
+                    mockPermissions.resetPermissions?.();
                   }}
                 >
                   Reset Mock Perms

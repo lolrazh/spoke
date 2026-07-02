@@ -287,14 +287,16 @@ describe("useTranscription", () => {
 
   it("stops after recorder startup resolves when key-up wins the startup race", async () => {
     const originalAudioContext = global.AudioContext;
-    let resolveAddModule: (() => void) | null = null;
+    const addModuleResolver: { resolve: (() => void) | null } = {
+      resolve: null,
+    };
 
     class SlowAudioContext extends FakeAudioContext {
       audioWorklet = {
         addModule: vi.fn(
           () =>
             new Promise<void>((resolve) => {
-              resolveAddModule = resolve;
+              addModuleResolver.resolve = resolve;
             }),
         ),
       };
@@ -330,9 +332,9 @@ describe("useTranscription", () => {
 
       expect(result.current.processing).toBe(true);
       expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
-      expect(resolveAddModule).toBeTruthy();
+      expect(addModuleResolver.resolve).toBeTruthy();
 
-      resolveAddModule?.();
+      addModuleResolver.resolve?.();
 
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 600));

@@ -5,7 +5,10 @@
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noImplicitAny": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    // noUncheckedIndexedAccess deliberately skipped: too churny for the value it adds right now
     "sourceMap": true,
     "baseUrl": ".",
     "outDir": "dist",

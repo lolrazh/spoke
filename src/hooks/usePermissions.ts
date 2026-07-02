@@ -267,10 +267,10 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       } catch {}
       debugPermLog("request:microphone:polling");
       if (timersRef.current.mic) clearInterval(timersRef.current.mic);
-      timersRef.current.mic = setInterval(async () => {
+      const micTimer = setInterval(async () => {
         const status = await p.checkMicrophonePermission();
         if (status?.granted) {
-          clearInterval(timersRef.current.mic);
+          clearInterval(micTimer);
           timersRef.current.mic = null;
           setPermissions((prev) => ({ ...prev, microphone: true }));
           setUi((prev) => ({
@@ -290,6 +290,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           }, 800);
         }
       }, pollMs);
+      timersRef.current.mic = micTimer;
       setUi((prev) => ({
         ...prev,
         microphone: { ...prev.microphone, loading: false },
@@ -333,10 +334,10 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       } catch {}
       debugPermLog("request:screen-recording:polling");
       if (timersRef.current.sr) clearInterval(timersRef.current.sr);
-      timersRef.current.sr = setInterval(async () => {
+      const srTimer = setInterval(async () => {
         const status = await p.checkScreenRecordingPermission();
         if (status?.granted) {
-          clearInterval(timersRef.current.sr);
+          clearInterval(srTimer);
           timersRef.current.sr = null;
           setPermissions((prev) => ({ ...prev, screenRecording: true }));
           setUi((prev) => ({
@@ -353,6 +354,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           }, 800);
         }
       }, pollMs);
+      timersRef.current.sr = srTimer;
       setUi((prev) => ({
         ...prev,
         screenRecording: { ...prev.screenRecording, loading: false },
@@ -394,10 +396,10 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       } catch {}
       debugPermLog("request:input-monitoring:polling");
       if (timersRef.current.im) clearInterval(timersRef.current.im);
-      timersRef.current.im = setInterval(async () => {
+      const imTimer = setInterval(async () => {
         const sys = await p.checkPermissions();
         if (sys && !sys.needIM) {
-          clearInterval(timersRef.current.im);
+          clearInterval(imTimer);
           timersRef.current.im = null;
           setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
           setUi((prev) => ({
@@ -414,6 +416,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           }, 800);
         }
       }, pollMs);
+      timersRef.current.im = imTimer;
       setUi((prev) => ({
         ...prev,
         inputMonitoring: { ...prev.inputMonitoring, loading: false },
@@ -438,10 +441,10 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         // Will still require user to toggle in System Settings; start polling
       }
       if (timersRef.current.ax) clearInterval(timersRef.current.ax);
-      timersRef.current.ax = setInterval(async () => {
+      const axTimer = setInterval(async () => {
         const sys = await p.checkPermissions();
         if (sys && !sys.needAX) {
-          clearInterval(timersRef.current.ax);
+          clearInterval(axTimer);
           timersRef.current.ax = null;
           setPermissions((prev) => ({ ...prev, accessibility: true }));
           setUi((prev) => ({
@@ -461,6 +464,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
           }, 800);
         }
       }, pollMs);
+      timersRef.current.ax = axTimer;
       setUi((prev) => ({
         ...prev,
         accessibility: { ...prev.accessibility, loading: false },

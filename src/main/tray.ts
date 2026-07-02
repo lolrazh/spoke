@@ -371,7 +371,10 @@ export const createTray = () => {
     bootTimeline.mark("tray:create:done");
   } catch (error) {
     console.error("[Tray] ❌ Failed to create tray:", error);
-    console.error("[Tray] Error stack:", error.stack);
+    console.error(
+      "[Tray] Error stack:",
+      error instanceof Error ? error.stack : undefined,
+    );
     // Ensure tray is null if creation fails
     if (tray) {
       try {

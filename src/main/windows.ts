@@ -436,7 +436,7 @@ export const createWindow = () => {
     }
   } catch (error) {
     console.warn(
-      `Failed to load icon: ${error.message}, continuing without icon`,
+      `Failed to load icon: ${error instanceof Error ? error.message : error}, continuing without icon`,
     );
   }
 
@@ -452,7 +452,9 @@ export const createWindow = () => {
       state.mainWindow.setIcon(windowIconPath);
     }
   } catch (error) {
-    console.warn(`Failed to set window icon: ${error.message}`);
+    console.warn(
+      `Failed to set window icon: ${error instanceof Error ? error.message : error}`,
+    );
   }
 
   // Set window behaviors for macOS
@@ -471,14 +473,16 @@ export const createWindow = () => {
 
   // Prepare DevTools behavior; actual show happens on renderer-ready handshake
   state.mainWindow.once("ready-to-show", () => {
+    const win = state.mainWindow;
+    if (!win) return;
     bootTimeline.mark("main-window:ready-to-show");
     // Ensure initial position is the visible top-aligned Y (flush to screen top)
     try {
-      const current = state.mainWindow.getBounds();
+      const current = win.getBounds();
       const currentDisplay = screen.getDisplayMatching(current);
       state.activeDisplayId = currentDisplay.id;
       const targetY = currentDisplay.workArea.y + ISLAND_VISIBLE_Y;
-      state.mainWindow.setBounds(
+      win.setBounds(
         {
           x: current.x,
           y: targetY,
@@ -487,7 +491,7 @@ export const createWindow = () => {
         },
         false,
       );
-      if (process.platform === "darwin") state.mainWindow.invalidateShadow();
+      if (process.platform === "darwin") win.invalidateShadow();
     } catch (e) {
       console.warn("Failed to top-align on ready-to-show:", e);
     }
@@ -495,7 +499,7 @@ export const createWindow = () => {
     // DevTools behavior:
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
-        state.mainWindow.webContents.openDevTools({ mode: "detach" });
+        win.webContents.openDevTools({ mode: "detach" });
       } catch {}
       console.log("DevTools opened (staging)");
     } else if (
@@ -505,7 +509,7 @@ export const createWindow = () => {
       // Only auto-open DevTools for the pill window when it's actually the main app target
       if (state.pttTarget === "main") {
         try {
-          state.mainWindow.webContents.openDevTools({ mode: "detach" });
+          win.webContents.openDevTools({ mode: "detach" });
         } catch {}
         console.log(
           "DevTools opened (dev opt-in). Tip: unset SF_DEVTOOLS to suppress overlays on transparent window.",
@@ -810,11 +814,14 @@ export function createOnboardingWindow() {
   });
 
   // Keep DevTools behavior; showing is coordinated by renderer-ready
-  state.onboardingWindow.once("ready-to-show", () => {
+  const onboardingWindowForDevTools = state.onboardingWindow;
+  onboardingWindowForDevTools.once("ready-to-show", () => {
     console.log("[Onboarding] Ready to show event fired");
     if (VITE_ENV?.VITE_SF_DEVTOOLS === "1") {
       try {
-        state.onboardingWindow.webContents.openDevTools({ mode: "detach" });
+        onboardingWindowForDevTools.webContents.openDevTools({
+          mode: "detach",
+        });
       } catch {}
       console.log("[Onboarding] DevTools opened (staging)");
     }

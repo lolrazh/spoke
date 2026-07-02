@@ -261,10 +261,10 @@ export function registerWindowIpc(): void {
         // Only apply dock operations on macOS
         if (process.platform === "darwin") {
           if (visible) {
-            await app.dock.show();
+            await app.dock?.show();
             logger.main.info("[Dock] Showing dock icon");
           } else {
-            app.dock.hide();
+            app.dock?.hide();
             logger.main.info("[Dock] Hiding dock icon");
           }
         }

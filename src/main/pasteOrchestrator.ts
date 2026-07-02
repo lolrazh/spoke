@@ -66,7 +66,7 @@ export async function insertTextAtCursor(
 
       await new Promise<void>((resolve) => {
         let stderrBuffer = "";
-        proc.stderr.on("data", (data) => {
+        proc.stderr?.on("data", (data) => {
           stderrBuffer += data.toString();
         });
         proc.on("close", (code) => {
