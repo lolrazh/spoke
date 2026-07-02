@@ -150,8 +150,12 @@ contextBridge.exposeInMainWorld("mic", {
 
 // Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
-  transcribeLocal: (pcmBuffer: ArrayBuffer) =>
-    ipcRenderer.invoke("stt:transcribe-local", new Uint8Array(pcmBuffer)),
+  transcribeLocal: (pcmBuffer: ArrayBuffer, prompt?: string) =>
+    ipcRenderer.invoke(
+      "stt:transcribe-local",
+      new Uint8Array(pcmBuffer),
+      prompt,
+    ),
   transcribeApiKeyProvider: (
     providerId: string,
     payload: {

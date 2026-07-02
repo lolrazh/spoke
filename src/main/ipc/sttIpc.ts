@@ -125,9 +125,12 @@ export function registerSttIpc(): void {
 
   ipcMain.handle(
     "stt:transcribe-local",
-    async (_event, pcmBuffer: Uint8Array) => {
+    async (_event, pcmBuffer: Uint8Array, prompt?: string) => {
       try {
-        return await transcribeWithLocalSidecar(Buffer.from(pcmBuffer));
+        return await transcribeWithLocalSidecar(
+          Buffer.from(pcmBuffer),
+          prompt,
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[STT] transcribe-local failed:", msg);

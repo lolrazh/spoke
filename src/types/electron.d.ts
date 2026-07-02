@@ -214,6 +214,7 @@ declare global {
     stt: {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
+        prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       transcribeApiKeyProvider: (
         providerId: ApiKeyTranscriptionProviderId,

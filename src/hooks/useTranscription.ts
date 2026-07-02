@@ -20,6 +20,7 @@ import {
 } from "../core/transcription/defaultSessionOrchestrator";
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import {
   prewarmVad,
@@ -164,6 +165,13 @@ export function useTranscription(
     return {
       mode: DICTATION_MODE,
       language: "en",
+      // Opportunistic: OCR words are gathered in the background starting at
+      // start(), so by the time stop() rebuilds the context they're often
+      // already populated (for local transcription we never block on OCR to
+      // avoid adding latency; whatever's already there just rides along).
+      // With no OCR words yet, buildSTTPrompt still returns its default
+      // vocabulary hint (the product name), which is a free win on its own.
+      sttPrompt: buildSTTPrompt({ extraVocab: ocrWordsRef.current }),
     };
   }, []);
 

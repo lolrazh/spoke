@@ -193,12 +193,13 @@ export function killSidecar(): void {
 
 export function transcribeLocal(
   pcmBuffer: Buffer,
+  prompt?: string,
 ): Promise<LocalTranscribeResult> {
   // Sidecar stdout is a shared stream. Serialize requests so "done" events
   // cannot be consumed by the wrong in-flight caller.
   const queued = sidecarTranscribeQueue.then(
-    () => transcribeLocalOnce(pcmBuffer),
-    () => transcribeLocalOnce(pcmBuffer),
+    () => transcribeLocalOnce(pcmBuffer, prompt),
+    () => transcribeLocalOnce(pcmBuffer, prompt),
   );
   sidecarTranscribeQueue = queued.then(
     (): undefined => undefined,
@@ -209,6 +210,7 @@ export function transcribeLocal(
 
 function transcribeLocalOnce(
   pcmBuffer: Buffer,
+  prompt?: string,
 ): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
     if (!sidecarProcess || !sidecarReady) {
@@ -277,8 +279,21 @@ function transcribeLocalOnce(
 
     proc.once("exit", onExit);
 
-    // Write length-prefixed PCM to stdin
+    // Each request is two length-prefixed frames written to stdin: a small
+    // JSON metadata frame (currently just an optional vocabulary/decoding
+    // hint "prompt"), followed by the raw PCM frame. An empty metadata frame
+    // ("{}") means no options were provided, which is the same as omitting
+    // them, so behavior is unchanged when `prompt` is absent.
     try {
+      const requestJson = Buffer.from(
+        JSON.stringify(prompt ? { prompt } : {}),
+        "utf8",
+      );
+      const requestLenBuf = Buffer.alloc(4);
+      requestLenBuf.writeUInt32LE(requestJson.length);
+      proc.stdin?.write(requestLenBuf);
+      proc.stdin?.write(requestJson);
+
       const lenBuf = Buffer.alloc(4);
       lenBuf.writeUInt32LE(pcmBuffer.length);
       proc.stdin?.write(lenBuf);

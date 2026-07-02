@@ -7,6 +7,12 @@ export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Spoke";
 
 const MAX_TOKEN_LENGTH = 80;
 
+// Whisper's initial_prompt eats into the model's 448-token decode context (and
+// mlx_whisper's own DecodingTask further truncates prompt tokens to
+// n_ctx/2 - 1). Keep the rendered prompt string well under that budget so we
+// never crowd out room for the actual transcript.
+const MAX_PROMPT_LENGTH = 400;
+
 type BuildOptions = {
   basePrompt?: string | null | undefined;
   extraVocab?: Array<string | null | undefined> | null | undefined;
@@ -74,5 +80,15 @@ export function buildSTTPrompt(options?: BuildOptions): string {
     (token) => !baseTokens.has(token.toLowerCase()),
   );
   if (filtered.length === 0) return base;
-  return `${base}, ${filtered.join(", ")}`;
+
+  // Add tokens one at a time, stopping before the prompt would exceed the
+  // length cap, so identity tokens (highest priority) are kept over
+  // lower-priority extra vocabulary when the list is long.
+  let result = base;
+  for (const token of filtered) {
+    const candidate = `${result}, ${token}`;
+    if (candidate.length > MAX_PROMPT_LENGTH) break;
+    result = candidate;
+  }
+  return result;
 }

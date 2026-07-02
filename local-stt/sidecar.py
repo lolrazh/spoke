@@ -8,7 +8,14 @@ mlx-speech (CohereAsrModel). Heavy per-family imports are loaded lazily so that
 selecting one family never imports the other.
 
 Daemon mode loads the model once, emits {"type":"ready"}, then reads requests
-as 4-byte little-endian length + raw PCM16 mono 16 kHz audio.
+as two length-prefixed frames on stdin:
+  1. A JSON metadata frame: 4-byte little-endian length + UTF-8 JSON object
+     (currently supports an optional "prompt" string used as a vocabulary/
+     decoding hint). An empty object ("{}") means no options.
+  2. A raw audio frame: 4-byte little-endian length + raw PCM16 mono 16 kHz
+     audio.
+A zero-length metadata frame (i.e. the 4-byte length alone, with no JSON or
+audio frame following) is a shutdown request.
 
 Protocol stdout events:
   {"type":"ready"}
@@ -321,7 +328,9 @@ class Engine:
 
     load()    -> load weights into memory.
     warmup()  -> optionally compile kernels (no output emitted).
-    transcribe(audio) -> emit a {"type":"done", ...} event for one request.
+    transcribe(audio, prompt) -> emit a {"type":"done", ...} event for one
+        request. `prompt` is an optional vocabulary/decoding hint string;
+        engines that cannot use it should ignore it rather than error.
     """
 
     def load(self) -> None:  # pragma: no cover - interface
@@ -330,7 +339,9 @@ class Engine:
     def warmup(self) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
-    def transcribe(self, audio: np.ndarray) -> None:  # pragma: no cover - interface
+    def transcribe(
+        self, audio: np.ndarray, prompt: str | None = None
+    ) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
 
@@ -492,7 +503,7 @@ class WhisperEngine(Engine):
         except Exception as exc:
             log(f"sidecar: warmup failed; continuing cold: {exc}")
 
-    def transcribe(self, audio: np.ndarray) -> None:
+    def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
         request_start = time.perf_counter()
         stats = audio_stats(audio)
         audio_analysis_ms = round((time.perf_counter() - request_start) * 1000)
@@ -522,7 +533,9 @@ class WhisperEngine(Engine):
         if self.model is None:
             raise RuntimeError("Whisper model has not been loaded.")
 
-        result = transcribe_audio(self.model, audio, self.language, self.sample_len)
+        result = transcribe_audio(
+            self.model, audio, self.language, self.sample_len, prompt=prompt
+        )
         inference_ms = round((time.perf_counter() - start) * 1000)
         memory = memory_snapshot()
         clear_cache_if_enabled()
@@ -583,6 +596,7 @@ def transcribe_audio(
     audio: np.ndarray,
     language: str | None,
     sample_len: int | None,
+    prompt: str | None = None,
 ) -> dict[str, Any]:
     log_mel_spectrogram = _w["log_mel_spectrogram"]
     pad_or_trim = _w["pad_or_trim"]
@@ -647,6 +661,13 @@ def transcribe_audio(
                 sample_len=sample_len,
                 fp16=True,
                 without_timestamps=True,
+                # Vocabulary/decoding hint (proper nouns, product names, etc).
+                # mlx_whisper's DecodingTask treats this like Whisper's
+                # initial_prompt: it seeds the decode context and is itself
+                # truncated to the model's context budget, so no additional
+                # bounding is needed here beyond what buildSTTPrompt already
+                # caps on the caller side.
+                prompt=prompt,
             ),
             timings=timings,
             profile_enabled=profile_enabled,
@@ -816,7 +837,16 @@ class CohereEngine(Engine):
         except Exception as exc:
             log(f"sidecar: warmup failed; continuing cold: {exc}")
 
-    def transcribe(self, audio: np.ndarray) -> None:
+    def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
+        # mlx-speech's CohereAsrModel.transcribe() (see
+        # mlx_speech.generation.cohere_asr.CohereAsrModel._decode) builds the
+        # decoder's prompt purely from fixed language/punctuation/itn tokens
+        # via tokenizer.get_decoder_prompt_ids(); there is no vocabulary,
+        # hotword, or free-text prompt/context parameter to hook into. The
+        # request-level prompt is accepted for API symmetry with WhisperEngine
+        # but intentionally ignored here.
+        del prompt
+
         request_start = time.perf_counter()
         stats = audio_stats(audio)
         audio_analysis_ms = round((time.perf_counter() - request_start) * 1000)
@@ -913,6 +943,29 @@ def build_engine(family: str, weights_dir: Path, language: str | None) -> Engine
     raise ValueError(f"Unknown engine family: {family}")
 
 
+def read_length_prefixed(stream) -> bytes | None:
+    """Read one 4-byte-length-prefixed frame. Returns None for a zero-length
+    frame (used as the shutdown signal)."""
+    length_bytes = read_exact(stream, 4)
+    length = struct.unpack("<I", length_bytes)[0]
+    if length == 0:
+        return None
+    return read_exact(stream, length)
+
+
+def parse_request_metadata(raw: bytes) -> dict[str, Any]:
+    """Best-effort parse of the JSON metadata frame. Malformed or non-object
+    metadata is treated as empty rather than failing the request."""
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        log(f"sidecar: failed to parse request metadata, ignoring: {exc}")
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def daemon_mode(engine: Engine) -> int:
     try:
         engine.load()
@@ -927,19 +980,29 @@ def daemon_mode(engine: Engine) -> int:
 
     while True:
         try:
-            length_bytes = read_exact(sys.stdin.buffer, 4)
+            metadata_raw = read_length_prefixed(sys.stdin.buffer)
         except EOFError:
             log("sidecar: stdin closed, exiting")
             return 0
 
-        length = struct.unpack("<I", length_bytes)[0]
-        if length == 0:
+        if metadata_raw is None:
             log("sidecar: received shutdown request")
             return 0
 
         try:
-            raw = read_exact(sys.stdin.buffer, length)
-            engine.transcribe(pcm16_to_float32(raw))
+            request = parse_request_metadata(metadata_raw)
+            prompt = request.get("prompt")
+            if prompt is not None and not isinstance(prompt, str):
+                prompt = None
+
+            # Unlike the metadata frame above, a zero-length audio frame is a
+            # legitimate (if degenerate) request, not a shutdown signal, so
+            # read it directly rather than via read_length_prefixed().
+            audio_length_bytes = read_exact(sys.stdin.buffer, 4)
+            audio_length = struct.unpack("<I", audio_length_bytes)[0]
+            raw = read_exact(sys.stdin.buffer, audio_length)
+
+            engine.transcribe(pcm16_to_float32(raw), prompt=prompt)
         except EOFError:
             log("sidecar: stdin closed mid-request, exiting")
             return 0

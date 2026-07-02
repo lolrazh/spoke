@@ -71,7 +71,17 @@ describe("localSttLifecycle", () => {
 
     expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
     expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
-    expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer);
+    expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, undefined);
+  });
+
+  it("passes an optional prompt through to the sidecar engine", async () => {
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const pcmBuffer = Buffer.from([1, 2, 3]);
+    const prompt = "Your vocabulary includes: Spoke, Sandeep";
+
+    await transcribeWithLocalSidecar(pcmBuffer, prompt);
+
+    expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, prompt);
   });
 
   it("does not spawn when the sidecar is already running", async () => {
