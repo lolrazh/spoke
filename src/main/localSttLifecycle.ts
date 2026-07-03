@@ -117,7 +117,8 @@ export async function setActiveModelAndResync(modelId: string): Promise<void> {
 
 export async function transcribeWithLocalSidecar(
   pcmBuffer: Buffer,
+  prompt?: string,
 ): Promise<LocalTranscribeResult> {
   await ensureLocalSidecarRunning();
-  return transcribeLocal(pcmBuffer);
+  return transcribeLocal(pcmBuffer, prompt);
 }

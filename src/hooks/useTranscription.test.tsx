@@ -7,6 +7,7 @@ import {
   FakeAudioWorkletNode,
 } from "../test/fakes/fakeAudio";
 import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
+import { addTranscription } from "../state/transcriptionHistory";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import type { VadAudioResult } from "../utils/vadTrimmer";
 
@@ -23,6 +24,42 @@ vi.mock("../utils/vadTrimmer", () => ({
   prewarmVad: vi.fn(() => Promise.resolve()),
   trimCapturedAudioWithVad: vi.fn(),
 }));
+
+// By default the streaming VAD session reports itself as unusable so every
+// existing test exercises the exact same fixed-post-roll +
+// trimCapturedAudioWithVad fallback path that ran before streaming VAD was
+// introduced. Tests that specifically exercise the adaptive path override
+// this per-test via `mockCreateStreamingVadSession`.
+const mockCreateStreamingVadSession = vi.fn(() => createUnusableStreamingVadSessionFake());
+vi.mock("../utils/streamingVad", () => ({
+  createStreamingVadSession: (...args: unknown[]) =>
+    mockCreateStreamingVadSession(...(args as [])),
+}));
+
+function createUnusableStreamingVadSessionFake() {
+  return {
+    isUsable: () => false,
+    pushFrame: vi.fn(),
+    waitForQuiet: vi.fn(async () => 0),
+    finish: vi.fn(async () => null),
+    dispose: vi.fn(),
+  };
+}
+
+function createUsableStreamingVadSessionFake(overrides: {
+  waitForQuiet?: (maxWaitMs: number) => Promise<number>;
+  finish?: (audio: CapturedAudio) => Promise<VadAudioResult | null>;
+} = {}) {
+  return {
+    isUsable: () => true,
+    pushFrame: vi.fn(),
+    waitForQuiet: vi.fn(overrides.waitForQuiet ?? (async () => 0)),
+    finish: vi.fn(
+      overrides.finish ?? (async (audio: CapturedAudio) => createVadResult(audio, true)),
+    ),
+    dispose: vi.fn(),
+  };
+}
 
 vi.mock("../state/transcriptionHistory", () => ({
   addTranscription: vi.fn(() => Promise.resolve()),
@@ -286,14 +323,16 @@ describe("useTranscription", () => {
 
   it("stops after recorder startup resolves when key-up wins the startup race", async () => {
     const originalAudioContext = global.AudioContext;
-    let resolveAddModule: (() => void) | null = null;
+    const addModuleResolver: { resolve: (() => void) | null } = {
+      resolve: null,
+    };
 
     class SlowAudioContext extends FakeAudioContext {
       audioWorklet = {
         addModule: vi.fn(
           () =>
             new Promise<void>((resolve) => {
-              resolveAddModule = resolve;
+              addModuleResolver.resolve = resolve;
             }),
         ),
       };
@@ -329,9 +368,9 @@ describe("useTranscription", () => {
 
       expect(result.current.processing).toBe(true);
       expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
-      expect(resolveAddModule).toBeTruthy();
+      expect(addModuleResolver.resolve).toBeTruthy();
 
-      resolveAddModule?.();
+      addModuleResolver.resolve?.();
 
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 600));
@@ -372,6 +411,56 @@ describe("useTranscription", () => {
     expect(result.current.text).toBe("");
   });
 
+  it("discards an in-flight stop pipeline when cancelled mid-processing", async () => {
+    let resolveTranscription:
+      | ((value: { text: string; metrics: Record<string, unknown> }) => void)
+      | null = null;
+    (window.stt.transcribeLocal as any).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveTranscription = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    expect(result.current.recording).toBe(true);
+
+    await act(async () => {
+      result.current.stop();
+      // Let stop progress past post-roll and VAD into transcription
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    expect(result.current.processing).toBe(true);
+    expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      result.current.cancel();
+    });
+
+    expect(result.current.processing).toBe(false);
+
+    await act(async () => {
+      resolveTranscription?.({ text: "Cancelled transcription", metrics: {} });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(result.current.text).toBe("");
+    expect(vi.mocked(addTranscription)).not.toHaveBeenCalled();
+    expect(window.clipboard.insertText).not.toHaveBeenCalled();
+  });
+
   it("skips local transcription when VAD detects no speech", async () => {
     vi.mocked(trimCapturedAudioWithVad).mockImplementationOnce((audio) =>
       Promise.resolve(createVadResult(audio, false)),
@@ -396,6 +485,177 @@ describe("useTranscription", () => {
 
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
     expect(result.current.text).toBe("");
+  });
+
+  it("falls back to the fixed post-roll and post-hoc VAD when streaming VAD never becomes usable", async () => {
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Fallback path",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    const stopStartedAt = performance.now();
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    const elapsed = performance.now() - stopStartedAt;
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Fallback path");
+    });
+    expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+    // Fell all the way through today's exact fixed post-roll wait (~240ms).
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+  });
+
+  it("skips the post-roll wait and post-hoc VAD when the streaming VAD already confirmed speech ended", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      waitForQuiet: async () => 0,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Adaptive path",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    expect(usableSession.pushFrame).toHaveBeenCalled();
+
+    const consoleInfoSpy = vi.spyOn(console, "info");
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Adaptive path");
+    });
+    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+    expect(usableSession.finish).toHaveBeenCalledTimes(1);
+    // The old fixed post-roll fallback never ran.
+    expect(trimCapturedAudioWithVad).not.toHaveBeenCalled();
+    // The latency log's post_roll_ms honestly reflects the actual
+    // (near-zero) adaptive wait, not the old fixed POST_ROLL_MS.
+    const latencyCall = consoleInfoSpy.mock.calls.find(
+      (call) => call[0] === "[Latency]",
+    );
+    const payload = latencyCall?.[2] as { post_roll_ms: number } | undefined;
+    expect(payload?.post_roll_ms).toBeLessThan(50);
+    consoleInfoSpy.mockRestore();
+  });
+
+  it("caps the adaptive post-roll wait at POST_ROLL_MS when the streaming VAD never settles", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      waitForQuiet: async (maxWaitMs) => maxWaitMs,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Capped wait",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Capped wait");
+    });
+    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+  });
+
+  it("falls back to post-hoc VAD if the streaming session's finish() returns null mid-recording", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      finish: async () => null,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Recovered via fallback",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Recovered via fallback");
+    });
+    expect(usableSession.finish).toHaveBeenCalledTimes(1);
+    expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes the streaming VAD session on cancel()", async () => {
+    const usableSession = createUsableStreamingVadSessionFake();
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.cancel();
+    });
+
+    expect(usableSession.dispose).toHaveBeenCalledTimes(1);
+    expect(usableSession.finish).not.toHaveBeenCalled();
   });
 });
 

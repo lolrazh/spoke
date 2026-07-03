@@ -10,6 +10,13 @@ export interface TranscriptionContext {
   identityName?: string;
   selectionText?: string;
   ocrWords?: string[];
+  /**
+   * Optional vocabulary/decoding-hint prompt (built via
+   * `shared/sttPrompt.ts#buildSTTPrompt`) passed through to the local STT
+   * sidecar's Whisper engine as an initial_prompt-style hint. Ignored by
+   * providers/engines that don't support prompt conditioning.
+   */
+  sttPrompt?: string;
 }
 
 export interface PrepareTranscriptionInput {

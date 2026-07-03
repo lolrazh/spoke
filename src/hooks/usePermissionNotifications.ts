@@ -1,4 +1,7 @@
 import { useCallback, useRef, useEffect } from "react";
+import { createLogger } from "../utils/logger";
+
+const permissionsLog = createLogger("Permissions");
 
 // Notification timing tokens
 export const PERMISSION_NOTIFICATION_DURATION_MS = 6000;
@@ -15,7 +18,7 @@ const logPermissionsDebug = (...args: unknown[]) => {
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).has("debugPerm")
   ) {
-    console.log("[Permissions]", ...args);
+    permissionsLog.info(...args);
   }
 };
 

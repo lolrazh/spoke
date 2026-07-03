@@ -13,6 +13,14 @@ export interface PcmCaptureSessionOptions {
   frameSamples?: number;
   onAudioLevel?: (level: number) => void;
   onError?: (error: Error) => void;
+  /**
+   * Called with each raw PCM16 frame as it arrives in real time during
+   * capture (same frames later concatenated into the final CapturedAudio at
+   * stop()). Used to feed a streaming VAD processor incrementally instead of
+   * waiting for the whole clip. Optional and purely additive — omit it and
+   * capture behaves exactly as before.
+   */
+  onPcmFrame?: (frame: Int16Array) => void;
 }
 
 type WorkletAudioMessage = {
@@ -37,6 +45,7 @@ export class PcmCaptureSession {
   private readonly frameSamples: number;
   private readonly onAudioLevel?: (level: number) => void;
   private readonly onError?: (error: Error) => void;
+  private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly chunks: Int16Array[] = [];
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -50,6 +59,7 @@ export class PcmCaptureSession {
     this.frameSamples = options.frameSamples ?? PCM_CAPTURE_FRAME_SAMPLES;
     this.onAudioLevel = options.onAudioLevel;
     this.onError = options.onError;
+    this.onPcmFrame = options.onPcmFrame;
   }
 
   async start(stream: MediaStream): Promise<void> {
@@ -114,6 +124,7 @@ export class PcmCaptureSession {
       const frame = new Int16Array(message.samples);
       this.chunks.push(frame);
       this.onAudioLevel?.(calculatePcm16Level(frame));
+      this.onPcmFrame?.(frame);
       return;
     }
 

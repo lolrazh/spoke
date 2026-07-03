@@ -32,7 +32,9 @@ const DEFAULT_CONFIG: EnhancementConfig = {
   enabled: true,
   routerEnabled: true,
   provider: "groq-cloud",
-  model: "llama-3.3-70b-versatile",
+  // Default tier handles punctuation/cleanup only — the small instant model
+  // is plenty; advanced and edit tiers keep the larger 70B model.
+  model: "llama-3.1-8b-instant",
   temperature: 0.2,
   timeoutMs: 25_000,
   advancedModel: "llama-3.3-70b-versatile",

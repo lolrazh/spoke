@@ -104,7 +104,7 @@ declare global {
       setClickThrough: (clickThrough: boolean) => void;
       setFocusable: (focusable: boolean) => void;
       focusWindow: () => void;
-      expandPill: (callback: () => void) => void;
+      expandPill: (callback: () => void) => () => void;
       onPasteShortcutPressed: (callback: () => void) => () => void;
       requestExpandPill: () => Promise<{ ok: boolean }>;
       revealPill: () => Promise<{ ok: boolean }>;
@@ -206,14 +206,15 @@ declare global {
         };
         error?: string;
       }>;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      invoke?: (channel: string, ...args: any[]) => Promise<unknown>;
     };
     /** Receive active display information and computed UI scale from main */
-    onActiveDisplay?: (cb: (payload: ActiveDisplayPayload) => void) => void;
+    onActiveDisplay?: (
+      cb: (payload: ActiveDisplayPayload) => void,
+    ) => () => void;
     stt: {
       transcribeLocal: (
         pcmBuffer: ArrayBuffer,
+        prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       transcribeApiKeyProvider: (
         providerId: ApiKeyTranscriptionProviderId,

@@ -35,6 +35,8 @@ import {
   ENABLE_ONBOARDING_PARTICLES,
   ENABLE_SCREEN_CONTEXT,
 } from "../config/featureFlags";
+import { HOLD_DURATION_MS, DOUBLE_TAP_MS } from "../constants/gestures";
+import { createLogger } from "../utils/logger";
 import {
   panelCascadeContainer,
   panelCascadeItem,
@@ -43,6 +45,8 @@ import {
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
+const devLog = createLogger("DEV");
+const devNotifyLog = createLogger("DEV NOTIFY");
 // Make permission mocking opt-in via URL (?mockPerms)
 const params =
   typeof window !== "undefined"
@@ -56,10 +60,10 @@ const devFlags = {
   isDevelopment,
   methods: {
     devLog: (...args: unknown[]) => {
-      if (isDevelopment) console.log("[DEV]", ...args);
+      if (isDevelopment) devLog.info(...args);
     },
     devNotify: (message: string) => {
-      if (isDevelopment) console.log("[DEV NOTIFY]", message);
+      if (isDevelopment) devNotifyLog.info(message);
     },
   },
 };
@@ -645,14 +649,14 @@ const Onboarding: React.FC = () => {
       if (currentStep !== "hotkey-test") return;
 
       const heldMs = downAt ? now - downAt : 0;
-      if (heldMs >= 130) {
+      if (heldMs >= HOLD_DURATION_MS) {
         activeDictationModeRef.current = "push-to-talk";
         lastTapUpAtRef.current = null;
         return;
       }
 
       const lastTapUpAt = lastTapUpAtRef.current;
-      if (lastTapUpAt && now - lastTapUpAt <= 450) {
+      if (lastTapUpAt && now - lastTapUpAt <= DOUBLE_TAP_MS) {
         activeDictationModeRef.current = "hands-free";
         lastTapUpAtRef.current = null;
       } else {
@@ -766,7 +770,7 @@ const Onboarding: React.FC = () => {
                       accessibility: false,
                       inputMonitoring: false,
                     });
-                    mockPermissions.resetPermissions();
+                    mockPermissions.resetPermissions?.();
                   }}
                 >
                   Reset Mock Perms

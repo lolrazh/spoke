@@ -41,10 +41,29 @@ describe("localSttProvider", () => {
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+    expect(window.stt.transcribeLocal).toHaveBeenCalledWith(
+      expect.any(ArrayBuffer),
+      undefined,
+    );
     expect(result).toEqual({
       text: "local transcript",
       metrics: { inference_ms: 42 },
     });
+  });
+
+  it("passes the context's sttPrompt through to the Electron bridge", async () => {
+    const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
+    const sttPrompt = "Your vocabulary includes: Spoke, Sandeep";
+
+    await localSttProvider.transcribe({
+      audio,
+      context: { mode: "dictation", sttPrompt },
+    });
+
+    expect(window.stt.transcribeLocal).toHaveBeenCalledWith(
+      expect.any(ArrayBuffer),
+      sttPrompt,
+    );
   });
 
   it("fails prepare with a clear message when the model is not installed", async () => {

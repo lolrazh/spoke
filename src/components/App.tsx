@@ -14,13 +14,14 @@ import {
   PERMISSIONS_CONTENT_WIDTH,
   PERMISSIONS_CONTENT_HEIGHT,
 } from "../constants/window";
+import { MIN_UI_SCALE, MAX_UI_SCALE } from "../constants/display";
 import { TOKENS } from "../config/uiTokens";
-import { playToggleOn } from "../utils/audioFeedback";
 import {
   PermissionsProvider,
   usePermissionsController,
 } from "../state/permissionsContext";
 import { initTranscriptionHistory } from "../state/transcriptionHistory";
+import { usePttGestures } from "../hooks/usePttGestures";
 import {
   usePermissionNotifications,
   PERMISSION_NOTIFICATION_ACTION_ID,
@@ -53,22 +54,6 @@ type PillMetrics = {
   pillRect: DOMRect | null;
   notificationText: string | null;
   devicePixelRatio: number;
-};
-
-const leadingThrottle = <T extends (...args: unknown[]) => void>(
-  fn: T,
-  delay: number,
-) => {
-  let timeoutId: NodeJS.Timeout | null = null;
-  return (...args: Parameters<T>) => {
-    if (timeoutId == null) {
-      fn(...args);
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-      }, delay);
-    }
-    // Ignore subsequent calls while throttled - do NOT reset the timeout
-  };
 };
 
 const AppInner: React.FC = () => {
@@ -183,6 +168,24 @@ const AppInner: React.FC = () => {
     return true;
   }, [triggerPermissionNotification]);
 
+  // Mirrors the original handlePermissionOutcome denial tail: re-check mic
+  // permission and surface either the dedicated permission notification or
+  // a generic toast. Invoked by usePttGestures whenever a start attempt is
+  // actually denied (not merely superseded by a later key-up).
+  const handleMicPermissionDenied = useCallback(async () => {
+    try {
+      const mic = await window.electron?.checkMicrophonePermission?.();
+      if (mic && mic.granted === false) {
+        triggerPermissionNotification(
+          "ptt",
+          PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
+        );
+      } else {
+        window.notifications?.send?.("Microphone access needed");
+      }
+    } catch {}
+  }, [triggerPermissionNotification]);
+
   // Only open mic during dictation
   const trans = useTranscription({
     autoEnumerateDevices: true,
@@ -193,22 +196,6 @@ const AppInner: React.FC = () => {
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
   const [isTextTruncated, setIsTextTruncated] = useState(false);
   const ghostRef = useRef<HTMLSpanElement | null>(null);
-  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Double-tap detection for hands-free (Right Option)
-  const lastTapUpRef = useRef<number | null>(null);
-  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isLongPressRef = useRef(false);
-  const isOptionDownRef = useRef(false);
-  const gestureTokenCounterRef = useRef(0);
-  const pendingStartTokenRef = useRef<{
-    id: number;
-    kind: "hold" | "doubleTap";
-  } | null>(null);
-  const holdActivationNonceRef = useRef<number | null>(null);
-  // Prevent double-playing the start cue when long-press timer and
-  // double-tap start race on first gesture after idle
-  const startCuePlayedRef = useRef(false);
-  const latestTransRef = useRef(trans);
   const [trace, setTrace] = useState<string[]>([]);
   const [pendingHideAfterCollapse, setPendingHideAfterCollapse] = useState<{
     active: boolean;
@@ -216,43 +203,6 @@ const AppInner: React.FC = () => {
     onAfter?: () => void;
     deferNotification?: boolean;
   }>({ active: false, message: "" });
-
-  const permissionCheckNonceRef = useRef(0);
-  const permissionCheckStateRef = useRef<{
-    token: number | null;
-    result: boolean | null;
-  }>({ token: null, result: null });
-  const permissionCheckPromiseRef = useRef<Promise<boolean> | null>(null);
-  const activeCaptureRef = useRef<{
-    token: number;
-    kind: "hold" | "doubleTap";
-  } | null>(null);
-  const postStartActionRef = useRef<Map<number, "cancel" | "stop">>(new Map());
-  const prevRecordingRef = useRef(trans.recording);
-
-  const beginPermissionCheck = useCallback(() => {
-    const nextToken = permissionCheckNonceRef.current + 1;
-    permissionCheckNonceRef.current = nextToken;
-    permissionCheckStateRef.current = { token: nextToken, result: null };
-    const promise = canProceedWithStart();
-    permissionCheckPromiseRef.current = promise;
-    promise
-      .then((allowed) => {
-        if (permissionCheckStateRef.current.token === nextToken) {
-          permissionCheckStateRef.current = {
-            token: nextToken,
-            result: allowed,
-          };
-        }
-        return allowed;
-      })
-      .catch(() => {
-        if (permissionCheckStateRef.current.token === nextToken) {
-          permissionCheckStateRef.current = { token: nextToken, result: null };
-        }
-      });
-    return { token: nextToken, promise };
-  }, [canProceedWithStart]);
 
   const pushTrace = useCallback((msg: string) => {
     setTrace((t) => [
@@ -266,27 +216,14 @@ const AppInner: React.FC = () => {
   }, [trans.mode, pushTrace]);
 
   useEffect(() => {
-    if (!trans.selection) return;
-    const snapshot = trans.selection;
-    const summary = snapshot.hadSelection
-      ? `Selection captured (${snapshot.selectedText?.length ?? 0} chars)`
-      : `Selection inspect ${snapshot.status}`;
-    pushTrace(summary);
-  }, [trans.selection, pushTrace]);
-
-  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setShowDebug(params.has("debugPill"));
   }, []);
 
-  useEffect(() => {
-    latestTransRef.current = trans;
-  }, [trans]);
-
   // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;
-    window.onActiveDisplay?.((payload) => {
+    const unsubscribe = window.onActiveDisplay((payload) => {
       const s = typeof payload?.scale === "number" ? payload.scale : 1;
       setUiScale(s);
 
@@ -298,6 +235,7 @@ const AppInner: React.FC = () => {
 
       // Display info updated (removed noisy logging)
     });
+    return unsubscribe;
   }, []);
 
   const {
@@ -355,208 +293,6 @@ const AppInner: React.FC = () => {
     panelView,
     pillDispatch,
   ]);
-
-  const beginCaptureSession = useCallback(
-    (token: number, kind: "hold" | "doubleTap") => {
-      activeCaptureRef.current = { token, kind };
-      postStartActionRef.current.delete(token);
-      pushTrace(`Capture session begin (${kind}) token=${token}`);
-    },
-    [pushTrace],
-  );
-
-  const schedulePostStartAction = useCallback(
-    (token: number, action: "cancel" | "stop") => {
-      postStartActionRef.current.set(token, action);
-      pushTrace(`Scheduled post-start ${action} for token=${token}`);
-    },
-    [pushTrace],
-  );
-
-  const clearActiveCapture = useCallback(
-    (token?: number) => {
-      if (typeof token === "number") {
-        postStartActionRef.current.delete(token);
-        if (activeCaptureRef.current?.token === token) {
-          pushTrace(
-            `Capture session cleared (${activeCaptureRef.current.kind}) token=${token}`,
-          );
-          activeCaptureRef.current = null;
-        }
-        return;
-      }
-      if (activeCaptureRef.current) {
-        pushTrace(
-          `Capture session cleared (${activeCaptureRef.current.kind}) token=${activeCaptureRef.current.token}`,
-        );
-      }
-      activeCaptureRef.current = null;
-      postStartActionRef.current.clear();
-    },
-    [pushTrace],
-  );
-
-  const monitorStartResolution = useCallback(
-    (token: number, kind: "hold" | "doubleTap", promise: Promise<unknown>) => {
-      promise
-        .then(() => {
-          const scheduled = postStartActionRef.current.get(token);
-          if (!scheduled) return;
-          pushTrace(
-            `Start resolved; executing scheduled ${scheduled} for ${kind} token=${token}`,
-          );
-          if (scheduled === "cancel") {
-            try {
-              latestTransRef.current.cancel();
-            } catch {}
-            pillDispatch({ type: "CANCEL" });
-          } else {
-            try {
-              latestTransRef.current.stop();
-            } catch {}
-            pillDispatch({ type: "PTT_STOP" });
-          }
-          clearActiveCapture(token);
-        })
-        .catch((err) => {
-          pushTrace(
-            `Start failed for ${kind} token=${token}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-          clearActiveCapture(token);
-        })
-        .finally(() => {
-          postStartActionRef.current.delete(token);
-        });
-    },
-    [
-      clearActiveCapture,
-      pillDispatch,
-      pushTrace,
-      triggerPermissionNotification,
-    ],
-  );
-
-  useEffect(() => {
-    const wasRecording = prevRecordingRef.current;
-    if (!wasRecording && trans.recording) {
-      const active = activeCaptureRef.current;
-      const postAction = active
-        ? postStartActionRef.current.get(active.token)
-        : undefined;
-      if (active && postAction) {
-        pushTrace(
-          `Start pending scheduled ${postAction} for ${active.kind} token=${active.token}`,
-        );
-      } else if (active && active.kind === "hold" && !isOptionDownRef.current) {
-        pushTrace("Auto-cancel hold capture after late start");
-        try {
-          latestTransRef.current.cancel();
-        } catch {}
-        pillDispatch({ type: "CANCEL" });
-        clearActiveCapture(active.token);
-      }
-    }
-    prevRecordingRef.current = trans.recording;
-  }, [clearActiveCapture, pillDispatch, pushTrace, trans.recording]);
-
-  const snapshotPermissionGuard = useCallback(
-    (refresh = false) => {
-      if (refresh) {
-        const { token, promise } = beginPermissionCheck();
-        return {
-          permissionToken: token,
-          permissionResult: permissionCheckStateRef.current.result,
-          permissionPromise: promise,
-        };
-      }
-      let { token: permissionToken, result: permissionResult } =
-        permissionCheckStateRef.current;
-      let permissionPromise = permissionCheckPromiseRef.current;
-      if (permissionToken == null) {
-        const { token, promise } = beginPermissionCheck();
-        permissionToken = token;
-        permissionResult = permissionCheckStateRef.current.result;
-        permissionPromise = promise;
-      }
-      return { permissionToken, permissionResult, permissionPromise };
-    },
-    [beginPermissionCheck],
-  );
-
-  const handlePermissionOutcome = useCallback(
-    async (
-      allowed: boolean,
-      tokenId: number,
-      kind: "hold" | "doubleTap",
-      permissionToken: number | null,
-    ) => {
-      const pendingToken = pendingStartTokenRef.current;
-      if (
-        !pendingToken ||
-        pendingToken.id !== tokenId ||
-        pendingToken.kind !== kind
-      ) {
-        return;
-      }
-      if (
-        permissionToken != null &&
-        permissionCheckStateRef.current.token !== permissionToken
-      ) {
-        return;
-      }
-      if (!allowed) {
-        pendingStartTokenRef.current = null;
-        if (kind === "hold") {
-          isLongPressRef.current = false;
-        }
-        try {
-          latestTransRef.current.cancel();
-        } catch {}
-        pushTrace(`PTT ${kind} gate denied`);
-        pillDispatch({ type: "CANCEL" });
-        try {
-          const mic = await window.electron?.checkMicrophonePermission?.();
-          if (mic && mic.granted === false) {
-            triggerPermissionNotification(
-              "ptt",
-              PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
-            );
-          } else {
-            window.notifications?.send?.("Microphone access needed");
-          }
-        } catch {}
-        clearActiveCapture(tokenId);
-        return;
-      }
-      pendingStartTokenRef.current = null;
-      pushTrace(`PTT ${kind} capture started`);
-    },
-    [clearActiveCapture, pillDispatch, pushTrace],
-  );
-
-  const attachPermissionPromise = useCallback(
-    (
-      permissionPromise: Promise<boolean> | null | undefined,
-      tokenId: number,
-      kind: "hold" | "doubleTap",
-      permissionToken: number | null,
-    ) => {
-      if (!permissionPromise) {
-        void handlePermissionOutcome(true, tokenId, kind, permissionToken);
-        return;
-      }
-      permissionPromise
-        .then((allowed) =>
-          handlePermissionOutcome(allowed, tokenId, kind, permissionToken),
-        )
-        .catch(() =>
-          handlePermissionOutcome(true, tokenId, kind, permissionToken),
-        );
-    },
-    [handlePermissionOutcome],
-  );
 
   useEffect(() => {
     if (!trans.recording && !trans.processing) {
@@ -617,9 +353,8 @@ const AppInner: React.FC = () => {
       window.electron?.focusWindow?.();
     };
 
-    window.electron?.expandPill?.(handleExpandPill);
-
-    // Note: No cleanup needed as this is a one-time setup
+    const unsubscribe = window.electron?.expandPill?.(handleExpandPill);
+    return () => unsubscribe?.();
   }, []);
 
   // Ensure click-through is properly managed based on pill state
@@ -631,45 +366,6 @@ const AppInner: React.FC = () => {
       window.electron?.focusWindow?.();
     }
   }, [pillState]);
-
-  // Subscribe to a global cancel signal (Right Command via native helper; wired later)
-  useEffect(() => {
-    const onCancel = () => {
-      // Treat cancel as concluding the current PTT gesture: prevent pending long-press start
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      // Clear double-tap detection state to allow immediate re-activation
-      if (doubleTapTimerRef.current) {
-        clearTimeout(doubleTapTimerRef.current);
-        doubleTapTimerRef.current = null;
-      }
-      lastTapUpRef.current = null;
-      // Force the key-up handler to take the long-press branch (which is a no-op when not recording)
-      isLongPressRef.current = true;
-      // If we're recording, perform a true cancel and snap UI back to IDLE
-      if (latestTransRef.current.recording) {
-        latestTransRef.current.cancel();
-        pillDispatch({ type: "CANCEL" });
-        pushTrace("PTT cancel (recording)");
-        return;
-      }
-      // If processing, just snap UI back to IDLE (Milestone 2 may add abort)
-      if (latestTransRef.current.processing) {
-        // Abort in-flight network if any, then snap to IDLE
-        latestTransRef.current.cancel();
-        pillDispatch({ type: "CANCEL" });
-        pushTrace("PTT cancel (processing)");
-      }
-    };
-    const cleanup = window.ptt?.onCancel
-      ? window.ptt.onCancel(onCancel)
-      : undefined;
-    return () => {
-      if (cleanup) cleanup();
-    };
-  }, [pillDispatch, pushTrace]);
 
   // Handle click outside to collapse when expanded (only works when click-through is disabled)
   useEffect(() => {
@@ -848,10 +544,8 @@ const AppInner: React.FC = () => {
     }
   }, [pillState]);
 
-  // NOTE: Keep clamp consistent with main process scaling
-  const MIN_UI_SCALE = 0.9;
-  const MAX_UI_SCALE = 1.0;
   // Derived scaled dimensions based on active display scale
+  // (MIN/MAX_UI_SCALE shared with main process via constants/display)
   const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
   const notchTarget = notchWidth && notchWidth > 0 ? notchWidth : null;
   const baseWidthTarget = notchTarget ?? TOKENS.PILL_BASE_W;
@@ -901,281 +595,13 @@ const AppInner: React.FC = () => {
     setIsTextTruncated(isTruncated);
   }, [pillContext.notifMsg, MAX_W]);
 
-  useEffect(() => {
-    if (!window.ptt?.onDown || !window.ptt?.onUp) return;
-
-    const HOLD_DURATION_MS = 130; // slightly longer to avoid interfering with slow double-taps
-
-    const handleFunctionKeyDown = () => {
-      pushTrace(`PTT down`);
-      if (isOptionDownRef.current) {
-        pushTrace(`PTT down ignored (already active)`);
-        return;
-      }
-      isOptionDownRef.current = true;
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-      }
-      startCuePlayedRef.current = false;
-      if (latestTransRef.current.processing) {
-        if (window.notifications?.send) {
-          window.notifications.send("Still transcribing… wait a sec");
-        }
-        isOptionDownRef.current = false;
-        return;
-      }
-      if (latestTransRef.current.recording) {
-        return;
-      }
-      isLongPressRef.current = false;
-      beginPermissionCheck();
-      const holdNonce = ++gestureTokenCounterRef.current;
-      holdActivationNonceRef.current = holdNonce;
-      pressTimerRef.current = setTimeout(() => {
-        if (holdActivationNonceRef.current !== holdNonce) {
-          pushTrace(`PTT long press timer stale`);
-          return;
-        }
-        if (!isOptionDownRef.current) {
-          pushTrace(`PTT long press timer fired but key not down`);
-          return;
-        }
-        isLongPressRef.current = true;
-        holdActivationNonceRef.current = null;
-        if (!startCuePlayedRef.current) {
-          try {
-            playToggleOn();
-          } catch {}
-          startCuePlayedRef.current = true;
-        }
-        if (doubleTapTimerRef.current) {
-          clearTimeout(doubleTapTimerRef.current);
-          doubleTapTimerRef.current = null;
-        }
-        lastTapUpRef.current = null;
-        const { permissionToken, permissionResult, permissionPromise } =
-          snapshotPermissionGuard();
-        pushTrace(`PTT long press start (pending gate)`);
-        pillDispatch({ type: "PTT_START" });
-        const tokenId = ++gestureTokenCounterRef.current;
-        pendingStartTokenRef.current = { id: tokenId, kind: "hold" };
-        beginCaptureSession(tokenId, "hold");
-        if (permissionResult === false) {
-          void handlePermissionOutcome(false, tokenId, "hold", permissionToken);
-          return;
-        }
-        if (!isOptionDownRef.current) {
-          pendingStartTokenRef.current = null;
-          isLongPressRef.current = false;
-          pushTrace(`PTT long press gate aborted (key lifted)`);
-          pillDispatch({ type: "CANCEL" });
-          clearActiveCapture(tokenId);
-          return;
-        }
-        let startResult: void | Promise<void>;
-        try {
-          startResult = latestTransRef.current.start();
-        } catch (err) {
-          pushTrace(
-            `PTT hold start failed synchronously: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-          clearActiveCapture(tokenId);
-          pillDispatch({ type: "CANCEL" });
-          return;
-        }
-        monitorStartResolution(tokenId, "hold", Promise.resolve(startResult));
-        if (permissionResult === true) {
-          void handlePermissionOutcome(true, tokenId, "hold", permissionToken);
-          return;
-        }
-        pushTrace(`PTT long press capture pending gate`);
-        attachPermissionPromise(
-          permissionPromise,
-          tokenId,
-          "hold",
-          permissionToken,
-        );
-      }, HOLD_DURATION_MS);
-    };
-
-    const handleFunctionKeyUp = () => {
-      pushTrace(`PTT up`);
-      if (!isOptionDownRef.current) {
-        pushTrace(`PTT up ignored (no active press)`);
-        lastTapUpRef.current = null;
-        if (doubleTapTimerRef.current) {
-          clearTimeout(doubleTapTimerRef.current);
-          doubleTapTimerRef.current = null;
-        }
-        return;
-      }
-      isOptionDownRef.current = false;
-      if (pressTimerRef.current) {
-        clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = null;
-      }
-      holdActivationNonceRef.current = null;
-      if (
-        pendingStartTokenRef.current?.kind === "hold" &&
-        !latestTransRef.current.recording
-      ) {
-        pendingStartTokenRef.current = null;
-      }
-      if (isLongPressRef.current) {
-        const activeHold =
-          activeCaptureRef.current?.kind === "hold"
-            ? activeCaptureRef.current
-            : null;
-        if (latestTransRef.current.recording) {
-          pendingStartTokenRef.current = null;
-          latestTransRef.current.stop();
-          pushTrace(`PTT long press stop`);
-          pillDispatch({ type: "PTT_STOP" });
-          if (activeHold) {
-            clearActiveCapture(activeHold.token);
-          }
-        } else {
-          pendingStartTokenRef.current = null;
-          if (activeHold) {
-            schedulePostStartAction(activeHold.token, "cancel");
-          }
-          pushTrace(`PTT long press canceled before start`);
-          pillDispatch({ type: "CANCEL" });
-        }
-      } else {
-        const now = Date.now();
-        const DOUBLE_MS = 450; // more forgiving window for double-taps to avoid PTT interference
-        if (lastTapUpRef.current && now - lastTapUpRef.current <= DOUBLE_MS) {
-          if (doubleTapTimerRef.current) {
-            clearTimeout(doubleTapTimerRef.current);
-            doubleTapTimerRef.current = null;
-          }
-          // Check both pendingStartTokenRef AND activeCaptureRef because:
-          // - pendingStartTokenRef gets cleared early by handlePermissionOutcome
-          // - activeCaptureRef persists until the capture session actually completes
-          // This prevents the race where second tap starts NEW recording instead of stopping
-          const pendingTokenId =
-            pendingStartTokenRef.current?.id ??
-            activeCaptureRef.current?.token ??
-            null;
-          const pendingHandsFree =
-            pendingStartTokenRef.current?.kind === "doubleTap" ||
-            activeCaptureRef.current?.kind === "doubleTap";
-          lastTapUpRef.current = null;
-          if (latestTransRef.current.recording) {
-            pendingStartTokenRef.current = null;
-            latestTransRef.current.stop();
-            pushTrace(`PTT double-tap stop`);
-            pillDispatch({ type: "PTT_STOP" });
-            if (activeCaptureRef.current?.kind === "doubleTap") {
-              clearActiveCapture(activeCaptureRef.current.token);
-            }
-          } else if (pendingHandsFree) {
-            pendingStartTokenRef.current = null;
-            pushTrace(`PTT double-tap start canceled before activation`);
-            try {
-              latestTransRef.current.cancel();
-            } catch {}
-            pillDispatch({ type: "CANCEL" });
-            if (pendingTokenId != null) {
-              clearActiveCapture(pendingTokenId);
-            }
-          } else {
-            const { permissionToken, permissionResult, permissionPromise } =
-              snapshotPermissionGuard();
-            const tokenId = ++gestureTokenCounterRef.current;
-            pendingStartTokenRef.current = { id: tokenId, kind: "doubleTap" };
-            beginCaptureSession(tokenId, "doubleTap");
-            if (!startCuePlayedRef.current) {
-              try {
-                playToggleOn();
-              } catch {}
-              startCuePlayedRef.current = true;
-            }
-            pillDispatch({ type: "PTT_START" });
-            pushTrace(`PTT double-tap start (pending gate)`);
-            if (permissionResult === false) {
-              void handlePermissionOutcome(
-                false,
-                tokenId,
-                "doubleTap",
-                permissionToken,
-              );
-              return;
-            }
-            let startResult: void | Promise<void>;
-            try {
-              startResult = latestTransRef.current.start();
-            } catch (err) {
-              pushTrace(
-                `PTT double-tap start failed synchronously: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
-              clearActiveCapture(tokenId);
-              pillDispatch({ type: "CANCEL" });
-              return;
-            }
-            monitorStartResolution(
-              tokenId,
-              "doubleTap",
-              Promise.resolve(startResult),
-            );
-            if (permissionResult === true) {
-              void handlePermissionOutcome(
-                true,
-                tokenId,
-                "doubleTap",
-                permissionToken,
-              );
-              return;
-            }
-            pushTrace(`PTT double-tap capture pending gate`);
-            attachPermissionPromise(
-              permissionPromise,
-              tokenId,
-              "doubleTap",
-              permissionToken,
-            );
-          }
-        } else {
-          lastTapUpRef.current = now;
-          if (doubleTapTimerRef.current)
-            clearTimeout(doubleTapTimerRef.current);
-          doubleTapTimerRef.current = setTimeout(() => {
-            lastTapUpRef.current = null;
-            doubleTapTimerRef.current = null;
-          }, DOUBLE_MS);
-        }
-      }
-      isLongPressRef.current = false;
-    };
-
-    const throttledKeyDown = leadingThrottle(handleFunctionKeyDown, 25);
-    const throttledKeyUp = leadingThrottle(handleFunctionKeyUp, 25);
-    const cleanupOnDown = window.ptt.onDown(throttledKeyDown);
-    const cleanupOnUp = window.ptt.onUp(throttledKeyUp);
-
-    return () => {
-      cleanupOnDown();
-      cleanupOnUp();
-      if (doubleTapTimerRef.current) {
-        clearTimeout(doubleTapTimerRef.current);
-        doubleTapTimerRef.current = null;
-      }
-    };
-  }, [
-    attachPermissionPromise,
-    beginPermissionCheck,
-    clearActiveCapture,
-    handlePermissionOutcome,
-    monitorStartResolution,
+  usePttGestures({
+    trans,
+    pillDispatch,
+    canProceedWithStart,
+    onMicPermissionDenied: handleMicPermissionDenied,
     pushTrace,
-    schedulePostStartAction,
-    snapshotPermissionGuard,
-  ]);
+  });
 
   return (
     <div className="app-container w-full h-screen bg-transparent overflow-hidden relative">

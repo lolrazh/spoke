@@ -113,3 +113,6 @@ worker/.wrangler/
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Local research notes (not for the repo)
+research/

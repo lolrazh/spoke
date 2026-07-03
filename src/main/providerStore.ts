@@ -30,6 +30,17 @@ import type {
   TranscriptionResult,
 } from "../core/transcription/sessionTypes";
 
+// ── Feature flags ──────────────────────────────────────────────────────
+
+/**
+ * Cloud transcription providers were removed from the UI; the app is
+ * local-only. While this flag is false, any previously-selected cloud
+ * provider is coerced back to the local Whisper model at startup and the
+ * cloud STT IPC transcribe path is gated off in main.ts. Flip this single
+ * flag to re-enable the dormant cloud pipeline.
+ */
+export const CLOUD_STT_ENABLED = false;
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type StoredProviderSecret = {
@@ -56,10 +67,10 @@ export function initProviderStore(userDataDir: string): void {
   const prefs = loadSttPreferences();
   providerSecrets = loadProviderSecrets();
   preferredProviderId = prefs.preferredProviderId;
-  // Cloud transcription providers were removed from the UI; the app is
-  // local-only. Coerce any previously-selected cloud provider back to the
-  // local Whisper model so a stale preference can't linger at runtime.
-  if (preferredProviderId !== LOCAL_STT_PROVIDER_ID) {
+  // While cloud STT is disabled, coerce any previously-selected cloud
+  // provider back to the local Whisper model so a stale preference can't
+  // linger at runtime (see CLOUD_STT_ENABLED above).
+  if (!CLOUD_STT_ENABLED && preferredProviderId !== LOCAL_STT_PROVIDER_ID) {
     preferredProviderId = LOCAL_STT_PROVIDER_ID;
   }
 }
@@ -152,16 +163,16 @@ function saveProviderSecrets(
 }
 
 export function encodeProviderSecret(apiKey: string): StoredProviderSecret {
-  if (safeStorage.isEncryptionAvailable()) {
-    return {
-      storage: "safeStorage",
-      value: safeStorage.encryptString(apiKey).toString("base64"),
-    };
+  // Never write secrets to disk in plaintext. Legacy "plainText" entries can
+  // still be READ (see decodeProviderSecret) so existing users aren't locked
+  // out, and are opportunistically re-encrypted once safeStorage is available.
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Secure storage unavailable; API key not saved.");
   }
 
   return {
-    storage: "plainText",
-    value: apiKey,
+    storage: "safeStorage",
+    value: safeStorage.encryptString(apiKey).toString("base64"),
   };
 }
 
@@ -173,6 +184,35 @@ export function decodeProviderSecret(secret: StoredProviderSecret): string {
   return secret.value;
 }
 
+/**
+ * If a legacy plaintext secret is on disk and encryption is now available,
+ * transparently re-encrypt it with safeStorage and persist the upgrade.
+ */
+function maybeReencryptLegacySecret(
+  providerId: ApiKeyTranscriptionProviderId,
+  secret: StoredProviderSecret,
+): void {
+  if (secret.storage !== "plainText" || !safeStorage.isEncryptionAvailable()) {
+    return;
+  }
+
+  try {
+    providerSecrets = {
+      ...providerSecrets,
+      [providerId]: encodeProviderSecret(secret.value),
+    };
+    saveProviderSecrets(providerSecrets);
+    console.log(
+      `[STTSecrets] Re-encrypted legacy plaintext API key for '${providerId}'.`,
+    );
+  } catch (error) {
+    console.error(
+      "[STTSecrets] Failed to re-encrypt legacy plaintext secret:",
+      error,
+    );
+  }
+}
+
 export function hasProviderApiKey(
   providerId: ApiKeyTranscriptionProviderId,
 ): boolean {
@@ -182,7 +222,11 @@ export function hasProviderApiKey(
   }
 
   try {
-    return decodeProviderSecret(secret).trim().length > 0;
+    const hasKey = decodeProviderSecret(secret).trim().length > 0;
+    if (hasKey) {
+      maybeReencryptLegacySecret(providerId, secret);
+    }
+    return hasKey;
   } catch (error) {
     console.error("[STTSecrets] Failed to decode provider secret:", error);
     return false;
@@ -201,6 +245,8 @@ export function getRequiredProviderApiKey(
   if (!apiKey) {
     throw new Error(`No API key configured for provider '${providerId}'.`);
   }
+
+  maybeReencryptLegacySecret(providerId, secret);
 
   return apiKey;
 }
@@ -374,7 +420,7 @@ export async function transcribeWithGroq(
 // ── Deepgram Direct Transcription ─────────────────────────────────────
 
 const DEEPGRAM_TRANSCRIPTION_API_URL = "https://api.deepgram.com/v1/listen";
-const DEEPGRAM_MODEL = "nova-2";
+const DEEPGRAM_MODEL = "nova-3";
 const DEEPGRAM_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 type DeepgramTranscriptionResponse = {

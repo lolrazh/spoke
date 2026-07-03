@@ -53,20 +53,23 @@ export function preSpawnPasteHelper(): void {
   });
 
   try {
-    preSpawnedHelper.stdout.setEncoding("utf8");
-    const onData = (data: string | Buffer) => {
-      const out = data.toString().trim();
-      if (out.includes("paste-daemon-ready") && resolveReady) {
-        resolveReady();
-        resolveReady = null;
-      }
-    };
-    preSpawnedHelper.stdout.on("data", onData);
-    preSpawnedHelper.once("exit", () => {
-      try {
-        preSpawnedHelper?.stdout?.off("data", onData as any);
-      } catch {}
-    });
+    const stdout = preSpawnedHelper.stdout;
+    if (stdout) {
+      stdout.setEncoding("utf8");
+      const onData = (data: string | Buffer) => {
+        const out = data.toString().trim();
+        if (out.includes("paste-daemon-ready") && resolveReady) {
+          resolveReady();
+          resolveReady = null;
+        }
+      };
+      stdout.on("data", onData);
+      preSpawnedHelper.once("exit", () => {
+        try {
+          stdout.off("data", onData);
+        } catch {}
+      });
+    }
   } catch {}
 
   preSpawnedHelper.once("exit", () => {
@@ -130,9 +133,26 @@ export async function pasteViaDaemon(): Promise<boolean> {
 /** Kill the daemon and clean up state */
 export function killPasteDaemon(): void {
   if (preSpawnedHelper && !preSpawnedHelper.killed) {
+    const helper = preSpawnedHelper;
     try {
-      preSpawnedHelper.stdin?.write("exit\n");
+      helper.stdin?.write("exit\n");
     } catch {}
+
+    // Don't trust "exit\n" alone: if the daemon hasn't exited within a
+    // grace period, force-kill it so we never leave an orphan behind.
+    const forceKillTimer = setTimeout(() => {
+      try {
+        if (!helper.killed) {
+          console.warn(
+            "[PasteDaemon] Daemon did not exit after 'exit' command, sending SIGKILL",
+          );
+          helper.kill("SIGKILL");
+        }
+      } catch {}
+    }, 1500);
+    forceKillTimer.unref?.();
+    helper.once("exit", () => clearTimeout(forceKillTimer));
+
     preSpawnedHelper = null;
   }
   readyPromise = null;

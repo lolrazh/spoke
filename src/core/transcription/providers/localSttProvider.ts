@@ -45,7 +45,7 @@ export const localSttProvider: TranscriptionProvider = {
       details: { modelState: status.state },
     });
   },
-  transcribe: async ({ audio }) => {
+  transcribe: async ({ audio, context }) => {
     if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
@@ -71,6 +71,6 @@ export const localSttProvider: TranscriptionProvider = {
       ),
     );
 
-    return window.stt.transcribeLocal(pcmBuffer);
+    return window.stt.transcribeLocal(pcmBuffer, context?.sttPrompt);
   },
 };

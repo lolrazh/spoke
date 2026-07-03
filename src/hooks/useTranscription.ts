@@ -6,11 +6,11 @@
  */
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import type { SelectionInspectSnapshot } from "../types/shared";
 import type {
   TranscriptionContext,
   TranscriptionMode,
   TranscriptionProviderKind,
+  TranscriptionResult,
 } from "../core/transcription/sessionTypes";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import {
@@ -20,12 +20,17 @@ import {
 } from "../core/transcription/defaultSessionOrchestrator";
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import {
   prewarmVad,
   trimCapturedAudioWithVad,
   type VadAudioResult,
 } from "../utils/vadTrimmer";
+import {
+  createStreamingVadSession,
+  type StreamingVadSessionHandle,
+} from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { POST_ROLL_MS } from "../config/audio";
@@ -33,8 +38,17 @@ import {
   ENABLE_SCREEN_CONTEXT,
   ENABLE_TRANSCRIPT_ENHANCEMENT,
 } from "../config/featureFlags";
+import { createLogger } from "../utils/logger";
 
 const PASTE_TIMEOUT_MS = 2_000;
+
+// The hook currently only supports dictation; edit mode plumbing was removed.
+const DICTATION_MODE: TranscriptionMode = "dictation";
+
+const log = createLogger("Transcription");
+const vadLog = createLogger("VAD");
+const ocrLog = createLogger("OCR");
+const latencyLog = createLogger("Latency");
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -44,12 +58,10 @@ export interface UseTranscriptionReturn {
   error: string | null;
   errorId: number;
   mode: TranscriptionMode;
-  selection: SelectionInspectSnapshot | null;
   audioLevel: number;
   start: () => void;
   stop: () => void;
   cancel: () => void;
-  preConnect: () => Promise<void>;
 }
 
 export interface UseTranscriptionOptions {
@@ -68,15 +80,17 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
-  const [mode] = useState<TranscriptionMode>("dictation");
-  const [selection] = useState<SelectionInspectSnapshot | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
 
   const recorderRef = useRef<PcmCaptureSession | null>(null);
   const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
     null,
   );
+  const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
   const stopInFlightRef = useRef(false);
+  // Incremented by cancel(); an in-flight stop() pipeline compares against the
+  // value it captured at entry and bails out once they differ.
+  const stopGenerationRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const ocrWordsRef = useRef<string[]>([]);
   const ocrPromiseRef = useRef<Promise<void> | null>(null);
@@ -105,7 +119,7 @@ export function useTranscription(
       setReady(true);
       return stream;
     } catch (err) {
-      console.error("[Transcription] Failed to get microphone:", err);
+      log.error("Failed to get microphone:", err);
       reportTranscriptionError("Failed to access microphone");
       setReady(false);
       throw err;
@@ -131,8 +145,8 @@ export function useTranscription(
 
     const vadPrewarmTimer = window.setTimeout(() => {
       prewarmVad()
-        .then(() => console.log("[VAD] Prewarm ready"))
-        .catch((err) => console.warn("[VAD] Prewarm failed:", err));
+        .then(() => vadLog.info("Prewarm ready"))
+        .catch((err) => vadLog.warn("Prewarm failed:", err));
     }, 750);
 
     return () => {
@@ -154,11 +168,17 @@ export function useTranscription(
 
   const buildTranscriptionContext = useCallback((): TranscriptionContext => {
     return {
-      mode,
+      mode: DICTATION_MODE,
       language: "en",
-      selectionText: selection?.selectedText || undefined,
+      // Opportunistic: OCR words are gathered in the background starting at
+      // start(), so by the time stop() rebuilds the context they're often
+      // already populated (for local transcription we never block on OCR to
+      // avoid adding latency; whatever's already there just rides along).
+      // With no OCR words yet, buildSTTPrompt still returns its default
+      // vocabulary hint (the product name), which is a free win on its own.
+      sttPrompt: buildSTTPrompt({ extraVocab: ocrWordsRef.current }),
     };
-  }, [mode, selection]);
+  }, []);
 
   const captureScreenshotBase64 = useCallback(async () => {
     if (!ENABLE_SCREEN_CONTEXT) {
@@ -176,7 +196,7 @@ export function useTranscription(
         return result.imageBase64;
       }
     } catch (err) {
-      console.warn("[Context] Screenshot capture failed:", err);
+      log.warn("Screenshot capture failed:", err);
     }
 
     return undefined;
@@ -186,9 +206,7 @@ export function useTranscription(
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
 
-    void prewarmVad().catch((err) =>
-      console.warn("[VAD] Start prewarm failed:", err),
-    );
+    void prewarmVad().catch((err) => vadLog.warn("Start prewarm failed:", err));
 
     const providerId = await resolveActiveProviderId();
     defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
@@ -197,6 +215,9 @@ export function useTranscription(
       await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
         context: buildTranscriptionContext(),
       });
+
+      const streamingVadSession = createStreamingVadSession();
+      streamingVadRef.current = streamingVadSession;
 
       const recorderPromise = (async () => {
         let stream = streamRef.current;
@@ -207,10 +228,11 @@ export function useTranscription(
         const recorder = new PcmCaptureSession({
           onAudioLevel: setAudioLevel,
           onError: (err) => {
-            console.error("[Transcription] PCM capture error:", err);
+            log.error("PCM capture error:", err);
             reportTranscriptionError(err.message);
             setRecording(false);
           },
+          onPcmFrame: (frame) => streamingVadSession.pushFrame(frame),
         });
         await recorder.start(stream);
         return recorder;
@@ -231,13 +253,11 @@ export function useTranscription(
             const result = await window.stt.extractOcr(imageBase64);
             ocrWordsRef.current = result.words ?? [];
             if (result.words?.length) {
-              console.log(
-                `[OCR] Extracted ${result.words.length} vocabulary words`,
-              );
+              ocrLog.info(`Extracted ${result.words.length} vocabulary words`);
             }
           }
         } catch (err) {
-          console.warn("[OCR] Extraction failed:", err);
+          ocrLog.warn("Extraction failed:", err);
           // Non-critical — continue without OCR vocabulary
         }
       })();
@@ -251,11 +271,13 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
-      console.error("[Transcription] Start failed:", err);
+      log.error("Start failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
       activeProviderIdRef.current = null;
       recorderStartPromiseRef.current = null;
+      streamingVadRef.current?.dispose();
+      streamingVadRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -272,6 +294,89 @@ export function useTranscription(
     resolveActiveProviderId,
   ]);
 
+  const awaitPendingOcr = useCallback(async () => {
+    if (!ocrPromiseRef.current) return;
+    await ocrPromiseRef.current;
+    ocrPromiseRef.current = null;
+  }, []);
+
+  // Shared tail of the stop() pipeline for local and cloud providers:
+  // await OCR, enhance, publish text, record history, paste, log latency.
+  const finishTranscription = useCallback(
+    async ({
+      result,
+      timing,
+      providerKind,
+      capturedAudio,
+      vadResult,
+      isCancelled,
+    }: {
+      result: TranscriptionResult;
+      timing: TranscriptionLatencyTiming;
+      providerKind: TranscriptionProviderKind;
+      capturedAudio: CapturedAudio;
+      vadResult: VadAudioResult;
+      isCancelled: () => boolean;
+    }) => {
+      // Wait for OCR to finish, then enhance (no-op when the cloud path
+      // already awaited it before transcribing)
+      await awaitPendingOcr();
+      if (isCancelled()) return;
+
+      let finalText = result.text;
+      if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
+        try {
+          const enhanced = await window.stt.enhance({
+            text: result.text,
+            vocabulary: ocrWordsRef.current,
+            mode: DICTATION_MODE,
+          });
+          finalText = enhanced.text;
+          if (!enhanced.bypassed) {
+            log.info(`Enhanced (${enhanced.tier}): ${finalText.length} chars`);
+          }
+        } catch (err) {
+          log.warn("Enhancement failed, using raw transcript:", err);
+        }
+        if (isCancelled()) return;
+      }
+
+      setText(finalText);
+
+      // Add to history (fire-and-forget)
+      addTranscription(finalText, DICTATION_MODE).catch((err) =>
+        log.warn("Failed to record transcription history:", err),
+      );
+
+      // Trigger native paste if not suppressed
+      if (!options.suppressNativePaste) {
+        const insertText = window.clipboard?.insertText;
+        timing.pasteStartedAt = performance.now();
+        try {
+          log.info("Starting native text insertion");
+          await withTimeout(
+            Promise.resolve(insertText?.(finalText)),
+            PASTE_TIMEOUT_MS,
+            "Native text insertion",
+          );
+        } catch (err) {
+          log.warn(err);
+        } finally {
+          timing.pasteDoneAt = performance.now();
+        }
+      }
+      logTranscriptionLatency({
+        providerKind,
+        status: "done",
+        timing,
+        capturedAudio,
+        vadResult,
+        metrics: result.metrics,
+      });
+    },
+    [awaitPendingOcr, options.suppressNativePaste],
+  );
+
   // Stop recording and transcribe
   const stop = useCallback(async () => {
     let recorder = recorderRef.current;
@@ -283,9 +388,15 @@ export function useTranscription(
     )
       return;
     stopInFlightRef.current = true;
+    // cancel() bumps the generation; once it no longer matches, this pipeline
+    // must not touch state, history, or the clipboard.
+    const generation = stopGenerationRef.current;
+    const isCancelled = () => stopGenerationRef.current !== generation;
 
     const providerId =
       activeProviderIdRef.current ?? (await resolveActiveProviderId());
+    // cancel() already reset all state if it fired during the await above
+    if (isCancelled()) return;
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
@@ -303,19 +414,34 @@ export function useTranscription(
       pasteDoneAt: 0,
     };
 
+    const streamingVadSession = streamingVadRef.current;
+    streamingVadRef.current = null;
+
     try {
       setProcessing(true);
       setRecording(false);
       playToggleOff();
 
-      // Add post-roll delay to capture end of speech
+      // Post-roll: capture any tail audio the user spoke right up to
+      // key-release. If the streaming VAD already confirmed speech ended a
+      // redemption window ago, that tail is already in the buffer and we
+      // don't wait at all; if speech is still active (or the model hasn't
+      // caught up yet) we keep capturing until it settles, capped at
+      // POST_ROLL_MS. If streaming VAD never became usable, fall back to
+      // today's fixed wait exactly.
       timing.postRollStartedAt = performance.now();
-      await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      if (streamingVadSession && streamingVadSession.isUsable()) {
+        await streamingVadSession.waitForQuiet(POST_ROLL_MS);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
+      }
       timing.postRollDoneAt = performance.now();
+      if (isCancelled()) return;
 
       const context = buildTranscriptionContext();
       if (!recorder && recorderStartPromise) {
         recorder = await recorderStartPromise;
+        if (isCancelled()) return;
       }
       if (!recorder) {
         throw new Error("Recording stopped before audio capture was ready.");
@@ -326,22 +452,33 @@ export function useTranscription(
       timing.pcmStopStartedAt = performance.now();
       const capturedAudio = await recorder.stop();
       timing.pcmReadyAt = performance.now();
-      console.log(
-        `[Transcription] PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
+      if (isCancelled()) return;
+      log.info(
+        `PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
       );
 
       timing.vadStartedAt = performance.now();
-      console.log(
-        `[VAD] Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
+      vadLog.info(
+        `Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
       );
-      const vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      let vadResult: VadAudioResult | null = null;
+      if (streamingVadSession && streamingVadSession.isUsable()) {
+        vadResult = await streamingVadSession.finish(capturedAudio);
+      }
+      if (!vadResult) {
+        // Streaming VAD never became usable (model init failed, or it
+        // failed mid-recording) — fall back to the post-hoc full-clip pass.
+        vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
+        vadResult = await trimCapturedAudioWithVad(capturedAudio);
+      }
       timing.vadDoneAt = performance.now();
-      console.log(
-        `[VAD] speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
+      if (isCancelled()) return;
+      vadLog.info(
+        `speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
       );
 
       if (!vadResult.speechDetected) {
-        console.log(`[Transcription] No speech detected; skipping STT`);
+        log.info("No speech detected; skipping STT");
         logTranscriptionLatency({
           providerKind: provider.descriptor.kind,
           status: "no_speech",
@@ -354,102 +491,21 @@ export function useTranscription(
       }
 
       const audio = vadResult.audio;
+      const providerKind = provider.descriptor.kind;
 
-      // ===== Local Whisper path =====
-      if (provider.descriptor.kind === "local") {
-        timing.sttStartedAt = performance.now();
-        console.log("[Local] Starting transcription");
-        const result = await defaultTranscriptionSessionOrchestrator.transcribe(
-          providerId,
-          {
-            audio,
-            context,
-          },
-        );
-        timing.sttDoneAt = performance.now();
-        console.log(
-          `[Local] Transcription complete: "${result.text.slice(0, 50)}..."`,
-        );
-        if (result.metrics) {
-          const m = result.metrics as Record<string, unknown>;
-          console.log(
-            `[Local] Metrics: inference=${m.inference_ms}ms, ttft=${m.ttft_ms}ms`,
-          );
-        }
-
-        // Wait for OCR to finish, then enhance
+      // Cloud STT waits for OCR before transcribing so vocabulary reaches the
+      // provider; local Whisper transcribes immediately and folds OCR
+      // vocabulary in during enhancement below.
+      if (providerKind !== "local") {
         if (ocrPromiseRef.current) {
-          await ocrPromiseRef.current;
-          ocrPromiseRef.current = null;
+          log.info("Waiting for OCR to complete...");
         }
-
-        let finalText = result.text;
-        if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
-          try {
-            const enhanced = await window.stt.enhance({
-              text: result.text,
-              vocabulary: ocrWordsRef.current,
-              mode,
-              selectionText: selection?.selectedText ?? undefined,
-            });
-            finalText = enhanced.text;
-            if (!enhanced.bypassed) {
-              console.log(
-                `[Local] Enhanced (${enhanced.tier}): "${finalText.slice(0, 50)}..."`,
-              );
-            }
-          } catch (err) {
-            console.warn(
-              "[Local] Enhancement failed, using raw transcript:",
-              err,
-            );
-          }
-        }
-
-        setText(finalText);
-
-        // Add to history (fire-and-forget)
-        addTranscription(finalText, mode).catch(console.warn);
-
-        // Trigger native paste if not suppressed
-        if (!options.suppressNativePaste) {
-          const insertText = window.clipboard?.insertText;
-          try {
-            timing.pasteStartedAt = performance.now();
-            console.log("[Paste] Starting native text insertion");
-            await withTimeout(
-              Promise.resolve(insertText?.(finalText)),
-              PASTE_TIMEOUT_MS,
-              "Native text insertion",
-            );
-            timing.pasteDoneAt = performance.now();
-          } catch (err) {
-            timing.pasteDoneAt = performance.now();
-            console.warn(err);
-          }
-        }
-        logTranscriptionLatency({
-          providerKind: provider.descriptor.kind,
-          status: "done",
-          timing,
-          capturedAudio,
-          vadResult,
-          metrics: result.metrics,
-        });
-        return; // Skip cloud path
+        await awaitPendingOcr();
+        if (isCancelled()) return;
       }
 
-      // ===== Cloud STT path =====
-      // Wait for OCR to finish if still pending
-      if (ocrPromiseRef.current) {
-        console.log("[Cloud] Waiting for OCR to complete...");
-        await ocrPromiseRef.current;
-        ocrPromiseRef.current = null;
-      }
-
-      // Transcribe via cloud provider
       timing.sttStartedAt = performance.now();
-      console.log("[Cloud] Starting transcription");
+      log.info(`Starting ${providerKind} transcription`);
       const result = await defaultTranscriptionSessionOrchestrator.transcribe(
         providerId,
         {
@@ -458,84 +514,53 @@ export function useTranscription(
         },
       );
       timing.sttDoneAt = performance.now();
-
-      console.log(
-        `[Cloud] STT complete in ${elapsedMs(timing.sttStartedAt, timing.sttDoneAt)}ms: "${result.text.slice(0, 50)}..."`,
+      if (isCancelled()) return;
+      log.info(
+        `STT complete in ${elapsedMs(timing.sttStartedAt, timing.sttDoneAt)}ms (${result.text.length} chars)`,
       );
-
-      // Enhance with LLM if triggers detected
-      let finalText = result.text;
-      if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
-        try {
-          const enhanced = await window.stt.enhance({
-            text: result.text,
-            vocabulary: ocrWordsRef.current,
-            mode,
-            selectionText: selection?.selectedText ?? undefined,
-          });
-          finalText = enhanced.text;
-          if (!enhanced.bypassed) {
-            console.log(
-              `[Cloud] Enhanced (${enhanced.tier}): "${finalText.slice(0, 50)}..."`,
-            );
-          }
-        } catch (err) {
-          console.warn(
-            "[Cloud] Enhancement failed, using raw transcript:",
-            err,
-          );
-        }
+      if (providerKind === "local" && result.metrics) {
+        const m = result.metrics as Record<string, unknown>;
+        log.info(`Metrics: inference=${m.inference_ms}ms, ttft=${m.ttft_ms}ms`);
       }
 
-      setText(finalText);
-
-      // Add to history (fire-and-forget)
-      addTranscription(finalText, mode).catch(console.warn);
-
-      // Trigger native paste if not suppressed
-      if (!options.suppressNativePaste) {
-        const insertText = window.clipboard?.insertText;
-        timing.pasteStartedAt = performance.now();
-        try {
-          console.log("[Paste] Starting native text insertion");
-          await withTimeout(
-            Promise.resolve(insertText?.(finalText)),
-            PASTE_TIMEOUT_MS,
-            "Native text insertion",
-          );
-        } catch (err) {
-          console.warn(err);
-        } finally {
-          timing.pasteDoneAt = performance.now();
-        }
-      }
-      logTranscriptionLatency({
-        providerKind: provider.descriptor.kind,
-        status: "done",
+      await finishTranscription({
+        result,
         timing,
+        providerKind,
         capturedAudio,
         vadResult,
-        metrics: result.metrics,
+        isCancelled,
       });
     } catch (err) {
-      console.error("[Transcription] Stop failed:", err);
+      if (isCancelled()) return;
+      log.error("Stop failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
-      stopInFlightRef.current = false;
-      activeProviderIdRef.current = null;
-      recorderStartPromiseRef.current = null;
-      // Release microphone stream so the OS mic indicator turns off
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
+      // stop() owns streamingVadSession once it's captured it above (the
+      // shared ref was already nulled), regardless of how the pipeline
+      // above exited — mirrors how `recorder.stop()` always runs. dispose()
+      // is a no-op if finish() already completed it.
+      streamingVadSession?.dispose();
+      // If cancel() interrupted this pipeline it already performed the
+      // cleanup below and a new session may have started since; leave it be.
+      if (!isCancelled()) {
+        stopInFlightRef.current = false;
+        activeProviderIdRef.current = null;
+        recorderStartPromiseRef.current = null;
+        // Release microphone stream so the OS mic indicator turns off
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+        setProcessing(false);
+        ocrWordsRef.current = [];
+        ocrPromiseRef.current = null;
       }
-      setProcessing(false);
-      ocrWordsRef.current = [];
-      ocrPromiseRef.current = null;
     }
   }, [
+    awaitPendingOcr,
     buildTranscriptionContext,
-    options.suppressNativePaste,
+    finishTranscription,
     recording,
     reportTranscriptionError,
     resolveActiveProviderId,
@@ -543,6 +568,9 @@ export function useTranscription(
 
   // Cancel recording
   const cancel = useCallback(() => {
+    // Invalidate any in-flight stop() pipeline so it bails after its next
+    // await instead of publishing text, adding history, or pasting.
+    stopGenerationRef.current += 1;
     stopInFlightRef.current = false;
     const pendingRecorder = recorderStartPromiseRef.current;
     recorderStartPromiseRef.current = null;
@@ -554,6 +582,13 @@ export function useTranscription(
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;
+    }
+    // If a stop() pipeline is mid-flight it already took ownership of the
+    // streaming VAD session (nulled this ref) and is responsible for
+    // disposing it itself; only dispose here when cancel() got to it first.
+    if (streamingVadRef.current) {
+      streamingVadRef.current.dispose();
+      streamingVadRef.current = null;
     }
     // Release microphone stream so the OS mic indicator turns off
     if (streamRef.current) {
@@ -569,12 +604,6 @@ export function useTranscription(
     ocrPromiseRef.current = null;
   }, []);
 
-  // Pre-connect is retained for callers that still warm up transcription.
-  const preConnect = useCallback(async () => {
-    await resolveActiveProviderId();
-    console.log("[Transcription] Pre-connect called");
-  }, [resolveActiveProviderId]);
-
   return {
     recording,
     processing,
@@ -582,13 +611,11 @@ export function useTranscription(
     text,
     error,
     errorId,
-    mode,
-    selection,
+    mode: DICTATION_MODE,
     audioLevel,
     start,
     stop,
     cancel,
-    preConnect,
   };
 }
 
@@ -647,7 +674,7 @@ function logTranscriptionLatency({
   const totalDoneAt = performance.now();
   const trimmedMs = vadResult.leadingTrimmedMs + vadResult.trailingTrimmedMs;
 
-  console.log("[Latency] Transcription", {
+  latencyLog.info("Transcription", {
     provider: providerKind,
     status,
     total_ms: elapsedMs(timing.stopStartedAt, totalDoneAt),

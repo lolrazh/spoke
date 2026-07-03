@@ -12,8 +12,16 @@ const ORIGINAL_CONSOLE: Pick<Console, ConsoleMethod> = {
   error: console.error.bind(console),
 };
 
+// Rotate the log once it grows past ~5 MB; the previous log is kept as
+// spoke.log.old (replacing any older rotation). Size is checked on install
+// and then every ROTATION_CHECK_EVERY_N_WRITES appends to keep the hot path
+// cheap.
+const MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024;
+const ROTATION_CHECK_EVERY_N_WRITES = 250;
+
 let installed = false;
 let cachedLogPath: string | null = null;
+let writesSinceRotationCheck = 0;
 
 export function getDiagnosticLogPath(): string {
   if (cachedLogPath) return cachedLogPath;
@@ -24,9 +32,23 @@ export function getDiagnosticLogPath(): string {
   return cachedLogPath;
 }
 
+function rotateLogIfNeeded(): void {
+  try {
+    const logPath = getDiagnosticLogPath();
+    const stats = fs.statSync(logPath);
+    if (stats.size <= MAX_LOG_SIZE_BYTES) return;
+    // renameSync replaces an existing .old file atomically.
+    fs.renameSync(logPath, `${logPath}.old`);
+  } catch {
+    // File may not exist yet; diagnostics must never affect the app path.
+  }
+}
+
 export function installMainConsoleFileSink(): void {
   if (installed) return;
   installed = true;
+
+  rotateLogIfNeeded();
 
   for (const method of Object.keys(ORIGINAL_CONSOLE) as ConsoleMethod[]) {
     console[method] = (...args: unknown[]) => {
@@ -84,6 +106,12 @@ function appendDiagnosticLine(
   args: unknown[],
 ): void {
   try {
+    writesSinceRotationCheck += 1;
+    if (writesSinceRotationCheck >= ROTATION_CHECK_EVERY_N_WRITES) {
+      writesSinceRotationCheck = 0;
+      rotateLogIfNeeded();
+    }
+
     const timestamp = new Date().toISOString();
     const message = args.map(formatArg).filter(Boolean).join(" ");
     fs.appendFileSync(
