@@ -15,6 +15,7 @@ import {
 } from "../../lib/transcriptionStorage";
 import { bootTimeline } from "../bootTimeline";
 import { insertTextAtCursor } from "../pasteOrchestrator";
+import { saveAppPreferences } from "../preferences";
 import { state } from "../windowState";
 
 // Registered at module load (not inside app.whenReady()), matching the
@@ -39,6 +40,24 @@ export function registerTranscriptIpc(): void {
       } catch {}
     });
   });
+
+  // Auto-space preference (trailing space appended after inserted dictation)
+  ipcMain.handle("auto-space:get-enabled", () => {
+    return { enabled: state.appPreferences.autoSpace ?? true };
+  });
+
+  ipcMain.handle(
+    "auto-space:set-enabled",
+    (_event, payload: { enabled: boolean }) => {
+      try {
+        state.appPreferences.autoSpace = payload.enabled;
+        saveAppPreferences(state.appPreferences);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+  );
 
   // Transcription history storage handlers
   ipcMain.handle("transcriptions:get-all", () => {

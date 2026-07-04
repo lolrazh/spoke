@@ -22,6 +22,16 @@ export interface InsertTextAtCursorResult {
   verified?: boolean;
 }
 
+/**
+ * Append the auto-space trailing space to an outgoing payload. Skipped when
+ * the preference is off or the text already ends in whitespace, so spaces
+ * never stack and a trailing newline stays a newline.
+ */
+export function applyAutoSpace(text: string, enabled: boolean): string {
+  if (!enabled || text.length === 0 || /\s$/.test(text)) return text;
+  return `${text} `;
+}
+
 // Add a handler for insert-text-at-cursor
 export async function insertTextAtCursor(
   text: string,
@@ -40,7 +50,10 @@ export async function insertTextAtCursor(
 
     // Preserve exact text (no trimming) so verification matches payload
     // Remove leading whitespace that some transcription paths prepend
-    const payloadText = text.trimStart();
+    const payloadText = applyAutoSpace(
+      text.trimStart(),
+      state.appPreferences.autoSpace ?? true,
+    );
     clipboard.writeText(payloadText);
     console.log("Transcription text copied to clipboard for pasting.");
 
@@ -135,7 +148,10 @@ export async function pasteLastTranscript() {
     );
 
     const originalClipboardText = clipboard.readText();
-    const payloadText = state.lastTranscript.trimStart();
+    const payloadText = applyAutoSpace(
+      state.lastTranscript.trimStart(),
+      state.appPreferences.autoSpace ?? true,
+    );
     clipboard.writeText(payloadText);
 
     const helperPath = getHelperPath();
