@@ -178,6 +178,11 @@ declare global {
       setDockVisible: (
         visible: boolean,
       ) => Promise<{ ok: boolean; error?: string }>;
+      // Auto-space helpers (trailing space after inserted dictation)
+      getAutoSpaceEnabled: () => Promise<{ enabled: boolean }>;
+      setAutoSpaceEnabled: (
+        enabled: boolean,
+      ) => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       // Renderer lifecycle
       rendererReady: () => void;

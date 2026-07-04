@@ -25,6 +25,10 @@ describe("components/SettingsPanel behavior", () => {
     (window as any).electron = {
       getFloatingBarEnabled: async () => ({ enabled: true }),
       isFloatingBarVisible: async () => ({ visible: true }),
+      getDockVisible: async () => ({ visible: true }),
+      setDockVisible: vi.fn(async (_visible: boolean) => ({ ok: true })),
+      getAutoSpaceEnabled: async () => ({ enabled: true }),
+      setAutoSpaceEnabled: vi.fn(async (_enabled: boolean) => ({ ok: true })),
       checkPermissions: async () => ({
         needAX: false,
         needIM: false,
@@ -76,6 +80,27 @@ describe("components/SettingsPanel behavior", () => {
       await Promise.resolve();
     });
     expect(onToggle).toHaveBeenCalled();
+
+    unmount();
+  }, 10_000);
+
+  it("persists the auto-space preference when user toggles the switch", async () => {
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(React.createElement(SettingsPanel));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const switches = Array.from(container.querySelectorAll(".switch-track"));
+    // Defaults group order: Floating Bar, Dock, Auto-Space
+    const autoSpaceSwitch = switches[2] as HTMLElement;
+    await act(async () => {
+      autoSpaceSwitch.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect((window as any).electron.setAutoSpaceEnabled).toHaveBeenCalledWith(
+      false,
+    );
 
     unmount();
   }, 10_000);

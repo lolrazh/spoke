@@ -493,6 +493,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
   const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
   const [showInDock, setShowInDock] = useState<boolean | null>(null);
+  const [autoSpace, setAutoSpace] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
   const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
   const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
@@ -636,6 +637,31 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       } catch {
         // Resolve to a value so the toggle never sticks on the placeholder.
         if (isMounted) setShowInDock(true);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Initialize auto-space preference from main process
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const result = await window.electron?.getAutoSpaceEnabled?.();
+        if (isMounted) {
+          setAutoSpace(
+            result && typeof result.enabled === "boolean"
+              ? result.enabled
+              : true,
+          );
+        }
+      } catch {
+        // Resolve to a value so the toggle never sticks on the placeholder.
+        if (isMounted) setAutoSpace(true);
       }
     })();
 
@@ -948,6 +974,33 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         icon={
                           <SfIcon
                             name="dock.rectangle"
+                            size={16}
+                            className="text-primary/70"
+                          />
+                        }
+                        inGroup
+                      />
+
+                      <Toggle
+                        label="Auto-Space"
+                        description="Add a space after each dictation"
+                        enabled={autoSpace}
+                        onChange={async (enabled) => {
+                          setAutoSpace(enabled);
+                          try {
+                            await window.electron?.setAutoSpaceEnabled?.(
+                              enabled,
+                            );
+                          } catch (error) {
+                            console.error(
+                              "[Settings] Failed to set auto-space:",
+                              error,
+                            );
+                          }
+                        }}
+                        icon={
+                          <SfIcon
+                            name="space"
                             size={16}
                             className="text-primary/70"
                           />
