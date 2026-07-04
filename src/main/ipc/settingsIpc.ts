@@ -287,13 +287,21 @@ export function registerSettingsIpc(): void {
     // available update only begins transferring once we ask it to here.
     state.installUpdateWhenReady = true;
 
-    if (getUpdateStatus() === "available") {
-      downloadUpdate();
-    } else if (
-      getUpdateStatus() !== "checking" &&
-      getUpdateStatus() !== "downloading"
+    // Starts the transfer when the engine already knows the update, including
+    // resuming after a failed download attempt (no-op otherwise).
+    downloadUpdate();
+
+    if (
+      getUpdateStatus() !== "downloading" &&
+      getUpdateStatus() !== "checking"
     ) {
-      await manualCheckForUpdates(false);
+      // Nothing cached to download (the failure was in the check itself, or
+      // the state went stale). Re-check quietly; the capsule broadcasts every
+      // step, so a notification here would only collapse the open panel to
+      // repeat what it already shows. Chain straight into the download when
+      // the check finds the update.
+      await manualCheckForUpdates(true);
+      if (getUpdateStatus() === "available") downloadUpdate();
     }
 
     return { ok: true, snapshot: getUpdateSnapshot() };
