@@ -244,6 +244,90 @@ describe("updateController", () => {
     );
   });
 
+  it("notifies when the download fails, even without a manual check in flight", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    sendNotify.mockClear();
+
+    controller.downloadUpdate();
+    electron.autoUpdater.emit("error", new Error("ENOENT: no such file"));
+
+    expect(controller.getUpdateStatus()).toBe("error");
+    expect(sendNotify).toHaveBeenCalledWith(
+      "Update download failed: ENOENT: no such file",
+    );
+  });
+
+  it("surfaces a download rejection even if no error event is emitted", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.downloadUpdate.mockRejectedValueOnce(
+      new Error("boom"),
+    );
+
+    controller.downloadUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(controller.getUpdateStatus()).toBe("error");
+    expect(controller.getUpdateError()).toBe("boom");
+    expect(sendNotify).toHaveBeenCalledWith("Update download failed: boom");
+  });
+
+  it("resumes the download on retry after a failed download", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+
+    controller.downloadUpdate();
+    electron.autoUpdater.emit("error", new Error("network reset"));
+    expect(controller.getUpdateStatus()).toBe("error");
+
+    // The update info from the check is still cached, so a retry restarts the
+    // transfer directly instead of requiring another check.
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(controller.getUpdateStatus()).toBe("downloading");
+  });
+
+  it("does not retry the download directly after a failed check", async () => {
+    const { controller, electron } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("error", new Error("offline"));
+    expect(controller.getUpdateStatus()).toBe("error");
+
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+  });
+
+  it("announces the same available version only once across background checks", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.emit("update-not-available");
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+
+    expect(
+      sendNotify.mock.calls.filter((call) => call[0] === "Update available"),
+    ).toHaveLength(1);
+
+    // A manual check must still answer, even about an announced version.
+    electron.autoUpdater.emit("update-not-available");
+    await controller.manualCheckForUpdates(false);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    expect(
+      sendNotify.mock.calls.filter((call) => call[0] === "Update available"),
+    ).toHaveLength(2);
+  });
+
   it("previews the ready state only in development builds", async () => {
     const packaged = await loadController({ packaged: true });
     expect(packaged.controller.setDevUpdateStateForTesting("ready")).toEqual({

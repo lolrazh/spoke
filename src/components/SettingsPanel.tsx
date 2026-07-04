@@ -552,9 +552,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [embeddedMode]);
 
   // Arm install-when-ready so the update auto-restarts once the engine finishes
-  // downloading. With autoDownload the engine drives the download itself and
-  // broadcasts the real "downloading" status + percent, so the renderer never
-  // fakes a downloading state. It just records the latest snapshot.
+  // downloading. The engine broadcasts the real status + percent, so the
+  // renderer never fakes a downloading state; it just records the latest
+  // snapshot. The error capsule's Try again runs through the same handler:
+  // main resumes the failed download when it can, or re-checks and then
+  // downloads, so a retry always moves toward the install instead of parking
+  // back at "available".
   const handleInstallUpdate = () => {
     window.update
       ?.installWhenReady?.()
@@ -809,7 +812,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 hovered={capsuleHovered}
                 onInstall={handleInstallUpdate}
                 onRestart={() => window.update?.restart?.()}
-                onRetry={() => window.update?.check?.()}
+                onRetry={handleInstallUpdate}
               />
             )}
           </AnimatePresence>

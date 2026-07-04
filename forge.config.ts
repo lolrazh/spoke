@@ -79,6 +79,9 @@ const config: ForgeConfig = {
     icon: "./public/assets/icon.icns",
     // Ensure icon is copied to the app bundle
     extraResource: [
+      // electron-updater reads this from Contents/Resources during
+      // downloadUpdate(); without it every download fails with ENOENT.
+      "./build/app-update.yml",
       "./public/assets/icon.png",
       "./public/assets/TrayTemplate.png",
       "./public/assets/TrayTemplate@2x.png",
