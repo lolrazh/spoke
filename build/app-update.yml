@@ -1,0 +1,10 @@
+# electron-updater expects this file at Contents/Resources/app-update.yml in
+# the packaged app. electron-builder generates it automatically; Electron Forge
+# does not. The check phase survives without it because setFeedURL() configures
+# the GitHub provider in code, but the download phase reads updaterCacheDirName
+# from this file and fails with ENOENT before transferring a single byte.
+# Shipped into Resources via packagerConfig.extraResource in forge.config.ts.
+provider: github
+owner: lolrazh
+repo: spoke
+updaterCacheDirName: spoke-updater

@@ -26,6 +26,13 @@ if [[ "$TEAM_ID" != "$APPLE_TEAM_ID" ]]; then
   exit 1
 fi
 
+# electron-updater needs this file at download time; a build without it ships
+# an updater that can check but never download.
+if [[ ! -f "$APP_PATH/Contents/Resources/app-update.yml" ]]; then
+  echo "Missing app-update.yml in packaged Resources; auto-update downloads would fail" >&2
+  exit 1
+fi
+
 VERSION="$(node -p "require('./package.json').version")"
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
 if [[ "$PLIST_VERSION" != "$VERSION" ]]; then
