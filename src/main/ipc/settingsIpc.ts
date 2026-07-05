@@ -279,16 +279,13 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle("update:install-when-ready", async () => {
     if (isUpdateReadyToInstall()) {
-      quitAndInstallUpdate();
       return { ok: true, snapshot: getUpdateSnapshot() };
     }
 
-    // Arm auto-restart, then start the download. autoDownload is off, so an
-    // available update only begins transferring once we ask it to here.
-    state.installUpdateWhenReady = true;
-
     // Starts the transfer when the engine already knows the update, including
-    // resuming after a failed download attempt (no-op otherwise).
+    // resuming after a failed download attempt (no-op otherwise). Download
+    // completion only marks the update ready; the explicit restart handler is
+    // the only path that calls quitAndInstall().
     downloadUpdate();
 
     if (

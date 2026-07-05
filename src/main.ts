@@ -36,7 +36,6 @@ import {
 import {
   initUpdateController,
   scheduleUpdateCheck,
-  quitAndInstallUpdate,
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
@@ -188,10 +187,6 @@ app.whenReady().then(async () => {
             state.onboardingWindow.webContents.send("update:state-changed", snapshot);
           }
         } catch {}
-        if (state.installUpdateWhenReady && snapshot.readyToInstall) {
-          state.installUpdateWhenReady = false;
-          quitAndInstallUpdate();
-        }
       },
     });
   });

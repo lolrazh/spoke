@@ -34,7 +34,6 @@ export interface AppWindowState {
   pillPreferences: PillPreferences;
   appPreferences: AppPreferences;
   mainWindowPostReadyWorkScheduled: boolean;
-  installUpdateWhenReady: boolean;
   onboardingPrefsPath: string;
   onboardingPrefs: OnboardingPrefs;
 }
@@ -50,7 +49,6 @@ export const state: AppWindowState = {
   pillPreferences: {},
   appPreferences: {},
   mainWindowPostReadyWorkScheduled: false,
-  installUpdateWhenReady: false,
   onboardingPrefsPath: "",
   onboardingPrefs: {},
 };

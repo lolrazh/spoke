@@ -552,13 +552,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return () => clearTimeout(timer);
   }, [embeddedMode]);
 
-  // Arm install-when-ready so the update auto-restarts once the engine finishes
-  // downloading. The engine broadcasts the real status + percent, so the
-  // renderer never fakes a downloading state; it just records the latest
-  // snapshot. The error capsule's Try again runs through the same handler:
-  // main resumes the failed download when it can, or re-checks and then
-  // downloads, so a retry always moves toward the install instead of parking
-  // back at "available".
+  // Start or resume the update download. The engine broadcasts the real status
+  // + percent, so the renderer never fakes a downloading state; it just records
+  // the latest snapshot. Once the download is ready, the explicit Restart
+  // action is the only path that asks the main process to quit and install.
   const handleInstallUpdate = () => {
     window.update
       ?.installWhenReady?.()

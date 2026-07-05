@@ -173,6 +173,9 @@ describe("updateController", () => {
     expect(controller.getUpdateAvailableVersion()).toBe("0.1.5");
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
     expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
+    expect(electron.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+    expect(electron.app.quit).not.toHaveBeenCalled();
+    expect(electron.app.exit).not.toHaveBeenCalled();
   });
 
   it("reports up to date when no update is available", async () => {

@@ -206,7 +206,7 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("arms install-when-ready from the available capsule, then shows real download progress", async () => {
+  it("starts install-when-ready from the available capsule, then shows real download progress", async () => {
     (window as any).update.getState = vi.fn(async () => ({
       status: "available",
       version: "v0.1.8",

@@ -148,9 +148,9 @@ export function buildTrayMenu(): MenuItemConstructorOptions[] {
   function restartToInstallUpdate() {
     quitAndInstallUpdate();
   }
-  async function downloadAndInstallUpdate() {
-    // Arm auto-restart, then start the download for the available update.
-    state.installUpdateWhenReady = true;
+  async function downloadAvailableUpdate() {
+    // Start the download for the available update. Download completion only
+    // enables the separate restart action.
     downloadUpdate();
 
     if (
@@ -181,7 +181,7 @@ export function buildTrayMenu(): MenuItemConstructorOptions[] {
           {
             label: "Download Update",
             click: () => {
-              downloadAndInstallUpdate().catch((err) => {
+              downloadAvailableUpdate().catch((err) => {
                 console.error("[TrayMenu] Error starting update download:", err);
               });
             },
