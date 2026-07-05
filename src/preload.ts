@@ -289,6 +289,13 @@ contextBridge.exposeInMainWorld("electron", {
     visible: boolean,
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("dock:set-visible", { visible }),
+  // Auto-space helpers (trailing space after inserted dictation)
+  getAutoSpaceEnabled: (): Promise<{ enabled: boolean }> =>
+    ipcRenderer.invoke("auto-space:get-enabled"),
+  setAutoSpaceEnabled: (
+    enabled: boolean,
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("auto-space:set-enabled", { enabled }),
   // Generic external URL opener
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Renderer lifecycle
