@@ -13,7 +13,7 @@
  * feed config. We configure the GitHub provider in code via setFeedURL().
  */
 
-import { app } from "electron";
+import { app, autoUpdater as nativeSquirrelUpdater } from "electron";
 import { autoUpdater } from "electron-updater";
 
 // ── Config ─────────────────────────────────────────────────────────────
@@ -481,12 +481,29 @@ export function setDevUpdateStateForTesting(
   return { ok: true, snapshot: getUpdateSnapshot() };
 }
 
+let quitAndInstallInvoked = false;
+
 export function quitAndInstallUpdate(): void {
+  // quitAndInstall waits on Squirrel staging (below); a second tap during that
+  // window must not stack another install attempt on top of the first.
+  if (quitAndInstallInvoked) {
+    console.log("[Updater] quitAndInstall already in progress; ignoring");
+    return;
+  }
+
   try {
     console.log("[Updater] quitAndInstall invoked");
+    // On macOS electron-updater stages the update AFTER this call: it serves
+    // the downloaded zip to the native Squirrel.Mac updater over an in-process
+    // proxy server, waits for Squirrel to finish staging, and only then
+    // terminates and relaunches the app itself. The process must stay alive
+    // for those seconds. The legacy pure-Squirrel flow force-quit here; with
+    // electron-updater that kills the proxy mid-staging, so the app just dies
+    // with no install and no relaunch. Never call app.quit()/app.exit() here.
     // isSilent=false (show the installer UX), isForceRunAfter=true (relaunch
     // the new build once installed instead of just quitting).
     autoUpdater.quitAndInstall(false, true);
+    quitAndInstallInvoked = true;
   } catch (e) {
     console.warn(
       "[Updater] quitAndInstall failed; relaunching as fallback:",
@@ -501,16 +518,19 @@ export function quitAndInstallUpdate(): void {
     return;
   }
 
-  // The installer only swaps the bundle once THIS process exits. On a menu-bar
-  // app quitAndInstall doesn't reliably terminate us (window-all-closed keeps
-  // the app alive), so the install would hang indefinitely. Drive the same
-  // clean-quit path the "Quit Spoke" menu uses (it runs the before-quit cleanup
-  // that kills the sidecar/helpers), then hard-backstop with exit() if it stalls.
-  app.quit();
-  setTimeout(() => {
-    console.warn("[Updater] still alive after quitAndInstall; forcing exit");
-    app.exit(0);
-  }, 4000).unref();
+  // Once staging is done, Squirrel terminates us via before-quit-for-update.
+  // If the menu-bar process somehow survives that signal (window-all-closed
+  // keeps the app alive with no windows), force the exit so the swap can
+  // proceed. This is the only point where forcing the exit is safe: staging
+  // is complete, so killing the process can no longer abort the install.
+  nativeSquirrelUpdater?.once?.("before-quit-for-update", () => {
+    setTimeout(() => {
+      console.warn(
+        "[Updater] still alive after before-quit-for-update; forcing exit",
+      );
+      app.exit(0);
+    }, 5000).unref();
+  });
 }
 
 export function scheduleUpdateCheck(

@@ -19,6 +19,9 @@ type MockElectron = {
     relaunch: ReturnType<typeof vi.fn>;
   };
   autoUpdater: MockAutoUpdater;
+  // Electron's built-in Squirrel.Mac updater, which electron-updater drives
+  // internally on macOS. It signals before-quit-for-update once staging ends.
+  nativeSquirrelUpdater: EventEmitter;
 };
 
 async function loadController(
@@ -43,7 +46,9 @@ async function loadController(
     relaunch: vi.fn(),
   };
 
-  vi.doMock("electron", () => ({ app }));
+  const nativeSquirrelUpdater = new EventEmitter();
+
+  vi.doMock("electron", () => ({ app, autoUpdater: nativeSquirrelUpdater }));
   vi.doMock("electron-updater", () => ({ autoUpdater }));
 
   const controller = await import("./updateController");
@@ -54,7 +59,7 @@ async function loadController(
 
   return {
     controller,
-    electron: { app, autoUpdater } satisfies MockElectron,
+    electron: { app, autoUpdater, nativeSquirrelUpdater } satisfies MockElectron,
     sendNotify,
     rebuildTrayMenu,
     onStateChange,
@@ -384,12 +389,35 @@ describe("updateController", () => {
     expect(controller.isUpdateReadyToInstall()).toBe(true);
   });
 
-  it("installs via quitAndInstall and force-quits the menu-bar process", async () => {
+  it("stays alive after quitAndInstall so Squirrel can stage the install", async () => {
     const { controller, electron } = await loadController();
 
     controller.quitAndInstallUpdate();
 
     expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
-    expect(electron.app.quit).toHaveBeenCalledTimes(1);
+    // Staging streams the zip through an in-process proxy; quitting here is
+    // what aborted every install (the app died with no swap and no relaunch).
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(electron.app.quit).not.toHaveBeenCalled();
+    expect(electron.app.exit).not.toHaveBeenCalled();
+  });
+
+  it("forces exit only once Squirrel signals it is quitting for the update", async () => {
+    const { controller, electron } = await loadController();
+
+    controller.quitAndInstallUpdate();
+    electron.nativeSquirrelUpdater.emit("before-quit-for-update");
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(electron.app.exit).toHaveBeenCalledWith(0);
+  });
+
+  it("ignores repeated quitAndInstall taps while staging is in flight", async () => {
+    const { controller, electron } = await loadController();
+
+    controller.quitAndInstallUpdate();
+    controller.quitAndInstallUpdate();
+
+    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 });
