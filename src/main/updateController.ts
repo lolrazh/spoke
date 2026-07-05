@@ -26,6 +26,9 @@ const UPDATE_CHECK_TIMEOUT_MS = 60_000;
 // it as stalled. Full-zip mac downloads are large, but a healthy connection
 // emits progress every few hundred ms, so a 90s gap means something is wrong.
 const UPDATE_DOWNLOAD_STALL_TIMEOUT_MS = 90_000;
+// After quitAndInstall() the native updater should begin the update quit
+// sequence promptly. If it does not, keep the app alive and let the user retry.
+const UPDATE_INSTALL_HANDOFF_TIMEOUT_MS = 120_000;
 // Long-lived menu-bar app: re-check on a slow cadence so a build released while
 // the app stays open eventually gets picked up without a restart.
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -82,6 +85,9 @@ let pendingUpdateCheckTimer: NodeJS.Timeout | null = null;
 let updateBackoffMs: number | null = null;
 let updateCheckWatchdog: NodeJS.Timeout | null = null;
 let updateDownloadWatchdog: NodeJS.Timeout | null = null;
+let quitAndInstallInvoked = false;
+let updateInstallHandoffWatchdog: NodeJS.Timeout | null = null;
+let updateInstallHandoffListener: (() => void) | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -162,9 +168,30 @@ function clearUpdateDownloadWatchdog() {
   updateDownloadWatchdog = null;
 }
 
+function clearUpdateInstallHandoffWatchdog() {
+  if (!updateInstallHandoffWatchdog) return;
+  try {
+    clearTimeout(updateInstallHandoffWatchdog);
+  } catch {}
+  updateInstallHandoffWatchdog = null;
+}
+
+function clearUpdateInstallHandoffTracking() {
+  clearUpdateInstallHandoffWatchdog();
+  if (!updateInstallHandoffListener) return;
+  try {
+    nativeSquirrelUpdater?.removeListener?.(
+      "before-quit-for-update",
+      updateInstallHandoffListener,
+    );
+  } catch {}
+  updateInstallHandoffListener = null;
+}
+
 function clearAllWatchdogs() {
   clearUpdateCheckWatchdog();
   clearUpdateDownloadWatchdog();
+  clearUpdateInstallHandoffTracking();
 }
 
 function startUpdateCheckWatchdog(silent: boolean) {
@@ -206,6 +233,24 @@ function startUpdateDownloadWatchdog() {
     manualUpdateCheckInFlight = false;
   }, UPDATE_DOWNLOAD_STALL_TIMEOUT_MS);
   updateDownloadWatchdog.unref?.();
+}
+
+function startUpdateInstallHandoffWatchdog() {
+  clearUpdateInstallHandoffWatchdog();
+  updateInstallHandoffWatchdog = setTimeout(() => {
+    updateInstallHandoffWatchdog = null;
+    if (!quitAndInstallInvoked) return;
+
+    const msg = `Install handoff did not begin after ${Math.round(
+      UPDATE_INSTALL_HANDOFF_TIMEOUT_MS / 1000,
+    )}s`;
+    console.warn("[auto-update] install handoff timed out:", msg);
+    quitAndInstallInvoked = false;
+    clearUpdateInstallHandoffTracking();
+    setUpdateState("error", { error: msg });
+    callbacks.sendNotify("Update install did not start. Try again.");
+  }, UPDATE_INSTALL_HANDOFF_TIMEOUT_MS);
+  updateInstallHandoffWatchdog.unref?.();
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────
@@ -315,6 +360,7 @@ function initUpdaterEventBridgeOnce() {
     clearAllWatchdogs();
     const failedDownload = downloadInFlight;
     downloadInFlight = false;
+    quitAndInstallInvoked = false;
     lastFailedPhase = failedDownload ? "download" : "check";
     const msg = err?.message || String(err) || "Unknown updater error";
     // Log even on silent background checks. An invisible error here is exactly
@@ -333,6 +379,7 @@ function initUpdaterEventBridgeOnce() {
     console.log("[auto-update] update-downloaded:", info?.version);
     clearAllWatchdogs();
     downloadInFlight = false;
+    quitAndInstallInvoked = false;
     lastFailedPhase = null;
     if (info?.version) updateAvailableVersion = String(info.version);
     updateReadyToInstall = true;
@@ -481,30 +528,43 @@ export function setDevUpdateStateForTesting(
   return { ok: true, snapshot: getUpdateSnapshot() };
 }
 
-let quitAndInstallInvoked = false;
-
 export function quitAndInstallUpdate(): void {
-  // quitAndInstall waits on Squirrel staging (below); a second tap during that
-  // window must not stack another install attempt on top of the first.
+  // A second tap during the native handoff must not stack another install
+  // attempt on top of the first.
   if (quitAndInstallInvoked) {
     console.log("[Updater] quitAndInstall already in progress; ignoring");
     return;
   }
 
+  const onBeforeQuitForUpdate = () => {
+    console.log("[Updater] before-quit-for-update received");
+    clearUpdateInstallHandoffWatchdog();
+    updateInstallHandoffListener = null;
+  };
+
   try {
     console.log("[Updater] quitAndInstall invoked");
-    // On macOS electron-updater stages the update AFTER this call: it serves
-    // the downloaded zip to the native Squirrel.Mac updater over an in-process
-    // proxy server, waits for Squirrel to finish staging, and only then
-    // terminates and relaunches the app itself. The process must stay alive
-    // for those seconds. The legacy pure-Squirrel flow force-quit here; with
-    // electron-updater that kills the proxy mid-staging, so the app just dies
-    // with no install and no relaunch. Never call app.quit()/app.exit() here.
+    // Listen before quitAndInstall() so a synchronous native event cannot be
+    // missed. The event means the update quit sequence has started, not that
+    // staging is complete.
+    nativeSquirrelUpdater?.once?.(
+      "before-quit-for-update",
+      onBeforeQuitForUpdate,
+    );
+    updateInstallHandoffListener = onBeforeQuitForUpdate;
+    quitAndInstallInvoked = true;
+    startUpdateInstallHandoffWatchdog();
+
+    // On macOS electron-updater hands the install to Squirrel.Mac through
+    // Electron's native autoUpdater. Do not call app.quit() or app.exit() here:
+    // native quitAndInstall() closes windows and quits the app itself, and an
+    // early forced exit can kill the updater handoff.
     // isSilent=false (show the installer UX), isForceRunAfter=true (relaunch
     // the new build once installed instead of just quitting).
     autoUpdater.quitAndInstall(false, true);
-    quitAndInstallInvoked = true;
   } catch (e) {
+    quitAndInstallInvoked = false;
+    clearUpdateInstallHandoffTracking();
     console.warn(
       "[Updater] quitAndInstall failed; relaunching as fallback:",
       e,
@@ -517,20 +577,6 @@ export function quitAndInstallUpdate(): void {
     }
     return;
   }
-
-  // Once staging is done, Squirrel terminates us via before-quit-for-update.
-  // If the menu-bar process somehow survives that signal (window-all-closed
-  // keeps the app alive with no windows), force the exit so the swap can
-  // proceed. This is the only point where forcing the exit is safe: staging
-  // is complete, so killing the process can no longer abort the install.
-  nativeSquirrelUpdater?.once?.("before-quit-for-update", () => {
-    setTimeout(() => {
-      console.warn(
-        "[Updater] still alive after before-quit-for-update; forcing exit",
-      );
-      app.exit(0);
-    }, 5000).unref();
-  });
 }
 
 export function scheduleUpdateCheck(

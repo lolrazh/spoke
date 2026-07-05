@@ -148,10 +148,18 @@ export function buildTrayMenu(): MenuItemConstructorOptions[] {
   function restartToInstallUpdate() {
     quitAndInstallUpdate();
   }
-  function downloadAndInstallUpdate() {
+  async function downloadAndInstallUpdate() {
     // Arm auto-restart, then start the download for the available update.
     state.installUpdateWhenReady = true;
     downloadUpdate();
+
+    if (
+      getUpdateStatus() !== "downloading" &&
+      getUpdateStatus() !== "checking"
+    ) {
+      await manualCheckForUpdates(true);
+      if (getUpdateStatus() === "available") downloadUpdate();
+    }
   }
 
   const updateStatus = getUpdateStatus();
@@ -172,7 +180,11 @@ export function buildTrayMenu(): MenuItemConstructorOptions[] {
       ? [
           {
             label: "Download Update",
-            click: () => downloadAndInstallUpdate(),
+            click: () => {
+              downloadAndInstallUpdate().catch((err) => {
+                console.error("[TrayMenu] Error starting update download:", err);
+              });
+            },
           },
         ]
       : [

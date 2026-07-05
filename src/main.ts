@@ -37,7 +37,6 @@ import {
   initUpdateController,
   scheduleUpdateCheck,
   quitAndInstallUpdate,
-  downloadUpdate,
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
@@ -189,21 +188,6 @@ app.whenReady().then(async () => {
             state.onboardingWindow.webContents.send("update:state-changed", snapshot);
           }
         } catch {}
-        // Update rehearsal mode (SPOKE_UPDATE_E2E=1): drive the taps a user
-        // would make, so a packaged build can prove the entire loop (check,
-        // download, stage, swap, relaunch) with no UI interaction. This is the
-        // pre-release gate for the one feature that must never break: if the
-        // updater itself ships broken, users can no longer receive the fix.
-        if (
-          process.env.SPOKE_UPDATE_E2E === "1" &&
-          snapshot.status === "available" &&
-          !snapshot.readyToInstall
-        ) {
-          state.installUpdateWhenReady = true;
-          // Deferred: never re-enter the updater's state machine from inside
-          // its own state-change callback.
-          setImmediate(() => downloadUpdate());
-        }
         if (state.installUpdateWhenReady && snapshot.readyToInstall) {
           state.installUpdateWhenReady = false;
           quitAndInstallUpdate();
