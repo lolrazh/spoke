@@ -527,7 +527,8 @@ static int inspect_text_core(int context_chars) {
     CFStringRef value = ax_copy_value(el);
     CFRange sel = {0,0};
     bool haveSel = ax_get_selected_range_cf(el, &sel);
-    bool rangeValid = haveSel && sel.length > 0 && sel.location >= 0;
+    bool rangeValid = haveSel && sel.location >= 0 && sel.length >= 0;
+    bool hasSelectionRange = rangeValid && sel.length > 0;
 
     CFStringRef selectedText = NULL;
     const char *source = "none";
@@ -543,7 +544,7 @@ static int inspect_text_core(int context_chars) {
     if (clipboardOk) {
         // Successfully captured selection via clipboard
         source = "clipboard";
-    } else if (rangeValid) {
+    } else if (hasSelectionRange) {
         // AX reported a selection but clipboard probe failed (rare edge case)
         source = "ax";
     } else {
@@ -562,18 +563,34 @@ static int inspect_text_core(int context_chars) {
     // (base64 prevents issues with newlines/special chars in IPC parsing)
     print_cfstring_base64("selectedText", selectedText);
 
-    // Context is not used by edit mode, so we output empty to maintain protocol compatibility
-    printf("contextB64:\n");
+    CFStringRef context = NULL;
+    if (value && rangeValid) {
+        CFIndex contextStart = sel.location - context_chars;
+        if (contextStart < 0) contextStart = 0;
+
+        CFIndex selectionEnd = sel.location + sel.length;
+        if (selectionEnd < sel.location) selectionEnd = sel.location;
+        if (selectionEnd > len) selectionEnd = len;
+
+        CFIndex contextEnd = selectionEnd + context_chars;
+        if (contextEnd > len) contextEnd = len;
+        if (contextEnd < contextStart) contextEnd = contextStart;
+
+        context = cfstring_substring_safe(value, CFRangeMake(contextStart, contextEnd - contextStart));
+    }
+    print_cfstring_base64("context", context);
 
     // PRIVACY: Only log plaintext/truncated versions when debugging
     if (g_debug_text) {
         print_cfstring_truncated("selectedText", selectedText, 512);
+        print_cfstring_truncated("context", context, 512);
     }
 
     printf("valueLength:%ld\n", (long)len);
     fflush(stdout);
 
     if (selectedText) CFRelease(selectedText);
+    if (context) CFRelease(context);
     if (value) CFRelease(value);
     CFRelease(el);
     CFRelease(appEl);

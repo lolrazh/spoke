@@ -27,6 +27,20 @@ vi.mock("./pasteDaemon", () => ({
   pasteViaDaemon: vi.fn(async () => true),
 }));
 
+vi.mock("./selectionInspect", () => ({
+  inspectFocusedSelection: vi.fn(async () => ({
+    ok: false,
+    status: "unsupported",
+    range: null,
+    selectedText: null,
+    context: null,
+    valueLength: null,
+    hadSelection: false,
+    source: "none",
+    rawOutput: "",
+  })),
+}));
+
 vi.mock("./windowState", () => ({
   state: {
     appPreferences: {},
@@ -37,6 +51,7 @@ vi.mock("./windowState", () => ({
 
 import { clipboard } from "electron";
 import { applyAutoSpace, insertTextAtCursor } from "./pasteOrchestrator";
+import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
 
 describe("main/pasteOrchestrator applyAutoSpace", () => {
@@ -64,6 +79,17 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     clipboardStore.text = "";
     state.appPreferences = {};
     vi.mocked(clipboard.writeText).mockClear();
+    vi.mocked(inspectFocusedSelection).mockResolvedValue({
+      ok: false,
+      status: "unsupported",
+      range: null,
+      selectedText: null,
+      context: null,
+      valueLength: null,
+      hadSelection: false,
+      source: "none",
+      rawOutput: "",
+    });
   });
 
   afterEach(() => {
@@ -102,5 +128,43 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     expect(clipboardStore.text).toBe("Hello world. ");
     vi.runAllTimers();
     expect(clipboardStore.text).toBe("previous contents");
+  });
+
+  it("uses focused text context to format an insertion inside a sentence", async () => {
+    vi.mocked(inspectFocusedSelection).mockResolvedValue({
+      ok: true,
+      status: "read:ok",
+      range: { location: "It was".length, length: 0 },
+      selectedText: null,
+      context: "It was",
+      valueLength: "It was".length,
+      hadSelection: false,
+      source: "none",
+      rawOutput: "",
+    });
+
+    const result = await insertTextAtCursor("Wonderful");
+    expect(result.success).toBe(true);
+    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+      " wonderful ",
+    );
+  });
+
+  it("does not add a trailing space before existing punctuation", async () => {
+    vi.mocked(inspectFocusedSelection).mockResolvedValue({
+      ok: true,
+      status: "read:ok",
+      range: { location: "It was ".length, length: 0 },
+      selectedText: null,
+      context: "It was , truly",
+      valueLength: "It was , truly".length,
+      hadSelection: false,
+      source: "none",
+      rawOutput: "",
+    });
+
+    const result = await insertTextAtCursor("Wonderful");
+    expect(result.success).toBe(true);
+    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe("wonderful");
   });
 });

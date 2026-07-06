@@ -14,6 +14,11 @@ import fs from "node:fs";
 import { getHelperPath } from "./helperPaths";
 import { spawnHelper } from "./helperProcess";
 import { pasteViaDaemon } from "./pasteDaemon";
+import {
+  applyAutoSpace,
+  formatDictationForInsertion,
+} from "./contextualDictationFormatter";
+import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
 
 export interface InsertTextAtCursorResult {
@@ -22,14 +27,26 @@ export interface InsertTextAtCursorResult {
   verified?: boolean;
 }
 
-/**
- * Append the auto-space trailing space to an outgoing payload. Skipped when
- * the preference is off or the text already ends in whitespace, so spaces
- * never stack and a trailing newline stays a newline.
- */
-export function applyAutoSpace(text: string, enabled: boolean): string {
-  if (!enabled || text.length === 0 || /\s$/.test(text)) return text;
-  return `${text} `;
+export { applyAutoSpace };
+
+const INSERTION_CONTEXT_CHARS = 96;
+
+async function buildInsertionPayload(text: string): Promise<string> {
+  const autoSpace = state.appPreferences.autoSpace ?? true;
+
+  try {
+    const selection = await inspectFocusedSelection({
+      contextChars: INSERTION_CONTEXT_CHARS,
+    });
+    return formatDictationForInsertion(text, {
+      autoSpace,
+      selection,
+      contextChars: INSERTION_CONTEXT_CHARS,
+    });
+  } catch (error) {
+    console.warn("[PasteHelper] Context inspection failed:", error);
+    return formatDictationForInsertion(text, { autoSpace });
+  }
 }
 
 // Add a handler for insert-text-at-cursor
@@ -48,12 +65,7 @@ export async function insertTextAtCursor(
     const originalClipboardText = clipboard.readText();
     console.log("Original clipboard text stored.");
 
-    // Preserve exact text (no trimming) so verification matches payload
-    // Remove leading whitespace that some transcription paths prepend
-    const payloadText = applyAutoSpace(
-      text.trimStart(),
-      state.appPreferences.autoSpace ?? true,
-    );
+    const payloadText = await buildInsertionPayload(text);
     clipboard.writeText(payloadText);
     console.log("Transcription text copied to clipboard for pasting.");
 
@@ -148,10 +160,7 @@ export async function pasteLastTranscript() {
     );
 
     const originalClipboardText = clipboard.readText();
-    const payloadText = applyAutoSpace(
-      state.lastTranscript.trimStart(),
-      state.appPreferences.autoSpace ?? true,
-    );
+    const payloadText = await buildInsertionPayload(state.lastTranscript);
     clipboard.writeText(payloadText);
 
     const helperPath = getHelperPath();
