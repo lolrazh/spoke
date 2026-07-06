@@ -56,7 +56,11 @@ export function formatDictationForInsertion(
   if (context) {
     payload = normalizeLeadingBoundary(payload, context.before);
     payload = normalizeInitialCapitalization(payload, context.before);
-    payload = normalizeContinuationEnding(payload, context.after);
+    payload = normalizeContinuationEnding(
+      payload,
+      context.before,
+      context.after,
+    );
     payload = normalizeTrailingBoundary(
       payload,
       context.after,
@@ -125,7 +129,12 @@ function normalizeTrailingBoundary(
   return `${payload} `;
 }
 
-function normalizeContinuationEnding(payload: string, after: string): string {
+function normalizeContinuationEnding(
+  payload: string,
+  before: string,
+  after: string,
+): string {
+  if (!/\S/.test(before)) return payload;
   if (!startsWithContinuingText(after)) return payload;
 
   const trimmedPayload = payload.trimEnd();
@@ -173,7 +182,7 @@ function isLikelyAcronym(token: string): boolean {
 }
 
 function startsWithContinuingText(after: string): boolean {
-  const trimmed = after.trimStart();
+  const trimmed = after.replace(/^[\t ]+/, "");
   return /^[\p{L}\p{N}]/u.test(trimmed);
 }
 

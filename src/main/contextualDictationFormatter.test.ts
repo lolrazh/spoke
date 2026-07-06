@@ -80,6 +80,16 @@ describe("main/contextualDictationFormatter", () => {
     ).toBe(" and improved");
   });
 
+  it("keeps sentence punctuation when there is no text before the caret", () => {
+    expect(format("Hello world.", "", "Existing text")).toBe("Hello world. ");
+  });
+
+  it("keeps sentence punctuation when following text is on a new line", () => {
+    expect(format("Done.", "First paragraph", "\nNext paragraph")).toBe(
+      " done.",
+    );
+  });
+
   it("removes sentence punctuation and adds a trailing space when needed", () => {
     expect(format("and improved.", "This is new", "transcription")).toBe(
       " and improved ",
