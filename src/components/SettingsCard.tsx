@@ -4,6 +4,7 @@ import { panelCascadeItem } from "./shared/panelMotion";
 
 type SettingsCardProps = {
   title: string;
+  titleAccessory?: React.ReactNode;
   description?: string;
   icon?: React.ReactNode;
   children?: React.ReactNode; // Right-aligned control area
@@ -15,6 +16,7 @@ type SettingsCardProps = {
 
 const SettingsCard: React.FC<SettingsCardProps> = ({
   title,
+  titleAccessory,
   description,
   icon,
   children,
@@ -63,7 +65,14 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
           </div>
         )}
         <div className="text-left min-w-0">
-          <div className="text-xs font-medium text-white truncate">{title}</div>
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <div className="min-w-0 truncate text-xs font-medium leading-4 text-white">
+              {title}
+            </div>
+            {titleAccessory && (
+              <div className="shrink-0 leading-4">{titleAccessory}</div>
+            )}
+          </div>
           {description && (
             <div className="text-[10px] text-subtle mt-0.5 truncate">
               {description}

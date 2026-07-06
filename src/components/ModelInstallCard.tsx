@@ -12,7 +12,9 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) {
     return `${Math.max(0, Math.round(bytes / (1024 * 1024)))} MB`;
   }
-  return `${Math.round(bytes / (1024 * 1024 * 1024))} GB`;
+  const gb = bytes / (1024 * 1024 * 1024);
+  const formatted = gb >= 10 ? Math.round(gb).toString() : gb.toFixed(1);
+  return `${formatted.replace(/\.0$/, "")} GB`;
 }
 
 function describe(info: LocalModelInfo, status: ModelStatus): string {
@@ -28,8 +30,16 @@ function describe(info: LocalModelInfo, status: ModelStatus): string {
   // Keep this short so the size never gets truncated behind an ellipsis; the
   // full tagline lives in onboarding where there's room.
   const size = status.totalBytes > 0 ? formatBytes(status.totalBytes) : null;
-  return [`${info.languageCount} languages`, size].filter(Boolean).join(" · ");
+  return [`${info.languageCount} languages`, info.quantization, size]
+    .filter(Boolean)
+    .join(" · ");
 }
+
+const RecommendedBadge: React.FC = () => (
+  <span className="text-[10px] font-medium leading-4 text-subtle">
+    Recommended
+  </span>
+);
 
 // Quiet, muted "done" checkmark — the exact path/animation the original card
 // used for its ready state. `dim` renders it as a faint affordance that the
@@ -119,6 +129,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   return (
     <SettingsCard
       title={info.displayName}
+      titleAccessory={info.isDefault ? <RecommendedBadge /> : undefined}
       description={describe(info, status)}
       icon={glyphForFamily(info.family)}
       inGroup={inGroup}

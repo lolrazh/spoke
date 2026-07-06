@@ -14,9 +14,10 @@ vi.mock("./icons/SfIcon", () => ({
 const info: LocalModelInfo = {
   modelId: "spokedotso/cohere-transcribe-03-2026-mlx-4bit",
   family: "cohere",
-  displayName: "Cohere Transcribe 03-2026 4-bit",
-  tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
+  displayName: "Cohere Transcribe 03-2026",
+  tagline: "Multilingual speech recognition tuned for accuracy.",
   languageCount: 14,
+  quantization: "4-bit",
   totalBytes: 1_600_000_000,
   isDefault: true,
 };
@@ -58,8 +59,9 @@ function renderCard(
 describe("ModelInstallCard", () => {
   it("shows a download affordance + tagline and installs on row click when not installed", () => {
     const props = renderCard();
-    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
-    expect(screen.getByText(/14 languages/i)).toBeTruthy();
+    expect(screen.getByText("Cohere Transcribe 03-2026")).toBeTruthy();
+    expect(screen.getByText("Recommended")).toBeTruthy();
+    expect(screen.getByText("14 languages · 4-bit · 1.5 GB")).toBeTruthy();
     // No buttons (no "Install"/"Use") — the whole row is the affordance.
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
     // The row itself is the clickable button; clicking it installs.
@@ -70,7 +72,7 @@ describe("ModelInstallCard", () => {
 
   it("renders no clickable control until loaded (no flash)", () => {
     renderCard({ loaded: false });
-    expect(screen.getByText("Cohere Transcribe 03-2026 4-bit")).toBeTruthy();
+    expect(screen.getByText("Cohere Transcribe 03-2026")).toBeTruthy();
     // Until loaded the row is inert (a plain group, not a button).
     expect(
       screen.queryByRole("button", { name: info.displayName }),
@@ -89,7 +91,7 @@ describe("ModelInstallCard", () => {
     // A compact ring carries the percent; the byte readout returns as text.
     expect(screen.getByTestId("progress-ring")).toBeTruthy();
     expect(screen.queryByText(/50%/)).toBeNull();
-    expect(screen.getByText(/763 MB \/ 1 GB/)).toBeTruthy();
+    expect(screen.getByText(/763 MB \/ 1.5 GB/)).toBeTruthy();
   });
 
   it("cancel trash fires onCancel (and not onInstall/onActivate) while downloading", () => {

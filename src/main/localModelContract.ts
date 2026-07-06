@@ -76,7 +76,7 @@ const COHERE_MANIFEST: ModelManifest = {
   manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
   family: "cohere",
   modelId: COHERE_ID,
-  displayName: "Cohere Transcribe 03-2026 4-bit",
+  displayName: "Cohere Transcribe 03-2026",
   version: COHERE_VERSION,
   files: [
     {
@@ -168,7 +168,12 @@ export const DEFAULT_MODEL_ID = COHERE_ID;
 
 function makeInfo(
   manifest: ModelManifest,
-  extra: { tagline: string; languageCount: number; isDefault: boolean },
+  extra: {
+    tagline: string;
+    languageCount: number;
+    quantization: string;
+    isDefault: boolean;
+  },
 ): LocalModelInfo {
   return {
     modelId: manifest.modelId,
@@ -176,6 +181,7 @@ function makeInfo(
     displayName: manifest.displayName,
     tagline: extra.tagline,
     languageCount: extra.languageCount,
+    quantization: extra.quantization,
     totalBytes: totalBytes(manifest),
     isDefault: extra.isDefault,
   };
@@ -185,8 +191,9 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
   [COHERE_ID]: {
     manifest: COHERE_MANIFEST,
     info: makeInfo(COHERE_MANIFEST, {
-      tagline: "Multilingual speech recognition tuned for accuracy at 4-bit precision.",
+      tagline: "Multilingual speech recognition tuned for accuracy.",
       languageCount: 14,
+      quantization: "4-bit",
       isDefault: true,
     }),
     requiredFilePaths: [
@@ -199,8 +206,9 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
   [WHISPER_ID]: {
     manifest: WHISPER_MANIFEST,
     info: makeInfo(WHISPER_MANIFEST, {
-      tagline: "Broad multilingual speech recognition optimized at 4-bit precision.",
+      tagline: "Broad multilingual speech recognition optimized for coverage.",
       languageCount: 99,
+      quantization: "4-bit",
       isDefault: false,
     }),
     requiredFilePaths: [

@@ -297,8 +297,11 @@ describe("components/SettingsPanel", () => {
 
     const text = container.textContent ?? "";
     // Both local ASR models are listed (default first).
-    expect(text).toContain("Cohere Transcribe 03-2026 4-bit");
+    expect(text).toContain("Cohere Transcribe 03-2026");
+    expect(text).toContain("Recommended");
+    expect(text).toContain("14 languages · 4-bit");
     expect(text).toContain("Whisper Large-v3 Turbo");
+    expect(text).toContain("99 languages · 4-bit");
     // Cloud provider / API-key UI is gone.
     expect(text).not.toContain("Default Model");
     expect(text).not.toContain("Cloud Providers");

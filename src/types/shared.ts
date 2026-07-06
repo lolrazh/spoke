@@ -160,6 +160,8 @@ export type LocalModelInfo = {
   tagline: string;
   /** Approximate number of supported languages, for UI ("99 languages"). */
   languageCount: number;
+  /** Quantization / precision label shown with size metadata ("4-bit"). */
+  quantization: string;
   /** Sum of manifest file sizes, in bytes. */
   totalBytes: number;
   /** True for the model pre-selected in onboarding / for fresh installs. */
