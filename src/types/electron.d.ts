@@ -75,6 +75,7 @@ declare global {
       insertText: (
         text: string,
       ) => Promise<{ success: boolean; error?: string }>;
+      writeText: (text: string) => Promise<{ ok: boolean; error?: string }>;
     };
     selection: {
       inspect: (options?: {

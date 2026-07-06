@@ -161,9 +161,22 @@ const TranscriptionHistoryView: React.FC = () => {
 
   const hasMore = displayedCount < historyItems.length;
 
-  const handleCopy = useCallback((item: HistoryItemData) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(item.text);
+  const handleCopy = useCallback(async (item: HistoryItemData) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(item.text);
+        return true;
+      }
+    } catch (error) {
+      console.warn("[History] Browser clipboard write failed:", error);
+    }
+
+    try {
+      const result = await window.clipboard?.writeText?.(item.text);
+      return result?.ok === true;
+    } catch (error) {
+      console.warn("[History] Electron clipboard write failed:", error);
+      return false;
     }
   }, []);
 

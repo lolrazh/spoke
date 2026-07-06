@@ -12,7 +12,7 @@ export interface HistoryItemData {
 
 interface HistoryItemProps {
   item: HistoryItemData;
-  onCopy: () => void;
+  onCopy: () => void | boolean | Promise<void | boolean>;
   skipAnimation?: boolean;
 }
 
@@ -33,8 +33,9 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    onCopy();
+  const handleCopy = async () => {
+    const result = await onCopy();
+    if (result === false) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -64,9 +65,11 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
         {/* Copy button - takes remaining space, centered within */}
         <div className="flex-1 flex items-center justify-center">
           <button
+            type="button"
             onClick={handleCopy}
             className={`transition-opacity w-[14px] h-[14px] flex items-center justify-center ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
             title="Copy to clipboard"
+            aria-label="Copy to clipboard"
           >
             <AnimatePresence mode="wait">
               {copied ? (

@@ -5,7 +5,12 @@
  * transcription history CRUD handlers backed by lib/transcriptionStorage.
  */
 
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from "electron";
+import {
+  BrowserWindow,
+  clipboard,
+  ipcMain,
+  type IpcMainInvokeEvent,
+} from "electron";
 
 import {
   getTranscriptions,
@@ -30,6 +35,15 @@ export function registerInsertTextAtCursorIpc(): void {
 }
 
 export function registerTranscriptIpc(): void {
+  ipcMain.handle("clipboard:write-text", (_event, text: string) => {
+    try {
+      clipboard.writeText(typeof text === "string" ? text : String(text ?? ""));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
+  });
+
   // Handle last transcript updates from renderer
   ipcMain.on("transcript:update", (_event, text: string) => {
     console.log(`[IPC] Received transcript update (${text.length} chars)`);

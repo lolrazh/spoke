@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld("transcript", {
 contextBridge.exposeInMainWorld("clipboard", {
   insertText: (text: string) =>
     ipcRenderer.invoke("insert-text-at-cursor", text),
+  writeText: (text: string) => ipcRenderer.invoke("clipboard:write-text", text),
 });
 
 contextBridge.exposeInMainWorld("selection", {
