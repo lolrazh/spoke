@@ -162,5 +162,17 @@ describe("pillStateMachine", () => {
       expect(next.state).toBe("NOTIFICATION");
       expect(next.context.notifMsg).toBe("Signed out");
     });
+
+    it("keeps the panel expanded for update notifications handled inline", () => {
+      expect(
+        dispatch(expanded, { type: "NOTIFY", msg: "Update available" }),
+      ).toEqual(expanded);
+      expect(
+        dispatch(expanded, {
+          type: "NOTIFY",
+          msg: "Update ready. Restart to update",
+        }),
+      ).toEqual(expanded);
+    });
   });
 });

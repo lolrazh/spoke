@@ -31,6 +31,11 @@ export interface PillMachineState {
   };
 }
 
+const INLINE_EXPANDED_NOTIFICATIONS = new Set([
+  "Update available",
+  "Update ready. Restart to update",
+]);
+
 // Reducer function for pill machine
 export const pillReducer = (
   state: PillMachineState,
@@ -131,7 +136,8 @@ export const pillReducer = (
       if (event.type === "PTT_START") return { ...state, state: "LISTENING" };
       // Handle NOTIFY while expanded (e.g., sign-out from settings panel)
       // Collapse first, then show notification
-      if (event.type === "NOTIFY")
+      if (event.type === "NOTIFY") {
+        if (INLINE_EXPANDED_NOTIFICATIONS.has(event.msg)) return state;
         return {
           state: "NOTIFICATION",
           context: {
@@ -140,6 +146,7 @@ export const pillReducer = (
             notifAction: event.actionId ?? null,
           },
         };
+      }
       return state;
     default:
       return state;
