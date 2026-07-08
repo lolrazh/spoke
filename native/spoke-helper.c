@@ -228,6 +228,16 @@ static CFStringRef cfstring_substring_safe(CFStringRef s, CFRange r) {
     return CFStringCreateWithSubstring(kCFAllocatorDefault, s, r);
 }
 
+static CFStringRef cfstring_concat3(CFStringRef a, CFStringRef b, CFStringRef c) {
+    if (!a && !b && !c) return NULL;
+    CFMutableStringRef result = CFStringCreateMutable(kCFAllocatorDefault, 0);
+    if (!result) return NULL;
+    if (a) CFStringAppend(result, a);
+    if (b) CFStringAppend(result, b);
+    if (c) CFStringAppend(result, c);
+    return result; // caller CFRelease
+}
+
 static CFStringRef cfstring_replace_range(CFStringRef base, CFRange r, CFStringRef insert) {
     if (!base) {
         return insert ? CFRetain(insert) : CFStringCreateWithCString(kCFAllocatorDefault, "", kCFStringEncodingUTF8);
@@ -541,6 +551,13 @@ static int inspect_text_core(int context_chars) {
     // the latency is invisible to users.
     selectedText = clipboard_copy_selected_text(&clipboardOk);
 
+    if (!clipboardOk && hasSelectionRange) {
+        selectedText = ax_copy_selected_text_attribute(el);
+        if (!selectedText) {
+            selectedText = ax_copy_string_for_range(el, sel);
+        }
+    }
+
     if (clipboardOk) {
         // Successfully captured selection via clipboard
         source = "clipboard";
@@ -564,19 +581,38 @@ static int inspect_text_core(int context_chars) {
     print_cfstring_base64("selectedText", selectedText);
 
     CFStringRef context = NULL;
-    if (value && rangeValid) {
+    if (rangeValid) {
         CFIndex contextStart = sel.location - context_chars;
         if (contextStart < 0) contextStart = 0;
 
         CFIndex selectionEnd = sel.location + sel.length;
         if (selectionEnd < sel.location) selectionEnd = sel.location;
-        if (selectionEnd > len) selectionEnd = len;
+        if (value && selectionEnd > len) selectionEnd = len;
 
-        CFIndex contextEnd = selectionEnd + context_chars;
-        if (contextEnd > len) contextEnd = len;
-        if (contextEnd < contextStart) contextEnd = contextStart;
+        if (value) {
+            CFIndex contextEnd = selectionEnd + context_chars;
+            if (contextEnd > len) contextEnd = len;
+            if (contextEnd < contextStart) contextEnd = contextStart;
 
-        context = cfstring_substring_safe(value, CFRangeMake(contextStart, contextEnd - contextStart));
+            context = cfstring_substring_safe(value, CFRangeMake(contextStart, contextEnd - contextStart));
+        } else {
+            CFIndex beforeLength = sel.location - contextStart;
+            if (beforeLength < 0) beforeLength = 0;
+
+            CFStringRef beforeText = beforeLength > 0
+                ? ax_copy_string_for_range(el, CFRangeMake(contextStart, beforeLength))
+                : NULL;
+            CFStringRef selectedContextText = sel.length > 0
+                ? ax_copy_string_for_range(el, CFRangeMake(sel.location, sel.length))
+                : NULL;
+            CFStringRef afterText = ax_copy_string_for_range(el, CFRangeMake(selectionEnd, context_chars));
+
+            context = cfstring_concat3(beforeText, selectedContextText, afterText);
+
+            if (beforeText) CFRelease(beforeText);
+            if (selectedContextText) CFRelease(selectedContextText);
+            if (afterText) CFRelease(afterText);
+        }
     }
     print_cfstring_base64("context", context);
 
