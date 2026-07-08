@@ -271,6 +271,29 @@ describe("components/SettingsPanel", () => {
     expect(
       container.querySelector('[data-testid="progress-ring"]'),
     ).toBeTruthy();
+
+    await act(async () => {
+      pushState?.({
+        status: "available",
+        version: "v0.1.8",
+        readyToInstall: true,
+        error: null,
+        downloadPercent: 100,
+      });
+      await Promise.resolve();
+    });
+
+    const restartButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.getAttribute("aria-label") === "Restart to update",
+    );
+    expect(restartButton).toBeTruthy();
+
+    await act(async () => {
+      restartButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(window.update.restart).toHaveBeenCalledTimes(1);
     unmount();
   });
 
